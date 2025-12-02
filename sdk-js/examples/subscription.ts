@@ -1,0 +1,65 @@
+/**
+ * Subscription management example
+ */
+
+import { PayMind } from '../src';
+
+async function subscriptionExample() {
+  const paymind = new PayMind({
+    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
+    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  });
+
+  try {
+    // 1. Create a subscription plan
+    console.log('Creating subscription plan...');
+    const plan = await paymind.subscriptions.createPlan({
+      name: 'Premium Monthly',
+      description: 'Premium subscription - Monthly',
+      amount: 29.99,
+      currency: 'USD',
+      interval: 'month',
+      intervalCount: 1,
+    });
+    console.log('Plan created:', plan.id);
+    console.log('Plan name:', plan.name);
+    console.log('Price:', plan.amount, plan.currency);
+
+    // 2. Create a subscription
+    console.log('\nCreating subscription...');
+    const subscription = await paymind.subscriptions.create({
+      planId: plan.id,
+      userId: 'user_123',
+      paymentMethod: 'stripe',
+    });
+    console.log('Subscription created:', subscription.id);
+    console.log('Status:', subscription.status);
+    console.log('Period:', subscription.currentPeriodStart, 'to', subscription.currentPeriodEnd);
+
+    // 3. List subscriptions
+    console.log('\nListing subscriptions...');
+    const subscriptions = await paymind.subscriptions.list({
+      page: 1,
+      limit: 10,
+    });
+    console.log('Total subscriptions:', subscriptions.pagination.total);
+
+    // 4. Cancel subscription (at period end)
+    console.log('\nCancelling subscription...');
+    const cancelled = await paymind.subscriptions.cancel(subscription.id, true);
+    console.log('Subscription cancelled:', cancelled.id);
+    console.log('Cancel at period end:', cancelled.cancelAtPeriodEnd);
+
+    // 5. Resume subscription
+    console.log('\nResuming subscription...');
+    const resumed = await paymind.subscriptions.resume(subscription.id);
+    console.log('Subscription resumed:', resumed.id);
+    console.log('Status:', resumed.status);
+
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+
+subscriptionExample();
+

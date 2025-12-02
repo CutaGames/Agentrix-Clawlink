@@ -1,0 +1,16 @@
+#!/bin/bash
+echo "=== 服务状态检查 ==="
+echo ""
+echo "端口监听状态:"
+lsof -i :3000 -i :3001 2>/dev/null | grep LISTEN || echo "  没有服务在监听"
+echo ""
+echo "进程状态:"
+ps aux | grep -E "(nest|next)" | grep -v grep | awk '{print $2, $11, $12, $13}' | head -5
+echo ""
+echo "HTTP测试:"
+echo -n "  后端 (3001): "
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/api 2>&1 && echo "" || echo "无法连接"
+echo -n "  前端 (3000): "
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>&1 && echo "" || echo "无法连接"
+echo ""
+echo "=== 检查完成 ==="

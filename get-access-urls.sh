@@ -1,0 +1,15 @@
+#!/bin/bash
+WSL_IP=$(hostname -I | awk '{print $1}')
+echo "=========================================="
+echo "  PayMind 访问地址"
+echo "=========================================="
+echo ""
+echo "📍 在Windows浏览器中访问："
+echo ""
+echo "  前端: http://$WSL_IP:3000"
+echo "  后端: http://$WSL_IP:3001"
+echo "  API文档: http://$WSL_IP:3001/api/docs"
+echo ""
+echo "💡 如果想使用 localhost，运行："
+echo "  .\\setup-wsl-port-forward.ps1"
+echo ""
