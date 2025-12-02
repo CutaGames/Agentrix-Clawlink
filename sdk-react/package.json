@@ -1,7 +1,7 @@
 {
-  "name": "@paymind/react",
+  "name": "@agentrix/react",
   "version": "2.2.0",
-  "description": "PayMind React SDK - React components and hooks for PayMind payment integration",
+  "description": "Agentrix React SDK - React components and hooks for Agentrix payment integration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.esm.js",
@@ -21,7 +21,7 @@
     "react-dom": ">=16.8.0"
   },
   "dependencies": {
-    "@paymind/sdk": "^2.2.0"
+    "@agentrix/sdk": "^2.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
@@ -34,18 +34,18 @@
     "typescript": "^5.2.0"
   },
   "keywords": [
-    "paymind",
+    "agentrix",
     "payment",
     "react",
     "sdk",
     "hooks",
     "components"
   ],
-  "author": "PayMind Team",
+  "author": "Agentrix Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/paymind/sdk-react.git"
+    "url": "https://github.com/agentrix/sdk-react.git"
   }
 }
 

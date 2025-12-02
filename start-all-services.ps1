@@ -1,7 +1,7 @@
-# PayMind 完整服务启动脚本 (Windows PowerShell)
+# Agentrix 完整服务启动脚本 (Windows PowerShell)
 # 启动前端、后端、SDK文档服务器
 
-Write-Host "🚀 启动 PayMind 所有服务..." -ForegroundColor Green
+Write-Host "🚀 启动 Agentrix 所有服务..." -ForegroundColor Green
 Write-Host ""
 
 # 检查Node.js
@@ -24,9 +24,9 @@ if (-not (Test-Path "backend\node_modules")) {
     Set-Location ..
 }
 
-if (-not (Test-Path "paymindfrontend\node_modules")) {
+if (-not (Test-Path "agentrixfrontend\node_modules")) {
     Write-Host "📥 安装前端依赖..." -ForegroundColor Yellow
-    Set-Location paymindfrontend
+    Set-Location agentrixfrontend
     npm install
     Set-Location ..
 }
@@ -37,9 +37,9 @@ if (-not (Test-Path "backend\.env")) {
     Write-Host "   运行: cd backend && copy .env.example .env" -ForegroundColor Yellow
 }
 
-if (-not (Test-Path "paymindfrontend\.env.local")) {
-    Write-Host "⚠️  警告: paymindfrontend\.env.local 不存在" -ForegroundColor Yellow
-    Write-Host "   运行: cd paymindfrontend && copy .env.local.example .env.local" -ForegroundColor Yellow
+if (-not (Test-Path "agentrixfrontend\.env.local")) {
+    Write-Host "⚠️  警告: agentrixfrontend\.env.local 不存在" -ForegroundColor Yellow
+    Write-Host "   运行: cd agentrixfrontend && copy .env.local.example .env.local" -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -62,7 +62,7 @@ Start-Sleep -Seconds 8
 
 # 启动前端
 Write-Host "🎨 启动前端服务 (http://localhost:3000)..." -ForegroundColor Cyan
-$frontendScript = "cd '$PWD\paymindfrontend'; npm run dev"
+$frontendScript = "cd '$PWD\agentrixfrontend'; npm run dev"
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendScript -WindowStyle Normal
 
 # 启动SDK文档服务器

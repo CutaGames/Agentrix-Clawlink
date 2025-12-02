@@ -1,15 +1,15 @@
 """
-Merchant resource for PayMind SDK
+Merchant resource for Agentrix SDK
 """
 
 from typing import Dict, Any, Optional
-from ..http_client import PayMindClient
+from ..http_client import AgentrixClient
 
 
 class MerchantResource:
     """Merchant operations"""
 
-    def __init__(self, client: PayMindClient):
+    def __init__(self, client: AgentrixClient):
         self.client = client
 
     def create_product(self, request: Dict[str, Any]) -> Dict[str, Any]:

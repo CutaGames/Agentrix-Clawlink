@@ -23,9 +23,9 @@ async function createTestProducts() {
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
-    username: process.env.DB_USERNAME || 'paymind',
-    password: process.env.DB_PASSWORD || 'paymind_password',
-    database: process.env.DB_DATABASE || 'paymind_db',
+    username: process.env.DB_USERNAME || 'agentrix',
+    password: process.env.DB_PASSWORD || 'agentrix_password',
+    database: process.env.DB_DATABASE || 'agentrix_db',
     entities: [
       User,
       Product,
@@ -47,7 +47,7 @@ async function createTestProducts() {
     // 查找测试账户
     const testPaymindId = 'pm-1763463490911-91zf91wu2';
     let testUser = await userRepository.findOne({
-      where: { paymindId: testPaymindId },
+      where: { agentrixId: testPaymindId },
     });
 
     if (!testUser) {
@@ -56,7 +56,7 @@ async function createTestProducts() {
       process.exit(1);
     }
 
-    console.log(`✅ 找到测试账户: ${testUser.paymindId} (${testUser.email || 'N/A'})`);
+    console.log(`✅ 找到测试账户: ${testUser.agentrixId} (${testUser.email || 'N/A'})`);
 
     // 确保用户有 merchant 角色
     if (!testUser.roles || !testUser.roles.includes('merchant' as any)) {
@@ -206,7 +206,7 @@ async function createTestProducts() {
     console.log('1. 这些商品已自动索引到向量数据库，支持语义检索');
     console.log('2. 可以在 Marketplace 页面查看这些商品');
     console.log('3. 可以通过 Agent 搜索和购买这些商品');
-    console.log('4. 测试账户 PayMind ID: ' + testPaymindId);
+    console.log('4. 测试账户 Agentrix ID: ' + testPaymindId);
   } catch (error) {
     console.error('❌ 创建测试商品失败:', error);
     process.exit(1);

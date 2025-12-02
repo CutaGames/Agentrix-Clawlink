@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo 🚀 PayMind 服务启动
+echo 🚀 Agentrix 服务启动
 echo ========================================
 echo.
 
@@ -9,9 +9,9 @@ REM 自动查找项目根目录
 set "CURRENT_DIR=%~dp0"
 set "PROJECT_ROOT=%CURRENT_DIR%"
 
-REM 向上查找包含 backend 和 paymindfrontend 的目录
+REM 向上查找包含 backend 和 agentrixfrontend 的目录
 :find_root
-if exist "%PROJECT_ROOT%backend" if exist "%PROJECT_ROOT%paymindfrontend" goto found_root
+if exist "%PROJECT_ROOT%backend" if exist "%PROJECT_ROOT%agentrixfrontend" goto found_root
 set "PARENT=%PROJECT_ROOT%..\"
 if "%PARENT%"=="%PROJECT_ROOT%" goto not_found
 set "PROJECT_ROOT=%PARENT%"

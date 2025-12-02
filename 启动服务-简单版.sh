@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind 服务启动助手 (WSL/Linux版本)
+# Agentrix 服务启动助手 (WSL/Linux版本)
 
 echo "=========================================="
-echo "🚀 PayMind 服务启动助手"
+echo "🚀 Agentrix 服务启动助手"
 echo "=========================================="
 echo ""
 
@@ -27,7 +27,7 @@ sleep 5
 
 # 启动前端服务
 echo "[2/3] 启动前端服务 (端口 3000)..."
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

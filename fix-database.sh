@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🔧 PayMind 数据库修复脚本"
+echo "🔧 Agentrix 数据库修复脚本"
 echo "=========================="
 echo ""
 
@@ -17,7 +17,7 @@ echo ""
 # 尝试不同的密码
 PASSWORDS=("postgres" "" "password" "admin")
 
-DB_NAME="paymind"
+DB_NAME="agentrix"
 DB_USER="postgres"
 DB_HOST="localhost"
 DB_PORT="5432"

@@ -1,5 +1,5 @@
 /**
- * Crypto Payment resource for PayMind SDK
+ * Crypto Payment resource for Agentrix SDK
  * 
  * Handles on-chain cryptocurrency payments with support for:
  * - Multiple chains (SOL, ETH, Base, Polygon, etc.)
@@ -8,7 +8,7 @@
  * - Transaction acceleration and retry
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export type Chain = 'solana' | 'ethereum' | 'base' | 'polygon' | 'arbitrum' | 'optimism';
 export type TokenStandard = 'SPL' | 'ERC20' | 'ERC4337' | 'native';
@@ -65,7 +65,7 @@ export interface BuiltTransaction {
 }
 
 export class CryptoPaymentResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Estimate gas/fees for a crypto payment

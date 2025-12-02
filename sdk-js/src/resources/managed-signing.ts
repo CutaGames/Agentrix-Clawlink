@@ -1,5 +1,5 @@
 /**
- * Managed Signing resource for PayMind SDK
+ * Managed Signing resource for Agentrix SDK
  * 
  * Provides managed signing capabilities for:
  * - AI Agent automatic payments
@@ -7,7 +7,7 @@
  * - Machine-to-machine payments
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface CreateManagedWalletRequest {
   userId: string;
@@ -63,7 +63,7 @@ export interface IntentSignature {
 }
 
 export class ManagedSigningResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a managed wallet (Signer Wallet)

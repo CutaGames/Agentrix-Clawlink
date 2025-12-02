@@ -1417,7 +1417,7 @@ export class AgentP0IntegrationService {
       response: `🔧 ${language} SDK生成中...\n\n已为您生成${language} SDK代码示例。`,
       data: {
         language,
-        code: `// ${language} SDK示例代码\nimport { PayMind } from '@paymind/sdk';\n\nconst client = new PayMind({ apiKey: 'your-api-key' });\n\n// 使用示例\nawait client.payments.create({ amount: 100, currency: 'USD' });`,
+        code: `// ${language} SDK示例代码\nimport { Agentrix } from '@agentrix/sdk';\n\nconst client = new Agentrix({ apiKey: 'your-api-key' });\n\n// 使用示例\nawait client.payments.create({ amount: 100, currency: 'USD' });`,
       },
       type: 'sdk_generator',
     };
@@ -2030,11 +2030,11 @@ export class AgentP0IntegrationService {
       const user = await this.userService.addRole(userId, 'merchant' as any);
 
       return {
-        response: `✅ 注册商户成功！\n\n• 商户ID：${user.id}\n• PayMind ID：${user.paymindId}\n• 角色：${user.roles.join(', ')}\n\n💡 您现在可以：\n• 上传商品到Marketplace\n• 查看和管理订单\n• 生成收款链接\n• 查看销售分析`,
+        response: `✅ 注册商户成功！\n\n• 商户ID：${user.id}\n• Agentrix ID：${user.agentrixId}\n• 角色：${user.roles.join(', ')}\n\n💡 您现在可以：\n• 上传商品到Marketplace\n• 查看和管理订单\n• 生成收款链接\n• 查看销售分析`,
         type: 'register_merchant',
         data: {
           userId: user.id,
-          paymindId: user.paymindId,
+          agentrixId: user.agentrixId,
           roles: user.roles,
         },
       };
@@ -2590,7 +2590,7 @@ export class AgentP0IntegrationService {
     
     if (!code) {
       return {
-        response: '🧪 沙盒调试功能\n\n请提供要测试的代码，例如：\n```javascript\nconst client = new PayMind({ apiKey: "test" });\nawait client.payments.create({ amount: 100 });\n```',
+        response: '🧪 沙盒调试功能\n\n请提供要测试的代码，例如：\n```javascript\nconst client = new Agentrix({ apiKey: "test" });\nawait client.payments.create({ amount: 100 });\n```',
         type: 'sandbox',
         data: { action: 'prompt_code' },
       };
@@ -2633,7 +2633,7 @@ export class AgentP0IntegrationService {
         type: 'contract_helper',
         data: {
           action: 'generate_template',
-          template: '// 智能合约模板\ncontract PayMindIntegration {\n  // 您的合约代码\n}',
+          template: '// 智能合约模板\ncontract AgentrixIntegration {\n  // 您的合约代码\n}',
         },
       };
     }
@@ -2700,9 +2700,9 @@ export class AgentP0IntegrationService {
     
     const codeExamples: Record<string, string> = {
       payment: `// 支付代码示例
-import { PayMind } from '@paymind/sdk';
+import { Agentrix } from '@agentrix/sdk';
 
-const client = new PayMind({ apiKey: 'your-api-key' });
+const client = new Agentrix({ apiKey: 'your-api-key' });
 
 // 创建支付
 const payment = await client.payments.create({
@@ -2714,7 +2714,7 @@ const payment = await client.payments.create({
 import express from 'express';
 
 app.post('/webhook', async (req, res) => {
-  const signature = req.headers['x-paymind-signature'];
+  const signature = req.headers['x-agentrix-signature'];
   const isValid = verifySignature(req.body, signature);
   
   if (isValid) {
@@ -2726,7 +2726,7 @@ app.post('/webhook', async (req, res) => {
   }
 });`,
       api: `// API调用示例
-const response = await fetch('https://api.paymind.com/v1/payments', {
+const response = await fetch('https://api.agentrix.com/v1/payments', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer your-api-key',

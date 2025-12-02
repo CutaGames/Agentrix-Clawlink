@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind 完整服务启动脚本
+# Agentrix 完整服务启动脚本
 # 启动前端、后端、SDK文档服务器
 
-echo "🚀 启动 PayMind 所有服务..."
+echo "🚀 启动 Agentrix 所有服务..."
 echo ""
 
 # 颜色定义
@@ -35,9 +35,9 @@ if [ ! -d "backend/node_modules" ]; then
     cd backend && npm install && cd ..
 fi
 
-if [ ! -d "paymindfrontend/node_modules" ]; then
+if [ ! -d "agentrixfrontend/node_modules" ]; then
     echo "📥 安装前端依赖..."
-    cd paymindfrontend && npm install && cd ..
+    cd agentrixfrontend && npm install && cd ..
 fi
 
 # 检查环境变量
@@ -46,9 +46,9 @@ if [ ! -f "backend/.env" ]; then
     echo "   运行: cd backend && cp .env.example .env"
 fi
 
-if [ ! -f "paymindfrontend/.env.local" ]; then
-    echo -e "${YELLOW}⚠️  警告: paymindfrontend/.env.local 不存在${NC}"
-    echo "   运行: cd paymindfrontend && cp .env.local.example .env.local"
+if [ ! -f "agentrixfrontend/.env.local" ]; then
+    echo -e "${YELLOW}⚠️  警告: agentrixfrontend/.env.local 不存在${NC}"
+    echo "   运行: cd agentrixfrontend && cp .env.local.example .env.local"
 fi
 
 echo ""
@@ -72,7 +72,7 @@ sleep 8
 
 # 启动前端
 echo -e "${GREEN}🎨 启动前端服务 (http://localhost:3000)...${NC}"
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

@@ -1,8 +1,8 @@
 /**
- * Agent Template resource for PayMind SDK
+ * Agent Template resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface AgentTemplateSummary {
   id: string;
@@ -60,7 +60,7 @@ export interface UserAgentSummary {
 }
 
 export class AgentTemplateResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * List public agent templates

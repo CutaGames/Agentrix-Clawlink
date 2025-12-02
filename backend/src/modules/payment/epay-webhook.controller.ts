@@ -61,7 +61,7 @@ export class EPAYWebhookController {
 
       this.logger.log(`EPAY webhook: Order ${epayOrderId}, Status: ${status}, Amount: ${amount} ${currency}`);
 
-      // 3. 根据EPAY订单ID查找PayMind支付记录
+      // 3. 根据EPAY订单ID查找Agentrix支付记录
       // EPAY订单ID可能存储在Payment的metadata中（如 metadata.providerOrderId 或 metadata.epayOrderId）
       // 由于TypeORM的JSON查询限制，我们需要查询所有相关支付记录，然后在代码中过滤
       const allPayments = await this.paymentRepository.find({
@@ -95,7 +95,7 @@ export class EPAYWebhookController {
 
       this.logger.log(`EPAY webhook: Found payment ${payment.id} for EPAY order ${epayOrderId}`);
 
-      // 4. 根据订单状态更新PayMind订单
+      // 4. 根据订单状态更新Agentrix订单
       if (status === 'SUCCESS' || status === 'PAID' || status === 'success' || status === 'paid') {
         // 支付成功，更新支付状态并触发Commission合约分账
         if (payment.status !== PaymentStatus.COMPLETED) {

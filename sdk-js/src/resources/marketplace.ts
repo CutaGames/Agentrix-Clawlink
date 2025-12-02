@@ -1,8 +1,8 @@
 /**
- * Marketplace resource for PayMind SDK
+ * Marketplace resource for Agentrix SDK
  * 
  * This resource provides semantic search and retrieval capabilities for AI Agents
- * to discover and recommend products from the PayMind Marketplace.
+ * to discover and recommend products from the Agentrix Marketplace.
  * 
  * Key features:
  * - Unified semantic search API (cloud-based)
@@ -11,7 +11,7 @@
  * - Automatic payment link generation
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import { LocalEmbeddingModel, reRankResults, formatSearchResults, ReRankOptions, SearchResult } from '../utils/semantic-search';
 
 export interface MarketplaceProduct {
@@ -96,7 +96,7 @@ export class MarketplaceResource {
   private localEmbedding: LocalEmbeddingModel;
   private useLocalEmbedding: boolean = false;
 
-  constructor(private client: PayMindClient) {
+  constructor(private client: AgentrixClient) {
     this.localEmbedding = new LocalEmbeddingModel();
   }
 
@@ -113,9 +113,9 @@ export class MarketplaceResource {
   /**
    * Semantic search for products in the marketplace
    * 
-   * This uses PayMind's unified semantic search API:
+   * This uses Agentrix's unified semantic search API:
    * 1. Query → Embedding conversion (local model if available, else cloud)
-   * 2. Vector search in PayMind's vector database
+   * 2. Vector search in Agentrix's vector database
    * 3. Client-side re-ranking with user preferences
    * 4. Automatic payment link generation
    * 
@@ -140,7 +140,7 @@ export class MarketplaceResource {
       }
     }
 
-    // Step 2: Call PayMind semantic search API
+    // Step 2: Call Agentrix semantic search API
     const response = await this.client.post<{
       products: MarketplaceProduct[];
       total: number;
@@ -165,7 +165,7 @@ export class MarketplaceResource {
       actions: [
         {
           type: 'payment_link' as const,
-          url: product.payUrl || `https://paymind.ai/checkout/${product.productId}`,
+          url: product.payUrl || `https://agentrix.ai/checkout/${product.productId}`,
           metadata: {
             productId: product.productId,
             merchantId: product.merchantId,
@@ -175,7 +175,7 @@ export class MarketplaceResource {
         },
         {
           type: 'checkout' as const,
-          url: `https://paymind.ai/checkout/${product.productId}`,
+          url: `https://agentrix.ai/checkout/${product.productId}`,
           metadata: {
             productId: product.productId,
           },
@@ -260,7 +260,7 @@ export class MarketplaceResource {
       actions: [
         {
           type: 'payment_link' as const,
-          url: product.payUrl || `https://paymind.ai/checkout/${product.productId}`,
+          url: product.payUrl || `https://agentrix.ai/checkout/${product.productId}`,
           metadata: {
             productId: product.productId,
             merchantId: product.merchantId,
@@ -289,10 +289,10 @@ export class MarketplaceResource {
   /**
    * Create an order for a product
    * This will:
-   * 1. Create order draft in PayMind OMS
+   * 1. Create order draft in Agentrix OMS
    * 2. Call merchant callback API to get real-time price/inventory
-   * 3. Merchant confirms and returns to PayMind
-   * 4. PayMind generates final order and payment link
+   * 3. Merchant confirms and returns to Agentrix
+   * 4. Agentrix generates final order and payment link
    */
   async createOrder(request: CreateOrderRequest): Promise<Order> {
     if (!request.productId) {

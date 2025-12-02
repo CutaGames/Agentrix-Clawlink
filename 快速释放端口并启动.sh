@@ -23,7 +23,7 @@ fi
 
 # 清除缓存
 echo "[3/4] 清除Next.js缓存..."
-cd paymindfrontend
+cd agentrixfrontend
 rm -rf .next
 echo "✅ 缓存已清除"
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# PayMind SDK NPM 发布脚本
+# Agentrix SDK NPM 发布脚本
 
 set -e
 
-echo "🚀 PayMind SDK 发布准备"
+echo "🚀 Agentrix SDK 发布准备"
 echo "========================"
 echo ""
 
@@ -61,11 +61,11 @@ npm publish --access public
 
 if [ $? -eq 0 ]; then
   echo "✅ 发布成功!"
-  echo "📦 包名: @paymind/sdk"
+  echo "📦 包名: @agentrix/sdk"
   echo "📌 版本: $VERSION"
   echo ""
   echo "🔗 安装命令:"
-  echo "   npm install @paymind/sdk@$VERSION"
+  echo "   npm install @agentrix/sdk@$VERSION"
 else
   echo "❌ 发布失败"
   exit 1

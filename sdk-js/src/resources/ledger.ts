@@ -1,10 +1,10 @@
 /**
- * Ledger and Settlement resource for PayMind SDK
+ * Ledger and Settlement resource for Agentrix SDK
  * 
  * Handles revenue sharing, commissions, and settlement
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface RevenueShare {
   paymentId: string;
@@ -60,7 +60,7 @@ export interface Reconciliation {
 }
 
 export class LedgerResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Get revenue share for a payment

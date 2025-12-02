@@ -1,8 +1,8 @@
 /**
- * Payment resource for PayMind SDK
+ * Payment resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import { PaymentStatus } from '../types/payment';
 import {
   CreatePaymentRequest,
@@ -14,7 +14,7 @@ import {
 import { validatePaymentRequest } from '../utils/validation';
 
 export class PaymentResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a new payment

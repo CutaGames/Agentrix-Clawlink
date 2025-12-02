@@ -1,19 +1,19 @@
 /**
- * Integration tests for PayMind API
+ * Integration tests for Agentrix API
  * 
  * These tests require a running backend server.
- * Set PAYMIND_API_URL and PAYMIND_API_KEY environment variables.
+ * Set AGENTRIX_API_URL and AGENTRIX_API_KEY environment variables.
  */
 
-import { PayMind } from '../../src';
+import { Agentrix } from '../../src';
 
-describe('PayMind API Integration Tests', () => {
-  let paymind: PayMind;
-  const apiKey = process.env.PAYMIND_API_KEY || 'test-api-key';
-  const apiUrl = process.env.PAYMIND_API_URL || 'http://localhost:3001/api';
+describe('Agentrix API Integration Tests', () => {
+  let agentrix: Agentrix;
+  const apiKey = process.env.AGENTRIX_API_KEY || 'test-api-key';
+  const apiUrl = process.env.AGENTRIX_API_URL || 'http://localhost:3001/api';
 
   beforeAll(() => {
-    paymind = new PayMind({
+    agentrix = new Agentrix({
       apiKey,
       baseUrl: apiUrl,
     });
@@ -22,7 +22,7 @@ describe('PayMind API Integration Tests', () => {
   describe('Payment API', () => {
     it('should get payment routing', async () => {
       try {
-        const routing = await paymind.payments.getRouting({
+        const routing = await agentrix.payments.getRouting({
           amount: 100,
           currency: 'USD',
           userCountry: 'US',
@@ -42,7 +42,7 @@ describe('PayMind API Integration Tests', () => {
   describe('Error Handling', () => {
     it('should handle API errors gracefully', async () => {
       try {
-        await paymind.payments.get('invalid-id');
+        await agentrix.payments.get('invalid-id');
       } catch (error: any) {
         expect(error).toHaveProperty('code');
         expect(error).toHaveProperty('message');

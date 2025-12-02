@@ -1,8 +1,8 @@
 /**
- * Pricing resource for PayMind SDK
+ * Pricing resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface ProductPrice {
   amount: number;
@@ -29,7 +29,7 @@ export interface CurrencyConversion {
 }
 
 export class PricingResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Get product price for a specific country

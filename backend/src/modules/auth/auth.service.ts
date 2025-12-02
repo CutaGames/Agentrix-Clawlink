@@ -28,8 +28,8 @@ export class AuthService {
       throw new ConflictException('该邮箱已被注册');
     }
 
-    // 生成PayMind ID（如果未提供）
-    const paymindId = dto.paymindId || `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // 生成Agentrix ID（如果未提供）
+    const agentrixId = dto.agentrixId || `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // 加密密码
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -38,7 +38,7 @@ export class AuthService {
     const user = this.userRepository.create({
       email: dto.email,
       passwordHash,
-      paymindId,
+      agentrixId,
       roles: ['user'] as UserRole[],
     });
 
@@ -52,7 +52,7 @@ export class AuthService {
       access_token,
       user: {
         id: savedUser.id,
-        paymindId: savedUser.paymindId,
+        agentrixId: savedUser.agentrixId,
         email: savedUser.email,
         roles: Array.isArray(savedUser.roles) ? savedUser.roles : ['user'],
       },
@@ -81,7 +81,7 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: {
         id: user.id,
-        paymindId: user.paymindId,
+        agentrixId: user.agentrixId,
         email: user.email,
         roles: user.roles,
       },
@@ -110,11 +110,11 @@ export class AuthService {
       }
     } else {
       // 创建新用户
-      const paymindId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const agentrixId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       user = this.userRepository.create({
         googleId,
         email,
-        paymindId,
+        agentrixId,
         avatarUrl: picture,
         nickname: firstName && lastName ? `${firstName} ${lastName}` : null,
         roles: [UserRole.USER],
@@ -127,8 +127,8 @@ export class AuthService {
 
   /**
    * 钱包登录
-   * 核心逻辑：同一个钱包地址只能有一个PayMind ID
-   * 同一个PayMind ID可以绑定多个链的钱包
+   * 核心逻辑：同一个钱包地址只能有一个Agentrix ID
+   * 同一个Agentrix ID可以绑定多个链的钱包
    */
   async walletLogin(dto: WalletLoginDto) {
     const { walletAddress, walletType, chain, message, signature, chainId } = dto;
@@ -150,7 +150,7 @@ export class AuthService {
     }
 
     // 3. 查找该钱包地址是否已存在（不区分链，因为同一个地址在不同链上应该对应同一个用户）
-    // 注意：这里查找所有链的钱包连接，因为同一个地址在不同链上应该对应同一个PayMind ID
+    // 注意：这里查找所有链的钱包连接，因为同一个地址在不同链上应该对应同一个Agentrix ID
     const existingWallet = await this.walletRepository
       .createQueryBuilder('wallet')
       .leftJoinAndSelect('wallet.user', 'user')
@@ -163,7 +163,7 @@ export class AuthService {
     let walletConnection: WalletConnection;
 
     if (existingWallet) {
-      // 4a. 如果钱包已存在，使用现有的用户和PayMind ID
+      // 4a. 如果钱包已存在，使用现有的用户和Agentrix ID
       user = existingWallet.user;
       
       // 检查该链的钱包连接是否已存在
@@ -176,12 +176,12 @@ export class AuthService {
       walletConnection = await this.walletRepository.save(walletConnection);
     } else {
       // 4b. 如果钱包不存在，创建新用户和钱包连接
-      // 生成PayMind ID
-      const paymindId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // 生成Agentrix ID
+      const agentrixId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // 创建用户
       user = this.userRepository.create({
-        paymindId,
+        agentrixId,
         roles: [UserRole.USER],
       });
       user = await this.userRepository.save(user);
@@ -210,7 +210,7 @@ export class AuthService {
     // 5. 生成JWT token
     const payload = { 
       sub: user.id,
-      paymindId: user.paymindId,
+      agentrixId: user.agentrixId,
       walletAddress: walletAddress.toLowerCase(),
     };
     const access_token = this.jwtService.sign(payload);
@@ -219,7 +219,7 @@ export class AuthService {
       access_token,
       user: {
         id: user.id,
-        paymindId: user.paymindId,
+        agentrixId: user.agentrixId,
         email: user.email,
         roles: Array.isArray(user.roles) ? user.roles : [UserRole.USER],
       },

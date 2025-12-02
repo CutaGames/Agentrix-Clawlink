@@ -5,12 +5,12 @@
  * and make them discoverable by AI Agents
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function marketplaceMerchantExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
@@ -55,7 +55,7 @@ async function marketplaceMerchantExample() {
 
     const createdProducts = [];
     for (const productData of products) {
-      const product = await paymind.merchants.createProduct(productData);
+      const product = await agentrix.merchants.createProduct(productData);
       createdProducts.push(product);
       console.log(`✅ Created: ${product.name} (${product.id})`);
       console.log(`   Price: ${product.price} ${product.currency}`);
@@ -78,7 +78,7 @@ async function marketplaceMerchantExample() {
     console.log('🔍 Testing semantic search');
     console.log('='.repeat(60));
     
-    const searchResults = await paymind.marketplace.searchProducts({
+    const searchResults = await agentrix.marketplace.searchProducts({
       query: 'running shoes under 150 dollars',
       filters: {
         priceMax: 150,
@@ -107,7 +107,7 @@ async function marketplaceMerchantExample() {
     console.log('='.repeat(60));
     
     if (createdProducts.length > 0) {
-      const updatedProduct = await paymind.merchants.updateProduct(createdProducts[0].id, {
+      const updatedProduct = await agentrix.merchants.updateProduct(createdProducts[0].id, {
         price: 110, // Price reduced
         inventory: 45, // Inventory updated
       });
@@ -129,7 +129,7 @@ async function marketplaceMerchantExample() {
     console.log('📋 Viewing orders from Marketplace');
     console.log('='.repeat(60));
     
-    const orders = await paymind.marketplace.listOrders({
+    const orders = await agentrix.marketplace.listOrders({
       status: 'pending',
       page: 1,
       limit: 10,

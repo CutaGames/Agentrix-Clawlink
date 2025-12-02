@@ -209,7 +209,7 @@ export function formatSearchResults(
     if (options?.includePaymentLinks && result.actions.length === 0) {
       result.actions.push({
         type: 'payment_link',
-        url: result.metadata?.payUrl || `https://paymind.ai/checkout/${result.productId || result.merchantId}`,
+        url: result.metadata?.payUrl || `https://agentrix.ai/checkout/${result.productId || result.merchantId}`,
         metadata: {
           productId: result.productId,
           merchantId: result.merchantId,

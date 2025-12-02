@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind Agent V3.0 功能测试脚本
+# Agentrix Agent V3.0 功能测试脚本
 
 echo "=========================================="
-echo "PayMind Agent V3.0 功能测试"
+echo "Agentrix Agent V3.0 功能测试"
 echo "=========================================="
 
 # 颜色定义
@@ -125,7 +125,7 @@ fi
 # 11. 测试沙箱执行
 echo -e "\n${YELLOW}=== 10. 沙箱执行测试 ===${NC}"
 test_api "执行沙箱代码" POST "/sandbox/execute" \
-    '{"code":"const payment = await paymind.payments.create({amount: 100, currency: \"CNY\"});","language":"typescript"}' 200
+    '{"code":"const payment = await agentrix.payments.create({amount: 100, currency: \"CNY\"});","language":"typescript"}' 200
 
 # 总结
 echo -e "\n=========================================="

@@ -1,8 +1,8 @@
-# PayMind 后台管理系统快速启动和测试脚本
+# Agentrix 后台管理系统快速启动和测试脚本
 # Windows PowerShell版本
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  PayMind 后台管理系统启动和测试" -ForegroundColor Cyan
+Write-Host "  Agentrix 后台管理系统启动和测试" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -58,7 +58,7 @@ if (-not $adminRunning) {
 
 if (-not $frontendRunning) {
     Write-Host "💡 提示: 请启动前端服务" -ForegroundColor Yellow
-    Write-Host "   cd paymindfrontend && npm run dev" -ForegroundColor Gray
+    Write-Host "   cd agentrixfrontend && npm run dev" -ForegroundColor Gray
 }
 
 Write-Host ""

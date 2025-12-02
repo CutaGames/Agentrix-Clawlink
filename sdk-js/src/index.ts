@@ -1,9 +1,9 @@
 /**
- * PayMind SDK - Main entry point
+ * Agentrix SDK - Main entry point
  */
 
-import { PayMindConfig } from './types/common';
-import { PayMindClient } from './client';
+import { AgentrixConfig } from './types/common';
+import { AgentrixClient } from './client';
 import { PaymentResource } from './resources/payments';
 import { AgentResource } from './resources/agents';
 import { MerchantResource } from './resources/merchants';
@@ -31,7 +31,7 @@ import { AgentTemplateResource } from './resources/agent-templates';
 import { AgentCapabilitiesResource } from './resources/agent-capabilities';
 import { validateApiKey } from './utils/validation';
 
-export class PayMind {
+export class Agentrix {
   public payments: PaymentResource;
   public agents: AgentResource;
   public merchants: MerchantResource;
@@ -58,12 +58,12 @@ export class PayMind {
   public capabilities: AgentCapabilitiesResource;
   public webhooks: WebhookHandler;
 
-  private client: PayMindClient;
+  private client: AgentrixClient;
 
-  constructor(config: PayMindConfig) {
+  constructor(config: AgentrixConfig) {
     validateApiKey(config.apiKey);
 
-    this.client = new PayMindClient(config);
+    this.client = new AgentrixClient(config);
     this.payments = new PaymentResource(this.client);
     this.agents = new AgentResource(this.client);
     this.merchants = new MerchantResource(this.client);
@@ -172,5 +172,5 @@ export * from './utils/errors';
 export { WebhookHandler } from './resources/webhooks';
 
 // Default export
-export default PayMind;
+export default Agentrix;
 

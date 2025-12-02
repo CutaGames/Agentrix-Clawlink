@@ -1,19 +1,19 @@
-# PayMind 依赖安装脚本 (PowerShell - 英文文件名)
+# Agentrix 依赖安装脚本 (PowerShell - 英文文件名)
 # 自动检测项目根目录并安装依赖
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🚀 PayMind Dependency Installation" -ForegroundColor Cyan
+Write-Host "🚀 Agentrix Dependency Installation" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 自动查找项目根目录（包含 backend 和 paymindfrontend 的目录）
+# 自动查找项目根目录（包含 backend 和 agentrixfrontend 的目录）
 $currentDir = $PWD.Path
 $projectRoot = $currentDir
 
 # 向上查找项目根目录
 while ($projectRoot -ne "" -and $projectRoot -ne $null) {
     $backendExists = Test-Path (Join-Path $projectRoot "backend")
-    $frontendExists = Test-Path (Join-Path $projectRoot "paymindfrontend")
+    $frontendExists = Test-Path (Join-Path $projectRoot "agentrixfrontend")
     
     if ($backendExists -and $frontendExists) {
         break
@@ -26,12 +26,12 @@ while ($projectRoot -ne "" -and $projectRoot -ne $null) {
     $projectRoot = $parent
 }
 
-if (-not (Test-Path (Join-Path $projectRoot "backend")) -or -not (Test-Path (Join-Path $projectRoot "paymindfrontend"))) {
+if (-not (Test-Path (Join-Path $projectRoot "backend")) -or -not (Test-Path (Join-Path $projectRoot "agentrixfrontend"))) {
     Write-Host "❌ 无法找到项目根目录" -ForegroundColor Red
     Write-Host "   当前目录: $currentDir" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "请确保您在项目目录中运行此脚本" -ForegroundColor Yellow
-    Write-Host "项目根目录应包含 'backend' 和 'paymindfrontend' 文件夹" -ForegroundColor Yellow
+    Write-Host "项目根目录应包含 'backend' 和 'agentrixfrontend' 文件夹" -ForegroundColor Yellow
     exit 1
 }
 
@@ -78,8 +78,8 @@ Write-Host "✅ WSL 可用" -ForegroundColor Green
 Write-Host ""
 
 # 将 Windows 路径转换为 WSL 路径
-# D:\wsl\Ubuntu-24.04\Code\Paymind\paymind-website
-# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website
+# D:\wsl\Ubuntu-24.04\Code\Paymind\agentrix-website
+# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website
 # 正确的转换方法：
 # 1. 提取盘符并转换为小写
 # 2. 替换反斜杠为斜杠

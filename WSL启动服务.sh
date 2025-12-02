@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind WSL 环境启动脚本
+# Agentrix WSL 环境启动脚本
 # 适用于在 WSL (Ubuntu) 环境中运行
 
-echo "🚀 启动 PayMind 所有服务 (WSL环境)..."
+echo "🚀 启动 Agentrix 所有服务 (WSL环境)..."
 echo ""
 
 # 检查Node.js
@@ -25,9 +25,9 @@ if [ ! -d "backend/node_modules" ]; then
     cd backend && npm install && cd ..
 fi
 
-if [ ! -d "paymindfrontend/node_modules" ]; then
+if [ ! -d "agentrixfrontend/node_modules" ]; then
     echo "📥 安装前端依赖..."
-    cd paymindfrontend && npm install && cd ..
+    cd agentrixfrontend && npm install && cd ..
 fi
 
 echo ""
@@ -47,7 +47,7 @@ sleep 5
 
 # 启动前端
 echo "🎨 启动前端服务 (http://localhost:3000)..."
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

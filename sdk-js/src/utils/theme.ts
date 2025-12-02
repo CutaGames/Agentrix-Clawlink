@@ -25,7 +25,7 @@ export function getCurrentTheme(): Theme {
     return 'light';
   }
 
-  const stored = localStorage.getItem('paymind-theme');
+  const stored = localStorage.getItem('agentrix-theme');
   if (stored && (stored === 'light' || stored === 'dark' || stored === 'auto')) {
     return stored as Theme;
   }
@@ -46,7 +46,7 @@ export function setTheme(theme: Theme): void {
     return;
   }
 
-  localStorage.setItem('paymind-theme', theme);
+  localStorage.setItem('agentrix-theme', theme);
   applyTheme(theme);
 }
 

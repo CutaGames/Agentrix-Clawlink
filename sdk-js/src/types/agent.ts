@@ -1,5 +1,5 @@
 /**
- * Agent types for PayMind SDK
+ * Agent types for Agentrix SDK
  */
 
 export interface AutoPayGrant {

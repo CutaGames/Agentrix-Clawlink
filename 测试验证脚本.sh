@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind 系统性改动测试验证脚本
+# Agentrix 系统性改动测试验证脚本
 # 用于验证数据库、后端、合约、SDK和前端的功能
 
 set -e
 
 echo "=========================================="
-echo "PayMind 系统性改动测试验证"
+echo "Agentrix 系统性改动测试验证"
 echo "=========================================="
 echo ""
 
@@ -95,7 +95,7 @@ cd ../sdk-js
 test_check "检查PricingResource是否存在" "ls src/resources/pricing.ts"
 test_check "检查TaxResource是否存在" "ls src/resources/tax.ts"
 test_check "检查支付类型是否已更新" "grep -q 'countryCode' src/types/payment.ts && grep -q 'sessionId' src/types/payment.ts"
-test_check "检查PayMind主类是否包含新资源" "grep -q 'pricing' src/index.ts && grep -q 'tax' src/index.ts"
+test_check "检查Agentrix主类是否包含新资源" "grep -q 'pricing' src/index.ts && grep -q 'tax' src/index.ts"
 
 echo ""
 
@@ -104,7 +104,7 @@ echo "=========================================="
 echo "6. 前端测试"
 echo "=========================================="
 
-cd ../paymindfrontend
+cd ../agentrixfrontend
 
 test_check "检查pricing.api.ts是否存在" "ls lib/api/pricing.api.ts"
 test_check "检查tax.api.ts是否存在" "ls lib/api/tax.api.ts"

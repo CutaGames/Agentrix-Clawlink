@@ -2,18 +2,18 @@
  * Subscription management example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function subscriptionExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
     // 1. Create a subscription plan
     console.log('Creating subscription plan...');
-    const plan = await paymind.subscriptions.createPlan({
+    const plan = await agentrix.subscriptions.createPlan({
       name: 'Premium Monthly',
       description: 'Premium subscription - Monthly',
       amount: 29.99,
@@ -27,7 +27,7 @@ async function subscriptionExample() {
 
     // 2. Create a subscription
     console.log('\nCreating subscription...');
-    const subscription = await paymind.subscriptions.create({
+    const subscription = await agentrix.subscriptions.create({
       planId: plan.id,
       userId: 'user_123',
       paymentMethod: 'stripe',
@@ -38,7 +38,7 @@ async function subscriptionExample() {
 
     // 3. List subscriptions
     console.log('\nListing subscriptions...');
-    const subscriptions = await paymind.subscriptions.list({
+    const subscriptions = await agentrix.subscriptions.list({
       page: 1,
       limit: 10,
     });
@@ -46,13 +46,13 @@ async function subscriptionExample() {
 
     // 4. Cancel subscription (at period end)
     console.log('\nCancelling subscription...');
-    const cancelled = await paymind.subscriptions.cancel(subscription.id, true);
+    const cancelled = await agentrix.subscriptions.cancel(subscription.id, true);
     console.log('Subscription cancelled:', cancelled.id);
     console.log('Cancel at period end:', cancelled.cancelAtPeriodEnd);
 
     // 5. Resume subscription
     console.log('\nResuming subscription...');
-    const resumed = await paymind.subscriptions.resume(subscription.id);
+    const resumed = await agentrix.subscriptions.resume(subscription.id);
     console.log('Subscription resumed:', resumed.id);
     console.log('Status:', resumed.status);
 

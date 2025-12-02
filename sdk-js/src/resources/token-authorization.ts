@@ -1,5 +1,5 @@
 /**
- * Token Authorization resource for PayMind SDK
+ * Token Authorization resource for Agentrix SDK
  * 
  * Handles on-chain token authorizations:
  * - ERC20 Permit
@@ -7,7 +7,7 @@
  * - Pre-authorization for automatic payments
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export type AuthorizationType = 'ERC20_PERMIT' | 'SPL_DELEGATE' | 'ERC20_APPROVE';
 
@@ -16,7 +16,7 @@ export interface CreateAuthorizationRequest {
   tokenAddress: string;
   authorizationType: AuthorizationType;
   amount: string; // Amount to authorize (use "max" for unlimited)
-  spender: string; // Address authorized to spend (PayMind contract or Agent address)
+  spender: string; // Address authorized to spend (Agentrix contract or Agent address)
   expiresIn?: number; // Expiration in seconds (optional)
   nonce?: string; // Nonce for Permit (optional, auto-generated if not provided)
 }
@@ -49,7 +49,7 @@ export interface PermitSignature {
 }
 
 export class TokenAuthorizationResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a token authorization request

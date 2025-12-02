@@ -1,16 +1,16 @@
 """
-Payment resource for PayMind SDK
+Payment resource for Agentrix SDK
 """
 
 from typing import Dict, Any, Optional
-from ..http_client import PayMindClient
+from ..http_client import AgentrixClient
 from ..utils.validation import validate_payment_request
 
 
 class PaymentResource:
     """Payment operations"""
 
-    def __init__(self, client: PayMindClient):
+    def __init__(self, client: AgentrixClient):
         self.client = client
 
     def create(self, request: Dict[str, Any]) -> Dict[str, Any]:

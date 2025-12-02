@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind 合约功能测试脚本
+# Agentrix 合约功能测试脚本
 # 用于测试Commission和PaymentRouter合约的新功能
 
 set -e
 
 echo "=========================================="
-echo "PayMind 合约功能测试"
+echo "Agentrix 合约功能测试"
 echo "=========================================="
 echo ""
 

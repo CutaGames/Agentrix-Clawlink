@@ -3,12 +3,12 @@ AI Agent integration example
 """
 
 import os
-from paymind import PayMind
+from agentrix import Agentrix
 
 def ai_agent_example():
-    paymind = PayMind(
-        api_key=os.getenv("PAYMIND_API_KEY", "your-api-key"),
-        base_url=os.getenv("PAYMIND_API_URL", "http://localhost:3001/api"),
+    agentrix = Agentrix(
+        api_key=os.getenv("AGENTRIX_API_KEY", "your-api-key"),
+        base_url=os.getenv("AGENTRIX_API_URL", "http://localhost:3001/api"),
     )
 
     agent_id = "agent_123"
@@ -16,7 +16,7 @@ def ai_agent_example():
     try:
         # 1. Create auto-pay grant for the agent
         print("Creating auto-pay grant...")
-        grant = paymind.agents.create_auto_pay_grant(
+        grant = agentrix.agents.create_auto_pay_grant(
             agent_id=agent_id,
             single_limit=50,  # $50 per transaction
             daily_limit=500,  # $500 per day
@@ -28,14 +28,14 @@ def ai_agent_example():
 
         # 2. Check existing grant
         print("\nChecking existing grant...")
-        existing_grant = paymind.agents.get_auto_pay_grant()
+        existing_grant = agentrix.agents.get_auto_pay_grant()
         if existing_grant:
             print(f"Grant found: {existing_grant['id']}")
             print(f"Used today: {existing_grant['usedToday']}")
 
         # 3. Create a payment
         print("\nCreating payment...")
-        payment = paymind.payments.create({
+        payment = agentrix.payments.create({
             "amount": 25,
             "currency": "USD",
             "description": "AI service payment",
@@ -48,13 +48,13 @@ def ai_agent_example():
 
         # 4. Get agent earnings
         print("\nGetting agent earnings...")
-        earnings = paymind.agents.get_earnings(agent_id)
+        earnings = agentrix.agents.get_earnings(agent_id)
         print(f"Total earnings: {earnings['totalEarnings']}")
         print(f"Total commissions: {earnings['totalCommissions']}")
 
         # 5. Get agent commissions
         print("\nGetting agent commissions...")
-        commissions = paymind.agents.get_commissions(agent_id, page=1, limit=10)
+        commissions = agentrix.agents.get_commissions(agent_id, page=1, limit=10)
         print(f"Commissions: {len(commissions['data'])}")
 
     except Exception as error:

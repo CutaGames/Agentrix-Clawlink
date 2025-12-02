@@ -78,7 +78,7 @@ export class GroqIntegrationController {
       const response = await this.groqService.chatWithFunctions([
         {
           role: 'system',
-          content: '你是一个购物助手，可以帮助用户搜索和购买PayMind Marketplace的商品。',
+          content: '你是一个购物助手，可以帮助用户搜索和购买Agentrix Marketplace的商品。',
         },
         {
           role: 'user',

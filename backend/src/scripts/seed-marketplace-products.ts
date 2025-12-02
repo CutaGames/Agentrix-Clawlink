@@ -908,14 +908,14 @@ async function seedMarketplaceProducts() {
 
     // 查找或创建测试商户
     let merchant = await userRepository.findOne({
-      where: { email: 'merchant@paymind.test' },
+      where: { email: 'merchant@agentrix.test' },
     });
 
     if (!merchant) {
       console.log('📝 创建测试商户...');
       merchant = userRepository.create({
-        paymindId: `merchant_${Date.now()}`,
-        email: 'merchant@paymind.test',
+        agentrixId: `merchant_${Date.now()}`,
+        email: 'merchant@agentrix.test',
         roles: [UserRole.MERCHANT],
       });
       merchant = await userRepository.save(merchant);

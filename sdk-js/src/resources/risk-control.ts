@@ -1,10 +1,10 @@
 /**
- * Risk Control resource for PayMind SDK
+ * Risk Control resource for Agentrix SDK
  * 
  * Provides risk assessment and fraud detection capabilities
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface RiskCheckRequest {
   userId?: string;
@@ -66,7 +66,7 @@ export interface BlacklistStatus {
 }
 
 export class RiskControlResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Perform comprehensive risk assessment

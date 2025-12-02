@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 
 /**
  * 商品数据种子脚本
- * 为PayMind Agent V3.0添加模拟商品数据，覆盖不同场景和品类
+ * 为Agentrix Agent V3.0添加模拟商品数据，覆盖不同场景和品类
  */
 
 const products = [
@@ -340,14 +340,14 @@ async function seedProducts() {
 
     // 查找或创建测试商户
     let merchant = await userRepository.findOne({
-      where: { email: 'merchant@paymind.test' },
+      where: { email: 'merchant@agentrix.test' },
     });
 
     if (!merchant) {
       console.log('📝 创建测试商户...');
       merchant = userRepository.create({
-        paymindId: `merchant_${Date.now()}`,
-        email: 'merchant@paymind.test',
+        agentrixId: `merchant_${Date.now()}`,
+        email: 'merchant@agentrix.test',
         roles: [UserRole.MERCHANT],
       });
       merchant = await userRepository.save(merchant);

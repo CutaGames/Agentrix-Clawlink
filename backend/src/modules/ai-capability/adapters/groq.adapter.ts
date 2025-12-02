@@ -43,7 +43,7 @@ export class GroqAdapter implements IPlatformAdapter {
 
   private getFunctionName(product: Product, capabilityType: string): string {
     // Groq函数名格式与OpenAI相同
-    const baseName = `paymind_${capabilityType}_${product.productType}`;
+    const baseName = `agentrix_${capabilityType}_${product.productType}`;
     return baseName.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
   }
 

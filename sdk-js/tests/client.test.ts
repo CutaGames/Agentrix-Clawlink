@@ -3,15 +3,15 @@
  */
 
 import axios from 'axios';
-import { PayMindClient } from '../src/client';
-import { PayMindConfig } from '../src/types/common';
+import { AgentrixClient } from '../src/client';
+import { AgentrixConfig } from '../src/types/common';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-describe('PayMindClient', () => {
-  let client: PayMindClient;
-  const config: PayMindConfig = {
+describe('AgentrixClient', () => {
+  let client: AgentrixClient;
+  const config: AgentrixConfig = {
     apiKey: 'test-api-key',
     baseUrl: 'http://localhost:3001/api',
     timeout: 30000,
@@ -20,7 +20,7 @@ describe('PayMindClient', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    client = new PayMindClient(config);
+    client = new AgentrixClient(config);
     (mockedAxios.create as jest.Mock).mockReturnValue(mockedAxios);
   });
 

@@ -197,13 +197,13 @@ export class AirdropExecutor implements ICapabilityExecutor {
     userId: string,
     agentId?: string
   ): Promise<ExecutionResult> {
-    if (functionName === 'discover_paymind_airdrops') {
+    if (functionName === 'discover_agentrix_airdrops') {
       return await this.discoverAirdrops(params, userId, agentId);
-    } else if (functionName === 'get_paymind_airdrops') {
+    } else if (functionName === 'get_agentrix_airdrops') {
       return await this.getAirdrops(params, userId, agentId);
-    } else if (functionName === 'check_paymind_airdrop_eligibility') {
+    } else if (functionName === 'check_agentrix_airdrop_eligibility') {
       return await this.checkEligibility(params, userId);
-    } else if (functionName === 'claim_paymind_airdrop') {
+    } else if (functionName === 'claim_agentrix_airdrop') {
       return await this.claimAirdrop(params, userId);
     }
 

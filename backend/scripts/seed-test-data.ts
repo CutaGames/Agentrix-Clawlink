@@ -16,7 +16,7 @@ import {
 interface SeedUserConfig {
   key: 'personal' | 'merchant' | 'developer';
   email: string;
-  paymindId: string;
+  agentrixId: string;
   password: string;
   roles: UserRole[];
   nickname: string;
@@ -52,8 +52,8 @@ interface SeedTemplateConfig {
 const seedUsers: SeedUserConfig[] = [
   {
     key: 'personal',
-    email: 'personal.tester@paymind.com',
-    paymindId: 'pm-user-tester',
+    email: 'personal.tester@agentrix.com',
+    agentrixId: 'pm-user-tester',
     password: 'Test@123',
     roles: [UserRole.USER],
     nickname: '个人Agent体验官',
@@ -61,8 +61,8 @@ const seedUsers: SeedUserConfig[] = [
   },
   {
     key: 'merchant',
-    email: 'merchant.tester@paymind.com',
-    paymindId: 'pm-merchant-tester',
+    email: 'merchant.tester@agentrix.com',
+    agentrixId: 'pm-merchant-tester',
     password: 'Test@123',
     roles: [UserRole.USER, UserRole.MERCHANT],
     nickname: '商家Agent体验官',
@@ -70,8 +70,8 @@ const seedUsers: SeedUserConfig[] = [
   },
   {
     key: 'developer',
-    email: 'developer.tester@paymind.com',
-    paymindId: 'pm-developer-tester',
+    email: 'developer.tester@agentrix.com',
+    agentrixId: 'pm-developer-tester',
     password: 'Test@123',
     roles: [UserRole.USER, UserRole.AGENT],
     nickname: '开发者Agent体验官',
@@ -229,7 +229,7 @@ async function upsertUser(
     const mergedRoles = Array.from(new Set([...(existing.roles || []), ...config.roles]));
     existing.roles = mergedRoles as UserRole[];
     existing.passwordHash = passwordHash;
-    existing.paymindId = existing.paymindId || config.paymindId;
+    existing.agentrixId = existing.agentrixId || config.agentrixId;
     existing.nickname = config.nickname;
     existing.bio = config.bio;
     existing.kycLevel = KYCLevel.VERIFIED;
@@ -239,7 +239,7 @@ async function upsertUser(
 
   const user = userRepo.create({
     email: config.email,
-    paymindId: config.paymindId,
+    agentrixId: config.agentrixId,
     passwordHash,
     roles: config.roles,
     nickname: config.nickname,

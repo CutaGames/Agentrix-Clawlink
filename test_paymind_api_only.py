@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-PayMind API 测试脚本（不需要 OpenAI API Key）
-只测试 PayMind 的 Function Schemas 和 Function Call 接口
+Agentrix API 测试脚本（不需要 OpenAI API Key）
+只测试 Agentrix 的 Function Schemas 和 Function Call 接口
 """
 
 import requests
 import json
 import sys
 
-PAYMIND_API_URL = "http://localhost:3001/api"
+AGENTRIX_API_URL = "http://localhost:3001/api"
 
 def test_get_functions():
     """测试获取 Function Schemas"""
@@ -17,7 +17,7 @@ def test_get_functions():
     print("=" * 60)
     
     try:
-        response = requests.get(f"{PAYMIND_API_URL}/openai/functions", timeout=5)
+        response = requests.get(f"{AGENTRIX_API_URL}/openai/functions", timeout=5)
         response.raise_for_status()
         data = response.json()
         
@@ -50,12 +50,12 @@ def test_search_products():
     print("=" * 60)
     
     try:
-        # 调用 search_paymind_products
+        # 调用 search_agentrix_products
         response = requests.post(
-            f"{PAYMIND_API_URL}/openai/function-call",
+            f"{AGENTRIX_API_URL}/openai/function-call",
             json={
                 "function": {
-                    "name": "search_paymind_products",
+                    "name": "search_agentrix_products",
                     "arguments": json.dumps({
                         "query": "iPhone"
                     })
@@ -102,7 +102,7 @@ def test_quick_search():
     
     try:
         response = requests.get(
-            f"{PAYMIND_API_URL}/openai/test",
+            f"{AGENTRIX_API_URL}/openai/test",
             params={"query": "iPhone"},
             timeout=10
         )
@@ -129,7 +129,7 @@ def test_openapi_schema():
     print("=" * 60)
     
     try:
-        response = requests.get(f"{PAYMIND_API_URL}/openai/openapi.json", timeout=5)
+        response = requests.get(f"{AGENTRIX_API_URL}/openai/openapi.json", timeout=5)
         response.raise_for_status()
         schema = response.json()
         
@@ -150,21 +150,21 @@ def test_openapi_schema():
 
 def main():
     print("=" * 60)
-    print("🤖 PayMind API 测试（不需要 OpenAI API Key）")
+    print("🤖 Agentrix API 测试（不需要 OpenAI API Key）")
     print("=" * 60)
     print()
     
     # 检查 API 是否可用
-    print("🔍 检查 PayMind API 连接...")
+    print("🔍 检查 Agentrix API 连接...")
     try:
-        response = requests.get(f"{PAYMIND_API_URL}/openai/functions", timeout=5)
+        response = requests.get(f"{AGENTRIX_API_URL}/openai/functions", timeout=5)
         if response.status_code == 200:
-            print("✅ PayMind API 可用\n")
+            print("✅ Agentrix API 可用\n")
         else:
             print(f"⚠️  API 返回状态码: {response.status_code}\n")
     except Exception as e:
-        print(f"❌ 无法连接到 PayMind API: {e}")
-        print(f"   请确保后端服务运行在 {PAYMIND_API_URL}")
+        print(f"❌ 无法连接到 Agentrix API: {e}")
+        print(f"   请确保后端服务运行在 {AGENTRIX_API_URL}")
         sys.exit(1)
     
     # 运行测试
@@ -186,11 +186,11 @@ def main():
     print("=" * 60)
     print()
     print("📝 说明:")
-    print("   这些测试只验证 PayMind API 是否正常工作")
+    print("   这些测试只验证 Agentrix API 是否正常工作")
     print("   不需要 OpenAI API Key")
     print()
     print("🚀 下一步:")
-    print("   1. 如果测试通过，说明 PayMind API 正常")
+    print("   1. 如果测试通过，说明 Agentrix API 正常")
     print("   2. 可以在 ChatGPT 中配置 Actions（需要 OpenAI API Key，但由 ChatGPT 用户自己提供）")
     print("   3. 或者使用 Python 脚本完整测试（需要 OpenAI API Key）")
 

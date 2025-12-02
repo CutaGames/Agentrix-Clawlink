@@ -1,10 +1,10 @@
 /**
- * Compliance resource for PayMind SDK
+ * Compliance resource for Agentrix SDK
  * 
  * Handles KYC, KYT, and regulatory compliance
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export type KYCLevel = 'NONE' | 'BASIC' | 'VERIFIED' | 'ENHANCED';
 export type KYCStatus = 'pending' | 'approved' | 'rejected' | 'expired';
@@ -87,7 +87,7 @@ export interface MerchantKYB {
 }
 
 export class ComplianceResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Get user KYC status

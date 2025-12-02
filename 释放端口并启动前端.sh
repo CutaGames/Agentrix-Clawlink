@@ -23,7 +23,7 @@ fi
 
 # 清除缓存
 echo "[3/3] 清除Next.js缓存并启动服务..."
-cd paymindfrontend
+cd agentrixfrontend
 rm -rf .next
 echo "✅ 缓存已清除"
 echo ""

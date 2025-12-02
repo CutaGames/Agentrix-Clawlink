@@ -1,5 +1,5 @@
 /**
- * Merchant types for PayMind SDK
+ * Merchant types for Agentrix SDK
  */
 
 export interface Product {

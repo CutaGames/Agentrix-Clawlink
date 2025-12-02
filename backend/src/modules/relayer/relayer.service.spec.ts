@@ -1,11 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PayMindRelayerService } from './relayer.service';
+import { AgentrixRelayerService } from './relayer.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Payment } from '../../entities/payment.entity';
 import { ConfigService } from '@nestjs/config';
 
-describe('PayMindRelayerService', () => {
-  let service: PayMindRelayerService;
+describe('AgentrixRelayerService', () => {
+  let service: AgentrixRelayerService;
 
   const mockPaymentRepository = {
     findOne: jest.fn(),
@@ -26,7 +26,7 @@ describe('PayMindRelayerService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        PayMindRelayerService,
+        AgentrixRelayerService,
         {
           provide: getRepositoryToken(Payment),
           useValue: mockPaymentRepository,
@@ -38,7 +38,7 @@ describe('PayMindRelayerService', () => {
       ],
     }).compile();
 
-    service = module.get<PayMindRelayerService>(PayMindRelayerService);
+    service = module.get<AgentrixRelayerService>(AgentrixRelayerService);
   });
 
   it('should be defined', () => {

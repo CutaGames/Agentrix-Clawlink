@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind 全服务启动脚本
+# Agentrix 全服务启动脚本
 # 同时启动前端(3000)、后端(3001)和SDK文档(3002)
 
 set -e
@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo "=========================================="
-echo "  PayMind 全服务启动"
+echo "  Agentrix 全服务启动"
 echo "=========================================="
 echo ""
 
@@ -44,9 +44,9 @@ trap cleanup SIGINT SIGTERM
 
 # 启动前端服务
 echo -e "${BLUE}🚀 启动前端服务 (端口 3000)...${NC}"
-cd paymindfrontend
+cd agentrixfrontend
 if check_port 3000; then
-    npm run dev > /tmp/paymind-frontend.log 2>&1 &
+    npm run dev > /tmp/agentrix-frontend.log 2>&1 &
     FRONTEND_PID=$!
     echo -e "${GREEN}✅ 前端服务已启动 (PID: $FRONTEND_PID)${NC}"
 else
@@ -62,7 +62,7 @@ sleep 3
 echo -e "${BLUE}🚀 启动后端服务 (端口 3001)...${NC}"
 cd backend
 if check_port 3001; then
-    npm run start:dev > /tmp/paymind-backend.log 2>&1 &
+    npm run start:dev > /tmp/agentrix-backend.log 2>&1 &
     BACKEND_PID=$!
     echo -e "${GREEN}✅ 后端服务已启动 (PID: $BACKEND_PID)${NC}"
 else
@@ -96,7 +96,7 @@ fi
 
 # 启动文档服务
 if check_port 3002; then
-    npx serve docs -p 3002 > /tmp/paymind-sdk-docs.log 2>&1 &
+    npx serve docs -p 3002 > /tmp/agentrix-sdk-docs.log 2>&1 &
     SDK_DOCS_PID=$!
     echo -e "${GREEN}✅ SDK文档服务已启动 (PID: $SDK_DOCS_PID)${NC}"
 else
@@ -152,9 +152,9 @@ echo "=========================================="
 echo -e "${YELLOW}📋 服务日志：${NC}"
 echo "=========================================="
 echo ""
-echo "  前端日志: tail -f /tmp/paymind-frontend.log"
-echo "  后端日志: tail -f /tmp/paymind-backend.log"
-echo "  SDK文档日志: tail -f /tmp/paymind-sdk-docs.log"
+echo "  前端日志: tail -f /tmp/agentrix-frontend.log"
+echo "  后端日志: tail -f /tmp/agentrix-backend.log"
+echo "  SDK文档日志: tail -f /tmp/agentrix-sdk-docs.log"
 echo ""
 
 echo "=========================================="

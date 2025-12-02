@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ==========================================
-echo PayMind Agent V3.0 启动和测试脚本
+echo Agentrix Agent V3.0 启动和测试脚本
 echo ==========================================
 echo.
 
@@ -39,12 +39,12 @@ echo [3/5] 启动后端服务...
 echo 后端服务将在 http://localhost:3001 启动
 echo API文档: http://localhost:3001/api/docs
 echo.
-start "PayMind Backend" cmd /k "npm run start:dev"
+start "Agentrix Backend" cmd /k "npm run start:dev"
 timeout /t 5 /nobreak >nul
 echo.
 
 echo [4/5] 启动前端服务...
-cd ..\paymindfrontend
+cd ..\agentrixfrontend
 if exist node_modules (
     echo 依赖已安装
 ) else (
@@ -54,7 +54,7 @@ if exist node_modules (
 
 echo 前端服务将在 http://localhost:3000 启动
 echo.
-start "PayMind Frontend" cmd /k "npm run dev"
+start "Agentrix Frontend" cmd /k "npm run dev"
 timeout /t 3 /nobreak >nul
 echo.
 

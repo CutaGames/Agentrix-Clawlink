@@ -1,10 +1,10 @@
 /**
- * Agent Runtime resource for PayMind SDK
+ * Agent Runtime resource for Agentrix SDK
  * 
  * Provides Agent runtime adaptation and environment detection
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export type AgentPlatform = 'chatgpt' | 'claude' | 'deepseek' | 'custom' | 'unknown';
 
@@ -39,7 +39,7 @@ export interface ProductCard {
 }
 
 export class AgentRuntimeResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Detect agent runtime environment

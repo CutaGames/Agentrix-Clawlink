@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind 项目依赖安装脚本 (WSL/Ubuntu)
+# Agentrix 项目依赖安装脚本 (WSL/Ubuntu)
 # 自动安装 Node.js、PostgreSQL、Redis 和项目依赖
 
 set -e  # 遇到错误立即退出
 
 echo "=========================================="
-echo "🚀 PayMind 项目依赖安装脚本"
+echo "🚀 Agentrix 项目依赖安装脚本"
 echo "=========================================="
 echo ""
 
@@ -83,24 +83,24 @@ if command -v psql &> /dev/null; then
 -- 创建用户（如果不存在）
 DO \$\$
 BEGIN
-    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'paymind') THEN
-        CREATE USER paymind WITH PASSWORD 'paymind123';
+    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'agentrix') THEN
+        CREATE USER agentrix WITH PASSWORD 'agentrix123';
     END IF;
 END
 \$\$;
 
 -- 创建数据库（如果不存在）
-SELECT 'CREATE DATABASE paymind OWNER paymind'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'paymind')\gexec
+SELECT 'CREATE DATABASE agentrix OWNER agentrix'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'agentrix')\gexec
 
 -- 授予权限
-GRANT ALL PRIVILEGES ON DATABASE paymind TO paymind;
+GRANT ALL PRIVILEGES ON DATABASE agentrix TO agentrix;
 \q
 EOF
         echo -e "${GREEN}✅ 数据库创建完成${NC}"
-        echo -e "${BLUE}   数据库名: paymind${NC}"
-        echo -e "${BLUE}   用户名: paymind${NC}"
-        echo -e "${BLUE}   密码: paymind123${NC}"
+        echo -e "${BLUE}   数据库名: agentrix${NC}"
+        echo -e "${BLUE}   用户名: agentrix${NC}"
+        echo -e "${BLUE}   密码: agentrix123${NC}"
     fi
 else
     echo -e "${YELLOW}⚠️  PostgreSQL 未安装${NC}"
@@ -117,9 +117,9 @@ else
         # 创建数据库和用户
         echo "创建数据库和用户..."
         sudo -u postgres psql <<EOF
-CREATE USER paymind WITH PASSWORD 'paymind123';
-CREATE DATABASE paymind OWNER paymind;
-GRANT ALL PRIVILEGES ON DATABASE paymind TO paymind;
+CREATE USER agentrix WITH PASSWORD 'agentrix123';
+CREATE DATABASE agentrix OWNER agentrix;
+GRANT ALL PRIVILEGES ON DATABASE agentrix TO agentrix;
 \q
 EOF
         echo -e "${GREEN}✅ 数据库创建完成${NC}"
@@ -182,14 +182,14 @@ else
 fi
 
 # 前端依赖
-if [ -d "paymindfrontend" ]; then
+if [ -d "agentrixfrontend" ]; then
     echo -e "${BLUE}安装前端依赖...${NC}"
-    cd paymindfrontend
+    cd agentrixfrontend
     npm install
     cd "$ROOT_DIR"
     echo -e "${GREEN}✅ 前端依赖安装完成${NC}"
 else
-    echo -e "${RED}❌ paymindfrontend 目录不存在${NC}"
+    echo -e "${RED}❌ agentrixfrontend 目录不存在${NC}"
 fi
 
 # SDK依赖
@@ -225,9 +225,9 @@ if [ -d "backend" ] && [ ! -f "backend/.env" ]; then
         fi
         
         # 更新数据库配置
-        sed -i "s/DB_USERNAME=.*/DB_USERNAME=paymind/" backend/.env
-        sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=paymind123/" backend/.env
-        sed -i "s/DB_DATABASE=.*/DB_DATABASE=paymind/" backend/.env
+        sed -i "s/DB_USERNAME=.*/DB_USERNAME=agentrix/" backend/.env
+        sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=agentrix123/" backend/.env
+        sed -i "s/DB_DATABASE=.*/DB_DATABASE=agentrix/" backend/.env
         
         echo -e "${GREEN}✅ 后端环境变量文件已创建${NC}"
         echo -e "${BLUE}   文件位置: backend/.env${NC}"
@@ -240,13 +240,13 @@ else
 fi
 
 # 前端环境变量
-if [ -d "paymindfrontend" ] && [ ! -f "paymindfrontend/.env.local" ]; then
-    if [ -f "paymindfrontend/.env.local.example" ]; then
+if [ -d "agentrixfrontend" ] && [ ! -f "agentrixfrontend/.env.local" ]; then
+    if [ -f "agentrixfrontend/.env.local.example" ]; then
         echo "创建前端环境变量文件..."
-        cp paymindfrontend/.env.local.example paymindfrontend/.env.local
+        cp agentrixfrontend/.env.local.example agentrixfrontend/.env.local
         echo -e "${GREEN}✅ 前端环境变量文件已创建${NC}"
     else
-        echo -e "${YELLOW}⚠️  paymindfrontend/.env.local.example 不存在，跳过${NC}"
+        echo -e "${YELLOW}⚠️  agentrixfrontend/.env.local.example 不存在，跳过${NC}"
     fi
 else
     echo -e "${GREEN}✅ 前端环境变量文件已存在${NC}"
@@ -270,15 +270,15 @@ if command -v redis-server &> /dev/null; then
 fi
 echo ""
 echo -e "${YELLOW}📝 下一步:${NC}"
-echo "  1. 检查环境变量配置: backend/.env 和 paymindfrontend/.env.local"
+echo "  1. 检查环境变量配置: backend/.env 和 agentrixfrontend/.env.local"
 echo "  2. 运行数据库迁移: cd backend && npm run migration:run"
 echo "  3. 启动服务: ./WSL启动服务.sh 或 ./启动服务-简单版.bat"
 echo ""
 echo -e "${BLUE}💡 提示:${NC}"
 echo "  - 数据库默认配置:"
-echo "    用户名: paymind"
-echo "    密码: paymind123"
-echo "    数据库: paymind"
+echo "    用户名: agentrix"
+echo "    密码: agentrix123"
+echo "    数据库: agentrix"
 echo "  - 如需修改，请编辑 backend/.env"
 echo ""
 

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# PayMind P1/P2功能测试脚本
+# Agentrix P1/P2功能测试脚本
 # 使用方法: bash 测试脚本-P1P2功能.sh
 
 BASE_URL="http://localhost:3001/api"
 TOKEN="" # 需要先登录获取token
 
 echo "=========================================="
-echo "PayMind P1/P2功能测试脚本"
+echo "Agentrix P1/P2功能测试脚本"
 echo "=========================================="
 echo ""
 

@@ -1,9 +1,9 @@
-# PayMind 全端口转发配置脚本
+# Agentrix 全端口转发配置脚本
 # 在Windows PowerShell中运行（以管理员身份）
 # 配置端口3000、3001、3002的转发
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  PayMind 全端口转发配置" -ForegroundColor Cyan
+Write-Host "  Agentrix 全端口转发配置" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 

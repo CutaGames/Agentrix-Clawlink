@@ -70,8 +70,8 @@ export class GroqIntegrationService {
         {
           type: 'function',
           function: {
-            name: 'search_paymind_products',
-            description: '搜索PayMind Marketplace中的商品。支持实物商品、服务、NFT、代币、插件等。',
+            name: 'search_agentrix_products',
+            description: '搜索Agentrix Marketplace中的商品。支持实物商品、服务、NFT、代币、插件等。',
             parameters: {
               type: 'object',
               properties: {
@@ -108,8 +108,8 @@ export class GroqIntegrationService {
         {
           type: 'function',
           function: {
-            name: 'buy_paymind_product',
-            description: '购买PayMind Marketplace中的商品',
+            name: 'buy_agentrix_product',
+            description: '购买Agentrix Marketplace中的商品',
             parameters: {
               type: 'object',
               properties: {
@@ -143,8 +143,8 @@ export class GroqIntegrationService {
         {
           type: 'function',
           function: {
-            name: 'get_paymind_order',
-            description: '查询PayMind订单状态',
+            name: 'get_agentrix_order',
+            description: '查询Agentrix订单状态',
             parameters: {
               type: 'object',
               properties: {
@@ -182,7 +182,7 @@ export class GroqIntegrationService {
 
     try {
       switch (functionName) {
-        case 'search_paymind_products':
+        case 'search_agentrix_products':
           return await this.capabilityExecutor.execute(
             'executor_search',
             parameters as {
@@ -199,7 +199,7 @@ export class GroqIntegrationService {
             },
           );
 
-        case 'buy_paymind_product':
+        case 'buy_agentrix_product':
           return await this.buyProduct(
             parameters as {
               product_id: string;
@@ -211,15 +211,15 @@ export class GroqIntegrationService {
             context,
           );
 
-        case 'get_paymind_order':
+        case 'get_agentrix_order':
           return await this.getOrder(
             parameters as { order_id: string },
             context,
           );
 
         default:
-          // 处理产品特定的Function（如paymind_purchase_physical_xxx）
-          if (functionName.startsWith('paymind_')) {
+          // 处理产品特定的Function（如agentrix_purchase_physical_xxx）
+          if (functionName.startsWith('agentrix_')) {
             return await this.handleProductFunction(functionName, parameters, context);
           }
 
@@ -285,7 +285,7 @@ export class GroqIntegrationService {
     parameters: Record<string, any>,
     context: { userId?: string; sessionId?: string },
   ): Promise<any> {
-    // 解析Function名称：paymind_{capability}_{type}_{id}
+    // 解析Function名称：agentrix_{capability}_{type}_{id}
     const parts = functionName.split('_');
     if (parts.length < 3) {
       return {

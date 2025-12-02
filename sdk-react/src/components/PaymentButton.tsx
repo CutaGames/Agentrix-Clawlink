@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { usePayment } from '../hooks/usePayment';
-import { CreatePaymentRequest } from '@paymind/sdk';
+import { CreatePaymentRequest } from '@agentrix/sdk';
 
 interface PaymentButtonProps {
   request: CreatePaymentRequest;

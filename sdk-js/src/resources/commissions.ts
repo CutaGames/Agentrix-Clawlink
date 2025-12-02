@@ -1,8 +1,8 @@
 /**
- * Commission resource for PayMind SDK
+ * Commission resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface CreateCommissionRequest {
   paymentId: string;
@@ -27,7 +27,7 @@ export interface Commission {
 }
 
 export class CommissionResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a commission

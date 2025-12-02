@@ -1,5 +1,5 @@
 /**
- * Payment types for PayMind SDK
+ * Payment types for Agentrix SDK
  */
 
 export type PaymentMethod = 'stripe' | 'wallet' | 'x402' | 'apple_pay' | 'google_pay' | 'crypto';

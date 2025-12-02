@@ -1,8 +1,8 @@
 /**
- * Agent resource for PayMind SDK
+ * Agent resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import {
   AutoPayGrant,
   CreateAutoPayGrantRequest,
@@ -11,7 +11,7 @@ import {
 } from '../types/agent';
 
 export class AgentResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create an auto-pay grant for an agent
@@ -100,7 +100,7 @@ export class AgentResource {
    * This is the core function for AI Agents to discover products.
    * Agent developers only need to call this - no embedding/vector DB knowledge required.
    * 
-   * PayMind handles:
+   * Agentrix handles:
    * - Query → Embedding conversion (local or cloud)
    * - Vector search in unified database
    * - Re-ranking with user preferences
@@ -138,8 +138,8 @@ export class AgentResource {
 
     // Use marketplace resource for semantic search
     // This ensures unified search standard across all agents
-    // Note: MarketplaceResource should be injected or accessed via PayMind instance
-    // For now, we'll use direct API call which will be handled by PayMind backend
+    // Note: MarketplaceResource should be injected or accessed via Agentrix instance
+    // For now, we'll use direct API call which will be handled by Agentrix backend
     // with unified embedding and vector search
     
     return this.client.post('/marketplace/products/search', {
@@ -207,7 +207,7 @@ export class AgentResource {
    * 
    * @example
    * ```typescript
-   * const code = await paymind.agents.generateCode(
+   * const code = await agentrix.agents.generateCode(
    *   'Create a payment',
    *   'typescript'
    * );
@@ -241,7 +241,7 @@ export class AgentResource {
    * 
    * @example
    * ```typescript
-   * const examples = await paymind.agents.generateEnhancedCode(
+   * const examples = await agentrix.agents.generateEnhancedCode(
    *   'Search products and create order',
    *   'typescript'
    * );

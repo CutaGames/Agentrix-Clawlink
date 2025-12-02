@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ==========================================
-echo 🧪 PayMind V3.0 测试和验收
+echo 🧪 Agentrix V3.0 测试和验收
 echo ==========================================
 echo.
 
@@ -35,12 +35,12 @@ if %errorlevel% neq 0 (
 
 echo.
 echo [4/6] 检查前端服务状态...
-cd ..\paymindfrontend
+cd ..\agentrixfrontend
 timeout /t 2 >nul
 curl -s http://localhost:3000 >nul 2>&1
 if %errorlevel% neq 0 (
     echo ⚠️  前端服务未运行，请先启动前端服务
-    echo    运行: cd paymindfrontend ^&^& npm run dev
+    echo    运行: cd agentrixfrontend ^&^& npm run dev
     echo.
     pause
 )

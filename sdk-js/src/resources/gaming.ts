@@ -1,8 +1,8 @@
 /**
- * Gaming resource for PayMind SDK
+ * Gaming resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import { Payment } from '../types/payment';
 
 export interface PurchaseItemRequest {
@@ -31,7 +31,7 @@ export interface GamePurchase extends Payment {
 }
 
 export class GamingResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Purchase a game item

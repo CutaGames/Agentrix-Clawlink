@@ -1,9 +1,9 @@
 """
-PayMind Python SDK
+Agentrix Python SDK
 """
 
-from .client import PayMind
+from .client import Agentrix
 
 __version__ = "2.2.0"
-__all__ = ["PayMind"]
+__all__ = ["Agentrix"]
 

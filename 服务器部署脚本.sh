@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "========================================"
-echo "   PayMind 服务器部署脚本"
+echo "   Agentrix 服务器部署脚本"
 echo "========================================"
 echo ""
 
@@ -18,10 +18,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # 配置变量
-PROJECT_DIR="/var/www/paymind-website"
-GITHUB_REPO="https://github.com/你的用户名/paymind-website.git"
-DB_NAME="paymind"
-DB_USER="paymind"
+PROJECT_DIR="/var/www/agentrix-website"
+GITHUB_REPO="https://github.com/你的用户名/agentrix-website.git"
+DB_NAME="agentrix"
+DB_USER="agentrix"
 DB_PASSWORD="your_secure_password_change_this"
 
 echo -e "${YELLOW}[1/8] 更新系统...${NC}"
@@ -65,18 +65,18 @@ else
     read github_user
     echo -e "${GREEN}请输入你的 GitHub Token (或密码):${NC}"
     read -s github_token
-    git clone "https://${github_user}:${github_token}@${GITHUB_REPO#https://}" paymind-website
+    git clone "https://${github_user}:${github_token}@${GITHUB_REPO#https://}" agentrix-website
     cd "$PROJECT_DIR"
 fi
 
 echo -e "${YELLOW}[8/8] 配置环境变量...${NC}"
 echo "请手动配置以下文件："
 echo "  1. $PROJECT_DIR/backend/.env"
-echo "  2. $PROJECT_DIR/paymindfrontend/.env.local"
+echo "  2. $PROJECT_DIR/agentrixfrontend/.env.local"
 echo ""
 echo "配置完成后，运行以下命令启动服务："
 echo "  cd $PROJECT_DIR/backend && npm install && npm run build"
-echo "  cd $PROJECT_DIR/paymindfrontend && npm install && npm run build"
+echo "  cd $PROJECT_DIR/agentrixfrontend && npm install && npm run build"
 echo "  pm2 start ecosystem.config.js"
 echo "  pm2 save"
 echo "  pm2 startup"

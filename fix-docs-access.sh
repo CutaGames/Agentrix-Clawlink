@@ -43,7 +43,7 @@ else
             BACKEND_RUNNING=true
         else
             echo -e "${RED}❌ 后端服务启动失败${NC}"
-            echo -e "${YELLOW}查看日志: tail -f /tmp/paymind-backend.log${NC}"
+            echo -e "${YELLOW}查看日志: tail -f /tmp/agentrix-backend.log${NC}"
         fi
     else
         echo -e "${RED}❌ 后端进程不存在${NC}"
@@ -105,7 +105,7 @@ if [ ! -d "sdk-js/docs" ]; then
         # 启动文档服务
         if ! netstat -tlnp 2>/dev/null | grep -q ":3002" && ! ss -tlnp 2>/dev/null | grep -q ":3002"; then
             echo -e "${YELLOW}启动SDK文档服务...${NC}"
-            npx serve docs -p 3002 > /tmp/paymind-sdk-docs.log 2>&1 &
+            npx serve docs -p 3002 > /tmp/agentrix-sdk-docs.log 2>&1 &
             sleep 2
             if netstat -tlnp 2>/dev/null | grep -q ":3002" || ss -tlnp 2>/dev/null | grep -q ":3002"; then
                 echo -e "${GREEN}✅ SDK文档服务已启动${NC}"

@@ -1,8 +1,8 @@
-# PayMind 依赖安装脚本 (PowerShell)
+# Agentrix 依赖安装脚本 (PowerShell)
 # 自动在 WSL 中运行安装脚本
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🚀 PayMind 依赖安装" -ForegroundColor Cyan
+Write-Host "🚀 Agentrix 依赖安装" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -40,8 +40,8 @@ Write-Host "✅ WSL 可用" -ForegroundColor Green
 Write-Host ""
 
 # 将 Windows 路径转换为 WSL 路径
-# D:\wsl\Ubuntu-24.04\Code\Paymind\paymind-website
-# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website
+# D:\wsl\Ubuntu-24.04\Code\Paymind\agentrix-website
+# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website
 $driveLetter = $currentDir.Substring(0, 1).ToLower()
 $pathWithoutDrive = $currentDir.Substring(2) -replace '\\', '/'
 $wslPath = "/mnt/$driveLetter$pathWithoutDrive"

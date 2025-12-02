@@ -8,7 +8,7 @@ import {
   validateCurrency,
   validatePaymentRequest,
 } from '../../src/utils/validation';
-import { PayMindValidationError } from '../../src/utils/errors';
+import { AgentrixValidationError } from '../../src/utils/errors';
 
 describe('Validation Utilities', () => {
   describe('validateApiKey', () => {
@@ -17,13 +17,13 @@ describe('Validation Utilities', () => {
     });
 
     it('should throw error for empty API key', () => {
-      expect(() => validateApiKey('')).toThrow(PayMindValidationError);
-      expect(() => validateApiKey('   ')).toThrow(PayMindValidationError);
+      expect(() => validateApiKey('')).toThrow(AgentrixValidationError);
+      expect(() => validateApiKey('   ')).toThrow(AgentrixValidationError);
     });
 
     it('should throw error for null/undefined API key', () => {
-      expect(() => validateApiKey(null as any)).toThrow(PayMindValidationError);
-      expect(() => validateApiKey(undefined as any)).toThrow(PayMindValidationError);
+      expect(() => validateApiKey(null as any)).toThrow(AgentrixValidationError);
+      expect(() => validateApiKey(undefined as any)).toThrow(AgentrixValidationError);
     });
   });
 
@@ -35,13 +35,13 @@ describe('Validation Utilities', () => {
     });
 
     it('should throw error for zero or negative amount', () => {
-      expect(() => validateAmount(0)).toThrow(PayMindValidationError);
-      expect(() => validateAmount(-100)).toThrow(PayMindValidationError);
+      expect(() => validateAmount(0)).toThrow(AgentrixValidationError);
+      expect(() => validateAmount(-100)).toThrow(AgentrixValidationError);
     });
 
     it('should throw error for invalid types', () => {
-      expect(() => validateAmount('100' as any)).toThrow(PayMindValidationError);
-      expect(() => validateAmount(null as any)).toThrow(PayMindValidationError);
+      expect(() => validateAmount('100' as any)).toThrow(AgentrixValidationError);
+      expect(() => validateAmount(null as any)).toThrow(AgentrixValidationError);
     });
   });
 
@@ -53,9 +53,9 @@ describe('Validation Utilities', () => {
     });
 
     it('should throw error for invalid currency codes', () => {
-      expect(() => validateCurrency('US')).toThrow(PayMindValidationError);
-      expect(() => validateCurrency('USDD')).toThrow(PayMindValidationError);
-      expect(() => validateCurrency('')).toThrow(PayMindValidationError);
+      expect(() => validateCurrency('US')).toThrow(AgentrixValidationError);
+      expect(() => validateCurrency('USDD')).toThrow(AgentrixValidationError);
+      expect(() => validateCurrency('')).toThrow(AgentrixValidationError);
     });
   });
 
@@ -74,7 +74,7 @@ describe('Validation Utilities', () => {
         currency: 'USD',
         description: 'Test payment',
       };
-      expect(() => validatePaymentRequest(invalidRequest)).toThrow(PayMindValidationError);
+      expect(() => validatePaymentRequest(invalidRequest)).toThrow(AgentrixValidationError);
     });
 
     it('should throw error for missing currency', () => {
@@ -82,7 +82,7 @@ describe('Validation Utilities', () => {
         amount: 100,
         description: 'Test payment',
       };
-      expect(() => validatePaymentRequest(invalidRequest)).toThrow(PayMindValidationError);
+      expect(() => validatePaymentRequest(invalidRequest)).toThrow(AgentrixValidationError);
     });
 
     it('should throw error for missing description', () => {
@@ -90,7 +90,7 @@ describe('Validation Utilities', () => {
         amount: 100,
         currency: 'USD',
       };
-      expect(() => validatePaymentRequest(invalidRequest)).toThrow(PayMindValidationError);
+      expect(() => validatePaymentRequest(invalidRequest)).toThrow(AgentrixValidationError);
     });
   });
 });

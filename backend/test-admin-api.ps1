@@ -1,11 +1,11 @@
-# PayMind 后台管理API测试脚本 (PowerShell版本)
+# Agentrix 后台管理API测试脚本 (PowerShell版本)
 # 测试所有后台管理API端点
 
 $BaseUrl = "http://localhost:3002/api/admin"
 $AdminToken = ""
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  PayMind 后台管理API测试" -ForegroundColor Cyan
+Write-Host "  Agentrix 后台管理API测试" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 

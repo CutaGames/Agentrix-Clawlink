@@ -38,7 +38,7 @@ export class OpenAIAdapter implements IPlatformAdapter {
 
   private getFunctionName(product: Product, capabilityType: string): string {
     // 根据产品类型和能力类型生成函数名
-    const baseName = `paymind_${capabilityType}_${product.productType}`;
+    const baseName = `agentrix_${capabilityType}_${product.productType}`;
     // OpenAI 函数名只能包含字母、数字、下划线和连字符
     return baseName.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
   }

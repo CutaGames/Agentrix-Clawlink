@@ -5,7 +5,7 @@ import { ethers } from "hardhat";
  * 
  * 需要配置的参数：
  * 1. settlementToken - 结算代币地址（如 USDT/USDC）
- * 2. paymindTreasury - PayMind 金库地址
+ * 2. agentrixTreasury - Agentrix 金库地址
  * 3. systemRebatePool - 系统返利池地址（可选）
  */
 async function main() {
@@ -20,17 +20,17 @@ async function main() {
     throw new Error("SETTLEMENT_TOKEN_ADDRESS not set. Use: npm run configure:commission <COMMISSION_ADDRESS> <SETTLEMENT_TOKEN> <TREASURY_ADDRESS> [REBATE_POOL_ADDRESS]");
   }
 
-  const paymindTreasury = process.argv[4] || process.env.PAYMIND_TREASURY_ADDRESS;
-  if (!paymindTreasury) {
-    throw new Error("PAYMIND_TREASURY_ADDRESS not set. Use: npm run configure:commission <COMMISSION_ADDRESS> <SETTLEMENT_TOKEN> <TREASURY_ADDRESS> [REBATE_POOL_ADDRESS]");
+  const agentrixTreasury = process.argv[4] || process.env.AGENTRIX_TREASURY_ADDRESS;
+  if (!agentrixTreasury) {
+    throw new Error("AGENTRIX_TREASURY_ADDRESS not set. Use: npm run configure:commission <COMMISSION_ADDRESS> <SETTLEMENT_TOKEN> <TREASURY_ADDRESS> [REBATE_POOL_ADDRESS]");
   }
 
-  const systemRebatePool = process.argv[5] || process.env.SYSTEM_REBATE_POOL_ADDRESS || paymindTreasury; // 默认使用 treasury 地址
+  const systemRebatePool = process.argv[5] || process.env.SYSTEM_REBATE_POOL_ADDRESS || agentrixTreasury; // 默认使用 treasury 地址
 
   console.log("⚙️  Configuring Commission contract...");
   console.log("Commission Address:", commissionAddress);
   console.log("Settlement Token:", settlementToken);
-  console.log("PayMind Treasury:", paymindTreasury);
+  console.log("Agentrix Treasury:", agentrixTreasury);
   console.log("System Rebate Pool:", systemRebatePool);
   console.log("");
 
@@ -44,7 +44,7 @@ async function main() {
   console.log("Setting settlement token, treasury and rebate pool...");
   const tx = await commission.configureSettlementToken(
     settlementToken,
-    paymindTreasury,
+    agentrixTreasury,
     systemRebatePool
   );
   await tx.wait();

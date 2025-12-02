@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# PayMind Agent V3.0 性能测试脚本
+# Agentrix Agent V3.0 性能测试脚本
 
 echo "=========================================="
-echo "PayMind Agent V3.0 性能测试"
+echo "Agentrix Agent V3.0 性能测试"
 echo "=========================================="
 
 API_URL="http://localhost:3001/api"
-TOKEN="${PAYMIND_TOKEN:-}"
+TOKEN="${AGENTRIX_TOKEN:-}"
 
 if [ -z "$TOKEN" ]; then
-    echo "警告: 未设置 PAYMIND_TOKEN 环境变量"
-    echo "请先登录获取token，然后设置: export PAYMIND_TOKEN='your-token'"
+    echo "警告: 未设置 AGENTRIX_TOKEN 环境变量"
+    echo "请先登录获取token，然后设置: export AGENTRIX_TOKEN='your-token'"
     echo ""
     read -p "是否继续测试? (y/n) " -n 1 -r
     echo

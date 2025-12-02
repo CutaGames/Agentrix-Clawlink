@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { PayMindRelayerService } from './relayer.service';
+import { AgentrixRelayerService } from './relayer.service';
 import { RelayerController } from './relayer.controller';
 import { Payment } from '../../entities/payment.entity';
 
@@ -11,8 +11,8 @@ import { Payment } from '../../entities/payment.entity';
     ConfigModule,
   ],
   controllers: [RelayerController],
-  providers: [PayMindRelayerService],
-  exports: [PayMindRelayerService],
+  providers: [AgentrixRelayerService],
+  exports: [AgentrixRelayerService],
 })
 export class RelayerModule {}
 

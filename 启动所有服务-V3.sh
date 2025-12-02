@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind Agent V3.0 完整服务启动脚本 (Linux/WSL)
+# Agentrix Agent V3.0 完整服务启动脚本 (Linux/WSL)
 
 echo "=========================================="
-echo "🚀 PayMind Agent V3.0 完整服务启动"
+echo "🚀 Agentrix Agent V3.0 完整服务启动"
 echo "=========================================="
 echo ""
 
@@ -36,9 +36,9 @@ if [ ! -d "backend/node_modules" ]; then
     cd backend && npm install && cd ..
 fi
 
-if [ ! -d "paymindfrontend/node_modules" ]; then
+if [ ! -d "agentrixfrontend/node_modules" ]; then
     echo "📥 安装前端依赖..."
-    cd paymindfrontend && npm install && cd ..
+    cd agentrixfrontend && npm install && cd ..
 fi
 echo -e "${GREEN}✅ 依赖检查完成${NC}"
 echo ""
@@ -50,8 +50,8 @@ if [ ! -f "backend/.env" ]; then
     echo "   请从 .env.example 复制并配置"
 fi
 
-if [ ! -f "paymindfrontend/.env.local" ]; then
-    echo -e "${YELLOW}⚠️  警告: paymindfrontend/.env.local 不存在${NC}"
+if [ ! -f "agentrixfrontend/.env.local" ]; then
+    echo -e "${YELLOW}⚠️  警告: agentrixfrontend/.env.local 不存在${NC}"
     echo "   请从 .env.local.example 复制"
 fi
 echo ""
@@ -97,7 +97,7 @@ echo "[5/5] 启动前端服务 (端口 3000)..."
 echo -e "${BLUE}   前端将在 http://localhost:3000 启动${NC}"
 echo -e "${BLUE}   Agent页面: http://localhost:3000/agent${NC}"
 echo ""
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

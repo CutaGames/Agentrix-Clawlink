@@ -1,13 +1,13 @@
 import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { PayMindRelayerService } from './relayer.service';
+import { AgentrixRelayerService } from './relayer.service';
 import { QuickPayRequestDto } from './dto/relayer.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('relayer')
 @Controller('relayer')
 export class RelayerController {
-  constructor(private readonly relayerService: PayMindRelayerService) {}
+  constructor(private readonly relayerService: AgentrixRelayerService) {}
 
   @Post('/quickpay')
   @ApiOperation({ summary: '处理 QuickPay 请求（Agent 调用）' })

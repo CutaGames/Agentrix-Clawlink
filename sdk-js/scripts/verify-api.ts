@@ -5,19 +5,19 @@
  * and perform basic operations.
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function verifyAPI() {
-  const apiKey = process.env.PAYMIND_API_KEY || 'test-api-key';
-  const apiUrl = process.env.PAYMIND_API_URL || 'http://localhost:3001/api';
+  const apiKey = process.env.AGENTRIX_API_KEY || 'test-api-key';
+  const apiUrl = process.env.AGENTRIX_API_URL || 'http://localhost:3001/api';
 
-  console.log('🔍 PayMind SDK API 验证');
+  console.log('🔍 Agentrix SDK API 验证');
   console.log('========================');
   console.log(`API URL: ${apiUrl}`);
   console.log(`API Key: ${apiKey.substring(0, 10)}...`);
   console.log('');
 
-  const paymind = new PayMind({
+  const agentrix = new Agentrix({
     apiKey,
     baseUrl: apiUrl,
   });
@@ -31,7 +31,7 @@ async function verifyAPI() {
   // Test 1: Get Payment Routing
   console.log('📋 Test 1: 获取支付路由建议...');
   try {
-    const routing = await paymind.payments.getRouting({
+    const routing = await agentrix.payments.getRouting({
       amount: 100,
       currency: 'USD',
       userCountry: 'US',
@@ -52,7 +52,7 @@ async function verifyAPI() {
   // Test 2: Create Payment Intent
   console.log('📋 Test 2: 创建支付意图...');
   try {
-    const intent = await paymind.payments.createIntent({
+    const intent = await agentrix.payments.createIntent({
       amount: 100,
       currency: 'USD',
       paymentMethod: 'stripe',
@@ -72,7 +72,7 @@ async function verifyAPI() {
   // Test 3: Get X402 Authorization
   console.log('📋 Test 3: 查询X402授权状态...');
   try {
-    const auth = await paymind.agents.getAutoPayGrant();
+    const auth = await agentrix.agents.getAutoPayGrant();
     console.log('✅ 成功');
     if (auth) {
       console.log(`   授权ID: ${auth.id}`);
@@ -92,7 +92,7 @@ async function verifyAPI() {
   // Test 4: List Products
   console.log('📋 Test 4: 查询商品列表...');
   try {
-    const products = await paymind.merchants.listProducts({
+    const products = await agentrix.merchants.listProducts({
       page: 1,
       limit: 10,
     });

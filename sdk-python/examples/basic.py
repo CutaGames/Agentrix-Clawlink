@@ -3,19 +3,19 @@ Basic Python example
 """
 
 import os
-from paymind import PayMind
+from agentrix import Agentrix
 
 def main():
     # Initialize SDK
-    paymind = PayMind(
-        api_key=os.getenv("PAYMIND_API_KEY", "your-api-key"),
-        base_url=os.getenv("PAYMIND_API_URL", "http://localhost:3001/api"),
+    agentrix = Agentrix(
+        api_key=os.getenv("AGENTRIX_API_KEY", "your-api-key"),
+        base_url=os.getenv("AGENTRIX_API_URL", "http://localhost:3001/api"),
     )
 
     try:
         # Get payment routing recommendation
         print("Getting payment routing...")
-        routing = paymind.payments.get_routing(
+        routing = agentrix.payments.get_routing(
             amount=100,
             currency="USD",
             user_country="US",
@@ -26,7 +26,7 @@ def main():
 
         # Create a payment
         print("\nCreating payment...")
-        payment = paymind.payments.create({
+        payment = agentrix.payments.create({
             "amount": 100,
             "currency": "USD",
             "description": "Test payment",
@@ -39,7 +39,7 @@ def main():
 
         # Get payment status
         print("\nGetting payment status...")
-        status = paymind.payments.get(payment["id"])
+        status = agentrix.payments.get(payment["id"])
         print(f"Payment status: {status['status']}")
 
     except Exception as error:

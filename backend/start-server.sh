@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# 启动PayMind后端服务脚本
+# 启动Agentrix后端服务脚本
 
 cd "$(dirname "$0")"
 
-echo "🚀 启动PayMind后端服务..."
+echo "🚀 启动Agentrix后端服务..."
 echo ""
 
 # 检查.env文件
@@ -16,7 +16,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_USERNAME=postgres
 DB_PASSWORD=postgres
-DB_DATABASE=paymind
+DB_DATABASE=agentrix
 
 # JWT配置
 JWT_SECRET=$(openssl rand -hex 32)

@@ -3,28 +3,28 @@ Webhook handling example with Flask
 """
 
 from flask import Flask, request, jsonify
-from paymind import PayMind
+from agentrix import Agentrix
 import os
 
 app = Flask(__name__)
 
-# Initialize PayMind SDK
-paymind = PayMind(
-    api_key=os.getenv("PAYMIND_API_KEY", "your-api-key"),
-    webhook_secret=os.getenv("PAYMIND_WEBHOOK_SECRET", "your-webhook-secret"),
+# Initialize Agentrix SDK
+agentrix = Agentrix(
+    api_key=os.getenv("AGENTRIX_API_KEY", "your-api-key"),
+    webhook_secret=os.getenv("AGENTRIX_WEBHOOK_SECRET", "your-webhook-secret"),
 )
 
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        signature = request.headers.get("PayMind-Signature", "")
+        signature = request.headers.get("Agentrix-Signature", "")
 
         if not signature:
             return jsonify({"error": "Missing signature"}), 400
 
         # Verify and parse webhook event
-        event = paymind.webhooks.construct_event(
+        event = agentrix.webhooks.construct_event(
             request.data.decode("utf-8"),
             signature
         )

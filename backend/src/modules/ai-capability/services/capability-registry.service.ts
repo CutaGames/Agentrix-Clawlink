@@ -352,8 +352,8 @@ export class CapabilityRegistryService {
     // 电商流程
     this.registerSystemCapability({
       id: 'search_products',
-      name: 'search_paymind_products',
-      description: '搜索 PayMind Marketplace 中的商品',
+      name: 'search_agentrix_products',
+      description: '搜索 Agentrix Marketplace 中的商品',
       category: 'ecommerce',
       executor: 'executor_search',
       parameters: {
@@ -371,7 +371,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'add_to_cart',
-      name: 'add_to_paymind_cart',
+      name: 'add_to_agentrix_cart',
       description: '将商品加入购物车',
       category: 'ecommerce',
       executor: 'executor_cart',
@@ -388,7 +388,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'checkout_cart',
-      name: 'checkout_paymind_cart',
+      name: 'checkout_agentrix_cart',
       description: '结算购物车',
       category: 'ecommerce',
       executor: 'executor_checkout',
@@ -401,7 +401,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'view_cart',
-      name: 'view_paymind_cart',
+      name: 'view_agentrix_cart',
       description: '查看购物车',
       category: 'ecommerce',
       executor: 'executor_cart',
@@ -414,7 +414,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'track_logistics',
-      name: 'track_paymind_logistics',
+      name: 'track_agentrix_logistics',
       description: '查询订单物流信息',
       category: 'logistics',
       executor: 'executor_logistics',
@@ -430,7 +430,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'compare_prices',
-      name: 'compare_paymind_prices',
+      name: 'compare_agentrix_prices',
       description: '比较商品价格，显示最低价、最高价、平均价格和最佳性价比',
       category: 'ecommerce',
       executor: 'executor_price_comparison',
@@ -445,7 +445,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'pay_order',
-      name: 'pay_paymind_order',
+      name: 'pay_agentrix_order',
       description: '支付订单，为待支付订单创建支付链接',
       category: 'ecommerce',
       executor: 'executor_payment',
@@ -463,7 +463,7 @@ export class CapabilityRegistryService {
     // Airdrop能力
     this.registerSystemCapability({
       id: 'discover_airdrops',
-      name: 'discover_paymind_airdrops',
+      name: 'discover_agentrix_airdrops',
       description: '发现可领取的空投机会。自动扫描链上数据、社交媒体、项目公告等，发现新的空投机会。',
       category: 'airdrop',
       executor: 'executor_airdrop',
@@ -479,7 +479,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'get_airdrops',
-      name: 'get_paymind_airdrops',
+      name: 'get_agentrix_airdrops',
       description: '获取用户的空投列表。返回所有已发现的空投机会，包括状态、奖励金额、领取条件等。',
       category: 'airdrop',
       executor: 'executor_airdrop',
@@ -499,7 +499,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'check_airdrop_eligibility',
-      name: 'check_paymind_airdrop_eligibility',
+      name: 'check_agentrix_airdrop_eligibility',
       description: '检查空投是否符合领取条件。验证用户是否满足所有要求（Twitter关注、Discord加入、钱包验证等）。',
       category: 'airdrop',
       executor: 'executor_airdrop',
@@ -516,7 +516,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'claim_airdrop',
-      name: 'claim_paymind_airdrop',
+      name: 'claim_agentrix_airdrop',
       description: '领取空投。自动执行领取流程，包括验证资格、调用领取API、记录交易哈希等。',
       category: 'airdrop',
       executor: 'executor_airdrop',
@@ -534,7 +534,7 @@ export class CapabilityRegistryService {
     // AutoEarn能力
     this.registerSystemCapability({
       id: 'get_auto_earn_tasks',
-      name: 'get_paymind_auto_earn_tasks',
+      name: 'get_agentrix_auto_earn_tasks',
       description: '获取Auto-Earn任务列表。返回所有可用的自动收益任务，包括空投、任务、策略、推荐等。',
       category: 'autoearn',
       executor: 'executor_autoearn',
@@ -554,7 +554,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'execute_auto_earn_task',
-      name: 'execute_paymind_auto_earn_task',
+      name: 'execute_agentrix_auto_earn_task',
       description: '执行Auto-Earn任务。自动完成任务要求，领取奖励。',
       category: 'autoearn',
       executor: 'executor_autoearn',
@@ -571,7 +571,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'get_auto_earn_stats',
-      name: 'get_paymind_auto_earn_stats',
+      name: 'get_agentrix_auto_earn_stats',
       description: '获取Auto-Earn统计数据。返回总收益、完成任务数、各类型收益分布等统计信息。',
       category: 'autoearn',
       executor: 'executor_autoearn',
@@ -585,7 +585,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'toggle_auto_earn_strategy',
-      name: 'toggle_paymind_auto_earn_strategy',
+      name: 'toggle_agentrix_auto_earn_strategy',
       description: '启动或停止Auto-Earn策略。控制自动收益策略的启用状态。',
       category: 'autoearn',
       executor: 'executor_autoearn',
@@ -606,7 +606,7 @@ export class CapabilityRegistryService {
     // Agent授权管理能力
     this.registerSystemCapability({
       id: 'create_agent_authorization',
-      name: 'create_paymind_agent_authorization',
+      name: 'create_agentrix_agent_authorization',
       description: '创建Agent授权，设置限额和权限。可以控制Agent执行特定操作的权限，包括单次限额、每日限额、策略级权限等。',
       category: 'agent_management',
       executor: 'executor_agent_auth',
@@ -642,7 +642,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'get_agent_authorization',
-      name: 'get_paymind_agent_authorization',
+      name: 'get_agentrix_agent_authorization',
       description: '查询Agent授权信息。获取指定Agent的授权状态、限额、权限配置等。',
       category: 'agent_management',
       executor: 'executor_agent_auth',
@@ -659,7 +659,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'update_agent_authorization',
-      name: 'update_paymind_agent_authorization',
+      name: 'update_agentrix_agent_authorization',
       description: '更新Agent授权。修改授权限额、权限配置等。',
       category: 'agent_management',
       executor: 'executor_agent_auth',
@@ -691,7 +691,7 @@ export class CapabilityRegistryService {
     // 原子结算能力
     this.registerSystemCapability({
       id: 'create_atomic_settlement',
-      name: 'create_paymind_atomic_settlement',
+      name: 'create_agentrix_atomic_settlement',
       description: '创建原子结算。确保跨链或多资产交易要么全部成功，要么全部回滚。适用于空投领取、代币交换等需要原子性的操作。',
       category: 'trading',
       executor: 'executor_atomic_settlement',
@@ -725,7 +725,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'execute_atomic_settlement',
-      name: 'execute_paymind_atomic_settlement',
+      name: 'execute_agentrix_atomic_settlement',
       description: '执行原子结算。执行已创建的原子结算，确保所有交易按条件执行。',
       category: 'trading',
       executor: 'executor_atomic_settlement',
@@ -742,7 +742,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'get_atomic_settlement_status',
-      name: 'get_paymind_atomic_settlement_status',
+      name: 'get_agentrix_atomic_settlement_status',
       description: '查询原子结算状态。获取结算的执行状态、交易结果等。',
       category: 'trading',
       executor: 'executor_atomic_settlement',
@@ -760,7 +760,7 @@ export class CapabilityRegistryService {
     // 多DEX最优执行能力
     this.registerSystemCapability({
       id: 'get_best_execution',
-      name: 'get_paymind_best_execution',
+      name: 'get_agentrix_best_execution',
       description: '获取多DEX最优执行路径。自动在多个DEX（Jupiter、Uniswap、Raydium等）中寻找最优价格和执行路径。',
       category: 'trading',
       executor: 'executor_best_execution',
@@ -785,7 +785,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'execute_best_swap',
-      name: 'execute_paymind_best_swap',
+      name: 'execute_agentrix_best_swap',
       description: '执行最优代币交换。使用多DEX聚合找到最优路径并执行交换。',
       category: 'trading',
       executor: 'executor_best_execution',
@@ -807,7 +807,7 @@ export class CapabilityRegistryService {
     // 意图交易能力
     this.registerSystemCapability({
       id: 'create_intent_strategy',
-      name: 'create_paymind_intent_strategy',
+      name: 'create_agentrix_intent_strategy',
       description: '通过自然语言创建交易策略。将用户的自然语言意图转换为可执行的交易策略，支持定投、调仓、套利等策略。',
       category: 'trading',
       executor: 'executor_intent_strategy',
@@ -828,7 +828,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'get_strategy_status',
-      name: 'get_paymind_strategy_status',
+      name: 'get_agentrix_strategy_status',
       description: '查询交易策略状态。获取策略的执行状态、历史记录、收益等。',
       category: 'trading',
       executor: 'executor_intent_strategy',

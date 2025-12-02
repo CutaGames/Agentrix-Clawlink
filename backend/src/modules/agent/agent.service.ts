@@ -1123,7 +1123,7 @@ export class AgentService {
     if (examples.length === 0) {
       examples.push({
         title: '初始化SDK',
-        description: '初始化PayMind SDK客户端',
+        description: '初始化Agentrix SDK客户端',
         code: this.getInitCode(language),
         language,
       });
@@ -1179,7 +1179,7 @@ export class AgentService {
         title: 'API接入引导',
         steps: [
           '1. 注册并获取API Key',
-          '2. 安装SDK：npm install @paymind/sdk',
+          '2. 安装SDK：npm install @agentrix/sdk',
           '3. 初始化客户端',
           '4. 调用API方法',
           '5. 查看文档了解更多',
@@ -1202,33 +1202,33 @@ export class AgentService {
 
   private getPaymentCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `import { PayMind } from '@paymind/sdk';
+      typescript: `import { Agentrix } from '@agentrix/sdk';
 
-const paymind = new PayMind({
-  apiKey: process.env.PAYMIND_API_KEY,
+const agentrix = new Agentrix({
+  apiKey: process.env.AGENTRIX_API_KEY,
 });
 
-const payment = await paymind.payments.create({
+const payment = await agentrix.payments.create({
   amount: 100,
   currency: 'CNY',
   description: '商品购买',
 });`,
-      javascript: `const { PayMind } = require('@paymind/sdk');
+      javascript: `const { Agentrix } = require('@agentrix/sdk');
 
-const paymind = new PayMind({
-  apiKey: process.env.PAYMIND_API_KEY,
+const agentrix = new Agentrix({
+  apiKey: process.env.AGENTRIX_API_KEY,
 });
 
-const payment = await paymind.payments.create({
+const payment = await agentrix.payments.create({
   amount: 100,
   currency: 'CNY',
   description: '商品购买',
 });`,
-      python: `from paymind import PayMind
+      python: `from agentrix import Agentrix
 
-paymind = PayMind(api_key=os.getenv('PAYMIND_API_KEY'))
+agentrix = Agentrix(api_key=os.getenv('AGENTRIX_API_KEY'))
 
-payment = paymind.payments.create(
+payment = agentrix.payments.create(
     amount=100,
     currency='CNY',
     description='商品购买'
@@ -1239,17 +1239,17 @@ payment = paymind.payments.create(
 
   private getOrderCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const order = await paymind.orders.create({
+      typescript: `const order = await agentrix.orders.create({
   productId: 'prod_123',
   quantity: 1,
   amount: 100,
 });`,
-      javascript: `const order = await paymind.orders.create({
+      javascript: `const order = await agentrix.orders.create({
   productId: 'prod_123',
   quantity: 1,
   amount: 100,
 });`,
-      python: `order = paymind.orders.create(
+      python: `order = agentrix.orders.create(
     product_id='prod_123',
     quantity=1,
     amount=100
@@ -1260,15 +1260,15 @@ payment = paymind.payments.create(
 
   private getProductSearchCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const products = await paymind.marketplace.searchProducts({
+      typescript: `const products = await agentrix.marketplace.searchProducts({
   query: '笔记本电脑',
   priceMax: 10000,
 });`,
-      javascript: `const products = await paymind.marketplace.searchProducts({
+      javascript: `const products = await agentrix.marketplace.searchProducts({
   query: '笔记本电脑',
   priceMax: 10000,
 });`,
-      python: `products = paymind.marketplace.search_products(
+      python: `products = agentrix.marketplace.search_products(
     query='笔记本电脑',
     price_max=10000
 )`,
@@ -1352,17 +1352,17 @@ payment = paymind.payments.create(
 
   private getServiceSearchCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const services = await paymind.agents.searchServices({
+      typescript: `const services = await agentrix.agents.searchServices({
   query: '设计服务',
   type: 'virtual_service',
   priceMax: 500,
 });`,
-      javascript: `const services = await paymind.agents.searchServices({
+      javascript: `const services = await agentrix.agents.searchServices({
   query: '设计服务',
   type: 'virtual_service',
   priceMax: 500,
 });`,
-      python: `services = paymind.agents.search_services(
+      python: `services = agentrix.agents.search_services(
     query='设计服务',
     type='virtual_service',
     price_max=500
@@ -1373,17 +1373,17 @@ payment = paymind.payments.create(
 
   private getOnChainAssetCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const assets = await paymind.agents.searchOnChainAssets({
+      typescript: `const assets = await agentrix.agents.searchOnChainAssets({
   query: 'NFT收藏品',
   type: 'nft',
   chain: 'ethereum',
 });`,
-      javascript: `const assets = await paymind.agents.searchOnChainAssets({
+      javascript: `const assets = await agentrix.agents.searchOnChainAssets({
   query: 'NFT收藏品',
   type: 'nft',
   chain: 'ethereum',
 });`,
-      python: `assets = paymind.agents.search_on_chain_assets(
+      python: `assets = agentrix.agents.search_on_chain_assets(
     query='NFT收藏品',
     type='nft',
     chain='ethereum'
@@ -1394,19 +1394,19 @@ payment = paymind.payments.create(
 
   private getAutoOrderCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const result = await paymind.agents.createOrderAutomatically(
+      typescript: `const result = await agentrix.agents.createOrderAutomatically(
   userId,
   productId,
   1, // quantity
   { autoPay: true, paymentMethod: 'wallet' }
 );`,
-      javascript: `const result = await paymind.agents.createOrderAutomatically(
+      javascript: `const result = await agentrix.agents.createOrderAutomatically(
   userId,
   productId,
   1, // quantity
   { autoPay: true, paymentMethod: 'wallet' }
 );`,
-      python: `result = paymind.agents.create_order_automatically(
+      python: `result = agentrix.agents.create_order_automatically(
     user_id,
     product_id,
     1,  # quantity
@@ -1418,15 +1418,15 @@ payment = paymind.payments.create(
 
   private getOrderQueryCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const { orders, logistics } = await paymind.agents.queryOrderAndLogistics(
+      typescript: `const { orders, logistics } = await agentrix.agents.queryOrderAndLogistics(
   userId,
   orderId // optional
 );`,
-      javascript: `const { orders, logistics } = await paymind.agents.queryOrderAndLogistics(
+      javascript: `const { orders, logistics } = await agentrix.agents.queryOrderAndLogistics(
   userId,
   orderId // optional
 );`,
-      python: `result = paymind.agents.query_order_and_logistics(
+      python: `result = agentrix.agents.query_order_and_logistics(
     user_id,
     order_id  # optional
 )
@@ -1438,17 +1438,17 @@ logistics = result.get('logistics')`,
 
   private getRefundCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `const { refund, order } = await paymind.agents.processRefund(
+      typescript: `const { refund, order } = await agentrix.agents.processRefund(
   userId,
   orderId,
   '不需要了' // reason
 );`,
-      javascript: `const { refund, order } = await paymind.agents.processRefund(
+      javascript: `const { refund, order } = await agentrix.agents.processRefund(
   userId,
   orderId,
   '不需要了' // reason
 );`,
-      python: `result = paymind.agents.process_refund(
+      python: `result = agentrix.agents.process_refund(
     user_id,
     order_id,
     '不需要了'  # reason
@@ -1461,19 +1461,19 @@ order = result['order']`,
 
   private getInitCode(lang: string): string {
     const codes: Record<string, string> = {
-      typescript: `import { PayMind } from '@paymind/sdk';
+      typescript: `import { Agentrix } from '@agentrix/sdk';
 
-const paymind = new PayMind({
-  apiKey: process.env.PAYMIND_API_KEY,
+const agentrix = new Agentrix({
+  apiKey: process.env.AGENTRIX_API_KEY,
 });`,
-      javascript: `const { PayMind } = require('@paymind/sdk');
+      javascript: `const { Agentrix } = require('@agentrix/sdk');
 
-const paymind = new PayMind({
-  apiKey: process.env.PAYMIND_API_KEY,
+const agentrix = new Agentrix({
+  apiKey: process.env.AGENTRIX_API_KEY,
 });`,
-      python: `from paymind import PayMind
+      python: `from agentrix import Agentrix
 
-paymind = PayMind(api_key=os.getenv('PAYMIND_API_KEY'))`,
+agentrix = Agentrix(api_key=os.getenv('AGENTRIX_API_KEY'))`,
     };
     return codes[lang] || codes.typescript;
   }

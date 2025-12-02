@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind 依赖安装脚本 (英文文件名，避免编码问题)
+# Agentrix 依赖安装脚本 (英文文件名，避免编码问题)
 # 自动安装 Node.js、PostgreSQL、Redis 和项目依赖
 
 set -e  # 遇到错误立即退出
 
 echo "=========================================="
-echo "🚀 PayMind Dependency Installation"
+echo "🚀 Agentrix Dependency Installation"
 echo "=========================================="
 echo ""
 
@@ -60,9 +60,9 @@ if [ -d "backend" ]; then
     cd backend && npm install && cd "$SCRIPT_DIR"
 fi
 
-if [ -d "paymindfrontend" ]; then
+if [ -d "agentrixfrontend" ]; then
     echo "Installing frontend dependencies..."
-    cd paymindfrontend && npm install && cd "$SCRIPT_DIR"
+    cd agentrixfrontend && npm install && cd "$SCRIPT_DIR"
 fi
 
 if [ -d "sdk-js" ]; then
@@ -88,9 +88,9 @@ if [ -d "backend" ] && [ ! -f "backend/.env" ]; then
     fi
 fi
 
-if [ -d "paymindfrontend" ] && [ ! -f "paymindfrontend/.env.local" ]; then
-    if [ -f "paymindfrontend/.env.local.example" ]; then
-        cp paymindfrontend/.env.local.example paymindfrontend/.env.local
+if [ -d "agentrixfrontend" ] && [ ! -f "agentrixfrontend/.env.local" ]; then
+    if [ -f "agentrixfrontend/.env.local.example" ]; then
+        cp agentrixfrontend/.env.local.example agentrixfrontend/.env.local
         echo "✅ Frontend .env.local created"
     fi
 fi
@@ -107,14 +107,14 @@ if command -v psql &> /dev/null; then
         sudo -u postgres psql <<EOF
 DO \$\$
 BEGIN
-    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'paymind') THEN
-        CREATE USER paymind WITH PASSWORD 'paymind123';
+    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'agentrix') THEN
+        CREATE USER agentrix WITH PASSWORD 'agentrix123';
     END IF;
 END
 \$\$;
-SELECT 'CREATE DATABASE paymind OWNER paymind'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'paymind')\gexec
-GRANT ALL PRIVILEGES ON DATABASE paymind TO paymind;
+SELECT 'CREATE DATABASE agentrix OWNER agentrix'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'agentrix')\gexec
+GRANT ALL PRIVILEGES ON DATABASE agentrix TO agentrix;
 \q
 EOF
         echo "✅ Database created"

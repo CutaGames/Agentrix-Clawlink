@@ -35,7 +35,7 @@ export class PromoterManagementService {
 
     if (query.search) {
       queryBuilder.andWhere(
-        '(user.email LIKE :search OR user.paymindId LIKE :search OR user.nickname LIKE :search)',
+        '(user.email LIKE :search OR user.agentrixId LIKE :search OR user.nickname LIKE :search)',
         { search: `%${query.search}%` },
       );
     }

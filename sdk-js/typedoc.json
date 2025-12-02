@@ -4,7 +4,7 @@
   "theme": "default",
   "includeVersion": true,
   "readme": "README.md",
-  "name": "PayMind SDK Documentation",
+  "name": "Agentrix SDK Documentation",
   "excludePrivate": false,
   "excludeProtected": false,
   "excludeExternals": false,

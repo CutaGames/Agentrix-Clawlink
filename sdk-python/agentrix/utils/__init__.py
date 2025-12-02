@@ -1,8 +1,8 @@
 """
-PayMind SDK Utilities
+Agentrix SDK Utilities
 """
 
-from .errors import PayMindError, PayMindAPIError, PayMindValidationError
+from .errors import AgentrixError, AgentrixAPIError, AgentrixValidationError
 from .validation import (
     validate_api_key,
     validate_amount,
@@ -11,9 +11,9 @@ from .validation import (
 )
 
 __all__ = [
-    "PayMindError",
-    "PayMindAPIError",
-    "PayMindValidationError",
+    "AgentrixError",
+    "AgentrixAPIError",
+    "AgentrixValidationError",
     "validate_api_key",
     "validate_amount",
     "validate_currency",

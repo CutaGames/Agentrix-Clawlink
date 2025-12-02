@@ -1,8 +1,8 @@
 /**
- * Tip resource for PayMind SDK
+ * Tip resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import { Payment } from '../types/payment';
 
 export interface CreateTipRequest {
@@ -21,7 +21,7 @@ export interface Tip extends Payment {
 }
 
 export class TipResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a tip

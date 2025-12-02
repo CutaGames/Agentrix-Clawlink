@@ -1,7 +1,7 @@
 {
-  "name": "@paymind/sdk",
+  "name": "@agentrix/sdk",
   "version": "2.2.0",
-  "description": "PayMind SDK for JavaScript/TypeScript - Unified payment layer for AI Agents, merchants, and applications",
+  "description": "Agentrix SDK for JavaScript/TypeScript - Unified payment layer for AI Agents, merchants, and applications",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.esm.js",
@@ -25,7 +25,7 @@
     "docs:serve": "npx serve docs -p 3002"
   },
   "keywords": [
-    "paymind",
+    "agentrix",
     "payment",
     "sdk",
     "ai-agent",
@@ -33,11 +33,11 @@
     "fiat",
     "x402"
   ],
-  "author": "PayMind Team",
+  "author": "Agentrix Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/paymind/sdk-js.git"
+    "url": "https://github.com/agentrix/sdk-js.git"
   },
   "dependencies": {
     "axios": "^1.6.0"

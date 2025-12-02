@@ -1,12 +1,12 @@
 /**
- * PayMind React SDK - Main entry point
+ * Agentrix React SDK - Main entry point
  */
 
-export { PayMindProvider, usePayMind } from './PayMindProvider';
+export { AgentrixProvider, useAgentrix } from './AgentrixProvider';
 export { usePayment } from './hooks/usePayment';
 export { useAgent } from './hooks/useAgent';
 export { PaymentButton } from './components/PaymentButton';
 
-// Re-export types from @paymind/sdk
-export * from '@paymind/sdk';
+// Re-export types from @agentrix/sdk
+export * from '@agentrix/sdk';
 

@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo    上传 PayMind 到 GitHub 仓库
+echo    上传 Agentrix 到 GitHub 仓库
 echo    仓库: https://github.com/CutaGames/Agentrix
 echo ========================================
 echo.
@@ -55,7 +55,7 @@ echo.
 echo [步骤 5/6] 添加并提交文件...
 git add .
 set /p commit_msg="请输入提交信息 (直接回车使用默认): "
-if "%commit_msg%"=="" set commit_msg=Update: PayMind project %date% %time%
+if "%commit_msg%"=="" set commit_msg=Update: Agentrix project %date% %time%
 git commit -m "%commit_msg%"
 echo.
 

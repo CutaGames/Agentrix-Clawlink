@@ -18,12 +18,12 @@ echo -e "${YELLOW}步骤1: 尝试注册/登录获取JWT Token...${NC}"
 # 先尝试注册
 REGISTER_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"testv7@paymind.com\",\"password\":\"Test123456\",\"paymindId\":\"test-v7-user\"}")
+  -d "{\"email\":\"testv7@agentrix.com\",\"password\":\"Test123456\",\"agentrixId\":\"test-v7-user\"}")
 
 # 尝试登录
 LOGIN_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"testv7@paymind.com\",\"password\":\"Test123456\"}")
+  -d "{\"email\":\"testv7@agentrix.com\",\"password\":\"Test123456\"}")
 
 if echo "$LOGIN_RESPONSE" | grep -q "access_token"; then
     JWT_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)

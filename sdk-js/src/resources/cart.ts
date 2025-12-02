@@ -1,10 +1,10 @@
 /**
- * Cart resource for PayMind SDK
+ * Cart resource for Agentrix SDK
  * 
  * Provides shopping cart management functionality for users
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface CartItem {
   productId: string;
@@ -38,7 +38,7 @@ export interface CartWithProducts extends Omit<Cart, 'items'> {
 }
 
 export class CartResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Get user's shopping cart

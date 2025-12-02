@@ -2,19 +2,19 @@
  * Basic Node.js example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function main() {
   // Initialize SDK
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
     // Get payment routing recommendation
     console.log('Getting payment routing...');
-    const routing = await paymind.payments.getRouting({
+    const routing = await agentrix.payments.getRouting({
       amount: 100,
       currency: 'USD',
       userCountry: 'US',
@@ -25,7 +25,7 @@ async function main() {
 
     // Create a payment
     console.log('\nCreating payment...');
-    const payment = await paymind.payments.create({
+    const payment = await agentrix.payments.create({
       amount: 100,
       currency: 'USD',
       description: 'Test payment',
@@ -38,7 +38,7 @@ async function main() {
 
     // Get payment status
     console.log('\nGetting payment status...');
-    const status = await paymind.payments.get(payment.id);
+    const status = await agentrix.payments.get(payment.id);
     console.log('Payment status:', status.status);
 
   } catch (error) {

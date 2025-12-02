@@ -1,19 +1,19 @@
 /**
  * Semantic Search Example
  * 
- * Demonstrates PayMind SDK's unified semantic search capabilities:
+ * Demonstrates Agentrix SDK's unified semantic search capabilities:
  * 1. Simple search API for agents
  * 2. Optional local embedding with cloud fallback
  * 3. Client-side re-ranking with user preferences
  * 4. Automatic payment link generation
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function semanticSearchExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
@@ -25,14 +25,14 @@ async function semanticSearchExample() {
     
     // Try to initialize local embedding model
     // If not available, SDK will automatically fallback to cloud API
-    const localModelAvailable = await paymind.marketplace.initializeLocalEmbedding('minilm');
+    const localModelAvailable = await agentrix.marketplace.initializeLocalEmbedding('minilm');
     
     if (localModelAvailable) {
       console.log('✅ Local embedding model initialized');
       console.log('   Using local model for faster queries');
     } else {
       console.log('ℹ️  Local embedding model not available');
-      console.log('   SDK will use PayMind cloud embedding API');
+      console.log('   SDK will use Agentrix cloud embedding API');
       console.log('   (This is the default and recommended approach)');
     }
     console.log('');
@@ -49,7 +49,7 @@ async function semanticSearchExample() {
     console.log('');
     
     // Agent simply calls SDK - no embedding/vector DB knowledge needed
-    const results = await paymind.agents.searchProducts(userQuery, {
+    const results = await agentrix.agents.searchProducts(userQuery, {
       priceMax: 1000,
       currency: 'USD',
     });
@@ -68,7 +68,7 @@ async function semanticSearchExample() {
     
     console.log('📝 What happens behind the scenes:');
     console.log('   1. Query → Embedding (local or cloud)');
-    console.log('   2. Vector search in PayMind database');
+    console.log('   2. Vector search in Agentrix database');
     console.log('   3. Results returned to Agent');
     console.log('   4. Agent displays to user');
     console.log('');
@@ -80,7 +80,7 @@ async function semanticSearchExample() {
     console.log('='.repeat(60));
     
     // Search with user preferences for better results
-    const advancedResults = await paymind.marketplace.searchProducts(
+    const advancedResults = await agentrix.marketplace.searchProducts(
       {
         query: 'buy coffee',
         filters: {
@@ -139,7 +139,7 @@ async function semanticSearchExample() {
     console.log('='.repeat(60));
     
     // Simple search method for quick queries
-    const quickResults = await paymind.marketplace.search('running shoes under 150', {
+    const quickResults = await agentrix.marketplace.search('running shoes under 150', {
       filters: {
         priceMax: 150,
         currency: 'USD',
@@ -170,7 +170,7 @@ async function semanticSearchExample() {
     console.log(`1. User: "${query}"`);
     
     // 2. Agent searches
-    const searchResults = await paymind.agents.searchProducts(query, {
+    const searchResults = await agentrix.agents.searchProducts(query, {
       priceMax: 150,
       currency: 'USD',
       inStock: true,
@@ -189,7 +189,7 @@ async function semanticSearchExample() {
       console.log('4. User: "好的，我要买这个"');
       
       // 5. Agent creates order
-      const order = await paymind.agents.createOrder({
+      const order = await agentrix.agents.createOrder({
         productId: topResult.productId || '',
         userId: 'user_123',
         quantity: 1,
@@ -198,7 +198,7 @@ async function semanticSearchExample() {
       console.log(`5. Agent creates order: ${order.id}`);
       
       // 6. Create payment
-      const payment = await paymind.payments.create({
+      const payment = await agentrix.payments.create({
         amount: topResult.metadata?.price || 0,
         currency: topResult.metadata?.currency || 'USD',
         description: `Purchase: ${topResult.title}`,

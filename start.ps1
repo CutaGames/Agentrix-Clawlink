@@ -1,8 +1,8 @@
-# PayMind 服务启动脚本 (PowerShell - 英文文件名)
+# Agentrix 服务启动脚本 (PowerShell - 英文文件名)
 # 自动检测项目根目录并启动服务
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🚀 PayMind Services Startup" -ForegroundColor Cyan
+Write-Host "🚀 Agentrix Services Startup" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -13,7 +13,7 @@ $projectRoot = $currentDir
 # 向上查找项目根目录
 while ($projectRoot -ne "" -and $projectRoot -ne $null) {
     $backendExists = Test-Path (Join-Path $projectRoot "backend")
-    $frontendExists = Test-Path (Join-Path $projectRoot "paymindfrontend")
+    $frontendExists = Test-Path (Join-Path $projectRoot "agentrixfrontend")
     
     if ($backendExists -and $frontendExists) {
         break
@@ -26,7 +26,7 @@ while ($projectRoot -ne "" -and $projectRoot -ne $null) {
     $projectRoot = $parent
 }
 
-if (-not (Test-Path (Join-Path $projectRoot "backend")) -or -not (Test-Path (Join-Path $projectRoot "paymindfrontend"))) {
+if (-not (Test-Path (Join-Path $projectRoot "backend")) -or -not (Test-Path (Join-Path $projectRoot "agentrixfrontend"))) {
     Write-Host "❌ 无法找到项目根目录" -ForegroundColor Red
     Write-Host "   当前目录: $currentDir" -ForegroundColor Yellow
     Write-Host ""
@@ -66,8 +66,8 @@ if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
 }
 
 # 将 Windows 路径转换为 WSL 路径
-# D:\wsl\Ubuntu-24.04\Code\Paymind\paymind-website
-# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website
+# D:\wsl\Ubuntu-24.04\Code\Paymind\agentrix-website
+# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website
 $driveLetter = $projectRoot.Substring(0, 1).ToLower()
 $pathWithoutDrive = $projectRoot.Substring(2) -replace '\\', '/'
 $wslPath = "/mnt/$driveLetter$pathWithoutDrive"

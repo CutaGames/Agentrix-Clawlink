@@ -6,7 +6,7 @@ echo "正在查找数据库..."
 
 # 方法1: 使用 postgres 用户，列出所有数据库
 echo "方法1: 尝试使用 postgres 用户连接..."
-sudo -u postgres psql -c "\l" | grep -E "paymind|Name" || echo "需要密码或权限"
+sudo -u postgres psql -c "\l" | grep -E "agentrix|Name" || echo "需要密码或权限"
 
 # 方法2: 直接删除表（如果表是空的或可以重建）
 echo ""

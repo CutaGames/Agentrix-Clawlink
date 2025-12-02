@@ -1,8 +1,8 @@
-# PayMind WSL2 端口转发配置脚本
+# Agentrix WSL2 端口转发配置脚本
 # 在Windows PowerShell中运行（以管理员身份）
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  PayMind WSL2 端口转发配置" -ForegroundColor Cyan
+Write-Host "  Agentrix WSL2 端口转发配置" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 

@@ -63,7 +63,7 @@ export class WithdrawalService {
     );
     
     const providerFee = commission.providerFee;
-    const paymindFee = commission.paymindFee; // 可配置，可为0
+    const agentrixFee = commission.agentrixFee; // 可配置，可为0
     const totalFees = commission.totalDeduction;
 
     if (amount < totalFees) {
@@ -91,7 +91,7 @@ export class WithdrawalService {
       exchangeRate,
       finalAmount,
       providerFee,
-      paymindFee,
+      agentrixFee,
       bankAccount,
       status: WithdrawalStatus.PENDING,
     });
@@ -133,7 +133,7 @@ export class WithdrawalService {
     try {
       // 调用Provider API转换数字货币为法币
       const providerResult = await this.fiatToCryptoService.convertCryptoToFiat(
-        withdrawal.amount - withdrawal.providerFee - withdrawal.paymindFee, // 扣除手续费后的金额
+        withdrawal.amount - withdrawal.providerFee - withdrawal.agentrixFee, // 扣除手续费后的金额
         withdrawal.fromCurrency,
         withdrawal.toCurrency,
         withdrawal.bankAccount,

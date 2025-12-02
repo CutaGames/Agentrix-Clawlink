@@ -4,12 +4,12 @@
  * Demonstrates agent-friendly payment link generation
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function paymentLinksExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
@@ -19,7 +19,7 @@ async function paymentLinksExample() {
     console.log('🔗 Part 1: Create payment link');
     console.log('='.repeat(60));
     
-    const link = await paymind.paymentLinks.create({
+    const link = await agentrix.paymentLinks.create({
       amount: 99.99,
       currency: 'USD',
       description: 'Premium subscription',
@@ -40,7 +40,7 @@ async function paymentLinksExample() {
     console.log('🤖 Part 2: Create agent-friendly links');
     console.log('='.repeat(60));
     
-    const agentLinks = await paymind.paymentLinks.createAgentFriendly({
+    const agentLinks = await agentrix.paymentLinks.createAgentFriendly({
       amount: 120,
       currency: 'USD',
       description: 'Purchase: Nike Air Max 2024',
@@ -69,13 +69,13 @@ async function paymentLinksExample() {
     console.log('='.repeat(60));
     
     // Agent searches for product
-    const products = await paymind.agents.searchProducts('running shoes under 150');
+    const products = await agentrix.agents.searchProducts('running shoes under 150');
     
     if (products.length > 0) {
       const product = products[0];
       
       // Agent creates payment link
-      const paymentLink = await paymind.paymentLinks.createAgentFriendly({
+      const paymentLink = await agentrix.paymentLinks.createAgentFriendly({
         amount: product.metadata?.price || 0,
         currency: product.metadata?.currency || 'USD',
         description: `Purchase: ${product.title}`,
@@ -100,7 +100,7 @@ async function paymentLinksExample() {
     console.log('📋 Part 4: List payment links');
     console.log('='.repeat(60));
     
-    const links = await paymind.paymentLinks.list({
+    const links = await agentrix.paymentLinks.list({
       agentId: 'agent_123',
       status: 'active',
       page: 1,

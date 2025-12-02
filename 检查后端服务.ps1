@@ -1,7 +1,7 @@
-# PayMind 后端服务诊断脚本
+# Agentrix 后端服务诊断脚本
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🔍 PayMind 后端服务诊断" -ForegroundColor Cyan
+Write-Host "🔍 Agentrix 后端服务诊断" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 

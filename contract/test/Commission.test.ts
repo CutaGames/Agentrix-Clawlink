@@ -45,7 +45,7 @@ describe("Commission", function () {
       const rebateAddress = rebatePool.address;
 
       expect(await commission.settlementToken()).to.equal(tokenAddress);
-      expect(await commission.paymindTreasury()).to.equal(treasuryAddress);
+      expect(await commission.agentrixTreasury()).to.equal(treasuryAddress);
       expect(await commission.systemRebatePool()).to.equal(rebateAddress);
     });
 

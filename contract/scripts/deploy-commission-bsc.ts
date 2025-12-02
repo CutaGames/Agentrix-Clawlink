@@ -6,7 +6,7 @@ import { ethers } from "hardhat";
  * 前置条件：
  * - 已配置 .env 文件中的 PRIVATE_KEY
  * - 已配置 BSC_TESTNET_USDT_ADDRESS（可选，有默认值）
- * - 已配置 PAYMIND_TREASURY_ADDRESS（可选，使用部署者地址）
+ * - 已配置 AGENTRIX_TREASURY_ADDRESS（可选，使用部署者地址）
  */
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -22,7 +22,7 @@ async function main() {
 
   // 从环境变量获取配置
   const usdtAddress = process.env.BSC_TESTNET_USDT_ADDRESS || "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd";
-  const treasuryAddress = process.env.PAYMIND_TREASURY_ADDRESS || deployer.address;
+  const treasuryAddress = process.env.AGENTRIX_TREASURY_ADDRESS || deployer.address;
   const rebatePoolAddress = process.env.SYSTEM_REBATE_POOL_ADDRESS || deployer.address;
 
   console.log("📋 Configuration:");
@@ -51,7 +51,7 @@ async function main() {
     await tx.wait();
     console.log("✅ Settlement token configured");
     console.log("   - Settlement Token:", usdtAddress);
-    console.log("   - PayMind Treasury:", treasuryAddress);
+    console.log("   - Agentrix Treasury:", treasuryAddress);
     console.log("   - System Rebate Pool:", rebatePoolAddress);
   } catch (error: any) {
     console.error("❌ Failed to configure settlement token:", error.message);
@@ -63,12 +63,12 @@ async function main() {
   console.log("🔍 Step 3: Verifying configuration...");
   try {
     const settlementToken = await commission.settlementToken();
-    const treasury = await commission.paymindTreasury();
+    const treasury = await commission.agentrixTreasury();
     const rebatePool = await commission.systemRebatePool();
     
     console.log("✅ Configuration verified:");
     console.log("   - Settlement Token:", settlementToken);
-    console.log("   - PayMind Treasury:", treasury);
+    console.log("   - Agentrix Treasury:", treasury);
     console.log("   - System Rebate Pool:", rebatePool);
     
     if (settlementToken.toLowerCase() !== usdtAddress.toLowerCase()) {

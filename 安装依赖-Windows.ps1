@@ -1,8 +1,8 @@
-# PayMind 项目依赖安装脚本 (Windows PowerShell)
+# Agentrix 项目依赖安装脚本 (Windows PowerShell)
 # 自动安装 Node.js 和项目依赖
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🚀 PayMind 项目依赖安装脚本 (Windows)" -ForegroundColor Cyan
+Write-Host "🚀 Agentrix 项目依赖安装脚本 (Windows)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -88,14 +88,14 @@ if (Test-Path "backend") {
 }
 
 # 前端依赖
-if (Test-Path "paymindfrontend") {
+if (Test-Path "agentrixfrontend") {
     Write-Host "安装前端依赖..." -ForegroundColor Blue
-    Set-Location paymindfrontend
+    Set-Location agentrixfrontend
     npm install
     Set-Location $ROOT_DIR
     Write-Host "✅ 前端依赖安装完成" -ForegroundColor Green
 } else {
-    Write-Host "❌ paymindfrontend 目录不存在" -ForegroundColor Red
+    Write-Host "❌ agentrixfrontend 目录不存在" -ForegroundColor Red
 }
 
 # SDK依赖
@@ -144,13 +144,13 @@ if (Test-Path "backend" -and -not (Test-Path "backend\.env")) {
 }
 
 # 前端环境变量
-if (Test-Path "paymindfrontend" -and -not (Test-Path "paymindfrontend\.env.local")) {
-    if (Test-Path "paymindfrontend\.env.local.example") {
+if (Test-Path "agentrixfrontend" -and -not (Test-Path "agentrixfrontend\.env.local")) {
+    if (Test-Path "agentrixfrontend\.env.local.example") {
         Write-Host "创建前端环境变量文件..." -ForegroundColor Blue
-        Copy-Item "paymindfrontend\.env.local.example" "paymindfrontend\.env.local"
+        Copy-Item "agentrixfrontend\.env.local.example" "agentrixfrontend\.env.local"
         Write-Host "✅ 前端环境变量文件已创建" -ForegroundColor Green
     } else {
-        Write-Host "⚠️  paymindfrontend\.env.local.example 不存在，跳过" -ForegroundColor Yellow
+        Write-Host "⚠️  agentrixfrontend\.env.local.example 不存在，跳过" -ForegroundColor Yellow
     }
 } else {
     Write-Host "✅ 前端环境变量文件已存在" -ForegroundColor Green
@@ -169,7 +169,7 @@ Write-Host "3. 安装时记住设置的密码" -ForegroundColor White
 Write-Host "4. 创建数据库和用户后更新 backend\.env" -ForegroundColor White
 Write-Host ""
 Write-Host "或者使用 Docker:" -ForegroundColor Blue
-Write-Host "docker run --name paymind-postgres -e POSTGRES_PASSWORD=paymind123 -e POSTGRES_USER=paymind -e POSTGRES_DB=paymind -p 5432:5432 -d postgres" -ForegroundColor White
+Write-Host "docker run --name agentrix-postgres -e POSTGRES_PASSWORD=agentrix123 -e POSTGRES_USER=agentrix -e POSTGRES_DB=agentrix -p 5432:5432 -d postgres" -ForegroundColor White
 
 Write-Host ""
 
@@ -184,7 +184,7 @@ Write-Host "  ✅ npm: $(npm -v)"
 Write-Host ""
 Write-Host "📝 下一步:" -ForegroundColor Yellow
 Write-Host "  1. 安装 PostgreSQL（如果还没有）" -ForegroundColor White
-Write-Host "  2. 检查环境变量配置: backend\.env 和 paymindfrontend\.env.local" -ForegroundColor White
+Write-Host "  2. 检查环境变量配置: backend\.env 和 agentrixfrontend\.env.local" -ForegroundColor White
 Write-Host "  3. 运行数据库迁移: cd backend; npm run migration:run" -ForegroundColor White
 Write-Host "  4. 启动服务: .\启动服务-简单版.bat" -ForegroundColor White
 Write-Host ""

@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo PayMind 环境检查工具
+echo Agentrix 环境检查工具
 echo ========================================
 echo.
 
@@ -27,10 +27,10 @@ if exist "backend" (
 ) else (
     echo ❌ backend 目录不存在
 )
-if exist "paymindfrontend" (
-    echo ✅ paymindfrontend 目录存在
+if exist "agentrixfrontend" (
+    echo ✅ agentrixfrontend 目录存在
 ) else (
-    echo ❌ paymindfrontend 目录不存在
+    echo ❌ agentrixfrontend 目录不存在
 )
 if exist "sdk-js" (
     echo ✅ sdk-js 目录存在
@@ -45,10 +45,10 @@ if exist "backend\node_modules" (
 ) else (
     echo ⚠️  后端依赖未安装，运行: cd backend ^&^& npm install
 )
-if exist "paymindfrontend\node_modules" (
+if exist "agentrixfrontend\node_modules" (
     echo ✅ 前端依赖已安装
 ) else (
-    echo ⚠️  前端依赖未安装，运行: cd paymindfrontend ^&^& npm install
+    echo ⚠️  前端依赖未安装，运行: cd agentrixfrontend ^&^& npm install
 )
 echo.
 
@@ -58,10 +58,10 @@ if exist "backend\.env" (
 ) else (
     echo ⚠️  后端环境变量文件不存在，运行: copy backend\.env.example backend\.env
 )
-if exist "paymindfrontend\.env.local" (
+if exist "agentrixfrontend\.env.local" (
     echo ✅ 前端环境变量文件存在
 ) else (
-    echo ⚠️  前端环境变量文件不存在，运行: copy paymindfrontend\.env.local.example paymindfrontend\.env.local
+    echo ⚠️  前端环境变量文件不存在，运行: copy agentrixfrontend\.env.local.example agentrixfrontend\.env.local
 )
 echo.
 

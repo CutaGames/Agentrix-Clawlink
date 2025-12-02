@@ -1,5 +1,5 @@
 /**
- * Webhook handler for PayMind SDK
+ * Webhook handler for Agentrix SDK
  */
 
 import crypto from 'crypto';
@@ -60,7 +60,7 @@ export class WebhookHandler {
    * Parse webhook event (for Express.js)
    */
   parseEvent(req: any): WebhookEvent {
-    const signature = req.headers['paymind-signature'] || req.headers['x-paymind-signature'];
+    const signature = req.headers['agentrix-signature'] || req.headers['x-agentrix-signature'];
     
     if (!signature) {
       throw new Error('Missing webhook signature');

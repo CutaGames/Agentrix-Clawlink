@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# PayMind 后台管理API测试脚本
+# Agentrix 后台管理API测试脚本
 # 测试所有后台管理API端点
 
 BASE_URL="http://localhost:3002/api/admin"
 ADMIN_TOKEN=""
 
 echo "=========================================="
-echo "  PayMind 后台管理API测试"
+echo "  Agentrix 后台管理API测试"
 echo "=========================================="
 echo ""
 

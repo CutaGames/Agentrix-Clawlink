@@ -8,12 +8,12 @@
  * - Acceleration and retry
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function cryptoPaymentExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
@@ -23,7 +23,7 @@ async function cryptoPaymentExample() {
     console.log('⛽ Part 1: Estimate gas');
     console.log('='.repeat(60));
     
-    const gasEstimate = await paymind.crypto.estimateGas({
+    const gasEstimate = await agentrix.crypto.estimateGas({
       chain: 'ethereum',
       tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
       tokenStandard: 'ERC20',
@@ -43,7 +43,7 @@ async function cryptoPaymentExample() {
     console.log('🔨 Part 2: Build transaction');
     console.log('='.repeat(60));
     
-    const builtTx = await paymind.crypto.buildTransaction({
+    const builtTx = await agentrix.crypto.buildTransaction({
       chain: 'solana',
       tokenAddress: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC on Solana
       tokenStandard: 'SPL',
@@ -68,7 +68,7 @@ async function cryptoPaymentExample() {
     console.log('💳 Part 3: Create payment');
     console.log('='.repeat(60));
     
-    const payment = await paymind.crypto.create({
+    const payment = await agentrix.crypto.create({
       chain: 'ethereum',
       tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
       tokenStandard: 'ERC20',
@@ -95,7 +95,7 @@ async function cryptoPaymentExample() {
     // In real scenario, this would be signed by user's wallet
     const signedTx = '0x...'; // Signed transaction from wallet
     
-    const submitted = await paymind.crypto.submitSignedTransaction(
+    const submitted = await agentrix.crypto.submitSignedTransaction(
       payment.id,
       signedTx
     );
@@ -112,7 +112,7 @@ async function cryptoPaymentExample() {
     console.log('='.repeat(60));
     
     if (submitted.status === 'pending') {
-      const accelerated = await paymind.crypto.accelerate(
+      const accelerated = await agentrix.crypto.accelerate(
         submitted.id,
         '5' // Increase priority fee to 5 Gwei
       );
@@ -130,7 +130,7 @@ async function cryptoPaymentExample() {
     
     // If transaction failed, retry it
     if (submitted.status === 'failed') {
-      const retried = await paymind.crypto.retry(submitted.id);
+      const retried = await agentrix.crypto.retry(submitted.id);
       console.log('Transaction retried:', retried.id);
       console.log('Status:', retried.status);
     }

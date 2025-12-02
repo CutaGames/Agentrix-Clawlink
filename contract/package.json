@@ -1,7 +1,7 @@
 {
-  "name": "paymind-contracts",
+  "name": "agentrix-contracts",
   "version": "2.2.0",
-  "description": "PayMind V2.2 Smart Contracts",
+  "description": "Agentrix V2.2 Smart Contracts",
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
@@ -22,7 +22,7 @@
     "smart-contracts",
     "payments"
   ],
-  "author": "PayMind Team",
+  "author": "Agentrix Team",
   "license": "MIT",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",

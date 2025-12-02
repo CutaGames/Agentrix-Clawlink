@@ -29,7 +29,7 @@ export interface AssetRateConfig {
     developer: number;
     recommendation: number;
     execution: number;
-    paymind: number;
+    agentrix: number;
   };
 }
 
@@ -115,7 +115,7 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
         developer: 0.8,
         recommendation: 0.1,
         execution: 0.05,
-        paymind: 0.05,
+        agentrix: 0.05,
       },
     },
     settlement: {

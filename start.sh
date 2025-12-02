@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# PayMind 服务启动脚本 (英文文件名)
+# Agentrix 服务启动脚本 (英文文件名)
 # 启动前端、后端、SDK文档服务器
 
 echo "=========================================="
-echo "🚀 PayMind Services Startup"
+echo "🚀 Agentrix Services Startup"
 echo "=========================================="
 echo ""
 
@@ -27,7 +27,7 @@ sleep 5
 
 # 启动前端
 echo "Starting frontend service (http://localhost:3000)..."
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd "$SCRIPT_DIR"

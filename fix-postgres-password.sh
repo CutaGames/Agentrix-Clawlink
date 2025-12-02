@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🔧 PayMind PostgreSQL 密码修复脚本"
+echo "🔧 Agentrix PostgreSQL 密码修复脚本"
 echo "===================================="
 echo ""
 
@@ -26,33 +26,33 @@ cat > "$SQL_SCRIPT" << 'SQL'
 ALTER USER postgres PASSWORD 'postgres';
 
 -- 检查数据库是否存在，不存在则创建
-SELECT 'CREATE DATABASE paymind'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'paymind')\gexec
+SELECT 'CREATE DATABASE agentrix'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'agentrix')\gexec
 
 -- 显示结果
 \echo '✅ PostgreSQL密码已设置为: postgres'
-\echo '✅ 数据库 paymind 已准备就绪'
+\echo '✅ 数据库 agentrix 已准备就绪'
 SQL
 
 # 尝试执行
 if sudo -u postgres psql -f "$SQL_SCRIPT" 2>&1; then
     echo ""
     echo "✅ 成功！PostgreSQL密码已设置为 'postgres'"
-    echo "✅ 数据库 'paymind' 已创建或已存在"
+    echo "✅ 数据库 'agentrix' 已创建或已存在"
     rm -f "$SQL_SCRIPT"
     
     # 验证连接
     echo ""
     echo "验证数据库连接..."
     export PGPASSWORD=postgres
-    if psql -h localhost -U postgres -d paymind -c "SELECT 1;" > /dev/null 2>&1; then
+    if psql -h localhost -U postgres -d agentrix -c "SELECT 1;" > /dev/null 2>&1; then
         echo "✅ 数据库连接成功！"
         echo ""
         echo "现在可以启动服务了："
         echo "  ./start-dev.sh"
     else
         echo "⚠️  连接验证失败，但密码可能已设置"
-        echo "   请手动测试: PGPASSWORD=postgres psql -h localhost -U postgres -d paymind -c 'SELECT 1;'"
+        echo "   请手动测试: PGPASSWORD=postgres psql -h localhost -U postgres -d agentrix -c 'SELECT 1;'"
     fi
     unset PGPASSWORD
 else
@@ -65,7 +65,7 @@ else
     echo ""
     echo "2. 在psql中执行："
     echo "   ALTER USER postgres PASSWORD 'postgres';"
-    echo "   CREATE DATABASE paymind;"
+    echo "   CREATE DATABASE agentrix;"
     echo "   \\q"
     echo ""
     echo "3. 然后运行: ./start-dev.sh"

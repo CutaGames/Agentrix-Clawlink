@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# PayMind 后端服务启动脚本
+# Agentrix 后端服务启动脚本
 
-echo "🚀 启动 PayMind 后端服务..."
+echo "🚀 启动 Agentrix 后端服务..."
 echo ""
 
 cd backend || {

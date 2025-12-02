@@ -24,7 +24,7 @@ export class OSLProviderService implements IProvider {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly baseUrl: string; // 测试环境或生产环境URL
-  private readonly webhookUrl: string; // PayMind接收OSL Pay回调的URL
+  private readonly webhookUrl: string; // Agentrix接收OSL Pay回调的URL
 
   constructor(private configService: ConfigService) {
     // 从环境变量读取OSL Pay配置

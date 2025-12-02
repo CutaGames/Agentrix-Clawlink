@@ -226,7 +226,7 @@ async function testSearch(query: string) {
  * 自动登录获取 token
  */
 async function loginAndGetToken(): Promise<string> {
-  const email = process.env.TEST_EMAIL || 'merchant@paymind.test';
+  const email = process.env.TEST_EMAIL || 'merchant@agentrix.test';
   const password = process.env.TEST_PASSWORD || 'Test@123';
 
   try {

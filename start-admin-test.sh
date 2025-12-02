@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# PayMind 后台管理系统快速启动和测试脚本
+# Agentrix 后台管理系统快速启动和测试脚本
 # Linux/WSL版本
 
 echo "=========================================="
-echo "  PayMind 后台管理系统启动和测试"
+echo "  Agentrix 后台管理系统启动和测试"
 echo "=========================================="
 echo ""
 
@@ -51,7 +51,7 @@ fi
 
 if [ "$FRONTEND_RUNNING" = false ]; then
     echo "💡 提示: 请启动前端服务"
-    echo "   cd paymindfrontend && npm run dev"
+    echo "   cd agentrixfrontend && npm run dev"
 fi
 
 echo ""

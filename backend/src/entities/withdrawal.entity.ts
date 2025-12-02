@@ -46,7 +46,7 @@ export class Withdrawal {
   providerFee: number; // Provider手续费（0.3 USDC）
 
   @Column('decimal', { precision: 15, scale: 2 })
-  paymindFee: number; // PayMind手续费（0.1 USDC）
+  agentrixFee: number; // Agentrix手续费（0.1 USDC）
 
   @Column({
     type: 'enum',

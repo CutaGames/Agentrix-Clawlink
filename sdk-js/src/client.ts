@@ -1,21 +1,21 @@
 /**
- * HTTP Client for PayMind API
+ * HTTP Client for Agentrix API
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
-import { PayMindConfig, PayMindResponse } from './types/common';
-import { handleError, PayMindSDKError } from './utils/errors';
+import { AgentrixConfig, AgentrixResponse } from './types/common';
+import { handleError, AgentrixSDKError } from './utils/errors';
 
-export class PayMindClient {
+export class AgentrixClient {
   private apiKey: string;
   private baseURL: string;
   private timeout: number;
   private retries: number;
   private client: AxiosInstance;
 
-  constructor(config: PayMindConfig) {
+  constructor(config: AgentrixConfig) {
     this.apiKey = config.apiKey;
-    this.baseURL = config.baseUrl || 'https://api.paymind.com/api';
+    this.baseURL = config.baseUrl || 'https://api.agentrix.com/api';
     this.timeout = config.timeout || 30000;
     this.retries = config.retries || 3;
 

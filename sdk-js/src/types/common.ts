@@ -1,8 +1,8 @@
 /**
- * Common types for PayMind SDK
+ * Common types for Agentrix SDK
  */
 
-export interface PayMindConfig {
+export interface AgentrixConfig {
   apiKey: string;
   baseUrl?: string;
   timeout?: number;
@@ -10,14 +10,14 @@ export interface PayMindConfig {
   webhookSecret?: string;
 }
 
-export interface PayMindResponse<T = any> {
+export interface AgentrixResponse<T = any> {
   success: boolean;
   data?: T;
-  error?: PayMindError;
+  error?: AgentrixError;
   timestamp: string;
 }
 
-export interface PayMindError {
+export interface AgentrixError {
   code: string;
   message: string;
   details?: any;

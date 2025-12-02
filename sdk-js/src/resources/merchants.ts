@@ -1,8 +1,8 @@
 /**
- * Merchant resource for PayMind SDK
+ * Merchant resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import {
   Product,
   CreateProductRequest,
@@ -10,7 +10,7 @@ import {
 } from '../types/merchant';
 
 export class MerchantResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a product

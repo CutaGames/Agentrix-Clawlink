@@ -1,14 +1,14 @@
 /**
- * User resource for PayMind SDK
+ * User resource for Agentrix SDK
  * 
  * Provides user information and profile management
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface UserInfo {
   id: string;
-  paymindId: string;
+  agentrixId: string;
   email?: string;
   walletAddresses?: string[];
   kycLevel?: 'NONE' | 'BASIC' | 'VERIFIED' | 'ENHANCED';
@@ -24,7 +24,7 @@ export interface UserInfo {
 }
 
 export class UserResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Get user information

@@ -1,20 +1,20 @@
 """
-HTTP Client for PayMind API
+HTTP Client for Agentrix API
 """
 
 import requests
 from typing import Optional, Dict, Any
-from .utils.errors import PayMindError, handle_error
+from .utils.errors import AgentrixError, handle_error
 from .utils.validation import validate_api_key
 
 
-class PayMindClient:
-    """HTTP client for PayMind API"""
+class AgentrixClient:
+    """HTTP client for Agentrix API"""
 
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.paymind.com/api",
+        base_url: str = "https://api.agentrix.com/api",
         timeout: int = 30,
         retries: int = 3,
     ):

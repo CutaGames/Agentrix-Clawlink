@@ -46,8 +46,8 @@ async function bootstrap() {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle('PayMind API')
-    .setDescription('PayMind V7.0 API Documentation - ERC-8004 Session Keys & QuickPay')
+    .setTitle('Agentrix API')
+    .setDescription('Agentrix V7.0 API Documentation - ERC-8004 Session Keys & QuickPay')
     .setVersion('7.0.0')
     .addBearerAuth()
     .addTag('wallets', '钱包管理相关接口')
@@ -60,7 +60,7 @@ async function bootstrap() {
     .addTag('commissions', '分润结算相关接口')
     .addTag('orders', '订单管理相关接口')
     .addServer('http://localhost:3001', '本地开发环境（API文档）')
-    .addServer('https://api.paymind.io', '生产环境')
+    .addServer('https://api.agentrix.io', '生产环境')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {
@@ -69,14 +69,14 @@ async function bootstrap() {
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
     },
-    customSiteTitle: 'PayMind API V7.0',
+    customSiteTitle: 'Agentrix API V7.0',
   });
 
   // 主API运行在3001端口（用于API文档）
   const port = process.env.PORT || 3001;
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
-  console.log(`🚀 PayMind Backend is running on: http://${host}:${port}`);
+  console.log(`🚀 Agentrix Backend is running on: http://${host}:${port}`);
   console.log(`📚 API Documentation: http://${host}:${port}/api/docs`);
 }
 

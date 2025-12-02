@@ -183,7 +183,7 @@ export interface IFoundationLLM {
    * 获取模型信息
    */
   getModelInfo(): {
-    provider: string; // 'groq' | 'paymind' | 'openai' | 'claude'
+    provider: string; // 'groq' | 'agentrix' | 'openai' | 'claude'
     modelName: string;
     version: string;
     isTemporary: boolean; // 是否为临时实现

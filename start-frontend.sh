@@ -2,7 +2,7 @@
 
 # 单独启动前端服务
 
-cd /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website/paymindfrontend
+cd /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website/agentrixfrontend
 
 # 检查.env.local文件
 if [ ! -f ".env.local" ]; then

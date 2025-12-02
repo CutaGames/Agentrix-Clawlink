@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind ChatGPT 集成测试脚本
+# Agentrix ChatGPT 集成测试脚本
 
 echo "=========================================="
-echo "🤖 PayMind ChatGPT 集成测试"
+echo "🤖 Agentrix ChatGPT 集成测试"
 echo "=========================================="
 
 # 1. 检查 Python3
@@ -23,10 +23,10 @@ fi
 
 # 3. 检查 API 是否可用
 echo ""
-echo "🔍 检查 PayMind API..."
+echo "🔍 检查 Agentrix API..."
 API_RESPONSE=$(curl -s http://localhost:3001/api/openai/functions)
 if [ $? -ne 0 ] || [ -z "$API_RESPONSE" ]; then
-    echo "❌ 无法连接到 PayMind API (http://localhost:3001)"
+    echo "❌ 无法连接到 Agentrix API (http://localhost:3001)"
     echo "   请确保后端服务正在运行: cd backend && npm run start:dev"
     exit 1
 fi

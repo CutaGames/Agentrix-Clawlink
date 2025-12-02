@@ -1,9 +1,9 @@
 #!/bin/bash
 
-echo "🚀 启动 PayMind 前端服务"
+echo "🚀 启动 Agentrix 前端服务"
 echo ""
 
-cd paymindfrontend
+cd agentrixfrontend
 
 echo "正在启动前端服务 (端口 3000)..."
 echo ""

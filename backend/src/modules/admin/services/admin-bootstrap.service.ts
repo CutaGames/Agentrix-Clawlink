@@ -21,7 +21,7 @@ export class AdminBootstrapService implements OnModuleInit {
    *
    * 默认账号（可通过环境变量覆盖，仅用于开发环境）：
    * - 用户名: ADMIN_DEFAULT_USERNAME 或 admin
-   * - 邮箱:   ADMIN_DEFAULT_EMAIL 或 admin@paymind.local
+   * - 邮箱:   ADMIN_DEFAULT_EMAIL 或 admin@agentrix.local
    * - 密码:   ADMIN_DEFAULT_PASSWORD 或 admin123456
    */
   async onModuleInit() {
@@ -31,7 +31,7 @@ export class AdminBootstrapService implements OnModuleInit {
     }
 
     const username = process.env.ADMIN_DEFAULT_USERNAME || 'admin';
-    const email = process.env.ADMIN_DEFAULT_EMAIL || 'admin@paymind.local';
+    const email = process.env.ADMIN_DEFAULT_EMAIL || 'admin@agentrix.local';
     const password = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123456';
 
     // 1. 创建超级管理员角色（如果不存在）

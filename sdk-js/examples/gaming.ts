@@ -2,12 +2,12 @@
  * Gaming in-app purchase example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function gamingExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   const userId = 'user_123';
@@ -15,7 +15,7 @@ async function gamingExample() {
   try {
     // 1. List available game items
     console.log('Listing game items...');
-    const items = await paymind.gaming.listItems({
+    const items = await agentrix.gaming.listItems({
       page: 1,
       limit: 20,
     });
@@ -26,7 +26,7 @@ async function gamingExample() {
 
     // 2. Purchase a single item
     console.log('\nPurchasing item...');
-    const purchase = await paymind.gaming.purchaseItem({
+    const purchase = await agentrix.gaming.purchaseItem({
       userId,
       itemId: 'sword_legendary',
       itemType: 'weapon',
@@ -39,7 +39,7 @@ async function gamingExample() {
 
     // 3. Purchase multiple items in batch
     console.log('\nPurchasing multiple items in batch...');
-    const batchPurchases = await paymind.gaming.purchaseBatch([
+    const batchPurchases = await agentrix.gaming.purchaseBatch([
       {
         userId,
         itemId: 'skin_rare',
@@ -66,7 +66,7 @@ async function gamingExample() {
 
     // 4. Get purchase history
     console.log('\nGetting purchase history...');
-    const history = await paymind.gaming.getPurchaseHistory(userId, {
+    const history = await agentrix.gaming.getPurchaseHistory(userId, {
       page: 1,
       limit: 20,
     });

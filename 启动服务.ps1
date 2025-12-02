@@ -1,8 +1,8 @@
-# PayMind 服务启动脚本 (PowerShell)
+# Agentrix 服务启动脚本 (PowerShell)
 # 自动在 WSL 中启动所有服务
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🚀 PayMind 服务启动" -ForegroundColor Cyan
+Write-Host "🚀 Agentrix 服务启动" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -31,8 +31,8 @@ if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
 }
 
 # 将 Windows 路径转换为 WSL 路径
-# D:\wsl\Ubuntu-24.04\Code\Paymind\paymind-website
-# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website
+# D:\wsl\Ubuntu-24.04\Code\Paymind\agentrix-website
+# 转换为: /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website
 $driveLetter = $currentDir.Substring(0, 1).ToLower()
 $pathWithoutDrive = $currentDir.Substring(2) -replace '\\', '/'
 $wslPath = "/mnt/$driveLetter$pathWithoutDrive"

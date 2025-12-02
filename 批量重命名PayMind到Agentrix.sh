@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ========================================
-# 批量重命名 PayMind → Agentrix
+# 批量重命名 Agentrix → Agentrix
 # ========================================
 
 set -e
@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================"
-echo "  批量重命名: PayMind → Agentrix"
+echo "  批量重命名: Agentrix → Agentrix"
 echo -e "========================================${NC}"
 echo ""
 
@@ -24,10 +24,10 @@ if [ ! -f "package.json" ]; then
 fi
 
 echo -e "${YELLOW}此脚本将替换以下内容：${NC}"
-echo "  - PayMind → Agentrix"
-echo "  - paymind → agentrix"
-echo "  - PAYMIND → AGENTRIX"
-echo "  - paymindfrontend → agentrixfrontend"
+echo "  - Agentrix → Agentrix"
+echo "  - agentrix → agentrix"
+echo "  - AGENTRIX → AGENTRIX"
+echo "  - agentrixfrontend → agentrixfrontend"
 echo ""
 echo -e "${RED}注意: 这将修改所有代码文件！${NC}"
 echo ""
@@ -52,7 +52,7 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx"
     ! -path "*/.git/*" \
     ! -path "*/dist/*" \
     ! -path "*/build/*" \
-    -exec sed -i 's/PayMind/Agentrix/g; s/paymind/agentrix/g; s/PAYMIND/AGENTRIX/g' {} + 2>/dev/null || true
+    -exec sed -i 's/Agentrix/Agentrix/g; s/agentrix/agentrix/g; s/AGENTRIX/AGENTRIX/g' {} + 2>/dev/null || true
 echo -e "${GREEN}✓ 完成${NC}"
 
 echo -e "${BLUE}[2/5] 替换 JSON 配置文件...${NC}"
@@ -61,28 +61,28 @@ find . -type f -name "*.json" \
     ! -path "*/.git/*" \
     ! -path "*/dist/*" \
     ! -path "*/build/*" \
-    -exec sed -i 's/PayMind/Agentrix/g; s/paymind/agentrix/g; s/PAYMIND/AGENTRIX/g; s/paymindfrontend/agentrixfrontend/g' {} + 2>/dev/null || true
+    -exec sed -i 's/Agentrix/Agentrix/g; s/agentrix/agentrix/g; s/AGENTRIX/AGENTRIX/g; s/agentrixfrontend/agentrixfrontend/g' {} + 2>/dev/null || true
 echo -e "${GREEN}✓ 完成${NC}"
 
 echo -e "${BLUE}[3/5] 替换 Shell 脚本...${NC}"
 find . -type f \( -name "*.sh" -o -name "*.bat" -o -name "*.ps1" \) \
     ! -path "*/node_modules/*" \
     ! -path "*/.git/*" \
-    -exec sed -i 's/PayMind/Agentrix/g; s/paymind/agentrix/g; s/PAYMIND/AGENTRIX/g; s/paymindfrontend/agentrixfrontend/g' {} + 2>/dev/null || true
+    -exec sed -i 's/Agentrix/Agentrix/g; s/agentrix/agentrix/g; s/AGENTRIX/AGENTRIX/g; s/agentrixfrontend/agentrixfrontend/g' {} + 2>/dev/null || true
 echo -e "${GREEN}✓ 完成${NC}"
 
 echo -e "${BLUE}[4/5] 替换 Python 文件...${NC}"
 find . -type f -name "*.py" \
     ! -path "*/node_modules/*" \
     ! -path "*/.git/*" \
-    -exec sed -i 's/PayMind/Agentrix/g; s/paymind/agentrix/g; s/PAYMIND/AGENTRIX/g' {} + 2>/dev/null || true
+    -exec sed -i 's/Agentrix/Agentrix/g; s/agentrix/agentrix/g; s/AGENTRIX/AGENTRIX/g' {} + 2>/dev/null || true
 echo -e "${GREEN}✓ 完成${NC}"
 
 echo -e "${BLUE}[5/5] 替换 Markdown 文档...${NC}"
 find . -type f -name "*.md" \
     ! -path "*/node_modules/*" \
     ! -path "*/.git/*" \
-    -exec sed -i 's/PayMind/Agentrix/g; s/paymind/agentrix/g; s/PAYMIND/AGENTRIX/g; s/paymindfrontend/agentrixfrontend/g' {} + 2>/dev/null || true
+    -exec sed -i 's/Agentrix/Agentrix/g; s/agentrix/agentrix/g; s/AGENTRIX/AGENTRIX/g; s/agentrixfrontend/agentrixfrontend/g' {} + 2>/dev/null || true
 echo -e "${GREEN}✓ 完成${NC}"
 
 echo ""
@@ -92,8 +92,8 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${YELLOW}重要提醒：${NC}"
 echo "  1. 文件夹名称需要手动重命名："
-echo "     - paymindfrontend/ → agentrixfrontend/"
-echo "     - sdk-python/paymind/ → sdk-python/agentrix/"
+echo "     - agentrixfrontend/ → agentrixfrontend/"
+echo "     - sdk-python/agentrix/ → sdk-python/agentrix/"
 echo ""
 echo "  2. 请检查以下文件是否正确："
 echo "     - package.json"
@@ -104,8 +104,8 @@ echo "  3. 建议运行测试确认无问题"
 echo ""
 echo -e "${BLUE}下一步操作：${NC}"
 echo "  # 重命名文件夹"
-echo "  mv paymindfrontend agentrixfrontend"
-echo "  mv sdk-python/paymind sdk-python/agentrix"
+echo "  mv agentrixfrontend agentrixfrontend"
+echo "  mv sdk-python/agentrix sdk-python/agentrix"
 echo ""
 echo "  # 重新安装依赖"
 echo "  cd backend && npm install"

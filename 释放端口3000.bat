@@ -30,7 +30,7 @@ wsl bash -c "lsof -ti:3000 >/dev/null 2>&1 && echo 端口仍被占用 || echo �
 :end
 echo.
 echo 现在可以启动前端服务了:
-echo   cd paymindfrontend
+echo   cd agentrixfrontend
 echo   npm run dev
 echo.
 

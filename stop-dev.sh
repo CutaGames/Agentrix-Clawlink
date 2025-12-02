@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# PayMind V2.2 停止开发环境脚本
+# Agentrix V2.2 停止开发环境脚本
 
-echo "🛑 停止 PayMind V2.2 开发环境..."
+echo "🛑 停止 Agentrix V2.2 开发环境..."
 
 # 从PID文件读取进程ID
 if [ -f ".backend.pid" ]; then

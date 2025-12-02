@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind V3.1 测试执行脚本
+# Agentrix V3.1 测试执行脚本
 # 使用方法: bash 测试执行脚本.sh
 
 BASE_URL="http://localhost:3001/api"
@@ -8,7 +8,7 @@ FRONTEND_URL="http://localhost:3000"
 TOKEN="" # 需要先登录获取token
 
 echo "=========================================="
-echo "PayMind V3.1 完整测试执行脚本"
+echo "Agentrix V3.1 完整测试执行脚本"
 echo "=========================================="
 echo ""
 

@@ -4,7 +4,7 @@
 # 从 Windows PowerShell 中，可以运行: wsl bash 在WSL中运行.sh
 
 echo "=========================================="
-echo "🚀 PayMind WSL 环境工具"
+echo "🚀 Agentrix WSL 环境工具"
 echo "=========================================="
 echo ""
 

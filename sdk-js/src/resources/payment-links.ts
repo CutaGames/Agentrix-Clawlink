@@ -1,5 +1,5 @@
 /**
- * Payment Links resource for PayMind SDK
+ * Payment Links resource for Agentrix SDK
  * 
  * Generates agent-friendly payment links that can be used in:
  * - ChatGPT
@@ -8,7 +8,7 @@
  * - Other AI Agent platforms
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface CreatePaymentLinkRequest {
   amount: number;
@@ -46,7 +46,7 @@ export interface AgentPlatformLink {
 }
 
 export class PaymentLinksResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a payment link
@@ -81,9 +81,9 @@ export class PaymentLinksResource {
 
     // Generate platform-specific links
     const platformLinks: AgentPlatformLink = {
-      chatgpt: `https://paymind.ai/pay/${link.id}?platform=chatgpt`,
-      claude: `https://paymind.ai/pay/${link.id}?platform=claude`,
-      deepseek: `https://paymind.ai/pay/${link.id}?platform=deepseek`,
+      chatgpt: `https://agentrix.ai/pay/${link.id}?platform=chatgpt`,
+      claude: `https://agentrix.ai/pay/${link.id}?platform=claude`,
+      deepseek: `https://agentrix.ai/pay/${link.id}?platform=deepseek`,
       universal: link.shortUrl || link.url,
     };
 

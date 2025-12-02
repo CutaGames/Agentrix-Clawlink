@@ -31,8 +31,8 @@ const ERC8004_ABI = [
 ];
 
 @Injectable()
-export class PayMindRelayerService {
-  private readonly logger = new Logger(PayMindRelayerService.name);
+export class AgentrixRelayerService {
+  private readonly logger = new Logger(AgentrixRelayerService.name);
   private relayerWallet: Wallet;
   private provider: JsonRpcProvider;
   private sessionManagerContract: Contract | null = null;

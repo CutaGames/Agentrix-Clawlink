@@ -1,5 +1,5 @@
 """
-PayMind Python SDK Setup
+Agentrix Python SDK Setup
 """
 
 from setuptools import setup, find_packages
@@ -8,14 +8,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="paymind-sdk",
+    name="agentrix-sdk",
     version="2.2.0",
-    author="PayMind Team",
-    author_email="support@paymind.com",
-    description="PayMind SDK for Python - Unified payment layer for AI Agents, merchants, and applications",
+    author="Agentrix Team",
+    author_email="support@agentrix.com",
+    description="Agentrix SDK for Python - Unified payment layer for AI Agents, merchants, and applications",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/paymind/sdk-python",
+    url="https://github.com/agentrix/sdk-python",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

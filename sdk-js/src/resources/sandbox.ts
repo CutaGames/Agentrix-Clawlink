@@ -1,10 +1,10 @@
 /**
- * Sandbox resource for PayMind SDK
+ * Sandbox resource for Agentrix SDK
  * 
  * Provides code execution and testing functionality in a sandbox environment
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface SandboxExecutionRequest {
   code: string;
@@ -21,7 +21,7 @@ export interface SandboxExecutionResult {
 }
 
 export class SandboxResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Execute code in sandbox environment
@@ -31,8 +31,8 @@ export class SandboxResource {
    * 
    * @example
    * ```typescript
-   * const result = await paymind.sandbox.execute({
-   *   code: 'const client = new PayMind({ apiKey: "test" }); await client.payments.create({ amount: 100 });',
+   * const result = await agentrix.sandbox.execute({
+   *   code: 'const client = new Agentrix({ apiKey: "test" }); await client.payments.create({ amount: 100 });',
    *   language: 'typescript'
    * });
    * ```

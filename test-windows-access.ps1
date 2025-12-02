@@ -2,7 +2,7 @@
 # 在Windows PowerShell中运行
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  PayMind 服务访问测试" -ForegroundColor Cyan
+Write-Host "  Agentrix 服务访问测试" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 

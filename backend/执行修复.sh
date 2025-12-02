@@ -12,7 +12,7 @@ if [ -z "$PGPASSWORD" ]; then
 fi
 
 # 执行修复 SQL
-psql -U paymind -d paymind_db -h localhost <<EOF
+psql -U agentrix -d agentrix_db -h localhost <<EOF
 -- 1. 删除所有 userId 为 NULL 的记录
 DELETE FROM agent_sessions WHERE "userId" IS NULL;
 

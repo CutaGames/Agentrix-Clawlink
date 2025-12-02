@@ -69,14 +69,14 @@ echo "🗄️  配置数据库..."
 echo ""
 
 # 检查数据库是否已存在
-if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw paymind; then
-    echo -e "${GREEN}✅ 数据库 'paymind' 已存在${NC}"
+if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw agentrix; then
+    echo -e "${GREEN}✅ 数据库 'agentrix' 已存在${NC}"
 else
-    echo "创建数据库 'paymind'..."
-    sudo -u postgres psql -c "CREATE DATABASE paymind;" 2>/dev/null || {
+    echo "创建数据库 'agentrix'..."
+    sudo -u postgres psql -c "CREATE DATABASE agentrix;" 2>/dev/null || {
         echo -e "${YELLOW}⚠️  无法自动创建数据库${NC}"
         echo "   请手动创建:"
-        echo "   sudo -u postgres psql -c \"CREATE DATABASE paymind;\""
+        echo "   sudo -u postgres psql -c \"CREATE DATABASE agentrix;\""
     }
 fi
 
@@ -97,11 +97,11 @@ echo "   sudo -u postgres psql"
 echo "   ALTER USER postgres PASSWORD 'your_password';"
 echo "   \\q"
 echo ""
-echo "2. 配置PayMind后端环境变量:"
+echo "2. 配置Agentrix后端环境变量:"
 echo "   编辑 backend/.env 文件，设置数据库连接信息"
 echo ""
 echo "3. 测试连接:"
-echo "   psql -U postgres -h localhost -d paymind"
+echo "   psql -U postgres -h localhost -d agentrix"
 echo ""
 
 # 提供快速配置选项
@@ -127,7 +127,7 @@ echo -e "${GREEN}✅ PostgreSQL 配置完成！${NC}"
 echo ""
 echo "下一步:"
 echo "1. 配置 backend/.env 文件中的数据库连接信息"
-echo "2. 运行 ./setup.sh 配置PayMind项目"
+echo "2. 运行 ./setup.sh 配置Agentrix项目"
 echo "3. 启动服务: ./start-dev.sh"
 echo ""
 

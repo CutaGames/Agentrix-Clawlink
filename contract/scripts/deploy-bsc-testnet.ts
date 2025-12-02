@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 
 /**
- * 部署所有 PayMind 合约到 BSC 测试网
+ * 部署所有 Agentrix 合约到 BSC 测试网
  * 
  * 部署顺序：
  * 1. PaymentRouter (独立)
@@ -16,7 +16,7 @@ import { ethers } from "hardhat";
 async function main() {
   const [deployer] = await ethers.getSigners();
 
-  console.log("🚀 Deploying PayMind contracts to BSC Testnet");
+  console.log("🚀 Deploying Agentrix contracts to BSC Testnet");
   console.log("================================================");
   console.log("Deployer address:", deployer.address);
   console.log("Account balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "BNB");
@@ -88,7 +88,7 @@ async function main() {
   }
   console.log("");
 
-  // 6. 配置 Commission - 需要设置 settlementToken 和 paymindTreasury
+  // 6. 配置 Commission - 需要设置 settlementToken 和 agentrixTreasury
   console.log("⚙️  Step 6: Configuring Commission...");
   console.log("⚠️  Commission requires manual configuration:");
   console.log("   - Call configureSettlementToken(tokenAddress, treasuryAddress)");
@@ -118,7 +118,7 @@ async function main() {
   console.log("");
   console.log("2. Configure Commission contract:");
   console.log(`   - Settlement Token: Set via configureSettlementToken()`);
-  console.log(`   - PayMind Treasury: Set via configureSettlementToken()`);
+  console.log(`   - Agentrix Treasury: Set via configureSettlementToken()`);
   console.log(`   - System Rebate Pool: Set via setSystemRebatePool()`);
   console.log("");
   console.log("3. Verify contracts on BSCScan:");

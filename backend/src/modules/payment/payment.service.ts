@@ -23,7 +23,7 @@ import { ProviderPaymentFlowService } from './provider-payment-flow.service';
 import { RiskAssessmentService } from './risk-assessment.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
 import { ExchangeRateService } from './exchange-rate.service';
-import { PayMindRelayerService } from '../relayer/relayer.service';
+import { AgentrixRelayerService } from '../relayer/relayer.service';
 // import { WebSocketGateway } from '../websocket/websocket.gateway'; // 暂时禁用WebSocket
 
 type PaymentRouteMethod = PaymentMethod | 'fiat_to_crypto' | 'quickpay';
@@ -76,8 +76,8 @@ export class PaymentService {
     private riskAssessmentService: RiskAssessmentService,
     private quickPayGrantService: QuickPayGrantService,
     private exchangeRateService: ExchangeRateService,
-    @Inject(forwardRef(() => PayMindRelayerService))
-    private relayerService?: PayMindRelayerService,
+    @Inject(forwardRef(() => AgentrixRelayerService))
+    private relayerService?: AgentrixRelayerService,
     @Inject(forwardRef(() => ReferralService))
     private referralService?: ReferralService,
     // @Inject(forwardRef(() => WebSocketGateway))

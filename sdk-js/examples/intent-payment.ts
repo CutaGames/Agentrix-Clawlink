@@ -4,12 +4,12 @@
  * Demonstrates natural language to payment intent conversion
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function intentPaymentExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
@@ -29,7 +29,7 @@ async function intentPaymentExample() {
     for (const query of userQueries) {
       console.log(`\nUser: "${query}"`);
       
-      const intentResponse = await paymind.intent.parseIntent({
+      const intentResponse = await agentrix.intent.parseIntent({
         query,
         context: {
           userId: 'user_123',
@@ -68,14 +68,14 @@ async function intentPaymentExample() {
     console.log('✅ Part 2: Complete intent');
     console.log('='.repeat(60));
     
-    const incompleteIntent = await paymind.intent.parseIntent({
+    const incompleteIntent = await agentrix.intent.parseIntent({
       query: '我要买一双鞋',
     });
     
     if (incompleteIntent.intent.missingFields && incompleteIntent.intent.missingFields.length > 0) {
       console.log('Intent has missing fields, completing...');
       
-      const completed = await paymind.intent.completeIntent(
+      const completed = await agentrix.intent.completeIntent(
         incompleteIntent.intent.metadata?.intentId || 'temp',
         {
           productId: 'prod_123',
@@ -104,11 +104,11 @@ async function intentPaymentExample() {
     console.log('💳 Part 3: Convert intent to payment');
     console.log('='.repeat(60));
     
-    const intent = await paymind.intent.parseIntent({
+    const intent = await agentrix.intent.parseIntent({
       query: '购买Nike Air Max，价格120美元',
     });
     
-    const paymentRequest = await paymind.intent.toPaymentRequest(intent.intent);
+    const paymentRequest = await agentrix.intent.toPaymentRequest(intent.intent);
     
     console.log('Payment request generated:');
     console.log(`  Amount: ${paymentRequest.paymentRequest.amount}`);
@@ -131,19 +131,19 @@ async function intentPaymentExample() {
     console.log(`1. User: "${userQuery}"`);
     
     // 2. Parse intent
-    const parsed = await paymind.intent.parseIntent({ query: userQuery });
+    const parsed = await agentrix.intent.parseIntent({ query: userQuery });
     console.log(`2. Intent parsed: ${parsed.intent.type}`);
     console.log(`   Amount: ${parsed.intent.amount} ${parsed.intent.currency}`);
     
     // 3. Search products
-    const products = await paymind.agents.searchProducts(userQuery, {
+    const products = await agentrix.agents.searchProducts(userQuery, {
       priceMax: parsed.intent.amount || 500,
     });
     console.log(`3. Products found: ${products.length}`);
     
     // 4. Convert to payment
     if (products.length > 0 && parsed.intent.amount) {
-      const payment = await paymind.payments.create({
+      const payment = await agentrix.payments.create({
         amount: parsed.intent.amount,
         currency: parsed.intent.currency || 'USD',
         description: parsed.intent.description || 'Flight ticket',

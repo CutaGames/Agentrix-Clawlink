@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind 端到端测试脚本
+# Agentrix 端到端测试脚本
 # 用于测试完整的支付流程
 
 set -e
 
 echo "=========================================="
-echo "PayMind 端到端测试"
+echo "Agentrix 端到端测试"
 echo "=========================================="
 echo ""
 
@@ -41,7 +41,7 @@ if curl -s "$FRONTEND_URL" > /dev/null 2>&1; then
     echo -e "${GREEN}✓ 运行中${NC}"
 else
     echo -e "${YELLOW}⚠ 未运行（可选）${NC}"
-    echo "  请运行: cd paymindfrontend && npm run dev"
+    echo "  请运行: cd agentrixfrontend && npm run dev"
 fi
 
 echo ""
@@ -92,7 +92,7 @@ echo "=========================================="
 echo ""
 echo "1. 启动服务："
 echo "   cd backend && npm run start:dev"
-echo "   cd paymindfrontend && npm run dev"
+echo "   cd agentrixfrontend && npm run dev"
 echo ""
 echo "2. 访问前端："
 echo "   http://localhost:3000"

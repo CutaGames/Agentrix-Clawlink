@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# PayMind V2.2 开发环境启动脚本
+# Agentrix V2.2 开发环境启动脚本
 
-echo "🚀 启动 PayMind V2.2 开发环境..."
+echo "🚀 启动 Agentrix V2.2 开发环境..."
 echo ""
 
 # 检查Node.js
@@ -32,9 +32,9 @@ if [ ! -f "backend/.env" ]; then
     echo "   运行: cd backend && cp .env.example .env"
 fi
 
-if [ ! -f "paymindfrontend/.env.local" ]; then
-    echo "⚠️  警告: paymindfrontend/.env.local 不存在，请从 .env.local.example 复制"
-    echo "   运行: cd paymindfrontend && cp .env.local.example .env.local"
+if [ ! -f "agentrixfrontend/.env.local" ]; then
+    echo "⚠️  警告: agentrixfrontend/.env.local 不存在，请从 .env.local.example 复制"
+    echo "   运行: cd agentrixfrontend && cp .env.local.example .env.local"
 fi
 
 echo ""
@@ -47,9 +47,9 @@ if [ ! -d "backend/node_modules" ]; then
 fi
 
 # 检查前端依赖
-if [ ! -d "paymindfrontend/node_modules" ]; then
+if [ ! -d "agentrixfrontend/node_modules" ]; then
     echo "📥 安装前端依赖..."
-    cd paymindfrontend && npm install && cd ..
+    cd agentrixfrontend && npm install && cd ..
 fi
 
 echo ""
@@ -74,7 +74,7 @@ sleep 5
 
 # 启动前端
 echo "🎨 启动前端服务..."
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

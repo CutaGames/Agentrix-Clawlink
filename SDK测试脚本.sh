@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind SDK功能测试脚本
+# Agentrix SDK功能测试脚本
 # 用于测试JavaScript/TypeScript SDK的新功能
 
 set -e
 
 echo "=========================================="
-echo "PayMind SDK功能测试"
+echo "Agentrix SDK功能测试"
 echo "=========================================="
 echo ""
 
@@ -83,7 +83,7 @@ echo "=========================================="
 echo "4. 检查主类更新"
 echo "=========================================="
 
-echo -n "检查PayMind主类 ... "
+echo -n "检查Agentrix主类 ... "
 if grep -q "pricing" src/index.ts && grep -q "tax" src/index.ts; then
     echo -e "${GREEN}✓ 通过${NC}"
 else

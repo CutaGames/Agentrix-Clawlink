@@ -2,12 +2,12 @@
  * Tip/Creator monetization example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function tipExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   const creatorId = 'creator_123';
@@ -15,7 +15,7 @@ async function tipExample() {
   try {
     // 1. Create a tip
     console.log('Creating tip...');
-    const tip = await paymind.tips.create({
+    const tip = await agentrix.tips.create({
       amount: 5.0,
       currency: 'USD',
       creatorId,
@@ -28,7 +28,7 @@ async function tipExample() {
 
     // 2. List tips for a creator
     console.log('\nListing tips for creator...');
-    const tips = await paymind.tips.list({
+    const tips = await agentrix.tips.list({
       creatorId,
       page: 1,
       limit: 20,
@@ -38,7 +38,7 @@ async function tipExample() {
 
     // 3. Get creator statistics
     console.log('\nGetting creator statistics...');
-    const stats = await paymind.tips.getCreatorStats(creatorId, {
+    const stats = await agentrix.tips.getCreatorStats(creatorId, {
       startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
     });
     console.log('Creator Stats:');

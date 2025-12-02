@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# PayMind 后端快速启动脚本
+# Agentrix 后端快速启动脚本
 
-echo "🚀 PayMind 后端服务启动脚本"
+echo "🚀 Agentrix 后端服务启动脚本"
 echo ""
 
 # 进入后端目录

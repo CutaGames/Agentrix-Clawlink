@@ -1,5 +1,5 @@
 """
-PayMind SDK Resources
+Agentrix SDK Resources
 """
 
 from .payments import PaymentResource

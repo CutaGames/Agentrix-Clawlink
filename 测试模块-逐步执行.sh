@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind 模块化测试脚本
+# Agentrix 模块化测试脚本
 # 用于逐步测试每个功能模块
 
 set -e
@@ -16,7 +16,7 @@ BACKEND_URL="http://localhost:3001/api"
 FRONTEND_URL="http://localhost:3000"
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}PayMind 模块化测试工具${NC}"
+echo -e "${GREEN}Agentrix 模块化测试工具${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -279,7 +279,7 @@ test_third_party() {
     echo ""
     echo -e "${GREEN}第三方服务集成检查完成${NC}"
     echo ""
-    echo -e "${YELLOW}提示: 查看 PayMind-完整功能实现清单.md 了解第三方服务集成步骤${NC}"
+    echo -e "${YELLOW}提示: 查看 Agentrix-完整功能实现清单.md 了解第三方服务集成步骤${NC}"
     echo ""
 }
 

@@ -16,7 +16,7 @@ const html = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PayMind API Documentation</title>
+    <title>Agentrix API Documentation</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -76,7 +76,7 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <h1>📚 PayMind API Documentation</h1>
+        <h1>📚 Agentrix API Documentation</h1>
         <p>正在跳转到 Swagger 文档...</p>
         <div class="spinner"></div>
         <a href="${API_URL}">立即访问文档</a>
@@ -120,7 +120,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`📚 PayMind API Documentation Server is running on: http://0.0.0.0:${PORT}`);
+  console.log(`📚 Agentrix API Documentation Server is running on: http://0.0.0.0:${PORT}`);
   console.log(`📖 Swagger UI: ${API_URL}`);
   console.log(`🔗 Direct access: http://localhost:${PORT}`);
 });

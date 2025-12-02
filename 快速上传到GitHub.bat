@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo    PayMind 项目上传到 GitHub
+echo    Agentrix 项目上传到 GitHub
 echo ========================================
 echo.
 
@@ -26,7 +26,7 @@ git remote -v
 echo.
 
 echo 如果还没有关联远程仓库，请执行以下命令：
-echo git remote add origin https://github.com/你的用户名/paymind-website.git
+echo git remote add origin https://github.com/你的用户名/agentrix-website.git
 echo.
 
 set /p push_confirm="是否立即推送到 GitHub? (Y/N): "

@@ -1,7 +1,7 @@
-# PayMind 后端服务启动脚本
+# Agentrix 后端服务启动脚本
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "🚀 启动 PayMind 后端服务" -ForegroundColor Cyan
+Write-Host "🚀 启动 Agentrix 后端服务" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 

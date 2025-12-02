@@ -1,8 +1,8 @@
 /**
- * Tax resource for PayMind SDK
+ * Tax resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface TaxRate {
   id: string;
@@ -34,7 +34,7 @@ export interface TaxReport {
 }
 
 export class TaxResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Get tax rate for a country/region

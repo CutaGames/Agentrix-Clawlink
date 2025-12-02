@@ -1,7 +1,7 @@
 /**
  * ChatGPT 集成测试脚本
  * 
- * 模拟 ChatGPT 调用 PayMind Function 的完整流程
+ * 模拟 ChatGPT 调用 Agentrix Function 的完整流程
  */
 
 import * as dotenv from 'dotenv';
@@ -19,9 +19,9 @@ async function simulateChatGPTConversation() {
   // 场景1：用户搜索商品
   console.log('\n📝 场景1：用户搜索商品');
   console.log('用户: "我要买 iPhone 15"');
-  console.log('\nChatGPT 调用 Function: search_paymind_products');
+  console.log('\nChatGPT 调用 Function: search_agentrix_products');
   
-  const searchResult = await callFunction('search_paymind_products', {
+  const searchResult = await callFunction('search_agentrix_products', {
     query: 'iPhone 15',
     inStock: true,
   });
@@ -36,10 +36,10 @@ async function simulateChatGPTConversation() {
     // 场景2：用户购买商品
     console.log('\n📝 场景2：用户购买商品');
     console.log('用户: "我要买第一个"');
-    console.log('\nChatGPT 调用 Function: buy_paymind_product');
+    console.log('\nChatGPT 调用 Function: buy_agentrix_product');
 
     const buyResult = await callFunction(
-      'buy_paymind_product',
+      'buy_agentrix_product',
       {
         product_id: product.id,
         quantity: 1,
@@ -66,9 +66,9 @@ async function simulateChatGPTConversation() {
   // 场景3：搜索服务类商品
   console.log('\n\n📝 场景3：搜索服务类商品');
   console.log('用户: "我想学英语"');
-  console.log('\nChatGPT 调用 Function: search_paymind_products');
+  console.log('\nChatGPT 调用 Function: search_agentrix_products');
 
-  const serviceResult = await callFunction('search_paymind_products', {
+  const serviceResult = await callFunction('search_agentrix_products', {
     query: '英语课程',
     category: 'service',
   });
@@ -82,10 +82,10 @@ async function simulateChatGPTConversation() {
     // 场景4：预约服务
     console.log('\n📝 场景4：预约服务');
     console.log('用户: "我想预约明天的课程"');
-    console.log('\nChatGPT 调用 Function: buy_paymind_product');
+    console.log('\nChatGPT 调用 Function: buy_agentrix_product');
 
     const bookResult = await callFunction(
-      'buy_paymind_product',
+      'buy_agentrix_product',
       {
         product_id: service.id,
         quantity: 1,

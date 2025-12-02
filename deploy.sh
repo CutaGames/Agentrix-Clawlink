@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# PayMind V3.0 部署脚本
+# Agentrix V3.0 部署脚本
 # 使用方法: ./deploy.sh [dev|prod]
 
 set -e  # 遇到错误立即退出
 
 ENV=${1:-dev}
 
-echo "🚀 开始部署 PayMind V3.0 (环境: $ENV)"
+echo "🚀 开始部署 Agentrix V3.0 (环境: $ENV)"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -32,7 +32,7 @@ echo -e "${GREEN}✅ npm 版本: $(npm -v)${NC}"
 
 # 构建前端
 echo -e "\n${YELLOW}📦 构建前端...${NC}"
-cd paymindfrontend
+cd agentrixfrontend
 
 if [ ! -d "node_modules" ]; then
     echo "安装前端依赖..."
@@ -90,11 +90,11 @@ check_port 3001
 # 启动服务
 if [ "$ENV" = "prod" ]; then
     echo -e "\n${YELLOW}🚀 启动生产服务...${NC}"
-    echo -e "${GREEN}前端: npm start (在 paymindfrontend 目录)${NC}"
+    echo -e "${GREEN}前端: npm start (在 agentrixfrontend 目录)${NC}"
     echo -e "${GREEN}后端: npm run start:prod (在 backend 目录)${NC}"
 else
     echo -e "\n${YELLOW}🚀 启动开发服务...${NC}"
-    echo -e "${GREEN}前端: npm run dev (在 paymindfrontend 目录)${NC}"
+    echo -e "${GREEN}前端: npm run dev (在 agentrixfrontend 目录)${NC}"
     echo -e "${GREEN}后端: npm run start:dev (在 backend 目录)${NC}"
 fi
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "=========================================="
-echo "🧪 PayMind V3.0 测试和验收"
+echo "🧪 Agentrix V3.0 测试和验收"
 echo "=========================================="
 echo ""
 
@@ -37,11 +37,11 @@ fi
 # 检查前端服务
 echo ""
 echo "[4/6] 检查前端服务状态..."
-cd ../paymindfrontend
+cd ../agentrixfrontend
 sleep 2
 if ! curl -s http://localhost:3000 > /dev/null 2>&1; then
     echo "⚠️  前端服务未运行，请先启动前端服务"
-    echo "   运行: cd paymindfrontend && npm run dev"
+    echo "   运行: cd agentrixfrontend && npm run dev"
     echo ""
     read -p "按Enter继续..."
 fi

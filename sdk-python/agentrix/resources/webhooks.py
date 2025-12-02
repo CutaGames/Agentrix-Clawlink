@@ -1,5 +1,5 @@
 """
-Webhook handler for PayMind SDK
+Webhook handler for Agentrix SDK
 """
 
 import hmac

@@ -8,27 +8,27 @@ and perform basic operations.
 
 import os
 import sys
-from paymind import PayMind
+from agentrix import Agentrix
 
 
 def verify_api():
-    api_key = os.getenv("PAYMIND_API_KEY", "test-api-key")
-    api_url = os.getenv("PAYMIND_API_URL", "http://localhost:3001/api")
+    api_key = os.getenv("AGENTRIX_API_KEY", "test-api-key")
+    api_url = os.getenv("AGENTRIX_API_URL", "http://localhost:3001/api")
 
-    print("🔍 PayMind SDK API 验证")
+    print("🔍 Agentrix SDK API 验证")
     print("=" * 24)
     print(f"API URL: {api_url}")
     print(f"API Key: {api_key[:10]}...")
     print()
 
-    paymind = PayMind(api_key=api_key, base_url=api_url)
+    agentrix = Agentrix(api_key=api_key, base_url=api_url)
 
     results = {"passed": 0, "failed": 0, "errors": []}
 
     # Test 1: Get Payment Routing
     print("📋 Test 1: 获取支付路由建议...")
     try:
-        routing = paymind.payments.get_routing(
+        routing = agentrix.payments.get_routing(
             amount=100, currency="USD", user_country="US", merchant_country="CN"
         )
         print("✅ 成功")
@@ -45,7 +45,7 @@ def verify_api():
     # Test 2: Create Payment Intent
     print("📋 Test 2: 创建支付意图...")
     try:
-        intent = paymind.payments.create_intent(
+        intent = agentrix.payments.create_intent(
             {"amount": 100, "currency": "USD", "paymentMethod": "stripe"}
         )
         print("✅ 成功")
@@ -61,7 +61,7 @@ def verify_api():
     # Test 3: Get X402 Authorization
     print("📋 Test 3: 查询X402授权状态...")
     try:
-        auth = paymind.agents.get_auto_pay_grant()
+        auth = agentrix.agents.get_auto_pay_grant()
         print("✅ 成功")
         if auth:
             print(f"   授权ID: {auth['id']}")
@@ -79,7 +79,7 @@ def verify_api():
     # Test 4: List Products
     print("📋 Test 4: 查询商品列表...")
     try:
-        products = paymind.merchants.list_products(page=1, limit=10)
+        products = agentrix.merchants.list_products(page=1, limit=10)
         print("✅ 成功")
         print(f"   商品数量: {len(products.get('data', []))}")
         results["passed"] += 1

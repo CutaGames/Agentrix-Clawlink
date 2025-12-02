@@ -65,7 +65,7 @@ export class AddWithdrawal1763025405602 implements MigrationInterface {
             isNullable: false,
           },
           {
-            name: 'paymindFee',
+            name: 'agentrixFee',
             type: 'decimal',
             precision: 15,
             scale: 2,

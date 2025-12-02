@@ -3,8 +3,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { usePayMind } from '../PayMindProvider';
-import { CreatePaymentRequest, Payment } from '@paymind/sdk';
+import { useAgentrix } from '../AgentrixProvider';
+import { CreatePaymentRequest, Payment } from '@agentrix/sdk';
 
 interface UsePaymentReturn {
   createPayment: (request: CreatePaymentRequest) => Promise<Payment>;
@@ -21,7 +21,7 @@ interface UsePaymentReturn {
 }
 
 export function usePayment(): UsePaymentReturn {
-  const paymind = usePayMind();
+  const agentrix = useAgentrix();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -30,7 +30,7 @@ export function usePayment(): UsePaymentReturn {
       setLoading(true);
       setError(null);
       try {
-        const payment = await paymind.payments.create(request);
+        const payment = await agentrix.payments.create(request);
         return payment;
       } catch (err: any) {
         setError(err);
@@ -39,7 +39,7 @@ export function usePayment(): UsePaymentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   const getPayment = useCallback(
@@ -47,7 +47,7 @@ export function usePayment(): UsePaymentReturn {
       setLoading(true);
       setError(null);
       try {
-        const payment = await paymind.payments.get(id);
+        const payment = await agentrix.payments.get(id);
         return payment;
       } catch (err: any) {
         setError(err);
@@ -56,7 +56,7 @@ export function usePayment(): UsePaymentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   const cancelPayment = useCallback(
@@ -64,7 +64,7 @@ export function usePayment(): UsePaymentReturn {
       setLoading(true);
       setError(null);
       try {
-        const payment = await paymind.payments.cancel(id);
+        const payment = await agentrix.payments.cancel(id);
         return payment;
       } catch (err: any) {
         setError(err);
@@ -73,7 +73,7 @@ export function usePayment(): UsePaymentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   const getRouting = useCallback(
@@ -86,7 +86,7 @@ export function usePayment(): UsePaymentReturn {
       setLoading(true);
       setError(null);
       try {
-        const routing = await paymind.payments.getRouting(params);
+        const routing = await agentrix.payments.getRouting(params);
         return routing;
       } catch (err: any) {
         setError(err);
@@ -95,7 +95,7 @@ export function usePayment(): UsePaymentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   return {

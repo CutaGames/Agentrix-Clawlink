@@ -37,8 +37,8 @@ export class GeminiAdapter implements IPlatformAdapter {
   }
 
   private getFunctionName(product: Product, capabilityType: string): string {
-    // Gemini 函数名格式：paymind_{capability}_{type}
-    const baseName = `paymind_${capabilityType}_${product.productType}`;
+    // Gemini 函数名格式：agentrix_{capability}_{type}
+    const baseName = `agentrix_${capabilityType}_${product.productType}`;
     return baseName.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
   }
 

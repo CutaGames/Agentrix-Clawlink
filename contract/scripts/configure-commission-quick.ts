@@ -12,16 +12,16 @@ async function main() {
   // BSC 测试网 USDT 地址
   const settlementToken = "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd";
   
-  // PayMind 金库地址（使用部署者地址）
-  const paymindTreasury = "0x2bee8AE78e4E41cf7facc4A4387A8F299dd2b8f3";
+  // Agentrix 金库地址（使用部署者地址）
+  const agentrixTreasury = "0x2bee8AE78e4E41cf7facc4A4387A8F299dd2b8f3";
   
   // 系统返利池地址（默认使用 treasury 地址）
-  const systemRebatePool = paymindTreasury;
+  const systemRebatePool = agentrixTreasury;
 
   console.log("⚙️  Configuring Commission contract...");
   console.log("Commission Address:", commissionAddress);
   console.log("Settlement Token:", settlementToken);
-  console.log("PayMind Treasury:", paymindTreasury);
+  console.log("Agentrix Treasury:", agentrixTreasury);
   console.log("System Rebate Pool:", systemRebatePool);
   console.log("");
 
@@ -51,7 +51,7 @@ async function main() {
   console.log("Setting settlement token, treasury and rebate pool...");
   const tx = await commission.configureSettlementToken(
     settlementToken,
-    paymindTreasury,
+    agentrixTreasury,
     systemRebatePool
   );
   console.log("Transaction hash:", tx.hash);
@@ -61,7 +61,7 @@ async function main() {
   console.log("");
   console.log("📋 Configuration Summary:");
   console.log("   Settlement Token:", settlementToken);
-  console.log("   PayMind Treasury:", paymindTreasury);
+  console.log("   Agentrix Treasury:", agentrixTreasury);
   console.log("   System Rebate Pool:", systemRebatePool);
 }
 

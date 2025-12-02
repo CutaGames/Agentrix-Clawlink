@@ -2,12 +2,12 @@
  * AI Agent integration example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function aiAgentExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   const agentId = 'agent_123';
@@ -15,7 +15,7 @@ async function aiAgentExample() {
   try {
     // 1. Create auto-pay grant for the agent
     console.log('Creating auto-pay grant...');
-    const grant = await paymind.agents.createAutoPayGrant({
+    const grant = await agentrix.agents.createAutoPayGrant({
       agentId,
       singleLimit: 50, // $50 per transaction
       dailyLimit: 500, // $500 per day
@@ -30,7 +30,7 @@ async function aiAgentExample() {
 
     // 2. Check existing grant
     console.log('\nChecking existing grant...');
-    const existingGrant = await paymind.agents.getAutoPayGrant();
+    const existingGrant = await agentrix.agents.getAutoPayGrant();
     if (existingGrant) {
       console.log('Grant found:', existingGrant.id);
       console.log('Used today:', existingGrant.usedToday);
@@ -38,7 +38,7 @@ async function aiAgentExample() {
 
     // 3. Create a payment (agent can pay automatically if grant exists)
     console.log('\nCreating payment...');
-    const payment = await paymind.payments.create({
+    const payment = await agentrix.payments.create({
       amount: 25,
       currency: 'USD',
       description: 'AI service payment',
@@ -51,13 +51,13 @@ async function aiAgentExample() {
 
     // 4. Get agent earnings
     console.log('\nGetting agent earnings...');
-    const earnings = await paymind.agents.getEarnings(agentId);
+    const earnings = await agentrix.agents.getEarnings(agentId);
     console.log('Total earnings:', earnings.totalEarnings);
     console.log('Total commissions:', earnings.totalCommissions);
 
     // 5. Get agent commissions
     console.log('\nGetting agent commissions...');
-    const commissions = await paymind.agents.getCommissions(agentId, {
+    const commissions = await agentrix.agents.getCommissions(agentId, {
       page: 1,
       limit: 10,
     });

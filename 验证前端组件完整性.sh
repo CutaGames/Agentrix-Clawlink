@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# PayMind 前端组件完整性验证脚本
+# Agentrix 前端组件完整性验证脚本
 
 echo "🔍 开始验证前端组件完整性..."
 echo ""
 
 # 检查目录
-FRONTEND_DIR="paymindfrontend"
+FRONTEND_DIR="agentrixfrontend"
 if [ ! -d "$FRONTEND_DIR" ]; then
     echo "❌ 错误: 找不到 $FRONTEND_DIR 目录"
     exit 1

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind 26个新功能测试脚本
+# Agentrix 26个新功能测试脚本
 # 用于快速测试所有新功能页面是否可以正常访问
 
 BASE_URL="http://localhost:3000"
@@ -9,7 +9,7 @@ COLOR_RED='\033[0;31m'
 COLOR_YELLOW='\033[1;33m'
 COLOR_NC='\033[0m' # No Color
 
-echo "🧪 PayMind 26个新功能测试"
+echo "🧪 Agentrix 26个新功能测试"
 echo "================================"
 echo ""
 

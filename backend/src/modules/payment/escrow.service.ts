@@ -26,7 +26,7 @@ export interface EscrowConfig {
   commission?: {
     merchant: number;
     agent: number;
-    paymind: number;
+    agentrix: number;
   }; // 分成配置
 }
 
@@ -142,13 +142,13 @@ export class EscrowService {
     // 根据订单类型计算分成
     let merchantAmount: number;
     let agentAmount: number = 0;
-    let paymindAmount: number = 0;
+    let agentrixAmount: number = 0;
 
     if (escrow.config.commission) {
       // 使用配置的分成比例
       merchantAmount = escrow.config.amount * escrow.config.commission.merchant;
       agentAmount = escrow.config.amount * escrow.config.commission.agent;
-      paymindAmount = escrow.config.amount * escrow.config.commission.paymind;
+      agentrixAmount = escrow.config.amount * escrow.config.commission.agentrix;
     } else {
       // 使用旧的commissionRate计算方式（兼容）
       const commission = escrow.config.commissionRate
@@ -158,13 +158,13 @@ export class EscrowService {
     }
 
     // 释放资金（实际应该调用智能合约）
-    // 合约会自动分成：商家、Agent、PayMind
+    // 合约会自动分成：商家、Agent、Agentrix
     await this.releaseFunds(
       escrowId, 
       escrow.config.merchantId, 
       merchantAmount, 
       agentAmount,
-      paymindAmount,
+      agentrixAmount,
     );
 
     escrow.status = EscrowStatus.RELEASED;
@@ -182,12 +182,12 @@ export class EscrowService {
         escrowStatus: EscrowStatus.RELEASED,
         merchantAmount,
         agentAmount,
-        paymindAmount,
+        agentrixAmount,
       };
       await this.paymentRepository.save(payment);
     }
 
-    this.logger.log(`资金已释放: ${escrowId}, 商户: ${merchantAmount}, Agent: ${agentAmount}, PayMind: ${paymindAmount}`);
+    this.logger.log(`资金已释放: ${escrowId}, 商户: ${merchantAmount}, Agent: ${agentAmount}, Agentrix: ${agentrixAmount}`);
   }
 
   /**
@@ -253,12 +253,12 @@ export class EscrowService {
     merchantId: string,
     merchantAmount: number,
     agentAmount: number = 0,
-    paymindAmount: number = 0,
+    agentrixAmount: number = 0,
   ): Promise<void> {
     // 实际应该调用智能合约释放资金
-    // 合约会自动分成：商家、Agent、PayMind
+    // 合约会自动分成：商家、Agent、Agentrix
     this.logger.log(
-      `释放资金: ${escrowId}, 商户: ${merchantId}, 金额: ${merchantAmount}, Agent: ${agentAmount}, PayMind: ${paymindAmount}`,
+      `释放资金: ${escrowId}, 商户: ${merchantId}, 金额: ${merchantAmount}, Agent: ${agentAmount}, Agentrix: ${agentrixAmount}`,
     );
   }
 

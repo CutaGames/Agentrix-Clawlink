@@ -71,7 +71,7 @@ export class OpenAIIntegrationController {
     }
 
     const result = await this.openaiService.executeFunctionCall(
-      'search_paymind_products',
+      'search_agentrix_products',
       { query },
       {},
     );
@@ -91,18 +91,18 @@ export class OpenAIIntegrationController {
     return {
       openapi: '3.1.0',
       info: {
-        title: 'PayMind Marketplace API',
-        description: 'PayMind Marketplace API for AI Agents. Search and purchase products, services, NFTs, and more.',
+        title: 'Agentrix Marketplace API',
+        description: 'Agentrix Marketplace API for AI Agents. Search and purchase products, services, NFTs, and more.',
         version: '1.0.0',
         contact: {
-          name: 'PayMind Support',
-          email: 'support@paymind.com',
+          name: 'Agentrix Support',
+          email: 'support@agentrix.com',
         },
       },
       servers: [
         {
           url: baseUrl,
-          description: 'PayMind API Server',
+          description: 'Agentrix API Server',
         },
       ],
       paths: {

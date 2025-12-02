@@ -1,13 +1,13 @@
 """
-Error handling for PayMind SDK
+Error handling for Agentrix SDK
 """
 
 from typing import Optional, Any
 import requests
 
 
-class PayMindError(Exception):
-    """Base error class for PayMind SDK"""
+class AgentrixError(Exception):
+    """Base error class for Agentrix SDK"""
 
     def __init__(self, code: str, message: str, details: Optional[Any] = None):
         self.code = code
@@ -16,7 +16,7 @@ class PayMindError(Exception):
         super().__init__(self.message)
 
 
-class PayMindAPIError(PayMindError):
+class AgentrixAPIError(AgentrixError):
     """API error with status code"""
 
     def __init__(
@@ -30,23 +30,23 @@ class PayMindAPIError(PayMindError):
         super().__init__(code, message, details)
 
 
-class PayMindValidationError(PayMindError):
+class AgentrixValidationError(AgentrixError):
     """Validation error"""
 
     def __init__(self, message: str, details: Optional[Any] = None):
         super().__init__("VALIDATION_ERROR", message, details)
 
 
-def handle_error(error: Exception, status_code: Optional[int] = None) -> PayMindError:
-    """Convert exception to PayMindError"""
-    if isinstance(error, PayMindError):
+def handle_error(error: Exception, status_code: Optional[int] = None) -> AgentrixError:
+    """Convert exception to AgentrixError"""
+    if isinstance(error, AgentrixError):
         return error
 
     if isinstance(error, requests.exceptions.HTTPError):
         try:
             error_data = error.response.json()
             if "error" in error_data:
-                return PayMindAPIError(
+                return AgentrixAPIError(
                     error_data["error"].get("code", "API_ERROR"),
                     error_data["error"].get("message", str(error)),
                     status_code or error.response.status_code,
@@ -55,11 +55,11 @@ def handle_error(error: Exception, status_code: Optional[int] = None) -> PayMind
         except (ValueError, KeyError):
             pass
 
-        return PayMindAPIError(
+        return AgentrixAPIError(
             "API_ERROR",
             str(error),
             status_code or (error.response.status_code if hasattr(error, 'response') else None),
         )
 
-    return PayMindError("UNKNOWN_ERROR", str(error))
+    return AgentrixError("UNKNOWN_ERROR", str(error))
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind 快速启动脚本（简化版）
+# Agentrix 快速启动脚本（简化版）
 
 set -e
 
@@ -9,14 +9,14 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo "🚀 PayMind 快速启动"
+echo "🚀 Agentrix 快速启动"
 echo "===================="
 echo ""
 
 # 检查并创建配置文件
 echo "⚙️  检查配置文件..."
 
-cd /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website
+cd /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website
 
 # 后端.env
 if [ ! -f "backend/.env" ]; then
@@ -29,7 +29,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_USERNAME=postgres
 DB_PASSWORD=postgres
-DB_DATABASE=paymind
+DB_DATABASE=agentrix
 JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || echo "dev-secret-key-$(date +%s)")
 JWT_EXPIRES_IN=7d
 PORT=3001
@@ -41,15 +41,15 @@ EOF
 fi
 
 # 前端.env.local
-if [ ! -f "paymindfrontend/.env.local" ]; then
-    if [ -f "paymindfrontend/.env.local.example" ]; then
-        cp paymindfrontend/.env.local.example paymindfrontend/.env.local
-        echo -e "${GREEN}✅ 已创建 paymindfrontend/.env.local${NC}"
+if [ ! -f "agentrixfrontend/.env.local" ]; then
+    if [ -f "agentrixfrontend/.env.local.example" ]; then
+        cp agentrixfrontend/.env.local.example agentrixfrontend/.env.local
+        echo -e "${GREEN}✅ 已创建 agentrixfrontend/.env.local${NC}"
     else
-        cat > paymindfrontend/.env.local << EOF
+        cat > agentrixfrontend/.env.local << EOF
 NEXT_PUBLIC_API_URL=http://localhost:3001/api
 EOF
-        echo -e "${GREEN}✅ 已创建默认 paymindfrontend/.env.local${NC}"
+        echo -e "${GREEN}✅ 已创建默认 agentrixfrontend/.env.local${NC}"
     fi
 fi
 
@@ -61,9 +61,9 @@ if [ ! -d "backend/node_modules" ]; then
     cd backend && npm install && cd ..
 fi
 
-if [ ! -d "paymindfrontend/node_modules" ]; then
+if [ ! -d "agentrixfrontend/node_modules" ]; then
     echo "安装前端依赖..."
-    cd paymindfrontend && npm install && cd ..
+    cd agentrixfrontend && npm install && cd ..
 fi
 
 # 停止现有服务
@@ -99,7 +99,7 @@ fi
 # 启动前端
 echo ""
 echo "🎨 启动前端 (http://localhost:3000)..."
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..

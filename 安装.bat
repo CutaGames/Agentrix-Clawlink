@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo 🚀 PayMind 依赖安装
+echo 🚀 Agentrix 依赖安装
 echo ========================================
 echo.
 
@@ -9,9 +9,9 @@ REM 自动查找项目根目录
 set "CURRENT_DIR=%~dp0"
 set "PROJECT_ROOT=%CURRENT_DIR%"
 
-REM 向上查找包含 backend 和 paymindfrontend 的目录
+REM 向上查找包含 backend 和 agentrixfrontend 的目录
 :find_root
-if exist "%PROJECT_ROOT%backend" if exist "%PROJECT_ROOT%paymindfrontend" goto found_root
+if exist "%PROJECT_ROOT%backend" if exist "%PROJECT_ROOT%agentrixfrontend" goto found_root
 set "PARENT=%PROJECT_ROOT%..\"
 if "%PARENT%"=="%PROJECT_ROOT%" goto not_found
 set "PROJECT_ROOT=%PARENT%"
@@ -50,7 +50,7 @@ echo ❌ 无法找到项目根目录
 echo    当前目录: %CURRENT_DIR%
 echo.
 echo 请确保您在项目目录中运行此脚本
-echo 项目根目录应包含 'backend' 和 'paymindfrontend' 文件夹
+echo 项目根目录应包含 'backend' 和 'agentrixfrontend' 文件夹
 echo.
 
 :end

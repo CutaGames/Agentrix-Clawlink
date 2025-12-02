@@ -15,7 +15,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001/api';
-const TEST_PAYMIND_ID = 'pm-1763463490911-91zf91wu2';
+const TEST_AGENTRIX_ID = 'pm-1763463490911-91zf91wu2';
 
 // 测试商品数据
 const testProducts = [

@@ -1,10 +1,10 @@
 /**
- * Intent resource for PayMind SDK
+ * Intent resource for Agentrix SDK
  * 
  * Converts natural language user queries into structured payment intents
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface ParseIntentRequest {
   query: string; // Natural language query
@@ -58,7 +58,7 @@ export interface IntentParseResponse {
 }
 
 export class IntentResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Parse natural language query into structured payment intent

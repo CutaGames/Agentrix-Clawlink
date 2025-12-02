@@ -15,7 +15,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
             default: 'uuid_generate_v4()',
           },
           {
-            name: 'paymindId',
+            name: 'agentrixId',
             type: 'varchar',
             isUnique: true,
           },

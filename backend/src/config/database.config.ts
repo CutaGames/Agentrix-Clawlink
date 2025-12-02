@@ -11,9 +11,9 @@ export class DatabaseConfig implements TypeOrmOptionsFactory {
       type: 'postgres',
       host: this.configService.get<string>('DB_HOST', 'localhost'),
       port: this.configService.get<number>('DB_PORT', 5432),
-      username: this.configService.get<string>('DB_USERNAME', 'paymind'),
-      password: this.configService.get<string>('DB_PASSWORD', 'paymind_password'),
-      database: this.configService.get<string>('DB_DATABASE', 'paymind'), // 实际数据库名是 paymind
+      username: this.configService.get<string>('DB_USERNAME', 'agentrix'),
+      password: this.configService.get<string>('DB_PASSWORD', 'agentrix_password'),
+      database: this.configService.get<string>('DB_DATABASE', 'agentrix'), // 实际数据库名是 agentrix
       entities: [__dirname + '/../**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/../migrations/*{.ts,.js}'],
       // 临时禁用 synchronize，使用迁移来管理数据库结构

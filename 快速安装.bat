@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo 🚀 PayMind 快速安装工具
+echo 🚀 Agentrix 快速安装工具
 echo ========================================
 echo.
 
@@ -31,7 +31,7 @@ echo 正在打开 WSL 终端...
 echo.
 echo 请在 WSL 终端中运行以下命令:
 echo.
-echo   cd /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/paymind-website
+echo   cd /mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website
 echo   chmod +x 安装依赖-WSL.sh
 echo   ./安装依赖-WSL.sh
 echo.

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# 检查PayMind服务状态
+# 检查Agentrix服务状态
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo "🔍 检查PayMind服务状态..."
+echo "🔍 检查Agentrix服务状态..."
 echo ""
 
 # 检查端口
@@ -55,10 +55,10 @@ else
     echo -e "${YELLOW}⚠️  backend/.env 不存在${NC}"
 fi
 
-if [ -f "paymindfrontend/.env.local" ]; then
-    echo -e "${GREEN}✅ paymindfrontend/.env.local 存在${NC}"
+if [ -f "agentrixfrontend/.env.local" ]; then
+    echo -e "${GREEN}✅ agentrixfrontend/.env.local 存在${NC}"
 else
-    echo -e "${YELLOW}⚠️  paymindfrontend/.env.local 不存在${NC}"
+    echo -e "${YELLOW}⚠️  agentrixfrontend/.env.local 不存在${NC}"
 fi
 
 echo ""
@@ -71,7 +71,7 @@ else
     echo -e "${RED}❌ 后端依赖未安装${NC}"
 fi
 
-if [ -d "paymindfrontend/node_modules" ]; then
+if [ -d "agentrixfrontend/node_modules" ]; then
     echo -e "${GREEN}✅ 前端依赖已安装${NC}"
 else
     echo -e "${RED}❌ 前端依赖未安装${NC}"

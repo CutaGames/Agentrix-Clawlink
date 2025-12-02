@@ -40,6 +40,6 @@ fi
 
 echo ""
 echo "现在可以启动前端服务了:"
-echo "  cd paymindfrontend"
+echo "  cd agentrixfrontend"
 echo "  npm run dev"
 

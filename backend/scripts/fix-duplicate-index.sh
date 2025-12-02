@@ -6,9 +6,9 @@ echo "正在修复 agent_stats 表的重复索引问题..."
 
 # 尝试不同的数据库连接方式
 # 方式1: 使用环境变量中的数据库配置
-DB_USER="${DB_USERNAME:-paymind}"
-DB_PASSWORD="${DB_PASSWORD:-paymind_password}"
-DB_NAME="${DB_DATABASE:-paymind_db}"
+DB_USER="${DB_USERNAME:-agentrix}"
+DB_PASSWORD="${DB_PASSWORD:-agentrix_password}"
+DB_NAME="${DB_DATABASE:-agentrix_db}"
 DB_HOST="${DB_HOST:-localhost}"
 
 # 方式2: 如果方式1失败，尝试使用 postgres 用户（需要密码）

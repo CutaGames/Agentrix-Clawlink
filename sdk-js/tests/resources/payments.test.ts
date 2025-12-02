@@ -3,12 +3,12 @@
  */
 
 import { PaymentResource } from '../../src/resources/payments';
-import { PayMindClient } from '../../src/client';
+import { AgentrixClient } from '../../src/client';
 import { CreatePaymentRequest, Payment } from '../../src/types/payment';
 
 describe('PaymentResource', () => {
   let paymentResource: PaymentResource;
-  let mockClient: jest.Mocked<PayMindClient>;
+  let mockClient: jest.Mocked<AgentrixClient>;
 
   beforeEach(() => {
     mockClient = {

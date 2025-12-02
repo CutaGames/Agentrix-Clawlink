@@ -1,8 +1,8 @@
 /**
- * Subscription resource for PayMind SDK
+ * Subscription resource for Agentrix SDK
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 
 export interface CreateSubscriptionRequest {
   planId: string;
@@ -36,7 +36,7 @@ export interface SubscriptionPlan {
 }
 
 export class SubscriptionResource {
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * Create a subscription

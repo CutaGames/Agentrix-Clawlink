@@ -3,7 +3,7 @@
 # WSL2 访问修复脚本 - 完整诊断和修复
 
 echo "=========================================="
-echo "  PayMind WSL2 访问修复工具"
+echo "  Agentrix WSL2 访问修复工具"
 echo "=========================================="
 echo ""
 
@@ -45,7 +45,7 @@ if netstat -tuln 2>/dev/null | grep -q ":3000" || ss -tuln 2>/dev/null | grep -q
     fi
 else
     echo -e "${RED}❌ 前端服务未运行${NC}"
-    echo -e "   ${YELLOW}启动命令: cd paymindfrontend && npm run dev${NC}"
+    echo -e "   ${YELLOW}启动命令: cd agentrixfrontend && npm run dev${NC}"
 fi
 
 echo ""
@@ -110,7 +110,7 @@ else
     echo -e "${RED}❌ 没有服务在运行，请先启动服务${NC}"
     echo ""
     echo "启动命令："
-    echo "  前端: cd paymindfrontend && npm run dev"
+    echo "  前端: cd agentrixfrontend && npm run dev"
     echo "  后端: cd backend && npm run start:dev"
 fi
 

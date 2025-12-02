@@ -29,14 +29,14 @@ async function backupDatabase(options: BackupOptions = {}) {
   // 从环境变量获取数据库配置
   const dbHost = process.env.DB_HOST || 'localhost';
   const dbPort = process.env.DB_PORT || '5432';
-  const dbUsername = process.env.DB_USERNAME || 'paymind';
-  const dbPassword = process.env.DB_PASSWORD || 'paymind_password';
-  const dbName = process.env.DB_DATABASE || 'paymind';
+  const dbUsername = process.env.DB_USERNAME || 'agentrix';
+  const dbPassword = process.env.DB_PASSWORD || 'agentrix_password';
+  const dbName = process.env.DB_DATABASE || 'agentrix';
 
   // 生成备份文件名
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
                     new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
-  const backupFilename = filename || `paymind_backup_${timestamp}.sql`;
+  const backupFilename = filename || `agentrix_backup_${timestamp}.sql`;
   const backupPath = path.join(outputDir, backupFilename);
   const compressedPath = compress ? `${backupPath}.gz` : backupPath;
 

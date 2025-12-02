@@ -3,15 +3,15 @@
  */
 
 import express from 'express';
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 const app = express();
 const port = 3000;
 
-// Initialize PayMind SDK
-const paymind = new PayMind({
-  apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-  webhookSecret: process.env.PAYMIND_WEBHOOK_SECRET || 'your-webhook-secret',
+// Initialize Agentrix SDK
+const agentrix = new Agentrix({
+  apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+  webhookSecret: process.env.AGENTRIX_WEBHOOK_SECRET || 'your-webhook-secret',
 });
 
 // Middleware to parse raw body for webhook signature verification
@@ -20,14 +20,14 @@ app.use('/webhook', express.raw({ type: 'application/json' }));
 // Webhook endpoint
 app.post('/webhook', (req, res) => {
   try {
-    const signature = req.headers['paymind-signature'] as string;
+    const signature = req.headers['agentrix-signature'] as string;
     
     if (!signature) {
       return res.status(400).json({ error: 'Missing signature' });
     }
 
     // Verify and parse webhook event
-    const event = paymind.webhooks.constructEvent(
+    const event = agentrix.webhooks.constructEvent(
       req.body,
       signature
     );

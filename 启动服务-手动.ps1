@@ -1,7 +1,7 @@
-# PayMind 手动启动服务脚本 (Windows PowerShell)
+# Agentrix 手动启动服务脚本 (Windows PowerShell)
 # 如果自动启动脚本有问题，可以使用这个脚本
 
-Write-Host "🚀 PayMind 服务启动助手" -ForegroundColor Green
+Write-Host "🚀 Agentrix 服务启动助手" -ForegroundColor Green
 Write-Host ""
 
 # 保存当前目录
@@ -25,7 +25,7 @@ switch ($choice) {
     }
     "2" {
         Write-Host "🎨 启动前端服务..." -ForegroundColor Cyan
-        Set-Location "$rootDir\paymindfrontend"
+        Set-Location "$rootDir\agentrixfrontend"
         npm run dev
     }
     "3" {
@@ -45,7 +45,7 @@ switch ($choice) {
         
         # 启动前端
         Write-Host "启动前端服务..." -ForegroundColor Cyan
-        $frontendScript = "cd '$rootDir\paymindfrontend'; npm run dev"
+        $frontendScript = "cd '$rootDir\agentrixfrontend'; npm run dev"
         Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendScript
         
         Start-Sleep -Seconds 3

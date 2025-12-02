@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind 访问修复脚本 - 一键修复所有访问问题
+# Agentrix 访问修复脚本 - 一键修复所有访问问题
 
 echo "=========================================="
-echo "  PayMind 访问修复工具"
+echo "  Agentrix 访问修复工具"
 echo "=========================================="
 echo ""
 
@@ -37,7 +37,7 @@ if [ -n "$FRONTEND_PORT" ]; then
     FRONTEND_RUNNING=true
 else
     echo -e "${YELLOW}⚠️  前端服务未运行，正在启动...${NC}"
-    cd paymindfrontend 2>/dev/null
+    cd agentrixfrontend 2>/dev/null
     if [ $? -eq 0 ]; then
         # 检查是否已有进程
         if pgrep -f "next dev" > /dev/null; then
@@ -56,7 +56,7 @@ else
         fi
         cd ..
     else
-        echo -e "${RED}   ❌ 无法进入paymindfrontend目录${NC}"
+        echo -e "${RED}   ❌ 无法进入agentrixfrontend目录${NC}"
         FRONTEND_RUNNING=false
     fi
 fi
@@ -199,7 +199,7 @@ else
     echo -e "${RED}❌ 没有服务在运行${NC}"
     echo ""
     echo "手动启动命令："
-    echo "  前端: cd paymindfrontend && npm run dev"
+    echo "  前端: cd agentrixfrontend && npm run dev"
     echo "  后端: cd backend && npm run start:dev"
 fi
 
@@ -217,7 +217,7 @@ if [ "$FRONTEND_RUNNING" = false ] || [ "$BACKEND_RUNNING" = false ]; then
         echo "前端服务："
         echo "  1. 检查端口3000是否被占用: lsof -i :3000"
         echo "  2. 查看启动日志: tail -f /tmp/frontend.log"
-        echo "  3. 手动启动: cd paymindfrontend && npm run dev"
+        echo "  3. 手动启动: cd agentrixfrontend && npm run dev"
         echo ""
     fi
     

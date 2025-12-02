@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind 后端服务状态检查脚本
+# Agentrix 后端服务状态检查脚本
 
 echo "🔍 检查后端服务状态..."
 echo ""

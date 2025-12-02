@@ -1,5 +1,5 @@
 /**
- * PayMind V3.0 功能测试用例
+ * Agentrix V3.0 功能测试用例
  * 用于验证所有V3.0功能的完整性和正确性
  */
 
@@ -8,7 +8,7 @@ import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { AppModule } from '../app.module';
 
-describe('PayMind V3.0 功能测试', () => {
+describe('Agentrix V3.0 功能测试', () => {
   let app: INestApplication;
   let authToken: string;
   let userId: string;
@@ -29,9 +29,9 @@ describe('PayMind V3.0 功能测试', () => {
     const userResponse = await request(app.getHttpServer())
       .post('/api/auth/register')
       .send({
-        email: 'test@paymind.test',
+        email: 'test@agentrix.test',
         password: 'test123456',
-        paymindId: 'PM-TEST-001',
+        agentrixId: 'PM-TEST-001',
       });
 
     userId = userResponse.body.id;
@@ -41,9 +41,9 @@ describe('PayMind V3.0 功能测试', () => {
     const merchantResponse = await request(app.getHttpServer())
       .post('/api/auth/register')
       .send({
-        email: 'merchant@paymind.test',
+        email: 'merchant@agentrix.test',
         password: 'test123456',
-        paymindId: 'PM-MERCHANT-001',
+        agentrixId: 'PM-MERCHANT-001',
         roles: ['merchant'],
       });
 

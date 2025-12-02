@@ -1,15 +1,15 @@
-# PayMind Agent V3.0 测试脚本 (PowerShell版本)
+# Agentrix Agent V3.0 测试脚本 (PowerShell版本)
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "PayMind Agent V3.0 功能测试" -ForegroundColor Cyan
+Write-Host "Agentrix Agent V3.0 功能测试" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 $API_URL = "http://localhost:3001/api"
-$TOKEN = $env:PAYMIND_TOKEN  # 需要先设置token
+$TOKEN = $env:AGENTRIX_TOKEN  # 需要先设置token
 
 if (-not $TOKEN) {
-    Write-Host "警告: 未设置 PAYMIND_TOKEN 环境变量" -ForegroundColor Yellow
-    Write-Host "请先登录获取token，然后设置: `$env:PAYMIND_TOKEN='your-token'" -ForegroundColor Yellow
+    Write-Host "警告: 未设置 AGENTRIX_TOKEN 环境变量" -ForegroundColor Yellow
+    Write-Host "请先登录获取token，然后设置: `$env:AGENTRIX_TOKEN='your-token'" -ForegroundColor Yellow
 }
 
 $PASSED = 0
@@ -97,7 +97,7 @@ if ($SESSION_ID) {
 
 # 7. 测试沙箱执行
 Write-Host "`n=== 7. 沙箱执行测试 ===" -ForegroundColor Cyan
-Test-Api "执行沙箱代码" POST "/sandbox/execute" '{"code":"const payment = await paymind.payments.create({amount: 100, currency: \"CNY\"});","language":"typescript"}'
+Test-Api "执行沙箱代码" POST "/sandbox/execute" '{"code":"const payment = await agentrix.payments.create({amount: 100, currency: \"CNY\"});","language":"typescript"}'
 
 # 总结
 Write-Host "`n==========================================" -ForegroundColor Cyan

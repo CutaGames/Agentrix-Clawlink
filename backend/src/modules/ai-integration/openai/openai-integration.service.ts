@@ -19,9 +19,9 @@ import { OrderStatus } from '../../../entities/order.entity';
  * 
  * 为 ChatGPT 提供统一的 Function Schema，而不是每个商品一个 Function
  * 这样 ChatGPT 可以：
- * 1. 搜索商品 (search_paymind_products)
- * 2. 购买商品 (buy_paymind_product)
- * 3. 查询订单 (get_paymind_order)
+ * 1. 搜索商品 (search_agentrix_products)
+ * 2. 购买商品 (buy_agentrix_product)
+ * 3. 查询订单 (get_agentrix_order)
  */
 @Injectable()
 export class OpenAIIntegrationService {
@@ -59,8 +59,8 @@ export class OpenAIIntegrationService {
       {
         type: 'function',
         function: {
-          name: 'buy_paymind_product',
-          description: '购买 PayMind Marketplace 中的商品。支持实物商品、服务、NFT等。',
+          name: 'buy_agentrix_product',
+          description: '购买 Agentrix Marketplace 中的商品。支持实物商品、服务、NFT等。',
           parameters: {
             type: 'object',
             properties: {
@@ -79,8 +79,8 @@ export class OpenAIIntegrationService {
       {
         type: 'function',
         function: {
-          name: 'get_paymind_order',
-          description: '查询 PayMind 订单状态和详情',
+          name: 'get_agentrix_order',
+          description: '查询 Agentrix 订单状态和详情',
           parameters: {
             type: 'object',
             properties: {
@@ -111,7 +111,7 @@ export class OpenAIIntegrationService {
 
     try {
       switch (functionName) {
-        case 'search_paymind_products':
+        case 'search_agentrix_products':
           // 使用统一执行器
           return await this.capabilityExecutor.execute(
             'executor_search',
@@ -129,7 +129,7 @@ export class OpenAIIntegrationService {
             },
           );
 
-        case 'buy_paymind_product':
+        case 'buy_agentrix_product':
           return await this.buyProduct(
             parameters as {
               product_id: string;
@@ -143,13 +143,13 @@ export class OpenAIIntegrationService {
             context,
           );
 
-        case 'get_paymind_order':
+        case 'get_agentrix_order':
           return await this.getOrder(
             parameters as { order_id: string },
             context,
           );
 
-        case 'compare_paymind_prices':
+        case 'compare_agentrix_prices':
           // 使用统一执行器
           return await this.capabilityExecutor.execute(
             'executor_compare',
@@ -163,13 +163,13 @@ export class OpenAIIntegrationService {
             },
           );
 
-        case 'pay_paymind_order':
+        case 'pay_agentrix_order':
           return await this.payOrder(
             parameters as { order_id?: string },
             context,
           );
 
-        case 'track_paymind_logistics':
+        case 'track_agentrix_logistics':
           return await this.trackLogistics(
             parameters as { order_id: string },
             context,

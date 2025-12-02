@@ -23,8 +23,8 @@ async function startDocsServer() {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle('PayMind API Documentation')
-    .setDescription('PayMind V3.0 API Documentation - SDK & API Reference')
+    .setTitle('Agentrix API Documentation')
+    .setDescription('Agentrix V3.0 API Documentation - SDK & API Reference')
     .setVersion('3.0.0')
     .addBearerAuth()
     .addTag('wallets', '钱包管理相关接口')
@@ -44,7 +44,7 @@ async function startDocsServer() {
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('/', app, document, {
-    customSiteTitle: 'PayMind API Documentation',
+    customSiteTitle: 'Agentrix API Documentation',
     customCss: '.swagger-ui .topbar { display: none }',
     customfavIcon: '/favicon.ico',
   });
@@ -53,7 +53,7 @@ async function startDocsServer() {
   const host = process.env.DOCS_HOST || '0.0.0.0';
   
   await app.listen(port, host);
-  console.log(`📚 PayMind API Documentation Server is running on: http://${host}:${port}`);
+  console.log(`📚 Agentrix API Documentation Server is running on: http://${host}:${port}`);
   console.log(`📖 Swagger UI: http://${host}:${port}/`);
 }
 

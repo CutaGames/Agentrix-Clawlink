@@ -2,18 +2,18 @@
  * Batch payment example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function batchPaymentExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
     // Create multiple payments in batch
     console.log('Creating batch payments...');
-    const payments = await paymind.payments.createBatch([
+    const payments = await agentrix.payments.createBatch([
       {
         amount: 0.5,
         currency: 'USD',
@@ -43,7 +43,7 @@ async function batchPaymentExample() {
     console.log('\nPolling payment status...');
     for (const payment of payments) {
       try {
-        const completed = await paymind.payments.pollStatus(payment.id, {
+        const completed = await agentrix.payments.pollStatus(payment.id, {
           interval: 2000,
           timeout: 30000,
           onStatusChange: (status) => {

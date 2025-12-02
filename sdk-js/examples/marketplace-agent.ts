@@ -8,12 +8,12 @@
  * 4. Agent creates order and initiates payment
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function marketplaceAgentExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
@@ -23,7 +23,7 @@ async function marketplaceAgentExample() {
     console.log('📦 Part 1: Merchant publishes product to Marketplace');
     console.log('='.repeat(60));
     
-    const product = await paymind.merchants.createProduct({
+    const product = await agentrix.merchants.createProduct({
       name: 'Nike Air Max 2024',
       description: 'Premium running shoes with advanced cushioning technology. Perfect for long-distance running and daily workouts.',
       price: 120,
@@ -72,12 +72,12 @@ async function marketplaceAgentExample() {
     
     // Agent SDK automatically:
     // 1. Identifies product search intent
-    // 2. Calls PayMind Marketplace API
+    // 2. Calls Agentrix Marketplace API
     // 3. Performs semantic vector search
     // 4. Applies filters (price < 150)
     // 5. Returns structured results
     
-    const searchResults = await paymind.agents.searchProducts(userQuery, {
+    const searchResults = await agentrix.agents.searchProducts(userQuery, {
       priceMax: 150,
       currency: 'USD',
       inStock: true,
@@ -130,13 +130,13 @@ async function marketplaceAgentExample() {
       const productToBuy = searchResults.products[0];
       
       // Agent creates order
-      // PayMind will:
-      // 1. Create order draft in PayMind OMS
+      // Agentrix will:
+      // 1. Create order draft in Agentrix OMS
       // 2. Call merchant callback API to get real-time price/inventory
-      // 3. Merchant confirms and returns to PayMind
-      // 4. PayMind generates final order and payment link
+      // 3. Merchant confirms and returns to Agentrix
+      // 4. Agentrix generates final order and payment link
       
-      const order = await paymind.agents.createOrder({
+      const order = await agentrix.agents.createOrder({
         productId: productToBuy.productId,
         userId: 'user_123',
         quantity: 1,
@@ -160,7 +160,7 @@ async function marketplaceAgentExample() {
       console.log('   Amount:', order.amount, order.currency);
       console.log('');
       console.log('📝 Order flow:');
-      console.log('   Agent → PayMind → Merchant → PayMind → Agent → User');
+      console.log('   Agent → Agentrix → Merchant → Agentrix → Agent → User');
       console.log('');
 
       // ============================================
@@ -169,7 +169,7 @@ async function marketplaceAgentExample() {
       console.log('💳 Part 5: Create payment');
       console.log('='.repeat(60));
       
-      const payment = await paymind.payments.create({
+      const payment = await agentrix.payments.create({
         amount: order.amount,
         currency: order.currency,
         description: `Purchase: ${productToBuy.title}`,
@@ -198,7 +198,7 @@ async function marketplaceAgentExample() {
     console.log('⭐ Part 6: Get recommended products for agent');
     console.log('='.repeat(60));
     
-    const recommended = await paymind.agents.getRecommendedProducts('agent_123', {
+    const recommended = await agentrix.agents.getRecommendedProducts('agent_123', {
       limit: 5,
       category: 'shoes',
     });

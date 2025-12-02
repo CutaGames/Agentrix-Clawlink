@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# PayMind V3.0 支付流程测试脚本
+# Agentrix V3.0 支付流程测试脚本
 
 echo "=========================================="
-echo "PayMind V3.0 支付流程测试"
+echo "Agentrix V3.0 支付流程测试"
 echo "=========================================="
 echo ""
 
@@ -25,7 +25,7 @@ if curl -s http://localhost:3000 > /dev/null 2>&1; then
     echo "✅ 前端服务运行正常 (http://localhost:3000)"
 else
     echo "❌ 前端服务未运行，请先启动前端服务"
-    echo "   命令: cd paymindfrontend && npm run dev"
+    echo "   命令: cd agentrixfrontend && npm run dev"
     exit 1
 fi
 

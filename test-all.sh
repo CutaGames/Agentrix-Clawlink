@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PayMind 一键自动化测试脚本
+# Agentrix 一键自动化测试脚本
 # 测试所有功能：网页、API、SDK、交付物
 
 set -e
@@ -18,7 +18,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 FINAL_REPORT="${REPORT_DIR}/test-report-${TIMESTAMP}.html"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  PayMind 自动化测试套件${NC}"
+echo -e "${BLUE}  Agentrix 自动化测试套件${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -68,8 +68,8 @@ echo -e "${BLUE}步骤 2: 安装测试依赖...${NC}"
 if [ ! -d "node_modules" ]; then
   npm install --silent
 fi
-if [ ! -d "paymindfrontend/node_modules" ]; then
-  cd paymindfrontend && npm install --silent && cd ..
+if [ ! -d "agentrixfrontend/node_modules" ]; then
+  cd agentrixfrontend && npm install --silent && cd ..
 fi
 if [ ! -d "sdk-js/node_modules" ]; then
   cd sdk-js && npm install --silent && cd ..
@@ -150,7 +150,7 @@ cat > "${FINAL_REPORT}" << EOF
 <!DOCTYPE html>
 <html>
 <head>
-  <title>PayMind 测试报告 - ${TIMESTAMP}</title>
+  <title>Agentrix 测试报告 - ${TIMESTAMP}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     .header { background: #4CAF50; color: white; padding: 20px; border-radius: 5px; }
@@ -165,7 +165,7 @@ cat > "${FINAL_REPORT}" << EOF
 </head>
 <body>
   <div class="header">
-    <h1>PayMind 自动化测试报告</h1>
+    <h1>Agentrix 自动化测试报告</h1>
     <p>生成时间: $(date)</p>
   </div>
   

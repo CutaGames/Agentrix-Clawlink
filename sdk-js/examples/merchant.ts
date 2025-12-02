@@ -2,18 +2,18 @@
  * Merchant integration example
  */
 
-import { PayMind } from '../src';
+import { Agentrix } from '../src';
 
 async function merchantExample() {
-  const paymind = new PayMind({
-    apiKey: process.env.PAYMIND_API_KEY || 'your-api-key',
-    baseUrl: process.env.PAYMIND_API_URL || 'http://localhost:3001/api',
+  const agentrix = new Agentrix({
+    apiKey: process.env.AGENTRIX_API_KEY || 'your-api-key',
+    baseUrl: process.env.AGENTRIX_API_URL || 'http://localhost:3001/api',
   });
 
   try {
     // 1. Create a product
     console.log('Creating product...');
-    const product = await paymind.merchants.createProduct({
+    const product = await agentrix.merchants.createProduct({
       name: 'Premium Digital Service',
       description: 'Access to premium features',
       price: 99.99,
@@ -29,7 +29,7 @@ async function merchantExample() {
 
     // 2. List products
     console.log('\nListing products...');
-    const products = await paymind.merchants.listProducts({
+    const products = await agentrix.merchants.listProducts({
       page: 1,
       limit: 20,
     });
@@ -38,19 +38,19 @@ async function merchantExample() {
 
     // 3. Get product details
     console.log('\nGetting product details...');
-    const productDetails = await paymind.merchants.getProduct(product.id);
+    const productDetails = await agentrix.merchants.getProduct(product.id);
     console.log('Product details:', productDetails);
 
     // 4. Update product
     console.log('\nUpdating product...');
-    const updatedProduct = await paymind.merchants.updateProduct(product.id, {
+    const updatedProduct = await agentrix.merchants.updateProduct(product.id, {
       price: 89.99,
     });
     console.log('Updated price:', updatedProduct.price);
 
     // 5. Create payment for product
     console.log('\nCreating payment for product...');
-    const payment = await paymind.payments.create({
+    const payment = await agentrix.payments.create({
       amount: updatedProduct.price,
       currency: updatedProduct.currency,
       description: `Purchase: ${updatedProduct.name}`,
@@ -63,7 +63,7 @@ async function merchantExample() {
 
     // 6. List orders
     console.log('\nListing orders...');
-    const orders = await paymind.merchants.listOrders({
+    const orders = await agentrix.merchants.listOrders({
       page: 1,
       limit: 20,
     });

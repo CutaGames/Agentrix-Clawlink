@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { usePayMind } from '../PayMindProvider';
+import { useAgentrix } from '../AgentrixProvider';
 
 interface UseAgentReturn {
   createAutoPayGrant: (params: {
@@ -28,7 +28,7 @@ interface UseAgentReturn {
 }
 
 export function useAgent(): UseAgentReturn {
-  const paymind = usePayMind();
+  const agentrix = useAgentrix();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -43,7 +43,7 @@ export function useAgent(): UseAgentReturn {
       setLoading(true);
       setError(null);
       try {
-        const grant = await paymind.agents.createAutoPayGrant(params);
+        const grant = await agentrix.agents.createAutoPayGrant(params);
         return grant;
       } catch (err: any) {
         setError(err);
@@ -52,14 +52,14 @@ export function useAgent(): UseAgentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   const getAutoPayGrant = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const grant = await paymind.agents.getAutoPayGrant();
+      const grant = await agentrix.agents.getAutoPayGrant();
       return grant;
     } catch (err: any) {
       setError(err);
@@ -67,7 +67,7 @@ export function useAgent(): UseAgentReturn {
     } finally {
       setLoading(false);
     }
-  }, [paymind]);
+  }, [agentrix]);
 
   const getEarnings = useCallback(
     async (agentId: string, params?: {
@@ -77,7 +77,7 @@ export function useAgent(): UseAgentReturn {
       setLoading(true);
       setError(null);
       try {
-        const earnings = await paymind.agents.getEarnings(agentId, params);
+        const earnings = await agentrix.agents.getEarnings(agentId, params);
         return earnings;
       } catch (err: any) {
         setError(err);
@@ -86,7 +86,7 @@ export function useAgent(): UseAgentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   const getCommissions = useCallback(
@@ -98,7 +98,7 @@ export function useAgent(): UseAgentReturn {
       setLoading(true);
       setError(null);
       try {
-        const commissions = await paymind.agents.getCommissions(agentId, params);
+        const commissions = await agentrix.agents.getCommissions(agentId, params);
         return commissions;
       } catch (err: any) {
         setError(err);
@@ -107,7 +107,7 @@ export function useAgent(): UseAgentReturn {
         setLoading(false);
       }
     },
-    [paymind]
+    [agentrix]
   );
 
   return {

@@ -103,7 +103,7 @@ export class AuthController {
       redirectUrl.searchParams.set('token', loginResult.access_token);
       redirectUrl.searchParams.set('userId', loginResult.user.id);
       redirectUrl.searchParams.set('email', loginResult.user.email || '');
-      redirectUrl.searchParams.set('paymindId', loginResult.user.paymindId);
+      redirectUrl.searchParams.set('agentrixId', loginResult.user.agentrixId);
       
       res.redirect(redirectUrl.toString());
     } catch (error) {

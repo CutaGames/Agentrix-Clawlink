@@ -6,17 +6,17 @@ import sys
 
 # 配置
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-PAYMIND_API_URL = "http://localhost:3001/api"  # 本地开发
+AGENTRIX_API_URL = "http://localhost:3001/api"  # 本地开发
 
 if not OPENAI_API_KEY:
     print("❌ 错误: 请设置 OPENAI_API_KEY 环境变量")
     print("   例如: export OPENAI_API_KEY='sk-your-key'")
     sys.exit(1)
 
-# 1. 获取 PayMind Functions
-print("📡 获取 PayMind Functions...")
+# 1. 获取 Agentrix Functions
+print("📡 获取 Agentrix Functions...")
 try:
-    response = requests.get(f"{PAYMIND_API_URL}/openai/functions", timeout=5)
+    response = requests.get(f"{AGENTRIX_API_URL}/openai/functions", timeout=5)
     response.raise_for_status()
     functions_data = response.json()
     functions = [f["function"] for f in functions_data["functions"]]
@@ -24,8 +24,8 @@ try:
     for f in functions:
         print(f"   - {f['name']}")
 except requests.exceptions.RequestException as e:
-    print(f"❌ 无法连接到 PayMind API: {e}")
-    print(f"   请确保后端服务运行在 {PAYMIND_API_URL}")
+    print(f"❌ 无法连接到 Agentrix API: {e}")
+    print(f"   请确保后端服务运行在 {AGENTRIX_API_URL}")
     sys.exit(1)
 
 # 2. 初始化 OpenAI Client
@@ -40,7 +40,7 @@ except Exception as e:
 messages = [
     {
         "role": "system", 
-        "content": "你是 PayMind 购物助手，可以帮助用户搜索和购买商品。当用户想要搜索或购买商品时，使用 PayMind 的 Functions。"
+        "content": "你是 Agentrix 购物助手，可以帮助用户搜索和购买商品。当用户想要搜索或购买商品时，使用 Agentrix 的 Functions。"
     }
 ]
 
@@ -71,10 +71,10 @@ def chat(user_message):
             print(f"\n🤖 ChatGPT 调用 Function: {func_name}")
             print(f"   参数: {json.dumps(func_args, indent=2, ensure_ascii=False)}")
             
-            # 调用 PayMind API
+            # 调用 Agentrix API
             try:
                 result = requests.post(
-                    f"{PAYMIND_API_URL}/openai/function-call",
+                    f"{AGENTRIX_API_URL}/openai/function-call",
                     json={
                         "function": {
                             "name": func_name,
@@ -89,7 +89,7 @@ def chat(user_message):
                 result.raise_for_status()
                 result_data = result.json()
                 
-                print(f"✅ PayMind 返回结果:")
+                print(f"✅ Agentrix 返回结果:")
                 if isinstance(result_data, dict):
                     # 格式化输出
                     if "message" in result_data:
@@ -117,11 +117,11 @@ def chat(user_message):
                 message = response.choices[0].message
                 
             except requests.exceptions.RequestException as e:
-                error_msg = f"调用 PayMind API 失败: {str(e)}"
+                error_msg = f"调用 Agentrix API 失败: {str(e)}"
                 print(f"❌ {error_msg}")
                 return error_msg
             except Exception as e:
-                error_msg = f"处理 PayMind 响应时出错: {str(e)}"
+                error_msg = f"处理 Agentrix 响应时出错: {str(e)}"
                 print(f"❌ {error_msg}")
                 return error_msg
         
@@ -138,7 +138,7 @@ def chat(user_message):
 # 4. 测试对话
 if __name__ == "__main__":
     print("=" * 60)
-    print("🤖 PayMind ChatGPT 集成测试")
+    print("🤖 Agentrix ChatGPT 集成测试")
     print("=" * 60)
     
     # 测试场景1：搜索商品

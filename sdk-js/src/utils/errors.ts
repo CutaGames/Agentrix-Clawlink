@@ -2,54 +2,54 @@
  * Error handling utilities
  */
 
-import { PayMindError } from '../types/common';
+import { AgentrixError } from '../types/common';
 
-export class PayMindSDKError extends Error {
+export class AgentrixSDKError extends Error {
   public code: string;
   public details?: any;
 
-  constructor(error: PayMindError) {
+  constructor(error: AgentrixError) {
     super(error.message);
-    this.name = 'PayMindSDKError';
+    this.name = 'AgentrixSDKError';
     this.code = error.code;
     this.details = error.details;
   }
 }
 
-export class PayMindAPIError extends PayMindSDKError {
+export class AgentrixAPIError extends AgentrixSDKError {
   public statusCode: number;
 
-  constructor(error: PayMindError, statusCode: number) {
+  constructor(error: AgentrixError, statusCode: number) {
     super(error);
-    this.name = 'PayMindAPIError';
+    this.name = 'AgentrixAPIError';
     this.statusCode = statusCode;
   }
 }
 
-export class PayMindValidationError extends PayMindSDKError {
+export class AgentrixValidationError extends AgentrixSDKError {
   constructor(message: string, details?: any) {
     super({
       code: 'VALIDATION_ERROR',
       message,
       details,
     });
-    this.name = 'PayMindValidationError';
+    this.name = 'AgentrixValidationError';
   }
 }
 
-export function handleError(error: any): PayMindSDKError {
+export function handleError(error: any): AgentrixSDKError {
   if (error.response?.data?.error) {
-    return new PayMindAPIError(
+    return new AgentrixAPIError(
       error.response.data.error,
       error.response.status || 500
     );
   }
 
-  if (error instanceof PayMindSDKError) {
+  if (error instanceof AgentrixSDKError) {
     return error;
   }
 
-  return new PayMindSDKError({
+  return new AgentrixSDKError({
     code: 'UNKNOWN_ERROR',
     message: error.message || 'An unknown error occurred',
     details: error,

@@ -46,13 +46,13 @@ async function bootstrap() {
 
   // Swagger documentation for Admin API
   const config = new DocumentBuilder()
-    .setTitle('PayMind Admin API')
-    .setDescription('PayMind 后台管理 API 文档')
+    .setTitle('Agentrix Admin API')
+    .setDescription('Agentrix 后台管理 API 文档')
     .setVersion('1.0.0')
     .addBearerAuth()
     .addTag('admin', '后台管理相关接口')
     .addServer('http://localhost:3002', '本地开发环境')
-    .addServer('https://admin-api.paymind.io', '生产环境')
+    .addServer('https://admin-api.agentrix.io', '生产环境')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {
@@ -61,14 +61,14 @@ async function bootstrap() {
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
     },
-    customSiteTitle: 'PayMind Admin API',
+    customSiteTitle: 'Agentrix Admin API',
   });
 
   // 后台API运行在3002端口
   const port = process.env.ADMIN_PORT || 3002;
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
-  console.log(`🚀 PayMind Admin API is running on: http://${host}:${port}`);
+  console.log(`🚀 Agentrix Admin API is running on: http://${host}:${port}`);
   console.log(`📚 Admin API Documentation: http://${host}:${port}/api/docs`);
 }
 

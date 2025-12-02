@@ -2,10 +2,10 @@
  * Agent Capabilities Resource
  * 
  * 为 Agent 提供自动能力注入功能
- * 接入 SDK 的 Agent 自动拥有所有 PayMind Marketplace 交易能力
+ * 接入 SDK 的 Agent 自动拥有所有 Agentrix Marketplace 交易能力
  */
 
-import { PayMindClient } from '../client';
+import { AgentrixClient } from '../client';
 import { AIPlatform } from '../types/agent-capabilities';
 
 export interface MarketplaceOptions {
@@ -26,7 +26,7 @@ export class AgentCapabilitiesResource {
   private marketplaceOptions: MarketplaceOptions = {};
   private cachedCapabilities: Map<string, CapabilityInfo> = new Map();
 
-  constructor(private client: PayMindClient) {}
+  constructor(private client: AgentrixClient) {}
 
   /**
    * 启用 Marketplace 能力

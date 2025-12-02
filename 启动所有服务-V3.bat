@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ==========================================
-echo 🚀 PayMind Agent V3.0 完整服务启动
+echo 🚀 Agentrix Agent V3.0 完整服务启动
 echo ==========================================
 echo.
 
@@ -26,9 +26,9 @@ if not exist "backend\node_modules" (
     cd ..
 )
 
-if not exist "paymindfrontend\node_modules" (
+if not exist "agentrixfrontend\node_modules" (
     echo 📥 安装前端依赖...
-    cd paymindfrontend
+    cd agentrixfrontend
     call npm install
     cd ..
 )
@@ -41,8 +41,8 @@ if not exist "backend\.env" (
     echo ⚠️  警告: backend\.env 不存在
     echo    请从 .env.example 复制并配置
 )
-if not exist "paymindfrontend\.env.local" (
-    echo ⚠️  警告: paymindfrontend\.env.local 不存在
+if not exist "agentrixfrontend\.env.local" (
+    echo ⚠️  警告: agentrixfrontend\.env.local 不存在
     echo    请从 .env.local.example 复制
 )
 echo.
@@ -63,7 +63,7 @@ echo [4/5] 启动后端服务 (端口 3001)...
 echo    后端将在 http://localhost:3001 启动
 echo    API文档: http://localhost:3001/api/docs
 echo.
-start "PayMind Backend V3.0" cmd /k "cd backend && npm run start:dev"
+start "Agentrix Backend V3.0" cmd /k "cd backend && npm run start:dev"
 timeout /t 5 /nobreak >nul
 echo.
 
@@ -72,14 +72,14 @@ echo [5/5] 启动前端服务 (端口 3000)...
 echo    前端将在 http://localhost:3000 启动
 echo    Agent页面: http://localhost:3000/agent
 echo.
-start "PayMind Frontend V3.0" cmd /k "cd paymindfrontend && npm run dev"
+start "Agentrix Frontend V3.0" cmd /k "cd agentrixfrontend && npm run dev"
 timeout /t 3 /nobreak >nul
 echo.
 
 REM 启动SDK文档（可选）
 echo [可选] 启动SDK文档服务器 (端口 8080)...
 if exist "sdk-js\docs" (
-    start "PayMind SDK Docs" cmd /k "cd sdk-js\docs && npx http-server -p 8080 --cors"
+    start "Agentrix SDK Docs" cmd /k "cd sdk-js\docs && npx http-server -p 8080 --cors"
     timeout /t 2 /nobreak >nul
 ) else (
     echo    ⚠️  SDK文档目录不存在，跳过

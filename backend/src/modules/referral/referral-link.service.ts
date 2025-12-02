@@ -34,7 +34,7 @@ export class ReferralLinkService {
     merchantId?: string,
   ): Promise<ReferralLink> {
     const linkId = `ref_${agentId}_${Date.now()}`;
-    const baseUrl = process.env.FRONTEND_URL || 'https://paymind.ai';
+    const baseUrl = process.env.FRONTEND_URL || 'https://agentrix.ai';
     const link = `${baseUrl}/ref/${linkId}${merchantId ? `?merchant=${merchantId}` : ''}`;
 
     const referralLink: ReferralLink = {
