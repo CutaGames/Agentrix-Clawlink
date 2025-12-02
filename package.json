@@ -1,7 +1,7 @@
 {
-  "name": "paymind-website",
+  "name": "agentrix-website",
   "version": "1.0.0",
-  "description": "PayMind Website and Testing Suite",
+  "description": "Agentrix Website and Testing Suite",
   "scripts": {
     "start:all": "./start-all.sh",
     "test": "./test-all.sh",

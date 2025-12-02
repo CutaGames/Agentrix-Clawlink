@@ -1,8 +1,8 @@
 {
-  "name": "paymind-backend",
+  "name": "agentrix-backend",
   "version": "2.2.0",
-  "description": "PayMind V2.2 Backend API",
-  "author": "PayMind Team",
+  "description": "Agentrix V2.2 Backend API",
+  "author": "Agentrix Team",
   "private": true,
   "license": "MIT",
   "scripts": {

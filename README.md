@@ -1,6 +1,6 @@
-# PayMind V2.2
+# Agentrix V2.2
 
-智能支付中间件与双向市场平台
+智能AI代理平台与双向市场平台
 
 ---
 
@@ -30,12 +30,12 @@ cp .env.example .env
 # 编辑 .env 配置数据库连接
 
 # 2. 配置前端环境变量
-cd ../paymindfrontend
+cd ../agentrixfrontend
 cp .env.local.example .env.local
 
 # 3. 安装依赖
 cd ../backend && npm install
-cd ../paymindfrontend && npm install
+cd ../agentrixfrontend && npm install
 ```
 
 ---
@@ -56,7 +56,7 @@ cd backend
 npm run start:dev
 
 # 终端2 - 启动前端
-cd paymindfrontend
+cd agentrixfrontend
 npm run dev
 ```
 
@@ -82,9 +82,9 @@ npm run dev
 ## 🛠️ 项目结构
 
 ```
-paymind-website/
+agentrix-website/
 ├── backend/              # 后端服务 (NestJS)
-├── paymindfrontend/     # 前端应用 (Next.js)
+├── agentrixfrontend/     # 前端应用 (Next.js)
 ├── contract/            # 智能合约 (Hardhat)
 ├── setup.sh             # 自动安装脚本
 ├── start-dev.sh         # 启动脚本
@@ -101,7 +101,7 @@ paymind-website/
    - 如果使用PostgreSQL，需要配置数据库连接
    - 开发环境可以使用 `synchronize: true` 自动创建表
 
-2. **API URL** (`paymindfrontend/.env.local`)
+2. **API URL** (`agentrixfrontend/.env.local`)
    - 默认: `http://localhost:3001/api`
 
 ### 可选配置
@@ -185,5 +185,3 @@ MIT
 ---
 
 **祝您使用愉快！** 🎉
-
-

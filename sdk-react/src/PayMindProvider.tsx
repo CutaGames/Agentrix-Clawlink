@@ -1,36 +1,36 @@
 /**
- * PayMind Provider for React
+ * Agentrix Provider for React
  */
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import { PayMind, PayMindConfig } from '@paymind/sdk';
+import { Agentrix, AgentrixConfig } from '@agentrix/sdk';
 
-interface PayMindContextType {
-  paymind: PayMind;
+interface AgentrixContextType {
+  agentrix: Agentrix;
 }
 
-const PayMindContext = createContext<PayMindContextType | null>(null);
+const AgentrixContext = createContext<AgentrixContextType | null>(null);
 
-interface PayMindProviderProps {
+interface AgentrixProviderProps {
   children: ReactNode;
-  config: PayMindConfig;
+  config: AgentrixConfig;
 }
 
-export function PayMindProvider({ children, config }: PayMindProviderProps) {
-  const paymind = new PayMind(config);
+export function AgentrixProvider({ children, config }: AgentrixProviderProps) {
+  const agentrix = new Agentrix(config);
 
   return (
-    <PayMindContext.Provider value={{ paymind }}>
+    <AgentrixContext.Provider value={{ agentrix }}>
       {children}
-    </PayMindContext.Provider>
+    </AgentrixContext.Provider>
   );
 }
 
-export function usePayMind() {
-  const context = useContext(PayMindContext);
+export function useAgentrix() {
+  const context = useContext(AgentrixContext);
   if (!context) {
-    throw new Error('usePayMind must be used within a PayMindProvider');
+    throw new Error('useAgentrix must be used within a AgentrixProvider');
   }
-  return context.paymind;
+  return context.agentrix;
 }
 

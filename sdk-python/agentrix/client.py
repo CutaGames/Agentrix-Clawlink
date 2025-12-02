@@ -1,9 +1,9 @@
 """
-PayMind SDK - Main client
+Agentrix SDK - Main client
 """
 
 from typing import Optional
-from .http_client import PayMindClient
+from .http_client import AgentrixClient
 from .resources.payments import PaymentResource
 from .resources.agents import AgentResource
 from .resources.merchants import MerchantResource
@@ -11,8 +11,8 @@ from .resources.webhooks import WebhookHandler
 from .utils.validation import validate_api_key
 
 
-class PayMind:
-    """Main PayMind SDK client"""
+class Agentrix:
+    """Main Agentrix SDK client"""
 
     def __init__(
         self,
@@ -24,9 +24,9 @@ class PayMind:
     ):
         validate_api_key(api_key)
 
-        self._client = PayMindClient(
+        self._client = AgentrixClient(
             api_key=api_key,
-            base_url=base_url or "https://api.paymind.com/api",
+            base_url=base_url or "https://api.agentrix.com/api",
             timeout=timeout,
             retries=retries,
         )

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ========================================
-# PayMind 项目上传到 GitHub (WSL 专用)
+# Agentrix 项目上传到 GitHub (WSL 专用)
 # 仓库: https://github.com/CutaGames/Agentrix
 # ========================================
 
@@ -15,7 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}========================================"
-echo "  上传 PayMind 到 GitHub"
+echo "  上传 Agentrix 到 GitHub"
 echo "  仓库: https://github.com/CutaGames/Agentrix"
 echo -e "========================================${NC}"
 echo ""
@@ -110,7 +110,7 @@ echo ""
 echo -e "${YELLOW}[7/7] 提交并推送到 GitHub...${NC}"
 read -p "请输入提交信息 (直接回车使用默认): " commit_msg
 if [ -z "$commit_msg" ]; then
-    commit_msg="Update: PayMind project $(date '+%Y-%m-%d %H:%M:%S')"
+    commit_msg="Update: Agentrix project $(date '+%Y-%m-%d %H:%M:%S')"
 fi
 
 git commit -m "$commit_msg" || {
