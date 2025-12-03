@@ -9,7 +9,7 @@
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "start:admin": "ts-node src/main-admin.ts",
     "start:admin:dev": "nodemon --watch src --ext ts --exec ts-node src/main-admin.ts",
     "start:debug": "nest start --debug --watch",
@@ -27,6 +27,7 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
     "migration:check": "ts-node src/scripts/check-migrations.ts",
     "migration:fix": "ts-node src/scripts/fix-migrations.ts",
+    "fix:payee-type-enum": "ts-node scripts/fix-payee-type-enum.ts",
     "migration:v3-only": "ts-node src/scripts/run-v3-migrations-only.ts",
     "seed:products": "ts-node src/scripts/seed-products.ts",
     "seed:marketplace": "ts-node src/scripts/seed-marketplace-products.ts",
@@ -38,6 +39,7 @@
     "docs:server": "node scripts/docs-server-8080.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
@@ -94,6 +96,7 @@
     "ts-jest": "^29.1.0",
     "ts-loader": "^9.4.3",
     "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.1.3"
   },

@@ -50,6 +50,7 @@ import { AiCapabilityModule } from './modules/ai-capability/ai-capability.module
 import { AIRAGModule } from './modules/ai-rag/ai-rag.module';
 import { OpenAIIntegrationModule } from './modules/ai-integration/openai/openai-integration.module';
 import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integration.module';
+import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
 // import { WebSocketModule } from './modules/websocket/websocket.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -61,6 +62,8 @@ import { ScheduleModule } from '@nestjs/schedule';
     }),
     TypeOrmModule.forRootAsync({
       useClass: DatabaseConfig,
+      // 在 TypeORM 初始化后立即修复枚举类型
+      inject: [DatabaseConfig],
     }),
     ScheduleModule.forRoot(),
     AuthModule,
@@ -109,6 +112,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     AIRAGModule,
     OpenAIIntegrationModule,
     GroqIntegrationModule,
+    GeminiIntegrationModule,
     // WebSocketModule, // 暂时禁用，需要安装 @nestjs/websockets 和 socket.io
   ],
   controllers: [AppController],

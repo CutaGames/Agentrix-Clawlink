@@ -4,11 +4,22 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
+import { fixEnumTypesAfterSync } from './config/database-post-sync';
 
 async function bootstrap() {
+  // 在 TypeORM synchronize 之前修复枚举类型
+  // 这确保两个表使用相同的枚举类型名称
+  try {
+    await fixEnumTypesBeforeSync();
+  } catch (error: any) {
+    console.warn('⚠️  枚举类型修复失败（可能表不存在，将在 synchronize 时创建）:', error.message);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // 启用rawBody以支持Stripe Webhook
   });
+
 
   // 静态文件服务 - 用于提供头像等文件访问
   app.useStaticAssets(join(process.cwd(), 'uploads'), {

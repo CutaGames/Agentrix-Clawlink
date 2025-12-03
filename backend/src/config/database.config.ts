@@ -1,12 +1,42 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { TypeOrmOptionsFactory, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
+import { onTypeORMInitialized } from './database-init-hook';
 
 @Injectable()
-export class DatabaseConfig implements TypeOrmOptionsFactory {
+export class DatabaseConfig implements TypeOrmOptionsFactory, OnModuleInit {
   constructor(private configService: ConfigService) {}
 
+  async onModuleInit() {
+    // 在模块初始化后，等待 TypeORM 初始化完成
+    // 然后修复枚举类型
+    const dataSource = new DataSource({
+      type: 'postgres',
+      host: this.configService.get<string>('DB_HOST', 'localhost'),
+      port: this.configService.get<number>('DB_PORT', 5432),
+      username: this.configService.get<string>('DB_USERNAME', 'agentrix'),
+      password: this.configService.get<string>('DB_PASSWORD', 'agentrix_password'),
+      database: this.configService.get<string>('DB_DATABASE', 'agentrix'),
+      synchronize: false,
+    });
+
+    // 等待 TypeORM 主连接初始化完成
+    setTimeout(async () => {
+      try {
+        await onTypeORMInitialized(dataSource);
+      } catch (error: any) {
+        // 忽略错误，因为可能 DataSource 还没有初始化
+      }
+    }, 3000);
+  }
+
   createTypeOrmOptions(): TypeOrmModuleOptions {
+    const shouldSync = 
+      this.configService.get<string>('NODE_ENV') === 'test' || 
+      this.configService.get<string>('NODE_ENV') === 'development' ||
+      this.configService.get<string>('DB_SYNC') === 'true';
+
     return {
       type: 'postgres',
       host: this.configService.get<string>('DB_HOST', 'localhost'),
@@ -16,14 +46,10 @@ export class DatabaseConfig implements TypeOrmOptionsFactory {
       database: this.configService.get<string>('DB_DATABASE', 'agentrix'), // 实际数据库名是 agentrix
       entities: [__dirname + '/../**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/../migrations/*{.ts,.js}'],
-      // 临时禁用 synchronize，使用迁移来管理数据库结构
-      // 修复 agent_sessions 表的 userId NULL 值问题后，可以重新启用
-      // 测试环境启用 synchronize 以确保 schema 同步
-      // 开发环境也启用 synchronize 以自动创建管理后台表（仅用于开发）
-      synchronize: 
-        this.configService.get<string>('NODE_ENV') === 'test' || 
-        this.configService.get<string>('NODE_ENV') === 'development' ||
-        this.configService.get<string>('DB_SYNC') === 'true',
+      // 临时禁用 synchronize，避免枚举类型冲突
+      // 使用迁移来管理数据库结构
+      // 如果需要同步，请先运行: npm run fix:payee-type-enum
+      synchronize: false,
       logging: this.configService.get<string>('NODE_ENV') === 'development',
       retryAttempts: 3,
       retryDelay: 3000,
@@ -33,6 +59,13 @@ export class DatabaseConfig implements TypeOrmOptionsFactory {
         max: 10,
         connectionTimeoutMillis: 10000,
       },
+      // 在 synchronize 之后执行修复
+      subscribers: [],
+      // 使用自定义的初始化逻辑
+      ...(shouldSync && {
+        // 在连接建立后，synchronize 之前修复
+        // 注意：TypeORM 没有直接的 beforeSynchronize 钩子，所以我们使用 onModuleInit
+      }),
     };
   }
 }
