@@ -134,7 +134,7 @@ export class SandboxService {
           status: 'pending',
           amount: apiCall.params.amount,
           currency: apiCall.params.currency,
-          paymentUrl: `https://pay.agentrix.com/pay/pay_${Date.now()}`,
+          paymentUrl: `https://pay.paymind.com/pay/pay_${Date.now()}`,
         };
 
       case 'orders.create':

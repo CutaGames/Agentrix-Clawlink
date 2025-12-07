@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { JsonRpcProvider, Wallet, Contract, parseUnits, formatUnits, formatEther, keccak256, AbiCoder, toUtf8Bytes, concat, recoverAddress, zeroPadValue, toBeHex, solidityPackedKeccak256, getBytes } from 'ethers';
+import { JsonRpcProvider, Wallet, Contract, parseUnits, formatUnits, formatEther, keccak256, AbiCoder, toUtf8Bytes, concat, recoverAddress, zeroPadValue, toBeHex, solidityPackedKeccak256, getBytes, Network } from 'ethers';
 import { Payment, PaymentStatus } from '../../entities/payment.entity';
 
 interface QuickPayRequest {
@@ -31,8 +31,8 @@ const ERC8004_ABI = [
 ];
 
 @Injectable()
-export class AgentrixRelayerService {
-  private readonly logger = new Logger(AgentrixRelayerService.name);
+export class PayMindRelayerService {
+  private readonly logger = new Logger(PayMindRelayerService.name);
   private relayerWallet: Wallet;
   private provider: JsonRpcProvider;
   private sessionManagerContract: Contract | null = null;
@@ -57,10 +57,32 @@ export class AgentrixRelayerService {
    */
   private async initializeRelayer() {
     try {
-      // 初始化 Provider
-      const rpcUrl = this.configService.get<string>('RPC_URL') || 'http://localhost:8545';
-      this.logger.log(`Initializing Relayer with RPC: ${rpcUrl}`);
-      this.provider = new JsonRpcProvider(rpcUrl);
+      // 初始化 Provider - 优先使用 RPC_URL，如果没有则使用 BSC_TESTNET_RPC_URL
+      // 默认使用 BSC Testnet (chainId: 97)
+      const rpcUrl = this.configService.get<string>('RPC_URL') 
+        || this.configService.get<string>('BSC_TESTNET_RPC_URL') 
+        || process.env.RPC_URL 
+        || process.env.BSC_TESTNET_RPC_URL
+        || 'https://bsc-testnet.nodereal.io/v1/1eefed273dc64160afd5e328e6c518d6';
+      
+      // 确保 chainId 是数字类型，默认 BSC Testnet (97)
+      const chainIdStr = this.configService.get<string>('CHAIN_ID') || process.env.CHAIN_ID || '97';
+      const chainId = typeof chainIdStr === 'string' ? parseInt(chainIdStr, 10) : (chainIdStr as number);
+      
+      // 验证 chainId 是有效数字
+      if (isNaN(chainId) || chainId <= 0) {
+        throw new Error(`Invalid CHAIN_ID: ${chainIdStr}, must be a positive number`);
+      }
+      
+      // 在 ethers v6 中，使用 Network 构造函数创建自定义网络
+      // 支持未来多链扩展（BSC Testnet=97, BSC Mainnet=56, Ethereum=1, etc.）
+      const network = new Network(
+        `chain-${chainId}`, // name: 使用 chain-{chainId} 格式，便于多链支持
+        chainId,            // chainId: 必须是数字类型
+      );
+      
+      this.logger.log(`Initializing Relayer with RPC: ${rpcUrl}, ChainId: ${chainId} (BSC Testnet)`);
+      this.provider = new JsonRpcProvider(rpcUrl, network);
 
       // 初始化 Relayer 钱包（用于付 Gas）
       const relayerPrivateKey = this.configService.get<string>('RELAYER_PRIVATE_KEY');
@@ -226,11 +248,14 @@ export class AgentrixRelayerService {
       }
 
       // 5. 更新支付记录状态（即时确认）
+      // 注意：这里只更新基本状态，transactionHash 会在 payment.service 中更新
+      // 避免重复保存，让 payment.service 统一管理支付记录的完整更新
       const payment = await this.paymentRepository.findOne({
         where: { id: dto.paymentId },
       });
 
       if (payment) {
+        // 只更新状态和基本 metadata，transactionHash 由 payment.service 更新
         payment.status = PaymentStatus.COMPLETED;
         payment.metadata = {
           ...payment.metadata,
@@ -238,7 +263,11 @@ export class AgentrixRelayerService {
           confirmedAt: new Date().toISOString(),
           sessionId: dto.sessionId,
         };
+        // 注意：这里不保存 transactionHash，因为 payment.service 会统一保存
         await this.paymentRepository.save(payment);
+        this.logger.log(`Relayer: Payment record updated (status only): paymentId=${payment.id}`);
+      } else {
+        this.logger.warn(`Relayer: Payment record not found: paymentId=${dto.paymentId}`);
       }
 
       // 5. 更新 Nonce

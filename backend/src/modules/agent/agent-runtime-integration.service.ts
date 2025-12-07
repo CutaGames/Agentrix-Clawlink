@@ -41,7 +41,16 @@ export class AgentRuntimeIntegrationService {
       // 3. 检查是否有进行中的 Workflow
       const activeWorkflow = await this.runtime.workflow.getWorkflowState(sessionId);
 
-      if (activeWorkflow && activeWorkflow.status === 'active') {
+      // 某些意图应该直接执行，不通过workflow（如查看购物车、结算等）
+      const directIntentSkills = ['view_cart', 'checkout', 'payment'];
+      if (directIntentSkills.includes(intent)) {
+        // 如果workflow正在运行，先取消它
+        if (activeWorkflow && activeWorkflow.status === 'active') {
+          this.logger.log(`Direct intent ${intent} detected, cancelling active workflow ${activeWorkflow.workflowId}`);
+          await this.runtime.workflow.cancelWorkflow(activeWorkflow.id);
+        }
+        // 继续执行下面的逻辑，直接使用skill
+      } else if (activeWorkflow && activeWorkflow.status === 'active') {
         // 如果当前意图是新的搜索查询，应该重置 workflow 而不是继续执行
         if (intent === 'product_search' && activeWorkflow.workflowId === 'ecommerce') {
           // 检查是否是新的搜索查询（与之前的查询不同）

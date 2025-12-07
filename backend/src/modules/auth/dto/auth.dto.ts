@@ -12,10 +12,10 @@ export class RegisterDto {
   @MinLength(6, { message: '密码长度至少6位' })
   password: string;
 
-  @ApiProperty({ description: 'Agentrix ID（可选）', required: false })
+  @ApiProperty({ description: 'PayMind ID（可选）', required: false })
   @IsString()
   @IsOptional()
-  agentrixId?: string;
+  paymindId?: string;
 }
 
 export class LoginDto {

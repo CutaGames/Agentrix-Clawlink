@@ -97,7 +97,7 @@ export class CryptoRailService {
   }
 
   /**
-   * 生成预填充链接（自动填入 Agentrix 合约地址）
+   * 生成预填充链接（自动填入 PayMind 合约地址）
    */
   private async generatePrefillLink(
     provider: 'moonpay' | 'meld',
@@ -106,7 +106,7 @@ export class CryptoRailService {
     userId: string,
   ): Promise<string> {
     const contractAddress = this.configService.get<string>(
-      'AGENTRIX_CONTRACT_ADDRESS',
+      'PAYMIND_CONTRACT_ADDRESS',
     );
     const orderId = `order_${userId}_${Date.now()}`;
 
@@ -212,7 +212,7 @@ export class CryptoRailService {
     userId: string,
   ): Promise<ProviderRoute> {
     const contractAddress = this.configService.get<string>(
-      'AGENTRIX_CONTRACT_ADDRESS',
+      'PAYMIND_CONTRACT_ADDRESS',
     ) || '0x0000000000000000000000000000000000000000';
     const orderId = `order_${userId}_${Date.now()}`;
 

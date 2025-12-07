@@ -17,12 +17,30 @@ export class ProductService {
     private capabilityRegistry: CapabilityRegistryService,
   ) {}
 
-  async getProducts(search?: string) {
-    const where: any = { status: 'active' };
+  async getProducts(search?: string, merchantId?: string, status?: string) {
+    const where: any = {};
+    
+    // 如果指定了merchantId，只查询该商户的商品
+    if (merchantId) {
+      where.merchantId = merchantId;
+    }
+    
+    // 状态过滤（默认只显示active，但商户后台需要看到所有状态）
+    if (status) {
+      where.status = status;
+    } else if (!merchantId) {
+      // 公开查询默认只显示active商品
+      where.status = 'active';
+    }
+    
     if (search) {
       where.name = Like(`%${search}%`);
     }
-    return this.productRepository.find({ where });
+    
+    return this.productRepository.find({ 
+      where,
+      order: { createdAt: 'DESC' }
+    });
   }
 
   async getProduct(id: string) {
@@ -149,7 +167,25 @@ export class ProductService {
       throw new NotFoundException('商品不存在');
     }
 
-    Object.assign(product, dto);
+    // 更新基本字段
+    if (dto.name !== undefined) product.name = dto.name;
+    if (dto.description !== undefined) product.description = dto.description;
+    if (dto.price !== undefined) product.price = dto.price;
+    if (dto.stock !== undefined) product.stock = dto.stock;
+    if (dto.commissionRate !== undefined) product.commissionRate = dto.commissionRate;
+    if (dto.productType !== undefined) product.productType = dto.productType;
+    
+    // 合并metadata而不是完全替换
+    if (dto.metadata) {
+      const existingMetadata = (product.metadata as any) || {};
+      product.metadata = {
+        ...existingMetadata,
+        ...dto.metadata,
+        // 确保currency等关键字段被正确合并
+        currency: dto.metadata.currency || existingMetadata.currency,
+      } as any;
+    }
+    
     const updatedProduct = await this.productRepository.save(product);
 
     // 更新后重新索引到向量数据库

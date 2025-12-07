@@ -5,11 +5,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
-import { fixEnumTypesAfterSync } from './config/database-post-sync';
 
 async function bootstrap() {
-  // 在 TypeORM synchronize 之前修复枚举类型
-  // 这确保两个表使用相同的枚举类型名称
   try {
     await fixEnumTypesBeforeSync();
   } catch (error: any) {
@@ -17,25 +14,27 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    rawBody: true, // 启用rawBody以支持Stripe Webhook
+    rawBody: true,
   });
 
-
-  // 静态文件服务 - 用于提供头像等文件访问
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/api/uploads/',
   });
 
-  // Enable CORS
   const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  const corsOrigins = corsOrigin.split(',').map(origin => origin.trim());
+  
+  // 允许 GPTs Actions 调用（OpenAI 的服务器）
+  // GPTs Actions 可能来自 OpenAI 的服务器，需要允许所有来源或特定来源
+  const allowGPTs = process.env.ALLOW_GPTs === 'true' || process.env.NODE_ENV === 'production';
+  
   app.enableCors({
-    origin: corsOrigin.split(',').map(origin => origin.trim()),
+    origin: allowGPTs ? true : corsOrigins, // 生产环境允许所有来源（GPTs 需要），开发环境限制
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'], // 添加 X-API-Key 支持
   });
 
-  // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -44,18 +43,14 @@ async function bootstrap() {
     }),
   );
 
-  // Global exception filter
   const { HttpExceptionFilter } = await import('./common/filters/http-exception.filter');
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Global logging interceptor
   const { LoggingInterceptor } = await import('./common/interceptors/logging.interceptor');
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  // API prefix
   app.setGlobalPrefix('api');
 
-  // Swagger documentation
   const config = new DocumentBuilder()
     .setTitle('Agentrix API')
     .setDescription('Agentrix V7.0 API Documentation - ERC-8004 Session Keys & QuickPay')
@@ -73,6 +68,7 @@ async function bootstrap() {
     .addServer('http://localhost:3001', '本地开发环境（API文档）')
     .addServer('https://api.agentrix.io', '生产环境')
     .build();
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: {
@@ -83,7 +79,6 @@ async function bootstrap() {
     customSiteTitle: 'Agentrix API V7.0',
   });
 
-  // 主API运行在3001端口（用于API文档）
   const port = process.env.PORT || 3001;
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
@@ -92,3 +87,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+

@@ -10,6 +10,7 @@ import { AutoFulfillmentService } from './auto-fulfillment.service';
 import { MultiChainAccountService } from './multi-chain-account.service';
 import { ReconciliationService } from './reconciliation.service';
 import { SettlementRulesService } from './settlement-rules.service';
+import { MerchantProfileService, UpdateMerchantProfileDto } from './merchant-profile.service';
 import { User } from '../../entities/user.entity';
 
 @Controller('merchant')
@@ -24,6 +25,7 @@ export class MerchantController {
     private multiChainAccountService: MultiChainAccountService,
     private reconciliationService: ReconciliationService,
     private settlementRulesService: SettlementRulesService,
+    private merchantProfileService: MerchantProfileService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
   ) {}
@@ -235,6 +237,18 @@ export class MerchantController {
       success: true,
       settings: user.metadata.paymentSettings,
     };
+  }
+
+  // ========== 商户信息管理 ==========
+
+  @Get('profile')
+  async getProfile(@Request() req) {
+    return this.merchantProfileService.getProfile(req.user.id);
+  }
+
+  @Post('profile')
+  async updateProfile(@Request() req, @Body() dto: UpdateMerchantProfileDto) {
+    return this.merchantProfileService.updateProfile(req.user.id, dto);
   }
 }
 

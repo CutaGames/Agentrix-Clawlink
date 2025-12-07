@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ethers } from 'ethers';
+import { ethers, Network } from 'ethers';
 import { PaymentService } from '../payment/payment.service';
 import { CommissionService } from '../commission/commission.service';
 import { PaymentStatus } from '../../entities/payment.entity';
@@ -17,15 +17,24 @@ export class ContractListenerService implements OnModuleInit {
     private paymentService: PaymentService,
     private commissionService: CommissionService,
   ) {
-    // 优先使用RPC_URL，如果没有则使用ETHEREUM_RPC_URL
-    const rpcUrl = this.configService.get<string>(
-      'RPC_URL',
-      this.configService.get<string>(
-        'ETHEREUM_RPC_URL',
-        'https://eth-mainnet.g.alchemy.com/v2/demo',
-      ),
+    // 优先使用RPC_URL，如果没有则使用BSC_TESTNET_RPC_URL，默认使用 BSC Testnet
+    const rpcUrl = this.configService.get<string>('RPC_URL') 
+      || this.configService.get<string>('BSC_TESTNET_RPC_URL')
+      || process.env.RPC_URL 
+      || process.env.BSC_TESTNET_RPC_URL
+      || 'https://bsc-testnet.nodereal.io/v1/1eefed273dc64160afd5e328e6c518d6';
+    
+    // 确保 chainId 是数字类型，默认 BSC Testnet (97)
+    const chainIdStr = this.configService.get<string>('CHAIN_ID') || process.env.CHAIN_ID || '97';
+    const chainId = typeof chainIdStr === 'string' ? parseInt(chainIdStr, 10) : (chainIdStr as number);
+    
+    // 创建自定义 Network 对象（ethers v6 要求）
+    const network = new Network(
+      `chain-${chainId}`, // name
+      chainId,            // chainId (必须是数字)
     );
-    this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    
+    this.provider = new ethers.JsonRpcProvider(rpcUrl, network);
   }
 
   async onModuleInit() {

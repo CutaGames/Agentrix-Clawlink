@@ -103,7 +103,7 @@ export class AuthController {
       redirectUrl.searchParams.set('token', loginResult.access_token);
       redirectUrl.searchParams.set('userId', loginResult.user.id);
       redirectUrl.searchParams.set('email', loginResult.user.email || '');
-      redirectUrl.searchParams.set('agentrixId', loginResult.user.agentrixId);
+      redirectUrl.searchParams.set('paymindId', loginResult.user.paymindId);
       
       res.redirect(redirectUrl.toString());
     } catch (error) {
@@ -216,4 +216,7 @@ export class AuthController {
     return this.socialAccountService.getUserSocialAccounts(req.user.id);
   }
 }
+
+
+
 

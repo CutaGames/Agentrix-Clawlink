@@ -15,7 +15,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       context.getClass(),
     ]);
     if (isPublic) {
-      return true;
+      // 对于Public路由，尝试解析token（如果存在），但不强制要求
+      // 这样可以在有token时获取用户信息，但没有token时也能正常工作
+      return super.canActivate(context).catch(() => true);
     }
     return super.canActivate(context);
   }

@@ -23,7 +23,7 @@ export class MPCSignatureService {
 
   /**
    * 场景 1: 商户主动支付（需要分片 A + B）
-   * 商户在前端签名，Agentrix 在后端签名
+   * 商户在前端签名，PayMind 在后端签名
    */
   async signWithShardAAndB(
     merchantId: string,
@@ -73,7 +73,7 @@ export class MPCSignatureService {
 
   /**
    * 场景 3: 商户提现（需要分片 A + C）
-   * 商户提现，不需要 Agentrix
+   * 商户提现，不需要 PayMind
    */
   async signWithShardAAndC(
     encryptedShardA: string,

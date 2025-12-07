@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { Order, AssetType, OrderStatus } from '../../entities/order.entity';
 import { CreateOrderDto } from './dto/order.dto';
 
@@ -36,9 +36,38 @@ export class OrderService {
     return this.orderRepository.save(order);
   }
 
-  async getOrders(userId: string) {
+  async getOrders(
+    userId?: string, 
+    merchantId?: string,
+    status?: OrderStatus,
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    const where: any = {};
+    
+    // 支持按userId查询（买家视角）
+    if (userId) {
+      where.userId = userId;
+    }
+    
+    // 支持按merchantId查询（商户视角）
+    if (merchantId) {
+      where.merchantId = merchantId;
+    }
+    
+    // 状态过滤
+    if (status) {
+      where.status = status;
+    }
+    
+    // 日期范围过滤
+    if (startDate && endDate) {
+      where.createdAt = Between(startDate, endDate);
+    }
+    
     return this.orderRepository.find({
-      where: { userId },
+      where,
+      relations: ['user', 'product'],
       order: { createdAt: 'DESC' },
     });
   }

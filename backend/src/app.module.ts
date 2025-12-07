@@ -1,16 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseConfig } from './config/database.config';
+import { AuthModule } from './modules/auth/auth.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { AutoPayModule } from './modules/auto-pay/auto-pay.module';
 import { ProductModule } from './modules/product/product.module';
 import { CommissionModule } from './modules/commission/commission.module';
 import { OrderModule } from './modules/order/order.module';
-import { AuthModule } from './modules/auth/auth.module';
 import { ContractModule } from './modules/contract/contract.module';
 import { UserModule } from './modules/user/user.module';
 import { NotificationModule } from './modules/notification/notification.module';
@@ -51,8 +52,7 @@ import { AIRAGModule } from './modules/ai-rag/ai-rag.module';
 import { OpenAIIntegrationModule } from './modules/ai-integration/openai/openai-integration.module';
 import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integration.module';
 import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
-// import { WebSocketModule } from './modules/websocket/websocket.module';
-import { ScheduleModule } from '@nestjs/schedule';
+import { CartModule } from './modules/cart/cart.module';
 
 @Module({
   imports: [
@@ -62,7 +62,6 @@ import { ScheduleModule } from '@nestjs/schedule';
     }),
     TypeOrmModule.forRootAsync({
       useClass: DatabaseConfig,
-      // 在 TypeORM 初始化后立即修复枚举类型
       inject: [DatabaseConfig],
     }),
     ScheduleModule.forRoot(),
@@ -113,10 +112,9 @@ import { ScheduleModule } from '@nestjs/schedule';
     OpenAIIntegrationModule,
     GroqIntegrationModule,
     GeminiIntegrationModule,
-    // WebSocketModule, // 暂时禁用，需要安装 @nestjs/websockets 和 socket.io
+    CartModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
-

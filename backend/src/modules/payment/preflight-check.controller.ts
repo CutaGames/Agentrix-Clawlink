@@ -18,6 +18,8 @@ export class PreflightCheckController {
     @Query('amount') amount: string,
     @Query('currency') currency: string = 'USDC',
   ): Promise<PreflightResult> {
+    // 注意：统一兑换成 BSC 链的 USDC，进入分润佣金合约结算
+    // 不再需要 chain 和 targetCryptoCurrency 参数
     return this.preflightCheckService.check(
       req.user.id,
       parseFloat(amount),

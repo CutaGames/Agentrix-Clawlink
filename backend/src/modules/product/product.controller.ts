@@ -20,6 +20,7 @@ import { ProductService } from './product.service';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { UserRole } from '../../entities/user.entity';
 
 @ApiTags('products')
 @Controller('products')
@@ -30,8 +31,19 @@ export class ProductController {
   @ApiOperation({ summary: '获取商品列表' })
   @ApiResponse({ status: 200, description: '返回商品列表' })
   @Public()
-  async getProducts(@Query('search') search?: string) {
-    return this.productService.getProducts(search);
+  async getProducts(
+    @Query('search') search?: string,
+    @Query('merchantId') merchantId?: string,
+    @Query('status') status?: string,
+    @Request() req?: any,
+  ) {
+    // 如果用户已登录且是商户，且没有指定merchantId，默认使用当前用户的merchantId
+    let finalMerchantId = merchantId;
+    if (!finalMerchantId && req?.user?.roles?.includes(UserRole.MERCHANT)) {
+      finalMerchantId = req.user.id;
+    }
+    
+    return this.productService.getProducts(search, finalMerchantId, status);
   }
 
   @Get(':id')

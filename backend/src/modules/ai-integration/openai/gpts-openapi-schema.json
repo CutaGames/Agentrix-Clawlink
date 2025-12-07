@@ -1,0 +1,309 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Agentrix Marketplace API",
+    "version": "1.0.2",
+    "description": "Agentrix Marketplace API for GPTs. Supports product search, product details, order creation, and payment initiation."
+  },
+  "servers": [
+    {
+      "url": "https://api.agentrix.top/api",
+      "description": "Agentrix API Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API Key for identifying the GPT user session."
+      }
+    },
+    "schemas": {
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Product" }
+              },
+              "total": { "type": "integer" },
+              "query": { "type": "string" }
+            },
+            "required": ["items"]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "ProductResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Product" }
+        },
+        "required": ["success", "data"]
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Product ID" },
+          "title": { "type": "string", "description": "Product title" },
+          "description": { "type": "string" },
+          "price": { "type": "number" },
+          "currency": { "type": "string", "default": "CNY" },
+          "priceDisplay": { "type": "string" },
+          "image": { "type": "string", "format": "uri" },
+          "images": {
+            "type": "array",
+            "items": { "type": "string", "format": "uri" }
+          },
+          "category": { "type": "string" },
+          "productType": {
+            "type": "string",
+            "enum": ["physical", "service", "crypto", "nft"]
+          },
+          "stock": { "type": "integer" },
+          "inStock": { "type": "boolean" }
+        },
+        "required": ["id", "title", "price"]
+      },
+      "ShippingAddress": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "phone": { "type": "string" },
+          "addressLine": { "type": "string" },
+          "city": { "type": "string" },
+          "postalCode": { "type": "string" },
+          "country": { "type": "string" }
+        },
+        "required": ["name", "phone", "addressLine"]
+      },
+      "CreateOrderInput": {
+        "type": "object",
+        "properties": {
+          "productId": { "type": "string" },
+          "quantity": { "type": "integer", "default": 1, "minimum": 1 },
+          "shippingAddress": { "$ref": "#/components/schemas/ShippingAddress" },
+          "appointmentTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "For service-type products."
+          },
+          "contactInfo": { "type": "string" },
+          "walletAddress": { "type": "string" },
+          "chain": {
+            "type": "string",
+            "enum": ["ethereum", "polygon", "solana", "bsc"]
+          }
+        },
+        "required": ["productId"]
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Order" }
+        },
+        "required": ["success", "data"]
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "orderId": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "paid", "processing", "shipped", "delivered", "cancelled"]
+          },
+          "amount": { "type": "number" },
+          "currency": { "type": "string" },
+          "productId": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["orderId", "status", "amount", "currency"]
+      },
+      "PaymentInput": {
+        "type": "object",
+        "properties": {
+          "orderId": { "type": "string" },
+          "method": {
+            "type": "string",
+            "enum": ["crypto", "fiat", "usdc"]
+          }
+        },
+        "required": ["orderId"]
+      },
+      "PaymentResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Payment" }
+        },
+        "required": ["success", "data"]
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "paymentId": { "type": "string" },
+          "paymentUrl": { "type": "string", "format": "uri" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "completed", "failed"]
+          },
+          "orderId": { "type": "string" }
+        },
+        "required": ["paymentId", "status"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "error": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "required": ["success"]
+      }
+    }
+  },
+  "security": [{ "ApiKeyAuth": [] }],
+  "paths": {
+    "/marketplace/search": {
+      "get": {
+        "summary": "Search products",
+        "operationId": "searchProducts",
+        "tags": ["Marketplace"],
+        "parameters": [
+          { "name": "query", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "category", "in": "query", "schema": { "type": "string" } },
+          { "name": "priceMin", "in": "query", "schema": { "type": "number" } },
+          { "name": "priceMax", "in": "query", "schema": { "type": "number" } },
+          { "name": "currency", "in": "query", "schema": { "type": "string", "default": "CNY" } },
+          { "name": "inStock", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10, "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace/products/{id}": {
+      "get": {
+        "summary": "Get product details",
+        "operationId": "getProduct",
+        "tags": ["Marketplace"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Product not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace/orders": {
+      "post": {
+        "summary": "Create an order",
+        "operationId": "createOrder",
+        "tags": ["Orders"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateOrderInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrderResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace/payments": {
+      "post": {
+        "summary": "Initiate a payment",
+        "operationId": "initiatePayment",
+        "tags": ["Payments"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PaymentInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

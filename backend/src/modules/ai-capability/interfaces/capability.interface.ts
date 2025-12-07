@@ -1,7 +1,7 @@
 /**
  * AI Capability 统一能力接口定义
  * 
- * 为 Agentrix Marketplace 所有商品/服务/链上资产/插件建立统一能力 API
+ * 为 PayMind Marketplace 所有商品/服务/链上资产/插件建立统一能力 API
  * 供所有 AI 模型（ChatGPT、Claude、Gemini等）调用
  */
 

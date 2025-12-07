@@ -30,13 +30,17 @@ export class CartService {
    */
   async getCart(userIdOrSessionId: string, isSessionId: boolean = false): Promise<Cart> {
     const cacheKey = isSessionId ? `cart:session:${userIdOrSessionId}` : `cart:${userIdOrSessionId}`;
+    
+    // 先尝试从缓存获取
     const cached = await this.cacheService.get<Cart>(cacheKey);
     
     if (cached) {
+      this.logger.debug(`从缓存获取购物车: ${cacheKey}, 商品数量: ${cached.items?.length || 0}`);
       return cached;
     }
 
-    // 返回空购物车
+    // 如果缓存中没有，返回空购物车
+    this.logger.debug(`缓存中没有购物车，返回空购物车: ${cacheKey}`);
     return {
       userId: userIdOrSessionId,
       items: [],
@@ -119,6 +123,7 @@ export class CartService {
     const cacheKey = isSessionId ? `cart:session:${cart.userId}` : `cart:${cart.userId}`;
     // 购物车缓存7天
     await this.cacheService.set(cacheKey, cart, 7 * 24 * 60 * 60);
+    this.logger.debug(`保存购物车到缓存: ${cacheKey}, 商品数量: ${cart.items?.length || 0}`);
   }
 
   /**

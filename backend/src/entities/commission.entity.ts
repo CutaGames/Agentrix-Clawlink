@@ -10,7 +10,7 @@ import { AssetType } from './order.entity';
 export enum PayeeType {
   AGENT = 'agent',
   MERCHANT = 'merchant',
-  AGENTRIX = 'agentrix',
+  PAYMIND = 'paymind',
 }
 
 export enum AgentType {

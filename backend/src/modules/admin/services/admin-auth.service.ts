@@ -30,7 +30,7 @@ export class AdminAuthService {
     }
 
     const username = process.env.ADMIN_DEFAULT_USERNAME || 'admin';
-    const email = process.env.ADMIN_DEFAULT_EMAIL || 'admin@agentrix.local';
+    const email = process.env.ADMIN_DEFAULT_EMAIL || 'admin@paymind.local';
     const password = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123456';
 
     // 创建超级管理员角色（如果不存在）

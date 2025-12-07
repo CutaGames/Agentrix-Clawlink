@@ -94,7 +94,7 @@ export class DeploymentService {
 
       // 生成访问链接
       const slug = await this.generateSlug(deployment.agentId);
-      deployment.url = `https://agentrix.ai/agent/${slug}`;
+      deployment.url = `https://paymind.ai/agent/${slug}`;
       deployment.status = DeploymentStatus.ACTIVE;
       deployment.metadata = {
         deploymentId: `deploy_${deploymentId}`,

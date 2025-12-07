@@ -31,7 +31,7 @@ export class MPCWallet {
   currency: string; // 币种（USDC, USDT, etc.）
 
   @Column({ type: 'text', nullable: true })
-  encryptedShardB: string; // 加密的分片 B（Agentrix 持有）
+  encryptedShardB: string; // 加密的分片 B（PayMind 持有）
 
   @Column({ type: 'boolean', default: true })
   isActive: boolean; // 是否激活

@@ -8,9 +8,9 @@ export const AppDataSource = new DataSource({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   // 统一使用与 database.config.ts 相同的默认值
-  username: process.env.DB_USERNAME || 'agentrix',
-  password: process.env.DB_PASSWORD || 'agentrix_password',
-  database: process.env.DB_DATABASE || 'agentrix', // 实际数据库名是 agentrix
+  username: process.env.DB_USERNAME || 'paymind',
+  password: process.env.DB_PASSWORD || 'paymind_password',
+  database: process.env.DB_DATABASE || 'paymind', // 实际数据库名是 paymind
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../migrations/*{.ts,.js}'],
   synchronize: false,

@@ -26,7 +26,7 @@ export class User {
   id: string;
 
   @Column({ unique: true })
-  agentrixId: string;
+  paymindId: string;
 
   @Column({
     type: 'enum',

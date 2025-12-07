@@ -24,7 +24,7 @@ export type OrderType = 'nft' | 'virtual' | 'service' | 'product' | 'physical';
 export interface CommissionConfig {
   merchant: number;  // 商家分成比例（0-1）
   agent: number;     // Agent分成比例（0-1）
-  agentrix: number;  // Agentrix分成比例（0-1）
+  paymind: number;  // PayMind分成比例（0-1）
 }
 
 /**
@@ -53,20 +53,20 @@ export class CommissionCalculatorService {
 
   /**
    * 根据产品类型获取佣金比例（新规则）
-   * 实体商品：总佣金3%（推荐Agent 0.9% + 执行Agent 2.1% + Agentrix 0.5%）
-   * 服务类：总佣金5%（推荐Agent 1.5% + 执行Agent 3.5% + Agentrix 1%）
+   * 实体商品：总佣金3%（推荐Agent 0.9% + 执行Agent 2.1% + PayMind 0.5%）
+   * 服务类：总佣金5%（推荐Agent 1.5% + 执行Agent 3.5% + PayMind 1%）
    * 链上资产：根据场景不同（在calculateAndRecordCommission中处理）
    */
   getCommissionRates(
     productType: ProductType | string,
-  ): { totalRate: number; recommendationRate: number; executionRate: number; agentrixRate: number } {
+  ): { totalRate: number; recommendationRate: number; executionRate: number; paymindRate: number } {
     if (productType === ProductType.PHYSICAL || productType === 'physical') {
       // 实体商品：总佣金3%
       return {
         totalRate: 0.03,
         recommendationRate: 0.009, // 0.9%
         executionRate: 0.021, // 2.1%
-        agentrixRate: 0.005, // 0.5%
+        paymindRate: 0.005, // 0.5%
       };
     } else if (productType === ProductType.SERVICE || productType === 'service') {
       // 服务类：总佣金5%
@@ -74,16 +74,16 @@ export class CommissionCalculatorService {
         totalRate: 0.05,
         recommendationRate: 0.015, // 1.5%
         executionRate: 0.035, // 3.5%
-        agentrixRate: 0.01, // 1%
+        paymindRate: 0.01, // 1%
       };
     } else {
       // 链上资产：根据场景不同，默认使用NFT二级市场比例
-      // 平台聚合NFT：2.5%（Agentrix 1% + 其他 1.5%）
+      // 平台聚合NFT：2.5%（PayMind 1% + 其他 1.5%）
       return {
         totalRate: 0.025,
         recommendationRate: 0.0075, // 0.75%
         executionRate: 0.0175, // 1.75%
-        agentrixRate: 0.01, // 1%
+        paymindRate: 0.01, // 1%
       };
     }
   }
@@ -95,13 +95,13 @@ export class CommissionCalculatorService {
   getFeeRates(
     orderType: OrderType,
     hasAgent: boolean,
-  ): { agentRate: number; agentrixRate: number } {
-    // Agentrix手续费
-    let agentrixRate: number;
+  ): { agentRate: number; paymindRate: number } {
+    // PayMind手续费
+    let paymindRate: number;
     if (orderType === 'product' || orderType === 'physical') {
-      agentrixRate = 0.005; // 实体商品：0.5%
+      paymindRate = 0.005; // 实体商品：0.5%
     } else {
-      agentrixRate = 0.01; // 其他（服务/数字资产）：1%
+      paymindRate = 0.01; // 其他（服务/数字资产）：1%
     }
 
     // Agent手续费（只和商品属性有关系，跟转换没关系）
@@ -114,7 +114,7 @@ export class CommissionCalculatorService {
       }
     }
 
-    return { agentRate, agentrixRate };
+    return { agentRate, paymindRate };
   }
 
   /**
@@ -130,10 +130,10 @@ export class CommissionCalculatorService {
     hasProvider: boolean = false,
     providerRate: number = 0.03,
   ): number {
-    const { agentRate, agentrixRate } = this.getFeeRates(orderType, hasAgent);
+    const { agentRate, paymindRate } = this.getFeeRates(orderType, hasAgent);
     
-    // 总手续费 = Provider手续费 + Agent手续费 + Agentrix手续费
-    return providerRate + agentRate + agentrixRate;
+    // 总手续费 = Provider手续费 + Agent手续费 + PayMind手续费
+    return providerRate + agentRate + paymindRate;
   }
 
   /**
@@ -149,7 +149,7 @@ export class CommissionCalculatorService {
         commission: {
           merchant: 0.88,
           agent: 0.06,
-          agentrix: 0.06,
+          paymind: 0.06,
         },
         settlement: {
           type: 'instant',
@@ -166,7 +166,7 @@ export class CommissionCalculatorService {
         commission: {
           merchant: 0.82,
           agent: 0.10,
-          agentrix: 0.08,
+          paymind: 0.08,
         },
         settlement: {
           type: 'service_started',
@@ -182,7 +182,7 @@ export class CommissionCalculatorService {
         commission: {
           merchant: 0.78,
           agent: 0.12,
-          agentrix: 0.10,
+          paymind: 0.10,
         },
         settlement: {
           type: 'delivery_confirmed',
@@ -198,7 +198,7 @@ export class CommissionCalculatorService {
       commission: {
         merchant: 0.78,
         agent: 0.12,
-        agentrix: 0.10,
+        paymind: 0.10,
       },
       settlement: {
         type: 'delivery_confirmed',
@@ -268,6 +268,11 @@ export class CommissionCalculatorService {
       payment.metadata?.platformFeeRate ??
       0;
     const platformTax = this.roundCurrency(baseAmount * platformTaxRate);
+    
+    // On-ramp 平台费用（Agentrix 平台额外收取的费用）
+    // 注意：这个费用是在用户支付时额外收取的，应该被包含在 platformFee 中
+    const onRampAgentrixFee = payment.metadata?.agentrixFee || payment.metadata?.onRampAgentrixFee || 0;
+    
     const netRevenue = Math.max(this.roundCurrency(baseAmount - platformTax), 0);
 
     const rateOverrides = {
@@ -282,18 +287,22 @@ export class CommissionCalculatorService {
 
     const rates = resolveRates(assetType, rateOverrides);
 
-    let agentrixBaseRevenue = this.roundCurrency(netRevenue * rates.baseRate);
+    let paymindBaseRevenue = this.roundCurrency(netRevenue * rates.baseRate);
     let intendedCommissionPool = this.roundCurrency(netRevenue * rates.poolRate);
     let commissionPool = intendedCommissionPool;
 
+    // 将 On-ramp 平台费用添加到 PayMind 最终收入中
+    // 这样在分账时，这部分费用会被正确分配到 paymindTreasury
+    const paymindBaseRevenueWithOnRampFee = paymindBaseRevenue + onRampAgentrixFee;
+
     const promoterId = payment.metadata?.promoterId || order?.promoterId;
     let promoterPayout = 0;
-    if (promoterId && agentrixBaseRevenue > 0) {
+    if (promoterId && paymindBaseRevenueWithOnRampFee > 0) {
       promoterPayout = this.roundCurrency(
-        agentrixBaseRevenue * PROMOTER_SHARE_OF_BASE,
+        paymindBaseRevenueWithOnRampFee * PROMOTER_SHARE_OF_BASE,
       );
     }
-    let agentrixFinalRevenue = agentrixBaseRevenue - promoterPayout;
+    let paymindFinalRevenue = paymindBaseRevenueWithOnRampFee - promoterPayout;
 
     const refAgentId =
       payment.metadata?.recommendationAgentId ||
@@ -314,7 +323,7 @@ export class CommissionCalculatorService {
     let developerAmount = 0;
 
     let merchantAmount = this.roundCurrency(
-      netRevenue - agentrixBaseRevenue - commissionPool - channelFee,
+      netRevenue - paymindBaseRevenue - commissionPool - channelFee,
     );
     if (merchantAmount < 0) {
       merchantAmount = 0;
@@ -346,10 +355,10 @@ export class CommissionCalculatorService {
         executorPayout = executionShare;
       }
 
-      agentrixBaseRevenue = this.roundCurrency(
-        netRevenue * devProfile.agentrix,
+      paymindBaseRevenue = this.roundCurrency(
+        netRevenue * devProfile.paymind,
       );
-      agentrixFinalRevenue = agentrixBaseRevenue - promoterPayout;
+      paymindFinalRevenue = paymindBaseRevenue - promoterPayout;
       commissionPool = this.roundCurrency(
         referrerPayout + executorPayout + rebatePayout,
       );
@@ -367,8 +376,8 @@ export class CommissionCalculatorService {
       } else if (scene === 'execution-only') {
         executorPayout = commissionPool;
       } else {
-        agentrixFinalRevenue = this.roundCurrency(
-          agentrixFinalRevenue + commissionPool,
+        paymindFinalRevenue = this.roundCurrency(
+          paymindFinalRevenue + commissionPool,
         );
         commissionPool = 0;
       }
@@ -436,19 +445,23 @@ export class CommissionCalculatorService {
     if (rebatePayout > 0) {
       await createCommissionRecord({
         payeeId: SYSTEM_REBATE_POOL_ID,
-        payeeType: PayeeType.AGENTRIX,
+        payeeType: PayeeType.PAYMIND,
         amount: rebatePayout,
         breakdown: { type: 'rebate_pool' },
       });
-      agentrixFinalRevenue = this.roundCurrency(agentrixFinalRevenue + rebatePayout);
+      paymindFinalRevenue = this.roundCurrency(paymindFinalRevenue + rebatePayout);
     }
 
-    if (agentrixFinalRevenue > 0) {
+    if (paymindFinalRevenue > 0) {
       await createCommissionRecord({
-        payeeId: 'agentrix',
-      payeeType: PayeeType.AGENTRIX,
-        amount: agentrixFinalRevenue,
-        breakdown: { type: 'platform', promoterPayout },
+        payeeId: 'paymind',
+        payeeType: PayeeType.PAYMIND,
+        amount: paymindFinalRevenue,
+        breakdown: { 
+          type: 'platform', 
+          promoterPayout,
+          onRampAgentrixFee: onRampAgentrixFee > 0 ? onRampAgentrixFee : undefined, // 记录 On-ramp 平台费用
+        },
       });
     }
 
@@ -496,8 +509,8 @@ export class CommissionCalculatorService {
       channelFee,
       baseRate: rates.baseRate,
       poolRate: rates.poolRate,
-      agentrixBaseRevenue,
-      agentrixFinalRevenue,
+      paymindBaseRevenue,
+      paymindFinalRevenue,
       promoterPayout,
       commissionPoolRequested: intendedCommissionPool,
       commissionPoolDistributed,
@@ -505,6 +518,7 @@ export class CommissionCalculatorService {
       executorPayout,
       rebatePayout,
       merchantAmount,
+      onRampAgentrixFee: onRampAgentrixFee > 0 ? onRampAgentrixFee : undefined, // 记录 On-ramp 平台费用
     };
 
     payment.metadata = {
@@ -521,7 +535,7 @@ export class CommissionCalculatorService {
     };
 
     this.logger.log(
-      `佣金计算完成: payment=${paymentId}, asset=${assetType}, netRevenue=${netRevenue}, agentrix=${agentrixFinalRevenue}, pool=${commissionPoolDistributed}, merchant=${merchantAmount}`,
+      `佣金计算完成: payment=${paymentId}, asset=${assetType}, netRevenue=${netRevenue}, paymind=${paymindFinalRevenue}, pool=${commissionPoolDistributed}, merchant=${merchantAmount}`,
     );
 
     return commissions;

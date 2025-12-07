@@ -186,13 +186,13 @@ export class AutoEarnExecutor implements ICapabilityExecutor {
     userId: string,
     agentId?: string
   ): Promise<ExecutionResult> {
-    if (functionName === 'get_agentrix_auto_earn_tasks') {
+    if (functionName === 'get_paymind_auto_earn_tasks') {
       return await this.getTasks(params, userId, agentId);
-    } else if (functionName === 'execute_agentrix_auto_earn_task') {
+    } else if (functionName === 'execute_paymind_auto_earn_task') {
       return await this.executeTask(params, userId, agentId);
-    } else if (functionName === 'get_agentrix_auto_earn_stats') {
+    } else if (functionName === 'get_paymind_auto_earn_stats') {
       return await this.getStats(userId, agentId);
-    } else if (functionName === 'toggle_agentrix_auto_earn_strategy') {
+    } else if (functionName === 'toggle_paymind_auto_earn_strategy') {
       return await this.toggleStrategy(params, userId, agentId);
     }
 

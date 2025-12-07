@@ -28,7 +28,7 @@ export class MPCWalletService {
   ): Promise<{
     walletAddress: string;
     encryptedShardA: string; // 返回给前端（商户持有）
-    encryptedShardB: string; // 存储在数据库（Agentrix 持有）
+    encryptedShardB: string; // 存储在数据库（PayMind 持有）
     encryptedShardC: string; // 返回给商户备份
   }> {
     try {

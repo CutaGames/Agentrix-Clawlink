@@ -65,9 +65,9 @@ export class MockWebsiteController {
   async download(@Query('type') type: string) {
     // MOCK: 返回下载链接
     const downloads: Record<string, string> = {
-      whitepaper: 'https://agentrix.ai/downloads/whitepaper.pdf',
-      sdk: 'https://agentrix.ai/downloads/sdk.zip',
-      api_docs: 'https://agentrix.ai/downloads/api-docs.pdf',
+      whitepaper: 'https://paymind.ai/downloads/whitepaper.pdf',
+      sdk: 'https://paymind.ai/downloads/sdk.zip',
+      api_docs: 'https://paymind.ai/downloads/api-docs.pdf',
     };
 
     return {
@@ -133,18 +133,18 @@ export class MockWebsiteController {
         price: 500,
         currency: 'CNY',
         category: 'consultation',
-        merchant: 'Agentrix技术团队',
+        merchant: 'PayMind技术团队',
         duration: '1小时',
         rating: 4.9,
       },
       {
         id: 'svc-2',
-        name: 'Agentrix SDK 企业版订阅',
+        name: 'PayMind SDK 企业版订阅',
         description: '包含高级API、优先支持',
         price: 999,
         currency: 'CNY',
         category: 'subscription',
-        merchant: 'Agentrix',
+        merchant: 'PayMind',
         duration: '月度',
         rating: 4.8,
       },

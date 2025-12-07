@@ -15,7 +15,7 @@ export class SocialAccountService {
 
   /**
    * 绑定社交账号
-   * 一个Agentrix ID，每种类型只能绑定一个账号
+   * 一个PayMind ID，每种类型只能绑定一个账号
    */
   async bindSocialAccount(
     userId: string,

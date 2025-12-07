@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ExchangeRateService } from './exchange-rate.service';
 import { ProviderIntegrationService } from './provider-integration.service';
+import { ProviderManagerService } from './provider-manager.service';
 
 export interface CryptoProvider {
   id: string;
@@ -39,6 +40,7 @@ export class FiatToCryptoService {
     private configService: ConfigService,
     private exchangeRateService?: ExchangeRateService,
     private providerIntegration?: ProviderIntegrationService,
+    private providerManagerService?: ProviderManagerService,
   ) {
     this.initializeProviders();
   }
@@ -341,18 +343,69 @@ export class FiatToCryptoService {
 
   /**
    * 数字货币转法币（用于商家提现）
+   * 
+   * 优先使用 ProviderManagerService 获取真实的 Provider（如 Transak）
+   * 如果不可用，则回退到旧的 ProviderIntegrationService 或模拟响应
    */
   async convertCryptoToFiat(
     amount: number,
     fromCurrency: string, // 数字货币（如 USDC）
     toCurrency: string, // 法币（如 CNY）
     bankAccount: string,
+    fromWalletAddress?: string, // 可选的 MPC 钱包地址
+    metadata?: any, // 可选的元数据（如 email, countryCode）
   ): Promise<{
     providerId: string;
     transactionId: string;
     transactionHash: string;
   }> {
-    // 选择最优Provider
+    // 优先使用 ProviderManagerService 获取真实的 Provider（如 Transak）
+    if (this.providerManagerService) {
+      try {
+        const offRampProviders = this.providerManagerService.getOffRampProviders();
+        
+        if (offRampProviders.length > 0) {
+          // 选择最优 Provider（优先选择 Transak）
+          let bestProvider = offRampProviders.find(p => p.id === 'transak');
+          if (!bestProvider) {
+            bestProvider = offRampProviders[0];
+          }
+
+          this.logger.log(
+            `使用 ${bestProvider.name} 执行 Off-ramp: ${amount} ${fromCurrency} -> ${toCurrency}`,
+          );
+
+          // 调用 Provider 的 executeOffRamp 方法
+          if (bestProvider.executeOffRamp) {
+            const result = await bestProvider.executeOffRamp({
+              amount,
+              fromCurrency,
+              toCurrency,
+              merchantId: metadata?.merchantId || 'unknown', // 从 metadata 获取或使用默认值
+              bankAccount,
+              metadata: {
+                fromWalletAddress,
+                ...metadata,
+              },
+            });
+
+            return {
+              providerId: bestProvider.id,
+              transactionId: result.transactionId,
+              transactionHash: result.transactionHash || result.transactionId,
+            };
+          }
+        }
+      } catch (error) {
+        this.logger.error(
+          `ProviderManagerService Off-ramp 调用失败: ${error.message}`,
+          error.stack,
+        );
+        // 继续尝试其他方式
+      }
+    }
+
+    // 回退到旧的 ProviderIntegrationService
     const bestProvider = this.selectBestProviderForCryptoToFiat(
       fromCurrency,
       toCurrency,

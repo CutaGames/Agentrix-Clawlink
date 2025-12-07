@@ -161,9 +161,9 @@ export class WebhookService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Agentrix-Event': event.eventType,
-            'X-Agentrix-Signature': signature,
-            'X-Agentrix-Event-Id': event.id,
+            'X-PayMind-Event': event.eventType,
+            'X-PayMind-Signature': signature,
+            'X-PayMind-Event-Id': event.id,
           },
           body: JSON.stringify(event.payload),
         });

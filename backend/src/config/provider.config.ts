@@ -9,6 +9,6 @@ export default registerAs('provider', () => ({
     apiKey: process.env.MELD_API_KEY || '',
     apiUrl: process.env.MELD_API_URL || 'https://api.meld.com',
   },
-  agentrixContractAddress: process.env.AGENTRIX_CONTRACT_ADDRESS || '',
+  paymindContractAddress: process.env.PAYMIND_CONTRACT_ADDRESS || '',
 }));
 

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IProvider, ProviderQuote } from './provider-abstract.service';
 import { MockProviderService } from './mock-provider.service';
-import { EPAYProviderService } from './epay-provider.service';
+import { TransakProviderService } from './transak-provider.service';
 import { OSLProviderService } from './osl-provider.service';
 
 /**
@@ -15,19 +15,19 @@ export class ProviderManagerService {
 
   constructor(
     private mockProvider: MockProviderService,
-    private epayProvider?: EPAYProviderService,
+    private transakProvider?: TransakProviderService,
     private oslProvider?: OSLProviderService,
   ) {
     // 注册 Mock Provider（用于测试）
     this.registerProvider(mockProvider);
 
-    // 注册 EPAY Provider（如果已配置）
-    if (epayProvider) {
+    // 注册 Transak Provider（如果已配置）
+    if (transakProvider) {
       try {
-        this.registerProvider(epayProvider);
-        this.logger.log('EPAY Provider registered successfully');
+        this.registerProvider(transakProvider);
+        this.logger.log('Transak Provider registered successfully');
       } catch (error) {
-        this.logger.warn('EPAY Provider not available (credentials not configured)');
+        this.logger.warn('Transak Provider not available (credentials not configured)');
       }
     }
 
@@ -40,10 +40,6 @@ export class ProviderManagerService {
         this.logger.warn('OSL Pay Provider not available (credentials not configured)');
       }
     }
-
-    // 后续可以注册其他真实 Provider
-    // this.registerProvider(new MoonPayProviderService());
-    // this.registerProvider(new TransakProviderService());
   }
 
   /**

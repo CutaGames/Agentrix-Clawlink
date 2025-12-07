@@ -38,9 +38,9 @@ import { ExchangeRateService } from './exchange-rate.service';
 import { ProviderIntegrationService } from './provider-integration.service';
 import { ProviderPaymentFlowService } from './provider-payment-flow.service';
 import { MockProviderService } from './mock-provider.service';
-import { EPAYProviderService } from './epay-provider.service';
+import { TransakProviderService } from './transak-provider.service';
 import { OSLProviderService } from './osl-provider.service';
-import { EPAYWebhookController } from './epay-webhook.controller';
+import { TransakWebhookController } from './transak-webhook.controller';
 import { ProviderManagerService } from './provider-manager.service';
 import { ReferralModule } from '../referral/referral.module';
 import { PricingModule } from '../pricing/pricing.module';
@@ -55,6 +55,7 @@ import { CryptoRailService } from './crypto-rail.service';
 import { WalletConnection } from '../../entities/wallet-connection.entity';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { OffRampCommissionService } from './off-ramp-commission.service';
+import { OnRampCommissionService } from './on-ramp-commission.service';
 
 @Module({
   imports: [
@@ -76,7 +77,7 @@ import { OffRampCommissionService } from './off-ramp-commission.service';
     RefundController,
     WithdrawalController,
     PreflightCheckController,
-    EPAYWebhookController,
+    TransakWebhookController,
   ],
   providers: [
     PaymentService,
@@ -104,10 +105,11 @@ import { OffRampCommissionService } from './off-ramp-commission.service';
     PreflightCheckService,
     CryptoRailService,
     MockProviderService,
-    EPAYProviderService,
+    TransakProviderService,
     OSLProviderService,
     ProviderManagerService,
     OffRampCommissionService,
+    OnRampCommissionService,
   ],
   exports: [
     PaymentService,

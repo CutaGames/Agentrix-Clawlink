@@ -23,7 +23,7 @@ import { ProviderPaymentFlowService } from './provider-payment-flow.service';
 import { RiskAssessmentService } from './risk-assessment.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
 import { ExchangeRateService } from './exchange-rate.service';
-import { AgentrixRelayerService } from '../relayer/relayer.service';
+import { PayMindRelayerService } from '../relayer/relayer.service';
 // import { WebSocketGateway } from '../websocket/websocket.gateway'; // 暂时禁用WebSocket
 
 type PaymentRouteMethod = PaymentMethod | 'fiat_to_crypto' | 'quickpay';
@@ -76,8 +76,8 @@ export class PaymentService {
     private riskAssessmentService: RiskAssessmentService,
     private quickPayGrantService: QuickPayGrantService,
     private exchangeRateService: ExchangeRateService,
-    @Inject(forwardRef(() => AgentrixRelayerService))
-    private relayerService?: AgentrixRelayerService,
+    @Inject(forwardRef(() => PayMindRelayerService))
+    private relayerService?: PayMindRelayerService,
     @Inject(forwardRef(() => ReferralService))
     private referralService?: ReferralService,
     // @Inject(forwardRef(() => WebSocketGateway))
@@ -239,7 +239,7 @@ export class PaymentService {
           // 如果路由选择失败，根据货币类型降级
           const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(dto.currency.toUpperCase());
           if (isFiatCurrency) {
-            actualPaymentMethod = PaymentMethod.STRIPE; // 法币走Stripe
+            actualPaymentMethod = PaymentMethod.TRANSAK; // 法币走 Transak
           } else {
             actualPaymentMethod = PaymentMethod.WALLET; // 数字货币走钱包
           }
@@ -548,6 +548,10 @@ export class PaymentService {
               txHash: relayerResult.txHash,
             };
             
+            // 保存更新后的支付记录（确保状态和交易哈希被保存）
+            const updatedPayment = await this.paymentRepository.save(savedPayment);
+            this.logger.log(`✅ QuickPay payment record saved: paymentId=${updatedPayment.id}, status=${updatedPayment.status}, txHash=${updatedPayment.transactionHash || 'pending'}`);
+            
             this.logger.log(`QuickPay executed via relayer: paymentId=${savedPayment.id}, txHash=${relayerResult.txHash || 'pending'}`);
             
             // 如果relayer返回了txHash，说明链上执行成功
@@ -611,6 +615,25 @@ export class PaymentService {
         } else {
           savedPayment.status = PaymentStatus.PENDING;
         }
+      } else if (dto.paymentMethod === PaymentMethod.TRANSAK) {
+        // Transak 支付处理（通过 Widget 在前端完成，等待 Webhook 回调）
+        // 如果已经有 transakOrderId，说明前端已经创建了订单
+        if (dto.metadata?.transakOrderId) {
+          savedPayment.status = PaymentStatus.PROCESSING;
+          savedPayment.metadata = {
+            ...savedPayment.metadata,
+            provider: 'transak',
+            transakOrderId: dto.metadata.transakOrderId,
+          };
+        } else {
+          // 创建支付记录，等待 Transak Widget 完成支付后通过 Webhook 更新
+          savedPayment.status = PaymentStatus.PENDING;
+          savedPayment.metadata = {
+            ...savedPayment.metadata,
+            provider: 'transak',
+            waitingForTransak: true,
+          };
+        }
       } else if (dto.paymentMethod === PaymentMethod.MULTISIG) {
         // 多签支付处理
         savedPayment.status = PaymentStatus.PENDING;
@@ -653,33 +676,51 @@ export class PaymentService {
         }
       }
 
+      // ========== 资金流逻辑说明 ==========
+      // 
+      // 1. 合约分佣处理后，给商家的部分：
+      //    - 如果商家要求接受法币：打到商家的 MPC 钱包账户（数字货币）
+      //      然后可以自动转入 provider 进行法币结算（通过 Transak Off-ramp）
+      //    - 如果商家接受 crypto：可以打到商家自带的 crypto 钱包
+      // 
+      // 2. Off-ramp 可以单独工作：
+      //    - 接受数字货币的商家可以手动走 provider 的 offramp 流程完成兑换
+      //    - 通过 WithdrawalService 手动触发 Off-ramp
+      // 
+      // ======================================
+      
       // 处理商家收款方式配置的转换逻辑
       const merchantConfig = dto.metadata?.merchantPaymentConfig || 'both';
 
       // 场景1：商家只接受数字货币，用户选择法币支付
+      // 用户法币支付 → Transak On-ramp 转换成数字货币 → 合约分佣 → 打到商家 MPC 钱包或商家 crypto 钱包
       if (merchantConfig === 'crypto_only' && 
-          (paymentMethodStr === 'apple_pay' || paymentMethodStr === 'google_pay' || paymentMethodStr === 'stripe')) {
-        // 法币支付 → Provider转换数字货币 → 合约托管
+          (paymentMethodStr === 'apple_pay' || paymentMethodStr === 'google_pay' || paymentMethodStr === 'stripe' || paymentMethodStr === 'transak')) {
         savedPayment.metadata = {
           ...savedPayment.metadata,
           needsConversion: true,
           conversionType: 'fiat_to_crypto',
           originalPaymentMethod: paymentMethodStr,
         };
-        this.logger.log(`商家只接受数字货币，法币支付将转换为数字货币: ${savedPayment.id}`);
+        this.logger.log(`商家只接受数字货币，法币支付将通过 On-ramp 转换为数字货币: ${savedPayment.id}`);
       }
 
       // 场景2：商家只接受法币，用户选择数字货币支付
+      // 用户数字货币支付 → 合约分佣 → 打到商家 MPC 钱包（数字货币）
+      // → 自动通过 Transak Off-ramp 转换成法币 → 结算给商家法币账户
       if (merchantConfig === 'fiat_only' && 
           (dto.paymentMethod === PaymentMethod.WALLET || dto.paymentMethod === PaymentMethod.X402)) {
-        // 数字货币支付 → 合约托管 → 满足条件后 → Provider转换法币 → 结算给商家
         savedPayment.metadata = {
           ...savedPayment.metadata,
           needsConversion: true,
           conversionType: 'crypto_to_fiat',
           originalPaymentMethod: dto.paymentMethod,
+          // 标记需要自动 Off-ramp 转换（从 MPC 钱包自动转换）
+          needsOffRamp: true,
+          offRampProvider: 'transak', // 使用 Transak 进行 Off-ramp
+          autoOffRamp: true, // 自动触发 Off-ramp
         };
-        this.logger.log(`商家只接受法币，数字货币支付将转换为法币: ${savedPayment.id}`);
+        this.logger.log(`商家只接受法币，数字货币支付将通过自动 Off-ramp 转换为法币: ${savedPayment.id}`);
       }
 
       return this.paymentRepository.save(savedPayment);
@@ -1000,6 +1041,71 @@ export class PaymentService {
   }
 
   /**
+   * 获取用户的支付记录列表
+   */
+  async getUserPayments(
+    userId: string,
+    options?: {
+      status?: string;
+      paymentMethod?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    try {
+      const limit = options?.limit || 50;
+      const offset = options?.offset || 0;
+
+      this.logger.log(`查询用户支付记录: userId=${userId}, options=${JSON.stringify(options)}`);
+
+      const where: any = { userId };
+
+      if (options?.status) {
+        // 确保 status 是有效的 PaymentStatus 枚举值
+        where.status = options.status as any;
+      }
+
+      if (options?.paymentMethod) {
+        // 确保 paymentMethod 是有效的 PaymentMethod 枚举值
+        where.paymentMethod = options.paymentMethod as any;
+      }
+
+      this.logger.debug(`查询条件: ${JSON.stringify(where)}`);
+
+      // 明确指定不加载任何关系，避免 TypeORM 尝试加载不存在的 merchant 关系
+      const [payments, total] = await this.paymentRepository.findAndCount({
+        where,
+        order: { createdAt: 'DESC' },
+        take: limit,
+        skip: offset,
+        relations: [], // 明确指定空数组，确保不加载任何关系
+      });
+
+      // 调试日志：记录查询结果
+      this.logger.log(`查询用户支付记录: userId=${userId}, total=${total}, found=${payments.length}`);
+      if (payments.length > 0) {
+        this.logger.debug(`支付记录状态分布: ${
+          payments.map(p => `${p.id.slice(0, 8)}:${p.status}:${p.currency}:${p.amount}`).join(', ')
+        }`);
+      } else {
+        this.logger.warn(`未找到支付记录: userId=${userId}, where=${JSON.stringify(where)}`);
+      }
+
+      return {
+        data: payments,
+        total,
+        limit,
+        offset,
+      };
+    } catch (error) {
+      this.logger.error(`查询用户支付记录失败: userId=${userId}`, error);
+      this.logger.error(`错误详情: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`错误堆栈: ${error instanceof Error ? error.stack : 'N/A'}`);
+      throw error;
+    }
+  }
+
+  /**
    * 更新支付状态（用于Webhook回调）
    */
   async updatePaymentStatus(
@@ -1103,7 +1209,7 @@ export class PaymentService {
       [PaymentMethod.X402]: 0.0006,
       [PaymentMethod.PASSKEY]: 0.0006,
       [PaymentMethod.MULTISIG]: 0.001, // 多签略高
-      [PaymentMethod.EPAY]: 0.02, // EPAY 默认费率 2%（可根据实际费率调整）
+      [PaymentMethod.TRANSAK]: 0.015, // Transak 默认费率 1.5%（可根据实际费率调整）
     };
 
     const rate = channelFeeRates[paymentMethod] || 0.03; // 默认3%

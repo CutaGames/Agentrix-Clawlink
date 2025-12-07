@@ -28,7 +28,7 @@ export class UserService {
   async getProfile(userId: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'agentrixId', 'email', 'roles', 'kycLevel', 'kycStatus', 'avatarUrl', 'createdAt'],
+      select: ['id', 'paymindId', 'email', 'roles', 'kycLevel', 'kycStatus', 'avatarUrl', 'createdAt'],
     });
 
     if (!user) {

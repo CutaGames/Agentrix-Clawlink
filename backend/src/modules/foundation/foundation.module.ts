@@ -35,8 +35,8 @@ import { GroqFoundationLLM } from './llm-providers/groq-foundation-llm.service';
         switch (provider) {
           case 'groq':
             return new GroqFoundationLLM(configService);
-          // case 'agentrix':
-          //   return new AgentrixFoundationLLM(configService);
+          // case 'paymind':
+          //   return new PayMindFoundationLLM(configService);
           // case 'openai':
           //   return new OpenAIFoundationLLM(configService);
           default:

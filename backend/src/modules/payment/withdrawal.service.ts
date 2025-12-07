@@ -30,6 +30,18 @@ export class WithdrawalService {
   /**
    * 创建提现申请
    */
+  /**
+   * 创建提现请求（手动触发 Off-ramp）
+   * 
+   * 允许商家手动将 MPC 钱包中的数字货币转换成法币
+   * 即使商家接受 crypto 支付，也可以手动触发 Off-ramp 兑换
+   * 
+   * @param merchantId 商家ID
+   * @param amount 提现金额（数字货币）
+   * @param fromCurrency 源货币（数字货币，如 USDC）
+   * @param toCurrency 目标货币（法币，如 CNY）
+   * @param bankAccount 商家银行账户
+   */
   async createWithdrawal(
     merchantId: string,
     amount: number,
@@ -63,7 +75,7 @@ export class WithdrawalService {
     );
     
     const providerFee = commission.providerFee;
-    const agentrixFee = commission.agentrixFee; // 可配置，可为0
+    const paymindFee = commission.paymindFee; // 可配置，可为0
     const totalFees = commission.totalDeduction;
 
     if (amount < totalFees) {
@@ -91,7 +103,7 @@ export class WithdrawalService {
       exchangeRate,
       finalAmount,
       providerFee,
-      agentrixFee,
+      paymindFee,
       bankAccount,
       status: WithdrawalStatus.PENDING,
     });
@@ -112,6 +124,13 @@ export class WithdrawalService {
 
   /**
    * 处理提现（数字货币转法币）
+   * 
+   * 用途：
+   * 1. 商家手动触发：接受数字货币的商家可以手动将 MPC 钱包中的数字货币转换成法币
+   * 2. 自动触发：商家只接受法币时，系统自动从 MPC 钱包转换（通过 payment.service.ts）
+   * 
+   * 流程：
+   * - 从商家 MPC 钱包（数字货币）→ 通过 Provider Off-ramp（如 Transak）→ 打到商家银行账户（法币）
    */
   async processWithdrawal(withdrawalId: string): Promise<Withdrawal> {
     const withdrawal = await this.withdrawalRepository.findOne({
@@ -133,10 +152,15 @@ export class WithdrawalService {
     try {
       // 调用Provider API转换数字货币为法币
       const providerResult = await this.fiatToCryptoService.convertCryptoToFiat(
-        withdrawal.amount - withdrawal.providerFee - withdrawal.agentrixFee, // 扣除手续费后的金额
+        withdrawal.amount - withdrawal.providerFee - withdrawal.paymindFee, // 扣除手续费后的金额
         withdrawal.fromCurrency,
         withdrawal.toCurrency,
         withdrawal.bankAccount,
+        undefined, // fromWalletAddress (MPC钱包地址，如果需要可以从metadata获取)
+        {
+          merchantId: withdrawal.merchantId,
+          withdrawalId: withdrawal.id,
+        },
       );
 
       // 更新提现记录

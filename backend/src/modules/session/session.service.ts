@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   JsonRpcProvider,
   Contract,
+  Network,
   keccak256,
   AbiCoder,
   formatUnits,
@@ -42,8 +43,24 @@ export class SessionService {
    */
   private initializeContracts() {
     try {
-      const rpcUrl = this.configService.get<string>('RPC_URL') || 'http://localhost:8545';
-      this.provider = new JsonRpcProvider(rpcUrl);
+      // 默认使用 BSC Testnet (chainId: 97)
+      const rpcUrl = this.configService.get<string>('RPC_URL') 
+        || this.configService.get<string>('BSC_TESTNET_RPC_URL') 
+        || process.env.RPC_URL 
+        || process.env.BSC_TESTNET_RPC_URL
+        || 'https://bsc-testnet.nodereal.io/v1/1eefed273dc64160afd5e328e6c518d6';
+      
+      // 确保 chainId 是数字类型，默认 BSC Testnet (97)
+      const chainIdStr = this.configService.get<string>('CHAIN_ID') || process.env.CHAIN_ID || '97';
+      const chainId = typeof chainIdStr === 'string' ? parseInt(chainIdStr, 10) : (chainIdStr as number);
+      
+      // 创建自定义 Network 对象（ethers v6 要求）
+      const network = new Network(
+        `chain-${chainId}`, // name
+        chainId,            // chainId (必须是数字)
+      );
+      
+      this.provider = new JsonRpcProvider(rpcUrl, network);
 
       const contractAddress = this.configService.get<string>('ERC8004_CONTRACT_ADDRESS');
       if (contractAddress) {
@@ -52,6 +69,9 @@ export class SessionService {
           ERC8004_ABI,
           this.provider,
         );
+        this.logger.log(`SessionManager 合约已初始化: ${contractAddress}, RPC: ${rpcUrl}`);
+      } else {
+        this.logger.warn('ERC8004_CONTRACT_ADDRESS 未设置，SessionManager 合约未初始化');
       }
     } catch (error: any) {
       this.logger.warn(`Failed to initialize contracts: ${error.message}`);
@@ -86,9 +106,16 @@ export class SessionService {
       let expiryDate = new Date(expiryTimestamp * 1000);
 
       if (sessionId && this.sessionManagerContract) {
+        this.logger.log(`查询链上 Session: ${sessionId}, 合约地址: ${this.sessionManagerContract.target}`);
         const onChainSession = await this.sessionManagerContract.getSession(sessionId);
+        this.logger.log(`链上查询结果: ${JSON.stringify({
+          signer: onChainSession?.signer,
+          owner: onChainSession?.owner,
+          isZeroAddress: onChainSession?.signer === ZeroAddress,
+        })}`);
 
         if (!onChainSession || onChainSession.signer === ZeroAddress) {
+          this.logger.error(`Session 未找到: sessionId=${sessionId}, contract=${this.sessionManagerContract.target}`);
           throw new BadRequestException('Session not found on-chain');
         }
 

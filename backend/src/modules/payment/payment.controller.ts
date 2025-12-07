@@ -30,6 +30,7 @@ import { RiskAssessmentService } from './risk-assessment.service';
 import { PaymentMethod } from '../../entities/payment.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { ConfigService } from '@nestjs/config';
+import { ProviderManagerService } from './provider-manager.service';
 
 @ApiTags('payments')
 @ApiBearerAuth()
@@ -47,6 +48,7 @@ export class PaymentController {
     private readonly riskAssessmentService: RiskAssessmentService,
     private readonly exchangeRateService: ExchangeRateService,
     private readonly configService: ConfigService,
+    private readonly providerManagerService: ProviderManagerService,
   ) {}
 
   @Post('create-intent')
@@ -122,6 +124,55 @@ export class PaymentController {
     return this.paymentService.createProviderPaymentSession(req.user.id, dto);
   }
 
+  @Post('provider/transak/session')
+  @ApiOperation({ summary: '创建 Transak Session（使用 Create Session API）' })
+  @ApiResponse({ status: 201, description: 'Transak Session 已创建' })
+  async createTransakSession(
+    @Request() req,
+    @Body() dto: {
+      amount: number;
+      fiatCurrency: string;
+      cryptoCurrency?: string;
+      network?: string;
+      walletAddress?: string;
+      orderId?: string;
+      email?: string;
+      redirectURL?: string;
+      hideMenu?: boolean;
+      disableWalletAddressForm?: boolean;
+      disableFiatAmountEditing?: boolean;
+      isKYCRequired?: boolean;
+    },
+  ) {
+    const transakProvider = this.providerManagerService.getOnRampProviders().find(
+      (p) => p.id === 'transak',
+    ) as any;
+
+    if (!transakProvider || !transakProvider.createSession) {
+      throw new BadRequestException('Transak provider not available or createSession method not implemented');
+    }
+
+    // 获取用户信息
+    const user = req.user;
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+
+    return transakProvider.createSession({
+      amount: dto.amount,
+      fiatCurrency: dto.fiatCurrency,
+      cryptoCurrency: dto.cryptoCurrency || 'USDC',
+      network: dto.network || 'bsc',
+      walletAddress: dto.walletAddress,
+      orderId: dto.orderId,
+      userId: user.id,
+      email: dto.email || user.email,
+      redirectURL: dto.redirectURL || `${frontendUrl}/payment/callback`,
+      hideMenu: dto.hideMenu !== undefined ? dto.hideMenu : true,
+      disableWalletAddressForm: dto.disableWalletAddressForm !== undefined ? dto.disableWalletAddressForm : true,
+      disableFiatAmountEditing: dto.disableFiatAmountEditing !== undefined ? dto.disableFiatAmountEditing : true,
+      isKYCRequired: dto.isKYCRequired !== undefined ? dto.isKYCRequired : true,
+    });
+  }
+
   @Get('provider/session/:sessionId')
   @ApiOperation({ summary: '查询Provider支付会话状态' })
   @ApiResponse({ status: 200, description: '返回会话状态' })
@@ -175,6 +226,24 @@ export class PaymentController {
       erc8004ContractAddress: erc8004Address,
       usdcAddress: usdcAddress,
     };
+  }
+
+  @Get()
+  @ApiOperation({ summary: '获取用户的支付记录列表' })
+  @ApiResponse({ status: 200, description: '返回支付记录列表' })
+  async getUserPayments(
+    @Request() req,
+    @Query('status') status?: string,
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ) {
+    return this.paymentService.getUserPayments(req.user.id, {
+      status,
+      paymentMethod,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
   }
 
   @Get(':paymentId')

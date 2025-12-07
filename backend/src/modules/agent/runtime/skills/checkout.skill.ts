@@ -2,6 +2,7 @@ import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { ISkill, SkillResult, SkillContext } from '../interfaces/skill.interface';
 import { CartService } from '../../../cart/cart.service';
 import { OrderService } from '../../../order/order.service';
+import { ExchangeRateService } from '../../../payment/exchange-rate.service';
 import { MemoryType } from '../../../../entities/agent-memory.entity';
 
 @Injectable()
@@ -16,6 +17,8 @@ export class CheckoutSkill implements ISkill {
     private cartService: CartService,
     @Inject(forwardRef(() => OrderService))
     private orderService: OrderService,
+    @Inject(forwardRef(() => ExchangeRateService))
+    private exchangeRateService: ExchangeRateService,
   ) {}
 
   async execute(params: Record<string, any>, context: SkillContext): Promise<SkillResult> {
@@ -80,7 +83,7 @@ export class CheckoutSkill implements ISkill {
         };
       }
 
-      // 获取第一个商品的商户ID和货币（假设所有商品来自同一商户）
+      // 获取第一个商品的商户ID（假设所有商品来自同一商户）
       const firstItem = cart.items[0];
       if (!firstItem.product) {
         return {
@@ -90,25 +93,84 @@ export class CheckoutSkill implements ISkill {
       }
 
       const merchantId = firstItem.product.merchantId || 'default';
-      const currency = firstItem.product.currency || 'CNY';
       const firstProductId = firstItem.productId;
 
-      // 创建订单（包含多个商品）
-      // 注意：CreateOrderDto 需要 productId，我们使用第一个商品的 ID
-      // 其他商品信息存储在 metadata 中
+      // 检测所有商品的货币，统一转换为 USDC
+      const currencies = new Set<string>();
+      const itemsWithCurrency: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        price: number;
+        currency: string;
+        amountInOriginalCurrency: number;
+      }> = [];
+
+      for (const item of cart.items) {
+        if (!item.product) continue;
+        const itemCurrency = item.product.currency || 'CNY';
+        currencies.add(itemCurrency);
+        const itemPrice = typeof item.product.price === 'number' 
+          ? item.product.price 
+          : parseFloat(String(item.product.price || 0));
+        const itemAmount = itemPrice * item.quantity;
+        
+        itemsWithCurrency.push({
+          productId: item.productId,
+          productName: item.product.name,
+          quantity: item.quantity,
+          price: itemPrice,
+          currency: itemCurrency,
+          amountInOriginalCurrency: itemAmount,
+        });
+      }
+
+      // 统一货币为 USDC，按照 1 USD = 1 USDT = 1 USDC 的规则
+      let totalAmountInUSDC = 0;
+      const currencyConversions: Record<string, number> = {};
+
+      for (const item of itemsWithCurrency) {
+        let amountInUSDC = 0;
+        
+        // 处理不同货币到 USDC 的转换
+        if (item.currency === 'USDC' || item.currency === 'USDT' || item.currency === 'USD') {
+          // 1 USD = 1 USDT = 1 USDC
+          amountInUSDC = item.amountInOriginalCurrency;
+        } else {
+          // 其他货币需要汇率转换
+          try {
+            const rate = await this.exchangeRateService.getExchangeRate(item.currency, 'USDC');
+            amountInUSDC = item.amountInOriginalCurrency * rate;
+            currencyConversions[item.currency] = rate;
+          } catch (error) {
+            // 如果汇率获取失败，使用默认汇率（CNY -> USDC 约 0.142）
+            const defaultRate = item.currency === 'CNY' ? 0.142 : 1.0;
+            amountInUSDC = item.amountInOriginalCurrency * defaultRate;
+            currencyConversions[item.currency] = defaultRate;
+          }
+        }
+        
+        totalAmountInUSDC += amountInUSDC;
+      }
+
+      // 创建订单（统一使用 USDC 作为结算货币）
       const order = await this.orderService.createOrder(context.userId, {
         merchantId,
         productId: firstProductId,
-        amount: cart.total,
-        currency,
+        amount: totalAmountInUSDC,
+        currency: 'USDC',
         metadata: {
-          items: cart.items.map((item) => ({
+          items: itemsWithCurrency.map((item) => ({
             productId: item.productId,
-            productName: item.product?.name,
+            productName: item.productName,
             quantity: item.quantity,
-            price: item.product?.price,
+            price: item.price,
+            currency: item.currency,
+            amountInOriginalCurrency: item.amountInOriginalCurrency,
           })),
           orderType: 'cart_checkout',
+          currencyConversions, // 保存汇率转换信息
+          originalTotal: cart.total, // 保存原始总价（用于显示）
         },
       });
 
@@ -141,21 +203,37 @@ export class CheckoutSkill implements ISkill {
           ? parseFloat(order.amount) 
           : 0;
       
-      // 使用订单的货币，如果没有则使用之前获取的 currency
-      const orderCurrency = order.currency || currency;
-      const amountDisplay = orderCurrency === 'CNY' ? `¥${orderAmount.toFixed(2)}` : 
-                           orderCurrency === 'USD' ? `$${orderAmount.toFixed(2)}` : 
-                           `${orderAmount.toFixed(2)} ${orderCurrency}`;
+      // 订单统一使用 USDC
+      const orderCurrency = 'USDC';
+      const amountDisplay = `${orderAmount.toFixed(2)} ${orderCurrency}`;
+      
+      // 构建订单详情消息，显示各商品的原始货币和转换后的 USDC
+      let orderDetails = `✅ 订单创建成功！\n\n📦 订单信息：\n• 订单号：${order.id}\n• 商品数量：${cart.items.length}\n• 订单总额：${amountDisplay}`;
+      
+      // 如果有多种货币，显示转换详情
+      if (Object.keys(currencyConversions).length > 0) {
+        orderDetails += `\n\n💱 货币转换详情：`;
+        for (const [originalCurrency, rate] of Object.entries(currencyConversions)) {
+          const itemsInCurrency = itemsWithCurrency.filter(item => item.currency === originalCurrency);
+          const totalInCurrency = itemsInCurrency.reduce((sum, item) => sum + item.amountInOriginalCurrency, 0);
+          const totalInUSDC = totalInCurrency * rate;
+          orderDetails += `\n• ${originalCurrency}: ${totalInCurrency.toFixed(2)} → ${totalInUSDC.toFixed(2)} USDC (汇率: ${rate.toFixed(6)})`;
+        }
+      }
+      
+      orderDetails += `\n• 订单状态：${order.status}\n\n💡 下一步操作：\n• 说"支付"或"付款"来完成支付\n• 说"查看订单"查看订单详情`;
 
       return {
         success: true,
-        message: `✅ 订单创建成功！\n\n📦 订单信息：\n• 订单号：${order.id}\n• 商品数量：${cart.items.length}\n• 订单总额：${amountDisplay}\n• 订单状态：${order.status}\n\n💡 下一步操作：\n• 说"支付"或"付款"来完成支付\n• 说"查看订单"查看订单详情`,
+        message: orderDetails,
         data: {
           order: {
             ...order,
             amount: orderAmount, // 确保返回数字类型
+            currency: orderCurrency,
           },
           items: cart.items,
+          currencyConversions, // 返回汇率转换信息
         },
       };
     } catch (error: any) {

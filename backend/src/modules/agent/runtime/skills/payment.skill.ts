@@ -63,7 +63,7 @@ export class PaymentSkill implements ISkill {
 
       // 创建支付
       // 默认使用钱包支付，如果用户指定了其他方式，可以从 params.method 获取
-      const paymentMethod = params.method || 'wallet'; // wallet, stripe, passkey, x402, multisig, epay
+      const paymentMethod = params.method || 'wallet'; // wallet, stripe, passkey, x402, multisig, transak
       
       const payment = await this.paymentService.processPayment(context.userId, {
         amount: order.amount,

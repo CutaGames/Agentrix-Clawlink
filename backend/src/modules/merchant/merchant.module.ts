@@ -20,10 +20,12 @@ import { MarketingCampaign } from '../../entities/marketing-campaign.entity';
 import { ConversationHistory } from '../../entities/conversation-history.entity';
 import { Order } from '../../entities/order.entity';
 import { User } from '../../entities/user.entity';
+import { MerchantProfile } from '../../entities/merchant-profile.entity';
+import { MerchantProfileService } from './merchant-profile.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, Product, Coupon, MarketingCampaign, ConversationHistory, Order, User]),
+    TypeOrmModule.forFeature([Payment, Product, Coupon, MarketingCampaign, ConversationHistory, Order, User, MerchantProfile]),
     forwardRef(() => NotificationModule),
     forwardRef(() => LogisticsModule),
     forwardRef(() => UserModule),
@@ -39,6 +41,7 @@ import { User } from '../../entities/user.entity';
     MultiChainAccountService,
     ReconciliationService,
     SettlementRulesService,
+    MerchantProfileService,
   ],
   exports: [
     MerchantAutoOrderService,
@@ -50,6 +53,7 @@ import { User } from '../../entities/user.entity';
     MultiChainAccountService,
     ReconciliationService,
     SettlementRulesService,
+    MerchantProfileService,
   ],
 })
 export class MerchantModule {}

@@ -37,8 +37,8 @@ export class ClaudeAdapter implements IPlatformAdapter {
   }
 
   private getToolName(product: Product, capabilityType: string): string {
-    // Claude 工具名格式：agentrix_{capability}_{type}
-    const baseName = `agentrix_${capabilityType}_${product.productType}`;
+    // Claude 工具名格式：paymind_{capability}_{type}
+    const baseName = `paymind_${capabilityType}_${product.productType}`;
     return baseName.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
   }
 

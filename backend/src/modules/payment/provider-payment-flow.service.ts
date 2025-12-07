@@ -62,7 +62,7 @@ export class ProviderPaymentFlowService {
 
     const checkoutBase =
       this.configService.get<string>('PROVIDER_CHECKOUT_URL') ||
-      'https://demo.agentrix.io/provider-checkout';
+      'https://demo.paymind.io/provider-checkout';
 
     return {
       sessionId,

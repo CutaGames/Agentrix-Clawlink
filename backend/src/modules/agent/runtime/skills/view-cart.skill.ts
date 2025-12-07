@@ -20,6 +20,13 @@ export class ViewCartSkill implements ISkill {
       const cartIdentifier = context.userId || context.sessionId;
       const isSessionId = !context.userId;
 
+      console.log('🛒 ViewCartSkill 执行:', {
+        userId: context.userId,
+        sessionId: context.sessionId,
+        cartIdentifier,
+        isSessionId,
+      });
+
       if (!cartIdentifier) {
         return {
           success: false,
@@ -29,6 +36,13 @@ export class ViewCartSkill implements ISkill {
 
       // 获取购物车
       const cart = await this.cartService.getCartWithProducts(cartIdentifier, isSessionId);
+      
+      console.log('🛒 ViewCartSkill 获取购物车结果:', {
+        cartIdentifier,
+        isSessionId,
+        itemCount: cart.items?.length || 0,
+        items: cart.items,
+      });
 
       if (!cart.items || cart.items.length === 0) {
         const loginHint = isSessionId ? '\n\n💡 提示：登录后购物车会永久保存。\n\n🔐 登录步骤：\n• 点击右上角用户菜单中的"登录"选项\n• 或访问：/login 进行登录\n• 如果没有账号，可以访问：/register 注册新账号' : '';

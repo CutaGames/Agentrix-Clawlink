@@ -4,6 +4,7 @@ import { Product } from '../../../entities/product.entity';
 import { Order } from '../../../entities/order.entity';
 import { OpenAIIntegrationService } from './openai-integration.service';
 import { OpenAIIntegrationController } from './openai-integration.controller';
+import { MarketplaceGPTsController } from './marketplace-gpts.controller';
 import { AiCapabilityModule } from '../../ai-capability/ai-capability.module';
 import { SearchModule } from '../../search/search.module';
 import { ProductModule } from '../../product/product.module';
@@ -23,7 +24,7 @@ import { PaymentModule } from '../../payment/payment.module';
     forwardRef(() => LogisticsModule),
     forwardRef(() => PaymentModule),
   ],
-  controllers: [OpenAIIntegrationController],
+  controllers: [OpenAIIntegrationController, MarketplaceGPTsController],
   providers: [OpenAIIntegrationService],
   exports: [OpenAIIntegrationService],
 })

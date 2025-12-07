@@ -70,9 +70,16 @@ export class SearchService {
         const searchTerm = query.toLowerCase().trim();
         
         // 提取关键词（去除常见的前缀）
-        const keywords = searchTerm
-          .replace(/^(我要|我想|我想要|帮我|幫我|帮我找|幫我找|帮我买|幫我買|请|請|幫|帮|搜索|找|买|购买|查找|iphone|iPhone)/, '')
+        let keywords = searchTerm
+          .replace(/^(我要|我想|我想要|帮我|幫我|帮我找|幫我找|帮我买|幫我買|请|請|幫|帮|搜索|找|买|购买|查找)/i, '')
           .trim();
+        
+        // 特殊处理：iPhone/iPad等产品名称（保留大小写）
+        if (/^iphone|^ipad|^ipod/i.test(keywords)) {
+          keywords = keywords.replace(/^iphone/i, 'iPhone')
+                            .replace(/^ipad/i, 'iPad')
+                            .replace(/^ipod/i, 'iPod');
+        }
         
         // 如果提取后为空，使用原始查询
         const finalSearchTerm = keywords || searchTerm;
@@ -99,14 +106,18 @@ export class SearchService {
           
           if (terms.length > 0) {
             // 构建 OR 条件，只要匹配任何一个关键词即可
+            // 对于大小写敏感的产品名称（如iPhone），同时搜索原始大小写和小写版本
             const conditions = terms.map((term, idx) => {
               const paramName = `term${idx}`;
-              return `(LOWER(product.name) LIKE :${paramName} OR LOWER(product.description) LIKE :${paramName} OR LOWER(product.category) LIKE :${paramName})`;
+              const lowerParamName = `termLower${idx}`;
+              // 同时匹配原始大小写和小写版本
+              return `(product.name LIKE :${paramName} OR LOWER(product.name) LIKE :${lowerParamName} OR LOWER(product.description) LIKE :${lowerParamName} OR LOWER(product.category) LIKE :${lowerParamName})`;
             });
             
             queryBuilder.andWhere(`(${conditions.join(' OR ')})`);
             terms.forEach((term, idx) => {
               queryBuilder.setParameter(`term${idx}`, `%${term}%`);
+              queryBuilder.setParameter(`termLower${idx}`, `%${term.toLowerCase()}%`);
             });
           }
         }
