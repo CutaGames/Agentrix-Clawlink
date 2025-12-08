@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { JsonRpcProvider, Contract, parseUnits, formatUnits, Network } from 'ethers';
-import { User } from '../../entities/user.entity';
+import { User, KYCLevel } from '../../entities/user.entity';
 import { WalletConnection } from '../../entities/wallet-connection.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { ProviderManagerService } from './provider-manager.service';
@@ -174,8 +174,8 @@ export class PreflightCheckService {
       // 如果没有钱包，直接返回 Provider 选项（不检查 QuickPay）
       if (!wallet) {
         const user = await this.userRepository.findOne({ where: { id: userId } });
-        const userKYCLevel = user?.kycLevel || 'none';
-        const needsKYC = userKYCLevel === 'none' || userKYCLevel === 'NONE';
+        const userKYCLevel = user?.kycLevel || KYCLevel.NONE;
+        const needsKYC = userKYCLevel === KYCLevel.NONE;
         
         let providerOptions: ProviderOption[] | undefined;
         if (isFiatCurrency) {
@@ -442,8 +442,8 @@ export class PreflightCheckService {
       // 5. 如果是法币订单，计算各支付方式的价格和 KYC 要求
       let providerOptions: ProviderOption[] | undefined;
       if (isFiatCurrency) {
-        const userKYCLevel = user?.kycLevel || 'none';
-        const needsKYC = userKYCLevel === 'none' || userKYCLevel === 'NONE';
+        const userKYCLevel = user?.kycLevel || KYCLevel.NONE;
+        const needsKYC = userKYCLevel === KYCLevel.NONE;
         
         // 统一兑换目标：BSC 链的 USDC
         const targetCrypto = 'USDC';
