@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ICapabilityExecutor } from './executor.interface';
 import { ExecutionContext, ExecutionResult } from '../interfaces/capability.interface';
 import { TokenService } from '../../token/token.service';
 import { ProductService } from '../../product/product.service';
 import { OrderService } from '../../order/order.service';
 import { LiquidityMeshService } from '../../liquidity/liquidity-mesh.service';
+import { Token } from '../../../entities/token.entity';
 
 /**
  * Token 交易能力执行器
@@ -20,6 +23,8 @@ export class TokenTradeExecutor implements ICapabilityExecutor {
     private productService: ProductService,
     private orderService: OrderService,
     private liquidityMeshService: LiquidityMeshService,
+    @InjectRepository(Token)
+    private tokenRepository: Repository<Token>,
   ) {}
 
   async execute(params: Record<string, any>, context: ExecutionContext): Promise<ExecutionResult> {
@@ -89,7 +94,7 @@ export class TokenTradeExecutor implements ICapabilityExecutor {
       product = await this.productService.getProduct(product_id);
     } else if (token_id) {
       // 通过 token_id 查找对应的 product
-      const token = await this.tokenService.getToken(token_id);
+      const token = await this.tokenRepository.findOne({ where: { id: token_id } });
       if (token?.productId) {
         product = await this.productService.getProduct(token.productId);
       }
@@ -162,19 +167,20 @@ export class TokenTradeExecutor implements ICapabilityExecutor {
     }
 
     try {
-      // 使用流动性网格服务执行最优交换
-      const swapResult = await this.liquidityMeshService.executeBestSwap({
+      // 使用流动性网格服务执行交换
+      const swapResult = await this.liquidityMeshService.executeSwap({
         fromToken: from_token,
         toToken: to_token,
         amount: amount.toString(),
         chain,
-        slippageTolerance: slippage,
+        walletAddress: userId, // 需要钱包地址，暂时使用 userId
+        slippage: slippage,
       });
 
       return {
         success: true,
         data: swapResult,
-        message: `Token 交换成功：${amount} ${from_token} -> ${swapResult.amountOut} ${to_token}`,
+        message: `Token 交换成功：${amount} ${from_token} -> ${swapResult.executedAmount || 'N/A'} ${to_token}`,
       };
     } catch (error: any) {
       return {

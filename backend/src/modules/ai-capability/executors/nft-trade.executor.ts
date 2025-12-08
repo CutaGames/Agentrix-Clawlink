@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ICapabilityExecutor } from './executor.interface';
 import { ExecutionContext, ExecutionResult } from '../interfaces/capability.interface';
 import { NFTService } from '../../nft/nft.service';
 import { ProductService } from '../../product/product.service';
 import { OrderService } from '../../order/order.service';
+import { NFT } from '../../../entities/nft.entity';
 
 /**
  * NFT 交易能力执行器
@@ -18,6 +21,8 @@ export class NFTTradeExecutor implements ICapabilityExecutor {
     private nftService: NFTService,
     private productService: ProductService,
     private orderService: OrderService,
+    @InjectRepository(NFT)
+    private nftRepository: Repository<NFT>,
   ) {}
 
   async execute(params: Record<string, any>, context: ExecutionContext): Promise<ExecutionResult> {
@@ -92,7 +97,7 @@ export class NFTTradeExecutor implements ICapabilityExecutor {
     if (product_id) {
       product = await this.productService.getProduct(product_id);
     } else if (nft_id) {
-      const nft = await this.nftService.getNFT(nft_id);
+      const nft = await this.nftRepository.findOne({ where: { id: nft_id } });
       if (nft?.productId) {
         product = await this.productService.getProduct(nft.productId);
       }
@@ -183,7 +188,7 @@ export class NFTTradeExecutor implements ICapabilityExecutor {
     try {
       // 如果提供了 collection_id，在现有集合中铸造
       if (collection_id) {
-        const result = await this.nftService.mintToCollection(collection_id, {
+        const result = await this.nftService.mint(collection_id, userId, {
           items: [{
             name: name || 'Unnamed NFT',
             description,
@@ -192,18 +197,18 @@ export class NFTTradeExecutor implements ICapabilityExecutor {
           }],
           uploadTo: 'ipfs',
           autoList: false,
-        }, userId);
+        });
 
         return {
           success: true,
           data: {
-            nftId: result.nfts[0]?.id,
+            nftId: result.nfts[0]?.tokenId,
             collectionId: collection_id,
             walletAddress: wallet_address,
             chain,
-            transactionHash: result.transactionHash,
+            transactionHash: result.nfts[0]?.transactionHash,
           },
-          message: `NFT 铸造成功！NFT ID: ${result.nfts[0]?.id}`,
+          message: `NFT 铸造成功！NFT ID: ${result.nfts[0]?.tokenId}`,
         };
       } else {
         // 创建新集合并铸造
@@ -257,12 +262,12 @@ export class NFTTradeExecutor implements ICapabilityExecutor {
       return {
         success: true,
         data: {
-          collectionId: result.id,
+          collectionId: result.collectionId,
           contractAddress: result.contractAddress,
           chain,
           name,
         },
-        message: `NFT 集合创建成功！集合 ID: ${result.id}，合约地址：${result.contractAddress}`,
+        message: `NFT 集合创建成功！集合 ID: ${result.collectionId}，合约地址：${result.contractAddress}`,
       };
     } catch (error: any) {
       return {

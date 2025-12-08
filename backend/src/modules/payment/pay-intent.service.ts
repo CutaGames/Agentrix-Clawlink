@@ -21,6 +21,8 @@ export interface CreatePayIntentDto {
     returnUrl?: string;
     cancelUrl?: string;
     successUrl?: string;
+    paymentMethod?: string;
+    [key: string]: any;
   };
   expiresIn?: number; // 过期时间（秒），默认1小时
 }
