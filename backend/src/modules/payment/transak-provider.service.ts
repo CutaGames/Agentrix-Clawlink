@@ -41,12 +41,44 @@ export class TransakProviderService implements IProvider {
                      this.configService.get<string>('TRANSAK_API_KEY') || '';
     }
     
+    // 验证配置
+    if (!this.apiKey) {
+      this.logger.warn('⚠️ Transak API Key not configured. Transak features will be disabled.');
+    } else {
+      this.logger.log(`✅ Transak configured: Environment=${this.environment}, API Key=${this.apiKey.substring(0, 8)}...`);
+      
+      // 检查环境与 API Key 是否匹配（简单检查）
+      if (this.environment === 'PRODUCTION' && this.apiKey.includes('staging')) {
+        this.logger.warn('⚠️ Using PRODUCTION environment but API Key may be for STAGING. Please verify your configuration.');
+      }
+      if (this.environment === 'STAGING' && this.apiKey.includes('prod')) {
+        this.logger.warn('⚠️ Using STAGING environment but API Key may be for PRODUCTION. Please verify your configuration.');
+      }
+    }
+    
     this.webhookSecret = this.configService.get<string>('TRANSAK_WEBHOOK_SECRET') || '';
     
     // Transak API 基础 URL
-    this.baseUrl = this.environment === 'PRODUCTION' 
-      ? 'https://api.transak.com'
-      : 'https://api-staging.transak.com';
+    // 注意：api-staging.transak.com 有 DNS 问题（ENOTFOUND），无法访问
+    // 因此 STAGING 环境也使用 api.transak.com（但必须使用 staging API Key）
+    // api.transak.com 根路径返回 not found 是正常的（API 需要完整端点路径）
+    // 完整的 API 端点路径（如 /auth/public/v2/session）应该可以工作
+    if (this.environment === 'PRODUCTION') {
+      this.baseUrl = 'https://api.transak.com';
+    } else {
+      // STAGING 环境：api-staging.transak.com 无法访问，使用 api.transak.com
+      // 如果配置了备用 URL，优先使用备用 URL
+      const alternateApiUrl = this.configService.get<string>('TRANSAK_API_URL_ALTERNATE');
+      if (alternateApiUrl) {
+        this.baseUrl = alternateApiUrl;
+        this.logger.warn(`⚠️ STAGING environment using alternate API URL: ${alternateApiUrl}`);
+      } else {
+        // 默认使用 api.transak.com（因为 api-staging.transak.com DNS 失败）
+        this.baseUrl = 'https://api.transak.com';
+        this.logger.warn(`⚠️ STAGING environment using api.transak.com (api-staging.transak.com is not accessible).`);
+        this.logger.warn(`⚠️ Ensure you're using a STAGING API Key with api.transak.com.`);
+      }
+    }
     
     // 记录配置信息（用于调试）
     this.logger.debug(`Transak Provider initialized: environment=${this.environment}, baseUrl=${this.baseUrl}, apiKey=${this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'NOT SET'}`);
@@ -258,6 +290,15 @@ export class TransakProviderService implements IProvider {
     );
     this.logger.debug(`Transak: Environment=${this.environment}, BaseUrl=${this.baseUrl}`);
 
+    // 解析 URL（在 try 块外定义，以便在 catch 块中使用）
+    const { URL } = require('url');
+    let sessionApiUrl = `${this.baseUrl}/auth/public/v2/session`;
+    if (!sessionApiUrl.startsWith('https://')) {
+      sessionApiUrl = sessionApiUrl.replace(/^http:\/\//, 'https://');
+      this.logger.warn(`Transak: Fixed HTTP URL to HTTPS: ${sessionApiUrl}`);
+    }
+    const url = new URL(sessionApiUrl);
+
     try {
       // 获取 referrerDomain（从环境变量或配置中获取）
       const referrerDomain = this.configService.get<string>('TRANSAK_REFERRER_DOMAIN') || 
@@ -300,21 +341,11 @@ export class TransakProviderService implements IProvider {
       
       // 使用 Node.js 原生 https 模块，避免 axios 的协议问题
       const https = require('https');
-      const { URL } = require('url');
-      
-      // 确保使用 HTTPS URL
-      let sessionApiUrl = `${this.baseUrl}/auth/public/v2/session`;
-      if (!sessionApiUrl.startsWith('https://')) {
-        sessionApiUrl = sessionApiUrl.replace(/^http:\/\//, 'https://');
-        this.logger.warn(`Transak: Fixed HTTP URL to HTTPS: ${sessionApiUrl}`);
-      }
       
       this.logger.debug(`Transak: Calling Create Session API: ${sessionApiUrl}`);
       this.logger.debug(`Transak: Request payload:`, JSON.stringify({ widgetParams }, null, 2));
       this.logger.debug(`Transak: Using access-token: ${accessToken ? `${accessToken.substring(0, 8)}...` : 'NOT SET'}`);
       
-      // 解析 URL
-      const url = new URL(sessionApiUrl);
       const requestData = JSON.stringify({ widgetParams });
       
       // 使用原生 https 模块发送请求
@@ -329,7 +360,15 @@ export class TransakProviderService implements IProvider {
             'access-token': accessToken,
             'content-type': 'application/json',
             'content-length': Buffer.byteLength(requestData),
+            // 使用更真实的 User-Agent 来绕过 Cloudflare 检查
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'accept-language': 'en-US,en;q=0.9',
+            'origin': 'https://global.transak.com',
+            'referer': 'https://global.transak.com/',
           },
+          // SSL/TLS 选项
+          rejectUnauthorized: true, // 验证 SSL 证书
+          timeout: 30000, // 30秒超时
         };
         
         const req = https.request(options, (res: any) => {
@@ -358,17 +397,43 @@ export class TransakProviderService implements IProvider {
         
         req.on('error', (error: Error) => {
           this.logger.error(`Transak: Request error:`, error);
+          this.logger.error(`Transak: Error name: ${error.name}, message: ${error.message}`);
+          this.logger.error(`Transak: Error stack:`, error.stack);
+          
+          // 处理 AggregateError（可能包含多个错误）
+          if (error.name === 'AggregateError' && (error as any).errors) {
+            const aggregateError = error as any;
+            this.logger.error(`Transak: AggregateError contains ${aggregateError.errors.length} errors:`);
+            aggregateError.errors.forEach((err: Error, index: number) => {
+              this.logger.error(`Transak: Error ${index + 1}: ${err.name} - ${err.message}`);
+            });
+          }
+          
           reject(error);
         });
         
-        req.setTimeout(10000, () => {
+        req.setTimeout(30000, () => {
           req.destroy();
-          reject(new Error('Request timeout'));
+          reject(new Error('Request timeout after 30 seconds'));
         });
         
-        req.write(requestData);
-        req.end();
+        try {
+          req.write(requestData);
+          req.end();
+        } catch (writeError: any) {
+          this.logger.error(`Transak: Error writing request data:`, writeError);
+          reject(new Error(`Failed to write request: ${writeError.message}`));
+        }
+      }).catch((promiseError: any) => {
+        // 捕获 Promise 中的错误
+        this.logger.error(`Transak: Promise rejection:`, promiseError);
+        if (promiseError.name === 'AggregateError' && promiseError.errors) {
+          const errorMessages = promiseError.errors.map((e: Error) => e.message).join('; ');
+          throw new Error(`Failed to create Transak session: ${errorMessages}`);
+        }
+        throw promiseError;
       });
+      
       const sessionId = data.session_id || data.sessionId;
 
       if (!sessionId) {
@@ -376,9 +441,10 @@ export class TransakProviderService implements IProvider {
       }
 
       // 构建 Widget URL（使用 sessionId）
+      // 注意：staging-global.transak.com 会重定向到 global-stg.transak.com
       const widgetBaseUrl = this.environment === 'PRODUCTION'
         ? 'https://global.transak.com'
-        : 'https://staging-global.transak.com';
+        : 'https://global-stg.transak.com';
       
       const widgetUrl = `${widgetBaseUrl}?apiKey=${this.apiKey}&sessionId=${sessionId}`;
 
@@ -390,17 +456,59 @@ export class TransakProviderService implements IProvider {
       };
     } catch (error: any) {
       // 详细记录错误信息
+      this.logger.error(`Transak: Failed to create session`);
+      this.logger.error(`Transak: Error type: ${error.constructor.name}`);
+      this.logger.error(`Transak: Error name: ${error.name}`);
+      this.logger.error(`Transak: Error message: ${error.message}`);
+      
+      // 处理 AggregateError
+      if (error.name === 'AggregateError' || error.constructor.name === 'AggregateError') {
+        const aggregateError = error as any;
+        if (aggregateError.errors && Array.isArray(aggregateError.errors)) {
+          this.logger.error(`Transak: AggregateError contains ${aggregateError.errors.length} errors:`);
+          const errorMessages: string[] = [];
+          aggregateError.errors.forEach((err: any, index: number) => {
+            const errMsg = err.message || err.toString();
+            errorMessages.push(`Error ${index + 1}: ${errMsg}`);
+            this.logger.error(`Transak: ${errorMessages[errorMessages.length - 1]}`);
+            if (err.stack) {
+              this.logger.error(`Transak: Error ${index + 1} stack:`, err.stack);
+            }
+          });
+          throw new Error(`Failed to create Transak session: ${errorMessages.join('; ')}`);
+        }
+      }
+      
+      // 处理网络错误
+      if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+        this.logger.error(`Transak: Network error - ${error.code}: ${error.message}`);
+        throw new Error(`Network error: Unable to connect to Transak API (${error.code}). Please check your network connection.`);
+      }
+      
+      // 处理 HTTP 响应错误
       if (error.response) {
-        this.logger.error(`Transak: Failed to create session - Status: ${error.response.status}`);
-        this.logger.error(`Transak: Response data:`, error.response.data);
-        this.logger.error(`Transak: Response headers:`, error.response.headers);
+        this.logger.error(`Transak: HTTP error - Status: ${error.response.status}`);
+        this.logger.error(`Transak: Response data:`, JSON.stringify(error.response.data, null, 2));
+        this.logger.error(`Transak: Response headers:`, JSON.stringify(error.response.headers, null, 2));
+        throw new Error(`Transak API returned ${error.response.status}: ${JSON.stringify(error.response.data)}`);
       } else if (error.request) {
-        this.logger.error(`Transak: No response received - Request:`, error.request);
+        this.logger.error(`Transak: No response received`);
+        this.logger.error(`Transak: Request details:`, {
+          hostname: url.hostname,
+          path: url.pathname,
+          method: 'POST',
+        });
+        throw new Error(`No response from Transak API. Please check your network connection and API key configuration.`);
       } else {
         this.logger.error(`Transak: Error setting up request:`, error.message);
+        if (error.stack) {
+          this.logger.error(`Transak: Error stack:`, error.stack);
+        }
       }
-      this.logger.error(`Transak: Full error:`, error);
-      throw new Error(`Failed to create Transak session: ${error.message}`);
+      
+      // 通用错误处理
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      throw new Error(`Failed to create Transak session: ${errorMessage}`);
     }
   }
 

@@ -24,7 +24,8 @@ import { userApi } from '@/lib/api/user.api';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { useWeb3 } from '@/contexts/Web3Context';
 import { SessionManager } from './SessionManager';
-import { TransakWidget } from './TransakWidget';
+import { AgentrixLogo } from '../common/AgentrixLogo';
+import { TransakWhiteLabelModal } from './TransakWhiteLabelModal';
 import { ethers } from 'ethers';
 
 interface SmartCheckoutProps {
@@ -127,11 +128,12 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [showKYCGuide, setShowKYCGuide] = useState(false);
   const [showQuickPayGuide, setShowQuickPayGuide] = useState(false);
   const [showSessionManager, setShowSessionManager] = useState(false);
-  const [showTransakWidget, setShowTransakWidget] = useState(false);
+  const [showProviderModal, setShowProviderModal] = useState(false);
   const [selectedProviderOption, setSelectedProviderOption] = useState<ProviderOption | null>(null);
   const { activeSession, loadActiveSession } = useSessionManager();
   const { isConnected, defaultWallet, connect, connectors } = useWeb3();
   const tokenMetadataCache = useRef<Record<string, { address: string; decimals: number }>>({});
+  const providerModalAutoOpened = useRef(false);
 
   const normalizedCurrency = (order.currency || 'USDC').toUpperCase();
   const isFiatOrderCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(normalizedCurrency);
@@ -309,6 +311,12 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   }, [order.amount, order.currency, order.metadata?.merchantPaymentConfig, isConnected, merchantAllowsCrypto]);
 
   useEffect(() => {
+    if (!selectedProviderOption && preflightResult?.providerOptions?.length) {
+      setSelectedProviderOption(preflightResult.providerOptions[0]);
+    }
+  }, [preflightResult, selectedProviderOption]);
+
+  useEffect(() => {
     const requiresCryptoSettlement =
       isFiatOrderCurrency &&
       merchantAllowsCrypto &&
@@ -385,16 +393,20 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       return;
     }
 
-    setStatus('processing');
     setError(null);
     
     console.log('🚀 Starting payment process...');
 
     try {
+      if (routeType === 'provider') {
+        await handleProviderPay('transak', selectedProviderOption || undefined);
+        return;
+      }
+
+      setStatus('processing');
+
       if (routeType === 'quickpay') {
         await handleQuickPay();
-      } else if (routeType === 'provider') {
-        await handleProviderPay();
       } else if (routeType === 'wallet') {
         await handleWalletPay();
       } else {
@@ -727,86 +739,17 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     provider?: 'google' | 'apple' | 'card' | 'local' | 'transak',
     option?: ProviderOption,
   ) => {
-    // Transak 特殊处理：打开 Widget
-    if (provider === 'transak') {
-      setShowTransakWidget(true);
-      return;
+    const providerFallback = preflightResult?.providerOptions?.find(
+      (opt) => opt.id === provider,
+    );
+    const resolvedOption = option || providerFallback || preflightResult?.providerOptions?.[0] || null;
+
+    if (resolvedOption) {
+      setSelectedProviderOption(resolvedOption);
     }
 
-    // 方案 B：先检查用户 KYC 状态
-    // 从 userProfile 获取真实的 KYC 状态（而不是从 option，因为 option 可能只是预估）
-    const userKYCLevel = userProfile?.kycLevel || 'none';
-    const needsKYC = userKYCLevel === 'none' || userKYCLevel === 'NONE';
-    
-    // 保存选中的 Provider Option，以便 TransakWidget 使用
-    if (option) {
-      setSelectedProviderOption(option);
-    }
-    
-    console.log('🔍 Provider Pay - KYC Check (方案 B):', {
-      provider,
-      option,
-      userKYCLevel,
-      needsKYC,
-      optionRequiresKYC: option?.requiresKYC,
-      preflightRequiresKYC: preflightResult?.requiresKYC,
-    });
-    
-    // 方案 B：根据 KYC 状态决定流程
-    if (needsKYC) {
-      // 未完成 KYC：打开 Transak Widget 进行 KYC（isKYCRequired: true）
-      console.log('✅ 用户未完成 KYC，打开 Transak Widget 进行 KYC 验证');
-      setShowTransakWidget(true);
-      return;
-    } else {
-      // 已完成 KYC：直接打开 Transak Widget 进行支付（directPayment: true，不显示兑换界面）
-      console.log('✅ 用户已完成 KYC，打开 Transak Widget 直接支付');
-      setShowTransakWidget(true);
-      return;
-    }
-
-    // Provider 支付流程
-    try {
-      setStatus('processing');
-      setError(null);
-
-      // 使用正确的 paymentMethod：stripe 用于银行卡支付
-      // 注意：目前只有 stripe 是真实接入的，Google Pay 和 Apple Pay 需要额外配置
-      const paymentMethod = provider === 'card' || provider === 'local' ? 'stripe' : 'stripe'; // 暂时都使用 stripe
-      
-      const result = await paymentApi.process({
-        amount: order.amount,
-        currency: order.currency || 'CNY',
-        paymentMethod: paymentMethod, // 必须是 PaymentMethod 枚举值
-        merchantId: order.merchantId,
-        description: order.description,
-        metadata: {
-          provider: provider,
-          providerType: provider === 'google' ? 'googlepay' : provider === 'apple' ? 'applepay' : 'card',
-        },
-      });
-
-      setStatus('success');
-      if (onSuccess) {
-        onSuccess(result);
-      }
-    } catch (error: any) {
-      console.error('Provider payment error:', error);
-      if (error.response?.data?.message) {
-        const errorMsg = error.response.data.message;
-        if (errorMsg.includes('KYC') || errorMsg.includes('kyc')) {
-          setShowKYCGuide(true);
-          setError('需要完成 KYC 认证才能使用此支付方式');
-        } else {
-          setError(errorMsg);
-        }
-      } else if (error.response?.status === 404) {
-        setError('支付接口未找到，请检查订单状态或联系客服');
-      } else {
-        setError(error.message || '支付失败，请重试');
-      }
-      setStatus('error');
-    }
+    providerModalAutoOpened.current = true;
+    setShowProviderModal(true);
   };
 
   const handleWalletPay = async () => {
@@ -1207,14 +1150,11 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   // 场景2: Provider (Transak) - 法币支付通道
   // 当路由为 provider 时，自动打开 Transak Widget
   useEffect(() => {
-    if (routeType === 'provider' && status === 'ready' && !showTransakWidget) {
-      // 延迟一下，让 UI 先渲染
-      const timer = setTimeout(() => {
-        setShowTransakWidget(true);
-      }, 300);
-      return () => clearTimeout(timer);
+    if (routeType === 'provider' && status === 'ready' && !providerModalAutoOpened.current) {
+      providerModalAutoOpened.current = true;
+      setShowProviderModal(true);
     }
-  }, [routeType, status, showTransakWidget]);
+  }, [routeType, status]);
 
   const ProviderView = () => (
     <div className="animate-fade-in">
@@ -1462,12 +1402,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 font-sans relative max-h-[90vh] overflow-y-auto">
       {/* 顶部品牌 */}
       <div className="bg-slate-50/80 px-6 py-4 flex justify-between items-center border-b border-slate-100 backdrop-blur-sm sticky top-0 z-20">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-indigo-600 rounded-md flex items-center justify-center text-white font-bold text-xs">
-            P
-          </div>
-          <span className="font-bold text-slate-800 tracking-tight">Agentrix</span>
-        </div>
+        <AgentrixLogo size="sm" showText />
         <div className="flex items-center gap-3">
           <div className="text-xs font-mono text-slate-400">SECURE v7.0</div>
           {onCancel && (
@@ -2114,102 +2049,27 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           </div>
         )}
 
-        {/* Transak Widget 弹窗 - 嵌入在 Agentrix UI 中 */}
-        {showTransakWidget && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">选择支付方式</h3>
-                  <p className="text-xs text-slate-500 mt-1">使用银行卡、Google Pay 或 Apple Pay 购买加密货币</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowTransakWidget(false);
-                    // 如果是从 provider 路由打开的，关闭后回到选择界面
-                    if (routeType === 'provider') {
-                      setStatus('ready');
-                    }
-                  }}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <XIcon size={20} />
-                </button>
-              </div>
-              
-              {/* Powered by Transak 标识 */}
-              <div className="mb-4 pb-4 border-b border-slate-200">
-                <div className="flex items-center justify-end gap-2">
-                  <span className="text-xs text-slate-400">Powered by</span>
-                  <span className="text-xs font-semibold text-slate-600">Transak</span>
-                </div>
-              </div>
-
-              <TransakWidget
-                apiKey={process.env.NEXT_PUBLIC_TRANSAK_API_KEY || ''}
-                environment={(process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT as 'STAGING' | 'PRODUCTION') || 'STAGING'}
-                amount={selectedProviderOption?.price || order.amount}
-                fiatCurrency={selectedProviderOption?.currency || (isFiatOrderCurrency ? (order.currency || 'USD') : 'USD')}
-                cryptoCurrency="USDC" // 统一兑换成 USDC
-                network="bsc" // 统一使用 BSC 链
-                walletAddress={selectedProviderOption?.commissionContractAddress || preflightResult?.providerOptions?.[0]?.commissionContractAddress || undefined} // 使用分润佣金合约地址，不是用户钱包
-                orderId={order.id}
-                userId={userProfile?.id}
-                email={userProfile?.email}
-                directPayment={userProfile?.kycLevel && userProfile.kycLevel !== 'none' && userProfile.kycLevel !== 'NONE'} // 方案 B：如果用户已完成 KYC，使用直接支付模式（不显示兑换界面）
-                onSuccess={(data) => {
-                  console.log('Transak payment successful:', data);
-                  setShowTransakWidget(false);
-                  setStatus('success');
-                  // 创建支付记录
-                  paymentApi.process({
-                    amount: order.amount,
-                    currency: order.currency || 'CNY',
-                    paymentMethod: 'transak',
-                    merchantId: order.merchantId,
-                    description: order.description,
-                    metadata: {
-                      provider: 'transak',
-                      transakOrderId: data.orderId,
-                      transactionHash: data.transactionHash,
-                    },
-                  }).then((result) => {
-                    if (onSuccess) {
-                      onSuccess(result);
-                    }
-                  }).catch((error) => {
-                    console.error('Failed to create payment record:', error);
-                    setError('支付成功，但记录创建失败，请联系客服');
-                    setStatus('error');
-                  });
-                }}
-                onError={(error) => {
-                  console.error('Transak payment error:', error);
-                  
-                  // 如果 SDK 加载失败，但已使用 iframe 或重定向方式打开，不显示错误
-                  if (error.fallbackToRedirect) {
-                    console.log('✅ Transak using fallback method (iframe or redirect)');
-                    // 不显示错误，因为 iframe 已经嵌入或新窗口已打开
-                    setError(null);
-                    // 保持弹窗打开，让用户看到 iframe 或知道已在新窗口打开
-                    // 不自动关闭，让用户完成 KYC 流程
-                  } else {
-                    setError(error.message || 'Transak 支付失败');
-                    setStatus('error');
-                    setShowTransakWidget(false);
-                  }
-                }}
-                onClose={() => {
-                  setShowTransakWidget(false);
-                  // 如果是从 provider 路由打开的，关闭后回到选择界面
-                  if (routeType === 'provider') {
-                    setStatus('ready');
-                  }
-                }}
-              />
-            </div>
-          </div>
-        )}
+        <TransakWhiteLabelModal
+          open={showProviderModal}
+          order={order}
+          providerOption={selectedProviderOption || preflightResult?.providerOptions?.[0] || null}
+          userProfile={userProfile}
+          onClose={() => {
+            setShowProviderModal(false);
+            setError(null);
+          }}
+          onSuccess={(result) => {
+            setStatus('success');
+            setShowProviderModal(false);
+            if (onSuccess) {
+              onSuccess(result);
+            }
+          }}
+          onError={(message) => {
+            setError(message);
+            setStatus('error');
+          }}
+        />
       </div>
     </div>
   );

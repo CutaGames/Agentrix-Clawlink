@@ -137,10 +137,11 @@ export function TransakWidget({
     // 动态加载 Transak SDK
     const script = document.createElement('script');
     // 使用正确的 Transak SDK URL（根据环境选择）
-    // 注意：根据 Transak 文档，SDK URL 可能因版本而异
+    // 注意：staging-global.transak.com 会重定向到 global-stg.transak.com
+    // 直接使用 global-stg.transak.com 避免重定向
     const sdkUrl = environment === 'PRODUCTION'
       ? 'https://global.transak.com/sdk/v1.1.js'
-      : 'https://staging-global.transak.com/sdk/v1.1.js';
+      : 'https://global-stg.transak.com/sdk/v1.1.js';
     
     console.log('🔍 开始加载 Transak SDK:', {
       url: sdkUrl,
@@ -235,9 +236,11 @@ export function TransakWidget({
       // 如果 SDK 加载失败，使用 iframe 嵌入方式作为备用方案
       // 注意：这里会等待 transakSessionId 准备好（在另一个 useEffect 中创建）
       // 如果 transakSessionId 还未准备好，会等待或使用 URL 参数方式
+      // 注意：staging-global.transak.com 会重定向到 global-stg.transak.com
+      // 直接使用 global-stg.transak.com 避免重定向
       const baseUrl = environment === 'PRODUCTION' 
         ? 'https://global.transak.com'
-        : 'https://staging-global.transak.com';
+        : 'https://global-stg.transak.com';
 
       const params = new URLSearchParams({
         apiKey: apiKey,
@@ -414,9 +417,11 @@ export function TransakWidget({
 
     // 如果 sessionId 已准备好，使用 sessionId 方式
     if (transakSessionId && !sessionLoading) {
+      // 注意：staging-global.transak.com 会重定向到 global-stg.transak.com
+      // 直接使用 global-stg.transak.com 避免重定向
       const baseUrl = environment === 'PRODUCTION' 
         ? 'https://global.transak.com'
-        : 'https://staging-global.transak.com';
+        : 'https://global-stg.transak.com';
       const transakUrl = `${baseUrl}?apiKey=${apiKey}&sessionId=${transakSessionId}`;
       console.log('🔗 Using iframe with sessionId (方案1: Create Session API):', transakUrl);
       
@@ -588,7 +593,7 @@ export function useTransakRedirect() {
   }) => {
     const baseUrl = config.environment === 'PRODUCTION' 
       ? 'https://global.transak.com'
-      : 'https://staging-global.transak.com';
+      : 'https://global-stg.transak.com';
 
     const params = new URLSearchParams({
       apiKey: config.apiKey,

@@ -464,14 +464,16 @@ export class PreflightCheckService {
             // 获取所有 On-ramp Provider 的报价
             const onRampProviders = this.providerManagerService.getOnRampProviders();
             
-            // 并行获取所有 Provider 的报价
+            // 并行获取所有 Provider 的报价，每个 Provider 设置 5 秒超时
             const quotePromises = onRampProviders.map(async (provider) => {
               try {
-                const quote = await provider.getQuote(
-                  amount,
-                  currency,
-                  targetCrypto,
-                );
+                // 为每个 Provider 设置超时（5秒）
+                const quote = await Promise.race([
+                  provider.getQuote(amount, currency, targetCrypto),
+                  new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Quote timeout')), 5000)
+                  ),
+                ]) as any;
                 
                 const actualFee = quote.fee || 0;
                 const totalPrice = amount + actualFee; // 用户承担费用
@@ -491,7 +493,11 @@ export class PreflightCheckService {
               }
             });
             
-            const quotes = await Promise.all(quotePromises);
+            // 使用 Promise.allSettled 而不是 Promise.all，避免一个失败导致全部失败
+            const quoteResults = await Promise.allSettled(quotePromises);
+            const quotes = quoteResults
+              .filter((result) => result.status === 'fulfilled' && result.value !== null)
+              .map((result) => (result as PromiseFulfilledResult<any>).value);
             providerQuotes.push(...quotes.filter((q) => q !== null) as any[]);
             
             // 应用 Agentrix 平台额外费用（如果配置了）
