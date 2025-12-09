@@ -107,16 +107,41 @@ export class SessionService {
 
       if (sessionId && this.sessionManagerContract) {
         this.logger.log(`查询链上 Session: ${sessionId}, 合约地址: ${this.sessionManagerContract.target}`);
-        const onChainSession = await this.sessionManagerContract.getSession(sessionId);
-        this.logger.log(`链上查询结果: ${JSON.stringify({
-          signer: onChainSession?.signer,
-          owner: onChainSession?.owner,
-          isZeroAddress: onChainSession?.signer === ZeroAddress,
-        })}`);
+        
+        // 增加重试逻辑，处理 RPC 同步延迟
+        let onChainSession = null;
+        const maxRetries = 5;
+        const initialDelay = 2000; // 2秒
+        let delay = initialDelay;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            onChainSession = await this.sessionManagerContract.getSession(sessionId);
+            this.logger.log(`链上查询结果 (尝试 ${attempt}/${maxRetries}): ${JSON.stringify({
+              signer: onChainSession?.signer,
+              owner: onChainSession?.owner,
+              isZeroAddress: onChainSession?.signer === ZeroAddress,
+            })}`);
+            
+            // 如果找到有效的 Session，退出重试循环
+            if (onChainSession && onChainSession.signer !== ZeroAddress) {
+              break;
+            }
+          } catch (error: any) {
+            this.logger.warn(`查询链上 Session 失败 (尝试 ${attempt}/${maxRetries}): ${error.message}`);
+          }
+          
+          // 如果不是最后一次尝试，等待后重试
+          if (attempt < maxRetries) {
+            this.logger.log(`等待 ${delay}ms 后重试...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 1.5; // 指数退避：2s, 3s, 4.5s, 6.75s, 10.125s
+          }
+        }
 
         if (!onChainSession || onChainSession.signer === ZeroAddress) {
-          this.logger.error(`Session 未找到: sessionId=${sessionId}, contract=${this.sessionManagerContract.target}`);
-          throw new BadRequestException('Session not found on-chain');
+          this.logger.error(`Session 未找到 (已重试 ${maxRetries} 次): sessionId=${sessionId}, contract=${this.sessionManagerContract.target}`);
+          throw new BadRequestException('Session not found on-chain. Please wait a few seconds and try again.');
         }
 
         if (

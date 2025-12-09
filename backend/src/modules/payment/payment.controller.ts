@@ -142,6 +142,7 @@ export class PaymentController {
       disableWalletAddressForm?: boolean;
       disableFiatAmountEditing?: boolean;
       isKYCRequired?: boolean;
+      referrerDomain?: string;
     },
   ) {
     const transakProvider = this.providerManagerService.getOnRampProviders().find(
@@ -154,7 +155,56 @@ export class PaymentController {
 
     // 获取用户信息
     const user = req.user;
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const defaultFrontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+
+    const headerValue = (value?: string | string[]): string | undefined => {
+      if (!value) {
+        return undefined;
+      }
+      return Array.isArray(value) ? value[0] : value;
+    };
+
+    const originHeader =
+      headerValue(req.headers?.origin as any) ||
+      headerValue(req.headers?.referer as any);
+
+    const extractHost = (value?: string): string | undefined => {
+      if (!value) {
+        return undefined;
+      }
+      try {
+        return new URL(value).host;
+      } catch {
+        try {
+          return new URL(value.startsWith('http') ? value : `https://${value}`).host;
+        } catch {
+          return undefined;
+        }
+      }
+    };
+
+    const extractOrigin = (value?: string): string | undefined => {
+      if (!value) {
+        return undefined;
+      }
+      try {
+        return new URL(value).origin;
+      } catch {
+        try {
+          return new URL(value.startsWith('http') ? value : `https://${value}`).origin;
+        } catch {
+          return undefined;
+        }
+      }
+    };
+
+    const fallbackDomain = extractHost(defaultFrontendUrl) || 'localhost:3000';
+    const referrerDomain = dto.referrerDomain || extractHost(originHeader) || fallbackDomain;
+
+    const redirectURL =
+      dto.redirectURL ||
+      (extractOrigin(originHeader) ? `${extractOrigin(originHeader)}/payment/callback` : undefined) ||
+      `${defaultFrontendUrl.replace(/\/$/, '')}/payment/callback`;
 
     return transakProvider.createSession({
       amount: dto.amount,
@@ -165,11 +215,12 @@ export class PaymentController {
       orderId: dto.orderId,
       userId: user.id,
       email: dto.email || user.email,
-      redirectURL: dto.redirectURL || `${frontendUrl}/payment/callback`,
+      redirectURL,
       hideMenu: dto.hideMenu !== undefined ? dto.hideMenu : true,
       disableWalletAddressForm: dto.disableWalletAddressForm !== undefined ? dto.disableWalletAddressForm : true,
       disableFiatAmountEditing: dto.disableFiatAmountEditing !== undefined ? dto.disableFiatAmountEditing : true,
       isKYCRequired: dto.isKYCRequired !== undefined ? dto.isKYCRequired : true,
+      referrerDomain,
     });
   }
 

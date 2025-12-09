@@ -83,6 +83,7 @@ export function TransakWidget({
           orderId,
           email,
           redirectURL: `${window.location.origin}/payment/callback`,
+          referrerDomain: window.location.host,
           hideMenu: true,
           disableWalletAddressForm: true,
           disableFiatAmountEditing: true, // 锁定金额
