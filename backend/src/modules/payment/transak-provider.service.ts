@@ -284,6 +284,7 @@ export class TransakProviderService implements IProvider {
     disableWalletAddressForm?: boolean;
     disableFiatAmountEditing?: boolean;
     isKYCRequired?: boolean;
+    referrerDomain?: string;
   }): Promise<{ sessionId: string; widgetUrl: string }> {
     this.logger.log(
       `Transak: Creating session for ${params.amount} ${params.fiatCurrency} -> ${params.cryptoCurrency}`,
@@ -300,14 +301,15 @@ export class TransakProviderService implements IProvider {
     const url = new URL(sessionApiUrl);
 
     try {
-      // 获取 referrerDomain（从环境变量或配置中获取）
-      const referrerDomain = this.configService.get<string>('TRANSAK_REFERRER_DOMAIN') || 
-        this.configService.get<string>('FRONTEND_URL')?.replace(/^https?:\/\//, '') || 
+      // 获取 referrerDomain（从请求或环境变量中获取）
+      const resolvedReferrerDomain = params.referrerDomain ||
+        this.configService.get<string>('TRANSAK_REFERRER_DOMAIN') || 
+        this.configService.get<string>('FRONTEND_URL')?.replace(/^https?:\/\//, '')?.replace(/\/$/, '') || 
         'localhost:3000';
 
       // 构建 widgetParams（这些参数会在 Session 创建时锁定）
       const widgetParams: Record<string, any> = {
-        referrerDomain: referrerDomain,
+        referrerDomain: resolvedReferrerDomain,
         fiatAmount: params.amount.toString(),
         fiatCurrency: params.fiatCurrency,
         cryptoCurrencyCode: params.cryptoCurrency,

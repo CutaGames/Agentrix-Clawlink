@@ -255,6 +255,7 @@ export const paymentApi = {
     disableWalletAddressForm?: boolean;
     disableFiatAmountEditing?: boolean;
     isKYCRequired?: boolean;
+    referrerDomain?: string;
   }): Promise<{ sessionId: string; widgetUrl: string }> => {
     const result = await apiClient.post<{ sessionId: string; widgetUrl: string }>(
       '/payments/provider/transak/session',

@@ -116,13 +116,34 @@ interface PreflightResult {
   providerOptions?: ProviderOption[]; // 各支付方式的价格和 KYC 要求
 }
 
+const formatFiatSymbol = (currency?: string) => {
+  const code = currency?.toUpperCase() || 'USD';
+  switch (code) {
+    case 'CNY':
+    case 'JPY':
+      return '¥';
+    case 'EUR':
+      return '€';
+    case 'GBP':
+      return '£';
+    case 'USD':
+    default:
+      return '$';
+  }
+};
+
+const formatFiatAmount = (value: number, currency?: string) => {
+  const code = currency?.toUpperCase() || 'USD';
+  const digits = code === 'JPY' ? 0 : 2;
+  return `${formatFiatSymbol(code)}${value.toFixed(digits)} ${code}`;
+};
+
 export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps) {
   const router = useRouter();
   const [status, setStatus] = useState<Status>('loading');
   const [routeType, setRouteType] = useState<RouteType>('quickpay');
   const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [currentSession, setCurrentSession] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [showKYCGuide, setShowKYCGuide] = useState(false);
@@ -141,6 +162,9 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   // 最终都是转换成数字货币通过合约分佣
   const merchantConfig = order.metadata?.merchantPaymentConfig || 'both';
   const merchantAllowsCrypto = merchantConfig === 'both' || merchantConfig === 'crypto_only';
+  const providerOptions = preflightResult?.providerOptions || [];
+  const topFiatOptions = providerOptions.slice(0, 4);
+  const hasFiatOptions = topFiatOptions.length > 0;
   
   // 判断是否跨境（未来用于选择本地通道）
   // 目前暂未实现本地通道，所有法币支付都通过 Transak
@@ -1156,77 +1180,6 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     }
   }, [routeType, status]);
 
-  const ProviderView = () => (
-    <div className="animate-fade-in">
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4 shadow-sm">
-        <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-3">
-          <span className="font-medium text-slate-700">选择支付方式</span>
-          <div className="flex gap-1">
-            <div className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500">
-              VISA
-            </div>
-            <div className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500">
-              Master
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <button
-            onClick={() => handleProviderPay('card')}
-            className="w-full text-left px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <CreditCard className="text-slate-600" size={16} />
-              <div>
-                <div className="text-sm font-medium text-slate-700">银行卡支付</div>
-                <div className="text-xs text-slate-500">支持 Visa/MasterCard</div>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleProviderPay('google')}
-            className="w-full text-left px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                G
-              </div>
-              <div>
-                <div className="text-sm font-medium text-slate-700">Google Pay</div>
-                <div className="text-xs text-slate-500">快速支付</div>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleProviderPay('apple')}
-            className="w-full text-left px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                🍎
-              </div>
-              <div>
-                <div className="text-sm font-medium text-slate-700">Apple Pay</div>
-                <div className="text-xs text-slate-500">快速支付</div>
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      <div className="flex justify-between items-center mt-4 px-2">
-        <span className="text-[10px] text-slate-400 flex items-center gap-1">
-          <Globe size={10} />
-          Fiat to Crypto
-        </span>
-        <span className="text-[10px] text-slate-400">Powered by Transak</span>
-      </div>
-    </div>
-  );
-
   // 场景3: Wallet Pay
   const WalletView = () => {
     if (!isConnected) {
@@ -1573,7 +1526,6 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             </div>
 
             {routeType === 'quickpay' && <QuickPayView />}
-            {routeType === 'provider' && <ProviderView />}
             {routeType === 'wallet' && <WalletView />}
           </>
         )}
@@ -1596,311 +1548,68 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           </div>
         )}
 
-        {/* 更多选项 */}
-        {status === 'ready' && (
-          <div className="mt-6 pt-6 border-t border-slate-100">
-            <button
-              onClick={() => setShowMoreOptions(!showMoreOptions)}
-              className="w-full text-sm text-slate-500 hover:text-slate-700 py-2 flex items-center justify-center gap-2"
-            >
-              <span>{showMoreOptions ? '⌃' : '⌄'}</span>
-              <span>More Options</span>
-            </button>
-            
-            {showMoreOptions && (
-              <div className="mt-4 space-y-2 animate-fade-in">
-                {/* QuickPay 选项 */}
-                {routeType !== 'quickpay' && (
-                  <button
-                    onClick={async () => {
-                      // 如果有Session，即使quickPayAvailable为false也可以使用
-                      if (currentSession || activeSession) {
-                        setRouteType('quickpay');
-                        setShowMoreOptions(false);
-                      } else if (preflightResult?.quickPayAvailable) {
-                        setShowQuickPayGuide(true);
-                        setShowMoreOptions(false);
-                      } else {
-                        setShowQuickPayGuide(true);
-                        setShowMoreOptions(false);
-                      }
-                    }}
-                    className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
-                      (currentSession || activeSession) || preflightResult?.quickPayAvailable
-                        ? 'bg-indigo-50 border border-indigo-200 hover:bg-indigo-100'
-                        : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Zap className="text-indigo-600" size={16} />
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">
-                          QuickPay {(currentSession || activeSession) ? '(已激活)' : preflightResult?.quickPayAvailable ? '(推荐)' : '(需要创建Session)'}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {(currentSession || activeSession)
-                            ? '无需钱包确认，即时到账'
-                            : preflightResult?.quickPayAvailable
-                            ? '无需钱包确认，即时到账'
-                            : '需要先创建 Session'}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                )}
-                
-                {/* 钱包支付选项 */}
-                {routeType !== 'wallet' && (
-                  <button
-                    onClick={async () => {
-                      if (isConnected) {
-                        setRouteType('wallet');
-                        setShowMoreOptions(false);
-                      } else {
-                        // 尝试连接钱包
-                        try {
-                          setError(null);
-                          // 检查 window.ethereum 是否存在（MetaMask 或其他注入式钱包）
-                          if (window.ethereum) {
-                            try {
-                              await connect('metamask' as any);
-                              setRouteType('wallet');
-                              setShowMoreOptions(false);
-                            } catch (connectError) {
-                              // 如果 metamask 连接失败，尝试查找其他可用的连接器
-                              const availableConnector = connectors.find(c => c.isInstalled);
-                              if (availableConnector) {
-                                await connect(availableConnector.id as any);
-                                setRouteType('wallet');
-                                setShowMoreOptions(false);
-                              } else {
-                                setError('请先安装MetaMask钱包');
-                                setShowMoreOptions(false);
-                              }
-                            }
-                          } else {
-                            // 如果没有 window.ethereum，尝试使用可用的连接器
-                            const availableConnector = connectors.find(c => c.isInstalled);
-                            if (availableConnector) {
-                              await connect(availableConnector.id as any);
-                              setRouteType('wallet');
-                              setShowMoreOptions(false);
-                            } else {
-                              setError('请先安装MetaMask钱包');
-                              setShowMoreOptions(false);
-                            }
-                          }
-                        } catch (error: any) {
-                          console.error('钱包连接失败:', error);
-                          setError(error.message || '钱包连接失败，请重试');
-                          setShowMoreOptions(false);
-                        }
-                      }
-                    }}
-                    className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
-                      isConnected
-                        ? 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                        : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Wallet className="text-slate-600" size={16} />
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">
-                          钱包支付 {isConnected ? '' : '(点击连接)'}
-                        </div>
-                        <div className="text-xs text-slate-500">需要钱包确认</div>
-                      </div>
-                    </div>
-                  </button>
-                )}
-                
-                {/* 显示各支付方式的价格和 KYC 要求 */}
-                {preflightResult?.providerOptions && preflightResult.providerOptions.length > 0 ? (
-                  preflightResult.providerOptions.map((option) => {
-                    const getProviderIcon = (id: string) => {
-                      if (id === 'google') {
-                        return (
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                            G
-                          </div>
-                        );
-                      } else if (id === 'apple') {
-                        return (
-                          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                            🍎
-                          </div>
-                        );
-                      } else if (id === 'card') {
-                        return <CreditCard className="text-slate-600" size={16} />;
-                      } else if (id === 'local') {
-                        return <Globe className="text-slate-600" size={16} />;
-                      }
-                      return null;
-                    };
+        {status === 'ready' && hasFiatOptions && (
+          <div className="mt-6">
+            <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">法币通道</p>
+                  <h4 className="text-lg font-semibold text-slate-900 mt-1">没有钱包？使用银行卡 / Apple Pay / Google Pay</h4>
+                  <p className="text-xs text-slate-500">金额已锁定，包含 On-Ramp 费率与 Agentrix 0.1% 平台费</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleProviderPay('transak', selectedProviderOption || providerOptions[0])}
+                  className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  法币支付
+                </button>
+              </div>
 
-                    return (
-                      <button
-                        key={option.id}
-                        onClick={async () => {
-                          // 如果订单金额低于最低金额，不允许点击
-                          if (option.available === false) {
-                            return;
-                          }
-                          setShowMoreOptions(false);
-                          await handleProviderPay(option.id as 'google' | 'apple' | 'card' | 'local', option);
-                        }}
-                        disabled={option.available === false}
-                        className={`w-full text-left px-4 py-3 bg-white border rounded-lg transition-colors ${
-                          option.available === false
-                            ? 'border-slate-200 opacity-50 cursor-not-allowed'
-                            : 'border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 flex-1">
-                            {getProviderIcon(option.id)}
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <div className="text-sm font-medium text-slate-700">{option.name}</div>
-                                {option.requiresKYC && (
-                                  <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded">
-                                    需 KYC
-                                  </span>
-                                )}
-                                {!option.requiresKYC && (
-                                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
-                                    已认证
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                {option.provider === 'transak' ? 'Powered by Transak' : option.provider}
-                                {option.estimatedTime && ` • ${option.estimatedTime}`}
-                              </div>
-                            </div>
+              <div className="mt-4 grid gap-3">
+                {topFiatOptions.map((option) => {
+                  const disabled = option.available === false;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleProviderPay(option.id as any, option)}
+                      className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                        disabled ? 'border-slate-100 bg-slate-50 opacity-70 cursor-not-allowed' : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                            {option.name}
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              option.requiresKYC ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {option.requiresKYC ? '需 KYC' : '免 KYC'}
+                            </span>
                           </div>
-                          <div className="text-right">
-                            {option.available === false && option.minAmount ? (
-                              // 选项B：订单金额低于最低金额，显示最低金额作为价格，并提示不满足最低金额要求
-                              <>
-                                <div className="text-sm font-semibold text-slate-500">
-                                  {option.price.toFixed(2)} {option.currency}
-                                </div>
-                                <div className="text-xs text-red-500">
-                                  不满足最低金额要求（最低 {option.minAmount.toFixed(2)} {option.currency}）
-                                </div>
-                              </>
-                            ) : option.fee && option.fee > 0 ? (
-                              <>
-                                <div className="text-sm font-semibold text-slate-900">
-                                  {option.price.toFixed(2)} {option.currency}
-                                </div>
-                                <div className="text-xs text-slate-500">
-                                  含手续费 {option.fee.toFixed(2)} {option.currency}
-                                  {option.providerFee && option.agentrixFee && (
-                                    <span className="block text-slate-400">
-                                      (Provider: {option.providerFee.toFixed(2)}, 平台: {option.agentrixFee.toFixed(2)})
-                                    </span>
-                                  )}
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <div className="text-sm font-semibold text-slate-500">
-                                  获取中...
-                                </div>
-                                <div className="text-xs text-slate-400">
-                                  正在获取报价
-                                </div>
-                              </>
+                          <div className="text-[11px] text-slate-500 mt-1">
+                            Powered by {option.provider?.toUpperCase?.() || 'Transak'}
+                            {option.minAmount && option.available === false && (
+                              <span className="ml-2 text-red-500">最低 {formatFiatAmount(option.minAmount, option.currency)}</span>
                             )}
                           </div>
                         </div>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <>
-                    {/* 如果没有 providerOptions，显示默认选项 */}
-                    <button
-                      onClick={async () => {
-                        setShowMoreOptions(false);
-                        await handleProviderPay('google');
-                      }}
-                      className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                          G
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-slate-700">Google Pay</div>
-                          <div className="text-xs text-slate-500">快速支付 • Powered by Transak</div>
+                        <div className="text-right">
+                          <div className="text-base font-bold text-slate-900">
+                            {formatFiatAmount(option.price, option.currency)}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            费用 {option.fee ? `${formatFiatSymbol(option.currency)}${option.fee.toFixed(2)}` : '获取中'}
+                          </div>
                         </div>
                       </div>
                     </button>
-
-                    <button
-                      onClick={async () => {
-                        setShowMoreOptions(false);
-                        await handleProviderPay('apple');
-                      }}
-                      className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                          🍎
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium text-slate-700">Apple Pay</div>
-                          <div className="text-xs text-slate-500">快速支付 • Powered by Transak</div>
-                        </div>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        setShowMoreOptions(false);
-                        await handleProviderPay('card');
-                      }}
-                      className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="text-slate-600" size={16} />
-                        <div>
-                          <div className="text-sm font-medium text-slate-700">银行卡支付</div>
-                          <div className="text-xs text-slate-500">支持 Visa/MasterCard • Powered by Transak</div>
-                        </div>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        setShowMoreOptions(false);
-                        await handleProviderPay('local');
-                      }}
-                      className="w-full text-left px-4 py-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Globe className="text-slate-600" size={16} />
-                        <div>
-                          <div className="text-sm font-medium text-slate-700">本地银行卡</div>
-                          <div className="text-xs text-slate-500">根据地区自动选择 • Powered by Transak</div>
-                        </div>
-                      </div>
-                    </button>
-                  </>
-                )}
-                
-                <button
-                  onClick={onCancel}
-                  className="w-full text-center px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
-                >
-                  取消支付
-                </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -2053,6 +1762,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           open={showProviderModal}
           order={order}
           providerOption={selectedProviderOption || preflightResult?.providerOptions?.[0] || null}
+          providerOptions={providerOptions}
           userProfile={userProfile}
           onClose={() => {
             setShowProviderModal(false);
