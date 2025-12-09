@@ -29,8 +29,7 @@ export class User {
   paymindId: string;
 
   @Column({
-    type: 'enum',
-    enum: UserRole,
+    type: 'varchar',
     array: true,
     default: [UserRole.USER],
   })
