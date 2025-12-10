@@ -1352,7 +1352,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   };
 
   return (
-    <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 font-sans relative max-h-[90vh] overflow-y-auto">
+    <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-100 font-sans relative max-h-[90vh] overflow-y-auto">
       {/* 顶部品牌 */}
       <div className="bg-slate-50/80 px-6 py-4 flex justify-between items-center border-b border-slate-100 backdrop-blur-sm sticky top-0 z-20">
         <AgentrixLogo size="sm" showText />
@@ -1525,8 +1525,17 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
               </div>
             </div>
 
-            {routeType === 'quickpay' && <QuickPayView />}
-            {routeType === 'wallet' && <WalletView />}
+            {merchantAllowsCrypto ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <QuickPayView />
+                <WalletView />
+              </div>
+            ) : (
+              <div>
+                {routeType === 'quickpay' && <QuickPayView />}
+                {routeType === 'wallet' && <WalletView />}
+              </div>
+            )}
           </>
         )}
 
@@ -1545,6 +1554,46 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
               <span className="font-medium">Payment Failed</span>
             </div>
             <div className="text-sm text-red-600 mt-2">{error}</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setStatus('loading');
+                  // retry last action
+                  try {
+                    // attempt a conservative retry of handlePay if available
+                    if (typeof (handlePay as any) === 'function') {
+                      (handlePay as any)();
+                    }
+                  } catch (e) {
+                    console.warn('Retry failed', e);
+                    setStatus('error');
+                  }
+                }}
+                className="rounded-lg px-3 py-2 bg-rose-600 text-white text-sm font-medium hover:bg-rose-500"
+              >
+                重试
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setRouteType('provider');
+                  setShowProviderModal(true);
+                }}
+                className="rounded-lg px-3 py-2 border border-slate-200 text-sm font-medium hover:bg-slate-50"
+              >
+                切换通道
+              </button>
+              <button
+                type="button"
+                onClick={() => window.open('mailto:support@agentrix.top?subject=支付问题&body=请提供订单ID和错误详情', '_blank')}
+                className="rounded-lg px-3 py-2 border border-transparent bg-white/80 text-sm font-medium hover:bg-white"
+              >
+                联系客服
+              </button>
+            </div>
           </div>
         )}
 
