@@ -94,21 +94,26 @@ export function useSessionManager() {
         tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
       }
 
-      // 4. 检查并授权USDT给ERC8004合约
+      // 4. 检查并授权USDT（如果需要）
+      // 动态获取 Provider，支持 OKX 和 MetaMask
       let provider: ethers.BrowserProvider | null = null;
+      if ((window as any).okxwallet) {
+          provider = new ethers.BrowserProvider((window as any).okxwallet);
+      } else if (window.ethereum) {
+          provider = new ethers.BrowserProvider(window.ethereum);
+      }
+
       let signer: ethers.Signer | null = null;
       let userAddress: string | null = null;
 
-      if (typeof window !== 'undefined' && window.ethereum) {
-        provider = new ethers.BrowserProvider(window.ethereum);
-        
+      if (provider) {
         // 先尝试获取已授权的账户，避免触发 MetaMask 弹窗
         try {
-          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          // 尝试获取账户列表
+          const accounts = await provider.listAccounts();
           if (accounts && accounts.length > 0) {
-            userAddress = accounts[0];
-            // 使用已授权的账户创建 signer（不会弹窗）
             signer = await provider.getSigner();
+            userAddress = await signer.getAddress();
             console.log('✅ 使用已授权的账户加载 Session:', userAddress);
           } else {
             // 如果没有已授权的账户，才调用 getSigner（可能会弹窗）
@@ -259,11 +264,18 @@ export function useSessionManager() {
       await paymentApi.revokeSession(sessionId);
 
       // 2. 撤销USDT授权（将授权额度设为0）
-      if (typeof window !== 'undefined' && window.ethereum) {
+      // 动态获取 Provider，支持 OKX 和 MetaMask
+      let provider;
+      if ((window as any).okxwallet) {
+          provider = new ethers.BrowserProvider((window as any).okxwallet);
+      } else if (window.ethereum) {
+          provider = new ethers.BrowserProvider(window.ethereum);
+      }
+
+      if (provider) {
         const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
         const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
-        const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         
         const tokenContract = new ethers.Contract(

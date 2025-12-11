@@ -13,6 +13,7 @@ interface TransakWidgetProps {
   userId?: string;
   email?: string;
   directPayment?: boolean; // 新增：直接支付模式（不显示兑换界面，直接支付指定金额）
+  paymentMethod?: string; // 新增：指定支付方式（如 google_pay, apple_pay, credit_debit_card）
   onSuccess?: (data: any) => void;
   onError?: (error: any) => void;
   onClose?: () => void;
@@ -36,6 +37,7 @@ export function TransakWidget({
   userId,
   email,
   directPayment = false, // 默认不是直接支付模式
+  paymentMethod,
   onSuccess,
   onError,
   onClose,
@@ -247,12 +249,14 @@ export function TransakWidget({
         apiKey: apiKey,
         defaultCryptoCurrency: cryptoCurrency || 'USDC',
         defaultFiatCurrency: fiatCurrency || 'USD',
+        fiatCurrency: fiatCurrency || 'USD', // Explicitly set fiatCurrency
         // 统一使用 BSC 链
         defaultNetwork: network || 'bsc',
         // 设置金额（包含佣金的总价）
         // 注意：根据 Transak 文档，使用 fiatAmount 和 defaultAmount 来预设金额
         ...(amount && { 
           fiatAmount: amount.toString(), // 主要参数：法币金额
+          defaultFiatAmount: amount.toString(), // 备用参数：默认金额
           defaultAmount: amount.toString(), // 备用参数：默认金额
         }),
         // 使用分润佣金合约地址，不是用户钱包地址
@@ -260,6 +264,7 @@ export function TransakWidget({
         ...(walletAddress && { walletAddress: walletAddress }),
         ...(orderId && { partnerOrderId: orderId }),
         ...(email && { email: email }),
+        ...(paymentMethod && { defaultPaymentMethod: paymentMethod }),
         redirectURL: `${window.location.origin}/payment/callback`,
         // 方案 A1：简化界面，减少用户操作
         // 无论是否需要 KYC，都简化界面（hideMenu, disableWalletAddressForm, disableFiatAmountEditing）
@@ -484,16 +489,19 @@ export function TransakWidget({
       widgetWidth: '500px',
       defaultCryptoCurrency: cryptoCurrency,
       defaultFiatCurrency: fiatCurrency,
+      fiatCurrency: fiatCurrency, // Explicitly set fiatCurrency
       // 统一使用 BSC 链
       defaultNetwork: network || 'bsc',
       // 设置金额（包含佣金的总价）
       defaultAmount: amount,
+      defaultFiatAmount: amount, // Add defaultFiatAmount
       fiatAmount: amount, // 同时设置 fiatAmount 确保金额锁定
       // 使用分润佣金合约地址，不是用户钱包地址
       // Provider 兑换后自动打入此地址
       walletAddress: walletAddress,
       partnerOrderId: orderId,
       email: email,
+      defaultPaymentMethod: paymentMethod, // 新增：指定支付方式
       redirectURL: `${window.location.origin}/payment/callback`,
       // 方案 A1：简化界面，减少用户操作
       // 无论是否需要 KYC，都简化界面（hideMenu, disableWalletAddressForm, disableFiatAmountEditing）
@@ -561,7 +569,7 @@ export function TransakWidget({
         code: 'SDK_NOT_LOADED',
       });
     }
-  }, [isLoaded, apiKey, environment, amount, fiatCurrency, cryptoCurrency, network, walletAddress, orderId, email, directPayment, onSuccess, onError, onClose]);
+  }, [isLoaded, apiKey, environment, amount, fiatCurrency, cryptoCurrency, network, walletAddress, orderId, email, directPayment, paymentMethod, onSuccess, onError, onClose]);
 
   return (
     <div ref={containerRef} className="transak-widget-container">
@@ -591,6 +599,7 @@ export function useTransakRedirect() {
     walletAddress?: string;
     orderId?: string;
     email?: string;
+    paymentMethod?: string;
   }) => {
     const baseUrl = config.environment === 'PRODUCTION' 
       ? 'https://global.transak.com'
@@ -604,6 +613,7 @@ export function useTransakRedirect() {
       ...(config.walletAddress && { walletAddress: config.walletAddress }),
       ...(config.orderId && { partnerOrderId: config.orderId }),
       ...(config.email && { email: config.email }),
+      ...(config.paymentMethod && { defaultPaymentMethod: config.paymentMethod }),
       redirectURL: `${window.location.origin}/payment/callback`,
     });
 

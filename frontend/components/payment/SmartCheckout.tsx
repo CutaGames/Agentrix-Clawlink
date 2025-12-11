@@ -16,6 +16,7 @@ import {
   Smartphone,
   Globe,
   X as XIcon,
+  ArrowRight,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { SessionKeyManager } from '@/lib/session-key-manager';
@@ -35,8 +36,8 @@ interface SmartCheckoutProps {
     currency: string;
     description: string;
     merchantId: string;
-    to?: string; // 收款地址
-    metadata?: Record<string, any>; // 订单元数据
+    to?: string;
+    metadata?: Record<string, any>;
   };
   onSuccess?: (result: any) => void;
   onCancel?: () => void;
@@ -78,6 +79,7 @@ const TOKEN_CONFIG: Record<
 const ERC20_ABI = [
   'function transfer(address to, uint256 amount) external returns (bool)',
   'function decimals() external view returns (uint8)',
+  'function balanceOf(address account) external view returns (uint256)',
 ];
 
 interface ProviderOption {
@@ -88,12 +90,13 @@ interface ProviderOption {
   requiresKYC: boolean;
   provider: string;
   estimatedTime?: string;
-  fee?: number; // 总费用（Provider 费用 + Agentrix 平台费用，如果为 0 表示未获取到报价）
-  providerFee?: number; // Provider 费用（仅 Provider 收取的费用）
-  agentrixFee?: number; // Agentrix 平台费用（额外收取的平台费用）
-  commissionContractAddress?: string; // 分润佣金合约地址（Provider 兑换后自动打入此地址）
-  minAmount?: number; // 最低兑换金额（如果订单金额低于此值，应显示此最低金额）
-  available?: boolean; // 是否可用（如果订单金额低于最低金额，则为 false）
+  fee?: number;
+  providerFee?: number;
+  agentrixFee?: number;
+  commissionContractAddress?: string;
+  minAmount?: number;
+  available?: boolean;
+  paymentMethod?: string; // Added for specific payment method selection
 }
 
 interface PreflightResult {
@@ -105,7 +108,7 @@ interface PreflightResult {
     dailyRemaining: string;
   };
   walletBalance?: string;
-  walletBalanceIsMock?: boolean; // 标记余额是否为 mock 值
+  walletBalanceIsMock?: boolean;
   requiresKYC?: boolean;
   estimatedTime?: string;
   fees?: {
@@ -113,7 +116,7 @@ interface PreflightResult {
     providerFee?: string;
     total?: string;
   };
-  providerOptions?: ProviderOption[]; // 各支付方式的价格和 KYC 要求
+  providerOptions?: ProviderOption[];
 }
 
 const formatFiatSymbol = (currency?: string) => {
@@ -146,10 +149,12 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [error, setError] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [connectingWalletId, setConnectingWalletId] = useState<string | null>(null);
   const [showKYCGuide, setShowKYCGuide] = useState(false);
   const [showQuickPayGuide, setShowQuickPayGuide] = useState(false);
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [showProviderModal, setShowProviderModal] = useState(false);
+  const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [selectedProviderOption, setSelectedProviderOption] = useState<ProviderOption | null>(null);
   const { activeSession, loadActiveSession } = useSessionManager();
   const { isConnected, defaultWallet, connect, connectors } = useWeb3();
@@ -158,56 +163,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
   const normalizedCurrency = (order.currency || 'USDC').toUpperCase();
   const isFiatOrderCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(normalizedCurrency);
-  // 注意：商家接不接受 crypto 不影响路由选择，因为可以通过 offramp 转换
-  // 最终都是转换成数字货币通过合约分佣
   const merchantConfig = order.metadata?.merchantPaymentConfig || 'both';
   const merchantAllowsCrypto = merchantConfig === 'both' || merchantConfig === 'crypto_only';
-  const providerOptions = preflightResult?.providerOptions || [];
-  const topFiatOptions = providerOptions.slice(0, 4);
-  const hasFiatOptions = topFiatOptions.length > 0;
-  
-  // 判断是否跨境（未来用于选择本地通道）
-  // 目前暂未实现本地通道，所有法币支付都通过 Transak
-  const isCrossBorder = order.metadata?.isCrossBorder || false;
-  const userCountry = order.metadata?.userCountry;
-  const merchantCountry = order.metadata?.merchantCountry;
-
-  const resolveEthersProvider = () => {
-    if (typeof window !== 'undefined' && (window as any).ethereum) {
-      return new ethers.BrowserProvider((window as any).ethereum);
-    }
-    return new ethers.JsonRpcProvider(DEFAULT_BSC_TESTNET_RPC);
-  };
-
-  const getTokenMetadata = async (symbol: string) => {
-    const tokenSymbol = symbol?.toUpperCase();
-    if (!tokenSymbol) {
-      throw new Error('未指定支付代币');
-    }
-
-    if (tokenMetadataCache.current[tokenSymbol]) {
-      return tokenMetadataCache.current[tokenSymbol];
-    }
-
-    const config = TOKEN_CONFIG[tokenSymbol];
-    if (!config?.address) {
-      throw new Error(`暂不支持 ${tokenSymbol} 支付，请联系商家或客服`);
-    }
-
-    let decimals = config.fallbackDecimals;
-    try {
-      const provider = resolveEthersProvider();
-      const contract = new ethers.Contract(config.address, ERC20_ABI, provider);
-      const onChainDecimals = await contract.decimals();
-      decimals = Number(onChainDecimals);
-    } catch (error) {
-      console.warn(`获取 ${tokenSymbol} 精度失败，使用兜底值 ${decimals}`, error);
-    }
-
-    const metadata = { address: config.address, decimals };
-    tokenMetadataCache.current[tokenSymbol] = metadata;
-    return metadata;
-  };
   
   // 汇率相关状态
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
@@ -215,22 +172,19 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [exchangeRateLockId, setExchangeRateLockId] = useState<string | null>(null);
   const [isLoadingExchangeRate, setIsLoadingExchangeRate] = useState(false);
 
-  // 先加载用户信息和活跃 Session，然后执行 Pre-Flight Check
+  // Initialize
   useEffect(() => {
     const initializePayment = async () => {
       try {
         setStatus('loading');
         
-        // 1. 加载用户信息（检查 KYC 状态）
         try {
           const profile = await userApi.getProfile();
           setUserProfile(profile);
-          console.log('Loaded user profile:', profile);
         } catch (error) {
           console.warn('Failed to load user profile:', error);
         }
         
-        // 2. 先加载活跃 Session（如果已连接钱包）
         let session = null;
         if (isConnected) {
           try {
@@ -238,90 +192,40 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             if (session) {
               setCurrentSession(session);
             }
-            console.log('Loaded active session:', session);
           } catch (error) {
             console.warn('Failed to load active session:', error);
           }
         }
         
-        // 也使用 useSessionManager 返回的 activeSession
         if (activeSession) {
           setCurrentSession(activeSession);
         }
 
-        // 2. 执行 Pre-Flight Check
         try {
           const result = await paymentApi.preflightCheck({
             amount: order.amount.toString(),
             currency: order.currency || 'USDC',
           });
-
-          console.log('Pre-flight check result:', result);
           setPreflightResult(result);
-
+          
+          // Default route logic
           const finalSession = session || activeSession || currentSession;
           const hasWallet = isConnected && defaultWallet;
           const hasQuickPaySession = Boolean(finalSession);
           const quickPayEligible = hasQuickPaySession && result.quickPayAvailable;
-          
-          // ========== 路由选择核心逻辑 ==========
-          // 核心条件：用户是否有钱包
-          // 
-          // 1. 如果有钱包：
-          //    - 优先使用 QuickPay（如果可用）
-          //    - 否则使用钱包支付
-          //    - 无论订单是法币还是crypto，都可以通过汇率转换
-          // 
-          // 2. 如果没有钱包：
-          //    - 走 Provider 通道（Transak）
-          //    - 通过 Transak 购买加密货币，然后通过合约分佣
-          //    - 商家接不接受 crypto 没关系，因为最终都会转换成数字货币
-          // 
-          // 未来优化：
-          // - 如果买卖方在同一国家（或统一法币区如欧盟），使用本地通道（性价比更高）
-          // ======================================
-          
+
           if (quickPayEligible) {
-            // 优先：有 QuickPay Session 且限额内
             setRouteType('quickpay');
-            setCurrentSession(finalSession);
-            console.log('✅ 检测到 QuickPay Session 且限额内，优先使用 QuickPay');
           } else if (hasWallet) {
-            // 用户有钱包：优先使用钱包支付
-            // 无论订单是法币还是crypto，都可以通过汇率转换
-            if (result.quickPayAvailable && !finalSession) {
-              // QuickPay 可用但还没有 Session，显示引导
-              setRouteType('wallet');
-              setTimeout(() => {
-                setShowQuickPayGuide(true);
-              }, 500);
-              console.log('QuickPay available but no session, showing guide');
-            } else {
-              setRouteType('wallet');
-              console.log('✅ 用户有钱包，使用钱包支付（可通过汇率转换处理法币订单）');
-            }
+            setRouteType('wallet');
           } else {
-            // 用户没有钱包：走 Provider 通道（Transak）
-            // 通过 Transak 购买加密货币，然后通过合约分佣
-            // 商家接不接受 crypto 没关系，因为最终都会转换成数字货币
+            // Default to provider if no wallet, but we will show split UI anyway
             setRouteType('provider');
-            console.log('✅ 用户没有钱包，使用 Provider 通道（Transak）购买加密货币');
           }
 
           setStatus('ready');
         } catch (error: any) {
-        console.error('Pre-flight check failed:', error);
-          // 降级处理：preflight 失败时，根据用户是否有钱包决定
-          const finalSession = session || activeSession || currentSession;
-          if (isConnected && defaultWallet) {
-            // 用户有钱包，使用钱包支付
-            setRouteType('wallet');
-            console.log('Pre-flight failed, using wallet payment (user has wallet)');
-          } else {
-            // 用户没有钱包，使用 Provider 通道
-            setRouteType('provider');
-            console.log('Pre-flight failed, using provider payment (user has no wallet)');
-          }
+          console.error('Pre-flight check failed:', error);
           setStatus('ready');
         }
       } catch (error: any) {
@@ -332,19 +236,13 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     };
 
     initializePayment();
-  }, [order.amount, order.currency, order.metadata?.merchantPaymentConfig, isConnected, merchantAllowsCrypto]);
+  }, [order.amount, order.currency, isConnected]);
 
-  useEffect(() => {
-    if (!selectedProviderOption && preflightResult?.providerOptions?.length) {
-      setSelectedProviderOption(preflightResult.providerOptions[0]);
-    }
-  }, [preflightResult, selectedProviderOption]);
-
+  // Exchange Rate Logic
   useEffect(() => {
     const requiresCryptoSettlement =
       isFiatOrderCurrency &&
-      merchantAllowsCrypto &&
-      (routeType === 'quickpay' || routeType === 'wallet');
+      merchantAllowsCrypto;
 
     let isMounted = true;
 
@@ -362,33 +260,18 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       setIsLoadingExchangeRate(true);
       try {
         const rateInfo = await paymentApi.getExchangeRate(normalizedCurrency, 'USDT');
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setExchangeRate(rateInfo.rate);
         setCryptoAmount(order.amount * rateInfo.rate);
-        console.log(
-          '汇率获取成功:',
-          rateInfo.rate,
-          '转换金额:',
-          order.amount * rateInfo.rate,
-        );
       } catch (error) {
         console.warn('获取汇率失败:', error);
-        const defaultRate =
-          normalizedCurrency === 'CNY'
-            ? 0.142
-            : normalizedCurrency === 'USD'
-            ? 1.0
-            : 0.142;
+        const defaultRate = normalizedCurrency === 'CNY' ? 0.142 : normalizedCurrency === 'USD' ? 1.0 : 0.142;
         if (isMounted) {
           setExchangeRate(defaultRate);
           setCryptoAmount(order.amount * defaultRate);
         }
       } finally {
-        if (isMounted) {
-          setIsLoadingExchangeRate(false);
-        }
+        if (isMounted) setIsLoadingExchangeRate(false);
       }
     };
 
@@ -399,42 +282,38 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     return () => {
       isMounted = false;
     };
-  }, [
-    routeType,
-    merchantAllowsCrypto,
-    isFiatOrderCurrency,
-    normalizedCurrency,
-    order.amount,
-    exchangeRate,
-    cryptoAmount,
-  ]);
+  }, [merchantAllowsCrypto, isFiatOrderCurrency, normalizedCurrency, order.amount]);
+
+  const getTokenMetadata = (symbol: string) => {
+    const tokenSymbol = symbol?.toUpperCase();
+    if (!tokenSymbol) throw new Error('未指定支付代币');
+    
+    // 直接使用缓存或配置，避免异步 RPC 调用导致浏览器拦截钱包弹窗
+    if (tokenMetadataCache.current[tokenSymbol]) return tokenMetadataCache.current[tokenSymbol];
+
+    const config = TOKEN_CONFIG[tokenSymbol];
+    if (!config?.address) throw new Error(`暂不支持 ${tokenSymbol} 支付`);
+
+    // 信任配置中的 decimals，不再进行实时链上查询
+    // 如果需要动态查询，请在组件加载时预先获取
+    const metadata = {
+        address: config.address,
+        decimals: config.fallbackDecimals
+    };
+    
+    tokenMetadataCache.current[tokenSymbol] = metadata;
+    return metadata;
+  };
 
   const handlePay = async () => {
-    console.log('🔵 handlePay called, status:', status, 'routeType:', routeType);
-    
-    if (status === 'processing') {
-      console.log('⚠️ Already processing, ignoring click');
-      return;
-    }
-
+    if (status === 'processing') return;
     setError(null);
-    
-    console.log('🚀 Starting payment process...');
-
     try {
-      if (routeType === 'provider') {
-        await handleProviderPay('transak', selectedProviderOption || undefined);
-        return;
-      }
-
       setStatus('processing');
-
       if (routeType === 'quickpay') {
         await handleQuickPay();
       } else if (routeType === 'wallet') {
         await handleWalletPay();
-      } else {
-        throw new Error('Unsupported payment route');
       }
     } catch (error: any) {
       console.error('Payment failed:', error);
@@ -445,13 +324,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
   const handleQuickPay = async () => {
     const session = currentSession || activeSession;
-    if (!session) {
-      throw new Error('No active session found. Please create a session first.');
-    }
+    if (!session) throw new Error('No active session found.');
     
-    console.log('Executing QuickPay with session:', session);
-
-    // 1. 检查是否需要锁定汇率（商家挂法币，用户用数字货币支付）
     let paymentAmount = order.amount;
     let paymentCurrency = order.currency || 'USDC';
     let lockId = exchangeRateLockId;
@@ -459,229 +333,88 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     const currency = order.currency || 'USDC';
     const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(currency.toUpperCase());
     
-    if (isFiatCurrency && exchangeRate && cryptoAmount) {
-      // 如果还没有锁定汇率，先锁定
-      if (!lockId) {
-        try {
-          const lockResult = await paymentApi.lockExchangeRate({
-            from: currency,
-            to: 'USDT',
-            amount: order.amount,
-            expiresIn: 600, // 10分钟
-          });
-          lockId = lockResult.lockId;
-          setExchangeRateLockId(lockId);
-          paymentAmount = lockResult.cryptoAmount;
-          paymentCurrency = 'USDT';
-          console.log('汇率已锁定:', lockId, '支付金额:', paymentAmount, paymentCurrency);
-        } catch (error) {
-          console.error('锁定汇率失败:', error);
-          // 如果锁定失败，使用当前汇率计算
-          paymentAmount = cryptoAmount;
-          paymentCurrency = 'USDT';
+    // For fiat currencies, we MUST convert to crypto (USDT) first
+    if (isFiatCurrency) {
+        if (!exchangeRate || !cryptoAmount) {
+            throw new Error('Exchange rate not available. Please wait and try again.');
         }
-      } else {
-        // 验证锁定汇率是否有效
-        try {
-          const lockInfo = await paymentApi.getExchangeRateLock(lockId);
-          if (lockInfo.valid) {
-            // 使用锁定汇率计算，确保精度正确
-            paymentAmount = order.amount * lockInfo.rate;
-            paymentCurrency = 'USDT';
-            console.log('使用锁定汇率:', lockInfo.rate, '原始金额:', order.amount, '支付金额:', paymentAmount);
-          } else {
-            // 锁定已过期，重新锁定
-            const lockResult = await paymentApi.lockExchangeRate({
-              from: currency,
-              to: 'USDT',
-              amount: order.amount,
-              expiresIn: 600,
-            });
-            lockId = lockResult.lockId;
-            setExchangeRateLockId(lockId);
-            paymentAmount = lockResult.cryptoAmount;
-            paymentCurrency = 'USDT';
-            console.log('汇率已重新锁定:', lockId, '支付金额:', paymentAmount);
-          }
-        } catch (error) {
-          console.error('验证锁定汇率失败:', error);
-          // 使用当前汇率计算
-          paymentAmount = cryptoAmount || order.amount * (exchangeRate || 0.142);
-          paymentCurrency = 'USDT';
+        // Lock exchange rate if not already locked
+        if (!lockId) {
+             try {
+                 const lockResult = await paymentApi.lockExchangeRate({
+                    from: currency,
+                    to: 'USDT',
+                    amount: order.amount,
+                    expiresIn: 600,
+                  });
+                  lockId = lockResult.lockId;
+                  setExchangeRateLockId(lockId);
+                  paymentAmount = lockResult.cryptoAmount;
+             } catch (e) {
+                 // If lock API fails, use local calculation
+                 console.warn('Failed to lock exchange rate, using local calculation:', e);
+                 paymentAmount = cryptoAmount;
+             }
+        } else {
+            paymentAmount = cryptoAmount;
         }
-      }
+        paymentCurrency = 'USDT'; // Always settle in USDT for fiat orders
     }
 
-    const { address: tokenAddress, decimals: tokenDecimals } = await getTokenMetadata(paymentCurrency);
-    const paymentAmountInSmallestUnit = ethers.parseUnits(
-      paymentAmount.toFixed(tokenDecimals),
-      tokenDecimals,
-    );
+    const { address: tokenAddress, decimals: tokenDecimals } = getTokenMetadata(paymentCurrency);
+    const paymentAmountInSmallestUnit = ethers.parseUnits(paymentAmount.toFixed(tokenDecimals), tokenDecimals);
 
-    // 0. 检查授权状态（诊断用）- 在金额计算之后进行
-    try {
-      const { checkAuthorizationStatus } = await import('@/utils/check-authorization-status');
-      const authStatus = await checkAuthorizationStatus({
-        paymentAmount: paymentAmountInSmallestUnit.toString(),
-        tokenDecimals: tokenDecimals,
-      });
-      
-      if (!authStatus.isAuthorized) {
-        throw new Error('未授权USDT给ERC8004合约，请先创建Session');
-      }
-      if (!authStatus.tokenAddressMatch) {
-        throw new Error(`代币地址不匹配：前端使用 ${authStatus.tokenAddress}，但ERC8004合约使用 ${authStatus.erc8004TokenAddress}`);
-      }
-      if (!authStatus.hasEnoughAllowance) {
-        throw new Error(`授权额度不足：当前授权 ${authStatus.currentAllowanceFormatted} USDT，需要 ${ethers.formatUnits(paymentAmountInSmallestUnit, tokenDecimals)} USDT`);
-      }
-      console.log('✅ 授权状态检查通过');
-    } catch (authError: any) {
-      if (authError.message && (authError.message.includes('未授权') || authError.message.includes('额度不足') || authError.message.includes('不匹配'))) {
-        console.error('❌ 授权状态检查失败:', authError.message);
-        setError(authError.message);
-        setStatus('error');
-        return;
-      }
-      // 其他错误（如模块加载失败）忽略，继续执行
-      console.warn('⚠️ 授权状态检查失败，继续执行:', authError.message || authError);
-    }
-
-    // 2. 使用 Session Key 签名（链下）
-    // 注意：合约期望的金额是 6 decimals（USDC标准），即使实际支付使用 USDT（18 decimals）
-    // 所以签名时也需要使用 6 decimals 的金额，与合约验证保持一致
-    // ⚠️ 重要：精度转换逻辑必须与合约保持一致，否则会导致支付失败
-    const contractDecimals = 6; // 合约期望 6 decimals
+    // Signature logic
+    const contractDecimals = 6;
     let amountForSignature: bigint;
+    const pow10 = (exp: number) => {
+      let v = BigInt(1);
+      for (let i = 0; i < exp; i++) v = v * BigInt(10);
+      return v;
+    };
+
     if (tokenDecimals > contractDecimals) {
-      // 从高精度转换为低精度（例如：18 -> 6，除以 10^12）
-      // 使用 ethers.parseUnits 和 formatUnits 来避免 bigint 指数运算问题
       const diff = tokenDecimals - contractDecimals;
-      let scaleFactor = BigInt(1);
-      for (let i = 0; i < diff; i++) {
-        scaleFactor = scaleFactor * BigInt(10);
-      }
-      amountForSignature = paymentAmountInSmallestUnit / scaleFactor;
+      amountForSignature = paymentAmountInSmallestUnit / pow10(diff);
     } else if (tokenDecimals < contractDecimals) {
-      // 从低精度转换为高精度（例如：6 -> 18，乘以 10^12）
       const diff = contractDecimals - tokenDecimals;
-      let scaleFactor = BigInt(1);
-      for (let i = 0; i < diff; i++) {
-        scaleFactor = scaleFactor * BigInt(10);
-      }
-      amountForSignature = paymentAmountInSmallestUnit * scaleFactor;
+      amountForSignature = paymentAmountInSmallestUnit * pow10(diff);
     } else {
-      // 精度相同，直接使用
       amountForSignature = paymentAmountInSmallestUnit;
     }
 
-    // 获取 chainId，确保与后端一致（BSC Testnet = 97）
-    let chainId = 97; // 默认 BSC Testnet
-    try {
-      if (window.ethereum) {
-        const id = await window.ethereum.request({ method: 'eth_chainId' });
-        const parsedId = parseInt(id as string, 16);
-        // 只使用 BSC Testnet (97)，如果用户在其他网络，使用默认值
-        if (parsedId === 97) {
-          chainId = parsedId;
-        } else {
-          console.warn(`⚠️ 检测到网络 chainId=${parsedId}，但系统期望 BSC Testnet (97)，使用默认值 97`);
-        }
-      }
-    } catch (error) {
-      console.warn('获取 chainId 失败，使用默认值 97 (BSC Testnet):', error);
-    }
-    
-    // 修复bytes32错误：order.id可能是UUID，超过32字节，使用hash
-    // 与后端保持一致：直接使用 keccak256(toUtf8Bytes(order.id))，不需要 slice
+    const chainId = 97; 
     const orderIdBytes32 = ethers.keccak256(ethers.toUtf8Bytes(order.id)) as `0x${string}`;
     
-    // 获取收款地址：应该使用 Commission 合约地址（资金先转到合约做分润）
-    // 从后端获取 Commission 合约地址，确保使用正确的地址
     let recipientAddress = order.to;
     if (!recipientAddress) {
-      try {
         const contractInfo = await paymentApi.getContractAddress();
         recipientAddress = contractInfo.commissionContractAddress;
-        if (!recipientAddress) {
-          throw new Error('Commission合约地址未配置');
-        }
-      } catch (error) {
-        console.error('获取Commission合约地址失败:', error);
-        throw new Error('无法获取收款地址，请稍后重试');
-      }
     }
-    
-    // 确保使用正确的 sessionId（必须是 bytes32 格式）
-    // session.sessionId 是链上的 bytes32，session.id 是数据库 UUID，不能混用
-    if (!session.sessionId) {
-      throw new Error('Session ID 无效：缺少链上 sessionId，请重新创建 Session');
-    }
+
     const sessionIdBytes32 = session.sessionId as `0x${string}`;
-    
-    // 合约使用 abi.encodePacked 构建 messageHash，我们需要使用 solidityPackedKeccak256 来匹配
-    // 合约逻辑：keccak256(abi.encodePacked(sessionId, to, amount, paymentId, chainId))
     const innerHash = ethers.solidityPackedKeccak256(
       ['bytes32', 'address', 'uint256', 'bytes32', 'uint256'],
-      [
-        sessionIdBytes32, // 使用链上的 bytes32 sessionId
-        recipientAddress, // 使用 Commission 合约地址或订单指定的地址
-        amountForSignature, // 使用转换后的金额（6 decimals，与合约一致）
-        orderIdBytes32, // 使用hash后的orderId
-        chainId,
-      ],
-    );
-    
-    // 合约添加 EIP-191 前缀的方式：keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", innerHash))
-    // 传递 innerHash 给 signWithSessionKey，让它使用 solidityPackedKeccak256 添加前缀（与合约一致）
-    console.log('Inner hash:', innerHash);
-    console.log('Session signer:', session.signer);
-    console.log('Payment amount:', paymentAmount, paymentCurrency);
-    console.log('🔍 签名参数调试:', {
-      sessionIdBytes32,
-      recipientAddress,
-      amountForSignature: amountForSignature.toString(),
-      orderIdBytes32,
-      chainId: chainId.toString(),
-      orderId: order.id,
-    });
-
-    const signature = await SessionKeyManager.signWithSessionKey(
-      session.signer,
-      innerHash, // 传递 innerHash，让 signWithSessionKey 使用 solidityPackedKeccak256 添加 EIP-191 前缀
+      [sessionIdBytes32, recipientAddress, amountForSignature, orderIdBytes32, chainId]
     );
 
-    console.log('Signature generated:', signature);
+    const signature = await SessionKeyManager.signWithSessionKey(session.signer, innerHash);
 
-    // 3. 调用支付 API（使用 x402 paymentMethod）
-    // 注意：后端会自动调用relayer执行支付
-    console.log('🚀 开始执行 QuickPay 支付请求...', {
-      amount: paymentAmount,
-      currency: paymentCurrency,
-      sessionId: session.sessionId,
-      signer: session.signer,
-      amountInSmallestUnit: paymentAmountInSmallestUnit.toString(),
-      tokenAddress,
-      tokenDecimals,
-    });
-    
-    try {
-      const paymentRequest = {
-        amount: paymentAmount, // 使用转换后的金额
-        currency: paymentCurrency, // 使用转换后的货币
-        paymentMethod: 'x402', // QuickPay 使用 x402
+    const paymentRequest = {
+        amount: paymentAmount,
+        currency: paymentCurrency,
+        paymentMethod: 'x402',
         merchantId: order.merchantId,
         description: order.description,
         metadata: {
-          sessionId: session.sessionId, // 只传递链上的 bytes32 sessionId
+          sessionId: session.sessionId,
           signature,
           nonce: Date.now(),
-          to: recipientAddress, // 使用 Commission 合约地址或订单指定的地址
+          to: recipientAddress,
           tokenAddress,
           tokenDecimals,
-          amountInSmallestUnit: paymentAmountInSmallestUnit.toString(), // 传递最小单位的金额
-          orderId: order.id, // 传递订单ID，用于签名验证
-          // 汇率相关信息
+          amountInSmallestUnit: paymentAmountInSmallestUnit.toString(),
+          orderId: order.id,
           ...(isFiatCurrency && exchangeRate && {
             exchangeRateLockId: lockId,
             originalAmount: order.amount,
@@ -690,1146 +423,493 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             conversionType: 'fiat_to_crypto',
           }),
         },
-      };
-      
-      console.log('📤 发送 QuickPay 支付请求到后端...', paymentRequest);
-      
-      const result = await paymentApi.process(paymentRequest);
+    };
 
-      console.log('💰 支付响应:', result);
-      console.log('💰 支付详情:', {
-        paymentId: result.id,
-        status: result.status,
-        transactionHash: result.transactionHash,
-        amount: result.amount,
-        currency: result.currency,
-      });
-
-      // 检查支付状态
-      if (result.status === 'failed' || result.status === 'cancelled') {
-        const errorMessage = result.metadata?.relayerError || result.metadata?.errorDetails?.message || '支付失败';
-        console.error('❌ QuickPay 支付失败:', errorMessage);
-        setError(errorMessage);
-        setStatus('error');
-        return;
-      }
-
-      if (result.status === 'completed' || result.status === 'processing') {
-        console.log('✅ QuickPay 支付成功');
-        setStatus('success');
-        if (onSuccess) {
-          onSuccess(result);
-        }
-      } else {
-        console.warn('⚠️ QuickPay 支付状态未知:', result.status);
-        setStatus('success'); // 暂时标记为成功，等待后续确认
-        if (onSuccess) {
-          onSuccess(result);
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ QuickPay API 错误:', error);
-      console.error('错误详情:', {
-        message: error.message,
-        stack: error.stack,
-        response: error.response,
-      });
-      // 如果 x402 支付失败，尝试使用 relayer API
-      try {
-        const result = await paymentApi.relayerQuickPay({
-          sessionId: session.sessionId, // 只使用链上的 bytes32 sessionId
-          paymentId: order.id,
-          to: order.to || '0x0000000000000000000000000000000000000000',
-          amount: paymentAmountInSmallestUnit.toString(),
-          signature,
-          nonce: Date.now(),
-        });
-        
-        if (result.success) {
-          setStatus('success');
-          if (onSuccess) {
-            onSuccess(result);
-          }
-        } else {
-          throw new Error('QuickPay 支付失败');
-        }
-      } catch (relayerError: any) {
-        throw new Error(relayerError.message || 'QuickPay 支付失败');
-      }
+    const result = await paymentApi.process(paymentRequest);
+    if (result.status === 'failed' || result.status === 'cancelled') {
+        throw new Error(result.metadata?.relayerError || 'Payment failed');
     }
-  };
-
-  const handleProviderPay = async (
-    provider?: 'google' | 'apple' | 'card' | 'local' | 'transak',
-    option?: ProviderOption,
-  ) => {
-    const providerFallback = preflightResult?.providerOptions?.find(
-      (opt) => opt.id === provider,
-    );
-    const resolvedOption = option || providerFallback || preflightResult?.providerOptions?.[0] || null;
-
-    if (resolvedOption) {
-      setSelectedProviderOption(resolvedOption);
-    }
-
-    providerModalAutoOpened.current = true;
-    setShowProviderModal(true);
+    setStatus('success');
+    if (onSuccess) onSuccess(result);
   };
 
   const handleWalletPay = async () => {
     if (!isConnected || !defaultWallet) {
-      setError('请先连接钱包。点击右上角用户菜单中的"连接钱包"选项。');
-      setStatus('error');
-      return;
+        setShowWalletSelector(true);
+        return;
     }
 
-    if (!window.ethereum) {
-      setError('未检测到钱包，请安装 MetaMask 或其他钱包');
-      setStatus('error');
-      return;
-    }
+    setError(null);
+    setStatus('processing');
 
     try {
-      setStatus('processing');
-      setError(null);
-
-      // 如果已经连接了钱包，直接使用已连接的钱包地址，避免触发 MetaMask 弹窗
-      let from: string;
-      if (defaultWallet && defaultWallet.address) {
-        from = defaultWallet.address;
-        console.log('✅ 使用已连接的钱包地址:', from);
-      } else {
-        // 只有在未连接时才请求账户（会触发弹窗）
-        const accounts: string[] = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        from = accounts?.[0];
-        if (!from) {
-          throw new Error('未获取到钱包地址，请重试');
-        }
-      }
-
-      const currency = order.currency || 'USDC';
-      const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(currency.toUpperCase());
-      const merchantConfig = order.metadata?.merchantPaymentConfig || 'both';
-      
-      // 检查是否需要汇率转换（商家挂法币，用户用数字货币支付）
-      let paymentAmount = order.amount;
-      let paymentCurrency = currency;
-      let lockId = exchangeRateLockId;
-      
-      if (isFiatCurrency) {
-        // 如果商家只接受法币，不允许用钱包支付
-        if (merchantConfig === 'fiat_only') {
-          setError(`${currency} 是法币，商家只接受法币，请使用 Provider 支付方式（银行卡/Google Pay/Apple Pay）`);
-          setStatus('error');
-          return;
-        }
+        // Use the provider from the wallet connection, not just window.ethereum
+        // This supports OKX and other injected wallets better if they override or coexist
+        let provider;
         
-        // 如果商家接受数字货币，需要汇率转换
-        if (exchangeRate && cryptoAmount) {
-          // 如果还没有锁定汇率，先锁定
-          if (!lockId) {
-            try {
-              const lockResult = await paymentApi.lockExchangeRate({
-                from: currency,
-                to: 'USDT',
-                amount: order.amount,
-                expiresIn: 600, // 10分钟
-              });
-              lockId = lockResult.lockId;
-              setExchangeRateLockId(lockId);
-              paymentAmount = lockResult.cryptoAmount;
-              paymentCurrency = 'USDT';
-              console.log('汇率已锁定:', lockId, '支付金额:', paymentAmount, paymentCurrency);
-            } catch (error) {
-              console.error('锁定汇率失败:', error);
-              // 如果锁定失败，使用当前汇率计算
-              paymentAmount = cryptoAmount;
-              paymentCurrency = 'USDT';
-            }
-          } else {
-            // 验证锁定汇率是否有效
-            try {
-              const lockInfo = await paymentApi.getExchangeRateLock(lockId);
-              if (lockInfo.valid) {
-                paymentAmount = order.amount * lockInfo.rate;
-                paymentCurrency = 'USDT';
-                console.log('使用锁定汇率:', lockInfo.rate, '支付金额:', paymentAmount);
-              } else {
-                // 锁定已过期，重新锁定
-                const lockResult = await paymentApi.lockExchangeRate({
-                  from: currency,
-                  to: 'USDT',
-                  amount: order.amount,
-                  expiresIn: 600,
-                });
-                lockId = lockResult.lockId;
-                setExchangeRateLockId(lockId);
-                paymentAmount = lockResult.cryptoAmount;
-                paymentCurrency = 'USDT';
-                console.log('汇率已重新锁定:', lockId, '支付金额:', paymentAmount);
-              }
-            } catch (error) {
-              console.error('验证锁定汇率失败:', error);
-              // 使用当前汇率计算
-              paymentAmount = cryptoAmount || order.amount * (exchangeRate || 0.142);
-              paymentCurrency = 'USDT';
-            }
-          }
+        // Respect the connected wallet type
+        if (defaultWallet.type === 'okx' && (window as any).okxwallet) {
+            provider = new ethers.BrowserProvider((window as any).okxwallet);
+        } else if (defaultWallet.type === 'metamask' && window.ethereum) {
+            provider = new ethers.BrowserProvider(window.ethereum);
         } else {
-          // 没有汇率信息，不允许支付
-          setError(`无法获取 ${currency} 到 USDT 的汇率，请稍后重试`);
-          setStatus('error');
-          return;
+            // Fallback: try OKX first if available, then Ethereum
+            provider = new ethers.BrowserProvider((window as any).okxwallet || window.ethereum);
         }
-      }
 
-      // Wallet支付也应该转到Commission合约，由合约做分润后再转到商户
-      let to: string;
-      if (order.to) {
-        // 如果订单指定了收款地址，使用订单地址
-        to = order.to;
-      } else {
-        // 否则从后端获取Commission合约地址
+        if (!provider) {
+            throw new Error('No wallet provider found');
+        }
+
+        const signer = await provider.getSigner();
+        const from = await signer.getAddress();
+
+        let paymentAmount = order.amount;
+        let paymentCurrency = order.currency || 'USDC';
+        const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(paymentCurrency.toUpperCase());
+
+        if (isFiatCurrency) {
+             // Exchange rate logic similar to QuickPay
+             if (!exchangeRate) throw new Error('Exchange rate not available. Please try again.');
+             paymentAmount = cryptoAmount || order.amount * exchangeRate;
+             paymentCurrency = 'USDT';
+        }
+
+        let to = order.to;
+        if (!to) {
+            const contractAddresses = await paymentApi.getContractAddress();
+            to = contractAddresses.commissionContractAddress;
+        }
+
+        const { address: tokenAddress, decimals } = getTokenMetadata(paymentCurrency);
+        const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+        const amountInWei = ethers.parseUnits(paymentAmount.toFixed(decimals), decimals);
+
+        // Check balance
         try {
-          const contractAddresses = await paymentApi.getContractAddress();
-          to = contractAddresses.commissionContractAddress;
-          if (!to) {
-            throw new Error('无法获取Commission合约地址');
-          }
-        } catch (error) {
-          console.error('获取Commission合约地址失败:', error);
-          setError('无法获取收款地址，请稍后重试');
-          setStatus('error');
-          return;
+            const balance = await tokenContract.balanceOf(from);
+            if (balance < amountInWei) {
+                throw new Error(`Insufficient ${paymentCurrency} balance`);
+            }
+        } catch (err: any) {
+            console.warn('Balance check failed:', err);
+            // Continue to transfer even if balance check fails (e.g. if method doesn't exist), 
+            // but if it was a specific error like insufficient funds, we should probably stop.
+            // However, standard ERC20 has balanceOf.
+            if (err.message.includes('Insufficient')) throw err;
         }
-      }
-      
-      const { address: tokenAddress, decimals } = await getTokenMetadata(paymentCurrency);
-      
-      // 创建 provider 和 signer
-      // 如果已经连接了钱包，使用已连接的钱包地址，避免触发 MetaMask 弹窗
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      let signer: ethers.Signer;
-      try {
-        // 先尝试获取已授权的账户（不会弹窗）
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-        if (accounts && accounts.length > 0) {
-          // 使用已授权的账户创建 signer
-          signer = await provider.getSigner();
-          console.log('✅ 使用已授权的账户进行钱包支付:', accounts[0]);
-        } else {
-          // 只有在未授权时才调用 getSigner（可能会弹窗）
-          signer = await provider.getSigner();
-        }
-      } catch (error) {
-        // 如果获取失败，回退到 getSigner
-        signer = await provider.getSigner();
-      }
-      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-      
-      // 转换金额，确保使用正确的精度
-      // 重要：使用toFixed确保精度正确，避免浮点数问题
-      // 使用转换后的金额（如果已转换）
-      const amountString = paymentAmount.toFixed(decimals);
-      const amountInWei = ethers.parseUnits(amountString, decimals);
-      
-      console.log('Amount conversion:', {
-        original: order.amount,
-        converted: paymentAmount,
-        currency: paymentCurrency,
-        fixed: amountString,
-        decimals,
-        amountInWei: amountInWei.toString(),
-      });
 
-      console.log('Transferring USDT:', {
-        from,
-        to,
-        amount: paymentAmount,
-        currency: paymentCurrency,
-        amountInWei: amountInWei.toString(),
-      });
+        const tx = await tokenContract.transfer(to, amountInWei);
+        await tx.wait();
 
-      // 调用 USDT transfer 函数
-      const tx = await tokenContract.transfer(to, amountInWei);
-      console.log('Transaction sent:', tx.hash);
-
-      // 等待交易确认
-      const receipt = await tx.wait();
-      console.log('Transaction confirmed:', receipt);
-
-      // 调用后端API记录支付（如果失败，不影响成功状态，因为链上转账已成功）
-      try {
-        const result = await paymentApi.process({
-          amount: paymentAmount, // 使用转换后的金额
-          currency: paymentCurrency, // 使用转换后的货币
-          paymentMethod: 'wallet',
-          merchantId: order.merchantId,
-          description: order.description,
-          metadata: {
-            orderId: order.id,
-            to: order.to,
-            txHash: receipt.hash,
-              tokenDecimals: decimals,
-            txParams: {
-              from,
-              to,
-              amount: paymentAmount,
-              currency: paymentCurrency,
-                tokenAddress,
-            },
-            // 汇率相关信息
-            ...(isFiatCurrency && exchangeRate && {
-              exchangeRateLockId: lockId,
-              originalAmount: order.amount,
-              originalCurrency: currency,
-              exchangeRate: exchangeRate,
-              conversionType: 'fiat_to_crypto',
-            }),
-          },
+        // Record on backend
+        await paymentApi.process({
+            amount: paymentAmount,
+            currency: paymentCurrency,
+            paymentMethod: 'wallet',
+            merchantId: order.merchantId,
+            description: order.description,
+            metadata: {
+                orderId: order.id,
+                to,
+                txHash: tx.hash,
+                // ... other metadata
+            }
         });
 
-        // 支付成功后，检查钱包余额变化（用于调试）
-        if (window.ethereum) {
-          try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            // 使用已授权的账户，避免触发弹窗
-            let userAddress: string;
-            try {
-              const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-              if (accounts && accounts.length > 0) {
-                userAddress = accounts[0];
-              } else {
-                const signer = await provider.getSigner();
-                userAddress = await signer.getAddress();
-              }
-            } catch {
-              const signer = await provider.getSigner();
-              userAddress = await signer.getAddress();
-            }
-            const tokenContract = new ethers.Contract(
-              tokenAddress,
-              ['function balanceOf(address) view returns (uint256)'],
-              provider,
-            );
-            const balanceAfter = await tokenContract.balanceOf(userAddress);
-            console.log('💰 支付后钱包余额:', ethers.formatUnits(balanceAfter, decimals), paymentCurrency);
-          } catch (balanceError) {
-            console.warn('无法查询支付后余额:', balanceError);
-          }
-        }
-
         setStatus('success');
-        if (onSuccess) {
-          onSuccess(result);
-        }
-      } catch (apiError: any) {
-        // 后端API调用失败，但链上转账已成功，仍然显示成功
-        console.warn('Backend API call failed, but on-chain transfer succeeded:', apiError);
-        console.warn('Transaction hash:', receipt.hash);
-        
-        // 显示成功，但提示后端记录可能失败
-        setStatus('success');
-        if (onSuccess) {
-          onSuccess({
-            id: order.id,
-            status: 'completed',
-            transactionHash: receipt.hash,
-            message: '链上转账成功，但后端记录可能失败，请稍后查看订单状态',
-          });
-        }
-      }
+        if (onSuccess) onSuccess({ status: 'completed', transactionHash: tx.hash });
     } catch (error: any) {
-      console.error('Wallet payment error:', error);
-      console.error('Error response:', error.response);
-      console.error('Error data:', error.response?.data);
-      
-      // 只有在链上转账失败时才显示错误
-      if (error.code === 4001 || error.message?.includes('cancel') || error.message?.includes('User denied')) {
-        setError('用户取消了交易');
+        console.error('Wallet payment failed:', error);
+        setError(error.message || 'Payment failed');
         setStatus('error');
-      } else if (
-        error.message?.includes('insufficient funds') || 
-        error.message?.includes('余额不足') ||
-        error.message?.includes('exceeds balance') ||
-        error.message?.includes('BEP40') ||
-        error.reason?.includes('exceeds balance') ||
-        error.data?.message?.includes('exceeds balance')
-      ) {
-        setError('USDT余额不足，请确保钱包中有足够的测试USDT');
-        setStatus('error');
-      } else if (error.message?.includes('replacement') || error.message?.includes('nonce')) {
-        setError('交易nonce冲突，请稍后重试');
-        setStatus('error');
-      } else {
-        // 其他错误（可能是网络问题等）
-        const errorMsg = error.reason || error.message || error.data?.message || '钱包支付失败，请重试';
-        setError(errorMsg);
-        setStatus('error');
-      }
     }
   };
 
-  // 场景1: QuickPay (Session 有效 + 余额充足)
-  const QuickPayView = () => {
+  const handleFiatChannelClick = (methodId: string) => {
+    // Map methodId to ProviderOption
+    const baseOption = preflightResult?.providerOptions?.[0] || {
+        id: 'transak',
+        name: 'Transak',
+        price: order.amount,
+        currency: order.currency,
+        requiresKYC: true,
+        provider: 'transak'
+    };
+
+    const option: ProviderOption = {
+        ...baseOption,
+        paymentMethod: methodId, // Pass the specific method ID (e.g., 'google_pay')
+        id: 'transak' // The provider is still Transak
+    };
+
+    setSelectedProviderOption(option);
+    setShowProviderModal(true);
+  };
+
+  // --- Render Components ---
+
+  const CryptoSection = () => {
     const session = currentSession || activeSession;
-    const needsFxConversion = isFiatOrderCurrency && merchantAllowsCrypto;
-    const fxReady =
-      !needsFxConversion || (!!exchangeRate && !!cryptoAmount && !isLoadingExchangeRate);
-    if (!session) {
-      return (
-        <div className="animate-fade-in">
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-3 mb-3">
-              <Zap className="text-indigo-600" size={20} />
-              <div>
-                <div className="text-sm font-medium text-indigo-900">启用 QuickPay</div>
-                <div className="text-xs text-indigo-600">创建 Session 后即可享受快速支付</div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowSessionManager(true)}
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-            >
-              开启免密额度
-            </button>
-          </div>
-          <div className="text-center text-xs text-slate-500 mb-4">
-            或使用其他支付方式
-          </div>
-        </div>
-      );
-    }
+    
+    // Calculate if QuickPay is affordable/allowed
+    // Session limits are returned directly on session object (not nested in 'limit')
+    // Backend returns: { singleLimit: number, dailyLimit: number, usedToday: number }
+    const singleLimit = session?.singleLimit ? parseFloat(String(session.singleLimit)) : 0;
+    const dailyLimit = session?.dailyLimit ? parseFloat(String(session.dailyLimit)) : 0;
+    const usedToday = session?.usedToday ? parseFloat(String(session.usedToday)) : 0;
+    const dailyRemaining = dailyLimit - usedToday;
+    
+    // Check if amount exceeds limits (if session exists)
+    // Only check limits if session exists AND limits are > 0 (valid)
+    const hasValidLimits = singleLimit > 0 && dailyLimit > 0;
+    const exceedsLimit = session && hasValidLimits && cryptoAmount && (cryptoAmount > singleLimit || cryptoAmount > dailyRemaining);
+    const isQuickPayDisabled = !session || (hasValidLimits && exceedsLimit);
 
     return (
-    <div className="animate-fade-in">
-      <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
-              ⚡ QuickPay 推荐
-          </span>
-          <span className="text-xs text-indigo-400">Gasless • Instant</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-white rounded-lg shadow-sm text-indigo-600">
-              <Zap size={20} />
-          </div>
-          <div>
-              <div className="text-sm font-medium text-slate-700">QuickPay 免密额度已启用</div>
-              <div className="text-xs text-slate-500">从您的免密授权额度直接划扣</div>
-          </div>
-        </div>
-        {preflightResult?.sessionLimit && (
-          <div className="mt-3 pt-3 border-t border-indigo-100">
-            <div className="text-xs text-slate-600">
-              今日剩余额度: ${preflightResult.sessionLimit.dailyRemaining} USDC
+      <div className="p-6 bg-slate-50/50">
+        <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-100 rounded-lg text-indigo-600">
+                    <Wallet size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Crypto Payment</h3>
             </div>
-          </div>
-        )}
-      </div>
-
-      <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🔵 QuickPay Pay button clicked');
-            handlePay();
-          }}
-          disabled={status === 'processing' || !session || !fxReady}
-        className="group relative w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-indigo-500/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <div className="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-700 skew-x-12 -translate-x-full"></div>
-        {status === 'processing' ? (
-          <>
-            <Loader2 className="animate-spin" size={20} />
-            <span>Processing...</span>
-          </>
-        ) : (
-          <>
-            <Zap className="fill-current" size={20} />
-            <span>一键支付 {(() => {
-              const currency = order.currency || 'USDC';
-              const symbol = currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'JPY' ? '¥' : '$';
-              return `${symbol}${order.amount.toFixed(currency === 'JPY' ? 0 : 2)}`;
-            })()}</span>
-          </>
-        )}
-      </button>
-
-      {needsFxConversion && !fxReady && (
-        <div className="text-center mt-2 text-xs text-amber-600">
-          正在获取实时汇率，请稍候…
+            <div className="px-2 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded uppercase tracking-wider">
+                BSC Testnet
+            </div>
         </div>
-      )}
 
-      <div className="text-center mt-4 text-xs text-slate-400 flex items-center justify-center gap-1">
-        <ShieldCheck size={12} />
-        <span>Agentrix Relayer 安全守护</span>
+        <div className="space-y-3">
+            {/* QuickPay Card */}
+            <div 
+                onClick={() => {
+                    if (isQuickPayDisabled) {
+                        if (!session) setShowSessionManager(true);
+                        return;
+                    }
+                    setRouteType('quickpay');
+                    handlePay();
+                }}
+                className={`relative group cursor-pointer rounded-xl border p-4 transition-all ${
+                    routeType === 'quickpay' && !isQuickPayDisabled
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200' 
+                    : isQuickPayDisabled
+                        ? 'bg-slate-50 border-slate-100 opacity-70 cursor-not-allowed'
+                        : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                }`}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${
+                            routeType === 'quickpay' && !isQuickPayDisabled ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-600'
+                        } ${isQuickPayDisabled ? 'grayscale' : ''}`}>
+                            <Zap size={20} />
+                        </div>
+                        <div>
+                            <div className={`font-bold ${routeType === 'quickpay' && !isQuickPayDisabled ? 'text-white' : 'text-slate-900'} ${isQuickPayDisabled ? 'text-slate-400' : ''}`}>
+                                QuickPay
+                            </div>
+                            <div className={`text-xs ${routeType === 'quickpay' && !isQuickPayDisabled ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                {session 
+                                    ? (exceedsLimit ? 'Exceeds session limit' : 'One-click, Gasless') 
+                                    : 'Enable for instant payment'}
+                            </div>
+                        </div>
+                    </div>
+                    {session ? (
+                        <div className={`text-sm font-bold ${routeType === 'quickpay' && !isQuickPayDisabled ? 'text-white' : 'text-slate-900'} ${isQuickPayDisabled ? 'text-slate-400' : ''}`}>
+                            {cryptoAmount ? `≈ ${cryptoAmount.toFixed(2)} USDT` : 'Loading...'}
+                        </div>
+                    ) : (
+                        <ChevronRight size={16} className="text-slate-400" />
+                    )}
+                </div>
+            </div>
+
+            {/* Wallet Pay Card */}
+            <div 
+                onClick={() => {
+                    if (!isConnected) {
+                        setShowWalletSelector(true);
+                    } else {
+                        setRouteType('wallet');
+                        handleWalletPay();
+                    }
+                }}
+                className={`relative group cursor-pointer rounded-xl border p-4 transition-all ${
+                    routeType === 'wallet' && status === 'processing'
+                    ? 'bg-slate-800 border-slate-800 text-white'
+                    : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'
+                }`}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-slate-100 text-slate-600">
+                            <Wallet size={20} />
+                        </div>
+                        <div>
+                            <div className="font-bold text-slate-900">Wallet Pay</div>
+                            <div className="text-xs text-slate-500">
+                                {isConnected ? `${defaultWallet?.address.slice(0,6)}...` : 'Connect Wallet'}
+                            </div>
+                        </div>
+                    </div>
+                     <div className="text-sm font-bold text-slate-900">
+                        {cryptoAmount ? `≈ ${cryptoAmount.toFixed(2)} USDT` : ''}
+                    </div>
+                </div>
+                
+                {/* Inline Error Display for Wallet Pay */}
+                {routeType === 'wallet' && status === 'error' && error && (
+                    <div className="mt-3 p-2 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2">
+                        <AlertCircle size={14} className="text-red-600 mt-0.5 shrink-0" />
+                        <div className="text-xs text-red-600 font-medium break-words">
+                            {error}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
       </div>
-    </div>
-  );
+    );
   };
 
-  // 场景2: Provider (Transak) - 法币支付通道
-  // 当路由为 provider 时，自动打开 Transak Widget
-  useEffect(() => {
-    if (routeType === 'provider' && status === 'ready' && !providerModalAutoOpened.current) {
-      providerModalAutoOpened.current = true;
-      setShowProviderModal(true);
-    }
-  }, [routeType, status]);
+  const FiatSection = () => {
+    // Use provider options from API if available, otherwise fallback to defaults
+    const defaultChannels = [
+        { id: 'google_pay', name: 'Google Pay', icon: 'https://assets.transak.com/images/payment-methods/google_pay.svg' },
+        { id: 'apple_pay', name: 'Apple Pay', icon: 'https://assets.transak.com/images/payment-methods/apple_pay.svg' },
+        { id: 'credit_debit_card', name: 'Credit/Debit Card', icon: 'https://assets.transak.com/images/payment-methods/credit_debit_card.svg' },
+    ];
 
-  // 场景3: Wallet Pay
-  const WalletView = () => {
-    if (!isConnected) {
-      return (
-        <div className="animate-fade-in">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-3 mb-3">
-              <Wallet className="text-yellow-600" size={20} />
-              <div>
-                <div className="text-sm font-medium text-yellow-900">未连接钱包</div>
-                <div className="text-xs text-yellow-700">请先连接钱包以使用钱包支付</div>
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                try {
-                  setStatus('loading');
-                  setError(null);
-                  // 尝试连接MetaMask（最常见的钱包）
-                  // 检查 window.ethereum 是否存在（MetaMask 或其他注入式钱包）
-                  if (window.ethereum) {
-                    // 如果 window.ethereum 存在，尝试连接
-                    // 使用类型断言，因为 connect 函数可能接受更多类型
-                    try {
-                      await connect('metamask' as any);
-                      setStatus('ready');
-                    } catch (connectError) {
-                      // 如果 metamask 连接失败，尝试查找其他可用的连接器
-                      const availableConnector = connectors.find(c => c.isInstalled);
-                      if (availableConnector) {
-                        await connect(availableConnector.id as any);
-                        setStatus('ready');
-                      } else {
-                        setError('请先安装MetaMask钱包，或点击右上角用户菜单中的"连接钱包"选项。');
-                        setStatus('ready');
-                      }
-                    }
-                  } else {
-                    // 如果没有 window.ethereum，尝试使用可用的连接器
-                    const availableConnector = connectors.find(c => c.isInstalled);
-                    if (availableConnector) {
-                      await connect(availableConnector.id as any);
-                      setStatus('ready');
-                    } else {
-                      setError('请先安装MetaMask钱包，或点击右上角用户菜单中的"连接钱包"选项。');
-                      setStatus('ready');
-                    }
-                  }
-                } catch (error: any) {
-                  console.error('钱包连接失败:', error);
-                  setError(error.message || '钱包连接失败，请重试或点击右上角用户菜单中的"连接钱包"选项。');
-                  setStatus('ready');
-                }
-              }}
-              className="w-full bg-yellow-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-yellow-700 transition-colors"
-            >
-              连接钱包
-            </button>
-          </div>
-          <div className="text-center text-xs text-slate-500 mb-4">
-            或使用其他支付方式
-          </div>
-        </div>
-      );
+    // Add local methods based on currency
+    const currency = order.currency?.toUpperCase();
+    if (currency === 'EUR') {
+        defaultChannels.push({ id: 'sepa_bank_transfer', name: 'SEPA Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/sepa_bank_transfer.svg' });
+    } else if (currency === 'GBP') {
+        defaultChannels.push({ id: 'gbp_bank_transfer', name: 'Faster Payments', icon: 'https://assets.transak.com/images/payment-methods/gbp_bank_transfer.svg' });
+    } else if (currency === 'USD') {
+        defaultChannels.push({ id: 'usa_bank_transfer', name: 'Fedwire / ACH', icon: 'https://assets.transak.com/images/payment-methods/usa_bank_transfer.svg' });
+    } else if (currency === 'CNY') {
+        // Add local payment methods for CNY
+        defaultChannels.push({ 
+            id: 'cny_bank_transfer', 
+            name: 'Local Bank Card (本地银行卡)', 
+            icon: 'https://assets.transak.com/images/payment-methods/cny_bank_transfer.svg' 
+        });
+        defaultChannels.push({ 
+            id: 'alipay', 
+            name: 'Alipay (支付宝)', 
+            icon: 'https://assets.transak.com/images/payment-methods/alipay.svg' 
+        });
     }
 
-    const needsFxConversion = isFiatOrderCurrency && merchantAllowsCrypto;
-    const walletFxReady =
-      !needsFxConversion || (!!exchangeRate && !!cryptoAmount && !isLoadingExchangeRate);
+    // Merge with API data to get fees and limits
+    const channelsWithData = defaultChannels.map(channel => {
+        // Find matching option in preflightResult
+        // Note: preflightResult.providerOptions usually returns a generic 'transak' option
+        // We might need to infer fees from the generic option if specific ones aren't there
+        const apiOption = preflightResult?.providerOptions?.find(opt => 
+            opt.id === channel.id || opt.paymentMethod === channel.id
+        ) || preflightResult?.providerOptions?.[0]; // Fallback to generic transak option for fee estimate
+
+        // Estimate fee if not available (approx 3.5% + fixed fee for cards, 1% for bank transfers)
+        let estimatedFee = apiOption?.fee;
+        if (estimatedFee === undefined) {
+            const isCard = channel.id.includes('card') || channel.id.includes('pay');
+            const rate = isCard ? 0.035 : 0.01;
+            estimatedFee = order.amount * rate;
+        }
+
+        // Estimate min amount if not available
+        const minAmount = apiOption?.minAmount || (channel.id.includes('transfer') ? 20 : 10);
+
+        return {
+            ...channel,
+            fee: estimatedFee,
+            minAmount: minAmount,
+            estimatedTime: apiOption?.estimatedTime || (channel.id.includes('transfer') ? '1-3 Days' : 'Instant'),
+            currency: apiOption?.currency || order.currency,
+            totalPrice: order.amount + (estimatedFee || 0)
+        };
+    });
 
     return (
-    <div className="animate-fade-in">
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4 shadow-sm">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-slate-100 rounded-lg">
-            <Wallet size={20} className="text-slate-600" />
-          </div>
-          <div>
-              <div className="text-sm font-medium text-slate-700">钱包支付</div>
-            <div className="text-xs text-slate-500">需要钱包确认</div>
-          </div>
+      <div className="p-6 bg-white flex-1">
+        <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600">
+                <CreditCard size={16} />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Fiat Payment</h3>
         </div>
-          {defaultWallet && (
-            <div className="text-xs text-slate-500 mb-2">
-              当前钱包: {defaultWallet.address.slice(0, 6)}...{defaultWallet.address.slice(-4)}
-            </div>
-          )}
-          {preflightResult?.walletBalanceIsMock ? (
-            <div className="text-xs text-yellow-600">
-              ⚠️ 无法获取真实钱包余额，请确保钱包已连接且网络正常
-            </div>
-          ) : preflightResult?.walletBalance ? (
-            (() => {
-              const balance = parseFloat(preflightResult.walletBalance);
-              if (balance === 0) {
-                return (
-                  <div className="text-xs text-yellow-600">
-                    ⚠️ 钱包余额为 0，请先充值
-                  </div>
-                );
-              }
-              return (
-                <div className="text-xs text-slate-600">
-                  钱包余额: ${balance.toFixed(2)} USDC
-                </div>
-              );
-            })()
-          ) : (
-            <div className="text-xs text-yellow-600">
-              ⚠️ 无法获取钱包余额，余额可能为 0 或钱包未正确绑定
-          </div>
-        )}
-      </div>
 
-      <button
-          type="button"
-          onClick={async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🔵 Wallet Pay button clicked', {
-              status,
-              routeType,
-              walletFxReady,
-              isConnected,
-              hasWallet: !!defaultWallet,
-              isFiatOrderCurrency,
-            });
-            
-            // 确保使用钱包支付
-            if (routeType !== 'wallet') {
-              console.warn('⚠️ RouteType is not wallet, forcing wallet payment');
-              setRouteType('wallet');
-              // 等待状态更新
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            // 直接调用钱包支付，不通过handlePay路由
-            try {
-              await handleWalletPay();
-            } catch (error) {
-              console.error('Wallet payment error:', error);
-            }
-          }}
-        disabled={status === 'processing' || (!walletFxReady && isFiatOrderCurrency) || !isConnected}
-        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg shadow-lg transition-all hover:bg-slate-800 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {status === 'processing' ? (
-          <>
-            <Loader2 className="animate-spin" size={20} />
-              <span>等待钱包确认...</span>
-          </>
-        ) : (
-          <>
-            <Wallet size={20} />
-            <span>Pay {(() => {
-              const currency = order.currency || 'USDC';
-              const symbol = currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'JPY' ? '¥' : '$';
-              return `${symbol}${order.amount.toFixed(currency === 'JPY' ? 0 : 2)}`;
-            })()}</span>
-          </>
-        )}
-      </button>
-      {needsFxConversion && !walletFxReady && (
-        <div className="text-center mt-2 text-xs text-amber-600">
-          正在准备汇率信息，请稍后再试钱包支付
+        <div className="space-y-3">
+            {channelsWithData.map(channel => (
+                <button
+                    key={channel.id}
+                    onClick={() => handleFiatChannelClick(channel.id)}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30 transition-all group"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center p-2 border border-slate-100">
+                            <img src={channel.icon} alt={channel.name} className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+                        </div>
+                        <div className="text-left">
+                            <div className="font-semibold text-slate-900">{channel.name}</div>
+                            <div className="flex flex-col gap-0.5 text-xs text-slate-500">
+                                <div className="flex items-center gap-2">
+                                    <span>Min: {formatFiatSymbol(channel.currency)}{channel.minAmount}</span>
+                                    <span>•</span>
+                                    <span>Fee: {formatFiatSymbol(channel.currency)}{channel.fee?.toFixed(2)}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                    Total: {formatFiatSymbol(channel.currency)}{channel.totalPrice.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <ChevronRight size={16} className="text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                    </div>
+                </button>
+            ))}
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
   };
 
   return (
-    <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-100 font-sans relative max-h-[90vh] overflow-y-auto">
-      {/* 顶部品牌 */}
-      <div className="bg-slate-50/80 px-6 py-4 flex justify-between items-center border-b border-slate-100 backdrop-blur-sm sticky top-0 z-20">
+    <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col h-[85vh] md:h-auto md:min-h-[600px]">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
         <AgentrixLogo size="sm" showText />
-        <div className="flex items-center gap-3">
-          <div className="text-xs font-mono text-slate-400">SECURE v7.0</div>
-          {onCancel && (
-            <button
-              type="button"
-              onClick={() => onCancel()}
-              className="text-slate-400 hover:text-slate-600 transition-colors"
-              aria-label="关闭支付窗口"
-            >
-              <XIcon size={16} />
+        {onCancel && (
+            <button onClick={onCancel} className="text-slate-400 hover:text-slate-600">
+                <XIcon size={20} />
             </button>
-          )}
+        )}
+      </div>
+
+      {/* Order Summary */}
+      <div className="px-6 py-6 bg-white">
+        <div className="text-center">
+            <div className="text-sm text-slate-500 mb-1">Total Amount</div>
+            <div className="text-4xl font-extrabold text-slate-900">
+                {formatFiatAmount(order.amount, order.currency)}
+            </div>
+            <div className="text-xs text-slate-400 mt-2 bg-slate-50 inline-block px-3 py-1 rounded-full">
+                {order.description}
+            </div>
         </div>
       </div>
 
-      {/* 订单区 */}
-      <div className="px-6 py-6">
-        <div className="flex justify-between items-end mb-8">
-          <div>
-            <div className="text-xs text-slate-400 mb-1 uppercase tracking-wider">Total Due</div>
-            <div className="text-3xl font-extrabold text-slate-900 flex items-baseline gap-1">
-              {(() => {
-                const currency = order.currency || 'USDC';
-                const symbol = currency === 'CNY' ? '¥' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'JPY' ? '¥' : '$';
-                return (
-                  <>
-                    {symbol}{order.amount.toFixed(currency === 'JPY' ? 0 : 2)}{' '}
-                    <span className="text-sm font-medium text-slate-400">{currency}</span>
-                  </>
-                );
-              })()}
+      {/* Split Layout */}
+      <div className="flex-1 overflow-y-auto">
+        <CryptoSection />
+        <div className="h-px bg-slate-100 w-full relative">
+            <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-xs text-slate-400 font-medium">
+                OR
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-slate-500 font-medium bg-slate-100 px-2 py-1 rounded-full">
-              {order.description}
-            </div>
-          </div>
         </div>
+        <FiatSection />
+      </div>
 
-        {/* 汇率显示（商家挂法币，用户选择数字货币支付） */}
-        {(() => {
-          const currency = order.currency || 'USDC';
-          const shouldShowExchangeRate =
-            isFiatOrderCurrency &&
-            merchantAllowsCrypto &&
-            (routeType === 'wallet' || routeType === 'quickpay') &&
-            exchangeRate !== null &&
-            cryptoAmount !== null;
-
-          if (shouldShowExchangeRate) {
-            const symbol =
-              currency === 'CNY'
-                ? '¥'
-                : currency === 'USD'
-                ? '$'
-                : currency === 'EUR'
-                ? '€'
-                : currency === 'GBP'
-                ? '£'
-                : currency === 'JPY'
-                ? '¥'
-                : '$';
-            return (
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm text-slate-600">
-                    原价: {symbol}
-                    {order.amount.toFixed(currency === 'JPY' ? 0 : 2)} {currency}
-                  </div>
-                  {isLoadingExchangeRate && (
-                    <Loader2 className="animate-spin text-blue-600" size={16} />
-                  )}
-                </div>
-                <div className="text-xl font-bold text-slate-900 mb-1">
-                  ≈ {cryptoAmount?.toFixed(6)} USDT
-                </div>
-                <div className="text-xs text-slate-500 flex items-center justify-between">
-                  <span>
-                    汇率: 1 {currency} = {exchangeRate?.toFixed(6)} USDT
-                  </span>
-                  {exchangeRateLockId && (
-                    <span className="text-green-600 font-medium">✓ 已锁定</span>
-                  )}
-                </div>
-                {!exchangeRateLockId && (
-                  <div className="text-xs text-amber-600 mt-2">
-                    ⚠️ 汇率实时更新，支付时将使用锁定汇率
-                  </div>
-                )}
-              </div>
-            );
-          }
-          return null;
-        })()}
-
-        {/* 状态机渲染 */}
-        {status === 'loading' && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="animate-spin text-indigo-600 mb-4" size={32} />
-            <div className="text-sm text-slate-500">Analyzing payment options...</div>
+      {/* Footer / Status */}
+      {status === 'error' && error && (
+          <div className="p-4 bg-red-50 text-red-600 text-sm text-center border-t border-red-100">
+              {error}
           </div>
-        )}
-
-        {status === 'ready' && (
-          <>
-            {/* 显示当前支付方式状态 */}
-            <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <div className="flex flex-col gap-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">当前网络:</span>
-                  <span className="font-medium text-slate-700">
-                    {TESTNET_NETWORK.name} ({TESTNET_NETWORK.chainIdHex})
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">当前支付方式:</span>
-                  <span className="font-medium text-slate-700">
-                    {routeType === 'quickpay'
-                      ? '⚡ QuickPay 免密'
-                      : routeType === 'wallet'
-                      ? '💼 Crypto 钱包'
-                      : '💳 法币支付'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">钱包状态:</span>
-                  {isConnected && defaultWallet ? (
-                    <span className="text-green-600">
-                      ✓ 已连接 ({defaultWallet.address.slice(0, 6)}...{defaultWallet.address.slice(-4)})
-                    </span>
-                  ) : (
-                    <span className="text-yellow-600">⚠ 未连接钱包</span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">QuickPay 免密额度:</span>
-                  {(currentSession || activeSession) ? (
-                    <span className="text-green-600">✓ 已激活</span>
-                  ) : (
-                    <span className="text-slate-400">- 未创建</span>
-                  )}
-                </div>
-                {/* 提示可以创建 QuickPay Session（即使 quickPayAvailable 为 false，只要有钱包连接） */}
-                {!(currentSession || activeSession) && isConnected && defaultWallet && (
-                  <div className="mt-2 p-2 bg-indigo-50 border border-indigo-200 rounded text-xs text-indigo-700">
-                    💡 {preflightResult?.quickPayAvailable
-                      ? '您符合 QuickPay 条件，创建免密额度后即可一键支付'
-                      : '开启 QuickPay 免密额度可享受无需钱包确认的小额支付体验'}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('🔵 QuickPay guide button clicked');
-                        setShowQuickPayGuide(true);
-                      }}
-                      className="ml-2 text-indigo-600 underline hover:text-indigo-800 font-medium cursor-pointer"
-                    >
-                      立即创建
-                    </button>
-                  </div>
-                )}
-                <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded text-[11px] text-amber-700">
-                  ⚠ 当前为测试环境，所有支付均在 {TESTNET_NETWORK.name} 上执行，请使用测试 USDT（6 位小数）与足够的 BNB Gas。
-                </div>
+      )}
+      
+      {status === 'processing' && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="text-center">
+                  <Loader2 className="animate-spin text-indigo-600 mx-auto mb-4" size={40} />
+                  <div className="font-bold text-slate-900">Processing Payment...</div>
+                  <div className="text-sm text-slate-500">Please confirm in your wallet</div>
               </div>
-            </div>
-
-            {merchantAllowsCrypto ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <QuickPayView />
-                <WalletView />
-              </div>
-            ) : (
-              <div>
-                {routeType === 'quickpay' && <QuickPayView />}
-                {routeType === 'wallet' && <WalletView />}
-              </div>
-            )}
-          </>
-        )}
-
-        {status === 'success' && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <CheckCircle2 className="text-green-500 mb-4" size={48} />
-            <div className="text-lg font-bold text-slate-900 mb-2">Payment Successful!</div>
-            <div className="text-sm text-slate-500">Your payment has been confirmed</div>
           </div>
-        )}
+      )}
 
-        {status === 'error' && error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-            <div className="flex items-center gap-2 text-red-700">
-              <AlertCircle size={20} />
-              <span className="font-medium">Payment Failed</span>
-            </div>
-            <div className="text-sm text-red-600 mt-2">{error}</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setStatus('loading');
-                  // retry last action
-                  try {
-                    // attempt a conservative retry of handlePay if available
-                    if (typeof (handlePay as any) === 'function') {
-                      (handlePay as any)();
-                    }
-                  } catch (e) {
-                    console.warn('Retry failed', e);
-                    setStatus('error');
-                  }
-                }}
-                className="rounded-lg px-3 py-2 bg-rose-600 text-white text-sm font-medium hover:bg-rose-500"
-              >
-                重试
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setRouteType('provider');
-                  setShowProviderModal(true);
-                }}
-                className="rounded-lg px-3 py-2 border border-slate-200 text-sm font-medium hover:bg-slate-50"
-              >
-                切换通道
-              </button>
-              <button
-                type="button"
-                onClick={() => window.open('mailto:support@agentrix.top?subject=支付问题&body=请提供订单ID和错误详情', '_blank')}
-                className="rounded-lg px-3 py-2 border border-transparent bg-white/80 text-sm font-medium hover:bg-white"
-              >
-                联系客服
-              </button>
-            </div>
-          </div>
-        )}
-
-        {status === 'ready' && hasFiatOptions && (
-          <div className="mt-6">
-            <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">法币通道</p>
-                  <h4 className="text-lg font-semibold text-slate-900 mt-1">没有钱包？使用银行卡 / Apple Pay / Google Pay</h4>
-                  <p className="text-xs text-slate-500">金额已锁定，包含 On-Ramp 费率与 Agentrix 0.1% 平台费</p>
+      {/* Modals */}
+      {showSessionManager && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+                <div className="flex justify-between mb-4">
+                    <h3 className="font-bold">Setup QuickPay</h3>
+                    <button onClick={() => setShowSessionManager(false)}><XIcon size={20} /></button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleProviderPay('transak', selectedProviderOption || providerOptions[0])}
-                  className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                >
-                  法币支付
-                </button>
-              </div>
-
-              <div className="mt-4 grid gap-3">
-                {topFiatOptions.map((option) => {
-                  const disabled = option.available === false;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => handleProviderPay(option.id as any, option)}
-                      className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                        disabled ? 'border-slate-100 bg-slate-50 opacity-70 cursor-not-allowed' : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                            {option.name}
-                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              option.requiresKYC ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-                            }`}>
-                              {option.requiresKYC ? '需 KYC' : '免 KYC'}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-500 mt-1">
-                            Powered by {option.provider?.toUpperCase?.() || 'Transak'}
-                            {option.minAmount && option.available === false && (
-                              <span className="ml-2 text-red-500">最低 {formatFiatAmount(option.minAmount, option.currency)}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-base font-bold text-slate-900">
-                            {formatFiatAmount(option.price, option.currency)}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            费用 {option.fee ? `${formatFiatSymbol(option.currency)}${option.fee.toFixed(2)}` : '获取中'}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* KYC 引导弹窗 */}
-        {showKYCGuide && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900">需要完成 KYC 认证</h3>
-                <button
-                  onClick={() => setShowKYCGuide(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="mb-6">
-                <p className="text-sm text-slate-600 mb-4">
-                  为了使用银行卡支付，您需要完成身份验证（KYC）。这通常只需要几分钟时间。
-                </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="text-sm font-medium text-blue-900 mb-2">需要准备的材料：</div>
-                  <ul className="text-xs text-blue-700 space-y-1">
-                    <li>• 身份证或护照照片</li>
-                    <li>• 地址证明（如水电费账单）</li>
-                    <li>• 自拍照片（用于人脸识别）</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowKYCGuide(false);
-                    router.push('/app/merchant/kyc');
-                  }}
-                  className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-                >
-                  开始 KYC 认证
-                </button>
-                <button
-                  onClick={() => setShowKYCGuide(false)}
-                  className="px-4 py-3 text-slate-600 hover:text-slate-800"
-                >
-                  稍后
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* QuickPay 引导弹窗 */}
-        {showQuickPayGuide && (
-          <div 
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowQuickPayGuide(false);
-              }
-            }}
-          >
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900">启用 QuickPay</h3>
-                <button
-                  onClick={() => setShowQuickPayGuide(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="mb-6">
-                <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap className="text-indigo-600" size={20} />
-                    <div className="text-sm font-medium text-indigo-900">QuickPay 的优势</div>
-                  </div>
-                  <ul className="text-xs text-indigo-700 space-y-1">
-                    <li>• 无需钱包确认，一键支付</li>
-                    <li>• 零 Gas 费用</li>
-                    <li>• 即时到账</li>
-                    <li>• 安全可靠，由您的钱包授权</li>
-                  </ul>
-                </div>
-                <p className="text-sm text-slate-600">
-                  您符合 QuickPay 使用条件，但还没有创建 Session。创建 Session 后，您就可以享受快速支付体验了。
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowQuickPayGuide(false);
-                    setShowSessionManager(true);
-                  }}
-                  className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-                >
-                  创建 Session
-                </button>
-                <button
-                  onClick={() => {
-                    setShowQuickPayGuide(false);
-                    setRouteType('wallet');
-                  }}
-                  className="px-4 py-3 text-slate-600 hover:text-slate-800"
-                >
-                  使用钱包支付
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Session Manager 弹窗 */}
-        {showSessionManager && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-slate-900">创建 QuickPay Session</h3>
-                <button
-                  onClick={() => {
+                <SessionManager onClose={() => {
                     setShowSessionManager(false);
-                    // 创建成功后重新加载 Session
-                    loadActiveSession().then((session) => {
-                      if (session) {
-                        setCurrentSession(session);
-                        setRouteType('quickpay');
-                      }
-                    });
-                  }}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <SessionManager
-                onClose={() => {
-                  setShowSessionManager(false);
-                  loadActiveSession().then((session) => {
-                    if (session) {
-                      setCurrentSession(session);
-                      setRouteType('quickpay');
-                    }
-                  });
-                }}
-              />
+                    loadActiveSession().then(s => s && setCurrentSession(s));
+                }} />
             </div>
-          </div>
-        )}
+        </div>
+      )}
 
-        <TransakWhiteLabelModal
-          open={showProviderModal}
-          order={order}
-          providerOption={selectedProviderOption || preflightResult?.providerOptions?.[0] || null}
-          providerOptions={providerOptions}
-          userProfile={userProfile}
-          onClose={() => {
+      <TransakWhiteLabelModal
+        open={showProviderModal}
+        order={order}
+        providerOption={selectedProviderOption || preflightResult?.providerOptions?.[0] || null}
+        providerOptions={preflightResult?.providerOptions || []}
+        userProfile={userProfile}
+        initialStage={selectedProviderOption?.paymentMethod ? 'widget' : 'selection'}
+        onClose={() => setShowProviderModal(false)}
+        onSuccess={(result) => {
             setShowProviderModal(false);
-            setError(null);
-          }}
-          onSuccess={(result) => {
-            setStatus('success');
-            setShowProviderModal(false);
-            if (onSuccess) {
-              onSuccess(result);
-            }
-          }}
-          onError={(message) => {
-            setError(message);
-            setStatus('error');
-          }}
-        />
-      </div>
+            if (onSuccess) onSuccess(result);
+        }}
+        onError={(msg) => setError(msg)}
+      />
+
+      {/* Wallet Selector Modal */}
+      {showWalletSelector && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-xl">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-slate-900">Connect Wallet</h3>
+                    <button onClick={() => setShowWalletSelector(false)} className="text-slate-400 hover:text-slate-600">
+                        <XIcon size={20} />
+                    </button>
+                </div>
+                <div className="space-y-3">
+                    {connectors.map(connector => (
+                        <button
+                            key={connector.id}
+                            onClick={async () => {
+                                try {
+                                    setConnectingWalletId(connector.id);
+                                    await connect(connector.id);
+                                    setShowWalletSelector(false);
+                                } catch (e: any) {
+                                    console.error(e);
+                                    setError(e.message || 'Connection failed');
+                                } finally {
+                                    setConnectingWalletId(null);
+                                }
+                            }}
+                            disabled={(!connector.isInstalled && connector.id !== 'walletconnect') || connectingWalletId === connector.id}
+                            className="w-full flex items-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <span className="text-2xl mr-3">
+                                {connectingWalletId === connector.id ? <Loader2 className="animate-spin" size={24} /> : connector.icon}
+                            </span>
+                            <div className="text-left">
+                                <div className="font-semibold text-slate-900">{connector.name}</div>
+                                {!connector.isInstalled && connector.id !== 'walletconnect' && (
+                                    <div className="text-xs text-slate-500">Not Installed</div>
+                                )}
+                                {connectingWalletId === connector.id && (
+                                    <div className="text-xs text-indigo-600">Connecting...</div>
+                                )}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 }

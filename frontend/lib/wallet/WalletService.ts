@@ -32,107 +32,200 @@ export interface WalletConnector {
 }
 
 const getEthereumProvider = (predicate: (provider: any) => boolean) => {
-  if (typeof window === 'undefined') return undefined
-  const { ethereum } = window as any
-  if (!ethereum) return undefined
-
-  if (ethereum.providers?.length) {
-    const found = ethereum.providers.find((provider: any) => predicate(provider))
-    if (found) {
-      return found
+  try {
+    if (typeof window === 'undefined') return undefined
+    const { ethereum } = window as any
+    if (!ethereum) return undefined
+    // 打印当前 ethereum 注入状态以便调试
+    try {
+      console.debug('[getEthereumProvider] window.ethereum detected. providers length:', ethereum.providers?.length)
+    } catch (e) {
+      console.debug('[getEthereumProvider] window.ethereum present but cannot read providers')
     }
-  }
 
-  return predicate(ethereum) ? ethereum : undefined
+    if (ethereum.providers?.length) {
+      const found = ethereum.providers.find((provider: any) => predicate(provider))
+      if (found) {
+        console.debug('[getEthereumProvider] Found matching provider in ethereum.providers')
+        return found
+      }
+    }
+
+    const ok = predicate(ethereum)
+    if (ok) {
+      console.debug('[getEthereumProvider] window.ethereum matches predicate')
+      return ethereum
+    }
+    return undefined
+  } catch (e) {
+    console.error('[getEthereumProvider] Error accessing ethereum provider:', e);
+    return undefined;
+  }
 }
 
 const getMetaMaskProvider = () => {
-  if (typeof window === 'undefined') return undefined
-  
-  const { ethereum } = window as any
-  if (!ethereum) return undefined
+  try {
+    if (typeof window === 'undefined') return undefined
+    
+    const { ethereum } = window as any
+    if (!ethereum) return undefined
 
-  // 优先检查 window.okxwallet，如果存在则排除它
-  const okxwallet = (window as any).okxwallet
-  if (okxwallet) {
-    // 如果ethereum是okxwallet注入的，需要排除
-    if (ethereum === okxwallet || ethereum === okxwallet.ethereum) {
-      // 如果有多个providers，尝试找到MetaMask
-      if (ethereum.providers?.length) {
-        const metamaskProvider = ethereum.providers.find((p: any) => {
-          // 严格检查：必须是MetaMask且不是OKX
-          return p.isMetaMask === true && 
-                 !p.isOkxWallet && 
-                 !p.isOKExWallet && 
-                 !p.isOkxwallet &&
-                 p !== okxwallet &&
-                 p !== okxwallet.ethereum &&
-                 !p.constructor?.name?.includes('Okx') &&
-                 !p.constructor?.name?.includes('OKX')
-        })
+    // 优先检查 window.okxwallet，如果存在则排除它
+    const okxwallet = (window as any).okxwallet
+    if (okxwallet) {
+      // 如果ethereum是okxwallet注入的，需要排除
+      if (ethereum === okxwallet || ethereum === okxwallet.ethereum) {
+        // 如果有多个providers，尝试找到MetaMask
+        if (ethereum.providers?.length) {
+          const metamaskProvider = ethereum.providers.find((p: any) => {
+            // 严格检查：必须是MetaMask且不是OKX
+            return p.isMetaMask === true && 
+                   !p.isOkxWallet && 
+                   !p.isOKExWallet && 
+                   !p.isOkxwallet &&
+                   p !== okxwallet &&
+                   p !== okxwallet.ethereum &&
+                   !p.constructor?.name?.includes('Okx') &&
+                   !p.constructor?.name?.includes('OKX')
+          })
+          return metamaskProvider
+        }
+        return undefined // 如果ethereum就是okxwallet，且没有providers，返回undefined
+      }
+    }
+
+    // 如果有多个providers，需要找到MetaMask（严格检测）
+    if (ethereum.providers?.length) {
+      console.debug('[getMetaMaskProvider] ethereum.providers detected, count:', ethereum.providers.length)
+      const metamaskProvider = ethereum.providers.find((p: any) => {
+        return p.isMetaMask === true && 
+               !p.isOkxWallet && 
+               !p.isOKExWallet && 
+               !p.isOkxwallet &&
+               p !== okxwallet &&
+               p !== okxwallet?.ethereum &&
+               !p.constructor?.name?.includes('Okx') &&
+               !p.constructor?.name?.includes('OKX')
+      })
+      if (metamaskProvider) {
+        console.debug('[getMetaMaskProvider] Found strict MetaMask provider in providers list')
         return metamaskProvider
       }
-      return undefined // 如果ethereum就是okxwallet，且没有providers，返回undefined
     }
-  }
 
-  // 如果有多个providers，需要找到MetaMask
-  if (ethereum.providers?.length) {
-    const metamaskProvider = ethereum.providers.find((p: any) => {
-      // 严格检查：必须是MetaMask且不是OKX
-      return p.isMetaMask === true && 
-             !p.isOkxWallet && 
-             !p.isOKExWallet && 
-             !p.isOkxwallet &&
-             p !== okxwallet &&
-             p !== okxwallet?.ethereum &&
-             !p.constructor?.name?.includes('Okx') &&
-             !p.constructor?.name?.includes('OKX')
-    })
-    return metamaskProvider
-  }
+    // 单个 provider 的情况，严格检查优先
+    if (ethereum.isMetaMask === true) {
+      // 再次确认不是 OKX
+      if (ethereum.isOkxWallet || ethereum.isOKExWallet || ethereum.isOkxwallet) {
+        console.debug('[getMetaMaskProvider] ethereum looks like OKX wallet; ignoring for MetaMask')
+        return undefined
+      }
+      if (ethereum === okxwallet || ethereum === okxwallet?.ethereum) {
+        console.debug('[getMetaMaskProvider] ethereum equals okxwallet; ignoring for MetaMask')
+        return undefined
+      }
+      if (ethereum.constructor?.name?.includes('Okx') || ethereum.constructor?.name?.includes('OKX')) {
+        console.debug('[getMetaMaskProvider] ethereum constructor name indicates OKX; ignoring')
+        return undefined
+      }
+      console.debug('[getMetaMaskProvider] Found MetaMask via strict check')
+      return ethereum
+    }
 
-  // 单个provider的情况，需要严格检查
-  if (ethereum.isMetaMask === true) {
-    // 再次确认不是OKX钱包
-    if (ethereum.isOkxWallet || ethereum.isOKExWallet || ethereum.isOkxwallet) {
-      return undefined
+    // 宽松模式：如果 window.ethereum 存在且不是明确的 OKX，也返回它
+    // 这允许其他兼容 EIP-1193 的钱包（如 Trust Wallet, Coinbase Wallet, Brave 等）通过 "MetaMask" 按钮连接
+    if (ethereum && !ethereum.isOkxWallet && !ethereum.isOKExWallet && !ethereum.isOkxwallet) {
+       console.log('[getMetaMaskProvider] Returning generic window.ethereum as fallback')
+       return ethereum
     }
-    if (ethereum === okxwallet || ethereum === okxwallet?.ethereum) {
-      return undefined
-    }
-    if (ethereum.constructor?.name?.includes('Okx') || ethereum.constructor?.name?.includes('OKX')) {
-      return undefined
-    }
+
+    // 回退：如果没有严格匹配，但 window.ethereum 存在，返回它用于诊断
+    console.warn('[getMetaMaskProvider] 未找到严格匹配的 MetaMask provider；将回退至 window.ethereum 以便诊断（注意：这可能不是 MetaMask）')
+    console.debug('[getMetaMaskProvider] window.ethereum object:', ethereum)
     return ethereum
+  } catch (e) {
+    console.error('[getMetaMaskProvider] Error accessing ethereum provider:', e);
+    return undefined;
   }
-
-  return undefined
 }
 
 const getOKXProvider = () => {
   if (typeof window === 'undefined') return undefined
   
-  // 优先检查 okxwallet 对象
-  const okxwallet = (window as any).okxwallet
+  const { ethereum, okxwallet } = window as any
+
+  // 1. 优先检查 window.ethereum 是否为 OKX (兼容性更好)
+  if (ethereum && (ethereum.isOkxWallet || ethereum.isOKExWallet || ethereum.isOkxwallet)) {
+    console.log('[getOKXProvider] Found OKX via window.ethereum')
+    return ethereum
+  }
+
+  // 2. 检查 okxwallet.ethereum
   if (okxwallet?.ethereum) {
+    console.log('[getOKXProvider] Found window.okxwallet.ethereum');
     return okxwallet.ethereum
   }
   
-  // 检查 window.okxwallet 是否存在（即使没有ethereum属性）
+  // 3. 检查 window.okxwallet 是否存在且看起来像 provider
   if (okxwallet) {
+    console.log('[getOKXProvider] Found window.okxwallet');
+    if (typeof okxwallet.request !== 'function') {
+       console.warn('[getOKXProvider] window.okxwallet exists but has no request method. It might be a namespace object.')
+       // 如果 okxwallet 是命名空间，尝试找其中的 provider? 暂时返回它，让调用者处理或失败
+    }
     return okxwallet
   }
   
-  // 最后检查 ethereum.providers 中的 OKX 钱包
-  return getEthereumProvider(
-    (provider) =>
-      !!provider?.isOkxWallet || 
-      !!provider?.isOKExWallet || 
-      !!provider?.isOkxwallet ||
-      (provider?.isMetaMask === false && provider?.constructor?.name?.includes('Okx')) ||
-      (provider?.constructor?.name?.includes('OKX'))
-  )
+  // 4. 最后检查 ethereum.providers 中的 OKX 钱包
+  console.debug('[getOKXProvider] Checking ethereum.providers for OKX providers...');
+  return getEthereumProvider((provider) => {
+    const okxLike = !!provider?.isOkxWallet || !!provider?.isOKExWallet || !!provider?.isOkxwallet
+    const constructorNameOkx = !!provider?.constructor?.name && (provider.constructor.name.includes('Okx') || provider.constructor.name.includes('OKX'))
+    const match = okxLike || constructorNameOkx || (provider?.isMetaMask === false && constructorNameOkx)
+    if (match) console.debug('[getOKXProvider] Matching provider found in providers list:', provider)
+    return match
+  })
+}
+
+// 调试工具：在浏览器中调用 `walletService.inspectInjectedProviders()` 可以获取注入提供者的详细信息（便于排查所有插件）
+export function inspectInjectedProviders() {
+  if (typeof window === 'undefined') return { error: 'not-in-browser' }
+  const win: any = window
+  const res: any = {}
+
+  res.hasWindowEthereum = !!win.ethereum
+  try {
+    res.ethereum = {
+      providersCount: (win.ethereum && win.ethereum.providers) ? win.ethereum.providers.length : 0,
+      keys: Object.keys(win.ethereum || {})
+    }
+  } catch (e) {
+    res.ethereum = { error: String(e) }
+  }
+
+  res.hasOkxWallet = !!win.okxwallet
+  try {
+    res.okxwallet = Object.keys(win.okxwallet || {})
+  } catch (e) {
+    res.okxwallet = { error: String(e) }
+  }
+
+  res.hasSolana = !!win.solana
+  try {
+    res.solana = { isPhantom: !!win.solana?.isPhantom, keys: Object.keys(win.solana || {}) }
+  } catch (e) {
+    res.solana = { error: String(e) }
+  }
+
+  // detect other common injections
+  res.hasWeb3 = !!win.web3
+  try {
+    res.web3 = win.web3 ? Object.keys(win.web3 || {}) : null
+  } catch (e) {
+    res.web3 = { error: String(e) }
+  }
+
+  return res
 }
 
 // MetaMask 连接器
@@ -147,10 +240,12 @@ export class MetaMaskConnector implements WalletConnector {
     if (typeof window === 'undefined') return false
     
     const provider = getMetaMaskProvider()
-    return !!provider && (provider.isMetaMask === true)
+    // 只要能获取到 provider，就认为已安装（兼容其他钱包）
+    return !!provider
   }
 
   async connect(): Promise<WalletInfo> {
+    console.log('[MetaMaskConnector] Connecting...');
     if (typeof window === 'undefined') {
       throw new Error('请在浏览器环境中使用')
     }
@@ -165,7 +260,13 @@ export class MetaMaskConnector implements WalletConnector {
     }
 
     try {
-      const accounts = await provider.request({ method: 'eth_requestAccounts' })
+      console.log('[MetaMaskConnector] Requesting accounts...');
+      const requestPromise = provider.request({ method: 'eth_requestAccounts' });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('连接超时，请检查钱包插件是否弹出窗口')), 30000)
+      );
+
+      const accounts = await Promise.race([requestPromise, timeoutPromise]) as string[];
       if (!accounts || accounts.length === 0) {
         throw new Error('未获取到账户')
       }
@@ -328,13 +429,20 @@ export class PhantomConnector implements WalletConnector {
   }
 
   async connect(): Promise<WalletInfo> {
+    console.log('[PhantomConnector] Connecting...');
     if (!this.isInstalled()) {
       throw new Error('请先安装Phantom扩展')
     }
 
     const solana = (window as any).solana
     try {
-      const response = await solana.connect()
+      console.log('[PhantomConnector] Requesting connection...');
+      const requestPromise = solana.connect();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('连接超时，请检查钱包插件是否弹出窗口')), 30000)
+      );
+      
+      const response = await Promise.race([requestPromise, timeoutPromise]) as any;
       this.provider = solana
 
       return {
@@ -347,6 +455,7 @@ export class PhantomConnector implements WalletConnector {
         icon: '👻'
       }
     } catch (error: any) {
+      console.error('[PhantomConnector] Connection failed:', error);
       if (error.code === 4001) {
         throw new Error('用户拒绝了连接请求')
       }
@@ -415,6 +524,7 @@ export class OKXConnector implements WalletConnector {
   }
 
   async connect(): Promise<WalletInfo> {
+    console.log('[OKXConnector] Connecting...');
     if (!this.isInstalled()) {
       throw new Error('请先安装OKX Wallet扩展。如果已安装，请刷新页面后重试。')
     }
@@ -423,8 +533,22 @@ export class OKXConnector implements WalletConnector {
     if (!okxwallet) {
       throw new Error('未检测到OKX Wallet Provider，请确认插件已启用')
     }
+
+    if (typeof okxwallet.request !== 'function') {
+      console.error('[OKXConnector] Provider does not have request method:', okxwallet)
+      throw new Error('OKX Wallet Provider 异常：找不到 request 方法')
+    }
+
     try {
-      const accounts = await okxwallet.request({ method: 'eth_requestAccounts' })
+      console.log('[OKXConnector] Requesting accounts...');
+      const requestPromise = okxwallet.request({ method: 'eth_requestAccounts' });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('连接超时，请检查钱包插件是否弹出窗口')), 60000)
+      );
+      
+      const accounts = await Promise.race([requestPromise, timeoutPromise]) as string[];
+      
+      console.log('[OKXConnector] Accounts received:', accounts);
       if (!accounts || accounts.length === 0) {
         throw new Error('未获取到账户')
       }
@@ -442,6 +566,7 @@ export class OKXConnector implements WalletConnector {
         icon: '🔶'
       }
     } catch (error: any) {
+      console.error('[OKXConnector] Connection failed:', error);
       if (error.code === 4001) {
         throw new Error('用户拒绝了连接请求')
       }

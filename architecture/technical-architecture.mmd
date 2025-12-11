@@ -1,0 +1,64 @@
+%% Technical Architecture - Agentrix (Layered view)
+%% Layers: Foundation Models (底座) -> Agent Runtime (编排层) -> Agents (业务层)
+flowchart TB
+
+  %% Top: Agents (business-facing)
+  subgraph AGENTS[Agents / Applications]
+    AgentsUI[Frontend Agents / Workbench]\n`frontend/pages/*` / `sdk-*`
+    AgentsUI -->|calls| RuntimeAPI[Agent Runtime API (/api/agent)]
+  end
+
+  %% Middle: Agent Runtime (orchestration)
+  subgraph RUNTIME[Agent Runtime (编排层)]
+    Runtime[Agent Runtime Service]\n`backend/src/modules/agent-runtime` / `backend/src/modules/session`
+    Memory[Memory / Context Service]\n`backend/src/modules/agent-runtime/memory`
+    Workflow[Workflow Engine]\n`backend/src/modules/agent-runtime/workflow`
+    Skills[Skills Registry / Skill Adapters]\n`backend/src/modules/skills` / `backend/src/modules/plugin`
+    Runtime --> Memory
+    Runtime --> Workflow
+    Runtime --> Skills
+    Runtime --> FoundationAPI[Foundation Models API]
+  end
+
+  %% Bottom: Foundation Models (能力底座)
+  subgraph FOUNDATION[Foundation Models (底座 / 能力层)]
+    TransactionFM[TransactionFoundationModel]\n`backend/src/modules/foundation/transaction-*`
+    AssetFM[AssetFoundationModel]\n`backend/src/modules/foundation/asset-*`
+    MerchantFM[MerchantFoundationModel]\n`backend/src/modules/foundation/merchant-*`
+    DevFM[DeveloperFoundationModel]\n`backend/src/modules/foundation/dev-*`
+    AIAdapter[LLM / Vector / RAG Adapter]\n`backend/src/modules/ai-*` / `integrations/`
+    FOUNDATION -->|calls| ExternalServices
+  end
+
+  %% External services & infra
+  subgraph EXTERNAL[External Services & Infra]
+    Postgres[(Postgres DB)]
+    Redis[(Redis Cache)]
+    Storage[(Uploads / S3)]
+    AIProviders[OpenAI / Gemini / Claude]
+    PaymentProviders[Stripe / QuickPay / PSPs]
+    ChainNodes[EVM / Solana RPC]
+  end
+
+  %% Connections
+  RuntimeAPI --> Runtime
+  Runtime --> TransactionFM
+  Runtime --> AssetFM
+  Runtime --> MerchantFM
+  TransactionFM --> Postgres
+  Runtime --> Redis
+  Runtime --> Storage
+  TransactionFM --> PaymentProviders
+  AssetFM --> ChainNodes
+  AIAdapter --> AIProviders
+
+  %% SDKs
+  subgraph SDKS[SDKs]
+    SDKJS[`sdk-js/`]
+    SDKPY[`sdk-python/`]
+    SDKReact[`sdk-react/`]
+  end
+  SDKs --> RuntimeAPI
+
+  classDef layer fill:#0f1724,stroke:#ffffff22,color:#cbd5e1;
+  class AGENTS,RUNTIME,FOUNDATION layer;

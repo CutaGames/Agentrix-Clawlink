@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import {
   ShieldCheck,
   Sparkles,
@@ -37,6 +38,10 @@ interface ProviderQuoteOption {
   commissionContractAddress?: string;
   minAmount?: number;
   available?: boolean;
+  kycLevel?: string;
+  paymentMethod?: string;
+  region?: string;
+  localCurrency?: string;
 }
 
 interface TransakWhiteLabelModalProps {
@@ -45,6 +50,7 @@ interface TransakWhiteLabelModalProps {
   providerOption?: ProviderQuoteOption | null;
   providerOptions?: ProviderQuoteOption[];
   userProfile?: any;
+  initialStage?: 'selection' | 'widget';
   onClose: () => void;
   onSuccess?: (result: PaymentInfo) => void;
   onError?: (message: string) => void;
@@ -78,11 +84,18 @@ export function TransakWhiteLabelModal({
   providerOption,
   providerOptions,
   userProfile,
+  initialStage = 'selection',
   onClose,
   onSuccess,
   onError,
 }: TransakWhiteLabelModalProps) {
-  const [stage, setStage] = useState<'selection' | 'widget'>('selection');
+  const [stage, setStage] = useState<'selection' | 'widget'>(initialStage);
+  
+  // Update stage when initialStage prop changes
+  useEffect(() => {
+    setStage(initialStage);
+  }, [initialStage]);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [commissionContractAddress, setCommissionContractAddress] = useState<string | undefined>(
@@ -90,6 +103,61 @@ export function TransakWhiteLabelModal({
   );
   const defaultOption = providerOption || providerOptions?.[0] || null;
   const [activeOption, setActiveOption] = useState<ProviderQuoteOption | null>(defaultOption);
+  const router = useRouter();
+  const kycRankMap: Record<string, number> = {
+    NONE: 0,
+    LEVEL0: 0,
+    LEVEL1: 1,
+    BASIC: 1,
+    LEVEL2: 2,
+    ADVANCED: 2,
+    FULL: 3,
+    APPROVED: 3,
+    VERIFIED: 3,
+  };
+  const userKycLevel = (userProfile?.kycLevel || userProfile?.kycStatus || 'NONE').toString().toUpperCase();
+  const readableUserKyc = userKycLevel === 'NONE' ? '未认证' : userKycLevel;
+  const getKycRank = (level?: string) => kycRankMap[level?.toUpperCase() || 'NONE'] ?? 0;
+  const meetsKycRequirement = (required?: string) => getKycRank(userKycLevel) >= getKycRank(required);
+  const resolveKycLabel = (level?: string, requires?: boolean) => {
+    if (!requires) {
+      return '免 KYC';
+    }
+    const normalized = level?.toUpperCase();
+    if (!normalized || normalized === 'NONE') {
+      return '基础 KYC';
+    }
+    return normalized;
+  };
+  const deriveChannelPills = (option: ProviderQuoteOption) => {
+    const pills: string[] = [];
+    if (option.paymentMethod) {
+      pills.push(option.paymentMethod);
+    } else if (option.id?.toLowerCase().includes('google')) {
+      pills.push('Google Pay');
+    } else if (option.id?.toLowerCase().includes('apple')) {
+      pills.push('Apple Pay');
+    } else if (option.id?.toLowerCase().includes('card')) {
+      pills.push('信用卡');
+    }
+    if (option.region) {
+      pills.push(option.region);
+    }
+    if (option.localCurrency && option.localCurrency !== option.currency) {
+      pills.push(`支持 ${option.localCurrency}`);
+    }
+    if (option.estimatedTime) {
+      pills.push(option.estimatedTime);
+    }
+    if (option.fee) {
+      pills.push(`费用 ${formatFiatSymbol(option.currency)}${option.fee.toFixed(2)}`);
+    }
+    if (!pills.length) {
+      pills.push('全球可用');
+      pills.push('支持本地卡');
+    }
+    return pills;
+  };
 
   const selectionList = useMemo(() => {
     if (providerOptions && providerOptions.length > 0) {
@@ -125,7 +193,7 @@ export function TransakWhiteLabelModal({
     }
   }, [stage, commissionContractAddress]);
 
-  const needsGlobalKYC = !userProfile || !userProfile.kycLevel || userProfile.kycLevel === 'none' || userProfile.kycLevel === 'NONE';
+  const needsGlobalKYC = userKycLevel === 'NONE';
   const selectedFiatCurrency = activeOption?.currency || order.currency;
   const lockedAmount = activeOption?.price ?? order.amount;
   const providerFeeValue = Math.max(
@@ -231,9 +299,9 @@ export function TransakWhiteLabelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-8 py-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-8 py-6 sticky top-0 bg-white z-10">
           <AgentrixLogo size="sm" showText />
           <div className="flex items-center gap-3">
             <div className="text-xs uppercase tracking-[0.3em] text-slate-400">Agentrix Pay</div>
@@ -301,6 +369,35 @@ export function TransakWhiteLabelModal({
               <span>{activeOption?.requiresKYC || needsGlobalKYC ? 'KYC + Pay' : 'Instant Pay'}</span>
             </div>
 
+            <div
+              className={`mt-4 rounded-2xl border p-4 text-xs ${
+                needsGlobalKYC
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">
+                    {needsGlobalKYC ? '请先完成身份验证' : '身份验证已满足渠道要求'}
+                  </div>
+                  <p className="mt-1 text-slate-600">
+                    {needsGlobalKYC
+                      ? '完成 Level 1 审核即可解锁 Google Pay / Apple Pay / 本地卡通道'
+                      : `当前等级：${readableUserKyc}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push('/app/merchant/kyc')}
+                  className="rounded-xl border border-white/40 bg-white/70 px-3 py-2 text-[11px] font-semibold text-slate-800 shadow-sm transition hover:bg-white"
+                >
+                  {needsGlobalKYC ? '立即升级' : '查看认证' }
+                </button>
+              </div>
+            </div>
+
+            {stage === 'selection' && (
             <div className="mt-4 space-y-3">
               {selectionList.length > 0 ? (
                 selectionList.map((option) => {
@@ -328,6 +425,21 @@ export function TransakWhiteLabelModal({
                             Powered by {option.provider?.toUpperCase?.() || 'Transak'}
                             {option.estimatedTime && ` • ${option.estimatedTime}`}
                           </div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                              {resolveKycLabel(option.kycLevel, option.requiresKYC)}
+                            </span>
+                            {option.requiresKYC && !meetsKycRequirement(option.kycLevel) && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-600">
+                                当前 {readableUserKyc}
+                              </span>
+                            )}
+                            {option.agentrixFee !== undefined && (
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                                平台费 {formatFiatSymbol(option.currency)}{option.agentrixFee.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                           {option.minAmount && option.available === false && (
                             <div className="text-[11px] text-red-500 mt-1">
                               最低 {formatFiatAmount(option.minAmount, option.currency)}
@@ -344,18 +456,11 @@ export function TransakWhiteLabelModal({
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Google Pay
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Apple Pay
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          VISA/Master
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          本地通道
-                        </span>
+                        {deriveChannelPills(option).map((pill) => (
+                          <span key={`${option.id}-${pill}`} className="rounded-full bg-slate-100 px-2 py-0.5">
+                            {pill}
+                          </span>
+                        ))}
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
@@ -365,14 +470,17 @@ export function TransakWhiteLabelModal({
                           className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                             disabled
                               ? 'bg-slate-100 text-slate-400'
-                              : option.id === activeOption?.id && stage === 'widget'
-                              ? 'bg-slate-900 text-white'
                               : 'bg-slate-900/5 text-slate-900 hover:bg-slate-900/10'
                           }`}
                         >
-                          {option.id === activeOption?.id && stage === 'widget' ? '正在支付' : '立即支付'}
+                          立即支付
                         </button>
                       </div>
+                      {option.requiresKYC && !meetsKycRequirement(option.kycLevel) && (
+                        <div className="mt-2 text-[11px] text-amber-600">
+                          该通道需 {resolveKycLabel(option.kycLevel, true)}，当前等级 {readableUserKyc}
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -382,6 +490,7 @@ export function TransakWhiteLabelModal({
                 </div>
               )}
             </div>
+            )}
 
             {stage === 'widget' && activeOption ? (
               <div className="mt-6 space-y-3">
@@ -408,6 +517,7 @@ export function TransakWhiteLabelModal({
                     userId={userProfile?.id}
                     email={userProfile?.email}
                     directPayment={activeDirectPayment}
+                    paymentMethod={activeOption.paymentMethod || activeOption.id}
                     onSuccess={handleTransakSuccess}
                     onError={handleWidgetError}
                     onClose={() => {

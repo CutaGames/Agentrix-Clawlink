@@ -254,8 +254,8 @@ export default function CheckoutPage() {
         {/* V7.0 Smart Checkout */}
         {showCheckout && order && (
           <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto">
-            <div className="min-h-full flex items-center justify-center p-4">
-              <div className="relative w-full max-w-2xl">
+            <div className="min-h-screen flex items-start justify-center p-6 pt-12">
+              <div className="relative w-full max-w-4xl">
                 <SmartCheckout
                   order={{
                     id: order.id,

@@ -52,6 +52,7 @@ import { AIRAGModule } from './modules/ai-rag/ai-rag.module';
 import { OpenAIIntegrationModule } from './modules/ai-integration/openai/openai-integration.module';
 import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integration.module';
 import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
+import { ClaudeIntegrationModule } from './modules/ai-integration/claude/claude-integration.module';
 import { CartModule } from './modules/cart/cart.module';
 
 @Module({
@@ -112,6 +113,7 @@ import { CartModule } from './modules/cart/cart.module';
     OpenAIIntegrationModule,
     GroqIntegrationModule,
     GeminiIntegrationModule,
+    ClaudeIntegrationModule,
     CartModule,
   ],
   controllers: [AppController],

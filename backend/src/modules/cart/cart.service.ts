@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, BadRequestException } from '@nestjs/common';
 import { CacheService } from '../cache/cache.service';
 import { ProductService } from '../product/product.service';
 
@@ -12,6 +12,19 @@ export interface Cart {
   userId: string;
   items: CartItem[];
   updatedAt: Date;
+}
+
+export interface CartValidationResult {
+  valid: boolean;
+  errors: Array<{
+    productId: string;
+    productName?: string;
+    error: 'not_found' | 'insufficient_stock' | 'inactive' | 'price_changed';
+    message: string;
+    currentStock?: number;
+    requestedQuantity?: number;
+  }>;
+  validItems: CartItem[];
 }
 
 @Injectable()
@@ -189,5 +202,149 @@ export class CartService {
       itemCount,
     };
   }
-}
 
+  /**
+   * 验证购物车（库存、商品状态、价格）
+   * 用于下单前校验
+   */
+  async validateCart(userIdOrSessionId: string, isSessionId: boolean = false): Promise<CartValidationResult> {
+    const cart = await this.getCart(userIdOrSessionId, isSessionId);
+    const errors: CartValidationResult['errors'] = [];
+    const validItems: CartItem[] = [];
+
+    for (const item of cart.items) {
+      try {
+        const product = await this.productService.getProduct(item.productId);
+        
+        // 检查商品状态
+        if ((product as any).status !== 'active') {
+          errors.push({
+            productId: item.productId,
+            productName: product.name,
+            error: 'inactive',
+            message: `商品 "${product.name}" 已下架`,
+          });
+          continue;
+        }
+
+        // 检查库存
+        if (product.stock < item.quantity) {
+          errors.push({
+            productId: item.productId,
+            productName: product.name,
+            error: 'insufficient_stock',
+            message: `商品 "${product.name}" 库存不足，当前库存: ${product.stock}，需要: ${item.quantity}`,
+            currentStock: product.stock,
+            requestedQuantity: item.quantity,
+          });
+          continue;
+        }
+
+        validItems.push(item);
+      } catch (error) {
+        errors.push({
+          productId: item.productId,
+          error: 'not_found',
+          message: `商品不存在或已删除`,
+        });
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      validItems,
+    };
+  }
+
+  /**
+   * 添加商品到购物车（带库存校验）
+   */
+  async addToCartWithValidation(
+    userIdOrSessionId: string, 
+    productId: string, 
+    quantity: number = 1, 
+    isSessionId: boolean = false
+  ): Promise<Cart> {
+    // 先校验商品和库存
+    try {
+      const product = await this.productService.getProduct(productId);
+      
+      if ((product as any).status !== 'active') {
+        throw new BadRequestException(`商品 "${product.name}" 已下架`);
+      }
+
+      // 获取当前购物车中该商品的数量
+      const cart = await this.getCart(userIdOrSessionId, isSessionId);
+      const existingItem = cart.items.find(item => item.productId === productId);
+      const totalQuantity = (existingItem?.quantity || 0) + quantity;
+
+      if (product.stock < totalQuantity) {
+        throw new BadRequestException(
+          `商品 "${product.name}" 库存不足，当前库存: ${product.stock}，购物车已有: ${existingItem?.quantity || 0}，无法再添加 ${quantity} 件`
+        );
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('商品不存在或已删除');
+    }
+
+    return this.addToCart(userIdOrSessionId, productId, quantity, isSessionId);
+  }
+
+  /**
+   * 清理购物车中的无效商品（下架/删除/库存不足）
+   */
+  async cleanupInvalidItems(userIdOrSessionId: string, isSessionId: boolean = false): Promise<{
+    removed: Array<{ productId: string; reason: string }>;
+    adjusted: Array<{ productId: string; oldQuantity: number; newQuantity: number; reason: string }>;
+  }> {
+    const cart = await this.getCart(userIdOrSessionId, isSessionId);
+    const removed: Array<{ productId: string; reason: string }> = [];
+    const adjusted: Array<{ productId: string; oldQuantity: number; newQuantity: number; reason: string }> = [];
+    const validItems: CartItem[] = [];
+
+    for (const item of cart.items) {
+      try {
+        const product = await this.productService.getProduct(item.productId);
+        
+        // 商品下架
+        if ((product as any).status !== 'active') {
+          removed.push({ productId: item.productId, reason: '商品已下架' });
+          continue;
+        }
+
+        // 库存不足，调整数量
+        if (product.stock < item.quantity) {
+          if (product.stock <= 0) {
+            removed.push({ productId: item.productId, reason: '商品已售罄' });
+            continue;
+          }
+          adjusted.push({
+            productId: item.productId,
+            oldQuantity: item.quantity,
+            newQuantity: product.stock,
+            reason: `库存不足，已调整为 ${product.stock}`,
+          });
+          validItems.push({ ...item, quantity: product.stock });
+          continue;
+        }
+
+        validItems.push(item);
+      } catch (error) {
+        removed.push({ productId: item.productId, reason: '商品不存在' });
+      }
+    }
+
+    // 更新购物车
+    if (removed.length > 0 || adjusted.length > 0) {
+      cart.items = validItems;
+      cart.updatedAt = new Date();
+      await this.saveCart(cart, isSessionId);
+    }
+
+    return { removed, adjusted };
+  }
+}

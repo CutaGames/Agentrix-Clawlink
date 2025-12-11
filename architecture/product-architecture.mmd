@@ -1,0 +1,57 @@
+%% Product Architecture - Agentrix
+%% Render with Mermaid (mermaid.live or VSCode Mermaid extension)
+flowchart LR
+  subgraph Users
+    U[Users / Merchants / Developers]
+  end
+
+  subgraph Frontend
+    FE[Next.js Frontend]\n(Agent Builder, Marketplace, Docs, Workbench)
+  end
+
+  subgraph API
+    API[API Gateway / Nginx] -->|proxy| BE
+    FE -->|HTTPS| API
+    U -->|Web / Mobile| FE
+  end
+
+  subgraph Backend
+    BE[Agentrix Backend (NestJS)]
+    BE --> DB[Postgres]
+    BE --> Cache[Redis]
+    BE --> Storage[Uploads / Blob Storage]
+    BE --> SDK[SDKs (JS/Python/React)]
+  end
+
+  subgraph Payments
+    BE -->|routes/payments| PaymentEngine[Payment Engine / Smart Router]
+    PaymentEngine --> Stripe
+    PaymentEngine --> QuickPay
+    PaymentEngine --> FiatOnramp[Fiat→Crypto]
+  end
+
+  subgraph Agents
+    BE --> AgentRuntime[Agent Runtime / Session Service]\n(ERC‑8004 Session IDs)
+    AgentRuntime --> Marketplace
+    AgentRuntime --> Plugins[Plugin System]
+  end
+
+  subgraph AI
+    BE -->|calls| OpenAI[OpenAI / GPTs / Models]
+    BE -->|calls| Gemini[Google Gemini]
+    BE -->|calls| Claude
+  end
+
+  subgraph Blockchain
+    BE -->|onchain| EVM[EVM Nodes]
+    BE -->|onchain| Solana[Solana Nodes]
+    BE --> MPC[MPC Wallet / Onchain Signing]
+  end
+
+  subgraph Integrations
+    BE --> Webhook[3rd‑party Webhooks]
+    BE --> Analytics[Analytics / Telemetry]
+  end
+
+  classDef infra fill:#111827,stroke:#ffffff22,color:#cbd5e1;
+  class DB,Cache,Storage,Stripe,EVM,Solana,OpenAI,Gemini,Claude infra;

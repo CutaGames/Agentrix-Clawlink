@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { useWeb3 } from '../../contexts/Web3Context'
 import { useUser } from '../../contexts/UserContext'
 import { useToast } from '../../contexts/ToastContext'
-import { walletService, WalletType, WalletInfo } from '../../lib/wallet/WalletService'
+import type { WalletType, WalletInfo } from '../../lib/wallet/WalletService'
 import { authApi } from '../../lib/api/auth.api'
 import type { UserRole } from '../../types/user'
 import { walletApi } from '../../lib/api/wallet.api'
@@ -15,7 +15,7 @@ interface LoginModalProps {
 
 export function LoginModal({ onClose, onWalletSuccess }: LoginModalProps) {
   const [activeTab, setActiveTab] = useState<'web3' | 'web2'>('web3')
-  const { isConnected, address, connect, connectors, defaultWallet } = useWeb3()
+  const { isConnected, address, connect, connectors, defaultWallet, signMessage } = useWeb3()
   const { login, isAuthenticated } = useUser()
   const router = useRouter()
   const toast = useToast()
@@ -43,7 +43,8 @@ export function LoginModal({ onClose, onWalletSuccess }: LoginModalProps) {
     const loginMessage = `Agentrix 登录验证\n地址: ${walletInfo.address}\n时间: ${new Date().toISOString()}`
     
     try {
-      const signature = await walletService.signMessage(walletInfo, loginMessage)
+      // 使用 Web3Context 中的 signMessage（它会委托给 walletService）
+      const signature = await signMessage(loginMessage)
       console.log('签名成功，开始登录验证')
 
       if (isAuthenticated) {
@@ -305,17 +306,25 @@ function Web3Login({ connectors, onWalletConnect, isConnected, address, onLoginW
   const [error, setError] = useState<string | null>(null)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const handleConnect = async (walletType: WalletType) => {
+  const handleConnect = (walletType: WalletType) => {
+    // 1. 优先调用连接函数，确保在用户点击事件的同步执行栈中触发钱包弹窗
+    // 不要在这里使用 await，否则会导致 React 状态更新打断用户手势上下文
+    const connectPromise = onWalletConnect(walletType)
+
+    // 2. 然后再更新 UI 状态
     setIsConnecting(walletType)
     setError(null)
-    try {
-      await onWalletConnect(walletType)
-      // 连接成功后清除连接状态（登录会在onWalletConnect内部完成）
-      setIsConnecting(null)
-    } catch (error: any) {
-      setError(error.message || '连接失败')
-      setIsConnecting(null)
-    }
+
+    // 3. 处理异步结果
+    connectPromise
+      .then(() => {
+        // 连接成功后清除连接状态（登录会在onWalletConnect内部完成）
+        setIsConnecting(null)
+      })
+      .catch((error: any) => {
+        setError(error.message || '连接失败')
+        setIsConnecting(null)
+      })
   }
 
   return (

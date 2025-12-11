@@ -2,8 +2,8 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Product } from '../../../entities/product.entity';
 import { Order } from '../../../entities/order.entity';
-import { GeminiIntegrationService } from './gemini-integration.service';
-import { GeminiIntegrationController } from './gemini-integration.controller';
+import { ClaudeIntegrationService } from './claude-integration.service';
+import { ClaudeIntegrationController } from './claude-integration.controller';
 import { AiCapabilityModule } from '../../ai-capability/ai-capability.module';
 import { SearchModule } from '../../search/search.module';
 import { ProductModule } from '../../product/product.module';
@@ -25,9 +25,9 @@ import { ModelRouterModule } from '../model-router/model-router.module';
     forwardRef(() => PaymentModule),
     ModelRouterModule,
   ],
-  controllers: [GeminiIntegrationController],
-  providers: [GeminiIntegrationService],
-  exports: [GeminiIntegrationService],
+  controllers: [ClaudeIntegrationController],
+  providers: [ClaudeIntegrationService],
+  exports: [ClaudeIntegrationService],
 })
-export class GeminiIntegrationModule {}
+export class ClaudeIntegrationModule {}
 
