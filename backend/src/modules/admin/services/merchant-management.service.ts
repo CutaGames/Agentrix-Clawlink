@@ -43,7 +43,7 @@ export class MerchantManagementService {
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
-      .where("user.roles::text LIKE '%merchant%'");
+      .where(':role = ANY(user.roles)', { role: 'merchant' });
 
     if (query.search) {
       queryBuilder.andWhere(
@@ -110,7 +110,7 @@ export class MerchantManagementService {
     const merchant = await this.userRepository
       .createQueryBuilder('user')
       .where('user.id = :id', { id })
-      .andWhere("user.roles::text LIKE '%merchant%'")
+      .andWhere(':role = ANY(user.roles)', { role: 'merchant' })
       .getOne();
 
     if (!merchant) {
@@ -273,16 +273,16 @@ export class MerchantManagementService {
     const [totalMerchants, activeMerchants, verifiedMerchants] = await Promise.all([
       this.userRepository
         .createQueryBuilder('user')
-        .where("user.roles::text LIKE '%merchant%'")
+        .where(':role = ANY(user.roles)', { role: 'merchant' })
         .getCount(),
       this.userRepository
         .createQueryBuilder('user')
-        .where("user.roles::text LIKE '%merchant%'")
+        .where(':role = ANY(user.roles)', { role: 'merchant' })
         .andWhere('user.kycStatus = :status', { status: 'approved' })
         .getCount(),
       this.userRepository
         .createQueryBuilder('user')
-        .where("user.roles::text LIKE '%merchant%'")
+        .where(':role = ANY(user.roles)', { role: 'merchant' })
         .andWhere('user.kycLevel = :level', { level: 'verified' })
         .getCount(),
     ]);

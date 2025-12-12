@@ -1,8 +1,9 @@
 import Head from 'next/head'
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { apiKeyApi, ApiKey } from '../../../lib/api/api-key.api'
 
-interface ApiKey {
+interface LocalApiKey {
   id: string
   name: string
   key: string
@@ -13,59 +14,79 @@ interface ApiKey {
 }
 
 export default function MerchantApiKeys() {
-  const [keys, setKeys] = useState<ApiKey[]>([])
+  const [keys, setKeys] = useState<LocalApiKey[]>([])
+  const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newKey, setNewKey] = useState({ name: '', permissions: [] as string[] })
+  const [createdKey, setCreatedKey] = useState<string | null>(null)
 
   useEffect(() => {
     loadKeys()
   }, [])
 
   const loadKeys = async () => {
+    setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setKeys([
-        {
-          id: 'key_001',
-          name: '生产环境',
-          key: 'pk_live_***',
-          permissions: ['payments:read', 'payments:write', 'orders:read'],
-          createdAt: '2025-01-01T00:00:00Z',
-          lastUsed: '2025-01-15T10:00:00Z',
-          usageCount: 1250,
-        },
-        {
-          id: 'key_002',
-          name: '测试环境',
-          key: 'pk_test_***',
-          permissions: ['payments:read', 'orders:read'],
-          createdAt: '2025-01-10T00:00:00Z',
-          usageCount: 45,
-        },
-      ])
+      const apiKeys = await apiKeyApi.list()
+      const localKeys: LocalApiKey[] = apiKeys.map(k => ({
+        id: k.id,
+        name: k.name,
+        key: k.keyPrefix + '***',
+        permissions: k.scopes || [],
+        createdAt: k.createdAt,
+        lastUsed: k.lastUsedAt,
+        usageCount: k.usageCount || 0,
+      }))
+      setKeys(localKeys)
     } catch (error) {
       console.error('加载API密钥失败:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const addKey = () => {
-    const apiKey: ApiKey = {
-      id: `key_${Date.now()}`,
-      name: newKey.name,
-      key: 'pk_' + Math.random().toString(36).substr(2, 24),
-      permissions: newKey.permissions,
-      createdAt: new Date().toISOString(),
-      usageCount: 0,
+  const addKey = async () => {
+    try {
+      const result = await apiKeyApi.create({
+        name: newKey.name,
+        scopes: newKey.permissions,
+      })
+      
+      // 显示完整的 API Key（只有这一次机会）
+      setCreatedKey(result.apiKey)
+      
+      const localKey: LocalApiKey = {
+        id: result.id,
+        name: result.name,
+        key: result.keyPrefix + '***',
+        permissions: result.scopes,
+        createdAt: result.createdAt,
+        usageCount: 0,
+      }
+      setKeys([...keys, localKey])
+      setShowAddModal(false)
+      setNewKey({ name: '', permissions: [] })
+    } catch (error) {
+      console.error('创建API密钥失败:', error)
+      alert('创建API密钥失败，请重试')
     }
-    setKeys([...keys, apiKey])
-    setShowAddModal(false)
-    setNewKey({ name: '', permissions: [] })
   }
 
-  const deleteKey = (id: string) => {
+  const deleteKey = async (id: string) => {
     if (confirm('确定要删除这个API密钥吗？')) {
-      setKeys(keys.filter(k => k.id !== id))
+      try {
+        await apiKeyApi.delete(id)
+        setKeys(keys.filter(k => k.id !== id))
+      } catch (error) {
+        console.error('删除API密钥失败:', error)
+        alert('删除API密钥失败，请重试')
+      }
     }
+  }
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    alert('已复制到剪贴板')
   }
 
   return (
@@ -87,6 +108,38 @@ export default function MerchantApiKeys() {
           </button>
         </div>
 
+        {/* 显示新创建的 API Key */}
+        {createdKey && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-lg font-bold text-yellow-800 mb-2">⚠️ 请立即保存您的 API Key</h3>
+                <p className="text-sm text-yellow-700 mb-2">此 Key 只显示一次，关闭后将无法再次查看完整值！</p>
+                <code className="block bg-white p-2 rounded border text-sm break-all">{createdKey}</code>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => copyToClipboard(createdKey)}
+                  className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+                >
+                  复制
+                </button>
+                <button
+                  onClick={() => setCreatedKey(null)}
+                  className="px-3 py-1 border border-yellow-600 text-yellow-600 rounded hover:bg-yellow-100"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          </div>
+        ) : (
         <div className="bg-white rounded-lg shadow divide-y divide-gray-200">
           {keys.map((key) => (
             <div key={key.id} className="p-6">
@@ -121,6 +174,7 @@ export default function MerchantApiKeys() {
             </div>
           ))}
         </div>
+        )}
 
         {/* 添加密钥模态框 */}
         {showAddModal && (

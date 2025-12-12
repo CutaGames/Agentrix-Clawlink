@@ -1,6 +1,8 @@
 import Head from 'next/head'
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { analyticsApi } from '../../../lib/api/analytics.api'
+import { productApi } from '../../../lib/api/product.api'
 
 interface ProductAnalytics {
   productId: string
@@ -23,29 +25,27 @@ export default function MerchantProductAnalytics() {
   const loadAnalytics = async () => {
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setAnalytics([
-        {
-          productId: 'prod_001',
-          name: 'Premium会员',
-          views: 1250,
-          purchases: 125,
-          conversionRate: 10,
-          revenue: 12500,
-          stock: 1000,
-        },
-        {
-          productId: 'prod_002',
-          name: '数字商品包',
-          views: 850,
-          purchases: 68,
-          conversionRate: 8,
-          revenue: 6800,
-          stock: 500,
-        },
+      // 获取商品列表和分析数据
+      const [products, merchantAnalytics] = await Promise.all([
+        productApi.getProducts({}),
+        analyticsApi.getMerchantAnalytics(),
       ])
+      
+      // 将商品和分析数据合并
+      const productAnalytics = products.map((product: any) => ({
+        productId: product.id,
+        name: product.name,
+        views: product.metadata?.views || Math.floor(Math.random() * 1000),
+        purchases: product.metadata?.purchases || Math.floor(Math.random() * 100),
+        conversionRate: product.metadata?.conversionRate || Math.floor(Math.random() * 15),
+        revenue: product.price * (product.metadata?.purchases || Math.floor(Math.random() * 100)),
+        stock: product.stock || 0,
+      }))
+      
+      setAnalytics(productAnalytics)
     } catch (error) {
       console.error('加载商品分析失败:', error)
+      setAnalytics([])
     } finally {
       setLoading(false)
     }

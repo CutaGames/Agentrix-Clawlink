@@ -189,5 +189,50 @@ export const productApi = {
   deleteProduct: async (id: string): Promise<void> => {
     return apiClient.delete(`/products/${id}`);
   },
-};
 
+  /**
+   * 批量导入商品（JSON 格式）
+   */
+  batchImport: async (data: {
+    products: Array<{
+      name: string;
+      description?: string;
+      price: number;
+      currency?: string;
+      stock?: number;
+      category: string;
+      productType?: string;
+      commissionRate?: number;
+      image?: string;
+      tags?: string;
+    }>;
+    mode?: 'create' | 'upsert';
+    skipErrors?: boolean;
+  }): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+    errors: Array<{ row: number; name: string; error: string }>;
+    createdIds: string[];
+  }> => {
+    const result = await apiClient.post<any>('/products/batch/import', data);
+    if (result === null) {
+      throw new Error('批量导入失败，请稍后重试');
+    }
+    return result.data || result;
+  },
+
+  /**
+   * 获取导入模板列定义
+   */
+  getImportTemplateColumns: async (): Promise<Array<{
+    key: string;
+    label: string;
+    required: boolean;
+    example: string;
+  }>> => {
+    const result = await apiClient.get<any>('/products/batch/template/columns');
+    return result?.data || [];
+  },
+};

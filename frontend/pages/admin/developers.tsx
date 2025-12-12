@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { adminDeveloperApi } from '../../lib/api/admin.api';
 
 interface Developer {
   id: string;
@@ -18,6 +19,7 @@ export default function AdminDevelopers() {
   const router = useRouter();
   const [developers, setDevelopers] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -28,26 +30,22 @@ export default function AdminDevelopers() {
 
   const fetchDevelopers = async () => {
     try {
+      setError(null);
+      setLoading(true);
+      
       const token = localStorage.getItem('admin_token');
-      const url = new URL('http://localhost:3002/api/admin/developers');
-      url.searchParams.set('page', page.toString());
-      url.searchParams.set('limit', '20');
-      if (search) {
-        url.searchParams.set('search', search);
+      if (!token) {
+        setError('未登录，请先登录管理后台');
+        setLoading(false);
+        return;
       }
 
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setDevelopers(data.data || []);
-        setTotal(data.total || 0);
-      }
-    } catch (error) {
+      const data = await adminDeveloperApi.getDevelopers({ page, limit: 20, search: search || undefined });
+      setDevelopers(data.data || []);
+      setTotal(data.total || 0);
+    } catch (error: any) {
       console.error('Failed to fetch developers:', error);
+      setError(error.message || '获取开发者列表失败');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { apiClient } from '../../lib/api/client'
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -24,34 +25,20 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3002/api/admin/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      // 使用统一的 API client（自动识别环境）发起管理员登录请求
+      const data = await apiClient.post<any>('/admin/auth/login', { username, password });
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        const message =
-          data?.message ||
-          (response.status === 401 ? '用户名或密码错误' : `登录失败：${response.status}`);
-        setError(message);
+      if (!data || !(data as any).access_token) {
+        setError('登录失败：未返回令牌或网络异常');
         return;
       }
 
-      if (!data.access_token) {
-        setError('登录响应异常，未返回令牌');
-        return;
-      }
-
-      // 保存 token 并跳转到后台首页
+      // 保存 admin token（与普通用户 token 分开存储）
       if (typeof window !== 'undefined') {
-        localStorage.setItem('admin_token', data.access_token as string);
+        localStorage.setItem('admin_token', (data as any).access_token);
       }
 
+      // 跳转到后台首页
       router.replace('/admin');
     } catch (err: any) {
       console.error('Admin login failed:', err);

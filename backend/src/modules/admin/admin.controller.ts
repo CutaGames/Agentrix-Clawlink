@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Put,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -20,6 +22,7 @@ import { SupportTicketService } from './services/support-ticket.service';
 import { MarketingManagementService } from './services/marketing-management.service';
 import { SystemManagementService } from './services/system-management.service';
 import { RiskManagementService } from './services/risk-management.service';
+import { ProductManagementService, QueryProductsDto } from './services/product-management.service';
 import { AdminLoginDto, QueryAdminUsersDto } from './dto/admin-user.dto';
 import { QueryUsersDto, QueryTransactionsDto, UpdateUserStatusDto } from './dto/user-management.dto';
 import {
@@ -46,6 +49,7 @@ export class AdminController {
     private marketingManagementService: MarketingManagementService,
     private systemManagementService: SystemManagementService,
     private riskManagementService: RiskManagementService,
+    private productManagementService: ProductManagementService,
   ) {}
 
   // ========== 管理员认证 ==========
@@ -100,6 +104,18 @@ export class AdminController {
     return this.userManagementService.rejectKYC(id, body.reason);
   }
 
+  @Post('users/:id/roles')
+  @ApiOperation({ summary: '为用户添加角色' })
+  async addUserRole(@Param('id') id: string, @Body() body: { role: 'merchant' | 'agent' }) {
+    return this.userManagementService.addUserRole(id, body.role);
+  }
+
+  @Delete('users/:id/roles/:role')
+  @ApiOperation({ summary: '移除用户角色' })
+  async removeUserRole(@Param('id') id: string, @Param('role') role: 'merchant' | 'agent') {
+    return this.userManagementService.removeUserRole(id, role);
+  }
+
   @Get('users/statistics')
   @ApiOperation({ summary: '获取用户统计' })
   async getUserStatistics() {
@@ -148,6 +164,53 @@ export class AdminController {
   @ApiOperation({ summary: '获取商户统计' })
   async getMerchantStatistics() {
     return this.merchantManagementService.getMerchantStatistics();
+  }
+
+  // ========== 商品管理 ==========
+
+  @Get('products')
+  @ApiOperation({ summary: '获取所有商品列表' })
+  async getProducts(@Query() query: QueryProductsDto) {
+    return this.productManagementService.getProducts(query);
+  }
+
+  @Get('products/stats')
+  @ApiOperation({ summary: '获取商品统计' })
+  async getProductStats() {
+    return this.productManagementService.getProductStatistics();
+  }
+
+  @Get('products/categories')
+  @ApiOperation({ summary: '获取商品分类列表' })
+  async getProductCategories() {
+    return this.productManagementService.getCategories();
+  }
+
+  @Get('products/:id')
+  @ApiOperation({ summary: '获取商品详情' })
+  async getProductById(@Param('id') id: string) {
+    return this.productManagementService.getProductById(id);
+  }
+
+  @Patch('products/:id/status')
+  @ApiOperation({ summary: '更新商品状态' })
+  async updateProductStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string; reason?: string },
+  ) {
+    return this.productManagementService.updateProductStatus(id, body.status, body.reason);
+  }
+
+  @Post('products/batch-status')
+  @ApiOperation({ summary: '批量更新商品状态' })
+  async batchUpdateProductStatus(@Body() body: { ids: string[]; status: string }) {
+    return this.productManagementService.batchUpdateStatus(body.ids, body.status);
+  }
+
+  @Delete('products/:id')
+  @ApiOperation({ summary: '删除商品' })
+  async deleteProduct(@Param('id') id: string) {
+    return this.productManagementService.deleteProduct(id);
   }
 
   // ========== 开发者管理 ==========

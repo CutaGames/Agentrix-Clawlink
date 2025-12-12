@@ -54,6 +54,7 @@ import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integr
 import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
 import { ClaudeIntegrationModule } from './modules/ai-integration/claude/claude-integration.module';
 import { CartModule } from './modules/cart/cart.module';
+import { ApiKeyModule } from './modules/api-key/api-key.module';
 
 @Module({
   imports: [
@@ -115,6 +116,7 @@ import { CartModule } from './modules/cart/cart.module';
     GeminiIntegrationModule,
     ClaudeIntegrationModule,
     CartModule,
+    ApiKeyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

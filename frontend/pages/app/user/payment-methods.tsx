@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { walletApi, WalletConnection } from '../../../lib/api/wallet.api'
 
 interface PaymentMethod {
   id: string
@@ -13,6 +14,7 @@ interface PaymentMethod {
 
 export default function UserPaymentMethods() {
   const [methods, setMethods] = useState<PaymentMethod[]>([])
+  const [wallets, setWallets] = useState<WalletConnection[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,39 +24,48 @@ export default function UserPaymentMethods() {
   const loadMethods = async () => {
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setMethods([
-        {
-          id: 'pm_001',
-          type: 'card',
-          name: 'Visa •••• 1234',
-          details: '到期: 12/25',
-          isDefault: true,
-          lastUsed: '2025-01-15T10:00:00Z',
-        },
-        {
-          id: 'pm_002',
-          type: 'apple_pay',
-          name: 'Apple Pay',
-          details: 'iPhone 15 Pro',
-          isDefault: false,
-          lastUsed: '2025-01-14T15:00:00Z',
-        },
-      ])
+      // 从真实API获取钱包列表
+      const walletList = await walletApi.list()
+      setWallets(walletList)
+      
+      // 将钱包转换为支付方式格式
+      const walletMethods: PaymentMethod[] = walletList.map(w => ({
+        id: w.id,
+        type: 'crypto' as const,
+        name: `${w.walletType} ${w.walletAddress.slice(0, 6)}...${w.walletAddress.slice(-4)}`,
+        details: `${w.chain} 链`,
+        isDefault: w.isDefault,
+        lastUsed: w.lastUsedAt,
+      }))
+      
+      setMethods(walletMethods)
     } catch (error) {
       console.error('加载支付方式失败:', error)
+      setMethods([])
     } finally {
       setLoading(false)
     }
   }
 
-  const setDefault = (id: string) => {
-    setMethods(methods.map(m => ({ ...m, isDefault: m.id === id })))
+  const setDefault = async (id: string) => {
+    try {
+      await walletApi.setDefault(id)
+      setMethods(methods.map(m => ({ ...m, isDefault: m.id === id })))
+    } catch (error) {
+      console.error('设置默认支付方式失败:', error)
+      alert('设置默认支付方式失败，请重试')
+    }
   }
 
-  const deleteMethod = (id: string) => {
+  const deleteMethod = async (id: string) => {
     if (confirm('确定要删除这个支付方式吗？')) {
-      setMethods(methods.filter(m => m.id !== id))
+      try {
+        await walletApi.remove(id)
+        setMethods(methods.filter(m => m.id !== id))
+      } catch (error) {
+        console.error('删除支付方式失败:', error)
+        alert('删除支付方式失败，请重试')
+      }
     }
   }
 

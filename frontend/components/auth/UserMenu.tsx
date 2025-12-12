@@ -168,17 +168,7 @@ export function UserMenu() {
                 <span>注册成为商家</span>
               </div>
             </Link>
-            <Link
-              href="/admin/login"
-              onClick={() => setIsOpen(false)}
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-            >
-              <div className="flex items-center space-x-2">
-                <span>👨‍💼</span>
-                <span>平台管理员</span>
-              </div>
-            </Link>
-            <div className="border-t border-gray-200 my-1"></div>
+            {/* 管理员入口已移除，避免在公网暴露管理员登录 */}
             <button
               onClick={handleLogout}
               className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"

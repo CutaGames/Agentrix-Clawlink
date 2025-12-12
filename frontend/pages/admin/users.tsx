@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminLayout from '../../components/admin/AdminLayout';
+import { adminUserApi } from '../../lib/api/admin.api';
 
 interface User {
   id: string;
@@ -28,6 +29,8 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     try {
       setError(null);
+      setLoading(true);
+      
       const token = localStorage.getItem('admin_token');
       if (!token) {
         setError('未登录，请先登录管理后台');
@@ -35,26 +38,7 @@ export default function AdminUsers() {
         return;
       }
 
-      const response = await fetch(`http://localhost:3002/api/admin/users?page=${page}&limit=20`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.status === 401) {
-        setError('登录已过期，请重新登录');
-        localStorage.removeItem('admin_token');
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || `请求失败: ${response.status}`);
-        return;
-      }
-
-      const data = await response.json();
+      const data = await adminUserApi.getUsers({ page, limit: 20 });
       setUsers(data.data || []);
       setTotal(data.total || 0);
     } catch (error: any) {
@@ -67,19 +51,12 @@ export default function AdminUsers() {
 
   const handleApproveKYC = async (userId: string) => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(`http://localhost:3002/api/admin/users/${userId}/kyc/approve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        alert('KYC已批准');
-        fetchUsers();
-      }
-    } catch (error) {
+      await adminUserApi.approveKYC(userId);
+      alert('KYC已批准');
+      fetchUsers();
+    } catch (error: any) {
       console.error('Failed to approve KYC:', error);
+      alert(error.message || '操作失败');
     }
   };
 
@@ -112,7 +89,7 @@ export default function AdminUsers() {
                   重试
                 </button>
                 <button
-                  onClick={() => router.push('/admin/login')}
+                  onClick={() => router.push('/admin11091')}
                   className="bg-white border border-red-300 text-red-600 px-3 py-1.5 rounded text-xs hover:bg-red-50"
                 >
                   去登录

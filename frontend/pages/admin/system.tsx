@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { adminSystemApi } from '../../lib/api/admin.api';
 
 interface AdminUser {
   id: string;
@@ -51,16 +52,8 @@ export default function AdminSystem() {
 
   const fetchAdmins = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/system/admins?limit=20', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setAdmins(data.data || []);
-      }
+      const data = await adminSystemApi.getAdmins({ limit: 20 });
+      setAdmins(data.data || []);
     } catch (error) {
       console.error('Failed to fetch admins:', error);
     } finally {
@@ -70,16 +63,8 @@ export default function AdminSystem() {
 
   const fetchRoles = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/system/roles', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setRoles(data || []);
-      }
+      const data = await adminSystemApi.getRoles();
+      setRoles(data || []);
     } catch (error) {
       console.error('Failed to fetch roles:', error);
     } finally {
@@ -89,20 +74,56 @@ export default function AdminSystem() {
 
   const fetchConfigs = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/system/configs', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setConfigs(data || []);
-      }
+      const data = await adminSystemApi.getConfigs();
+      setConfigs(data || []);
     } catch (error) {
       console.error('Failed to fetch configs:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateAdmin = async () => {
+    const username = prompt('用户名:');
+    const email = prompt('邮箱:');
+    const password = prompt('密码:');
+    if (username && email && password) {
+      try {
+        await adminSystemApi.createAdmin({ username, email, password });
+        fetchAdmins();
+      } catch (error) {
+        console.error('Failed to create admin:', error);
+      }
+    }
+  };
+
+  const handleCreateRole = async () => {
+    const name = prompt('角色名称:');
+    const description = prompt('角色描述:');
+    if (name && description) {
+      try {
+        await adminSystemApi.createRole({
+          name,
+          description,
+          type: 'custom',
+          permissions: [],
+        });
+        fetchRoles();
+      } catch (error) {
+        console.error('Failed to create role:', error);
+      }
+    }
+  };
+
+  const handleUpdateConfig = async (config: AdminConfig) => {
+    const newValue = prompt('新值:', config.value);
+    if (newValue !== null) {
+      try {
+        await adminSystemApi.updateConfigItem(config.key, newValue);
+        fetchConfigs();
+      } catch (error) {
+        console.error('Failed to update config:', error);
+      }
     }
   };
 
@@ -183,22 +204,7 @@ export default function AdminSystem() {
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex justify-end">
                 <button
-                  onClick={() => {
-                    const username = prompt('用户名:');
-                    const email = prompt('邮箱:');
-                    const password = prompt('密码:');
-                    if (username && email && password) {
-                      const token = localStorage.getItem('admin_token');
-                      fetch('http://localhost:3002/api/admin/system/admins', {
-                        method: 'POST',
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ username, email, password }),
-                      }).then(() => fetchAdmins());
-                    }
-                  }}
+                  onClick={handleCreateAdmin}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
                   创建管理员
@@ -264,26 +270,7 @@ export default function AdminSystem() {
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex justify-end">
                 <button
-                  onClick={() => {
-                    const name = prompt('角色名称:');
-                    const description = prompt('角色描述:');
-                    if (name && description) {
-                      const token = localStorage.getItem('admin_token');
-                      fetch('http://localhost:3002/api/admin/system/roles', {
-                        method: 'POST',
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                          name,
-                          description,
-                          type: 'custom',
-                          permissions: [],
-                        }),
-                      }).then(() => fetchRoles());
-                    }
-                  }}
+                  onClick={handleCreateRole}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
                   创建角色
@@ -392,20 +379,7 @@ export default function AdminSystem() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <button
-                          onClick={() => {
-                            const newValue = prompt('新值:', config.value);
-                            if (newValue !== null) {
-                              const token = localStorage.getItem('admin_token');
-                              fetch(`http://localhost:3002/api/admin/system/configs/${config.key}`, {
-                                method: 'PUT',
-                                headers: {
-                                  Authorization: `Bearer ${token}`,
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({ value: newValue }),
-                              }).then(() => fetchConfigs());
-                            }
-                          }}
+                          onClick={() => handleUpdateConfig(config)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
                           编辑

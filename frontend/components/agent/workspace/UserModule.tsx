@@ -4,22 +4,32 @@ import { useLocalization } from '../../../contexts/LocalizationContext'
 import { useWeb3 } from '../../../contexts/Web3Context'
 import { paymentApi } from '../../../lib/api/payment.api'
 import { walletApi } from '../../../lib/api/wallet.api'
+import { userAgentApi, type Budget, type Subscription } from '../../../lib/api/user-agent.api'
+import { agentAuthorizationApi, type AgentAuthorization } from '../../../lib/api/agent-authorization.api'
+import { autoEarnApi, type AutoEarnTask, type AutoEarnStats } from '../../../lib/api/auto-earn.api'
+import { airdropApi, type Airdrop } from '../../../lib/api/airdrop.api'
 
 interface UserModuleProps {
   onCommand?: (command: string, data?: any) => any
 }
 
 /**
- * 用户功能模块
- * 集成支付历史、钱包管理、KYC、订单跟踪等功能
+ * 用户功能模块 - 购物理财管家
+ * 核心功能：支付历史、钱包管理、预算管理、订阅管理、Agent授权、空投理财
  */
 export function UserModule({ onCommand }: UserModuleProps) {
   const { t } = useLocalization()
   const { user } = useUser()
   const { connectedWallets } = useWeb3()
-  const [activeTab, setActiveTab] = useState<'payments' | 'wallets' | 'kyc' | 'orders'>('payments')
+  const [activeTab, setActiveTab] = useState<'payments' | 'wallets' | 'budgets' | 'subscriptions' | 'authorizations' | 'autoearn' | 'kyc' | 'orders'>('payments')
   const [payments, setPayments] = useState<any[]>([])
   const [wallets, setWallets] = useState<any[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [authorizations, setAuthorizations] = useState<AgentAuthorization[]>([])
+  const [autoEarnTasks, setAutoEarnTasks] = useState<AutoEarnTask[]>([])
+  const [autoEarnStats, setAutoEarnStats] = useState<AutoEarnStats | null>(null)
+  const [airdrops, setAirdrops] = useState<Airdrop[]>([])
   const [loading, setLoading] = useState(false)
 
   const loadPayments = useCallback(async () => {
@@ -77,13 +87,81 @@ export function UserModule({ onCommand }: UserModuleProps) {
     }
   }, [connectedWallets])
 
+  const loadBudgets = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await userAgentApi.getBudgets()
+      setBudgets(data || [])
+    } catch (error) {
+      console.error('加载预算失败:', error)
+      setBudgets([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const loadSubscriptions = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await userAgentApi.getSubscriptions()
+      setSubscriptions(data || [])
+    } catch (error) {
+      console.error('加载订阅失败:', error)
+      setSubscriptions([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const loadAuthorizations = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await agentAuthorizationApi.getAuthorizations()
+      setAuthorizations(data || [])
+    } catch (error) {
+      console.error('加载授权失败:', error)
+      setAuthorizations([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const loadAutoEarn = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [tasks, stats, airdropList] = await Promise.all([
+        autoEarnApi.getTasks(),
+        autoEarnApi.getStats(),
+        airdropApi.getAirdrops(),
+      ])
+      setAutoEarnTasks(tasks || [])
+      setAutoEarnStats(stats || null)
+      setAirdrops(airdropList || [])
+    } catch (error) {
+      console.error('加载AutoEarn失败:', error)
+      setAutoEarnTasks([])
+      setAutoEarnStats(null)
+      setAirdrops([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (activeTab === 'payments') {
       loadPayments()
     } else if (activeTab === 'wallets') {
       loadWallets()
+    } else if (activeTab === 'budgets') {
+      loadBudgets()
+    } else if (activeTab === 'subscriptions') {
+      loadSubscriptions()
+    } else if (activeTab === 'authorizations') {
+      loadAuthorizations()
+    } else if (activeTab === 'autoearn') {
+      loadAutoEarn()
     }
-  }, [activeTab, loadPayments, loadWallets])
+  }, [activeTab, loadPayments, loadWallets, loadBudgets, loadSubscriptions, loadAuthorizations, loadAutoEarn])
 
   // 处理命令
   useEffect(() => {
@@ -91,14 +169,18 @@ export function UserModule({ onCommand }: UserModuleProps) {
       const handleCommand = (command: string) => {
         const result = onCommand(command)
         if (result?.view === 'user') {
-          if (command.includes('支付') || command.includes('payment')) {
+          if (command.includes('支付') || command.includes('payment') || command.includes('交易')) {
             setActiveTab('payments')
           } else if (command.includes('钱包') || command.includes('wallet')) {
             setActiveTab('wallets')
-          } else if (command.includes('kyc') || command.includes('认证')) {
-            setActiveTab('kyc')
-          } else if (command.includes('订单') || command.includes('order')) {
-            setActiveTab('orders')
+          } else if (command.includes('预算') || command.includes('budget')) {
+            setActiveTab('budgets')
+          } else if (command.includes('订阅') || command.includes('subscription')) {
+            setActiveTab('subscriptions')
+          } else if (command.includes('授权') || command.includes('authorization')) {
+            setActiveTab('authorizations')
+          } else if (command.includes('空投') || command.includes('airdrop') || command.includes('理财') || command.includes('earn')) {
+            setActiveTab('autoearn')
           }
         }
       }
@@ -109,18 +191,20 @@ export function UserModule({ onCommand }: UserModuleProps) {
   return (
     <div className="h-full flex flex-col bg-slate-950">
       {/* 标签页 */}
-      <div className="border-b border-white/10 bg-slate-900/50 px-6">
-        <div className="flex space-x-1">
+      <div className="border-b border-white/10 bg-slate-900/50 px-6 overflow-x-auto">
+        <div className="flex space-x-1 min-w-max">
           {[
-            { key: 'payments' as const, label: { zh: '支付历史', en: 'Payment History' } },
-            { key: 'wallets' as const, label: { zh: '钱包管理', en: 'Wallet Management' } },
-            { key: 'kyc' as const, label: { zh: 'KYC认证', en: 'KYC Verification' } },
-            { key: 'orders' as const, label: { zh: '订单跟踪', en: 'Order Tracking' } },
+            { key: 'payments' as const, label: { zh: '💳 支付历史', en: '💳 Payments' } },
+            { key: 'wallets' as const, label: { zh: '👛 钱包', en: '👛 Wallets' } },
+            { key: 'budgets' as const, label: { zh: '📊 预算', en: '📊 Budgets' } },
+            { key: 'subscriptions' as const, label: { zh: '🔄 订阅', en: '🔄 Subscriptions' } },
+            { key: 'authorizations' as const, label: { zh: '🔐 授权', en: '🔐 Authorizations' } },
+            { key: 'autoearn' as const, label: { zh: '💰 空投理财', en: '💰 Auto Earn' } },
           ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
+              className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-b-2 border-blue-500 text-blue-400'
                   : 'text-slate-400 hover:text-slate-300'

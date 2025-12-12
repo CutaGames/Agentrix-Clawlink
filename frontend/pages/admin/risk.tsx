@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { getAdminApiBaseUrl } from '../../lib/api/admin.api';
 
 interface RiskAssessment {
   id: string;
@@ -35,6 +36,8 @@ export default function AdminRisk() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
 
+  const getBaseUrl = () => getAdminApiBaseUrl();
+
   useEffect(() => {
     fetchStats();
     if (activeTab === 'assessments') {
@@ -47,7 +50,7 @@ export default function AdminRisk() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/risk/statistics', {
+      const response = await fetch(`${getBaseUrl()}/admin/risk/statistics`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -64,7 +67,7 @@ export default function AdminRisk() {
   const fetchAssessments = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/risk/assessments?limit=20', {
+      const response = await fetch(`${getBaseUrl()}/admin/risk/assessments?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -83,7 +86,7 @@ export default function AdminRisk() {
   const fetchRiskOrders = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/risk/orders?limit=20', {
+      const response = await fetch(`${getBaseUrl()}/admin/risk/orders?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -313,7 +316,7 @@ export default function AdminRisk() {
                           <button
                             onClick={async () => {
                               const token = localStorage.getItem('admin_token');
-                              await fetch(`http://localhost:3002/api/admin/risk/orders/${order.id}/release`, {
+                              await fetch(`${getBaseUrl()}/admin/risk/orders/${order.id}/release`, {
                                 method: 'POST',
                                 headers: { Authorization: `Bearer ${token}` },
                               });
@@ -329,7 +332,7 @@ export default function AdminRisk() {
                               const reason = prompt('请输入冻结原因:');
                               if (reason) {
                                 const token = localStorage.getItem('admin_token');
-                                await fetch(`http://localhost:3002/api/admin/risk/orders/${order.id}/block`, {
+                                await fetch(`${getBaseUrl()}/admin/risk/orders/${order.id}/block`, {
                                   method: 'POST',
                                   headers: {
                                     Authorization: `Bearer ${token}`,

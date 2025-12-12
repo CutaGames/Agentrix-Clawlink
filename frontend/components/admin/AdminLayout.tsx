@@ -11,6 +11,8 @@ const menuItems = [
   { name: '仪表盘', path: '/admin', icon: '📊' },
   { name: '用户管理', path: '/admin/users', icon: '👤' },
   { name: '商户管理', path: '/admin/merchants', icon: '🏪' },
+  { name: '商品管理', path: '/admin/products', icon: '📦' },
+  { name: '商品审核', path: '/admin/product-review', icon: '📝' },
   { name: '开发者管理', path: '/admin/developers', icon: '👨‍💻' },
   { name: '推广者管理', path: '/admin/promoters', icon: '📢' },
   { name: '工单管理', path: '/admin/tickets', icon: '🎫' },

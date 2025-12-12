@@ -5,6 +5,9 @@ import { orderApi, type Order } from '../../../lib/api/order.api'
 import { commissionApi, type SettlementInfo } from '../../../lib/api/commission.api'
 import { analyticsApi } from '../../../lib/api/analytics.api'
 import { aiCapabilityApi } from '../../../lib/api/ai-capability.api'
+import { merchantApi } from '../../../lib/api/merchant.api'
+import { webhookApi } from '../../../lib/api/webhook.api'
+import { apiKeyApi } from '../../../lib/api/api-key.api'
 
 interface MerchantModuleProps {
   onCommand?: (command: string, data?: any) => any
@@ -37,7 +40,7 @@ const defaultProductForm: ProductFormState = {
  */
 export function MerchantModule({ onCommand }: MerchantModuleProps) {
   const { t } = useLocalization()
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'settlement' | 'analytics'>('products')
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'settlement' | 'analytics' | 'customers' | 'refunds' | 'webhooks'>('products')
   const [products, setProducts] = useState<ProductInfo[]>([])
   const [orders, setOrders] = useState<MerchantOrder[]>([])
   const [settlement, setSettlement] = useState<any>(null)
@@ -54,6 +57,10 @@ export function MerchantModule({ onCommand }: MerchantModuleProps) {
   const [orderActionLoading, setOrderActionLoading] = useState(false)
   const [settlementHistory, setSettlementHistory] = useState<SettlementInfo[]>([])
   const [settlementExpanded, setSettlementExpanded] = useState(false)
+  // 客户、退款、Webhooks 状态
+  const [customers, setCustomers] = useState<any[]>([])
+  const [refunds, setRefunds] = useState<any[]>([])
+  const [webhooks, setWebhooks] = useState<any[]>([])
 
   const loadProducts = useCallback(async (keyword?: string) => {
     setLoading(true)
@@ -196,6 +203,48 @@ export function MerchantModule({ onCommand }: MerchantModuleProps) {
     }
   }, [])
 
+  // 加载客户列表
+  const loadCustomers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await merchantApi.getCustomers()
+      setCustomers(data || [])
+    } catch (error: any) {
+      console.error('加载客户失败:', error)
+      setCustomers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // 加载退款列表
+  const loadRefunds = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await merchantApi.getRefunds()
+      setRefunds(data || [])
+    } catch (error: any) {
+      console.error('加载退款失败:', error)
+      setRefunds([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // 加载Webhooks列表
+  const loadWebhooks = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await webhookApi.getWebhooks()
+      setWebhooks(data || [])
+    } catch (error: any) {
+      console.error('加载Webhooks失败:', error)
+      setWebhooks([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (activeTab === 'products') {
       loadProducts(productSearch)
@@ -205,6 +254,12 @@ export function MerchantModule({ onCommand }: MerchantModuleProps) {
       loadSettlement()
     } else if (activeTab === 'analytics') {
       loadAnalytics()
+    } else if (activeTab === 'customers') {
+      loadCustomers()
+    } else if (activeTab === 'refunds') {
+      loadRefunds()
+    } else if (activeTab === 'webhooks') {
+      loadWebhooks()
     }
   }, [
     activeTab,
@@ -215,6 +270,9 @@ export function MerchantModule({ onCommand }: MerchantModuleProps) {
     loadOrders,
     loadSettlement,
     loadAnalytics,
+    loadCustomers,
+    loadRefunds,
+    loadWebhooks,
   ])
 
   const debouncedProductSearch = useMemo(() => productSearch, [productSearch])
@@ -360,17 +418,20 @@ export function MerchantModule({ onCommand }: MerchantModuleProps) {
     <div className="h-full flex flex-col bg-slate-950">
       {/* 标签页 */}
       <div className="border-b border-white/10 bg-slate-900/50 px-6">
-        <div className="flex space-x-1">
+        <div className="flex space-x-1 overflow-x-auto">
           {[
-            { key: 'products' as const, label: { zh: '商品管理', en: 'Product Management' } },
-            { key: 'orders' as const, label: { zh: '订单管理', en: 'Order Management' } },
-            { key: 'settlement' as const, label: { zh: '结算管理', en: 'Settlement Management' } },
-            { key: 'analytics' as const, label: { zh: '数据分析', en: 'Data Analytics' } },
+            { key: 'products' as const, label: { zh: '商品', en: 'Products' } },
+            { key: 'orders' as const, label: { zh: '订单', en: 'Orders' } },
+            { key: 'customers' as const, label: { zh: '客户', en: 'Customers' } },
+            { key: 'refunds' as const, label: { zh: '退款', en: 'Refunds' } },
+            { key: 'settlement' as const, label: { zh: '结算', en: 'Settlement' } },
+            { key: 'webhooks' as const, label: { zh: 'Webhooks', en: 'Webhooks' } },
+            { key: 'analytics' as const, label: { zh: '分析', en: 'Analytics' } },
           ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
+              className={`px-3 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-b-2 border-blue-500 text-blue-400'
                   : 'text-slate-400 hover:text-slate-300'
@@ -680,6 +741,190 @@ export function MerchantModule({ onCommand }: MerchantModuleProps) {
             ) : (
               <div className="text-center py-12 text-slate-400">
                 {t({ zh: '暂无分析数据', en: 'No analytics data' })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 客户管理 */}
+        {activeTab === 'customers' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{t({ zh: '客户管理', en: 'Customer Management' })}</h3>
+              <span className="text-sm text-slate-400">
+                {t({ zh: `共 ${customers.length} 位客户`, en: `${customers.length} customers total` })}
+              </span>
+            </div>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              </div>
+            ) : customers.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                {t({ zh: '暂无客户数据', en: 'No customer data' })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {customers.map((customer) => (
+                  <div key={customer.id} className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{customer.name || customer.email}</p>
+                        <p className="text-sm text-slate-400">{customer.email}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">¥{customer.totalSpent?.toLocaleString() || 0}</p>
+                        <p className="text-xs text-slate-400">{customer.orderCount || 0} {t({ zh: '笔订单', en: 'orders' })}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 退款管理 */}
+        {activeTab === 'refunds' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{t({ zh: '退款管理', en: 'Refund Management' })}</h3>
+              <span className="text-sm text-slate-400">
+                {t({ zh: `共 ${refunds.length} 笔退款`, en: `${refunds.length} refunds total` })}
+              </span>
+            </div>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              </div>
+            ) : refunds.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                {t({ zh: '暂无退款记录', en: 'No refund records' })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {refunds.map((refund) => (
+                  <div key={refund.id} className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{t({ zh: '订单', en: 'Order' })} #{refund.orderId}</p>
+                        <p className="text-sm text-slate-400">{refund.reason || t({ zh: '无原因', en: 'No reason' })}</p>
+                        <p className="text-xs text-slate-500 mt-1">{new Date(refund.createdAt).toLocaleString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-red-400">-¥{refund.amount?.toLocaleString() || 0}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          refund.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                          refund.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                          'bg-red-500/20 text-red-400'
+                        }`}>
+                          {refund.status === 'pending' ? t({ zh: '待处理', en: 'Pending' }) :
+                           refund.status === 'approved' ? t({ zh: '已通过', en: 'Approved' }) :
+                           t({ zh: '已拒绝', en: 'Rejected' })}
+                        </span>
+                      </div>
+                    </div>
+                    {refund.status === 'pending' && (
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await merchantApi.processRefund(refund.id, 'approve')
+                              loadRefunds()
+                            } catch (e) {
+                              console.error('Approve refund failed', e)
+                            }
+                          }}
+                          className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                        >
+                          {t({ zh: '通过', en: 'Approve' })}
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await merchantApi.processRefund(refund.id, 'reject', 'Rejected by merchant')
+                              loadRefunds()
+                            } catch (e) {
+                              console.error('Reject refund failed', e)
+                            }
+                          }}
+                          className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                        >
+                          {t({ zh: '拒绝', en: 'Reject' })}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Webhooks管理 */}
+        {activeTab === 'webhooks' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{t({ zh: 'Webhooks管理', en: 'Webhooks Management' })}</h3>
+              <button
+                onClick={() => {
+                  const url = prompt(t({ zh: '请输入Webhook URL:', en: 'Enter Webhook URL:' }))
+                  if (url) {
+                    webhookApi.create({ url, events: ['order.created', 'order.paid'] })
+                      .then(() => loadWebhooks())
+                      .catch(console.error)
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+              >
+                {t({ zh: '添加Webhook', en: 'Add Webhook' })}
+              </button>
+            </div>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              </div>
+            ) : webhooks.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                {t({ zh: '暂无Webhook配置', en: 'No webhook configured' })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {webhooks.map((webhook) => (
+                  <div key={webhook.id} className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium text-sm break-all">{webhook.url}</p>
+                        <div className="flex gap-1 mt-2 flex-wrap">
+                          {webhook.events?.map((event: string) => (
+                            <span key={event} className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                              {event}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          webhook.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-slate-500/20 text-slate-400'
+                        }`}>
+                          {webhook.status === 'active' ? t({ zh: '启用', en: 'Active' }) : t({ zh: '禁用', en: 'Inactive' })}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (confirm(t({ zh: '确定删除此Webhook?', en: 'Delete this webhook?' }))) {
+                              webhookApi.delete(webhook.id)
+                                .then(() => loadWebhooks())
+                                .catch(console.error)
+                            }
+                          }}
+                          className="text-red-400 hover:text-red-300 text-sm"
+                        >
+                          {t({ zh: '删除', en: 'Delete' })}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

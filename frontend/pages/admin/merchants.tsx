@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminLayout from '../../components/admin/AdminLayout';
+import { adminMerchantApi } from '../../lib/api/admin.api';
 
 interface Merchant {
   id: string;
@@ -38,6 +39,8 @@ export default function AdminMerchants() {
   const fetchMerchants = async () => {
     try {
       setError(null);
+      setLoading(true);
+      
       const token = localStorage.getItem('admin_token');
       if (!token) {
         setError('未登录，请先登录管理后台');
@@ -45,26 +48,7 @@ export default function AdminMerchants() {
         return;
       }
 
-      const response = await fetch(`http://localhost:3002/api/admin/merchants?page=${page}&limit=20`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.status === 401) {
-        setError('登录已过期，请重新登录');
-        localStorage.removeItem('admin_token');
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || `请求失败: ${response.status}`);
-        return;
-      }
-
-      const data = await response.json();
+      const data = await adminMerchantApi.getMerchants({ page, limit: 20 });
       setMerchants(data.data || []);
       setTotal(data.total || 0);
     } catch (error: any) {

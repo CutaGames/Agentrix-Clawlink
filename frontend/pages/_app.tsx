@@ -6,6 +6,7 @@ import { Web3Provider } from '../contexts/Web3Context'
 import { PaymentProvider } from '../contexts/PaymentContext'
 import { UserProvider } from '../contexts/UserContext'
 import { ToastProvider } from '../contexts/ToastContext'
+import { CartProvider } from '../contexts/CartContext'
 import { ErrorBoundary } from '../components/ui/ErrorBoundary'
 // V7.0: 使用新的 SmartCheckout 组件，不再需要全局支付弹窗
 import '../styles/globals.css'
@@ -133,12 +134,14 @@ export default function App({ Component, pageProps }: AppProps) {
             <ToastProvider>
               <Web3Provider>
                 <UserProvider>
-                  <PaymentProvider>
-                    <AgentModeProvider>
-                      {children}
-                      {/* V7.0: 支付流程已改为页面级 SmartCheckout 组件 */}
-                    </AgentModeProvider>
-                  </PaymentProvider>
+                  <CartProvider>
+                    <PaymentProvider>
+                      <AgentModeProvider>
+                        {children}
+                        {/* V7.0: 支付流程已改为页面级 SmartCheckout 组件 */}
+                      </AgentModeProvider>
+                    </PaymentProvider>
+                  </CartProvider>
                 </UserProvider>
               </Web3Provider>
             </ToastProvider>

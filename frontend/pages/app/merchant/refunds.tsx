@@ -1,53 +1,21 @@
 import Head from 'next/head'
 import { useState, useEffect, useCallback } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
-
-interface Refund {
-  id: string
-  orderId: string
-  amount: number
-  currency: string
-  reason: string
-  status: 'pending' | 'approved' | 'rejected' | 'completed'
-  requestedAt: string
-  processedAt?: string
-}
+import { merchantApi, MerchantRefund } from '../../../lib/api/merchant.api'
 
 export default function MerchantRefunds() {
-  const [refunds, setRefunds] = useState<Refund[]>([])
+  const [refunds, setRefunds] = useState<MerchantRefund[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'completed'>('all')
 
   const loadRefunds = useCallback(async () => {
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      const allRefunds: Refund[] = [
-        {
-          id: 'ref_001',
-          orderId: 'order_001',
-          amount: 299,
-          currency: 'CNY',
-          reason: '商品质量问题',
-          status: 'pending',
-          requestedAt: '2025-01-15T10:00:00Z',
-        },
-        {
-          id: 'ref_002',
-          orderId: 'order_002',
-          amount: 99,
-          currency: 'CNY',
-          reason: '用户取消',
-          status: 'approved',
-          requestedAt: '2025-01-14T15:00:00Z',
-          processedAt: '2025-01-14T16:00:00Z',
-        },
-      ]
-      setRefunds(
-        filter === 'all' ? allRefunds : allRefunds.filter(r => r.status === filter)
-      )
+      const data = await merchantApi.getRefunds(filter)
+      setRefunds(data)
     } catch (error) {
       console.error('加载退款列表失败:', error)
+      setRefunds([])
     } finally {
       setLoading(false)
     }
@@ -57,12 +25,25 @@ export default function MerchantRefunds() {
     loadRefunds()
   }, [loadRefunds])
 
-  const handleApprove = (refundId: string) => {
-    setRefunds(refunds.map(r => r.id === refundId ? { ...r, status: 'approved' } : r))
+  const handleApprove = async (refundId: string) => {
+    try {
+      await merchantApi.processRefund(refundId, 'approve')
+      loadRefunds()
+    } catch (error) {
+      console.error('批准退款失败:', error)
+      alert('批准退款失败，请重试')
+    }
   }
 
-  const handleReject = (refundId: string) => {
-    setRefunds(refunds.map(r => r.id === refundId ? { ...r, status: 'rejected' } : r))
+  const handleReject = async (refundId: string) => {
+    const reason = prompt('请输入拒绝原因（可选）')
+    try {
+      await merchantApi.processRefund(refundId, 'reject', reason || undefined)
+      loadRefunds()
+    } catch (error) {
+      console.error('拒绝退款失败:', error)
+      alert('拒绝退款失败，请重试')
+    }
   }
 
   const getStatusColor = (status: string) => {

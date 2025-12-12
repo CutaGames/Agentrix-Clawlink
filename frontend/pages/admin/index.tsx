@@ -109,7 +109,7 @@ export default function AdminDashboard() {
                   重试
                 </button>
                 <button
-                  onClick={() => router.push('/admin/login')}
+                  onClick={() => router.push('/admin11091')}
                   className="bg-white border border-red-300 text-red-600 px-3 py-1.5 rounded text-xs hover:bg-red-50"
                 >
                   去登录

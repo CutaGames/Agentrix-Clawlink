@@ -5,16 +5,21 @@ import { useUser } from '../../contexts/UserContext'
 import { useToast } from '../../contexts/ToastContext'
 import type { WalletType, WalletInfo } from '../../lib/wallet/WalletService'
 import { authApi } from '../../lib/api/auth.api'
+import { apiClient } from '../../lib/api/client'
 import type { UserRole } from '../../types/user'
 import { walletApi } from '../../lib/api/wallet.api'
 
 interface LoginModalProps {
   onClose: () => void
   onWalletSuccess?: () => void
+  /** 管理员模式：使用 /admin/auth/login 并在登录后跳转到 /admin（或 redirect 参数） */
+  adminMode?: boolean
+  /** 登录成功后重定向目标，优先于默认路径 */
+  redirectTo?: string
 }
 
-export function LoginModal({ onClose, onWalletSuccess }: LoginModalProps) {
-  const [activeTab, setActiveTab] = useState<'web3' | 'web2'>('web3')
+export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: LoginModalProps) {
+  const [activeTab, setActiveTab] = useState<'web3' | 'web2'>(adminMode ? 'web2' : 'web3')
   const { isConnected, address, connect, connectors, defaultWallet, signMessage } = useWeb3()
   const { login, isAuthenticated } = useUser()
   const router = useRouter()
@@ -89,12 +94,16 @@ export function LoginModal({ onClose, onWalletSuccess }: LoginModalProps) {
 
       console.log('登录验证成功:', authResponse)
 
-      const roles = (authResponse.user.roles || []) as UserRole[]
+      if (!authResponse || !(authResponse as any).user) {
+        throw new Error('登录返回数据格式错误')
+      }
+      const _user = (authResponse as any).user
+      const roles = (_user.roles || []) as UserRole[]
 
       login({
-        id: authResponse.user.id,
-        agentrixId: authResponse.user.agentrixId,
-        email: authResponse.user.email || undefined,
+        id: _user.id,
+        agentrixId: _user.agentrixId,
+        email: _user.email || undefined,
         walletAddress: walletInfo.address,
         roles,
         role: roles[0] || 'user',
@@ -105,7 +114,8 @@ export function LoginModal({ onClose, onWalletSuccess }: LoginModalProps) {
         onClose()
         onWalletSuccess?.()
       // 使用replace而不是push，避免用户返回登录页
-      router.replace('/app/user')
+      const _target = redirectTo || (adminMode ? '/admin' : '/app/user')
+      router.replace(_target)
     } catch (signError: any) {
       console.error('签名或登录失败:', signError)
       throw signError
@@ -439,12 +449,15 @@ function Web2Login({ onSocialLogin, onClose }: { onSocialLogin: (provider: 'goog
           password,
           agentrixId: agentrixId || undefined,
         })
-        
-        const roles = (response.user.roles || []) as UserRole[]
+        if (!response || !(response as any).user) {
+          throw new Error('注册返回数据格式错误')
+        }
+        const _userReg = (response as any).user
+        const roles = (_userReg.roles || []) as UserRole[]
         login({
-          id: response.user.id,
-          agentrixId: response.user.agentrixId,
-          email: response.user.email,
+          id: _userReg.id,
+          agentrixId: _userReg.agentrixId,
+          email: _userReg.email,
           walletAddress: undefined,
           roles,
           role: roles[0] || 'user',
@@ -459,12 +472,15 @@ function Web2Login({ onSocialLogin, onClose }: { onSocialLogin: (provider: 'goog
           email,
           password,
         })
-        
-        const roles = (response.user.roles || []) as UserRole[]
+        if (!response || !(response as any).user) {
+          throw new Error('登录返回数据格式错误')
+        }
+        const _user = (response as any).user
+        const roles = (_user.roles || []) as UserRole[]
         login({
-          id: response.user.id,
-          agentrixId: response.user.agentrixId,
-          email: response.user.email,
+          id: _user.id,
+          agentrixId: _user.agentrixId,
+          email: _user.email,
           walletAddress: undefined,
           roles,
           role: roles[0] || 'user',

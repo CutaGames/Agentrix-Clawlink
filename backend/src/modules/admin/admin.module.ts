@@ -12,6 +12,7 @@ import { SupportTicketService } from './services/support-ticket.service';
 import { MarketingManagementService } from './services/marketing-management.service';
 import { SystemManagementService } from './services/system-management.service';
 import { RiskManagementService } from './services/risk-management.service';
+import { ProductManagementService } from './services/product-management.service';
 import { AdminBootstrapService } from './services/admin-bootstrap.service';
 import { AdminUser } from '../../entities/admin-user.entity';
 import { AdminRole } from '../../entities/admin-role.entity';
@@ -79,6 +80,7 @@ import { RiskAssessment } from '../../entities/risk-assessment.entity';
     MarketingManagementService,
     SystemManagementService,
     RiskManagementService,
+    ProductManagementService,
     AdminBootstrapService,
   ],
   exports: [
@@ -91,6 +93,7 @@ import { RiskAssessment } from '../../entities/risk-assessment.entity';
     MarketingManagementService,
     SystemManagementService,
     RiskManagementService,
+    ProductManagementService,
   ],
 })
 export class AdminModule {}

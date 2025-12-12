@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { getAdminApiBaseUrl, adminTicketApi } from '../../lib/api/admin.api';
 
 interface Ticket {
   id: string;
@@ -19,6 +20,7 @@ export default function AdminTickets() {
   const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -29,25 +31,15 @@ export default function AdminTickets() {
 
   const fetchTickets = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const url = new URL('http://localhost:3002/api/admin/tickets');
-      url.searchParams.set('page', page.toString());
-      url.searchParams.set('limit', '20');
-      if (filterStatus) {
-        url.searchParams.set('status', filterStatus);
-      }
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      setLoading(true);
+      const data = await adminTicketApi.getTickets({ 
+        page, 
+        limit: 20, 
+        status: filterStatus || undefined 
       });
-      if (response.ok) {
-        const data = await response.json();
-        setTickets(data.data || []);
-        setTotal(data.total || 0);
-      }
-    } catch (error) {
+      setTickets(data.data || []);
+      setTotal(data.total || 0);
+    } catch (error: any) {
       console.error('Failed to fetch tickets:', error);
     } finally {
       setLoading(false);

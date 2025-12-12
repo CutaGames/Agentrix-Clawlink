@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Agentrix Marketplace API",
-    "version": "1.0.2",
-    "description": "Agentrix Marketplace API for GPTs. Supports product search, product details, order creation, and payment initiation."
+    "version": "2.0.0",
+    "description": "Agentrix Marketplace API for ChatGPT/GPTs. 支持多种资产类型的搜索和交易：实物商品(physical)、服务(service)、NFT、FT代币、游戏资产(game_asset)、真实世界资产(rwa)。"
   },
   "servers": [
     {
@@ -16,8 +16,8 @@
       "ApiKeyAuth": {
         "type": "apiKey",
         "in": "header",
-        "name": "X-API-Key",
-        "description": "API Key for identifying the GPT user session."
+        "name": "Agentrix-API-KEY",
+        "description": "API Key for identifying the GPT user session. Get your API Key from https://www.agentrix.top/settings/api-keys"
       }
     },
     "schemas": {
@@ -52,13 +52,15 @@
       },
       "Product": {
         "type": "object",
+        "description": "商品/资产信息，根据productType不同包含不同的详细信息",
         "properties": {
           "id": { "type": "string", "description": "Product ID" },
           "title": { "type": "string", "description": "Product title" },
+          "name": { "type": "string", "description": "Product name" },
           "description": { "type": "string" },
           "price": { "type": "number" },
           "currency": { "type": "string", "default": "CNY" },
-          "priceDisplay": { "type": "string" },
+          "priceDisplay": { "type": "string", "description": "格式化的价格显示，如 ¥99.00" },
           "image": { "type": "string", "format": "uri" },
           "images": {
             "type": "array",
@@ -67,15 +69,143 @@
           "category": { "type": "string" },
           "productType": {
             "type": "string",
-            "enum": ["physical", "service", "crypto", "nft"]
+            "enum": ["physical", "service", "nft", "ft", "game_asset", "rwa"],
+            "description": "资产类型：physical(实物商品)、service(服务)、nft(NFT)、ft(同质化代币)、game_asset(游戏资产)、rwa(真实世界资产)"
+          },
+          "assetType": {
+            "type": "string",
+            "description": "资产类型（与productType相同，方便理解）"
           },
           "stock": { "type": "integer" },
-          "inStock": { "type": "boolean" }
+          "inStock": { "type": "boolean" },
+          "merchantId": { "type": "string" },
+          "merchantName": { "type": "string" },
+          "serviceInfo": { "$ref": "#/components/schemas/ServiceInfo" },
+          "nftInfo": { "$ref": "#/components/schemas/NFTInfo" },
+          "tokenInfo": { "$ref": "#/components/schemas/TokenInfo" },
+          "gameInfo": { "$ref": "#/components/schemas/GameAssetInfo" },
+          "rwaInfo": { "$ref": "#/components/schemas/RWAInfo" },
+          "physicalInfo": { "$ref": "#/components/schemas/PhysicalInfo" },
+          "blockchainBadge": { "type": "string", "description": "区块链标识，如 'Ethereum NFT'" },
+          "rarityBadge": { "type": "string", "description": "稀有度标识，如 'LEGENDARY'" },
+          "rwaBadge": { "type": "string", "description": "RWA类型标识，如 'REAL ESTATE'" }
         },
-        "required": ["id", "title", "price"]
+        "required": ["id", "title", "price", "productType"]
+      },
+      "ServiceInfo": {
+        "type": "object",
+        "description": "服务类商品附加信息",
+        "properties": {
+          "serviceType": { 
+            "type": "string", 
+            "enum": ["subscription", "one-time", "consultation"],
+            "description": "服务类型：subscription(订阅)、one-time(一次性)、consultation(咨询)"
+          },
+          "duration": { "type": "string", "description": "服务时长，如 '30天'、'1小时'" },
+          "deliverables": { 
+            "type": "array", 
+            "items": { "type": "string" },
+            "description": "交付物列表"
+          },
+          "format": { "type": "string", "description": "服务形式，如 '视频会议'、'线下'" }
+        }
+      },
+      "NFTInfo": {
+        "type": "object",
+        "description": "NFT资产附加信息",
+        "properties": {
+          "tokenAddress": { "type": "string", "description": "NFT合约地址" },
+          "tokenId": { "type": "string", "description": "NFT Token ID" },
+          "chainId": { "type": "integer", "description": "区块链ID" },
+          "chainName": { "type": "string", "description": "区块链名称，如 'Ethereum'、'Polygon'" },
+          "standard": { 
+            "type": "string", 
+            "enum": ["ERC-721", "ERC-1155"],
+            "description": "NFT标准"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "trait_type": { "type": "string" },
+                "value": { "type": "string" }
+              }
+            },
+            "description": "NFT属性列表"
+          },
+          "rarity": { "type": "string", "description": "稀有度：common、rare、epic、legendary" }
+        }
+      },
+      "TokenInfo": {
+        "type": "object",
+        "description": "同质化代币(FT)附加信息",
+        "properties": {
+          "tokenAddress": { "type": "string", "description": "代币合约地址" },
+          "chainId": { "type": "integer", "description": "区块链ID" },
+          "chainName": { "type": "string", "description": "区块链名称" },
+          "symbol": { "type": "string", "description": "代币符号，如 'USDT'、'AGX'" },
+          "decimals": { "type": "integer", "description": "小数位数" },
+          "amount": { "type": "number", "description": "代币数量" },
+          "standard": { "type": "string", "enum": ["ERC-20", "BEP-20"] }
+        }
+      },
+      "GameAssetInfo": {
+        "type": "object",
+        "description": "游戏资产附加信息",
+        "properties": {
+          "gameId": { "type": "string", "description": "游戏ID" },
+          "gameName": { "type": "string", "description": "游戏名称" },
+          "itemType": { 
+            "type": "string", 
+            "enum": ["weapon", "armor", "mount", "skin", "consumable", "material"],
+            "description": "道具类型"
+          },
+          "rarity": { 
+            "type": "string", 
+            "enum": ["common", "uncommon", "rare", "epic", "legendary", "mythic"],
+            "description": "稀有度"
+          },
+          "stats": { 
+            "type": "object",
+            "description": "属性加成，如 { attack: 500, defense: 100 }"
+          },
+          "level": { "type": "integer", "description": "等级要求" },
+          "tradeable": { "type": "boolean", "description": "是否可交易" }
+        }
+      },
+      "RWAInfo": {
+        "type": "object",
+        "description": "真实世界资产(RWA)代币化信息",
+        "properties": {
+          "assetType": { 
+            "type": "string", 
+            "enum": ["real_estate", "precious_metal", "artwork", "commodity", "bond"],
+            "description": "底层资产类型"
+          },
+          "underlying": { "type": "string", "description": "底层资产描述，如 'Gold'、'上海陆家嘴房产'" },
+          "totalShares": { "type": "integer", "description": "总份额数" },
+          "custodian": { "type": "string", "description": "托管机构" },
+          "redeemable": { "type": "boolean", "description": "是否可赎回实物" },
+          "annualYield": { "type": "string", "description": "年化收益率，如 '5.5%'" },
+          "tokenAddress": { "type": "string" },
+          "chainId": { "type": "integer" }
+        }
+      },
+      "PhysicalInfo": {
+        "type": "object",
+        "description": "实物商品附加信息",
+        "properties": {
+          "brand": { "type": "string", "description": "品牌" },
+          "color": { "type": "string", "description": "颜色" },
+          "warranty": { "type": "string", "description": "保修期" },
+          "weight": { "type": "string", "description": "重量" },
+          "dimensions": { "type": "string", "description": "尺寸" }
+        }
       },
       "ShippingAddress": {
         "type": "object",
+        "description": "收货地址（实物商品需要）",
         "properties": {
           "name": { "type": "string" },
           "phone": { "type": "string" },
@@ -88,20 +218,28 @@
       },
       "CreateOrderInput": {
         "type": "object",
+        "description": "创建订单请求。根据商品类型，可能需要不同的额外参数",
         "properties": {
-          "productId": { "type": "string" },
-          "quantity": { "type": "integer", "default": 1, "minimum": 1 },
-          "shippingAddress": { "$ref": "#/components/schemas/ShippingAddress" },
+          "productId": { "type": "string", "description": "商品ID（必需）" },
+          "quantity": { "type": "integer", "default": 1, "minimum": 1, "description": "购买数量" },
+          "shippingAddress": { 
+            "$ref": "#/components/schemas/ShippingAddress",
+            "description": "收货地址（实物商品需要）"
+          },
           "appointmentTime": {
             "type": "string",
             "format": "date-time",
-            "description": "For service-type products."
+            "description": "预约时间（服务类商品可能需要）"
           },
-          "contactInfo": { "type": "string" },
-          "walletAddress": { "type": "string" },
+          "contactInfo": { "type": "string", "description": "联系方式（服务类商品可能需要）" },
+          "walletAddress": { 
+            "type": "string", 
+            "description": "接收钱包地址（NFT/FT/链上资产需要）"
+          },
           "chain": {
             "type": "string",
-            "enum": ["ethereum", "polygon", "solana", "bsc"]
+            "enum": ["ethereum", "polygon", "solana", "bsc", "arbitrum", "optimism"],
+            "description": "目标区块链（链上资产需要）"
           }
         },
         "required": ["productId"]
@@ -121,7 +259,8 @@
           "orderId": { "type": "string" },
           "status": {
             "type": "string",
-            "enum": ["pending", "paid", "processing", "shipped", "delivered", "cancelled"]
+            "enum": ["pending", "paid", "processing", "shipped", "delivered", "completed", "cancelled"],
+            "description": "订单状态"
           },
           "amount": { "type": "number" },
           "currency": { "type": "string" },
@@ -134,10 +273,11 @@
       "PaymentInput": {
         "type": "object",
         "properties": {
-          "orderId": { "type": "string" },
+          "orderId": { "type": "string", "description": "订单ID（必需）" },
           "method": {
             "type": "string",
-            "enum": ["crypto", "fiat", "usdc"]
+            "enum": ["crypto", "fiat", "usdc", "usdt", "eth", "sol"],
+            "description": "支付方式：crypto(加密货币)、fiat(法币)、usdc、usdt、eth、sol"
           }
         },
         "required": ["orderId"]
@@ -155,7 +295,11 @@
         "type": "object",
         "properties": {
           "paymentId": { "type": "string" },
-          "paymentUrl": { "type": "string", "format": "uri" },
+          "paymentUrl": { 
+            "type": "string", 
+            "format": "uri",
+            "description": "支付页面URL，用户需要访问此链接完成支付"
+          },
           "status": {
             "type": "string",
             "enum": ["pending", "processing", "completed", "failed"]
@@ -179,21 +323,37 @@
   "paths": {
     "/marketplace/search": {
       "get": {
-        "summary": "Search products",
+        "summary": "Search products and assets",
+        "description": "搜索商品和资产。支持多种资产类型：实物商品、服务、NFT、代币、游戏资产、RWA等。使用自然语言描述你想要的商品。",
         "operationId": "searchProducts",
         "tags": ["Marketplace"],
         "parameters": [
-          { "name": "query", "in": "query", "required": true, "schema": { "type": "string" } },
-          { "name": "category", "in": "query", "schema": { "type": "string" } },
-          { "name": "priceMin", "in": "query", "schema": { "type": "number" } },
-          { "name": "priceMax", "in": "query", "schema": { "type": "number" } },
-          { "name": "currency", "in": "query", "schema": { "type": "string", "default": "CNY" } },
-          { "name": "inStock", "in": "query", "schema": { "type": "boolean" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10, "minimum": 1, "maximum": 100 } }
+          { 
+            "name": "query", 
+            "in": "query", 
+            "required": true, 
+            "schema": { "type": "string" },
+            "description": "搜索关键词（支持自然语言），如 '蓝牙耳机'、'NFT头像'、'游戏武器'"
+          },
+          { 
+            "name": "assetType", 
+            "in": "query", 
+            "schema": { 
+              "type": "string",
+              "enum": ["physical", "service", "nft", "ft", "game_asset", "rwa"]
+            },
+            "description": "资产类型筛选：physical(实物)、service(服务)、nft、ft(代币)、game_asset(游戏资产)、rwa(真实资产)"
+          },
+          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "商品分类" },
+          { "name": "priceMin", "in": "query", "schema": { "type": "number" }, "description": "最低价格" },
+          { "name": "priceMax", "in": "query", "schema": { "type": "number" }, "description": "最高价格" },
+          { "name": "currency", "in": "query", "schema": { "type": "string", "default": "CNY" }, "description": "货币类型：CNY、USD、USDT、ETH等" },
+          { "name": "inStock", "in": "query", "schema": { "type": "boolean" }, "description": "是否仅显示有库存/可购买的商品" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10, "minimum": 1, "maximum": 50 }, "description": "返回结果数量" }
         ],
         "responses": {
           "200": {
-            "description": "Search results",
+            "description": "搜索结果，包含符合条件的商品列表",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/SearchResponse" }
@@ -201,7 +361,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "请求参数错误",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Error" }
@@ -213,15 +373,16 @@
     },
     "/marketplace/products/{id}": {
       "get": {
-        "summary": "Get product details",
+        "summary": "Get product/asset details",
+        "description": "获取商品或资产的详细信息，包括链上信息（如果是区块链资产）",
         "operationId": "getProduct",
         "tags": ["Marketplace"],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "商品ID（从搜索结果获取）" }
         ],
         "responses": {
           "200": {
-            "description": "Product details",
+            "description": "商品详情",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ProductResponse" }
@@ -229,7 +390,7 @@
             }
           },
           "404": {
-            "description": "Product not found",
+            "description": "商品不存在",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Error" }
@@ -242,6 +403,7 @@
     "/marketplace/orders": {
       "post": {
         "summary": "Create an order",
+        "description": "创建订单。根据商品类型需要提供不同的参数：实物商品需要收货地址，服务可能需要预约时间，链上资产需要钱包地址。",
         "operationId": "createOrder",
         "tags": ["Orders"],
         "requestBody": {
@@ -254,7 +416,7 @@
         },
         "responses": {
           "200": {
-            "description": "Order created",
+            "description": "订单创建成功",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/OrderResponse" }
@@ -262,7 +424,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "请求参数错误",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Error" }
@@ -275,6 +437,7 @@
     "/marketplace/payments": {
       "post": {
         "summary": "Initiate a payment",
+        "description": "创建支付意图，返回支付页面URL。用户需要访问该URL完成支付（支持法币和加密货币）。",
         "operationId": "initiatePayment",
         "tags": ["Payments"],
         "requestBody": {
@@ -287,7 +450,7 @@
         },
         "responses": {
           "200": {
-            "description": "Payment created",
+            "description": "支付意图创建成功，返回支付链接",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/PaymentResponse" }
@@ -295,7 +458,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "请求参数错误或订单状态不允许支付",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Error" }

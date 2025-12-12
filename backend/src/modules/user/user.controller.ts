@@ -12,8 +12,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserService } from './user.service';
-import { UpdateUserDto, UploadAvatarDto } from './dto/user.dto';
+import { UpdateUserDto, UploadAvatarDto, RegisterRoleDto } from './dto/user.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
+import { UserRole } from '../../entities/user.entity';
 
 @ApiTags('用户')
 @Controller('users')
@@ -53,6 +54,25 @@ export class UserController {
   @ApiResponse({ status: 200, description: '返回头像URL' })
   async getAvatar(@Request() req) {
     return this.userService.getAvatar(req.user.id);
+  }
+
+  @Post('register-role')
+  @ApiOperation({ summary: '注册角色（商户/Agent）' })
+  @ApiResponse({ status: 200, description: '角色注册成功' })
+  async registerRole(@Request() req, @Body() dto: RegisterRoleDto) {
+    const role = dto.role === 'merchant' ? UserRole.MERCHANT : UserRole.AGENT;
+    const user = await this.userService.addRole(req.user.id, role);
+    return {
+      success: true,
+      message: `已成功注册为${dto.role === 'merchant' ? '商户' : 'Agent'}`,
+      user: {
+        id: user.id,
+        paymindId: user.paymindId,
+        roles: user.roles,
+        email: user.email,
+        nickname: user.nickname,
+      }
+    };
   }
 }
 

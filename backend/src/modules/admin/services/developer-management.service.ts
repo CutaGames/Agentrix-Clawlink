@@ -23,7 +23,7 @@ export class DeveloperManagementService {
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
-      .where("user.roles::text LIKE '%agent%'");
+      .where(':role = ANY(user.roles)', { role: 'agent' });
 
     if (query.search) {
       queryBuilder.andWhere(
@@ -73,7 +73,7 @@ export class DeveloperManagementService {
     const developer = await this.userRepository
       .createQueryBuilder('user')
       .where('user.id = :id', { id })
-      .andWhere("user.roles::text LIKE '%agent%'")
+      .andWhere(':role = ANY(user.roles)', { role: 'agent' })
       .getOne();
 
     if (!developer) {

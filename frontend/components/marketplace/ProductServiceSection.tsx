@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { productApi, ProductInfo } from '../../lib/api/product.api'
+import { useCart } from '../../contexts/CartContext'
 
 interface Product {
   id: string
@@ -145,9 +146,11 @@ const mockServices: Service[] = [
 
 export function ProductServiceSection() {
   const router = useRouter()
+  const { addItem, isInCart, getItemQuantity } = useCart()
   const [activeTab, setActiveTab] = useState<'products' | 'services'>('products')
   const [products, setProducts] = useState<ProductInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [addingToCart, setAddingToCart] = useState<string | null>(null)
 
   useEffect(() => {
     loadProducts()
@@ -167,21 +170,54 @@ export function ProductServiceSection() {
   }
 
   const handleProductClick = (product: ProductInfo) => {
-    // 跳转到统一支付页面
-    router.push(`/pay/checkout?productId=${product.id}`)
+    // 跳转到商品详情页
+    router.push(`/marketplace/product/${product.id}`)
   }
 
   const handleServiceClick = (product: ProductInfo) => {
-    // 跳转到统一支付页面
+    // 跳转到商品详情页
+    router.push(`/marketplace/product/${product.id}`)
+  }
+
+  const handleBuyNow = (product: ProductInfo) => {
+    // 跳转到支付页面
     router.push(`/pay/checkout?productId=${product.id}`)
   }
 
-  // 将商品按类型分类
+  const handleAddToCart = async (product: ProductInfo) => {
+    setAddingToCart(product.id)
+    try {
+      const price = typeof product.price === 'string' ? parseFloat(product.price) : product.price
+      await addItem(product.id, 1, {
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price,
+        currency: product.metadata?.currency || 'CNY',
+        stock: product.stock,
+        image: product.metadata?.image,
+        category: product.category,
+        merchantId: product.merchantId,
+      })
+    } catch (error) {
+      console.error('添加购物车失败:', error)
+    } finally {
+      setAddingToCart(null)
+    }
+  }
+
+  // 将商品按类型分类 - 优先使用顶级字段 productType，其次使用 metadata.productType
   const physicalProducts = products.filter(
-    (p) => p.metadata?.productType === 'physical' || !p.metadata?.productType
+    (p) => {
+      const type = (p as any).productType || p.metadata?.productType
+      return type === 'physical' || !type
+    }
   )
   const serviceProducts = products.filter(
-    (p) => p.metadata?.productType === 'service'
+    (p) => {
+      const type = (p as any).productType || p.metadata?.productType
+      return type === 'service'
+    }
   )
 
   return (
@@ -234,12 +270,33 @@ export function ProductServiceSection() {
                 暂无商品，请先创建测试商品
               </div>
             ) : (
-              physicalProducts.map((product) => (
+              physicalProducts.map((product) => {
+                const productInCart = isInCart(product.id)
+                const cartQty = getItemQuantity(product.id)
+                const isAdding = addingToCart === product.id
+                
+                return (
               <div
                 key={product.id}
-                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer"
+                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer relative"
                 onClick={() => handleProductClick(product)}
               >
+                {/* 购物车数量角标 */}
+                {productInCart && cartQty > 0 && (
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center z-10">
+                    {cartQty}
+                  </div>
+                )}
+                
+                {product.metadata?.image && (
+                  <div className="mb-3 rounded-lg overflow-hidden">
+                    <img
+                      src={product.metadata.image}
+                      alt={product.name}
+                      className="w-full h-48 object-cover"
+                    />
+                  </div>
+                )}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">
@@ -276,26 +333,35 @@ export function ProductServiceSection() {
                   </span>
                   <span>库存: {product.stock}</span>
                 </div>
-                {product.metadata?.image && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    <img
-                      src={product.metadata.image}
-                      alt={product.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  </div>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleProductClick(product)
-                  }}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  立即购买
-                </button>
+                
+                {/* 双按钮：加入购物车 + 立即购买 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleAddToCart(product)
+                    }}
+                    disabled={isAdding}
+                    className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
+                      productInCart
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    } disabled:opacity-50`}
+                  >
+                    {isAdding ? '添加中...' : productInCart ? '✓ 已加入' : '加入购物车'}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleBuyNow(product)
+                    }}
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                  >
+                    立即购买
+                  </button>
+                </div>
               </div>
-              ))
+              )})
             )}
           </div>
         )}
@@ -312,12 +378,33 @@ export function ProductServiceSection() {
                 暂无服务，请先创建测试商品
               </div>
             ) : (
-              serviceProducts.map((service) => (
+              serviceProducts.map((service) => {
+                const serviceInCart = isInCart(service.id)
+                const cartQty = getItemQuantity(service.id)
+                const isAdding = addingToCart === service.id
+                
+                return (
               <div
                 key={service.id}
-                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer"
+                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer relative"
                 onClick={() => handleServiceClick(service)}
               >
+                {/* 购物车数量角标 */}
+                {serviceInCart && cartQty > 0 && (
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center z-10">
+                    {cartQty}
+                  </div>
+                )}
+                
+                {service.metadata?.image && (
+                  <div className="mb-3 rounded-lg overflow-hidden">
+                    <img
+                      src={service.metadata.image}
+                      alt={service.name}
+                      className="w-full h-48 object-cover"
+                    />
+                  </div>
+                )}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">
@@ -354,26 +441,35 @@ export function ProductServiceSection() {
                   </span>
                   <span>库存: {service.stock}</span>
                 </div>
-                {service.metadata?.image && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    <img
-                      src={service.metadata.image}
-                      alt={service.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  </div>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleServiceClick(service)
-                  }}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  立即购买
-                </button>
+                
+                {/* 双按钮：加入购物车 + 立即购买 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleAddToCart(service)
+                    }}
+                    disabled={isAdding}
+                    className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
+                      serviceInCart
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    } disabled:opacity-50`}
+                  >
+                    {isAdding ? '添加中...' : serviceInCart ? '✓ 已加入' : '加入购物车'}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleBuyNow(service)
+                    }}
+                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                  >
+                    立即购买
+                  </button>
+                </div>
               </div>
-              ))
+              )})
             )}
           </div>
         )}

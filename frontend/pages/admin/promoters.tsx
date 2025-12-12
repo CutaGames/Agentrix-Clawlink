@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { adminPromoterApi } from '../../lib/api/admin.api';
 
 interface Promoter {
   id: string;
@@ -18,6 +19,7 @@ export default function AdminPromoters() {
   const router = useRouter();
   const [promoters, setPromoters] = useState<Promoter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -28,26 +30,13 @@ export default function AdminPromoters() {
 
   const fetchPromoters = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const url = new URL('http://localhost:3002/api/admin/promoters');
-      url.searchParams.set('page', page.toString());
-      url.searchParams.set('limit', '20');
-      if (search) {
-        url.searchParams.set('search', search);
-      }
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPromoters(data.data || []);
-        setTotal(data.total || 0);
-      }
-    } catch (error) {
+      setLoading(true);
+      const data = await adminPromoterApi.getPromoters({ page, limit: 20 });
+      setPromoters(data.data || []);
+      setTotal(data.total || 0);
+    } catch (error: any) {
       console.error('Failed to fetch promoters:', error);
+      setError(error.message || '获取推广者列表失败');
     } finally {
       setLoading(false);
     }

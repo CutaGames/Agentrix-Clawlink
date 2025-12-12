@@ -323,5 +323,69 @@ export const merchantApi = {
     }
     return result;
   },
+
+  // ========== 客户管理 ==========
+  
+  /**
+   * 获取商户的客户列表
+   */
+  async getCustomers(search?: string): Promise<MerchantCustomer[]> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    const result = await apiClient.get<{ success: boolean; data: MerchantCustomer[] }>(`/merchant/customers${params}`);
+    return result?.data ?? [];
+  },
+
+  // ========== 退款管理 ==========
+
+  /**
+   * 获取退款列表
+   */
+  async getRefunds(status?: string): Promise<MerchantRefund[]> {
+    const params = status && status !== 'all' ? `?status=${status}` : '';
+    const result = await apiClient.get<{ success: boolean; data: MerchantRefund[] }>(`/merchant/refunds${params}`);
+    return result?.data ?? [];
+  },
+
+  /**
+   * 处理退款申请
+   */
+  async processRefund(refundId: string, action: 'approve' | 'reject', reason?: string): Promise<MerchantRefund> {
+    const result = await apiClient.post<{ success: boolean; data: MerchantRefund }>(`/merchant/refunds/${refundId}/process`, {
+      action,
+      reason,
+    });
+    if (!result?.data) {
+      throw new Error('处理退款失败，请稍后重试');
+    }
+    return result.data;
+  },
 };
+
+// 客户类型定义
+export interface MerchantCustomer {
+  id: string;
+  name: string;
+  email: string;
+  walletAddress?: string;
+  totalSpent: number;
+  currency: string;
+  orderCount: number;
+  lastOrderDate?: string;
+  tags: string[];
+  firstOrderDate?: string;
+}
+
+// 退款类型定义
+export interface MerchantRefund {
+  id: string;
+  orderId: string;
+  orderNumber?: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'completed';
+  requestedAt: string;
+  processedAt?: string;
+  customerName?: string;
+}
 

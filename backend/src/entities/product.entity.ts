@@ -16,6 +16,8 @@ export enum ProductStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
   OUT_OF_STOCK = 'out_of_stock',
+  PENDING_REVIEW = 'pending_review',  // 待审核
+  REJECTED = 'rejected',               // 已拒绝
 }
 
 export enum ProductType {
@@ -89,6 +91,26 @@ export class Product {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: any;
+
+  // 审核相关字段
+  @Column({ nullable: true })
+  reviewedBy: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  reviewedAt: Date;
+
+  @Column({ type: 'text', nullable: true })
+  reviewNote: string;
+
+  // 同步来源
+  @Column({ nullable: true })
+  syncSource: string;  // shopify, woocommerce, manual, csv_import
+
+  @Column({ nullable: true })
+  externalId: string;  // 外部平台商品ID
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastSyncAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;

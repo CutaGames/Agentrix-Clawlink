@@ -32,7 +32,7 @@ async function bootstrap() {
     origin: allowGPTs ? true : corsOrigins, // 生产环境允许所有来源（GPTs 需要），开发环境限制
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'], // 添加 X-API-Key 支持
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Agentrix-API-KEY'], // 支持多种 API Key Header
   });
 
   app.useGlobalPipes(

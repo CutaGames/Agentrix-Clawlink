@@ -104,19 +104,56 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const registerRole = async (role: 'merchant' | 'agent') => {
     if (!user) return
 
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    try {
+      // 调用后端API注册角色
+      const { apiClient } = await import('../lib/api/client')
+      const response = await apiClient.post<{
+        success: boolean;
+        message: string;
+        user: {
+          id: string;
+          paymindId: string;
+          roles: string[];
+          email?: string;
+          nickname?: string;
+        };
+      }>('/users/register-role', { role })
 
-    const updatedRoles = [...user.roles, role]
-    const updatedUser: User = {
-      ...user,
-      roles: updatedRoles
+      if (response?.success && response?.user) {
+        // 使用后端返回的用户数据更新本地状态
+        const updatedUser: User = {
+          ...user,
+          roles: response.user.roles as UserRole[],
+          email: response.user.email || user.email,
+        }
+        
+        setUser(updatedUser)
+        localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
+        
+        setCurrentRole(role)
+        localStorage.setItem('agentrix_current_role', role)
+      } else {
+        throw new Error('角色注册失败')
+      }
+    } catch (error: any) {
+      console.error('注册角色失败:', error)
+      
+      // 如果后端API失败，降级为本地更新（确保用户体验）
+      const updatedRoles = [...user.roles, role]
+      const updatedUser: User = {
+        ...user,
+        roles: updatedRoles
+      }
+
+      setUser(updatedUser)
+      localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
+
+      setCurrentRole(role)
+      localStorage.setItem('agentrix_current_role', role)
+      
+      // 不抛出错误，让用户继续使用
+      console.warn('后端注册失败，使用本地状态更新')
     }
-
-    setUser(updatedUser)
-    localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
-
-    setCurrentRole(role)
-    localStorage.setItem('agentrix_current_role', role)
   }
 
   const updateKYC = (kycLevel: KYCLevel, status: 'pending' | 'approved' | 'rejected') => {

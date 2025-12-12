@@ -9,6 +9,8 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
@@ -18,6 +20,7 @@ import { OrderService } from '../../order/order.service';
 import { PayIntentService, CreatePayIntentDto } from '../../payment/pay-intent.service';
 import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
+import { ApiKeyService } from '../../api-key/api-key.service';
 
 /**
  * Marketplace GPTs Controller
@@ -36,7 +39,29 @@ export class MarketplaceGPTsController {
     private productService: ProductService,
     private orderService: OrderService,
     private payIntentService: PayIntentService,
+    @Inject(forwardRef(() => ApiKeyService))
+    private apiKeyService: ApiKeyService,
   ) {}
+
+  /**
+   * 从多个可能的 Header 中提取 API Key
+   * 支持: x-api-key, agentrix-api-key, authorization
+   */
+  private extractApiKey(headers: Record<string, string | undefined>): string | null {
+    // 按优先级检查不同的 Header 名称
+    const apiKey = headers['x-api-key'] || 
+                   headers['agentrix-api-key'] || 
+                   headers['authorization'];
+    
+    if (!apiKey) return null;
+    
+    // 处理 Bearer token 格式
+    if (apiKey.toLowerCase().startsWith('bearer ')) {
+      return apiKey.substring(7);
+    }
+    
+    return apiKey;
+  }
 
   /**
    * 搜索商品
@@ -54,6 +79,7 @@ export class MarketplaceGPTsController {
   @ApiQuery({ name: 'priceMax', required: false, type: Number, description: '最高价格' })
   @ApiQuery({ name: 'currency', required: false, description: '货币类型' })
   @ApiQuery({ name: 'inStock', required: false, type: Boolean, description: '是否仅显示有库存商品' })
+  @ApiQuery({ name: 'assetType', required: false, description: '资产类型：physical(实物), service(服务), nft, ft(代币), game_asset(游戏资产), rwa(真实资产)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: '返回结果数量限制' })
   @ApiResponse({ status: 200, description: 'Search results' })
   @ApiResponse({ status: 400, description: 'Bad Request' })
@@ -65,9 +91,19 @@ export class MarketplaceGPTsController {
     @Query('priceMax') priceMax?: number,
     @Query('currency') currency?: string,
     @Query('inStock') inStock?: boolean,
+    @Query('assetType') assetType?: string,
     @Query('limit') limit?: number,
-    @Headers('x-api-key') apiKey?: string,
+    @Headers('x-api-key') xApiKey?: string,
+    @Headers('agentrix-api-key') agentrixApiKey?: string,
+    @Headers('authorization') authorization?: string,
   ) {
+    // 提取 API Key（支持多种 Header）
+    const apiKey = this.extractApiKey({ 
+      'x-api-key': xApiKey, 
+      'agentrix-api-key': agentrixApiKey, 
+      'authorization': authorization 
+    });
+    
     try {
       // 验证必需参数
       if (!query || query.trim().length === 0) {
@@ -103,6 +139,9 @@ export class MarketplaceGPTsController {
       }
       if (inStock !== undefined) {
         filters.inStock = inStock;
+      }
+      if (assetType) {
+        filters.productType = assetType;
       }
       
       // 调用搜索服务
@@ -454,40 +493,52 @@ export class MarketplaceGPTsController {
 
   /**
    * 辅助方法：通过 API Key 获取用户 ID
+   * 使用 ApiKeyService 进行验证
    * 
-   * TODO: 实现真正的 API Key 认证机制
-   * 当前实现：临时方案，使用 API Key 作为 User ID（仅用于测试）
-   * 生产环境需要：
-   * 1. 创建 API Key 表
-   * 2. 实现 API Key 到 User ID 的映射
-   * 3. 支持 API Key 的创建、撤销、过期等
+   * 返回值：
+   * - 平台级 Key: 返回 'platform'（表示这是 GPTs 等第三方调用）
+   * - 用户级 Key: 返回实际的用户 ID
+   * - 无 Key 或验证失败: 返回 null
    */
   private async getUserIdFromApiKey(apiKey?: string): Promise<string | null> {
     if (!apiKey) {
+      // 没有 API Key 也允许访问搜索等公开接口
+      this.logger.debug('No API Key provided, allowing anonymous access for public endpoints');
       return null;
     }
     
-    // TODO: 实现真正的 API Key 认证
-    // 临时方案：如果 API Key 格式是 "user-{userId}"，则提取 User ID
-    // 否则使用 API Key 作为 User ID（仅用于测试）
-    if (apiKey.startsWith('user-')) {
-      return apiKey.replace('user-', '');
+    try {
+      // 使用 ApiKeyService 验证
+      const result = await this.apiKeyService.validateApiKey(apiKey);
+      
+      if (result.isPlatform) {
+        this.logger.debug('Platform API Key validated successfully');
+        return 'platform'; // 平台级 Key，不关联具体用户
+      }
+      
+      return result.userId;
+    } catch (error) {
+      // 如果验证失败，记录日志但不阻止访问公开接口
+      this.logger.warn(`API Key 验证失败: ${error.message}`);
+      
+      // 对于搜索等公开接口，即使 Key 无效也允许访问
+      // 但创建订单等需要用户身份的接口会在后续检查中拒绝
+      return null;
     }
-    
-    // 临时方案：直接使用 API Key 作为 User ID（不推荐，仅用于测试）
-    this.logger.warn('使用临时 API Key 认证方案，生产环境需要实现真正的认证机制');
-    return apiKey;
   }
 
   /**
    * 格式化商品数据，符合 OpenAPI Schema
+   * 支持多资产类型：physical, service, nft, ft, game_asset, rwa
    */
   private formatProduct(product: any): any {
     const metadata = product.metadata || {};
-    const currency = metadata.currency || 'CNY';
+    const currency = metadata.currency || product.currency || 'CNY';
     const priceDisplay = this.formatPrice(product.price, currency);
+    const productType = product.productType || 'physical';
     
-    return {
+    // 基础商品信息
+    const formatted: any = {
       id: product.id,
       title: product.name,
       name: product.name,
@@ -498,12 +549,128 @@ export class MarketplaceGPTsController {
       image: product.image || product.images?.[0] || null,
       images: product.images || [],
       category: product.category || null,
-      productType: product.productType || 'physical',
+      productType: productType,
+      assetType: productType, // 别名，方便GPT理解
       stock: product.stock || 0,
       inStock: (product.stock || 0) > 0,
       merchantId: product.merchantId || null,
       merchantName: product.merchant?.name || null,
     };
+    
+    // 根据资产类型添加额外信息
+    switch (productType) {
+      case 'service':
+        // 服务类商品
+        formatted.serviceInfo = {
+          serviceType: metadata.serviceType || 'one-time', // subscription, one-time, consultation
+          duration: metadata.duration || null,
+          deliverables: metadata.deliverables || [],
+          format: metadata.format || null, // 视频会议、线下等
+        };
+        break;
+        
+      case 'nft':
+        // NFT资产
+        formatted.nftInfo = {
+          tokenAddress: metadata.tokenAddress || null,
+          tokenId: metadata.tokenId || null,
+          chainId: metadata.chainId || null,
+          chainName: metadata.chainName || this.getChainName(metadata.chainId),
+          standard: metadata.standard || 'ERC-721',
+          attributes: metadata.attributes || [],
+          rarity: this.calculateRarity(metadata.attributes),
+        };
+        formatted.blockchainBadge = `${formatted.nftInfo.chainName} NFT`;
+        break;
+        
+      case 'ft':
+        // 同质化代币
+        formatted.tokenInfo = {
+          tokenAddress: metadata.tokenAddress || null,
+          chainId: metadata.chainId || null,
+          chainName: metadata.chainName || this.getChainName(metadata.chainId),
+          symbol: metadata.symbol || null,
+          decimals: metadata.decimals || 18,
+          amount: metadata.amount || 1,
+          standard: metadata.standard || 'ERC-20',
+        };
+        formatted.blockchainBadge = `${metadata.symbol || 'Token'} on ${formatted.tokenInfo.chainName}`;
+        break;
+        
+      case 'game_asset':
+        // 游戏资产
+        formatted.gameInfo = {
+          gameId: metadata.gameId || null,
+          gameName: metadata.gameName || null,
+          itemType: metadata.itemType || null, // weapon, mount, skin, etc.
+          rarity: metadata.rarity || 'common',
+          stats: metadata.stats || {},
+          level: metadata.level || null,
+          tradeable: metadata.tradeable !== false,
+        };
+        formatted.rarityBadge = metadata.rarity?.toUpperCase() || 'COMMON';
+        break;
+        
+      case 'rwa':
+        // 真实世界资产代币化
+        formatted.rwaInfo = {
+          assetType: metadata.assetType || null, // real_estate, precious_metal, artwork, etc.
+          underlying: metadata.underlying || null,
+          totalShares: metadata.totalShares || null,
+          custodian: metadata.custodian || null,
+          redeemable: metadata.redeemable || false,
+          annualYield: metadata.annualYield || null,
+          tokenAddress: metadata.tokenAddress || null,
+          chainId: metadata.chainId || null,
+        };
+        formatted.rwaBadge = metadata.assetType?.replace('_', ' ').toUpperCase() || 'RWA';
+        break;
+        
+      case 'physical':
+      default:
+        // 实物商品
+        formatted.physicalInfo = {
+          brand: metadata.brand || null,
+          color: metadata.color || null,
+          warranty: metadata.warranty || null,
+          weight: metadata.weight || null,
+          dimensions: metadata.dimensions || null,
+        };
+        break;
+    }
+    
+    return formatted;
+  }
+  
+  /**
+   * 根据链ID获取链名称
+   */
+  private getChainName(chainId?: number): string {
+    const chains: Record<number, string> = {
+      1: 'Ethereum',
+      56: 'BSC',
+      97: 'BSC Testnet',
+      137: 'Polygon',
+      80001: 'Mumbai',
+      42161: 'Arbitrum',
+      10: 'Optimism',
+      43114: 'Avalanche',
+    };
+    return chains[chainId || 0] || 'Unknown';
+  }
+  
+  /**
+   * 计算NFT稀有度
+   */
+  private calculateRarity(attributes?: any[]): string {
+    if (!attributes || attributes.length === 0) return 'common';
+    
+    const rarityAttr = attributes.find((a: any) => 
+      a.trait_type?.toLowerCase() === 'rarity' || 
+      a.trait_type?.toLowerCase() === 'tier'
+    );
+    
+    return rarityAttr?.value?.toLowerCase() || 'common';
   }
 
   /**

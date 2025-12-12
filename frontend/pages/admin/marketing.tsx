@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { adminMarketingApi, getAdminApiBaseUrl } from '../../lib/api/admin.api';
 
 interface Campaign {
   id: string;
@@ -40,16 +41,9 @@ export default function AdminMarketing() {
 
   const fetchCampaigns = async () => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/marketing/campaigns?limit=20', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setCampaigns(data.data || []);
-      }
+      setLoading(true);
+      const data = await adminMarketingApi.getCampaigns();
+      setCampaigns(data || []);
     } catch (error) {
       console.error('Failed to fetch campaigns:', error);
     } finally {
@@ -59,8 +53,10 @@ export default function AdminMarketing() {
 
   const fetchCoupons = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/marketing/coupons?limit=20', {
+      const baseUrl = getAdminApiBaseUrl();
+      const response = await fetch(`${baseUrl}/admin/marketing/coupons?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
