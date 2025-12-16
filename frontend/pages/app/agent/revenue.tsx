@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useState, useEffect, useCallback } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { statisticsApi } from '../../../lib/api/statistics.api'
 
 interface RevenueStats {
   total: number
@@ -18,19 +19,37 @@ export default function AgentRevenue() {
   const loadStats = useCallback(async () => {
     setLoading(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // 计算日期范围
+      const days = period === '7d' ? 7 : period === '30d' ? 30 : 90
+      const endDate = new Date().toISOString().split('T')[0]
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      
+      // 调用真实API
+      const [revenueData, trendData] = await Promise.all([
+        statisticsApi.getDeveloperRevenue({ startDate, endDate }),
+        statisticsApi.getRevenueTrend({ startDate, endDate, granularity: 'day' }),
+      ])
+      
       setStats({
-        total: 12500,
-        commission: 2500,
-        recommendations: 45,
+        total: revenueData.totalRevenue || 0,
+        commission: revenueData.commission || 0,
+        recommendations: 0,
         period,
-        trend: Array.from({ length: period === '7d' ? 7 : period === '30d' ? 30 : 90 }, (_, i) => ({
-          date: new Date(Date.now() - (period === '7d' ? 7 : period === '30d' ? 30 : 90) * 24 * 60 * 60 * 1000 + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          amount: Math.random() * 500 + 100,
+        trend: trendData.map((t: any) => ({
+          date: t.date || t.label,
+          amount: t.value || 0,
         })),
       })
     } catch (error) {
       console.error('加载收入统计失败:', error)
+      // Fallback to empty state
+      setStats({
+        total: 0,
+        commission: 0,
+        recommendations: 0,
+        period,
+        trend: [],
+      })
     } finally {
       setLoading(false)
     }

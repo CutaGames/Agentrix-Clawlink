@@ -15,6 +15,7 @@ import { LogisticsService } from '../../logistics/logistics.service';
 import { PayIntentService } from '../../payment/pay-intent.service';
 import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
+import { ModelRouterService, ModelType } from '../model-router/model-router.service';
 
 /**
  * Gemini Function Calling 统一接口
@@ -53,8 +54,9 @@ export class GeminiIntegrationService {
     private logisticsService: LogisticsService,
     @Inject(forwardRef(() => PayIntentService))
     private payIntentService: PayIntentService,
+    private modelRouter: ModelRouterService,
   ) {
-    // 从环境变量读取模型名称，默认为 gemini-3-pro
+    // 从环境变量读取模型名称，默认为 gemini-3-pro（向后兼容）
     this.defaultModel = this.configService.get<string>('GEMINI_MODEL') || 'gemini-3-pro';
     
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
@@ -63,7 +65,7 @@ export class GeminiIntegrationService {
       this.genAI = null;
     } else {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.logger.log(`Gemini integration initialized with model: ${this.defaultModel}`);
+      this.logger.log(`Gemini integration initialized with model router enabled`);
     }
   }
 
@@ -562,6 +564,7 @@ export class GeminiIntegrationService {
       maxTokens?: number;
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）
+      enableModelRouting?: boolean; // 是否启用模型路由（默认启用）
     },
   ): Promise<any> {
     // 如果用户提供了 API Key，使用用户的；否则使用系统配置的
@@ -577,11 +580,39 @@ export class GeminiIntegrationService {
     try {
       // 获取 Function Schemas
       const functions = await this.getFunctionSchemas();
+      const hasFunctionCalling = functions.length > 0;
+
+      // 智能模型路由：根据任务复杂度选择模型
+      let selectedModel: string;
+      let routingDecision;
+      
+      const enableRouting = options?.enableModelRouting !== false; // 默认启用
+      
+      if (enableRouting && !options?.model) {
+        // 使用模型路由服务选择最合适的模型
+        routingDecision = this.modelRouter.routeModel(
+          ModelType.GEMINI,
+          messages,
+          {
+            hasFunctionCalling,
+            contextLength: messages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0),
+            overrideModel: options?.model,
+          },
+        );
+        selectedModel = routingDecision.model;
+        this.logger.log(
+          `模型路由决策: ${routingDecision.model} (${routingDecision.complexity}) - ${routingDecision.reason}`,
+        );
+      } else {
+        // 使用用户指定的模型或默认模型
+        selectedModel = options?.model || this.defaultModel;
+        this.logger.log(`使用指定模型: ${selectedModel}`);
+      }
 
       // 获取模型
       const model = genAI.getGenerativeModel({
-        model: options?.model || this.defaultModel,
-        tools: functions.length > 0 ? [{ functionDeclarations: functions }] : undefined,
+        model: selectedModel,
+        tools: hasFunctionCalling ? [{ functionDeclarations: functions }] : undefined,
         generationConfig: {
           temperature: options?.temperature || 0.7,
           maxOutputTokens: options?.maxTokens || 2048,

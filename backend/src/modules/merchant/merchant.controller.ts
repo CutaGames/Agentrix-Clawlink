@@ -11,6 +11,7 @@ import { MultiChainAccountService } from './multi-chain-account.service';
 import { ReconciliationService } from './reconciliation.service';
 import { SettlementRulesService } from './settlement-rules.service';
 import { MerchantProfileService, UpdateMerchantProfileDto } from './merchant-profile.service';
+import { MerchantCustomerService } from './merchant-customer.service';
 import { User } from '../../entities/user.entity';
 
 @Controller('merchant')
@@ -26,6 +27,7 @@ export class MerchantController {
     private reconciliationService: ReconciliationService,
     private settlementRulesService: SettlementRulesService,
     private merchantProfileService: MerchantProfileService,
+    private merchantCustomerService: MerchantCustomerService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
   ) {}
@@ -249,6 +251,46 @@ export class MerchantController {
   @Post('profile')
   async updateProfile(@Request() req, @Body() dto: UpdateMerchantProfileDto) {
     return this.merchantProfileService.updateProfile(req.user.id, dto);
+  }
+
+  // ========== 客户管理 ==========
+
+  @Get('customers')
+  async getCustomers(@Request() req, @Query('search') search?: string) {
+    const customers = await this.merchantCustomerService.getCustomers(req.user.id, search);
+    return {
+      success: true,
+      data: customers,
+    };
+  }
+
+  // ========== 退款管理 ==========
+
+  @Get('refunds')
+  async getRefunds(@Request() req, @Query('status') status?: string) {
+    const refunds = await this.merchantCustomerService.getRefunds(req.user.id, status);
+    return {
+      success: true,
+      data: refunds,
+    };
+  }
+
+  @Post('refunds/:refundId/process')
+  async processRefund(
+    @Request() req,
+    @Param('refundId') refundId: string,
+    @Body() body: { action: 'approve' | 'reject'; reason?: string },
+  ) {
+    const refund = await this.merchantCustomerService.processRefund(
+      req.user.id,
+      refundId,
+      body.action,
+      body.reason,
+    );
+    return {
+      success: true,
+      data: refund,
+    };
   }
 }
 

@@ -1,27 +1,77 @@
 import Head from 'next/head'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { sandboxApi } from '../../../lib/api/sandbox.api'
+import { apiKeyApi } from '../../../lib/api/api-key.api'
 
 export default function AgentSandbox() {
-  const [testApiKey, setTestApiKey] = useState('pk_test_***')
+  const [testApiKey, setTestApiKey] = useState('')
   const [testResults, setTestResults] = useState<any[]>([])
   const [testing, setTesting] = useState(false)
+
+  useEffect(() => {
+    loadTestApiKey()
+  }, [])
+
+  const loadTestApiKey = async () => {
+    try {
+      const keys = await apiKeyApi.list()
+      const testKey = keys.find((k) => k.name?.toLowerCase().includes('test'))
+      if (testKey) {
+        setTestApiKey(testKey.keyPrefix + '***')
+      } else {
+        setTestApiKey('pk_test_***')
+      }
+    } catch (error) {
+      console.error('加载测试API密钥失败:', error)
+      setTestApiKey('pk_test_***')
+    }
+  }
 
   const runTest = async (testName: string) => {
     setTesting(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // 根据测试类型生成测试代码
+      const testCode = getTestCode(testName)
+      const response = await sandboxApi.execute({
+        code: testCode,
+        language: 'typescript',
+      })
+      
       const result = {
         test: testName,
-        status: Math.random() > 0.3 ? 'passed' : 'failed',
-        message: Math.random() > 0.3 ? '测试通过' : '测试失败',
+        status: response.success ? 'passed' : 'failed',
+        message: response.success ? '测试通过' : (response.error || '测试失败'),
+        executionTime: response.executionTime,
+        output: response.output,
         timestamp: new Date().toISOString(),
       }
       setTestResults([result, ...testResults])
-    } catch (error) {
-      console.error('测试失败:', error)
+    } catch (error: any) {
+      const result = {
+        test: testName,
+        status: 'failed',
+        message: error.message || '测试执行失败',
+        timestamp: new Date().toISOString(),
+      }
+      setTestResults([result, ...testResults])
     } finally {
       setTesting(false)
+    }
+  }
+
+  const getTestCode = (testName: string): string => {
+    switch (testName) {
+      case '商品搜索':
+        return `const products = await agentrix.products.search({ keyword: 'test' }); return products;`
+      case '订单创建':
+        return `const order = await agentrix.orders.create({ productId: 'test', amount: 100 }); return order;`
+      case '支付处理':
+        return `const payment = await agentrix.payments.process({ orderId: 'test', method: 'usdt' }); return payment;`
+      case 'Webhook':
+        return `const webhook = await agentrix.webhooks.test({ url: 'https://test.com/webhook' }); return webhook;`
+      default:
+        return `return { success: true };`
     }
   }
 

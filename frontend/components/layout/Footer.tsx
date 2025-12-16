@@ -1,15 +1,21 @@
 import Link from 'next/link'
+import { AgentrixLogo } from '../common/AgentrixLogo'
+import { useLocalization } from '../../contexts/LocalizationContext'
 
 export function Footer() {
+  const { t } = useLocalization()
+
   return (
     <footer className="bg-gray-900 text-gray-300">
       <div className="container mx-auto px-6 py-12">
         <div className="grid md:grid-cols-4 gap-8">
           {/* 产品信息 */}
           <div>
-            <h3 className="text-white font-bold text-lg mb-4">Agentrix</h3>
+            <div className="mb-4">
+              <AgentrixLogo size="lg" showText={true} className="text-white" />
+            </div>
             <p className="text-sm text-gray-400 mb-4">
-              AI经济时代的支付协议层
+              {t({ zh: 'AI经济时代的支付协议层', en: 'Payment Protocol Layer for the AI Economy' })}
             </p>
             <div className="flex space-x-4">
               <a
@@ -50,26 +56,26 @@ export function Footer() {
 
           {/* 产品链接 */}
           <div>
-            <h4 className="text-white font-semibold mb-4">产品</h4>
+            <h4 className="text-white font-semibold mb-4">{t({ zh: '产品', en: 'Product' })}</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  API文档
+                  {t({ zh: 'API文档', en: 'API Docs' })}
                 </Link>
               </li>
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  SDK文档
+                  {t({ zh: 'SDK文档', en: 'SDK Docs' })}
                 </Link>
               </li>
               <li>
                 <Link href="/use-cases" className="hover:text-white transition-colors">
-                  应用场景
+                  {t({ zh: '应用场景', en: 'Use Cases' })}
                 </Link>
               </li>
               <li>
                 <Link href="/features" className="hover:text-white transition-colors">
-                  功能特性
+                  {t({ zh: '功能特性', en: 'Features' })}
                 </Link>
               </li>
             </ul>
@@ -77,11 +83,11 @@ export function Footer() {
 
           {/* 开发者资源 */}
           <div>
-            <h4 className="text-white font-semibold mb-4">开发者</h4>
+            <h4 className="text-white font-semibold mb-4">{t({ zh: '开发者', en: 'Developer' })}</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  快速开始
+                  {t({ zh: '快速开始', en: 'Quick Start' })}
                 </Link>
               </li>
               <li>
@@ -96,12 +102,12 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  集成指南
+                  {t({ zh: '集成指南', en: 'Integration Guide' })}
                 </Link>
               </li>
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  示例代码
+                  {t({ zh: '示例代码', en: 'Sample Code' })}
                 </Link>
               </li>
             </ul>
@@ -109,21 +115,21 @@ export function Footer() {
 
           {/* 法律信息 */}
           <div>
-            <h4 className="text-white font-semibold mb-4">法律</h4>
+            <h4 className="text-white font-semibold mb-4">{t({ zh: '法律', en: 'Legal' })}</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link href="/legal/privacy" className="hover:text-white transition-colors">
-                  隐私政策
+                  {t({ zh: '隐私政策', en: 'Privacy Policy' })}
                 </Link>
               </li>
               <li>
                 <Link href="/legal/terms" className="hover:text-white transition-colors">
-                  服务条款
+                  {t({ zh: '服务条款', en: 'Terms of Service' })}
                 </Link>
               </li>
               <li>
                 <Link href="/legal/disclaimer" className="hover:text-white transition-colors">
-                  免责声明
+                  {t({ zh: '免责声明', en: 'Disclaimer' })}
                 </Link>
               </li>
             </ul>

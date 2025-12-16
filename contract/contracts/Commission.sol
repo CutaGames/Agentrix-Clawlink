@@ -163,6 +163,16 @@ contract Commission is Ownable, ReentrancyGuard {
     // 新状态变量
     mapping(bytes32 => SplitConfig) public orderSplitConfigs; // 订单分账配置
     mapping(address => bool) public authorizedProviders; // Provider 白名单
+    mapping(address => bool) public relayers; // Relayer 白名单
+
+    modifier onlyRelayer() {
+        require(relayers[msg.sender] || msg.sender == owner(), "Not relayer");
+        _;
+    }
+
+    function setRelayer(address relayer, bool active) external onlyOwner {
+        relayers[relayer] = active;
+    }
 
     function configureSettlementToken(
         address token,
@@ -591,6 +601,32 @@ contract Commission is Ownable, ReentrancyGuard {
         // 3. 自动分账
         _autoSplit(orderId, amount);
     }
+
+    /**
+     * @dev QuickPay 支付（通过 Relayer/SessionManager）
+     * 允许 Relayer 指定付款人（前提是 Relayer 已验证 Session）
+     * @param orderId 订单ID
+     * @param amount 支付金额
+     * @param payer 付款人地址
+     */
+    function quickPaySplitFrom(
+        bytes32 orderId,
+        uint256 amount,
+        address payer
+    ) external nonReentrant onlyRelayer {
+        // 1. 从指定付款人钱包转账 USDC 到合约
+        // 注意：付款人必须已授权 Commission 合约（或通过 Permit）
+        require(
+            settlementToken.transferFrom(payer, address(this), amount),
+            "USDC transfer failed"
+        );
+        
+        // 2. 记录支付
+        emit PaymentReceived(orderId, PaymentScenario.QUICKPAY, payer, amount);
+        
+        // 3. 自动分账
+        _autoSplit(orderId, amount);
+    }
     
     // ============ 场景 2: 钱包直接转账 ============
     
@@ -653,7 +689,8 @@ contract Commission is Ownable, ReentrancyGuard {
     function setSplitConfig(
         bytes32 orderId,
         SplitConfig memory config
-    ) external onlyOwner {
+    ) external {
+        require(msg.sender == owner() || relayers[msg.sender], "Unauthorized");
         require(config.merchantMPCWallet != address(0), "Invalid merchant wallet");
         orderSplitConfigs[orderId] = config;
         emit SplitConfigSet(orderId, config);

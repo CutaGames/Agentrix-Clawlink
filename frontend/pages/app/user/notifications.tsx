@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useState } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 interface NotificationSetting {
   id: string
@@ -12,27 +13,28 @@ interface NotificationSetting {
 }
 
 export default function UserNotifications() {
+  const { t } = useLocalization()
   const [settings, setSettings] = useState<NotificationSetting[]>([
     {
       id: 'payment',
-      name: '支付通知',
-      description: '支付成功、失败、退款等通知',
+      name: t('notifications.payment.name'),
+      description: t('notifications.payment.description'),
       email: true,
       push: true,
       sms: false,
     },
     {
       id: 'subscription',
-      name: '订阅提醒',
-      description: '订阅续费、到期提醒',
+      name: t('notifications.subscription.name'),
+      description: t('notifications.subscription.description'),
       email: true,
       push: true,
       sms: false,
     },
     {
       id: 'security',
-      name: '安全通知',
-      description: '登录、授权、限额变更等安全相关通知',
+      name: t('notifications.security.name'),
+      description: t('notifications.security.description'),
       email: true,
       push: true,
       sms: true,
@@ -48,12 +50,12 @@ export default function UserNotifications() {
   return (
     <DashboardLayout userType="user">
       <Head>
-        <title>通知设置 - 用户中心</title>
+        <title>{t('notifications.title')} - {t('userCenter.title')}</title>
       </Head>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">通知设置</h1>
-          <p className="text-gray-600 mt-1">管理您的通知偏好设置</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('notifications.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('notifications.description')}</p>
         </div>
 
         <div className="bg-white rounded-lg shadow divide-y divide-gray-200">
@@ -71,7 +73,7 @@ export default function UserNotifications() {
                     onChange={(e) => updateSetting(setting.id, 'email', e.target.checked)}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">邮件通知</span>
+                  <span className="text-sm text-gray-700">{t('notifications.methods.email')}</span>
                 </label>
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
@@ -80,7 +82,7 @@ export default function UserNotifications() {
                     onChange={(e) => updateSetting(setting.id, 'push', e.target.checked)}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">推送通知</span>
+                  <span className="text-sm text-gray-700">{t('notifications.methods.push')}</span>
                 </label>
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
@@ -89,14 +91,14 @@ export default function UserNotifications() {
                     onChange={(e) => updateSetting(setting.id, 'sms', e.target.checked)}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">短信通知</span>
+                  <span className="text-sm text-gray-700">{t('notifications.methods.sms')}</span>
                 </label>
               </div>
             </div>
           ))}
           <div className="p-6 bg-gray-50">
             <button className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-              保存设置
+              {t('notifications.save')}
             </button>
           </div>
         </div>

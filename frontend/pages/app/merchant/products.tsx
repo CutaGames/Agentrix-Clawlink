@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Link from 'next/link'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useState, useEffect } from 'react'
 import { ProductPricingManager } from '../../../components/merchant/ProductPricingManager'
@@ -6,6 +7,7 @@ import { ProductPreview } from '../../../components/merchant/ProductPreview'
 import { productApi } from '../../../lib/api/product.api'
 import { convertToUnifiedProduct } from '../../../lib/utils/product-converter'
 import { useUser } from '../../../contexts/UserContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 interface ProductDisplay {
   id: string;
@@ -23,6 +25,7 @@ interface ProductDisplay {
 
 export default function MerchantProducts() {
   const { user } = useUser()
+  const { t } = useLocalization()
   const [products, setProducts] = useState<ProductDisplay[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -211,33 +214,53 @@ export default function MerchantProducts() {
   return (
     <>
       <Head>
-        <title>商品管理 - Agentrix</title>
+        <title>{t('merchantProducts.pageTitle')} - Agentrix</title>
       </Head>
       <DashboardLayout userType="merchant">
         <div className="mb-8">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">商品管理</h1>
-              <p className="text-gray-600">管理您的商品库存、价格和分润设置</p>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('merchantProducts.pageTitle')}</h1>
+              <p className="text-gray-600">{t('merchantProducts.pageDescription')}</p>
             </div>
-            <button
-              onClick={() => setShowAddProduct(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              添加商品
-            </button>
+            <div className="flex gap-3">
+              <Link
+                href="/app/merchant/ecommerce-sync"
+                className="border border-purple-600 text-purple-600 px-4 py-2 rounded-lg font-semibold hover:bg-purple-50 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {t('merchantProducts.ecommerceSync')}
+              </Link>
+              <Link
+                href="/app/merchant/batch-import"
+                className="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                {t('merchantProducts.batchImport')}
+              </Link>
+              <button
+                onClick={() => setShowAddProduct(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                {t('merchantProducts.addProduct')}
+              </button>
+            </div>
           </div>
         </div>
         {/* Products Grid */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">商品列表</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{t('merchantProducts.productList')}</h2>
           </div>
           <div className="p-6">
             {loading && (
               <div className="text-center py-8 text-gray-500">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <p className="mt-2">加载中...</p>
+                <p className="mt-2">{t('common.loading')}</p>
               </div>
             )}
             {error && (
@@ -247,19 +270,19 @@ export default function MerchantProducts() {
                   onClick={loadProducts}
                   className="mt-2 text-red-600 hover:text-red-700 text-sm font-medium"
                 >
-                  重试
+                  {t('common.retry')}
                 </button>
               </div>
             )}
             {!loading && !error && products.length === 0 && (
               <div className="text-center py-8 text-gray-500">
                 <div className="text-4xl mb-2">📦</div>
-                <p>暂无商品</p>
+                <p>{t('merchantProducts.noProducts')}</p>
                 <button
                   onClick={() => setShowAddProduct(true)}
                   className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                 >
-                  添加第一个商品
+                  {t('merchantProducts.addFirstProduct')}
                 </button>
               </div>
             )}
@@ -268,13 +291,13 @@ export default function MerchantProducts() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">商品名称</th>
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">类目</th>
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">价格</th>
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">库存</th>
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">分润率</th>
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">AI销量</th>
-                    <th className="text-left py-3 text-sm font-medium text-gray-600">状态</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.productName')}</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.category')}</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.price')}</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.stock')}</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.commissionRate')}</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.aiSales')}</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantProducts.table.status')}</th>
                     <th className="text-left py-3 text-sm font-medium text-gray-600">操作</th>
                   </tr>
                 </thead>
@@ -288,14 +311,14 @@ export default function MerchantProducts() {
                       </td>
                       <td className="py-4">
                         <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                          {(product as any).productType === 'physical' ? '实体商品' :
-                           (product as any).productType === 'service' ? '服务类' :
-                           (product as any).productType === 'nft' ? 'NFT' :
-                           (product as any).productType === 'ft' ? 'FT' :
-                           (product as any).productType === 'game_asset' ? '游戏资产' :
-                           (product as any).productType === 'rwa' ? 'RWA' : '实体商品'}
+                          {(product as any).productType === 'physical' ? t('merchantProducts.productTypes.physical') :
+                           (product as any).productType === 'service' ? t('merchantProducts.productTypes.service') :
+                           (product as any).productType === 'nft' ? t('merchantProducts.productTypes.nft') :
+                           (product as any).productType === 'ft' ? t('merchantProducts.productTypes.ft') :
+                           (product as any).productType === 'game_asset' ? t('merchantProducts.productTypes.gameAsset') :
+                           (product as any).productType === 'rwa' ? t('merchantProducts.productTypes.rwa') : t('merchantProducts.productTypes.physical')}
                         </span>
-                        <p className="text-sm text-gray-500 mt-1">{product.category || '未分类'}</p>
+                        <p className="text-sm text-gray-500 mt-1">{product.category || t('merchantProducts.uncategorized')}</p>
                       </td>
                       <td className="py-4 text-gray-900">{product.price}</td>
                       <td className="py-4">
@@ -304,28 +327,27 @@ export default function MerchantProducts() {
                           product.stock > 0 ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {product.stock} 件
+                          {product.stock} {t('merchantProducts.units')}
                         </span>
                       </td>
                       <td className="py-4">
                         <div>
                           <span className="text-blue-600 font-medium">{product.commissionRate}</span>
                           <p className="text-xs text-gray-500 mt-1">
-                            {(product as any).productType === 'physical' ? '固定3%' :
-                             (product as any).productType === 'service' ? '固定5%' :
-                             (product as any).productType === 'nft' || (product as any).productType === 'ft' ? '固定2.5%' :
-                             '固定3%'}
+                            {(product as any).productType === 'physical' ? t('merchantProducts.commissionRates.physical') :
+                             (product as any).productType === 'service' ? t('merchantProducts.commissionRates.service') :
+                             (product as any).productType === 'nft' || (product as any).productType === 'ft' ? t('merchantProducts.commissionRates.digital') :
+                             t('merchantProducts.commissionRates.default')}
                           </p>
                         </div>
                       </td>
                       <td className="py-4">
                         <div>
-                          <p className="text-gray-900">{product.aiSales} 件</p>
+                          <p className="text-gray-900">{product.aiSales} {t('merchantProducts.units')}</p>
                           <p className="text-sm text-gray-500">
                             {product.totalSales > 0 ? 
-                              `${Math.round((product.aiSales / product.totalSales) * 100)}% 总销量` : 
-                              '暂无总销量'
-                            }
+                              `${Math.round((product.aiSales / product.totalSales) * 100)}% ${t('merchantProducts.totalSales')}` : 
+                              t('merchantProducts.noTotalSales')}
                           </p>
                         </div>
                       </td>
@@ -335,8 +357,8 @@ export default function MerchantProducts() {
                           product.status === 'out_of_stock' ? 'bg-red-100 text-red-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
-                          {product.status === 'active' ? '上架中' :
-                           product.status === 'out_of_stock' ? '缺货' : '已下架'}
+                          {product.status === 'active' ? t('merchantProducts.status.active') :
+                           product.status === 'out_of_stock' ? t('merchantProducts.status.outOfStock') : t('merchantProducts.status.inactive')}
                         </span>
                       </td>
                       <td className="py-4">
@@ -348,7 +370,7 @@ export default function MerchantProducts() {
                             }}
                             className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                           >
-                            定价
+                            {t('merchantProducts.actions.pricing')}
                           </button>
                           <button 
                             onClick={async () => {
@@ -397,13 +419,13 @@ export default function MerchantProducts() {
                             }}
                             className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                           >
-                            编辑
+                            {t('merchantProducts.actions.edit')}
                           </button>
                           <button 
                             onClick={() => toggleProductStatus(product.id)}
                             className="text-gray-600 hover:text-gray-700 text-sm font-medium"
                           >
-                            {product.status === 'active' ? '下架' : '上架'}
+                            {product.status === 'active' ? t('merchantProducts.actions.deactivate') : t('merchantProducts.actions.activate')}
                           </button>
                         </div>
                       </td>
@@ -431,7 +453,7 @@ export default function MerchantProducts() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center p-6 border-b border-gray-200 flex-shrink-0">
-                <h2 className="text-2xl font-bold text-gray-900">{editingProduct ? '编辑商品' : '添加新商品'}</h2>
+                <h2 className="text-2xl font-bold text-gray-900">{editingProduct ? t('merchantProducts.modal.editProduct') : t('merchantProducts.modal.addProduct')}</h2>
                 <button
                   onClick={() => {
                     setShowAddProduct(false)
@@ -467,7 +489,7 @@ export default function MerchantProducts() {
                       : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  填写信息
+                  {t('merchantProducts.modal.fillInfo')}
                 </button>
                 <button
                   type="button"
@@ -478,7 +500,7 @@ export default function MerchantProducts() {
                       : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  预览效果
+                  {t('merchantProducts.modal.preview')}
                 </button>
               </div>
               <div className="overflow-y-auto flex-1 p-6">
@@ -486,7 +508,7 @@ export default function MerchantProducts() {
               <form onSubmit={handleAddProduct} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    商品名称 *
+                    {t('merchantProducts.form.productName')} *
                   </label>
                   <input
                     type="text"
@@ -498,19 +520,19 @@ export default function MerchantProducts() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    商品描述
+                    {t('merchantProducts.form.description')}
                   </label>
                   <textarea
                     value={newProduct.description}
                     onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     rows={3}
-                    placeholder="请输入商品描述..."
+                    placeholder={t('merchantProducts.form.descriptionPlaceholder')}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    价格 ({newProduct.currency}) *
+                    {t('merchantProducts.form.price')} ({newProduct.currency}) *
                   </label>
                   <input
                     type="number"
@@ -527,29 +549,29 @@ export default function MerchantProducts() {
                     step="0.0001"
                     required
                   />
-                  <p className="text-xs text-gray-500 mt-1">支持小数点后4位，必须大于等于0</p>
+                  <p className="text-xs text-gray-500 mt-1">{t('merchantProducts.form.priceHint')}</p>
                   {newProduct.price && parseFloat(newProduct.price) < 0 && (
-                    <p className="text-xs text-red-500 mt-1">价格不能为负数</p>
+                    <p className="text-xs text-red-500 mt-1">{t('merchantProducts.form.priceNegative')}</p>
                   )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    货币
+                    {t('merchantProducts.form.currency')}
                   </label>
                   <select
                     value={newProduct.currency}
                     onChange={(e) => setNewProduct({...newProduct, currency: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="CNY">CNY (人民币)</option>
-                    <option value="USD">USD (美元)</option>
-                    <option value="USDT">USDT (稳定币)</option>
-                    <option value="ETH">ETH (以太坊)</option>
+                    <option value="CNY">{t('merchantProducts.form.currencyOptions.cny')}</option>
+                    <option value="USD">{t('merchantProducts.form.currencyOptions.usd')}</option>
+                    <option value="USDT">{t('merchantProducts.form.currencyOptions.usdt')}</option>
+                    <option value="ETH">{t('merchantProducts.form.currencyOptions.eth')}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    库存数量 {newProduct.productType === 'service' || newProduct.productType === 'plugin' || newProduct.productType === 'subscription' ? '(服务类商品通常为无限库存)' : '*'}
+                    {t('merchantProducts.form.stock')} {newProduct.productType === 'service' || newProduct.productType === 'plugin' || newProduct.productType === 'subscription' ? t('merchantProducts.form.stockHintService') : '*'}
                   </label>
                   <input
                     type="number"
@@ -561,12 +583,12 @@ export default function MerchantProducts() {
                     required={newProduct.productType !== 'service' && newProduct.productType !== 'plugin' && newProduct.productType !== 'subscription'}
                   />
                   {(newProduct.productType === 'service' || newProduct.productType === 'plugin' || newProduct.productType === 'subscription') && (
-                    <p className="text-xs text-gray-500 mt-1">服务类商品库存为无限</p>
+                    <p className="text-xs text-gray-500 mt-1">{t('merchantProducts.form.stockHintUnlimited')}</p>
                   )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    商品图片 URL
+                    {t('merchantProducts.form.imageUrl')}
                   </label>
                   <input
                     type="url"
@@ -633,16 +655,16 @@ export default function MerchantProducts() {
                         })
                       }
                     />
-                    <span className="text-sm text-gray-700">允许调整佣金率</span>
+                    <span className="text-sm text-gray-700">{t('merchantProducts.form.allowCommissionAdjustment')}</span>
                   </label>
                   <p className="text-xs text-gray-500 mt-1">
-                    如果启用，可以为特定Agent或产品设置不同的佣金率
+                    {t('merchantProducts.form.allowCommissionAdjustmentHint')}
                   </p>
                 </div>
                 {newProduct.allowCommissionAdjustment && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      自定义佣金率 (%)
+                      {t('merchantProducts.form.customCommissionRate')}
                     </label>
                     <input
                       type="number"
@@ -654,7 +676,7 @@ export default function MerchantProducts() {
                       step="0.1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      默认：{newProduct.fixedCommissionRate}%（产品类型固定佣金率）
+                      {t('merchantProducts.form.defaultCommissionRate', { rate: newProduct.fixedCommissionRate })}
                     </p>
                   </div>
                 )}
@@ -664,13 +686,13 @@ export default function MerchantProducts() {
                     onClick={() => setShowAddProduct(false)}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
                   >
-                    取消
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="submit"
                     className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                   >
-                    {editingProduct ? '确认修改' : '添加商品'}
+                    {editingProduct ? t('merchantProducts.form.confirmEdit') : t('merchantProducts.form.addProduct')}
                   </button>
                 </div>
               </form>
@@ -735,7 +757,7 @@ export default function MerchantProducts() {
             <div className="bg-white rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">商品定价管理</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">{t('merchantProducts.pricingManager.title')}</h2>
                   <p className="text-sm text-gray-600 mt-1">{editingProduct.name}</p>
                 </div>
                 <button

@@ -116,15 +116,15 @@ export default function Home() {
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button
                     onClick={() => router.push(isAuthenticated ? '/agent-enhanced' : '/agent-builder')}
-                    className="bg-gradient-to-r from-emerald-500 to-indigo-500 text-white font-semibold px-8 py-4 rounded-xl hover:opacity-90 transition-all shadow-lg"
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold px-8 py-4 rounded-xl hover:opacity-90 transition-all shadow-lg"
                   >
-                    {t({ zh: '立即创建 Agent', en: 'Create Your Agent' })}
+                    {t({ zh: 'AX Agent 工作台', en: 'AX Agent Workspace' })}
                   </button>
                   <button
-                    onClick={() => router.push('/developers')}
-                    className="text-slate-300 underline underline-offset-4 decoration-dotted hover:text-white transition"
+                    onClick={() => router.push('/marketplace')}
+                    className="bg-white/10 border border-white/30 text-white font-semibold px-8 py-4 rounded-xl hover:bg-white/20 transition"
                   >
-                    {t({ zh: '申请商户接入', en: 'Apply Merchant Access' })}
+                    {t({ zh: '浏览市场', en: 'Explore Marketplace' })}
                   </button>
                 </div>
               </div>
@@ -138,7 +138,7 @@ export default function Home() {
                     <p className="text-base">{t({ zh: '"帮我买一台适合视频剪辑的 MacBook Pro，预算 18,000 元以内。"', en: '"Help me buy a MacBook Pro suitable for video editing, budget within 18,000 yuan."' })}</p>
                   </div>
                   <div className="bg-cyan-400/10 border border-cyan-400/30 rounded-2xl p-4">
-                    <p className="text-xs text-cyan-300 mb-1">Agentrix Agent</p>
+                    <p className="text-xs text-cyan-300 mb-1">{t({ zh: 'AX Agent', en: 'AX Agent' })}</p>
                     <p className="text-sm">
                       {t({ zh: '已筛选 4 个商户，推荐「旗舰店」￥17,899，通道：Apple Pay（1.2%）+ QuickPay，预计 2 秒到账。', en: 'Screened 4 merchants, recommended "Flagship Store" ¥17,899, channel: Apple Pay (1.2%) + QuickPay, estimated 2 seconds to account.' })}
                     </p>

@@ -216,7 +216,7 @@ export function Hero({ onGetStarted }: { onGetStarted: () => void }) {
             <div className="flex flex-wrap gap-3">
               <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-white/20 text-white">
                 <span className="text-lg mr-2">🤖</span>
-                <span className="font-medium">Agentrix Agent</span>
+                <span className="font-medium">AX Agent</span>
               </div>
               <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-white/20 text-white">
                 <span className="text-lg mr-2">💳</span>
@@ -239,7 +239,7 @@ export function Hero({ onGetStarted }: { onGetStarted: () => void }) {
                 className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center"
               >
                 <span className="mr-2">🤖</span>
-                立即体验 Agentrix Agent
+                立即体验 AX Agent
               </button>
               <button
                 onClick={() => router.push('/developers')}

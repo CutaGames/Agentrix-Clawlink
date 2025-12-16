@@ -1,6 +1,6 @@
 'use client'
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react'
-import { walletService, WalletInfo, WalletType } from '../lib/wallet/WalletService'
+import { walletService, type WalletInfo, type WalletType } from '../lib/wallet/WalletService'
 
 interface Web3ContextType {
   isConnected: boolean
@@ -10,7 +10,7 @@ interface Web3ContextType {
   connect: (walletType: WalletType) => Promise<WalletInfo>
   disconnect: (walletId?: string) => Promise<void>
   setDefault: (walletId: string) => void
-  signMessage?: (message: string) => Promise<string>
+  signMessage?: (message: string, wallet?: WalletInfo) => Promise<string>
   connectors: Array<{
     id: WalletType
     name: string
@@ -84,14 +84,40 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     restoreWallets()
   }, [])
 
-  // 获取可用的连接器
-  const connectors = walletService.getAvailableConnectors().map(connector => ({
-    id: connector.id,
-    name: connector.name,
-    icon: connector.icon,
-    description: connector.description,
-    isInstalled: connector.isInstalled()
-  }))
+  const [connectors, setConnectors] = useState<Array<{
+    id: WalletType
+    name: string
+    icon: string
+    description: string
+    isInstalled: boolean
+  }>>([])
+
+  useEffect(() => {
+    const updateConnectors = async () => {
+      try {
+        const currentConnectors = walletService.getAvailableConnectors().map((connector: any) => ({
+          id: connector.id,
+          name: connector.name,
+          icon: connector.icon,
+          description: connector.description,
+          isInstalled: connector.isInstalled()
+        }))
+        setConnectors(currentConnectors)
+      } catch (e) {
+        console.error('更新连接器列表失败:', e)
+      }
+    }
+
+    // Check again after a short delay to allow for injection
+    const timer = setTimeout(updateConnectors, 500)
+    const timer2 = setTimeout(updateConnectors, 2000)
+    // 初次立即触发一次
+    updateConnectors()
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(timer2)
+    }
+  }, [])
 
   const connect = async (walletType: WalletType): Promise<WalletInfo> => {
     try {
@@ -106,7 +132,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       
       // 如果是第一个连接的钱包，设为默认
       if (connectedWallets.length === 0) {
-        walletService.setDefaultWallet(walletInfo.id)
+        try { walletService.setDefaultWallet(walletInfo.id) } catch(e){ console.warn('setDefaultWallet failed:', e) }
         setDefaultWallet(walletInfo)
       } else if (!defaultWallet) {
         setDefaultWallet(walletInfo)
@@ -127,7 +153,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   const disconnect = async (walletId?: string) => {
     try {
       if (walletId) {
-        await walletService.disconnectWallet(walletId)
+      await walletService.disconnectWallet(walletId)
         setConnectedWallets(prev => prev.filter(w => w.id !== walletId))
         
         // 如果断开的是默认钱包，重新选择默认钱包
@@ -135,7 +161,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
           const remaining = connectedWallets.filter(w => w.id !== walletId)
           if (remaining.length > 0) {
             const newDefault = remaining[0]
-            walletService.setDefaultWallet(newDefault.id)
+            try { walletService.setDefaultWallet(newDefault.id) } catch(e){ console.warn('setDefaultWallet failed:', e) }
             setDefaultWallet(newDefault)
           } else {
             setDefaultWallet(null)
@@ -166,19 +192,29 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   }
 
   const setDefault = (walletId: string) => {
-    walletService.setDefaultWallet(walletId)
-    const wallet = connectedWallets.find(w => w.id === walletId)
-    if (wallet) {
-      setDefaultWallet(wallet)
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('agentrix_default_wallet', walletId)
+      }
+      // 异步通知底层 service（不阻塞 UI）
+      try { walletService.setDefaultWallet(walletId) } catch (e) { console.warn('ws.setDefaultWallet failed:', e) }
+
+      const wallet = connectedWallets.find(w => w.id === walletId)
+      if (wallet) {
+        setDefaultWallet(wallet)
+      }
+    } catch (e) {
+      console.warn('setDefault failed:', e)
     }
   }
 
-  const signMessage = async (message: string): Promise<string> => {
-    if (!defaultWallet) {
+  const signMessage = async (message: string, wallet?: WalletInfo): Promise<string> => {
+    const targetWallet = wallet || defaultWallet
+    if (!targetWallet) {
       throw new Error('No wallet connected')
     }
     try {
-      return await walletService.signMessage(defaultWallet, message)
+      return await walletService.signMessage(targetWallet, message)
     } catch (error: any) {
       console.error('签名失败:', error)
       throw error

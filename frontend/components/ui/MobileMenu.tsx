@@ -7,7 +7,7 @@ import { LanguageSwitcher } from './LanguageSwitcher'
 
 const primaryItems = [
   { name: { zh: '产品', en: 'Product' }, href: '/', icon: '🏠' },
-  { name: { zh: 'Agentrix Agent', en: 'Agentrix Agent' }, href: '/agent-enhanced', icon: '🤖' },
+  { name: { zh: 'AX Agent', en: 'AX Agent' }, href: '/agent-enhanced', icon: '🤖' },
   { name: { zh: 'Agent Builder', en: 'Agent Builder' }, href: '/agent-builder', icon: '⚡' },
   { name: { zh: 'Marketplace', en: 'Marketplace' }, href: '/marketplace', icon: '🌐' },
   { name: { zh: '联盟', en: 'Alliance' }, href: '/alliance', icon: '🤝' },

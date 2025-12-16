@@ -19,7 +19,7 @@ import { CreateSessionDto } from './dto/session.dto';
 const ERC8004_ABI = [
   'function createSession(address, uint256, uint256, uint256) returns (bytes32)',
   'function revokeSession(bytes32)',
-  'function getSession(bytes32) view returns (tuple(address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive))',
+  'function sessions(bytes32) view returns (address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive)',
 ];
 
 @Injectable()
@@ -192,6 +192,7 @@ export class SessionService {
       return {
         sessionId: savedSession.sessionId!,
         signer: savedSession.signerAddress!,
+        owner: savedSession.ownerAddress!, // Add owner address for payer identification
         singleLimit: (savedSession.singleLimit || 0).toString(),
         dailyLimit: (savedSession.dailyLimit || 0).toString(),
         expiry: savedSession.expiry!,
@@ -221,9 +222,10 @@ export class SessionService {
         id: session.id,
         sessionId: session.sessionId!,
         signer: session.signerAddress!,
-        singleLimit: session.singleLimit || 0,
-        dailyLimit: session.dailyLimit || 0,
-        usedToday: session.usedToday || 0,
+        owner: session.ownerAddress!, // Add owner address for payer identification
+        singleLimit: Number(session.singleLimit || 0),
+        dailyLimit: Number(session.dailyLimit || 0),
+        usedToday: Number(session.usedToday || 0),
         expiry: session.expiry!,
         isActive: session.status === SessionStatus.ACTIVE,
         agentId: session.agentId,
@@ -304,6 +306,25 @@ export class SessionService {
       success: true,
       sessionId,
     };
+  }
+
+  /**
+   * 通过 sessionId 获取 session 的 ownerAddress
+   * 用于 QuickPay 支付时确定付款人地址
+   */
+  async getOwnerAddressBySessionId(sessionId: string): Promise<string | null> {
+    try {
+      const session = await this.sessionRepository.findOne({
+        where: { sessionId },
+      });
+      if (session && session.ownerAddress) {
+        return session.ownerAddress;
+      }
+      return null;
+    } catch (error) {
+      this.logger.warn(`Failed to get owner address for sessionId ${sessionId}: ${error.message}`);
+      return null;
+    }
   }
 }
 

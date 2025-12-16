@@ -58,7 +58,10 @@ export class UserManagementService {
     const [users, total] = await queryBuilder.getManyAndCount();
 
     return {
-      data: users,
+      data: users.map(user => ({
+        ...user,
+        agentrixId: user.paymindId,
+      })),
       total,
       page,
       limit,
@@ -253,6 +256,74 @@ export class UserManagementService {
       newUsersToday,
       newUsersThisWeek,
       newUsersThisMonth,
+    };
+  }
+
+  /**
+   * 为用户添加角色
+   */
+  async addUserRole(userId: string, role: 'merchant' | 'agent') {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 检查角色是否已存在
+    if (user.roles && user.roles.includes(role as any)) {
+      return {
+        success: true,
+        message: '用户已拥有该角色',
+        user,
+      };
+    }
+
+    // 添加新角色
+    const updatedRoles = user.roles ? [...user.roles, role] : [role];
+    user.roles = updatedRoles as any;
+
+    await this.userRepository.save(user);
+
+    return {
+      success: true,
+      message: `已为用户添加${role === 'merchant' ? '商户' : 'Agent'}角色`,
+      user,
+    };
+  }
+
+  /**
+   * 移除用户角色
+   */
+  async removeUserRole(userId: string, role: 'merchant' | 'agent') {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 检查角色是否存在
+    if (!user.roles || !user.roles.includes(role as any)) {
+      return {
+        success: true,
+        message: '用户没有该角色',
+        user,
+      };
+    }
+
+    // 移除角色（保留user角色）
+    const updatedRoles = user.roles.filter((r: any) => r !== role);
+    // 确保至少保留user角色
+    if (updatedRoles.length === 0) {
+      updatedRoles.push('user' as any);
+    }
+    user.roles = updatedRoles as any;
+
+    await this.userRepository.save(user);
+
+    return {
+      success: true,
+      message: `已移除用户的${role === 'merchant' ? '商户' : 'Agent'}角色`,
+      user,
     };
   }
 }

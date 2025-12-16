@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useUser } from '../../../contexts/UserContext'
 import { useToast } from '../../../contexts/ToastContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 import { AvatarUpload } from '../../../components/user/AvatarUpload'
 import { SocialAccountBinding } from '../../../components/user/SocialAccountBinding'
 import { LoginModal } from '../../../components/auth/LoginModal'
@@ -10,9 +11,10 @@ import { walletApi, WalletConnection } from '../../../lib/api/wallet.api'
 import { userApi } from '../../../lib/api/user.api'
 
 export default function UserProfile() {
-  const { user, isAuthenticated, updateUser } = useUser()
+  const { user, isAuthenticated, updateUser, isLoading } = useUser()
   const router = useRouter()
   const toast = useToast()
+  const { t } = useLocalization()
   const [isEditing, setIsEditing] = useState(false)
   const [wallets, setWallets] = useState<WalletConnection[]>([])
   const [walletLoading, setWalletLoading] = useState(false)
@@ -23,10 +25,11 @@ export default function UserProfile() {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
+    if (isLoading) return
     if (!isAuthenticated || !user) {
       router.push('/')
     }
-  }, [isAuthenticated, user, router])
+  }, [isAuthenticated, user, router, isLoading])
 
   const loadWallets = useCallback(async () => {
     try {
@@ -35,7 +38,7 @@ export default function UserProfile() {
       setWallets(data)
     } catch (error: any) {
       console.error('加载钱包列表失败:', error)
-      toast.error(error.message || '加载钱包列表失败')
+      toast.error(error.message || t('profile.errors.loadWalletsFailed'))
     } finally {
       setWalletLoading(false)
     }
@@ -78,16 +81,16 @@ export default function UserProfile() {
         })
       }
       
-      toast.success('用户信息更新成功')
+      toast.success(t('profile.success.updateProfile'))
       setIsEditing(false)
     } catch (error: any) {
       console.error('更新用户信息失败:', error)
-      let errorMessage = error.message || '更新失败，请重试'
+      let errorMessage = error.message || t('profile.errors.updateFailed')
       
       if (error.message?.includes('已存在') || error.message?.includes('already exists')) {
-        errorMessage = '该邮箱已被其他账号使用'
+        errorMessage = t('profile.errors.emailExists')
       } else if (error.message?.includes('Conflict')) {
-        errorMessage = '该邮箱已被注册'
+        errorMessage = t('profile.errors.emailRegistered')
       }
       
       toast.error(errorMessage)
@@ -97,27 +100,27 @@ export default function UserProfile() {
   }
 
   const handleUnbindWallet = async (walletId: string) => {
-    if (!confirm('确定要解绑该钱包吗？')) {
+    if (!confirm(t('profile.confirm.unbindWallet'))) {
       return
     }
     try {
       await walletApi.remove(walletId)
-      toast.success('钱包已解绑')
+      toast.success(t('profile.success.walletUnbound'))
       await loadWallets()
     } catch (error: any) {
       console.error('解绑钱包失败:', error)
-      toast.error(error.message || '解绑失败，请稍后再试')
+      toast.error(error.message || t('profile.errors.unbindFailed'))
     }
   }
 
   const handleSetDefaultWallet = async (walletId: string) => {
     try {
       await walletApi.setDefault(walletId)
-      toast.success('已设置为默认钱包')
+      toast.success(t('profile.success.setDefaultWallet'))
       await loadWallets()
     } catch (error: any) {
       console.error('设置默认钱包失败:', error)
-      toast.error(error.message || '设置默认钱包失败')
+      toast.error(error.message || t('profile.errors.setDefaultFailed'))
     }
   }
 
@@ -144,6 +147,10 @@ export default function UserProfile() {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`
   }
 
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen">{t('common.loading')}</div>
+  }
+
   if (!isAuthenticated || !user) {
     return null
   }
@@ -162,20 +169,20 @@ export default function UserProfile() {
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">账户信息</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t('profile.title')}</h1>
             <button
               onClick={handleSave}
               disabled={isSaving}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSaving ? '保存中...' : isEditing ? '保存' : '编辑'}
+              {isSaving ? t('common.saving') : isEditing ? t('common.save') : t('common.edit')}
             </button>
           </div>
 
           {/* Avatar Upload */}
           <div className="mb-6 pb-6 border-b border-gray-200">
             <label className="block text-sm font-medium text-gray-700 mb-4">
-              头像
+              {t('profile.avatar.label')}
             </label>
             <AvatarUpload size="lg" />
           </div>
@@ -189,29 +196,29 @@ export default function UserProfile() {
               <div className="flex-1 bg-gray-50 px-4 py-3 rounded-lg">
                 <div className="font-mono text-sm text-gray-900">{user.agentrixId}</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  您的唯一身份标识，与所有登录方式绑定
+                  {t('profile.agentrixId.description')}
                 </div>
               </div>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(user.agentrixId)
-                  toast.success('Agentrix ID 已复制到剪贴板')
+                  toast.success(t('profile.agentrixId.copySuccess'))
                 }}
                 className="px-3 py-2 text-sm text-blue-600 hover:text-blue-700"
               >
-                复制
+                {t('common.copy')}
               </button>
             </div>
           </div>
 
           {/* 基本信息 */}
           <div className="mb-6 pb-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">基本信息</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('profile.basicInfo.title')}</h2>
             
             {/* Email */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                邮箱地址
+                {t('profile.basicInfo.email')}
               </label>
               {isEditing ? (
                 <input
@@ -219,12 +226,12 @@ export default function UserProfile() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                  placeholder="输入邮箱地址"
+                  placeholder={t('profile.basicInfo.emailPlaceholder')}
                 />
               ) : (
                 <div className="px-4 py-2 bg-gray-50 rounded-lg">
                   {user.email || (
-                    <span className="text-gray-400">未绑定邮箱</span>
+                    <span className="text-gray-400">{t('profile.basicInfo.emailNotBound')}</span>
                   )}
                 </div>
               )}
@@ -234,14 +241,14 @@ export default function UserProfile() {
             {isEditing && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  昵称
+                  {t('profile.basicInfo.nickname')}
                 </label>
                 <input
                   type="text"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                  placeholder="输入昵称"
+                  placeholder={t('profile.basicInfo.nicknamePlaceholder')}
                 />
               </div>
             )}
@@ -250,14 +257,14 @@ export default function UserProfile() {
             {isEditing && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  个人简介
+                  {t('profile.basicInfo.bio')}
                 </label>
                 <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   rows={3}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                  placeholder="输入个人简介"
+                  placeholder={t('profile.basicInfo.bioPlaceholder')}
                 />
               </div>
             )}
@@ -265,7 +272,7 @@ export default function UserProfile() {
             {/* 创建时间 */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                账户创建时间
+                {t('profile.basicInfo.createdAt')}
               </label>
               <div className="px-4 py-2 bg-gray-50 rounded-lg">
                 {new Date(user.createdAt).toLocaleString('zh-CN')}
@@ -276,12 +283,12 @@ export default function UserProfile() {
           {/* 绑定的钱包 */}
           <div className="mb-6 pb-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">绑定的钱包</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('profile.wallets.title')}</h2>
               <button
                 onClick={() => setShowWalletModal(true)}
                 className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                绑定新钱包
+                {t('profile.wallets.bindNew')}
               </button>
             </div>
             {walletLoading ? (
@@ -323,14 +330,14 @@ export default function UserProfile() {
                           {formatAddress(wallet.walletAddress)}
                         </div>
                         <div className="text-xs text-gray-400 mt-1">
-                          绑定时间：{new Date(wallet.connectedAt).toLocaleString('zh-CN')}
+                          {t('profile.wallets.boundTime')}{new Date(wallet.connectedAt).toLocaleString('zh-CN')}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
                       {wallet.isDefault && (
                         <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">
-                          默认
+                          {t('profile.wallets.default')}
                         </span>
                       )}
                       {!wallet.isDefault && (
@@ -338,14 +345,14 @@ export default function UserProfile() {
                           onClick={() => handleSetDefaultWallet(wallet.id)}
                           className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700"
                         >
-                          设为默认
+                          {t('profile.wallets.setDefault')}
                         </button>
                       )}
                       <button
                         onClick={() => handleUnbindWallet(wallet.id)}
                         className="px-3 py-1 text-sm text-red-600 hover:text-red-700"
                       >
-                        解绑
+                        {t('profile.wallets.unbind')}
                       </button>
                     </div>
                   </div>
@@ -353,12 +360,12 @@ export default function UserProfile() {
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
-                <p>暂未绑定钱包</p>
+                <p>{t('profile.wallets.empty')}</p>
                 <button
                   onClick={() => router.push('/app/user')}
                   className="mt-4 px-4 py-2 text-sm text-blue-600 hover:text-blue-700"
                 >
-                  去绑定钱包
+                  {t('profile.wallets.goToBind')}
                 </button>
               </div>
             )}
@@ -366,16 +373,16 @@ export default function UserProfile() {
 
           {/* 绑定的社交账号 */}
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">绑定的社交账号</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('profile.social.title')}</h2>
             <p className="text-sm text-gray-500 mb-4">
-              一个Agentrix ID，每种类型只能绑定一个账号
+              {t('profile.social.description')}
             </p>
             <SocialAccountBinding />
           </div>
 
           {/* KYC状态 */}
           <div className="mt-6 pt-6 border-t border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">KYC认证状态</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('profile.kyc.title')}</h2>
             <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
               <div className={`w-3 h-3 rounded-full ${
                 user.kycStatus === 'approved' ? 'bg-green-500' :
@@ -384,13 +391,13 @@ export default function UserProfile() {
               }`}></div>
               <div>
                 <div className="font-medium text-gray-900">
-                  {user.kycStatus === 'approved' ? '已认证' :
-                   user.kycStatus === 'pending' ? '认证中' :
-                   '未认证'}
+                  {user.kycStatus === 'approved' ? t('profile.kyc.status.verified') :
+                   user.kycStatus === 'pending' ? t('profile.kyc.status.verifying') :
+                   t('profile.kyc.status.notVerified')}
                 </div>
                 <div className="text-sm text-gray-500">
-                  认证级别: {user.kycLevel === 'verified' ? '已验证' :
-                            user.kycLevel === 'basic' ? '基础' : '无'}
+                  {t('profile.kyc.levelLabel')}{user.kycLevel === 'verified' ? t('profile.kyc.level.verified') :
+                            user.kycLevel === 'basic' ? t('profile.kyc.level.basic') : t('profile.kyc.level.none')}
                 </div>
               </div>
               <div className="ml-auto">
@@ -398,7 +405,7 @@ export default function UserProfile() {
                   onClick={() => router.push('/app/user/kyc')}
                   className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  {user.kycStatus === 'approved' ? '查看认证' : '开始认证'}
+                  {user.kycStatus === 'approved' ? t('profile.kyc.viewVerification') : t('profile.kyc.startVerification')}
                 </button>
               </div>
             </div>

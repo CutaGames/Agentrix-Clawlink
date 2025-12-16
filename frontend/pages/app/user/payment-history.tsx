@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 interface PaymentRecord {
   id: string
@@ -16,6 +17,7 @@ interface PaymentRecord {
 
 export default function PaymentHistory() {
   const router = useRouter()
+  const { t } = useLocalization()
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState({
@@ -108,54 +110,54 @@ export default function PaymentHistory() {
   return (
     <>
       <Head>
-        <title>支付历史 - Agentrix</title>
+        <title>{t('paymentHistory.pageTitle')}</title>
       </Head>
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-6xl mx-auto px-4">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">支付历史</h1>
-            <p className="text-gray-600">查看您的所有支付记录</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('paymentHistory.pageTitle')}</h1>
+            <p className="text-gray-600">{t('paymentHistory.pageDescription')}</p>
           </div>
 
           {/* 筛选器 */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
             <div className="grid md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">状态</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('paymentHistory.statusLabel')}</label>
                 <select
                   value={filter.status}
                   onChange={(e) => setFilter({ ...filter, status: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="all">全部</option>
-                  <option value="completed">已完成</option>
-                  <option value="processing">处理中</option>
-                  <option value="pending">待支付</option>
-                  <option value="failed">失败</option>
+                  <option value="all">{t('paymentHistory.allOption')}</option>
+                  <option value="completed">{t('paymentHistory.statusCompleted')}</option>
+                  <option value="processing">{t('paymentHistory.statusProcessing')}</option>
+                  <option value="pending">{t('paymentHistory.statusPending')}</option>
+                  <option value="failed">{t('paymentHistory.statusFailed')}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">支付方式</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('paymentHistory.methodLabel')}</label>
                 <select
                   value={filter.method}
                   onChange={(e) => setFilter({ ...filter, method: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="all">全部</option>
+                  <option value="all">{t('paymentHistory.allOption')}</option>
                   <option value="stripe">Stripe</option>
-                  <option value="wallet">钱包</option>
+                  <option value="wallet">{t('paymentHistory.methodWallet')}</option>
                   <option value="x402">X402协议</option>
-                  <option value="cross-border">跨境支付</option>
-                  <option value="agent">Agent代付</option>
+                  <option value="cross-border">{t('paymentHistory.methodCrossBorder')}</option>
+                  <option value="agent">{t('paymentHistory.methodAgent')}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">搜索</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('paymentHistory.searchLabel')}</label>
                 <input
                   type="text"
                   value={filter.search}
                   onChange={(e) => setFilter({ ...filter, search: e.target.value })}
-                  placeholder="搜索订单ID或描述..."
+                  placeholder={t('paymentHistory.searchPlaceholder')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -166,12 +168,12 @@ export default function PaymentHistory() {
           {loading ? (
             <div className="text-center py-12">
               <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-600">加载中...</p>
+              <p className="text-gray-600">{t('paymentHistory.loading')}</p>
             </div>
           ) : payments.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
               <div className="text-4xl mb-4">📭</div>
-              <p className="text-gray-600">暂无支付记录</p>
+              <p className="text-gray-600">{t('paymentHistory.noRecords')}</p>
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -179,12 +181,12 @@ export default function PaymentHistory() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">订单</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">金额</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">支付方式</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">时间</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('paymentHistory.orderHeader')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('paymentHistory.amountHeader')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('paymentHistory.methodHeader')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('paymentHistory.statusHeader')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('paymentHistory.timeHeader')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('paymentHistory.actionsHeader')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -209,10 +211,10 @@ export default function PaymentHistory() {
                         </td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(payment.status)}`}>
-                            {payment.status === 'completed' ? '已完成' :
-                             payment.status === 'processing' ? '处理中' :
-                             payment.status === 'pending' ? '待支付' :
-                             payment.status === 'failed' ? '失败' : '已取消'}
+                            {payment.status === 'completed' ? t('paymentHistory.statusCompleted') :
+                             payment.status === 'processing' ? t('paymentHistory.statusProcessing') :
+                             payment.status === 'pending' ? t('paymentHistory.statusPending') :
+                             payment.status === 'failed' ? t('paymentHistory.statusFailed') : t('paymentHistory.statusCancelled')}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">

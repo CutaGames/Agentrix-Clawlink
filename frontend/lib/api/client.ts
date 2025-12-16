@@ -130,12 +130,28 @@ class ApiClient {
         // 如果在浏览器环境，重定向到登录页
         if (typeof window !== 'undefined') {
           const currentPath = window.location.pathname;
-          // 避免重复重定向
-          if (!currentPath.includes('/auth/') && !currentPath.includes('/login')) {
-            window.location.href = `/auth/login?redirect=${encodeURIComponent(currentPath)}`;
+          // 如果是访问 admin 路由，跳到管理员专用登录页
+          if (currentPath.includes('/admin')) {
+            window.location.href = `/admin11091?redirect=${encodeURIComponent(currentPath)}`;
+          } else {
+            // 避免重复重定向
+            if (!currentPath.includes('/auth/') && !currentPath.includes('/login')) {
+              window.location.href = `/auth/login?redirect=${encodeURIComponent(currentPath)}`;
+            }
           }
         }
         throw new Error('未授权，请重新登录');
+      }
+
+      // 处理402需要支付错误 (X402 V2)
+      if (response.status === 402) {
+        const authHeader = response.headers.get('WWW-Authenticate');
+        // 触发全局事件或抛出特定错误供上层捕获
+        // 这里我们抛出一个带有元数据的错误
+        const error: any = new Error('Payment Required');
+        error.status = 402;
+        error.paymentParams = authHeader;
+        throw error;
       }
 
       // 处理403禁止访问错误

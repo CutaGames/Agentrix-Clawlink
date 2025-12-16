@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { userAgentApi, type Subscription } from '../../../lib/api/user-agent.api'
 import { useToast } from '../../../contexts/ToastContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function UserSubscriptions() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [loading, setLoading] = useState(true)
   const { showToast } = useToast()
+  const { t } = useLocalization()
 
   useEffect(() => {
     loadSubscriptions()
@@ -20,34 +22,34 @@ export default function UserSubscriptions() {
       setSubscriptions(data)
     } catch (error: any) {
       console.error('加载订阅失败:', error)
-      showToast('error', '加载订阅失败')
+      showToast('error', t('subscriptions.errors.loadFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   const cancelSubscription = async (id: string) => {
-    if (confirm('确定要取消这个订阅吗？')) {
+    if (confirm(t('subscriptions.confirm.cancel'))) {
       try {
         // TODO: 添加取消订阅API调用
         // await userAgentApi.cancelSubscription(id)
         setSubscriptions(subscriptions.map(s => 
           s.id === id ? { ...s, status: 'cancelled' } : s
         ))
-        showToast('success', '订阅已取消')
+        showToast('success', t('subscriptions.success.cancelled'))
       } catch (error: any) {
         console.error('取消订阅失败:', error)
-        showToast('error', '取消订阅失败')
+        showToast('error', t('subscriptions.errors.cancelFailed'))
       }
     }
   }
 
   const getIntervalLabel = (interval: string) => {
     const labels: Record<string, string> = {
-      daily: '每日',
-      weekly: '每周',
-      monthly: '每月',
-      yearly: '每年',
+      daily: t('subscriptions.intervals.daily'),
+      weekly: t('subscriptions.intervals.weekly'),
+      monthly: t('subscriptions.intervals.monthly'),
+      yearly: t('subscriptions.intervals.yearly'),
     }
     return labels[interval] || interval
   }
@@ -64,12 +66,12 @@ export default function UserSubscriptions() {
   return (
     <DashboardLayout userType="user">
       <Head>
-        <title>订阅管理 - 用户中心</title>
+        <title>{t('subscriptions.pageTitle')}</title>
       </Head>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">订阅管理</h1>
-          <p className="text-gray-600 mt-1">管理您的订阅服务</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('subscriptions.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('subscriptions.description')}</p>
         </div>
 
         {loading ? (
@@ -79,7 +81,7 @@ export default function UserSubscriptions() {
         ) : subscriptions.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <div className="text-4xl mb-4">🔄</div>
-            <p className="text-gray-600">还没有任何订阅</p>
+            <p className="text-gray-600">{t('subscriptions.empty')}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -90,25 +92,25 @@ export default function UserSubscriptions() {
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="text-lg font-semibold text-gray-900">{(subscription as any).name || subscription.id}</h3>
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(subscription.status)}`}>
-                        {subscription.status === 'active' ? '活跃' :
-                         subscription.status === 'paused' ? '已暂停' :
-                         subscription.status === 'cancelled' ? '已取消' : subscription.status}
+                        {subscription.status === 'active' ? t('subscriptions.status.active') :
+                         subscription.status === 'paused' ? t('subscriptions.status.paused') :
+                         subscription.status === 'cancelled' ? t('subscriptions.status.cancelled') : subscription.status}
                       </span>
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
                       <div>
-                        <span className="font-medium">价格:</span> {subscription.amount} {subscription.currency}/
+                        <span className="font-medium">{t('subscriptions.labels.price')}:</span> {subscription.amount} {subscription.currency}/
                         {getIntervalLabel(subscription.interval)}
                       </div>
                       {subscription.nextBillingDate && (
                         <div>
-                          <span className="font-medium">下次扣费:</span>{' '}
+                          <span className="font-medium">{t('subscriptions.labels.nextBilling')}:</span>{' '}
                           {new Date(subscription.nextBillingDate).toLocaleDateString('zh-CN')}
                         </div>
                       )}
                       {subscription.merchantId && (
                         <div>
-                          <span className="font-medium">商家ID:</span> {subscription.merchantId}
+                          <span className="font-medium">{t('subscriptions.labels.merchantId')}:</span> {subscription.merchantId}
                         </div>
                       )}
                     </div>
@@ -118,7 +120,7 @@ export default function UserSubscriptions() {
                       onClick={() => cancelSubscription(subscription.id)}
                       className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
                     >
-                      取消订阅
+                      {t('subscriptions.actions.cancel')}
                     </button>
                   )}
                 </div>

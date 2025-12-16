@@ -12,6 +12,7 @@ import { OrderModule } from '../../order/order.module';
 import { CartModule } from '../../cart/cart.module';
 import { LogisticsModule } from '../../logistics/logistics.module';
 import { PaymentModule } from '../../payment/payment.module';
+import { ApiKeyModule } from '../../api-key/api-key.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { PaymentModule } from '../../payment/payment.module';
     forwardRef(() => CartModule),
     forwardRef(() => LogisticsModule),
     forwardRef(() => PaymentModule),
+    forwardRef(() => ApiKeyModule),
   ],
   controllers: [OpenAIIntegrationController, MarketplaceGPTsController],
   providers: [OpenAIIntegrationService],

@@ -11,6 +11,7 @@ import { OrderModule } from '../../order/order.module';
 import { CartModule } from '../../cart/cart.module';
 import { LogisticsModule } from '../../logistics/logistics.module';
 import { PaymentModule } from '../../payment/payment.module';
+import { ModelRouterModule } from '../model-router/model-router.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PaymentModule } from '../../payment/payment.module';
     forwardRef(() => CartModule),
     forwardRef(() => LogisticsModule),
     forwardRef(() => PaymentModule),
+    ModelRouterModule,
   ],
   controllers: [GeminiIntegrationController],
   providers: [GeminiIntegrationService],

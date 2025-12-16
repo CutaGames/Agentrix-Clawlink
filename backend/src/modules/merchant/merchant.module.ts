@@ -10,6 +10,7 @@ import { MultiChainAccountService } from './multi-chain-account.service';
 import { ReconciliationService } from './reconciliation.service';
 import { SettlementRulesService } from './settlement-rules.service';
 import { MerchantController } from './merchant.controller';
+import { MerchantCustomerService } from './merchant-customer.service';
 import { NotificationModule } from '../notification/notification.module';
 import { LogisticsModule } from '../logistics/logistics.module';
 import { UserModule } from '../user/user.module';
@@ -42,6 +43,7 @@ import { MerchantProfileService } from './merchant-profile.service';
     ReconciliationService,
     SettlementRulesService,
     MerchantProfileService,
+    MerchantCustomerService,
   ],
   exports: [
     MerchantAutoOrderService,
@@ -54,6 +56,7 @@ import { MerchantProfileService } from './merchant-profile.service';
     ReconciliationService,
     SettlementRulesService,
     MerchantProfileService,
+    MerchantCustomerService,
   ],
 })
 export class MerchantModule {}

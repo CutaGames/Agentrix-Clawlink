@@ -5,10 +5,11 @@ interface UserContextType {
   user: User | null
   currentRole: UserRole
   isAuthenticated: boolean
+  isLoading: boolean
   login: (userData: Partial<User>) => void
   logout: () => void
   switchRole: (role: UserRole) => void
-  registerRole: (role: 'merchant' | 'agent') => Promise<void>
+  registerRole: (role: 'merchant' | 'agent', data?: any) => Promise<void>
   updateKYC: (kycLevel: KYCLevel, status: 'pending' | 'approved' | 'rejected') => void
   updateUser: (userData: Partial<User>) => void
 }
@@ -16,7 +17,7 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | null>(null)
 
 function generateAgentrixId(): string {
-  const prefix = 'PM'
+  const prefix = 'AX'
   const timestamp = Date.now().toString(36).toUpperCase()
   const random = Math.random().toString(36).substring(2, 8).toUpperCase()
   return `${prefix}-${timestamp}-${random}`
@@ -25,6 +26,7 @@ function generateAgentrixId(): string {
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [currentRole, setCurrentRole] = useState<UserRole>('user')
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const savedUser = localStorage.getItem('agentrix_user')
@@ -34,6 +36,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setUser(parsedUser)
       setCurrentRole(savedRole || parsedUser.role || 'user')
     }
+    setIsLoading(false)
   }, [])
 
   const login = (userData: Partial<User>) => {
@@ -101,22 +104,59 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const registerRole = async (role: 'merchant' | 'agent') => {
+  const registerRole = async (role: 'merchant' | 'agent', data?: any) => {
     if (!user) return
 
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    try {
+      // 调用后端API注册角色
+      const { apiClient } = await import('../lib/api/client')
+      const response = await apiClient.post<{
+        success: boolean;
+        message: string;
+        user: {
+          id: string;
+          paymindId: string;
+          roles: string[];
+          email?: string;
+          nickname?: string;
+        };
+      }>('/users/register-role', { role, ...data })
 
-    const updatedRoles = [...user.roles, role]
-    const updatedUser: User = {
-      ...user,
-      roles: updatedRoles
+      if (response?.success && response?.user) {
+        // 使用后端返回的用户数据更新本地状态
+        const updatedUser: User = {
+          ...user,
+          roles: response.user.roles as UserRole[],
+          email: response.user.email || user.email,
+        }
+        
+        setUser(updatedUser)
+        localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
+        
+        setCurrentRole(role)
+        localStorage.setItem('agentrix_current_role', role)
+      } else {
+        throw new Error('角色注册失败')
+      }
+    } catch (error: any) {
+      console.error('注册角色失败:', error)
+      
+      // 如果后端API失败，降级为本地更新（确保用户体验）
+      const updatedRoles = [...user.roles, role]
+      const updatedUser: User = {
+        ...user,
+        roles: updatedRoles
+      }
+
+      setUser(updatedUser)
+      localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
+
+      setCurrentRole(role)
+      localStorage.setItem('agentrix_current_role', role)
+      
+      // 不抛出错误，让用户继续使用
+      console.warn('后端注册失败，使用本地状态更新')
     }
-
-    setUser(updatedUser)
-    localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
-
-    setCurrentRole(role)
-    localStorage.setItem('agentrix_current_role', role)
   }
 
   const updateKYC = (kycLevel: KYCLevel, status: 'pending' | 'approved' | 'rejected') => {
@@ -150,6 +190,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         user,
         currentRole,
         isAuthenticated: !!user,
+        isLoading,
         login,
         logout,
         switchRole,

@@ -47,7 +47,7 @@ export interface PreflightResult {
 
 // ERC8004SessionManager ABI (简化版)
 const ERC8004_ABI = [
-  'function getSession(bytes32) view returns (tuple(address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive))',
+  'function sessions(bytes32) view returns (address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive)',
   'function getUserSessions(address) view returns (bytes32[])',
 ];
 
@@ -825,7 +825,7 @@ export class PreflightCheckService {
     }
 
     try {
-      const session = await this.sessionManagerContract.getSession(sessionId);
+      const session = await this.sessionManagerContract.sessions(sessionId);
       return {
         signer: session.signer,
         owner: session.owner,

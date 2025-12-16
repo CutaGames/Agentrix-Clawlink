@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 interface WishlistItem {
   id: string
@@ -14,6 +15,7 @@ interface WishlistItem {
 }
 
 export default function UserWishlist() {
+  const { t } = useLocalization()
   const [items, setItems] = useState<WishlistItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -56,18 +58,18 @@ export default function UserWishlist() {
   }
 
   const addToCart = (item: WishlistItem) => {
-    alert(`添加到购物车: ${item.name}`)
+    alert(`${t('wishlist.addedToCart')}${item.name}`)
   }
 
   return (
     <DashboardLayout userType="user">
       <Head>
-        <title>收藏与心愿单 - 用户中心</title>
+        <title>{t('wishlist.pageTitle')}</title>
       </Head>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">收藏与心愿单</h1>
-          <p className="text-gray-600 mt-1">管理您收藏的商品</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('wishlist.pageTitle')}</h1>
+          <p className="text-gray-600 mt-1">{t('wishlist.pageDescription')}</p>
         </div>
 
         {loading ? (
@@ -77,7 +79,7 @@ export default function UserWishlist() {
         ) : items.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <div className="text-4xl mb-4">❤️</div>
-            <p className="text-gray-600">心愿单是空的</p>
+            <p className="text-gray-600">{t('wishlist.empty')}</p>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -103,17 +105,17 @@ export default function UserWishlist() {
                       onClick={() => addToCart(item)}
                       className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                     >
-                      购买
+                      {t('wishlist.buyButton')}
                     </button>
                     <button
                       onClick={() => removeItem(item.id)}
                       className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                     >
-                      移除
+                      {t('wishlist.removeButton')}
                     </button>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    添加于 {new Date(item.addedAt).toLocaleDateString('zh-CN')}
+                    {t('wishlist.addedOn')} {new Date(item.addedAt).toLocaleDateString('zh-CN')}
                   </p>
                 </div>
               </div>

@@ -1,57 +1,29 @@
 import Head from 'next/head'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
-
-interface Customer {
-  id: string
-  name: string
-  email: string
-  totalSpent: number
-  orderCount: number
-  lastOrderDate: string
-  tags: string[]
-}
+import { merchantApi, MerchantCustomer } from '../../../lib/api/merchant.api'
 
 export default function MerchantCustomers() {
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<MerchantCustomer[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    loadCustomers()
-  }, [])
-
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     setLoading(true)
     try {
-      // 模拟数据
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setCustomers([
-        {
-          id: 'user_001',
-          name: '张三',
-          email: 'zhangsan@example.com',
-          totalSpent: 12500,
-          orderCount: 15,
-          lastOrderDate: '2025-01-15',
-          tags: ['VIP', '活跃'],
-        },
-        {
-          id: 'user_002',
-          name: '李四',
-          email: 'lisi@example.com',
-          totalSpent: 8500,
-          orderCount: 8,
-          lastOrderDate: '2025-01-10',
-          tags: ['普通'],
-        },
-      ])
+      const data = await merchantApi.getCustomers(search || undefined)
+      setCustomers(data)
     } catch (error) {
       console.error('加载客户列表失败:', error)
+      setCustomers([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [search])
+
+  useEffect(() => {
+    loadCustomers()
+  }, [loadCustomers])
 
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -105,11 +77,11 @@ export default function MerchantCustomers() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                      ¥{customer.totalSpent.toLocaleString()}
+                      ¥{(customer.totalSpent || 0).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{customer.orderCount}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{customer.orderCount || 0}</td>
                     <td className="px-6 py-4 text-sm text-gray-700">
-                      {new Date(customer.lastOrderDate).toLocaleDateString('zh-CN')}
+                      {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString('zh-CN') : '-'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex space-x-1">

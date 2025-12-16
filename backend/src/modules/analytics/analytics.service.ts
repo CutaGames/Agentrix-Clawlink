@@ -101,10 +101,10 @@ export class AnalyticsService {
 
       const settlementQB = this.settlementRepository
         .createQueryBuilder('settlement')
-        .where('settlement.payeeType = :payeeType', { payeeType: PayeeType.MERCHANT })
+        // .where('settlement.payeeType = :payeeType', { payeeType: PayeeType.MERCHANT })
 
       if (merchantId) {
-        settlementQB.andWhere('settlement.payeeId = :merchantId', { merchantId })
+        settlementQB.where('settlement.merchantId = :merchantId', { merchantId })
       }
 
       const settlements = await settlementQB.getMany()
@@ -112,11 +112,11 @@ export class AnalyticsService {
         .filter((item) =>
           [SettlementStatus.PENDING, SettlementStatus.PROCESSING].includes(item.status),
         )
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        .reduce((sum, item) => sum + Number(item.merchantAmount || 0), 0)
 
       const settledAmount = settlements
         .filter((item) => item.status === SettlementStatus.COMPLETED)
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        .reduce((sum, item) => sum + Number(item.merchantAmount || 0), 0)
 
       const totalRevenue = pendingSettlement + settledAmount
       const aiCommission = await this.estimateAiCommission(merchantId, totalRevenue)

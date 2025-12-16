@@ -129,27 +129,6 @@ export default function MerchantKYC() {
             </div>
           )}
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold text-blue-900 mb-2">统一身份桥层</h3>
-            <p className="text-blue-700 text-sm mb-4">
-              商家用户无需单独处理合规，通过Agentrix的统一身份认证即可获取合规凭证。
-            </p>
-            <div className="grid md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="font-semibold text-blue-900 mb-1">商户</p>
-                <p className="text-blue-700">无需处理合规</p>
-              </div>
-              <div>
-                <p className="font-semibold text-blue-900 mb-1">用户</p>
-                <p className="text-blue-700">仅需一次验证</p>
-              </div>
-              <div>
-                <p className="font-semibold text-blue-900 mb-1">Provider</p>
-                <p className="text-blue-700">获取合规凭证</p>
-              </div>
-            </div>
-          </div>
-
           <div className="space-y-4">
             {kycLevels.map((kyc) => (
               <div key={kyc.level} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -185,13 +164,6 @@ export default function MerchantKYC() {
                 </div>
               </div>
             ))}
-          </div>
-
-          <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-purple-900 mb-2">Tokenized KYC凭证</h3>
-            <p className="text-purple-700 text-sm">
-              通过Agentrix认证后，您将获得一个Tokenized KYC凭证，可以在所有支持的支付通道中使用，无需重复验证。
-            </p>
           </div>
         </div>
       </DashboardLayout>

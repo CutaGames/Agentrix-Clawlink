@@ -1,6 +1,7 @@
 import { ChatMessage } from './UnifiedAgentChat';
 import { SelectableCart, CartItem } from './SelectableCart';
 import { ProductDetailModal } from './ProductDetailModal';
+import { MultiAssetProductCard, MultiAssetProductList, MultiAssetProduct } from './MultiAssetProductCard';
 import { useState } from 'react';
 import { ShoppingCart, Eye } from 'lucide-react';
 import { cartApi } from '../../lib/api/cart.api';
@@ -657,107 +658,59 @@ export function StructuredResponseCard({
   // 商品展示
   // 商品搜索结果展示（无论type是什么，只要data.products存在就展示）
   if (data.products && Array.isArray(data.products) && data.products.length > 0) {
+    // 转换商品数据为MultiAssetProduct格式
+    const multiAssetProducts: MultiAssetProduct[] = data.products.map((product: any) => ({
+      id: product.id || '',
+      name: product.name || '',
+      description: product.description,
+      image: product.image,
+      price: product.price || 0,
+      currency: product.currency || 'CNY',
+      priceDisplay: product.priceDisplay,
+      // 资产类型检测：优先使用productType或metadata中的assetType
+      assetType: product.productType || product.metadata?.assetType || product.assetType || 'physical',
+      stock: product.stock,
+      inStock: product.inStock,
+      category: product.category,
+      merchantId: product.merchantId,
+      merchantName: product.merchantName,
+      // 区块链相关字段
+      tokenAddress: product.tokenAddress || product.metadata?.tokenAddress,
+      chainId: product.chainId || product.metadata?.chainId,
+      tokenId: product.tokenId || product.metadata?.tokenId,
+      // 服务类字段
+      duration: product.duration || product.metadata?.duration,
+      serviceType: product.serviceType || product.metadata?.serviceType,
+      // 评分和销量
+      rating: product.rating,
+      salesCount: product.salesCount || product.sold,
+      // 原始metadata
+      metadata: product.metadata,
+    }));
+
     return (
       <div className="mt-3 pt-3 border-t border-neutral-700/50">
-        <div className="space-y-3">
-          <div className="text-xs font-semibold text-blue-400 mb-2 flex items-center gap-2">
-            <span>🔍</span>
-            <span>找到 {data.total || data.products.length} 件商品</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto">
-            {data.products.slice(0, 5).map((product: any, idx: number) => (
-              <div key={product.id || idx} className="bg-neutral-900/50 rounded-lg p-3 text-sm border border-neutral-800 hover:border-blue-500/50 transition-colors relative" style={{ zIndex: 1 }}>
-                <div className="flex items-start justify-between gap-3">
-                  {/* 商品图片 */}
-                    <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-neutral-800">
-                    {product.image ? (
-                      <img 
-                        src={product.image} 
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // 图片加载失败时显示占位图
-                          (e.target as HTMLImageElement).src = '/images/product-placeholder.png';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">
-                        无图片
-                    </div>
-                  )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-white mb-1 truncate">{product.name}</div>
-                    {product.description && (
-                      <div className="text-neutral-400 text-xs mb-2 line-clamp-2">
-                        {product.description}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 text-xs flex-wrap">
-                      <span className="text-green-400 font-semibold">
-                        {product.priceDisplay || `${product.currency === 'CNY' ? '¥' : product.currency === 'USD' ? '$' : ''}${product.price?.toFixed(2)} ${product.currency || 'CNY'}`}
-                      </span>
-                      {product.inStock !== undefined ? (
-                        <span className={product.inStock ? 'text-green-400' : 'text-red-400'}>
-                          {product.inStock ? '✅ 有货' : '⚠️ 缺货'}
-                        </span>
-                      ) : product.stock !== undefined && (
-                        <span className={product.stock > 0 ? 'text-green-400' : 'text-red-400'}>
-                          {product.stock > 0 ? '✅ 有货' : '⚠️ 缺货'}
-                        </span>
-                      )}
-                      {product.category && (
-                        <span className="text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded">
-                          {product.category}
-                        </span>
-                      )}
-                    </div>
-                    {/* 操作按钮 */}
-                    <div className="flex items-center gap-2 mt-2 relative" style={{ zIndex: 10 }}>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('👁️ 点击查看详情按钮:', { productId: product.id, product });
-                          handleViewProduct(product);
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors cursor-pointer relative z-10"
-                        type="button"
-                      >
-                        <Eye size={14} />
-                        查看详情
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('🛒 点击加入购物车按钮:', { productId: product.id, product });
-                          if (product.id) {
-                            handleAddToCart(product.id, 1);
-                          } else {
-                            console.error('❌ 商品ID不存在:', product);
-                            alert('商品信息不完整，无法加入购物车');
-                          }
-                        }}
-                        disabled={isAddingToCart === product.id || (product.stock !== undefined && product.stock <= 0) || (product.inStock !== undefined && !product.inStock) || !product.id}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer relative z-10"
-                        type="button"
-                      >
-                        <ShoppingCart size={14} />
-                        {isAddingToCart === product.id ? '添加中...' : '加入购物车'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          {data.products.length > 5 && (
-            <div className="text-xs text-neutral-400 text-center">
-              还有 {data.products.length - 5} 件商品...
-            </div>
-          )}
-        </div>
+        <MultiAssetProductList
+          products={multiAssetProducts}
+          onAddToCart={(productId, quantity) => handleAddToCart(productId, quantity || 1)}
+          onViewProduct={(product) => handleViewProduct({
+            id: product.id,
+            name: product.name,
+            description: product.description,
+            image: product.image,
+            price: product.price,
+            currency: product.currency,
+            stock: product.stock,
+            category: product.category,
+            merchantId: product.merchantId,
+            metadata: product.metadata,
+          })}
+          isAddingToCart={isAddingToCart}
+          maxDisplay={5}
+          layout="list"
+          showTotal={true}
+          totalCount={data.total || data.products.length}
+        />
         {/* 商品详情弹窗 */}
         {selectedProduct && (
           <ProductDetailModal
