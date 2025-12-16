@@ -9,6 +9,7 @@ import {
   Request,
   BadRequestException,
   HttpCode,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -297,12 +298,6 @@ export class PaymentController {
     });
   }
 
-  @Get(':paymentId')
-  @ApiOperation({ summary: '查询支付状态' })
-  @ApiResponse({ status: 200, description: '返回支付信息' })
-  async getPayment(@Request() req, @Param('paymentId') paymentId: string) {
-    return this.paymentService.getPayment(req.user.id, paymentId);
-  }
 
   @Get('fiat-to-crypto/quotes')
   @ApiOperation({ summary: '获取法币转数字货币Provider报价' })
@@ -583,6 +578,13 @@ export class PaymentController {
       valid: validation.valid,
       ...validation.lock,
     };
+  }
+
+  @Get(':paymentId')
+  @ApiOperation({ summary: '查询支付状态' })
+  @ApiResponse({ status: 200, description: '返回支付信息' })
+  async getPayment(@Request() req, @Param('paymentId', ParseUUIDPipe) paymentId: string) {
+    return this.paymentService.getPayment(req.user.id, paymentId);
   }
 }
 

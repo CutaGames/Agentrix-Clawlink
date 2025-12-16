@@ -159,13 +159,13 @@ export function UserMenu() {
             </Link>
             <div className="border-t border-gray-200 my-1"></div>
             <Link
-              href="/app/register/merchant"
+              href={user.roles?.includes('merchant') ? "/app/merchant" : "/app/register/merchant"}
               onClick={() => setIsOpen(false)}
               className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
             >
               <div className="flex items-center space-x-2">
                 <span>🏪</span>
-                <span>注册成为商家</span>
+                <span>{user.roles?.includes('merchant') ? "商家后台" : "注册成为商家"}</span>
               </div>
             </Link>
             {/* 管理员入口已移除，避免在公网暴露管理员登录 */}

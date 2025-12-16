@@ -10,7 +10,7 @@ interface Web3ContextType {
   connect: (walletType: WalletType) => Promise<WalletInfo>
   disconnect: (walletId?: string) => Promise<void>
   setDefault: (walletId: string) => void
-  signMessage?: (message: string) => Promise<string>
+  signMessage?: (message: string, wallet?: WalletInfo) => Promise<string>
   connectors: Array<{
     id: WalletType
     name: string
@@ -208,12 +208,13 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     }
   }
 
-  const signMessage = async (message: string): Promise<string> => {
-    if (!defaultWallet) {
+  const signMessage = async (message: string, wallet?: WalletInfo): Promise<string> => {
+    const targetWallet = wallet || defaultWallet
+    if (!targetWallet) {
       throw new Error('No wallet connected')
     }
     try {
-      return await walletService.signMessage(defaultWallet, message)
+      return await walletService.signMessage(targetWallet, message)
     } catch (error: any) {
       console.error('签名失败:', error)
       throw error

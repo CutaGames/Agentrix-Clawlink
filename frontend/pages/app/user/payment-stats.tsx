@@ -1,5 +1,6 @@
 import Head from 'next/head'
 import { useEffect, useState } from 'react'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 interface PaymentStats {
   totalPayments: number
@@ -24,6 +25,7 @@ interface PaymentStats {
 export default function PaymentStats() {
   const [stats, setStats] = useState<PaymentStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const { t } = useLocalization()
 
   useEffect(() => {
     loadStats()
@@ -71,9 +73,9 @@ export default function PaymentStats() {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
     if (hours > 0) {
-      return `${hours}小时${minutes}分钟`
+      return `${hours}${t('paymentStats.hours')}${minutes}${t('paymentStats.minutes')}`
     }
-    return `${minutes}分钟`
+    return `${minutes}${t('paymentStats.minutes')}`
   }
 
   if (loading) {
@@ -81,7 +83,7 @@ export default function PaymentStats() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">加载中...</p>
+          <p className="text-gray-600">{t('paymentStats.loading')}</p>
         </div>
       </div>
     )
@@ -94,13 +96,13 @@ export default function PaymentStats() {
   return (
     <>
       <Head>
-        <title>支付统计 - Agentrix</title>
+        <title>{t('paymentStats.pageTitle')}</title>
       </Head>
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-6xl mx-auto px-4">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">支付统计</h1>
-            <p className="text-gray-600">查看您的支付数据和节省的成本</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{t('paymentStats.pageTitle')}</h1>
+            <p className="text-gray-600">{t('paymentStats.pageDescription')}</p>
           </div>
 
           {/* 总览卡片 */}
@@ -108,28 +110,28 @@ export default function PaymentStats() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="text-3xl mb-2">💰</div>
               <div className="text-2xl font-bold text-gray-900">¥{stats.totalAmount.toFixed(2)}</div>
-              <div className="text-sm text-gray-600 mt-1">总支付金额</div>
+              <div className="text-sm text-gray-600 mt-1">{t('paymentStats.totalAmount')}</div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="text-3xl mb-2">📊</div>
               <div className="text-2xl font-bold text-gray-900">{stats.totalPayments}</div>
-              <div className="text-sm text-gray-600 mt-1">总支付次数</div>
+              <div className="text-sm text-gray-600 mt-1">{t('paymentStats.totalPayments')}</div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="text-3xl mb-2">⚡</div>
               <div className="text-2xl font-bold text-green-600">¥{stats.totalSaved.gas.toFixed(2)}</div>
-              <div className="text-sm text-gray-600 mt-1">节省Gas费</div>
+              <div className="text-sm text-gray-600 mt-1">{t('paymentStats.savedGas')}</div>
             </div>
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="text-3xl mb-2">⏱️</div>
               <div className="text-2xl font-bold text-blue-600">{formatTime(stats.totalSaved.time)}</div>
-              <div className="text-sm text-gray-600 mt-1">节省时间</div>
+              <div className="text-sm text-gray-600 mt-1">{t('paymentStats.savedTime')}</div>
             </div>
           </div>
 
           {/* 按支付方式统计 */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">按支付方式统计</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">{t('paymentStats.byMethodTitle')}</h2>
             <div className="space-y-4">
               {stats.byMethod.map((item) => {
                 const methodIcons: Record<string, string> = {
@@ -139,9 +141,9 @@ export default function PaymentStats() {
                   stripe: '💳',
                 }
                 const methodNames: Record<string, string> = {
-                  x402: 'X402协议',
-                  'cross-border': '跨境支付',
-                  wallet: '钱包支付',
+                  x402: t('paymentStats.methodX402'),
+                  'cross-border': t('paymentStats.methodCrossBorder'),
+                  wallet: t('paymentStats.methodWallet'),
                   stripe: 'Stripe',
                 }
                 
@@ -151,7 +153,7 @@ export default function PaymentStats() {
                       <span className="text-2xl">{methodIcons[item.method] || '💳'}</span>
                       <div>
                         <div className="font-semibold text-gray-900">{methodNames[item.method] || item.method}</div>
-                        <div className="text-sm text-gray-600">{item.count} 笔交易</div>
+                        <div className="text-sm text-gray-600">{item.count} {t('paymentStats.transactions')}</div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -168,13 +170,13 @@ export default function PaymentStats() {
 
           {/* 最近活动 */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">最近活动</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">{t('paymentStats.recentActivity')}</h2>
             <div className="space-y-3">
               {stats.recentActivity.map((item, index) => (
                 <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                   <div>
                     <div className="font-semibold text-gray-900">{item.date}</div>
-                    <div className="text-sm text-gray-600">{item.count} 笔交易</div>
+                    <div className="text-sm text-gray-600">{item.count} {t('paymentStats.transactions')}</div>
                   </div>
                   <div className="text-lg font-bold text-gray-900">¥{item.amount.toFixed(2)}</div>
                 </div>

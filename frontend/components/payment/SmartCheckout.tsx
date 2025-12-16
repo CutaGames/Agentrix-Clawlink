@@ -38,6 +38,12 @@ interface SmartCheckoutProps {
     merchantId: string;
     to?: string;
     metadata?: Record<string, any>;
+    // X402 V2 Params
+    x402Params?: {
+        scheme: string;
+        network: string;
+        token?: string;
+    };
   };
   onSuccess?: (result: any) => void;
   onCancel?: () => void;
@@ -80,6 +86,8 @@ const ERC20_ABI = [
   'function transfer(address to, uint256 amount) external returns (bool)',
   'function decimals() external view returns (uint8)',
   'function balanceOf(address account) external view returns (uint256)',
+  'function allowance(address owner, address spender) external view returns (uint256)',
+  'function approve(address spender, uint256 amount) external returns (bool)',
 ];
 
 interface ProviderOption {
@@ -172,62 +180,75 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [exchangeRateLockId, setExchangeRateLockId] = useState<string | null>(null);
   const [isLoadingExchangeRate, setIsLoadingExchangeRate] = useState(false);
 
+  // Approval State
+  const [needsApproval, setNeedsApproval] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [checkingAllowance, setCheckingAllowance] = useState(false);
+
   // Initialize
   useEffect(() => {
     const initializePayment = async () => {
       try {
         setStatus('loading');
         
-        try {
-          const profile = await userApi.getProfile();
-          setUserProfile(profile);
-        } catch (error) {
-          console.warn('Failed to load user profile:', error);
+        const [profileResult, sessionResult, preflightResult] = await Promise.allSettled([
+            userApi.getProfile().catch((e: any): any => {
+                console.warn('Failed to load user profile:', e);
+                return null;
+            }),
+            isConnected ? loadActiveSession().catch((e: any): any => {
+                console.warn('Failed to load active session:', e);
+                return null;
+            }) : Promise.resolve(null),
+            paymentApi.preflightCheck({
+                amount: order.amount.toString(),
+                currency: order.currency || 'USDC',
+            }).catch((e: any): any => {
+                console.error('Pre-flight check failed:', e);
+                return { quickPayAvailable: false, providerOptions: [], recommendedRoute: 'provider' };
+            })
+        ]);
+
+        // Handle Profile
+        if (profileResult.status === 'fulfilled' && profileResult.value) {
+            setUserProfile(profileResult.value);
         }
-        
+
+        // Handle Session
         let session = null;
-        if (isConnected) {
-          try {
-            session = await loadActiveSession();
-            if (session) {
-              setCurrentSession(session);
-            }
-          } catch (error) {
-            console.warn('Failed to load active session:', error);
-          }
+        if (sessionResult.status === 'fulfilled' && sessionResult.value) {
+            session = sessionResult.value;
+            setCurrentSession(session);
         }
         
-        if (activeSession) {
+        if (activeSession && !session) {
           setCurrentSession(activeSession);
+          session = activeSession;
         }
 
-        try {
-          const result = await paymentApi.preflightCheck({
-            amount: order.amount.toString(),
-            currency: order.currency || 'USDC',
-          });
-          setPreflightResult(result);
+        // Handle Preflight
+        let result: PreflightResult = { quickPayAvailable: false, providerOptions: [], recommendedRoute: 'provider' };
+        if (preflightResult.status === 'fulfilled' && preflightResult.value) {
+            result = preflightResult.value as PreflightResult;
+            setPreflightResult(result);
+        }
           
-          // Default route logic
-          const finalSession = session || activeSession || currentSession;
-          const hasWallet = isConnected && defaultWallet;
-          const hasQuickPaySession = Boolean(finalSession);
-          const quickPayEligible = hasQuickPaySession && result.quickPayAvailable;
+        // Default route logic
+        const finalSession = session || activeSession || currentSession;
+        const hasWallet = isConnected && defaultWallet;
+        const hasQuickPaySession = Boolean(finalSession);
+        const quickPayEligible = hasQuickPaySession && result.quickPayAvailable;
 
-          if (quickPayEligible) {
+        if (quickPayEligible) {
             setRouteType('quickpay');
-          } else if (hasWallet) {
+        } else if (hasWallet) {
             setRouteType('wallet');
-          } else {
+        } else {
             // Default to provider if no wallet, but we will show split UI anyway
             setRouteType('provider');
-          }
-
-          setStatus('ready');
-        } catch (error: any) {
-          console.error('Pre-flight check failed:', error);
-          setStatus('ready');
         }
+
+        setStatus('ready');
       } catch (error: any) {
         console.error('Payment initialization failed:', error);
         setError(error.message || 'Failed to initialize payment');
@@ -248,7 +269,13 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
     if (!requiresCryptoSettlement) {
       setExchangeRate(null);
-      setCryptoAmount(null);
+      // If it's not fiat, we can directly use the order amount as crypto amount (assuming 1:1 for stablecoins or handled elsewhere)
+      // But wait, if currency is USDC/USDT, we should set cryptoAmount immediately.
+      if (['USDC', 'USDT'].includes(normalizedCurrency)) {
+          setCryptoAmount(order.amount);
+      } else {
+          setCryptoAmount(null);
+      }
       setExchangeRateLockId(null);
       setIsLoadingExchangeRate(false);
       return () => {
@@ -284,6 +311,13 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     };
   }, [merchantAllowsCrypto, isFiatOrderCurrency, normalizedCurrency, order.amount]);
 
+  // Check allowance when connected or amount changes
+  useEffect(() => {
+    if (isConnected && (cryptoAmount || order.amount)) {
+        checkAllowance();
+    }
+  }, [isConnected, cryptoAmount, order.amount, order.currency]);
+
   const getTokenMetadata = (symbol: string) => {
     const tokenSymbol = symbol?.toUpperCase();
     if (!tokenSymbol) throw new Error('未指定支付代币');
@@ -305,14 +339,105 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     return metadata;
   };
 
-  const handlePay = async () => {
+  const checkAllowance = async () => {
+    if (!isConnected || !defaultWallet) return;
+    
+    try {
+      setCheckingAllowance(true);
+      // Use a provider that can read state (doesn't strictly need signer if just reading, but we use browser provider)
+      const provider = new ethers.BrowserProvider((window as any).okxwallet || window.ethereum);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+      
+      // Get Commission Contract Address
+      const contractInfo = await paymentApi.getContractAddress();
+      const commissionAddress = contractInfo.commissionContractAddress;
+      
+      // Get Token Address
+      let tokenSymbol = order.currency || 'USDC';
+      if (isFiatOrderCurrency) tokenSymbol = 'USDT'; // Fiat converts to USDT
+      const { address: tokenAddress, decimals } = getTokenMetadata(tokenSymbol);
+      
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+      const allowance = await tokenContract.allowance(userAddress, commissionAddress);
+      
+      // Calculate required amount
+      const amount = cryptoAmount || order.amount;
+      const requiredAmount = ethers.parseUnits(amount.toFixed(decimals), decimals);
+      
+      if (allowance < requiredAmount) {
+        setNeedsApproval(true);
+      } else {
+        setNeedsApproval(false);
+      }
+    } catch (e) {
+      console.warn('Failed to check allowance:', e);
+    } finally {
+      setCheckingAllowance(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!isConnected || !defaultWallet) {
+        setShowWalletSelector(true);
+        return;
+    }
+    
+    try {
+      setIsApproving(true);
+      const provider = new ethers.BrowserProvider((window as any).okxwallet || window.ethereum);
+      const signer = await provider.getSigner();
+      
+      const contractInfo = await paymentApi.getContractAddress();
+      const commissionAddress = contractInfo.commissionContractAddress;
+      
+      let tokenSymbol = order.currency || 'USDC';
+      if (isFiatOrderCurrency) tokenSymbol = 'USDT';
+      const { address: tokenAddress, decimals } = getTokenMetadata(tokenSymbol);
+      
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+      
+      // 使用合理的授权额度，而不是无限授权
+      // 如果有 Session，使用 Session 的每日限额 * 3
+      // 否则使用当前支付金额 * 10（支持多次支付）
+      const session = currentSession || activeSession;
+      let approvalAmount: bigint;
+      
+      if (session) {
+        // Session 限额已经是 6 decimals，需要转换为 token decimals
+        const dailyLimitHuman = session.dailyLimit / 1e6;
+        const approvalHumanAmount = dailyLimitHuman * 3;
+        approvalAmount = ethers.parseUnits(approvalHumanAmount.toFixed(6), decimals);
+        console.log(`授权额度基于 Session 限额：${approvalHumanAmount} ${tokenSymbol}`);
+      } else {
+        // 没有 Session，使用当前支付金额 * 10
+        const amount = cryptoAmount || order.amount;
+        const approvalHumanAmount = amount * 10;
+        approvalAmount = ethers.parseUnits(approvalHumanAmount.toFixed(6), decimals);
+        console.log(`授权额度基于支付金额：${approvalHumanAmount} ${tokenSymbol}`);
+      }
+      
+      const tx = await tokenContract.approve(commissionAddress, approvalAmount);
+      await tx.wait();
+      
+      setNeedsApproval(false);
+    } catch (e: any) {
+      console.error('Approval failed:', e);
+      setError(e.message || 'Approval failed');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handlePay = async (overrideRouteType?: 'quickpay' | 'wallet') => {
+    const effectiveRouteType = overrideRouteType || routeType;
     if (status === 'processing') return;
     setError(null);
     try {
       setStatus('processing');
-      if (routeType === 'quickpay') {
+      if (effectiveRouteType === 'quickpay') {
         await handleQuickPay();
-      } else if (routeType === 'wallet') {
+      } else if (effectiveRouteType === 'wallet') {
         await handleWalletPay();
       }
     } catch (error: any) {
@@ -365,31 +490,46 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     const paymentAmountInSmallestUnit = ethers.parseUnits(paymentAmount.toFixed(tokenDecimals), tokenDecimals);
 
     // Signature logic
+    // ⚠️ CRITICAL: ERC8004SessionManager uses 6 decimals internally for all amounts
+    // The contract converts from 6 decimals to token decimals during transfer
+    // So we MUST sign with 6 decimals, not token decimals
     const contractDecimals = 6;
     let amountForSignature: bigint;
-    const pow10 = (exp: number) => {
-      let v = BigInt(1);
-      for (let i = 0; i < exp; i++) v = v * BigInt(10);
-      return v;
-    };
-
+    
     if (tokenDecimals > contractDecimals) {
-      const diff = tokenDecimals - contractDecimals;
-      amountForSignature = paymentAmountInSmallestUnit / pow10(diff);
+        // Convert from higher decimals to 6 decimals (e.g., 18 -> 6)
+        // Use Math.pow for compatibility, then convert to BigInt
+        const decimalDiff = tokenDecimals - contractDecimals;
+        const divisor = BigInt(Math.pow(10, decimalDiff));
+        amountForSignature = BigInt(paymentAmountInSmallestUnit.toString()) / divisor;
+        console.log(`Signature amount converted from ${tokenDecimals} to ${contractDecimals} decimals:`, 
+                    paymentAmountInSmallestUnit.toString(), '->', amountForSignature.toString());
     } else if (tokenDecimals < contractDecimals) {
-      const diff = contractDecimals - tokenDecimals;
-      amountForSignature = paymentAmountInSmallestUnit * pow10(diff);
+        // Convert from lower decimals to 6 decimals (unlikely but handle it)
+        const decimalDiff = contractDecimals - tokenDecimals;
+        const multiplier = BigInt(Math.pow(10, decimalDiff));
+        amountForSignature = BigInt(paymentAmountInSmallestUnit.toString()) * multiplier;
     } else {
-      amountForSignature = paymentAmountInSmallestUnit;
+        amountForSignature = BigInt(paymentAmountInSmallestUnit.toString());
     }
 
     const chainId = 97; 
     const orderIdBytes32 = ethers.keccak256(ethers.toUtf8Bytes(order.id)) as `0x${string}`;
     
-    let recipientAddress = order.to;
-    if (!recipientAddress) {
+    // ⚠️ CRITICAL: Always prefer Commission Contract Address for QuickPay to ensure fee splitting
+    // Only fallback to order.to (Merchant) if Commission Contract is not available
+    let recipientAddress: string;
+    try {
         const contractInfo = await paymentApi.getContractAddress();
         recipientAddress = contractInfo.commissionContractAddress;
+        console.log('Using Commission Contract for signature:', recipientAddress);
+    } catch (e) {
+        console.warn('Failed to get commission contract address, falling back to order.to', e);
+        recipientAddress = order.to;
+    }
+
+    if (!recipientAddress) {
+        recipientAddress = order.to;
     }
 
     const sessionIdBytes32 = session.sessionId as `0x${string}`;
@@ -415,6 +555,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           tokenDecimals,
           amountInSmallestUnit: paymentAmountInSmallestUnit.toString(),
           orderId: order.id,
+          from: session.owner || userProfile?.walletAddress, // Pass payer address for quickPaySplitFrom
+          walletAddress: session.owner || userProfile?.walletAddress, // Add walletAddress as fallback
           ...(isFiatCurrency && exchangeRate && {
             exchangeRateLockId: lockId,
             originalAmount: order.amount,
@@ -584,36 +726,49 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             {/* QuickPay Card */}
             <div 
                 onClick={() => {
-                    if (isQuickPayDisabled) {
-                        if (!session) setShowSessionManager(true);
+                    if (!session) {
+                        setShowSessionManager(true);
                         return;
                     }
+                    if (isQuickPayDisabled) {
+                        return;
+                    }
+                    
+                    if (needsApproval) {
+                        handleApprove();
+                        return;
+                    }
+
                     setRouteType('quickpay');
-                    handlePay();
+                    handlePay('quickpay');
                 }}
                 className={`relative group cursor-pointer rounded-xl border p-4 transition-all ${
-                    routeType === 'quickpay' && !isQuickPayDisabled
+                    routeType === 'quickpay' && !isQuickPayDisabled && !needsApproval
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200' 
-                    : isQuickPayDisabled
+                    : isQuickPayDisabled && session
                         ? 'bg-slate-50 border-slate-100 opacity-70 cursor-not-allowed'
-                        : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
+                        : needsApproval 
+                            ? 'bg-amber-50 border-amber-200 hover:border-amber-300'
+                            : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'
                 }`}
             >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg ${
-                            routeType === 'quickpay' && !isQuickPayDisabled ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-600'
-                        } ${isQuickPayDisabled ? 'grayscale' : ''}`}>
-                            <Zap size={20} />
+                            routeType === 'quickpay' && !isQuickPayDisabled && !needsApproval ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-600'
+                        } ${isQuickPayDisabled && session ? 'grayscale' : ''}`}>
+                            {isApproving ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} />}
                         </div>
                         <div>
-                            <div className={`font-bold ${routeType === 'quickpay' && !isQuickPayDisabled ? 'text-white' : 'text-slate-900'} ${isQuickPayDisabled ? 'text-slate-400' : ''}`}>
-                                QuickPay
+                            <div className={`font-bold ${routeType === 'quickpay' && !isQuickPayDisabled && !needsApproval ? 'text-white' : 'text-slate-900'} ${isQuickPayDisabled && session ? 'text-slate-400' : ''}`}>
+                                {needsApproval ? (isApproving ? 'Approving...' : 'Approve Token') : 'QuickPay'}
                             </div>
-                            <div className={`text-xs ${routeType === 'quickpay' && !isQuickPayDisabled ? 'text-indigo-100' : 'text-slate-500'}`}>
-                                {session 
-                                    ? (exceedsLimit ? 'Exceeds session limit' : 'One-click, Gasless') 
-                                    : 'Enable for instant payment'}
+                            <div className={`text-xs ${routeType === 'quickpay' && !isQuickPayDisabled && !needsApproval ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                {needsApproval 
+                                    ? 'One-time approval required'
+                                    : (session 
+                                        ? (exceedsLimit ? 'Exceeds session limit' : 'One-click, Gasless') 
+                                        : 'Enable for instant payment')}
                             </div>
                         </div>
                     </div>
@@ -622,7 +777,9 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
                             {cryptoAmount ? `≈ ${cryptoAmount.toFixed(2)} USDT` : 'Loading...'}
                         </div>
                     ) : (
-                        <ChevronRight size={16} className="text-slate-400" />
+                        <div className="flex items-center text-indigo-600 text-xs font-bold bg-indigo-50 px-2 py-1 rounded-full">
+                            SETUP <ChevronRight size={12} className="ml-1" />
+                        </div>
                     )}
                 </div>
             </div>
@@ -827,7 +984,9 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
               <div className="text-center">
                   <Loader2 className="animate-spin text-indigo-600 mx-auto mb-4" size={40} />
                   <div className="font-bold text-slate-900">Processing Payment...</div>
-                  <div className="text-sm text-slate-500">Please confirm in your wallet</div>
+                  <div className="text-sm text-slate-500">
+                      {routeType === 'quickpay' ? 'Executing gasless transaction...' : 'Please confirm in your wallet'}
+                  </div>
               </div>
           </div>
       )}

@@ -104,11 +104,11 @@ export class SmartRouterService {
     // X402协议通道（优先）
     this.channels.set(PaymentMethod.X402, {
       method: PaymentMethod.X402,
-      priority: 80, // 高优先级
-      minAmount: 0.001,
+      priority: 90, // 最高优先级 (ARN Protocol)
+      minAmount: 0.0001,
       maxAmount: 1000000,
-      cost: 0.0006, // 比标准链上支付低40%
-      speed: 8,
+      cost: 0.003, // 0.3% Protocol Fee
+      speed: 9,
       available: true,
       kycRequired: false,
       crossBorder: true,
@@ -475,6 +475,33 @@ export class SmartRouterService {
     if (channel) {
       channel.available = available;
     }
+  }
+
+  /**
+   * V2: Resolve Dynamic Recipient based on Strategy
+   * @param strategy 'commission' | 'dao' | 'split'
+   * @param context Context data (merchantId, etc.)
+   */
+  resolveRecipient(strategy: string, context: any): string {
+      // 默认回退到商户地址
+      const defaultRecipient = context.merchantWallet || '0x0000000000000000000000000000000000000000';
+
+      switch (strategy) {
+          case 'commission':
+              // 返回分佣合约地址
+              return this.configService.get<string>('COMMISSION_CONTRACT_ADDRESS') || defaultRecipient;
+          
+          case 'dao':
+              // 返回 DAO 金库地址
+              return this.configService.get<string>('DAO_TREASURY_ADDRESS') || defaultRecipient;
+          
+          case 'vesting':
+              // 返回线性释放合约
+              return this.configService.get<string>('VESTING_CONTRACT_ADDRESS') || defaultRecipient;
+
+          default:
+              return defaultRecipient;
+      }
   }
 }
 

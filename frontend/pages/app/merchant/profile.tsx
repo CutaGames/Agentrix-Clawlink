@@ -3,9 +3,11 @@ import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useState, useEffect } from 'react'
 import { useUser } from '../../../contexts/UserContext'
 import { merchantApi, type MerchantProfile } from '../../../lib/api/user.api'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function MerchantProfilePage() {
   const { user } = useUser()
+  const { t } = useLocalization()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,11 +128,11 @@ export default function MerchantProfilePage() {
   return (
     <>
       <Head>
-        <title>商户信息 - Agentrix</title>
+        <title>{t('merchantProfile.pageTitle')} - Agentrix</title>
       </Head>
       <DashboardLayout userType="merchant">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">商户信息管理</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">{t('merchantProfile.pageTitle')}</h1>
 
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
@@ -140,14 +142,14 @@ export default function MerchantProfilePage() {
 
           {success && (
             <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
-              商户信息已保存
+              {t('merchantProfile.saveSuccess')}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* 基本信息 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">基本信息</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('merchantProfile.sections.basicInfo')}</h2>
               
               <div className="space-y-4">
                 <div>
@@ -197,7 +199,7 @@ export default function MerchantProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    邮箱
+                    {t('merchantProfile.fields.email')}
                   </label>
                   <input
                     type="email"
@@ -212,7 +214,7 @@ export default function MerchantProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    电话
+                    {t('merchantProfile.fields.phone')}
                   </label>
                   <input
                     type="tel"
@@ -227,7 +229,7 @@ export default function MerchantProfilePage() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    地址
+                    {t('merchantProfile.fields.address')}
                   </label>
                   <input
                     type="text"
@@ -242,7 +244,7 @@ export default function MerchantProfilePage() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    网站
+                    {t('merchantProfile.fields.website')}
                   </label>
                   <input
                     type="url"
@@ -260,12 +262,12 @@ export default function MerchantProfilePage() {
 
             {/* 企业信息 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">企业信息</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('merchantProfile.sections.businessInfo')}</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    注册日期
+                    {t('merchantProfile.fields.registrationDate')}
                   </label>
                   <input
                     type="date"
@@ -280,7 +282,7 @@ export default function MerchantProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    注册国家
+                    {t('merchantProfile.fields.registrationCountry')}
                   </label>
                   <input
                     type="text"
@@ -295,7 +297,7 @@ export default function MerchantProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    税务登记号
+                    {t('merchantProfile.fields.taxId')}
                   </label>
                   <input
                     type="text"
@@ -310,7 +312,7 @@ export default function MerchantProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    行业
+                    {t('merchantProfile.fields.industry')}
                   </label>
                   <input
                     type="text"
@@ -327,7 +329,7 @@ export default function MerchantProfilePage() {
 
             {/* 文档上传 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">相关文档</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('merchantProfile.sections.documents')}</h2>
               
               <div className="space-y-4">
                 {profile.documents && profile.documents.length > 0 && (
@@ -337,7 +339,7 @@ export default function MerchantProfilePage() {
                         <div className="flex items-center space-x-3">
                           <span className="text-sm text-gray-600">{doc.type}</span>
                           <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
-                            查看文档
+                            {t('merchantProfile.viewDocument')}
                           </a>
                         </div>
                         <button
@@ -392,14 +394,14 @@ export default function MerchantProfilePage() {
                 onClick={loadProfile}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={saving}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {saving ? '保存中...' : '保存'}
+                {saving ? t('merchantProfile.saving') : t('merchantProfile.save')}
               </button>
             </div>
           </form>

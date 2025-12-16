@@ -20,6 +20,7 @@ import { ViewMode } from '../types/agent';
 import { SmartCheckout } from '../components/payment/SmartCheckout';
 import { PaymentSuccessModal } from '../components/agent/PaymentSuccessModal';
 import { useRouter } from 'next/router';
+import { useLocalization } from '../contexts/LocalizationContext';
 
 /**
  * Agentrix Agent V3.0 增强版页面
@@ -30,6 +31,7 @@ export default function AgentEnhancedPage() {
   const { startPayment, currentPayment, cancelPayment } = usePayment();
   const { user } = useUser();
   const { mode: agentModeContext, setMode: setAgentModeContext } = useAgentMode();
+  const { t } = useLocalization();
   const [viewMode, setViewMode] = useState<ViewMode>('chat');
   const [selectedProduct, setSelectedProduct] = useState<ProductInfo | null>(null);
   const [codePrompt, setCodePrompt] = useState<string>('');
@@ -231,10 +233,10 @@ export default function AgentEnhancedPage() {
   return (
     <>
       <Head>
-        <title>Agentrix Agent - AI商业智能体工作台</title>
+        <title>{t({ zh: 'AX Agent - AI商业智能体工作台', en: 'AX Agent - AI Business Intelligence Workspace' })}</title>
         <meta
           name="description"
-          content="Agentrix Agent - AI驱动的智能商业与支付助手，支持搜索、比价、下单、支付全链路自动化"
+          content={t({ zh: 'AX Agent - AI驱动的智能商业与支付助手，支持搜索、比价、下单、支付全链路自动化', en: 'AX Agent - AI-powered intelligent business and payment assistant, supporting search, price comparison, ordering, and full payment automation' })}
         />
       </Head>
 

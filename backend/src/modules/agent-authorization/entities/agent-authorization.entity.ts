@@ -32,7 +32,7 @@ export class AgentAuthorization {
   walletAddress: string; // 钱包地址
 
   @Column({ type: 'varchar', length: 50 })
-  authorizationType: 'erc8004' | 'mpc' | 'api_key'; // 授权类型
+  authorizationType: 'erc8004' | 'mpc' | 'api_key' | 'session_key'; // 授权类型
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   sessionId?: string; // ERC8004 Session ID（如果使用ERC8004）

@@ -44,7 +44,7 @@ export function ShoppingCart({ items, onUpdateQuantity, onRemoveItem, onCheckout
       currency: 'CNY',
       description: `购买 ${items.length} 件商品${selectedCoupon ? ` (使用优惠券: ${selectedCoupon.code})` : ''}`,
       merchant: items[0]?.product.merchantId || 'Agentrix Marketplace',
-      agent: 'Agentrix Agent',
+      agent: 'AX Agent',
       metadata: {
         items: items.map(item => ({
           productId: item.product.id,

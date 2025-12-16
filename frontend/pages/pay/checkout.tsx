@@ -6,6 +6,7 @@ import { productApi, ProductInfo } from '../../lib/api/product.api'
 import { orderApi } from '../../lib/api/order.api'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
+import { useLocalization } from '../../contexts/LocalizationContext'
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -15,6 +16,7 @@ export default function CheckoutPage() {
   const [showCheckout, setShowCheckout] = useState(false)
   const [order, setOrder] = useState<any>(null)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const { t } = useLocalization()
 
   useEffect(() => {
     if (productId && typeof productId === 'string') {
@@ -30,9 +32,9 @@ export default function CheckoutPage() {
       const data = await productApi.getProduct(id)
       setProduct(data)
       setLoading(false)
-      // 不自动创建订单，让用户点击按钮后再创建
+      // Don't auto-create order, let user click button first
     } catch (error) {
-      console.error('加载商品失败:', error)
+      console.error('Failed to load product:', error)
       setLoading(false)
     }
   }
@@ -130,7 +132,7 @@ export default function CheckoutPage() {
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           <div className="text-center">
             <div className="text-4xl mb-4 animate-spin">⏳</div>
-            <p>加载中...</p>
+            <p>{t({ zh: '加载中...', en: 'Loading...' })}</p>
           </div>
         </div>
         <Footer />
@@ -145,12 +147,12 @@ export default function CheckoutPage() {
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           <div className="text-center">
             <div className="text-4xl mb-4">❌</div>
-            <p className="text-xl mb-2">商品不存在</p>
+            <p className="text-xl mb-2">{t({ zh: '商品不存在', en: 'Product not found' })}</p>
             <button
               onClick={() => router.push('/marketplace')}
               className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              返回 Marketplace
+              {t({ zh: '返回 Marketplace', en: 'Back to Marketplace' })}
             </button>
           </div>
         </div>
@@ -162,8 +164,8 @@ export default function CheckoutPage() {
   return (
     <>
       <Head>
-        <title>支付 - {product.name} | Agentrix</title>
-        <meta name="description" content={`支付 ${product.name}`} />
+        <title>{t({ zh: '支付', en: 'Checkout' })} - {product.name} | Agentrix</title>
+        <meta name="description" content={`${t({ zh: '支付', en: 'Pay for' })} ${product.name}`} />
       </Head>
 
       <Navigation onLoginClick={handleLoginClick} />
@@ -201,7 +203,7 @@ export default function CheckoutPage() {
                       )}
                     </div>
                     <div className="text-right">
-                      <div className="text-sm text-slate-400 mb-1">库存</div>
+                      <div className="text-sm text-slate-400 mb-1">{t({ zh: '库存', en: 'Stock' })}</div>
                       <div className="text-lg font-semibold">{product.stock}</div>
                     </div>
                   </div>
@@ -223,7 +225,7 @@ export default function CheckoutPage() {
               <>
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-6">
                   <p className="text-sm text-blue-300 mb-4">
-                    💡 点击下方按钮开始支付，系统将自动选择最优支付方式
+                    💡 {t({ zh: '点击下方按钮开始支付，系统将自动选择最优支付方式', en: 'Click the button below to start payment, system will auto-select optimal payment method' })}
                   </p>
                   <button
                     onClick={handleStartPayment}
@@ -233,13 +235,13 @@ export default function CheckoutPage() {
                     {loading ? (
                       <>
                         <span className="animate-spin">⏳</span>
-                        <span>加载中...</span>
+                        <span>{t({ zh: '加载中...', en: 'Loading...' })}</span>
                       </>
                     ) : (
                       <>
                         <span>💳</span>
                         <span>
-                          立即支付 {product.metadata?.currency === 'USDT' ? '$' : '¥'}
+                          {t({ zh: '立即支付', en: 'Pay Now' })} {product.metadata?.currency === 'USDT' ? '$' : '¥'}
                           {product.price} {product.metadata?.currency || 'CNY'}
                         </span>
                       </>

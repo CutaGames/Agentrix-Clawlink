@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  OneToOne,
 } from 'typeorm';
 import { SocialAccount } from './social-account.entity';
 
@@ -29,7 +30,8 @@ export class User {
   paymindId: string;
 
   @Column({
-    type: 'varchar',
+    type: 'enum',
+    enum: UserRole,
     array: true,
     default: [UserRole.USER],
   })
@@ -85,5 +87,8 @@ export class User {
 
   @OneToMany(() => SocialAccount, (account) => account.user)
   socialAccounts: SocialAccount[];
+
+  @OneToOne('MerchantProfile', 'user')
+  merchantProfile: any; // Use any to avoid circular dependency import issues or import it properly
 }
 

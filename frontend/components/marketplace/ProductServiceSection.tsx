@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { productApi, ProductInfo } from '../../lib/api/product.api'
 import { useCart } from '../../contexts/CartContext'
+import { useLocalization } from '../../contexts/LocalizationContext'
 
 interface Product {
   id: string
-  name: string
-  description: string
+  name: { zh: string; en: string }
+  description: { zh: string; en: string }
   price: number
   currency: string
   category: 'electronics' | 'clothing' | 'books' | 'home' | 'food' | 'other'
-  merchant: string
+  merchant: { zh: string; en: string }
   image?: string
   rating?: number
   stock?: number
@@ -18,12 +19,12 @@ interface Product {
 
 interface Service {
   id: string
-  name: string
-  description: string
+  name: { zh: string; en: string }
+  description: { zh: string; en: string }
   price: number
   currency: string
   category: 'consultation' | 'subscription' | 'technical' | 'design' | 'marketing' | 'other'
-  merchant: string
+  merchant: { zh: string; en: string }
   duration?: string
   rating?: number
 }
@@ -31,56 +32,56 @@ interface Service {
 const mockProducts: Product[] = [
   {
     id: 'prod-1',
-    name: '联想 Yoga 14s 笔记本电脑',
-    description: '14英寸 2.8K高分辨率屏幕，AMD Ryzen 7处理器，16GB内存，512GB SSD',
+    name: { zh: '联想 Yoga 14s 笔记本电脑', en: 'Lenovo Yoga 14s Laptop' },
+    description: { zh: '14英寸 2.8K高分辨率屏幕，AMD Ryzen 7处理器，16GB内存，512GB SSD', en: '14-inch 2.8K high-resolution screen, AMD Ryzen 7 processor, 16GB RAM, 512GB SSD' },
     price: 5999,
     currency: 'CNY',
     category: 'electronics',
-    merchant: '联想官方旗舰店',
+    merchant: { zh: '联想官方旗舰店', en: 'Lenovo Official Store' },
     rating: 4.8,
     stock: 15,
   },
   {
     id: 'prod-2',
-    name: 'Apple AirPods Pro 2',
-    description: '主动降噪，空间音频，MagSafe充电盒',
+    name: { zh: 'Apple AirPods Pro 2', en: 'Apple AirPods Pro 2' },
+    description: { zh: '主动降噪，空间音频，MagSafe充电盒', en: 'Active noise cancellation, spatial audio, MagSafe charging case' },
     price: 1899,
     currency: 'CNY',
     category: 'electronics',
-    merchant: 'Apple官方',
+    merchant: { zh: 'Apple官方', en: 'Apple Official' },
     rating: 4.9,
     stock: 50,
   },
   {
     id: 'prod-3',
-    name: 'Kindle Paperwhite 电子书阅读器',
-    description: '6.8英寸屏幕，32GB存储，防水设计',
+    name: { zh: 'Kindle Paperwhite 电子书阅读器', en: 'Kindle Paperwhite E-reader' },
+    description: { zh: '6.8英寸屏幕，32GB存储，防水设计', en: '6.8-inch screen, 32GB storage, waterproof design' },
     price: 899,
     currency: 'CNY',
     category: 'electronics',
-    merchant: '亚马逊官方',
+    merchant: { zh: '亚马逊官方', en: 'Amazon Official' },
     rating: 4.7,
     stock: 30,
   },
   {
     id: 'prod-4',
-    name: 'Nike Air Max 270 运动鞋',
-    description: '经典气垫设计，舒适透气',
+    name: { zh: 'Nike Air Max 270 运动鞋', en: 'Nike Air Max 270 Sneakers' },
+    description: { zh: '经典气垫设计，舒适透气', en: 'Classic air cushion design, comfortable and breathable' },
     price: 799,
     currency: 'CNY',
     category: 'clothing',
-    merchant: 'Nike官方',
+    merchant: { zh: 'Nike官方', en: 'Nike Official' },
     rating: 4.6,
     stock: 25,
   },
   {
     id: 'prod-5',
-    name: '《AI商业应用指南》',
-    description: '全面介绍AI在商业领域的应用案例和实践方法',
+    name: { zh: '《AI商业应用指南》', en: 'AI Business Applications Guide' },
+    description: { zh: '全面介绍AI在商业领域的应用案例和实践方法', en: 'Comprehensive introduction to AI application cases and practical methods in business' },
     price: 89,
     currency: 'CNY',
     category: 'books',
-    merchant: '科技出版社',
+    merchant: { zh: '科技出版社', en: 'Tech Publishing' },
     rating: 4.5,
     stock: 100,
   },
@@ -89,65 +90,69 @@ const mockProducts: Product[] = [
 const mockServices: Service[] = [
   {
     id: 'svc-1',
-    name: 'AI Agent 开发咨询服务',
-    description: '提供AI Agent架构设计、开发指导、最佳实践咨询',
+    name: { zh: 'AI Agent 开发咨询服务', en: 'AI Agent Development Consulting' },
+    description: { zh: '提供AI Agent架构设计、开发指导、最佳实践咨询', en: 'Provides AI Agent architecture design, development guidance, and best practices consulting' },
     price: 500,
     currency: 'CNY',
     category: 'consultation',
-    merchant: 'Agentrix技术团队',
+    merchant: { zh: 'Agentrix技术团队', en: 'Agentrix Tech Team' },
     duration: '1小时',
     rating: 4.9,
   },
   {
     id: 'svc-2',
-    name: 'Agentrix SDK 企业版订阅',
-    description: '包含高级API、优先支持、定制化功能',
+    name: { zh: 'Agentrix SDK 企业版订阅', en: 'Agentrix SDK Enterprise Subscription' },
+    description: { zh: '包含高级API、优先支持、定制化功能', en: 'Includes advanced APIs, priority support, and customized features' },
     price: 999,
     currency: 'CNY',
     category: 'subscription',
-    merchant: 'Agentrix',
+    merchant: { zh: 'Agentrix', en: 'Agentrix' },
     duration: '月度',
     rating: 4.8,
   },
   {
     id: 'svc-3',
-    name: '智能支付系统集成服务',
-    description: '帮助商户快速集成Agentrix支付系统，包含技术支持和培训',
+    name: { zh: '智能支付系统集成服务', en: 'Smart Payment System Integration Service' },
+    description: { zh: '帮助商户快速集成Agentrix支付系统，包含技术支持和培训', en: 'Help merchants quickly integrate Agentrix payment system, including technical support and training' },
     price: 5000,
     currency: 'CNY',
     category: 'technical',
-    merchant: 'Agentrix专业服务',
+    merchant: { zh: 'Agentrix专业服务', en: 'Agentrix Professional Services' },
     duration: '一次性',
     rating: 4.7,
   },
   {
     id: 'svc-4',
-    name: 'UI/UX设计服务',
-    description: '专业的界面设计和用户体验优化服务',
+    name: { zh: 'UI/UX设计服务', en: 'UI/UX Design Service' },
+    description: { zh: '专业的界面设计和用户体验优化服务', en: 'Professional interface design and user experience optimization services' },
     price: 3000,
     currency: 'CNY',
     category: 'design',
-    merchant: '设计工作室',
+    merchant: { zh: '设计工作室', en: 'Design Studio' },
     duration: '项目制',
     rating: 4.6,
   },
   {
     id: 'svc-5',
-    name: '数字营销策略咨询',
-    description: '提供数字营销策略、SEO优化、社交媒体营销方案',
+    name: { zh: '数字营销策略咨询', en: 'Digital Marketing Strategy Consulting' },
+    description: { zh: '提供数字营销策略、SEO优化、社交媒体营销方案', en: 'Provides digital marketing strategies, SEO optimization, and social media marketing solutions' },
     price: 2000,
     currency: 'CNY',
     category: 'marketing',
-    merchant: '营销咨询公司',
+    merchant: { zh: '营销咨询公司', en: 'Marketing Consulting Company' },
     duration: '月度',
     rating: 4.5,
   },
 ]
 
-export function ProductServiceSection() {
+interface ProductServiceSectionProps {
+  type: 'physical' | 'service' | 'digital'
+}
+
+export function ProductServiceSection({ type }: ProductServiceSectionProps) {
   const router = useRouter()
-  const { addItem, isInCart, getItemQuantity } = useCart()
-  const [activeTab, setActiveTab] = useState<'products' | 'services'>('products')
+  const { addItem, isInCart } = useCart()
+  const { t } = useLocalization()
   const [products, setProducts] = useState<ProductInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [addingToCart, setAddingToCart] = useState<string | null>(null)
@@ -160,10 +165,40 @@ export function ProductServiceSection() {
     try {
       setLoading(true)
       const data = await productApi.getProducts()
-      setProducts(data || [])
+      if (data && data.length > 0) {
+        setProducts(data)
+      } else {
+        const mocks = [...mockProducts, ...mockServices].map(m => ({
+            id: m.id,
+            name: t(m.name),
+            description: t(m.description),
+            price: m.price,
+            stock: (m as any).stock || 999,
+            category: m.category,
+            merchantId: t(m.merchant),
+            metadata: {
+                currency: m.currency,
+                productType: (m.id.startsWith('svc') ? 'service' : 'physical')
+            }
+        })) as any
+        setProducts(mocks)
+      }
     } catch (error) {
       console.error('加载商品失败:', error)
-      setProducts([])
+      const mocks = [...mockProducts, ...mockServices].map(m => ({
+            id: m.id,
+            name: t(m.name),
+            description: t(m.description),
+            price: m.price,
+            stock: (m as any).stock || 999,
+            category: m.category,
+            merchantId: t(m.merchant),
+            metadata: {
+                currency: m.currency,
+                productType: (m.id.startsWith('svc') ? 'service' : 'physical')
+            }
+        })) as any
+        setProducts(mocks)
     } finally {
       setLoading(false)
     }
@@ -206,288 +241,68 @@ export function ProductServiceSection() {
     }
   }
 
-  // 将商品按类型分类 - 优先使用顶级字段 productType，其次使用 metadata.productType
-  const physicalProducts = products.filter(
-    (p) => {
-      const type = (p as any).productType || p.metadata?.productType
-      return type === 'physical' || !type
-    }
-  )
-  const serviceProducts = products.filter(
-    (p) => {
-      const type = (p as any).productType || p.metadata?.productType
-      return type === 'service'
-    }
-  )
+  const filteredProducts = products.filter((p) => {
+      const pType = (p as any).productType || p.metadata?.productType || 'physical'
+      return pType === type
+  })
+
+  if (loading) return <div className="py-20 text-center">Loading...</div>
+
+  if (filteredProducts.length === 0) {
+      return (
+          <div className="py-20 text-center text-slate-500">
+              {t({ zh: '暂无商品', en: 'No products found' })}
+          </div>
+      )
+  }
 
   return (
-    <section className="py-16 bg-white">
-      <div className="container mx-auto px-6">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            实体产品与服务
-          </h2>
-          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Agentrix Marketplace 不仅聚合链上资产，还支持实体商品和各类服务的交易
-          </p>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {filteredProducts.map((product) => (
+        <div 
+            key={product.id} 
+            className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+            onClick={() => handleProductClick(product)}
+        >
+            <div className="h-48 bg-slate-100 flex items-center justify-center text-4xl">
+                {type === 'physical' ? '📦' : type === 'service' ? '🛠️' : '💎'}
+            </div>
+            <div className="p-6">
+                <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-bold text-lg text-slate-900 line-clamp-1">{product.name}</h3>
+                    <span className="text-blue-600 font-bold">
+                        {product.metadata?.currency || 'CNY'} {product.price}
+                    </span>
+                </div>
+                <p className="text-sm text-slate-500 mb-4 line-clamp-2">{product.description}</p>
+                
+                <div className="flex items-center justify-between mt-4">
+                    <span className="text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded">
+                        {product.merchantId || 'Agentrix'}
+                    </span>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddToCart(product);
+                        }}
+                        disabled={addingToCart === product.id || isInCart(product.id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            isInCart(product.id)
+                                ? 'bg-green-50 text-green-600'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        {addingToCart === product.id 
+                            ? '...' 
+                            : isInCart(product.id) 
+                                ? t({ zh: '已在购物车', en: 'In Cart' }) 
+                                : t({ zh: '加入购物车', en: 'Add to Cart' })}
+                    </button>
+                </div>
+            </div>
         </div>
-
-        {/* Tab切换 */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`px-6 py-2 rounded-lg font-semibold transition-all ${
-                activeTab === 'products'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              实体产品
-            </button>
-            <button
-              onClick={() => setActiveTab('services')}
-              className={`px-6 py-2 rounded-lg font-semibold transition-all ${
-                activeTab === 'services'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              服务
-            </button>
-          </div>
-        </div>
-
-        {/* 产品列表 */}
-        {activeTab === 'products' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {loading ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                加载中...
-              </div>
-            ) : physicalProducts.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                暂无商品，请先创建测试商品
-              </div>
-            ) : (
-              physicalProducts.map((product) => {
-                const productInCart = isInCart(product.id)
-                const cartQty = getItemQuantity(product.id)
-                const isAdding = addingToCart === product.id
-                
-                return (
-              <div
-                key={product.id}
-                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer relative"
-                onClick={() => handleProductClick(product)}
-              >
-                {/* 购物车数量角标 */}
-                {productInCart && cartQty > 0 && (
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center z-10">
-                    {cartQty}
-                  </div>
-                )}
-                
-                {product.metadata?.image && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    <img
-                      src={product.metadata.image}
-                      alt={product.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  </div>
-                )}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                      {product.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                      {product.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {product.metadata?.currency === 'USDT' ? '$' : '¥'}
-                      {product.price.toLocaleString()}
-                    </span>
-                    {product.metadata?.currency && (
-                      <span className="text-sm text-gray-500 ml-1">
-                        {product.metadata.currency}
-                      </span>
-                    )}
-                  </div>
-                  {product.metadata?.paymentMethod && (
-                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                      {product.metadata.paymentMethod === 'quickpay' ? 'QuickPay' :
-                       product.metadata.paymentMethod === 'wallet' ? '钱包支付' :
-                       product.metadata.paymentMethod === 'stripe' ? 'Stripe' : '其他'}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                  <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded">
-                    {product.category}
-                  </span>
-                  <span>库存: {product.stock}</span>
-                </div>
-                
-                {/* 双按钮：加入购物车 + 立即购买 */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleAddToCart(product)
-                    }}
-                    disabled={isAdding}
-                    className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
-                      productInCart
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    } disabled:opacity-50`}
-                  >
-                    {isAdding ? '添加中...' : productInCart ? '✓ 已加入' : '加入购物车'}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleBuyNow(product)
-                    }}
-                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                  >
-                    立即购买
-                  </button>
-                </div>
-              </div>
-              )})
-            )}
-          </div>
-        )}
-
-        {/* 服务列表 */}
-        {activeTab === 'services' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {loading ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                加载中...
-              </div>
-            ) : serviceProducts.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                暂无服务，请先创建测试商品
-              </div>
-            ) : (
-              serviceProducts.map((service) => {
-                const serviceInCart = isInCart(service.id)
-                const cartQty = getItemQuantity(service.id)
-                const isAdding = addingToCart === service.id
-                
-                return (
-              <div
-                key={service.id}
-                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer relative"
-                onClick={() => handleServiceClick(service)}
-              >
-                {/* 购物车数量角标 */}
-                {serviceInCart && cartQty > 0 && (
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center z-10">
-                    {cartQty}
-                  </div>
-                )}
-                
-                {service.metadata?.image && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    <img
-                      src={service.metadata.image}
-                      alt={service.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  </div>
-                )}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                      {service.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                      {service.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {service.metadata?.currency === 'USDT' ? '$' : '¥'}
-                      {service.price.toLocaleString()}
-                    </span>
-                    {service.metadata?.currency && (
-                      <span className="text-sm text-gray-500 ml-1">
-                        {service.metadata.currency}
-                      </span>
-                    )}
-                  </div>
-                  {service.metadata?.paymentMethod && (
-                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                      {service.metadata.paymentMethod === 'quickpay' ? 'QuickPay' :
-                       service.metadata.paymentMethod === 'wallet' ? '钱包支付' :
-                       service.metadata.paymentMethod === 'stripe' ? 'Stripe' : '其他'}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                  <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded">
-                    {service.category}
-                  </span>
-                  <span>库存: {service.stock}</span>
-                </div>
-                
-                {/* 双按钮：加入购物车 + 立即购买 */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleAddToCart(service)
-                    }}
-                    disabled={isAdding}
-                    className={`flex-1 py-2 rounded-lg font-semibold transition-colors ${
-                      serviceInCart
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    } disabled:opacity-50`}
-                  >
-                    {isAdding ? '添加中...' : serviceInCart ? '✓ 已加入' : '加入购物车'}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleBuyNow(service)
-                    }}
-                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                  >
-                    立即购买
-                  </button>
-                </div>
-              </div>
-              )})
-            )}
-          </div>
-        )}
-
-        {/* CTA */}
-        <div className="text-center mt-12">
-          <p className="text-gray-600 mb-4">
-            想要上架您的产品或服务？
-          </p>
-          <button
-            onClick={() => router.push('/alliance')}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
-          >
-            加入 Agentrix 联盟
-          </button>
-        </div>
-      </div>
-    </section>
+      ))}
+    </div>
   )
 }
 

@@ -3,15 +3,10 @@ import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { orderApi, Order } from '../../../lib/api/order.api'
 import { paymentApi, PaymentInfo } from '../../../lib/api/payment.api'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 type FilterStatus = 'all' | 'completed' | 'pending' | 'failed'
 type NormalizedStatus = Exclude<FilterStatus, 'all'>
-
-const statusLabel: Record<NormalizedStatus, string> = {
-  completed: '已完成',
-  pending: '处理中',
-  failed: '失败',
-}
 
 const statusBadgeClass: Record<NormalizedStatus, string> = {
   completed: 'bg-green-100 text-green-800',
@@ -65,12 +60,12 @@ const currencySymbol = (currency?: string) => {
   }
 }
 
-const getOrderTitle = (order: Order) => {
+const getOrderTitle = (order: Order, t: any) => {
   return (
     order.metadata?.productName ||
     order.metadata?.description ||
-    (order.metadata?.assetType ? `资产类型：${order.metadata.assetType}` : undefined) ||
-    (order.productId ? `订单 ${order.productId}` : `订单 ${order.id.slice(0, 6)}`)
+    (order.metadata?.assetType ? `${t('transactions.assetType')}${order.metadata.assetType}` : undefined) ||
+    (order.productId ? `${t('transactions.order')} ${order.productId}` : `${t('transactions.order')} ${order.id.slice(0, 6)}`)
   )
 }
 
@@ -97,11 +92,18 @@ interface TransactionItem {
 }
 
 export default function UserTransactions() {
+  const { t } = useLocalization()
   const [filter, setFilter] = useState<FilterStatus>('all')
   const [orders, setOrders] = useState<Order[]>([])
   const [payments, setPayments] = useState<PaymentInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const statusLabel: Record<NormalizedStatus, string> = {
+    completed: t('transactions.status.completed'),
+    pending: t('transactions.status.pending'),
+    failed: t('transactions.status.failed'),
+  }
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -140,7 +142,7 @@ export default function UserTransactions() {
         })) || [],
       })
     } catch (err: any) {
-      setError(err.message || '获取交易记录失败，请稍后重试')
+      setError(err.message || t('transactions.errors.fetchFailed'))
     } finally {
       setLoading(false)
     }
@@ -266,13 +268,13 @@ export default function UserTransactions() {
   return (
     <>
       <Head>
-        <title>交易记录 - Agentrix</title>
+        <title>{t('transactions.pageTitle')}</title>
       </Head>
       <DashboardLayout userType="user">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">交易记录</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('transactions.title')}</h1>
           <p className="text-gray-600">
-            查看已创建订单与支付记录，实时了解状态与金额
+            {t('transactions.description')}
           </p>
         </div>
 
@@ -280,10 +282,10 @@ export default function UserTransactions() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
           <div className="flex flex-wrap items-center gap-2">
             {[
-              { id: 'all', name: '全部' },
-              { id: 'completed', name: '已完成' },
-              { id: 'pending', name: '处理中' },
-              { id: 'failed', name: '失败/已取消' },
+              { id: 'all', name: t('transactions.filters.all') },
+              { id: 'completed', name: t('transactions.filters.completed') },
+              { id: 'pending', name: t('transactions.filters.pending') },
+              { id: 'failed', name: t('transactions.filters.failed') },
             ].map((filterOption) => (
               <button
                 key={filterOption.id}
@@ -302,7 +304,7 @@ export default function UserTransactions() {
               disabled={loading}
               className="ml-auto px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? '同步中…' : '刷新数据'}
+              {loading ? t('transactions.refresh.syncing') : t('transactions.refresh.refresh')}
             </button>
           </div>
         </div>
@@ -317,10 +319,10 @@ export default function UserTransactions() {
             )}
 
             {loading && transactions.length === 0 ? (
-              <div className="text-center py-10 text-gray-500">正在加载交易记录…</div>
+              <div className="text-center py-10 text-gray-500">{t('transactions.loading')}</div>
             ) : filteredTransactions.length === 0 ? (
               <div className="text-center py-10 text-gray-500">
-                暂无符合条件的记录，您可以尝试其他筛选条件或稍后刷新。
+                {t('transactions.empty')}
               </div>
             ) : (
               <div className="space-y-4">
@@ -330,8 +332,8 @@ export default function UserTransactions() {
                     ? (assetIconMap[(item.metadata?.assetType as string) || ''] || '🧾')
                     : '💳'
                   const title = item.type === 'order'
-                    ? (item.metadata?.productName || item.metadata?.description || `订单 ${item.id.slice(0, 6)}`)
-                    : (item.description || `支付 ${item.id.slice(0, 6)}`)
+                    ? (item.metadata?.productName || item.metadata?.description || `${t('transactions.order')} ${item.id.slice(0, 6)}`)
+                    : (item.description || `${t('transactions.payment')} ${item.id.slice(0, 6)}`)
                   
                   return (
                     <div
@@ -346,8 +348,8 @@ export default function UserTransactions() {
                             {new Date(item.createdAt).toLocaleString()}
                           </p>
                           <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                            {item.type === 'payment' && <p>支付方式：{item.metadata?.paymentMethod || '未知'}</p>}
-                            {item.paymentId && <p>支付ID：{item.paymentId}</p>}
+                            {item.type === 'payment' && <p>{t('transactions.details.paymentMethod')}{item.metadata?.paymentMethod || t('transactions.details.unknown')}</p>}
+                            {item.paymentId && <p>{t('transactions.details.paymentId')}{item.paymentId}</p>}
                             {item.transactionHash && <p>Tx：{item.transactionHash.slice(0, 10)}...{item.transactionHash.slice(-8)}</p>}
                           </div>
                         </div>
@@ -377,7 +379,7 @@ export default function UserTransactions() {
         {/* Export Button */}
         <div className="mt-6 flex justify-end">
           <button className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors">
-            导出交易记录
+            {t('transactions.export')}
           </button>
         </div>
       </DashboardLayout>

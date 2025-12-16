@@ -37,17 +37,26 @@ export function useQuickPay() {
       }
 
       // 2. 构建消息哈希（与合约一致）
-      const messageHash = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-          ['bytes32', 'address', 'uint256', 'bytes32', 'uint256'],
-          [
-            activeSession.sessionId,
-            options.to,
-            ethers.parseUnits(options.amount.toString(), 6), // USDC 6 decimals
-            ethers.encodeBytes32String(options.paymentId),
-            chainId,
-          ],
-        ),
+      // 注意：必须使用 solidityPackedKeccak256 以匹配合约的 abi.encodePacked
+      // 同时也必须匹配后端 relayer.service.ts 中的验证逻辑
+      
+      // 处理 paymentId (如果是 UUID，需要哈希；如果是 bytes32，直接使用)
+      let paymentIdBytes32: string;
+      if (options.paymentId.startsWith('0x') && options.paymentId.length === 66) {
+        paymentIdBytes32 = options.paymentId;
+      } else {
+        paymentIdBytes32 = ethers.keccak256(ethers.toUtf8Bytes(options.paymentId));
+      }
+
+      const messageHash = ethers.solidityPackedKeccak256(
+        ['bytes32', 'address', 'uint256', 'bytes32', 'uint256'],
+        [
+          activeSession.sessionId,
+          options.to,
+          ethers.parseUnits(options.amount.toString(), 6), // USDC 6 decimals
+          paymentIdBytes32,
+          chainId,
+        ],
       );
 
       // 3. 使用 Session Key 签名（链下）

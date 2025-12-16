@@ -61,29 +61,36 @@ export class CommissionCalculatorService {
     productType: ProductType | string,
   ): { totalRate: number; recommendationRate: number; executionRate: number; paymindRate: number } {
     if (productType === ProductType.PHYSICAL || productType === 'physical') {
-      // 实体商品：总佣金3%
+      // Physical: Total 3.0% (Agent 2.2% + Platform 0.8%)
       return {
         totalRate: 0.03,
-        recommendationRate: 0.009, // 0.9%
-        executionRate: 0.021, // 2.1%
-        paymindRate: 0.005, // 0.5%
+        recommendationRate: 0.0066, // 30% of 2.2%
+        executionRate: 0.0154, // 70% of 2.2%
+        paymindRate: 0.008, // 0.5% + 0.3%
       };
     } else if (productType === ProductType.SERVICE || productType === 'service') {
-      // 服务类：总佣金5%
+      // Service: Total 5.0% (Agent 3.7% + Platform 1.3%)
       return {
         totalRate: 0.05,
-        recommendationRate: 0.015, // 1.5%
-        executionRate: 0.035, // 3.5%
-        paymindRate: 0.01, // 1%
+        recommendationRate: 0.0111, // 30% of 3.7%
+        executionRate: 0.0259, // 70% of 3.7%
+        paymindRate: 0.013, // 1.0% + 0.3%
       };
-    } else {
-      // 链上资产：根据场景不同，默认使用NFT二级市场比例
-      // 平台聚合NFT：2.5%（PayMind 1% + 其他 1.5%）
+    } else if (productType === 'nft') {
+      // NFT: Total 2.5% (Agent 1.7% + Platform 0.8%)
       return {
         totalRate: 0.025,
-        recommendationRate: 0.0075, // 0.75%
-        executionRate: 0.0175, // 1.75%
-        paymindRate: 0.01, // 1%
+        recommendationRate: 0.0051, // 30% of 1.7%
+        executionRate: 0.0119, // 70% of 1.7%
+        paymindRate: 0.008, // 0.5% + 0.3%
+      };
+    } else {
+      // Virtual / Default: Total 3.0%
+      return {
+        totalRate: 0.03,
+        recommendationRate: 0.0066,
+        executionRate: 0.0154,
+        paymindRate: 0.008,
       };
     }
   }
@@ -143,13 +150,32 @@ export class CommissionCalculatorService {
     orderType: OrderType,
     amount: number,
   ): { commission: CommissionConfig; settlement: SettlementCondition } {
-    if (orderType === 'nft' || orderType === 'virtual') {
-      // 链上资产（NFT、虚拟资产）：即时结算
+    // V4.0 Rates
+    
+    if (orderType === 'nft') {
+      // NFT: Pool 1.7%, Platform 0.5%, Channel 0.3% -> Total 2.5%
       return {
         commission: {
-          merchant: 0.88,
-          agent: 0.06,
-          paymind: 0.06,
+          merchant: 0.975,
+          agent: 0.017,
+          paymind: 0.008,
+        },
+        settlement: {
+          type: 'instant',
+          requiresUserConfirmation: false,
+          autoSettle: true,
+          canRefund: false,
+        },
+      };
+    }
+    
+    if (orderType === 'virtual') {
+      // Virtual: Pool 2.2%, Platform 0.5%, Channel 0.3% -> Total 3.0%
+      return {
+        commission: {
+          merchant: 0.970,
+          agent: 0.022,
+          paymind: 0.008,
         },
         settlement: {
           type: 'instant',
@@ -161,12 +187,12 @@ export class CommissionCalculatorService {
     }
 
     if (orderType === 'service') {
-      // 服务类：服务开始后结算
+      // Service: Pool 3.7%, Platform 1.0%, Channel 0.3% -> Total 5.0%
       return {
         commission: {
-          merchant: 0.82,
-          agent: 0.10,
-          paymind: 0.08,
+          merchant: 0.950,
+          agent: 0.037,
+          paymind: 0.013,
         },
         settlement: {
           type: 'service_started',
@@ -176,29 +202,13 @@ export class CommissionCalculatorService {
       };
     }
 
-    if (orderType === 'product' || orderType === 'physical') {
-      // 实体商品：确认收货后结算
-      return {
-        commission: {
-          merchant: 0.78,
-          agent: 0.12,
-          paymind: 0.10,
-        },
-        settlement: {
-          type: 'delivery_confirmed',
-          requiresUserConfirmation: true,
-          autoConfirmDays: 7, // 7天后自动确认
-          canRefund: true,
-        },
-      };
-    }
-
-    // 默认配置（商品）
+    // Physical / Product
+    // Physical: Pool 2.2%, Platform 0.5%, Channel 0.3% -> Total 3.0%
     return {
       commission: {
-        merchant: 0.78,
-        agent: 0.12,
-        paymind: 0.10,
+        merchant: 0.970,
+        agent: 0.022,
+        paymind: 0.008,
       },
       settlement: {
         type: 'delivery_confirmed',
@@ -224,7 +234,7 @@ export class CommissionCalculatorService {
   ): Promise<Commission[]> {
     const commissions: Commission[] = [];
     const baseAmount = commissionBase || payment.amount;
-    const channelFee = payment.channelFee || 0;
+    const channelFee = payment.channelFee || this.roundCurrency(baseAmount * 0.003);
 
     let order: Order | null = null;
     if (payment.metadata?.orderId) {
@@ -370,16 +380,34 @@ export class CommissionCalculatorService {
       }
     } else {
       const scene = this.getAgentScene(refAgentId, execAgentId);
+      
+      let unallocatedPool = 0;
+
       if (scene === 'dual') {
         referrerPayout = this.roundCurrency(commissionPool * 0.3);
         executorPayout = this.roundCurrency(commissionPool * 0.7);
       } else if (scene === 'execution-only') {
-        executorPayout = commissionPool;
+        executorPayout = this.roundCurrency(commissionPool * 0.7);
+        unallocatedPool = this.roundCurrency(commissionPool * 0.3);
+      } else if (scene === 'referrer-only') {
+        referrerPayout = this.roundCurrency(commissionPool * 0.3);
+        unallocatedPool = this.roundCurrency(commissionPool * 0.7);
       } else {
-        paymindFinalRevenue = this.roundCurrency(
-          paymindFinalRevenue + commissionPool,
-        );
-        commissionPool = 0;
+        unallocatedPool = commissionPool;
+      }
+
+      paymindFinalRevenue = this.roundCurrency(
+        paymindFinalRevenue + unallocatedPool,
+      );
+      
+      // Merchant gets the remainder after deducting platform fee (paymindBaseRevenue), 
+      // full incentive pool (intendedCommissionPool), and channel fee.
+      merchantAmount = this.roundCurrency(
+        netRevenue - paymindBaseRevenue - intendedCommissionPool - channelFee,
+      );
+      
+      if (merchantAmount < 0) {
+        merchantAmount = 0;
       }
 
       if (executorPayout > 0 && !executorHasWallet) {
@@ -595,12 +623,15 @@ export class CommissionCalculatorService {
   private getAgentScene(
     refAgentId?: string | null,
     execAgentId?: string | null,
-  ): 'dual' | 'execution-only' | 'none' {
+  ): 'dual' | 'execution-only' | 'referrer-only' | 'none' {
     if (refAgentId && execAgentId) {
       return 'dual';
     }
     if (execAgentId) {
       return 'execution-only';
+    }
+    if (refAgentId) {
+      return 'referrer-only';
     }
     return 'none';
   }
@@ -641,7 +672,7 @@ export class CommissionCalculatorService {
   }
 
   private roundCurrency(value: number): number {
-    return Number(Number(value).toFixed(2));
+    return Number(Number(value).toFixed(6));
   }
 
   /**

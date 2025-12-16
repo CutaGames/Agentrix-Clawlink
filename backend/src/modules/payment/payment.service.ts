@@ -8,6 +8,7 @@ import { X402Service } from './x402.service';
 import { X402AuthorizationService } from './x402-authorization.service';
 import { SmartRouterService, RoutingContext, ScenarioType } from './smart-router.service';
 import { CommissionCalculatorService, OrderType } from '../commission/commission-calculator.service';
+import { CommissionStrategyV4Service, SplitRoles } from '../commission/commission-strategy-v4.service';
 import { FiatToCryptoService } from './fiat-to-crypto.service';
 import { EscrowService } from './escrow.service';
 import { PaymentAggregatorService } from './payment-aggregator.service';
@@ -24,6 +25,7 @@ import { RiskAssessmentService } from './risk-assessment.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
 import { ExchangeRateService } from './exchange-rate.service';
 import { PayMindRelayerService } from '../relayer/relayer.service';
+import { SessionService } from '../session/session.service';
 // import { WebSocketGateway } from '../websocket/websocket.gateway'; // 暂时禁用WebSocket
 
 type PaymentRouteMethod = PaymentMethod | 'fiat_to_crypto' | 'quickpay';
@@ -65,6 +67,7 @@ export class PaymentService {
     private x402AuthService: X402AuthorizationService,
     private smartRouter: SmartRouterService,
     private commissionCalculator: CommissionCalculatorService,
+    private commissionStrategyV4: CommissionStrategyV4Service,
     private fiatToCryptoService: FiatToCryptoService,
     private escrowService: EscrowService,
     private paymentAggregatorService: PaymentAggregatorService,
@@ -76,6 +79,7 @@ export class PaymentService {
     private riskAssessmentService: RiskAssessmentService,
     private quickPayGrantService: QuickPayGrantService,
     private exchangeRateService: ExchangeRateService,
+    private sessionService: SessionService,
     @Inject(forwardRef(() => PayMindRelayerService))
     private relayerService?: PayMindRelayerService,
     @Inject(forwardRef(() => ReferralService))
@@ -524,17 +528,224 @@ export class PaymentService {
             // 但 Relayer 需要实际的支付ID来查询和更新支付记录
             const orderIdForSignature = dto.metadata?.orderId || savedPayment.id;
             
+            // ARN / X402 V2 Integration
+            const arnFeeSplitterAddress = this.configService.get<string>('ARN_FEE_SPLITTER_ADDRESS');
+            let toAddress = dto.metadata.to || dto.metadata?.paymentAddress || '0x0000000000000000000000000000000000000000';
+            let callData = undefined;
+
+            // Check if we should use ARN (if configured and not explicitly disabled)
+            if (arnFeeSplitterAddress && dto.metadata?.useArn !== false) {
+              try {
+                // Construct call data for quickPaySplit
+                const iface = new ethers.Interface([
+                  'function quickPaySplit(address token, address merchant, uint256 amount, bytes32 orderId)'
+                ]);
+                
+                const tokenAddress = dto.metadata?.tokenAddress || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
+                const merchantAddress = toAddress; // The original 'to' is the merchant
+                const amount = dto.metadata?.amountInSmallestUnit || ethers.parseUnits(
+                  dto.amount.toString(),
+                  dto.metadata?.tokenDecimals || 6
+                ).toString();
+                
+                // ⚠️ CRITICAL: Convert amount to 6 decimals for Commission contract calculations
+                // All internal calculations and contract interactions use 6 decimals
+                const tokenDecimalsForConversion = dto.metadata?.tokenDecimals || 6;
+                const contractDecimals = 6;
+                let amountIn6Decimals: bigint = BigInt(amount);
+                
+                if (tokenDecimalsForConversion > contractDecimals) {
+                    const divisor = BigInt(10) ** BigInt(tokenDecimalsForConversion - contractDecimals);
+                    amountIn6Decimals = BigInt(amount) / divisor;
+                    this.logger.log(`Commission calculation: Converted amount from ${tokenDecimalsForConversion} to ${contractDecimals} decimals: ${amount} -> ${amountIn6Decimals.toString()}`);
+                } else if (tokenDecimalsForConversion < contractDecimals) {
+                    const multiplier = BigInt(10) ** BigInt(contractDecimals - tokenDecimalsForConversion);
+                    amountIn6Decimals = BigInt(amount) * multiplier;
+                }
+                
+                // Update 'to' to be the FeeSplitter
+                toAddress = arnFeeSplitterAddress;
+                
+                // Encode call data
+                // Note: orderIdForSignature is string, we need bytes32. 
+                // If it's already hex and 32 bytes, use it. Otherwise hash it.
+                const orderIdBytes32 = orderIdForSignature.startsWith('0x') && orderIdForSignature.length === 66 
+                  ? orderIdForSignature 
+                  : ethers.id(orderIdForSignature);
+
+
+                // =================================================================
+                // ARN / X402 V2: Set Split Config on Commission Contract
+                // =================================================================
+                try {
+                  // 1. Get Commission Contract Address
+                  const commissionContractAddress = this.configService.get<string>('COMMISSION_CONTRACT_ADDRESS');
+                  if (commissionContractAddress) {
+                    // 2. Calculate Commission Splits (V4 Strategy)
+                    const productType = (dto.metadata?.productType || 'physical') as 'physical' | 'service' | 'virtual' | 'nft';
+                    const roles: SplitRoles = {
+                        promoter: dto.metadata?.promoter,
+                        referrer: dto.metadata?.referrer,
+                        executor: dto.metadata?.executor
+                    };
+                    
+                    // Use the already-converted 6-decimal amount for split calculations
+                    const totalAmountBN = amountIn6Decimals;
+                    const splitResult = this.commissionStrategyV4.calculate(totalAmountBN, productType, roles);
+                    
+                    const merchantAmount = splitResult.merchant;
+                    const referralFee = splitResult.referrer;
+                    const executionFee = splitResult.executor;
+                    // Platform Fee includes Net Platform Fee + Promoter Share + Platform Fund (unused agent budget)
+                    const platformFee = splitResult.platform + splitResult.promoter + splitResult.platformFund;
+                    // Channel Fee (ARN/Off-ramp)
+                    const offRampFee = splitResult.channel;
+
+                    // 4. Call setSplitConfig
+                    // We need a signer (Admin) to call this. RelayerService usually has a signer.
+                    // Or we can use a dedicated provider/signer here.
+                    // For simplicity, we'll assume RelayerService exposes a method or we use a local wallet if configured.
+                    // Ideally, RelayerService should handle this transaction to ensure nonce management.
+                    
+                    // Construct the SplitConfig struct
+                    const splitConfig = {
+                      merchantMPCWallet: merchantAddress,
+                      merchantAmount: merchantAmount.toString(),
+                      referrer: dto.metadata?.referrer || '0x0000000000000000000000000000000000000000',
+                      referralFee: referralFee.toString(),
+                      executor: dto.metadata?.executor || '0x0000000000000000000000000000000000000000',
+                      executionFee: executionFee.toString(),
+                      platformFee: platformFee.toString(),
+                      offRampFee: offRampFee.toString(),
+                      executorHasWallet: true, // Default true for now
+                      settlementTime: 0, // Instant
+                      isDisputed: false,
+                      sessionId: dto.metadata.sessionId // Add sessionId
+                    };
+
+                    this.logger.log(`Setting SplitConfig for order ${orderIdBytes32} on Commission ${commissionContractAddress}`);
+                    
+                    // Call Relayer to set config (using Admin wallet)
+                    await this.relayerService.setCommissionSplitConfig(
+                      commissionContractAddress,
+                      orderIdBytes32,
+                      splitConfig
+                    );
+                  }
+                } catch (err) {
+                  this.logger.error(`Failed to set split config: ${err.message}`, err.stack);
+                  // We might want to throw here if strict, or proceed and risk revert if config is missing
+                  // For now, log error.
+                }
+
+                // Check if we are targeting Commission Contract directly (based on frontend signature)
+                // If frontend signed for Commission Contract, we MUST use Commission.quickPaySplit(bytes32, uint256)
+                // If frontend signed for FeeSplitter, we use FeeSplitter.quickPaySplit(...)
+                
+                // We can infer this from dto.to (which comes from frontend request)
+                // But dto.to might be the merchant address initially.
+                // Let's check if we have a signature verification result or if we can guess.
+                // Actually, if we are here, we are in "useArn" block.
+                
+                // If we are using Commission Contract directly:
+                const commissionContractAddress = this.configService.get<string>('COMMISSION_CONTRACT_ADDRESS');
+                
+                // If the frontend explicitly requested Commission Contract as 'to' (unlikely for merchant payment)
+                // OR if we decide to bypass FeeSplitter because we are setting split config directly.
+                
+                // However, the logs showed: "Updating dto.to from FeeSplitter to Commission".
+                // This implies the signature WAS for Commission.
+                // So we should construct data for Commission.
+                
+                // Let's assume if we set split config successfully, we can call Commission directly.
+                // But we need to match what the user signed.
+                // If user signed for Commission, we must call Commission.
+                
+                // Since we don't know for sure what user signed here (without verifying), 
+                // we can try to construct data for Commission if we are using Commission.
+                
+                // BETTER APPROACH:
+                // If we are setting split config on Commission, we should probably call Commission directly
+                // to save gas and complexity, IF the frontend supports it.
+                // The frontend logs say: "Using Commission Contract for signature".
+                // So frontend IS signing for Commission.
+                
+                // So we should use Commission ABI.
+                const commissionIface = new ethers.Interface([
+                  'function quickPaySplitFrom(bytes32 orderId, uint256 amount, address payer)'
+                ]);
+                
+                // Payer is the user wallet (session owner)
+                // We expect it in metadata.from or metadata.walletAddress
+                // Fallback: query from session database record via SessionService
+                let payer = dto.metadata?.from || dto.metadata?.walletAddress;
+                if (!payer && dto.metadata?.sessionId) {
+                    // Query session from database to get owner address via SessionService
+                    try {
+                        const ownerAddress = await this.sessionService.getOwnerAddressBySessionId(dto.metadata.sessionId);
+                        if (ownerAddress) {
+                            payer = ownerAddress;
+                            this.logger.log(`Payer address retrieved from session database: ${payer}`);
+                        }
+                    } catch (e) {
+                        this.logger.warn(`Failed to get payer from session database: ${e.message}`);
+                    }
+                }
+                if (!payer) {
+                    this.logger.error('Payer address missing in metadata for quickPaySplitFrom and could not be retrieved from session. Payment will fail.');
+                    throw new Error('Payer address is required for quickPaySplitFrom but was not provided');
+                }
+
+                // ⚠️ CRITICAL: Convert amount to 6 decimals for Commission contract
+                // The Commission contract internally uses 6 decimals for all stablecoin amounts
+                // Frontend sends amount in token decimals (e.g., 18 for USDT on BSC)
+                // We MUST convert to 6 decimals before calling quickPaySplitFrom
+                // Note: Using amountIn6Decimals from earlier calculation instead of recalculating
+                let amountForContract: bigint = amountIn6Decimals;
+
+                callData = commissionIface.encodeFunctionData('quickPaySplitFrom', [
+                  orderIdBytes32,
+                  amountForContract.toString(),
+                  payer // Payer is now guaranteed to be valid
+                ]);
+                
+                // Update toAddress to Commission Contract
+                if (commissionContractAddress) {
+                    toAddress = commissionContractAddress;
+                    this.logger.log(`Using Commission Contract directly: ${toAddress}`);
+                } else {
+                    this.logger.warn('Commission address not found, using FeeSplitter as fallback (might fail signature)');
+                    // Fallback to FeeSplitter logic if Commission address missing
+                    // Use amountForContract (6 decimals) instead of raw amount
+                     callData = iface.encodeFunctionData('quickPaySplit', [
+                      tokenAddress,
+                      merchantAddress,
+                      amountForContract.toString(),
+                      orderIdBytes32
+                    ]);
+                    toAddress = arnFeeSplitterAddress;
+                }
+                
+                // this.logger.log(`Using ARN FeeSplitter: ${arnFeeSplitterAddress} for merchant ${merchantAddress}`);
+              } catch (e) {
+                this.logger.warn(`Failed to construct ARN call data: ${e.message}, falling back to direct transfer`);
+                // Fallback to direct transfer (restore toAddress)
+                toAddress = dto.metadata.to || dto.metadata?.paymentAddress;
+              }
+            }
+
             const relayerResult = await this.relayerService.processQuickPay({
               sessionId: dto.metadata.sessionId,
               paymentId: savedPayment.id, // 使用实际的支付ID查询记录
               orderId: orderIdForSignature, // 传递订单ID用于签名验证
-              to: dto.metadata.to || dto.metadata?.paymentAddress || '0x0000000000000000000000000000000000000000',
+              to: toAddress,
               amount: dto.metadata?.amountInSmallestUnit || ethers.parseUnits(
                 dto.amount.toString(),
                 dto.metadata?.tokenDecimals || 6
               ).toString(),
               tokenDecimals: dto.metadata?.tokenDecimals || 6, // 传递 token 精度
               signature: dto.metadata.signature,
+              data: callData, // Pass the call data (if any)
               nonce: dto.metadata.nonce || Date.now(),
             });
             
@@ -641,11 +852,19 @@ export class PaymentService {
 
       // 计算分成（根据订单类型，使用新的佣金规则）
       if (savedPayment.status === PaymentStatus.COMPLETED || savedPayment.status === PaymentStatus.PROCESSING) {
-        await this.commissionCalculator.calculateAndRecordCommission(
+        // V4 Strategy Integration
+        const roles: SplitRoles = {
+            promoter: dto.metadata?.promoter,
+            referrer: dto.metadata?.referrer,
+            executor: dto.metadata?.executor
+        };
+        const productType = (dto.metadata?.productType || 'physical') as 'physical' | 'service' | 'virtual' | 'nft';
+        
+        await this.commissionStrategyV4.calculateAndRecordCommission(
           savedPayment.id,
-          savedPayment,
-          commissionBase, // 使用商户税前价格作为佣金计算基础
-          sessionId, // 传递Session ID
+          savedPayment.amount.toString(),
+          productType,
+          roles
         );
 
         // 记录推广分成（如果支付完成）
@@ -744,7 +963,25 @@ export class PaymentService {
     const SMALL_AMOUNT_THRESHOLD = 20; // 小额支付阈值（USD）
     const isSmallAmount = amount <= SMALL_AMOUNT_THRESHOLD;
 
-    // 检查X402授权
+    // 1. 检查 ERC-8004 Session (优先)
+    const session = await this.sessionService.getActiveSession(userId);
+    if (session) {
+      const remainingToday = session.dailyLimit - session.usedToday;
+      const withinLimit = amount <= session.singleLimit && amount <= remainingToday;
+      
+      return {
+        eligible: withinLimit && isSmallAmount,
+        hasAuth: true,
+        withinLimit,
+        isSmallAmount,
+        authorization: {
+          ...session,
+          type: 'erc8004',
+        },
+      };
+    }
+
+    // 2. 检查旧版 X402 授权 (兼容)
     const auth = await this.x402AuthService.checkAuthorization(userId);
     const hasAuth = auth !== null && auth.isActive;
     
@@ -762,7 +999,7 @@ export class PaymentService {
       hasAuth,
       withinLimit,
       isSmallAmount,
-      authorization: auth,
+      authorization: auth ? { ...auth, type: 'x402' } : undefined,
     };
   }
 

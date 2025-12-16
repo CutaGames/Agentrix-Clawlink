@@ -1,13 +1,3 @@
-/**
- * 商品详情页面
- * 
- * 功能:
- * - 显示完整商品信息
- * - 支持加入购物车
- * - 支持立即购买
- * - 显示商户信息
- * - 显示库存和规格
- */
 
 import Head from 'next/head'
 import { useRouter } from 'next/router'
@@ -16,8 +6,10 @@ import { Navigation } from '../../../components/ui/Navigation'
 import { Footer } from '../../../components/layout/Footer'
 import { productApi, ProductInfo } from '../../../lib/api/product.api'
 import { useCart } from '../../../contexts/CartContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function ProductDetailPage() {
+  const { t } = useLocalization()
   const router = useRouter()
   const { productId } = router.query
   const { addItem, isInCart, getItemQuantity } = useCart()
@@ -40,7 +32,7 @@ export default function ProductDetailPage() {
       const data = await productApi.getProduct(id)
       setProduct(data)
     } catch (error) {
-      console.error('加载商品失败:', error)
+      console.error('Failed to load product:', error)
     } finally {
       setLoading(false)
     }
@@ -69,7 +61,7 @@ export default function ProductDetailPage() {
       setAddSuccess(true)
       setTimeout(() => setAddSuccess(false), 2000)
     } catch (error) {
-      console.error('添加购物车失败:', error)
+      console.error('Failed to add to cart:', error)
     } finally {
       setAdding(false)
     }
@@ -112,7 +104,7 @@ export default function ProductDetailPage() {
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           <div className="text-center">
             <div className="text-4xl mb-4 animate-spin">⏳</div>
-            <p>加载商品信息...</p>
+            <p>{t({ zh: '加载商品信息...' , en: 'Loading product information...' })}</p>
           </div>
         </div>
         <Footer />
@@ -127,12 +119,12 @@ export default function ProductDetailPage() {
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           <div className="text-center">
             <div className="text-4xl mb-4">❌</div>
-            <p className="text-xl mb-2">商品不存在</p>
+            <p className="text-xl mb-2">{t({ zh: '商品不存在', en: 'Product not found' })}</p>
             <button
               onClick={() => router.push('/marketplace')}
               className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              返回商城
+              {t({ zh: '返回商城', en: 'Back to Marketplace' })}
             </button>
           </div>
         </div>
@@ -226,20 +218,20 @@ export default function ProductDetailPage() {
               {/* 描述 */}
               {product.description && (
                 <div>
-                  <h2 className="text-lg font-semibold mb-2">商品描述</h2>
+                  <h2 className="text-lg font-semibold mb-2">{t({ zh: '商品描述', en: 'Product Description' })}</h2>
                   <p className="text-slate-300 leading-relaxed">{product.description}</p>
                 </div>
               )}
 
               {/* 库存状态 */}
               <div className="flex items-center gap-4">
-                <span className="text-slate-400">库存状态:</span>
+                <span className="text-slate-400">{t({ zh: '库存状态:', en: 'Stock Status:' })}</span>
                 {isOutOfStock ? (
-                  <span className="text-red-400">已售罄</span>
+                  <span className="text-red-400">{t({ zh: '已售罄', en: 'Out of Stock' })}</span>
                 ) : product.stock !== undefined ? (
-                  <span className="text-green-400">有货 ({product.stock}件)</span>
+                  <span className="text-green-400">{t({ zh: `有货 (${product.stock}件)`, en: `In Stock (${product.stock} items)` })}</span>
                 ) : (
-                  <span className="text-green-400">有货</span>
+                  <span className="text-green-400">{t({ zh: '有货', en: 'In Stock' })}</span>
                 )}
               </div>
 
@@ -247,19 +239,19 @@ export default function ProductDetailPage() {
               {inCart && (
                 <div className="flex items-center gap-2 text-blue-400">
                   <span>✓</span>
-                  <span>已在购物车中 ({cartQuantity}件)</span>
+                  <span>{t({ zh: `已在购物车中 (${cartQuantity}件)`, en: `Already in cart (${cartQuantity} items)` })}</span>
                   <button
                     onClick={() => router.push('/app/cart')}
                     className="underline hover:text-blue-300"
                   >
-                    查看购物车
+                    {t({ zh: '查看购物车', en: 'View Cart' })}
                   </button>
                 </div>
               )}
 
               {/* 数量选择 */}
               <div className="flex items-center gap-4">
-                <span className="text-slate-400">购买数量:</span>
+                <span className="text-slate-400">{t({ zh: '购买数量:', en: 'Quantity:' })}</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleQuantityChange(-1)}
@@ -278,7 +270,7 @@ export default function ProductDetailPage() {
                   </button>
                 </div>
                 <span className="text-slate-400 text-sm">
-                  小计: {currencySymbol}{(price * quantity).toFixed(2)}
+                  {t({ zh: '小计:', en: 'Subtotal:' })} {currencySymbol}{(price * quantity).toFixed(2)}
                 </span>
               </div>
 
@@ -286,7 +278,7 @@ export default function ProductDetailPage() {
               {addSuccess && (
                 <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 text-green-400 flex items-center gap-2">
                   <span>✓</span>
-                  <span>已添加到购物车</span>
+                  <span>{t({ zh: '已添加到购物车', en: 'Added to cart' })}</span>
                 </div>
               )}
 
@@ -297,36 +289,36 @@ export default function ProductDetailPage() {
                   disabled={isOutOfStock || adding}
                   className="flex-1 py-4 border border-blue-500 text-blue-400 rounded-xl font-semibold hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {adding ? '添加中...' : inCart ? '再次加入购物车' : '加入购物车'}
+                  {adding ? t({ zh: '添加中...', en: 'Adding...' }) : inCart ? t({ zh: '再次加入购物车', en: 'Add to Cart Again' }) : t({ zh: '加入购物车', en: 'Add to Cart' })}
                 </button>
                 <button
                   onClick={handleBuyNow}
                   disabled={isOutOfStock}
                   className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  立即购买
+                  {t({ zh: '立即购买', en: 'Buy Now' })}
                 </button>
               </div>
 
               {/* 商品类型和支付方式 */}
               <div className="bg-white/5 rounded-xl p-4 space-y-3">
-                <h3 className="font-semibold mb-3">商品信息</h3>
+                <h3 className="font-semibold mb-3">{t({ zh: '商品信息', en: 'Product Information' })}</h3>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">商品类型</span>
-                  <span>{product.metadata?.productType || '实体商品'}</span>
+                  <span className="text-slate-400">{t({ zh: '商品类型', en: 'Product Type' })}</span>
+                  <span>{product.metadata?.productType || t({ zh: '实体商品', en: 'Physical Product' })}</span>
                 </div>
                 {product.metadata?.paymentMethod && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">支持支付</span>
+                    <span className="text-slate-400">{t({ zh: '支持支付', en: 'Supported Payment' })}</span>
                     <span>
                       {product.metadata.paymentMethod === 'quickpay' ? 'QuickPay' :
-                       product.metadata.paymentMethod === 'wallet' ? '钱包支付' :
-                       product.metadata.paymentMethod === 'all' ? '全部方式' : '多种方式'}
+                       product.metadata.paymentMethod === 'wallet' ? t({ zh: '钱包支付', en: 'Wallet Payment' }) :
+                       product.metadata.paymentMethod === 'all' ? t({ zh: '全部方式', en: 'All Methods' }) : t({ zh: '多种方式', en: 'Multiple Methods' })}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">商品ID</span>
+                  <span className="text-slate-400">{t({ zh: '商品ID', en: 'Product ID' })}</span>
                   <span className="font-mono text-xs">{product.id.slice(0, 12)}...</span>
                 </div>
               </div>

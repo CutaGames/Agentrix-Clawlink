@@ -4,47 +4,49 @@ import { useState } from 'react'
 import { Navigation } from '../components/ui/Navigation'
 import { LoginModal } from '../components/auth/LoginModal'
 import { Footer } from '../components/layout/Footer'
-
-const viewSteps = [
-  { title: '01 · 对话捕捉', desc: 'Agent 监听用户意图，自动拉取商品、支付上下文与历史行为。' },
-  { title: '02 · 智能建议', desc: '多通道报价、库存、交付方式一屏展示，可一键生成卡片。' },
-  { title: '03 · 统一支付', desc: 'QuickPay、法币、链上、托管等模式自适应，展示价格、税费、通道成本。' },
-  { title: '04 · 联盟与收益', desc: '实时分佣、Session Trace、推荐 Agent 分润全部沉浸式呈现。' },
-]
-
-const quickStats = [
-  { label: '平均响应', value: '420 ms' },
-  { label: '支付成功率', value: '99.3 %' },
-  { label: '智能路由节省', value: '-32 % 成本' },
-  { label: 'Agent 覆盖', value: '180+ 模板' },
-]
-
-const panels = [
-  {
-    title: '多视角工作台',
-    bullets: ['左栏：能力与策略入口', '中央：对话 + 交易编排', '右栏：数据、收益、告警'],
-  },
-  {
-    title: '商户后台即 Agent',
-    bullets: ['商品 / 定价 / 税费 / 自动化直接配置', '一键生成支付、API、Webhook', '支持多角色协作'],
-  },
-  {
-    title: '混合资产探索',
-    bullets: ['Token / NFT / Launchpad / RWA 全部统一展示', '聚合 OpenSea、Magic Eden、DEX、法币渠道'],
-  },
-]
+import { useLocalization } from '../contexts/LocalizationContext'
 
 export default function AgentExperience() {
   const [showLogin, setShowLogin] = useState(false)
   const router = useRouter()
+  const { t } = useLocalization()
+
+  const viewSteps = [
+    { title: t({ zh: '01 · 对话捕捉', en: '01 · Conversation Capture' }), desc: t({ zh: 'Agent 监听用户意图，自动拉取商品、支付上下文与历史行为。', en: 'Agent monitors user intent, automatically pulls product, payment context and historical behavior.' }) },
+    { title: t({ zh: '02 · 智能建议', en: '02 · Smart Suggestions' }), desc: t({ zh: '多通道报价、库存、交付方式一屏展示，可一键生成卡片。', en: 'Multi-channel quotes, inventory, delivery methods displayed on one screen, can generate cards with one click.' }) },
+    { title: t({ zh: '03 · 统一支付', en: '03 · Unified Payment' }), desc: t({ zh: 'QuickPay、法币、链上、托管等模式自适应，展示价格、税费、通道成本。', en: 'QuickPay, fiat, on-chain, escrow and other modes adapt automatically, displaying prices, taxes, channel costs.' }) },
+    { title: t({ zh: '04 · 联盟与收益', en: '04 · Alliance & Revenue' }), desc: t({ zh: '实时分佣、Session Trace、推荐 Agent 分润全部沉浸式呈现。', en: 'Real-time commission splitting, Session Trace, recommended Agent profit sharing all presented immersively.' }) },
+  ]
+
+  const quickStats = [
+    { label: t({ zh: '平均响应', en: 'Average Response' }), value: '420 ms' },
+    { label: t({ zh: '支付成功率', en: 'Payment Success Rate' }), value: '99.3 %' },
+    { label: t({ zh: '智能路由节省', en: 'Smart Routing Savings' }), value: '-32 % 成本' },
+    { label: t({ zh: 'Agent 覆盖', en: 'Agent Coverage' }), value: '180+ 模板' },
+  ]
+
+  const panels = [
+    {
+      title: t({ zh: '多视角工作台', en: 'Multi-perspective Workspace' }),
+      bullets: [t({ zh: '左栏：能力与策略入口', en: 'Left panel: Capabilities and strategy entry' }), t({ zh: '中央：对话 + 交易编排', en: 'Center: Conversation + transaction orchestration' }), t({ zh: '右栏：数据、收益、告警', en: 'Right panel: Data, revenue, alerts' })],
+    },
+    {
+      title: t({ zh: '商户后台即 Agent', en: 'Merchant Backend as Agent' }),
+      bullets: [t({ zh: '商品 / 定价 / 税费 / 自动化直接配置', en: 'Products / pricing / taxes / automation direct configuration' }), t({ zh: '一键生成支付、API、Webhook', en: 'One-click generation of payment, API, Webhook' }), t({ zh: '支持多角色协作', en: 'Support multi-role collaboration' })],
+    },
+    {
+      title: t({ zh: '混合资产探索', en: 'Hybrid Asset Exploration' }),
+      bullets: [t({ zh: 'Token / NFT / Launchpad / RWA 全部统一展示', en: 'Token / NFT / Launchpad / RWA all unified display' }), t({ zh: '聚合 OpenSea、Magic Eden、DEX、法币渠道', en: 'Aggregate OpenSea, Magic Eden, DEX, fiat channels' })],
+    },
+  ]
 
   return (
     <>
       <Head>
-        <title>Agent 体验｜Agentrix</title>
+        <title>{t({ zh: 'Agent 体验｜Agentrix', en: 'Agent Experience | Agentrix' })}</title>
         <meta
           name="description"
-          content="Agentrix Agent 页面展示：对话、支付、资产、联盟在一个操作台完成，真实还原 AI 商业体工作流。"
+          content={t({ zh: 'Agentrix Agent 页面展示：对话、支付、资产、联盟在一个操作台完成，真实还原 AI 商业体工作流。', en: 'Agentrix Agent page display: conversation, payment, assets, alliance completed in one operation desk, truly restoring AI business workflow.' })}
         />
       </Head>
 
@@ -55,23 +57,22 @@ export default function AgentExperience() {
           <div className="container mx-auto px-6 py-16 md:py-24 grid lg:grid-cols-2 gap-10 items-center">
             <div className="space-y-6">
               <p className="text-xs tracking-[0.4em] uppercase text-cyan-300">Agent Experience</p>
-              <h1 className="text-4xl md:text-5xl font-bold">把商户后台、支付中枢、自动化面板全部塞进 Agent。</h1>
+              <h1 className="text-4xl md:text-5xl font-bold">{t({ zh: '把商户后台、支付中枢、自动化面板全部塞进 Agent。', en: 'Put merchant backend, payment center, automation panel all into Agent.' })}</h1>
               <p className="text-slate-200">
-                用户看到的是对话体验，商户与开发者看到的是可视化工作台。Agentrix Agent 同时具备 AI 能力、支付编排、智能路由、
-                联盟分佣、Auto-Earn 策略、SDK 生成等模块。
+                {t({ zh: '用户看到的是对话体验，商户与开发者看到的是可视化工作台。Agentrix Agent 同时具备 AI 能力、支付编排、智能路由、联盟分佣、Auto-Earn 策略、SDK 生成等模块。', en: 'Users see conversation experience, merchants and developers see visual workbench. Agentrix Agent has AI capabilities, payment orchestration, smart routing, alliance commission, Auto-Earn strategies, SDK generation and other modules.' })}
               </p>
               <div className="flex flex-wrap gap-4">
                 <button
                   onClick={() => router.push('/agent-enhanced')}
                   className="bg-white text-slate-900 font-semibold px-6 py-3 rounded-xl shadow-lg hover:-translate-y-0.5 transition"
                 >
-                  打开在线 Demo
+                  {t({ zh: '打开在线 Demo', en: 'Open Online Demo' })}
                 </button>
                 <button
                   onClick={() => router.push('/agent-builder')}
                   className="border border-white/30 px-6 py-3 rounded-xl font-semibold hover:bg-white/10 transition"
                 >
-                  生成我的 Agent
+                  {t({ zh: '生成我的 Agent', en: 'Generate My Agent' })}
                 </button>
               </div>
             </div>

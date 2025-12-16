@@ -25,7 +25,7 @@ export const consoleCheckAuthCode = `
     const userAddress = await signer.getAddress();
 
     // 获取合约地址
-    let erc8004Address = '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+    let erc8004Address = '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
     let tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd';
 
     try {

@@ -31,13 +31,13 @@ export function AgentSection() {
       <div className="container mx-auto px-6">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Agentrix Agent
+            AX Agent
           </h2>
           <p className="text-2xl text-gray-600 mb-2">
             AI 商业执行系统
           </p>
           <p className="text-lg text-gray-500 max-w-3xl mx-auto">
-            所有功能通过 Agentrix Agent 实现<br/>
+            所有功能通过 AX Agent 实现<br/>
             通过对话完成搜索、推荐、支付、订单管理
           </p>
         </div>
@@ -98,7 +98,7 @@ export function AgentSection() {
             onClick={() => router.push('/agent-enhanced')}
             className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
           >
-            立即体验 Agentrix Agent
+            立即体验 AX Agent
           </button>
         </div>
       </div>

@@ -61,13 +61,13 @@ export async function checkAuthorizationStatus(params?: {
     const contractInfo = await paymentApi.getContractAddress();
     erc8004Address = contractInfo?.erc8004ContractAddress || 
                      process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || 
-                     '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+                     '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
     tokenAddress = contractInfo?.usdcAddress || 
                    '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
   } catch {
     // 如果API不存在，使用环境变量或默认值
     erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || 
-                     '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+                     '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
     tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
   }
 

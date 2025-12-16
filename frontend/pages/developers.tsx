@@ -3,50 +3,52 @@ import { Navigation } from '../components/ui/Navigation'
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { LoginModal } from '../components/auth/LoginModal'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 export default function Developers() {
   const router = useRouter()
   const [showLogin, setShowLogin] = useState(false)
   const [activeTab, setActiveTab] = useState<'docs' | 'sdk' | 'api'>('docs')
+  const { t } = useLocalization()
 
   const targetAudiences = [
     {
       icon: '🤖',
-      title: 'Agent 开发者',
-      description: '使用 SDK / API 为 Agent 注入支付、订单、结算、资产聚合与联盟分润能力。',
-      action: '查看 Agent SDK 模板',
+      title: t({ zh: 'Agent 开发者', en: 'Agent Developer' }),
+      description: t({ zh: '使用 SDK / API 为 Agent 注入支付、订单、结算、资产聚合与联盟分润能力。', en: 'Use SDK/API to inject payment, order, settlement, asset aggregation and alliance profit-sharing capabilities into agents.' }),
+      action: t({ zh: '查看 Agent SDK 模板', en: 'View Agent SDK Templates' }),
     },
     {
       icon: '🧑‍💻',
-      title: '普通开发者',
-      description: '编写插件、策略、爬虫、数据源，接入 Marketplace 并通过联盟分润获益。',
-      action: '领取开发任务',
+      title: t({ zh: '普通开发者', en: 'General Developer' }),
+      description: t({ zh: '编写插件、策略、爬虫、数据源，接入 Marketplace 并通过联盟分润获益。', en: 'Write plugins, strategies, crawlers, data sources, connect to Marketplace and benefit from alliance profit-sharing.' }),
+      action: t({ zh: '领取开发任务', en: 'Claim Development Tasks' }),
     },
     {
       icon: '🧍',
-      title: '个人用户 / 创作者',
-      description: '一键生成我的 Agentrix Agent（无需代码），绑定钱包/法币账户即可开始 Auto-Earn。',
-      action: '立即生成个人 Agent',
+      title: t({ zh: '个人用户 / 创作者', en: 'Individual User / Creator' }),
+      description: t({ zh: '一键生成我的 AX Agent（无需代码），绑定钱包/法币账户即可开始 Auto-Earn。', en: 'Generate my AX Agent with one click (no code required), bind wallet/fiat account to start Auto-Earn.' }),
+      action: t({ zh: '立即生成个人 Agent', en: 'Generate Personal Agent Now' }),
     },
     {
       icon: '🏪',
-      title: '商户 / 品牌',
-      description: '通过 API 与 Webhook 管理商品、订单、结算，与 Agent 联动完成销售。',
-      action: '接入商户 API',
+      title: t({ zh: '商户 / 品牌', en: 'Merchant / Brand' }),
+      description: t({ zh: '通过 API 与 Webhook 管理商品、订单、结算，与 Agent 联动完成销售。', en: 'Manage products, orders, settlements through API and Webhook, complete sales in conjunction with agents.' }),
+      action: t({ zh: '接入商户 API', en: 'Connect Merchant API' }),
     },
   ]
 
   const personalAgentSteps = [
-    { title: '01. 登录 & 选择模版', detail: '选择消费、商户、开发者、策略等预设 Agent 模板，或从零开始。' },
-    { title: '02. 绑定支付 / 钱包', detail: '配置 QuickPay 限额、法币 / 稳定币账户、联盟链接与收益地址。' },
-    { title: '03. 发布到 Marketplace', detail: '一键生成分享链接 / SDK Key，立刻参与联盟收益。' },
+    { title: t({ zh: '01. 登录 & 选择模版', en: '01. Login & Select Template' }), detail: t({ zh: '选择消费、商户、开发者、策略等预设 Agent 模板，或从零开始。', en: 'Select preset agent templates for consumption, merchants, developers, strategies, or start from scratch.' }) },
+    { title: t({ zh: '02. 绑定支付 / 钱包', en: '02. Bind Payment / Wallet' }), detail: t({ zh: '配置 QuickPay 限额、法币 / 稳定币账户、联盟链接与收益地址。', en: 'Configure QuickPay limits, fiat/stablecoin accounts, alliance links and revenue addresses.' }) },
+    { title: t({ zh: '03. 发布到 Marketplace', en: '03. Publish to Marketplace' }), detail: t({ zh: '一键生成分享链接 / SDK Key，立刻参与联盟收益。', en: 'Generate sharing links/SDK Keys with one click, immediately participate in alliance revenue.' }) },
   ]
 
   const devSupport = [
-    { title: '多语言 SDK', detail: 'JS/TS、Python、React 组件库与 CLI，覆盖前后端场景。' },
-    { title: '全链路 Sandbox', detail: '提供沙盒 API Key、Mock Provider、虚拟资产池，便于本地调试。' },
-    { title: '开放数据 / Webhook', detail: '实时获取 Agent 收益、支付状态、资产行情，便于联动自身业务。' },
-    { title: '联盟任务 & Bounty', detail: '列出最新任务，提交即可获得返佣或一次性奖金。' },
+    { title: t({ zh: '多语言 SDK', en: 'Multi-language SDK' }), detail: t({ zh: 'JS/TS、Python、React 组件库与 CLI，覆盖前后端场景。', en: 'JS/TS, Python, React component library and CLI, covering front-end and back-end scenarios.' }) },
+    { title: t({ zh: '全链路 Sandbox', en: 'Full-link Sandbox' }), detail: t({ zh: '提供沙盒 API Key、Mock Provider、虚拟资产池，便于本地调试。', en: 'Provides sandbox API Key, Mock Provider, virtual asset pool for easy local debugging.' }) },
+    { title: t({ zh: '开放数据 / Webhook', en: 'Open Data / Webhook' }), detail: t({ zh: '实时获取 Agent 收益、支付状态、资产行情，便于联动自身业务。', en: 'Get real-time agent revenue, payment status, asset quotes to facilitate integration with your own business.' }) },
+    { title: t({ zh: '联盟任务 & Bounty', en: 'Alliance Tasks & Bounty' }), detail: t({ zh: '列出最新任务，提交即可获得返佣或一次性奖金。', en: 'List the latest tasks, submit to get commissions or one-time bonuses.' }) },
   ]
 
   const quickStartSteps = [
@@ -233,10 +235,10 @@ export default function Developers() {
           <div className="container mx-auto px-6">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
-                <p className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-3">一键生成个人 Agent</p>
-                <h2 className="text-3xl font-bold text-white mb-4">非开发者也能 3 步完成</h2>
+                <p className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-3">{t({ zh: '一键生成个人 Agent', en: 'Generate Personal Agent with One Click' })}</p>
+                <h2 className="text-3xl font-bold text-white mb-4">{t({ zh: '非开发者也能 3 步完成', en: 'Non-developers can complete in 3 steps' })}</h2>
                 <p className="text-lg text-slate-300 mb-8">
-                  Agentrix Agent Builder 内置模板、支付配置、联盟分享链路，帮助每个人快速上线 Auto-Earn 组合。
+                  {t({ zh: 'Agentrix Agent Builder 内置模板、支付配置、联盟分享链路，帮助每个人快速上线 Auto-Earn 组合。', en: 'Agentrix Agent Builder has built-in templates, payment configurations, and alliance sharing links to help everyone quickly launch Auto-Earn combinations.' })}
                 </p>
                 <div className="space-y-4">
                   {personalAgentSteps.map((step) => (

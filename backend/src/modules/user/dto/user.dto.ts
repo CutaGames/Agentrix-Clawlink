@@ -48,9 +48,17 @@ export class RegisterRoleDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ description: '网站' })
+  @ApiPropertyOptional({ description: '商家名称' })
   @IsOptional()
   @IsString()
-  website?: string;
+  businessName?: string;
+
+  @ApiPropertyOptional({ description: '联系信息' })
+  @IsOptional()
+  contactInfo?: any;
+
+  @ApiPropertyOptional({ description: '业务信息' })
+  @IsOptional()
+  businessInfo?: any;
 }
 

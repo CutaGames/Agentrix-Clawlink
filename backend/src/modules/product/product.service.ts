@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
-import { Product } from '../../entities/product.entity';
+import { Product, ProductStatus, ProductType } from '../../entities/product.entity';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
 import { SearchService } from '../search/search.service';
 import { CapabilityRegistryService } from '../ai-capability/services/capability-registry.service';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../entities/notification.entity';
 
 @Injectable()
 export class ProductService {
@@ -15,6 +17,8 @@ export class ProductService {
     private searchService: SearchService,
     @Inject(forwardRef(() => CapabilityRegistryService))
     private capabilityRegistry: CapabilityRegistryService,
+    @Inject(forwardRef(() => NotificationService))
+    private notificationService: NotificationService,
   ) {}
 
   async getProducts(search?: string, merchantId?: string, status?: string) {
@@ -59,6 +63,7 @@ export class ProductService {
       description: dto.description,
       category: dto.category,
       productType: dto.productType || 'physical',
+      status: ProductStatus.PENDING_REVIEW,
     };
 
     // 处理价格信息（统一标准格式优先）
@@ -155,6 +160,18 @@ export class ProductService {
       console.error('AI能力注册失败:', error);
     }
 
+    // 发送通知给商户
+    try {
+      await this.notificationService.createNotification(merchantId, {
+        type: NotificationType.SYSTEM,
+        title: '商品提交成功',
+        message: `您的商品 "${savedProduct.name}" 已提交审核，预计将在1个工作日内完成审核。`,
+        actionUrl: `/app/merchant/products`,
+      });
+    } catch (error) {
+      console.error('发送通知失败:', error);
+    }
+
     return savedProduct;
   }
 
@@ -233,6 +250,72 @@ export class ProductService {
 
     await this.productRepository.remove(product);
     return { message: '商品已删除' };
+  }
+
+  /**
+   * Phase 3: Service Discovery
+   * 从 URL 自动发现并注册服务
+   */
+  async discoverFromUrl(url: string, merchantId: string): Promise<Product> {
+    try {
+      // 1. 尝试获取 x402.json
+      // 优先尝试 /.well-known/x402.json，如果失败则尝试 url 本身
+      let metadataUrl = url;
+      if (!url.endsWith('x402.json')) {
+        metadataUrl = url.endsWith('/') ? `${url}.well-known/x402.json` : `${url}/.well-known/x402.json`;
+      }
+
+      // 使用 global fetch (Node 18+)
+      const response = await fetch(metadataUrl);
+      if (!response.ok) {
+        // 如果 .well-known 失败，尝试直接访问 URL (假设 URL 本身返回 metadata)
+        const directResponse = await fetch(url);
+        if (!directResponse.ok) {
+           throw new Error(`Failed to fetch x402 metadata from ${url}`);
+        }
+        // 检查 Content-Type 是否为 JSON
+        const contentType = directResponse.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+             throw new Error(`URL ${url} did not return JSON metadata`);
+        }
+        // 使用直接响应
+        return this.createProductFromMetadata(await directResponse.json(), merchantId, url);
+      }
+
+      return this.createProductFromMetadata(await response.json(), merchantId, url);
+    } catch (error) {
+      throw new Error(`Service discovery failed: ${error.message}`);
+    }
+  }
+
+  private async createProductFromMetadata(metadata: any, merchantId: string, sourceUrl: string): Promise<Product> {
+      // 验证必要字段
+      if (!metadata.name || !metadata.price) {
+          throw new Error('Invalid x402 metadata: missing name or price');
+      }
+
+      const product = this.productRepository.create({
+          merchantId,
+          name: metadata.name,
+          description: metadata.description || 'Imported via X402 Discovery',
+          price: metadata.price,
+          productType: ProductType.SERVICE,
+          category: metadata.category || 'API',
+          status: ProductStatus.ACTIVE, // 自动上架
+          metadata: {
+              ...metadata,
+              sourceUrl,
+              importedAt: new Date().toISOString(),
+              x402: {
+                  scheme: metadata.scheme || 'exact',
+                  network: metadata.network || 'base',
+                  recipient: metadata.recipient,
+                  token: metadata.token
+              }
+          }
+      });
+
+      return this.productRepository.save(product);
   }
 }
 

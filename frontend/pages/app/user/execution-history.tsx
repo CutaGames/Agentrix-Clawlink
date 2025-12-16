@@ -3,9 +3,11 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../../components/layout/DashboardLayout';
 import { agentAuthorizationApi, AgentExecutionHistory } from '../../../lib/api/agent-authorization.api';
 import { useToast } from '../../../contexts/ToastContext';
+import { useLocalization } from '../../../contexts/LocalizationContext';
 
 export default function ExecutionHistoryPage() {
   const { showToast } = useToast();
+  const { t } = useLocalization();
   const [allHistory, setAllHistory] = useState<AgentExecutionHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -56,26 +58,26 @@ export default function ExecutionHistoryPage() {
   return (
     <DashboardLayout userType="user">
       <Head>
-        <title>执行历史 - 用户中心</title>
+        <title>{t('executionHistory.pageTitle')}</title>
       </Head>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">执行历史</h1>
-          <p className="text-gray-600 mt-1">查看所有Agent的执行历史记录</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('executionHistory.pageTitle')}</h1>
+          <p className="text-gray-600 mt-1">{t('executionHistory.pageDescription')}</p>
         </div>
 
         {/* 筛选器 */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">筛选条件</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('executionHistory.filterTitle')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Agent ID</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t('executionHistory.agentIdLabel')}</label>
               <select
                 value={filters.agentId}
                 onChange={(e) => setFilters({ ...filters, agentId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">全部</option>
+                <option value="">{t('executionHistory.allOption')}</option>
                 {uniqueAgentIds.map((id) => (
                   <option key={id} value={id}>
                     {id}
@@ -84,13 +86,13 @@ export default function ExecutionHistoryPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">策略类型</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t('executionHistory.strategyTypeLabel')}</label>
               <select
                 value={filters.strategyType}
                 onChange={(e) => setFilters({ ...filters, strategyType: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">全部</option>
+                <option value="">{t('executionHistory.allOption')}</option>
                 {uniqueStrategyTypes.map((type) => (
                   <option key={type} value={type}>
                     {type}
@@ -99,21 +101,21 @@ export default function ExecutionHistoryPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">状态</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t('executionHistory.statusLabel')}</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">全部</option>
-                <option value="success">成功</option>
-                <option value="failed">失败</option>
-                <option value="rejected">拒绝</option>
-                <option value="pending">待处理</option>
+                <option value="">{t('executionHistory.allOption')}</option>
+                <option value="success">{t('executionHistory.statusSuccess')}</option>
+                <option value="failed">{t('executionHistory.statusFailed')}</option>
+                <option value="rejected">{t('executionHistory.statusRejected')}</option>
+                <option value="pending">{t('executionHistory.statusPending')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">开始日期</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t('executionHistory.startDateLabel')}</label>
               <input
                 type="date"
                 value={filters.startDate}
@@ -122,7 +124,7 @@ export default function ExecutionHistoryPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">结束日期</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{t('executionHistory.endDateLabel')}</label>
               <input
                 type="date"
                 value={filters.endDate}
@@ -141,20 +143,20 @@ export default function ExecutionHistoryPage() {
             </div>
           ) : filteredHistory.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-600">暂无执行历史</p>
+              <p className="text-gray-600">{t('executionHistory.noHistory')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">时间</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Agent ID</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">执行类型</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">策略类型</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">金额</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">状态</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">交易哈希</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.timeHeader')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.agentIdHeader')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.executionTypeHeader')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.strategyTypeHeader')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.amountHeader')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.statusHeader')}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">{t('executionHistory.transactionHashHeader')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -182,12 +184,12 @@ export default function ExecutionHistoryPage() {
                           }`}
                         >
                           {history.status === 'success'
-                            ? '成功'
+                            ? t('executionHistory.statusSuccess')
                             : history.status === 'failed'
-                            ? '失败'
+                            ? t('executionHistory.statusFailed')
                             : history.status === 'rejected'
-                            ? '拒绝'
-                            : '待处理'}
+                            ? t('executionHistory.statusRejected')
+                            : t('executionHistory.statusPending')}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600 font-mono">

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 import { Navigation } from '../../components/ui/Navigation';
 import { paymentApi, type PaymentInfo } from '../../lib/api/payment.api';
+import { useLocalization } from '../../contexts/LocalizationContext';
 
 export default function PaymentSuccessPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function PaymentSuccessPage() {
   const [payment, setPayment] = useState<PaymentInfo | null>(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLocalization();
 
   useEffect(() => {
     const fetchPayment = async () => {
@@ -24,8 +26,8 @@ export default function PaymentSuccessPage() {
         setPayment(info);
         setError(null);
       } catch (err: any) {
-        console.error('加载支付信息失败:', err);
-        setError(err.message || '无法加载支付详情');
+        console.error('Failed to load payment details:', err);
+        setError(err.message || t({ zh: '无法加载支付详情', en: 'Unable to load payment details' }));
       } finally {
         setLoadingPayment(false);
       }
@@ -60,13 +62,13 @@ export default function PaymentSuccessPage() {
 
     return (
       <div className="p-4 bg-emerald-50 rounded-lg text-left space-y-1">
-        <div className="text-xs text-emerald-700">汇率信息</div>
+        <div className="text-xs text-emerald-700">{t({ zh: '汇率信息', en: 'Exchange Rate Info' })}</div>
         <div className="text-sm text-emerald-900">
           {originalAmount} {originalCurrency} ≈ {cryptoAmount} {convertedCurrency}
         </div>
         {rate && !Number.isNaN(rate) && (
           <div className="text-xs text-emerald-700">
-            锁定汇率：1 {originalCurrency} = {rate.toFixed(6)} {convertedCurrency}
+            {t({ zh: '锁定汇率', en: 'Locked Rate' })}: 1 {originalCurrency} = {rate.toFixed(6)} {convertedCurrency}
           </div>
         )}
       </div>
@@ -83,29 +85,29 @@ export default function PaymentSuccessPage() {
               <CheckCircle className="w-12 h-12 text-green-600" />
             </div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              支付成功！
+              {t({ zh: '支付成功！', en: 'Payment Successful!' })}
             </h1>
             <p className="text-slate-600">
-              您的订单已成功处理
+              {t({ zh: '您的订单已成功处理', en: 'Your order has been processed successfully' })}
             </p>
           </div>
 
           {paymentIdParam && (
             <div className="mb-4 p-4 bg-slate-50 rounded-lg text-left">
-              <div className="text-xs text-slate-500 mb-1">支付编号</div>
+              <div className="text-xs text-slate-500 mb-1">{t({ zh: '支付编号', en: 'Payment ID' })}</div>
               <div className="text-sm font-mono text-slate-900 break-all">{paymentIdParam}</div>
             </div>
           )}
 
           {orderIdParam && (
             <div className="mb-4 p-4 bg-slate-50 rounded-lg text-left">
-              <div className="text-xs text-slate-500 mb-1">订单号</div>
+              <div className="text-xs text-slate-500 mb-1">{t({ zh: '订单号', en: 'Order ID' })}</div>
               <div className="text-sm font-mono text-slate-900 break-all">{orderIdParam}</div>
             </div>
           )}
 
           {loadingPayment && (
-            <div className="mb-4 text-sm text-slate-500">正在加载支付详情...</div>
+            <div className="mb-4 text-sm text-slate-500">{t({ zh: '正在加载支付详情...', en: 'Loading payment details...' })}</div>
           )}
 
           {error && (
@@ -115,18 +117,18 @@ export default function PaymentSuccessPage() {
           {payment && (
             <div className="mb-6 space-y-3 text-left">
               <div className="p-4 bg-indigo-50 rounded-lg">
-                <div className="text-xs text-indigo-700">支付金额</div>
+                <div className="text-xs text-indigo-700">{t({ zh: '支付金额', en: 'Payment Amount' })}</div>
                 <div className="text-lg font-semibold text-indigo-900">
                   {payment.amount} {payment.currency}
                 </div>
-                <div className="text-xs text-indigo-600">方式：{payment.paymentMethod}</div>
+                <div className="text-xs text-indigo-600">{t({ zh: '方式', en: 'Method' })}: {payment.paymentMethod}</div>
               </div>
 
               {renderConversionInfo()}
 
               {payment.metadata?.exchangeRateLock?.expiresAt && (
                 <div className="text-xs text-slate-500">
-                  汇率锁到期时间：{new Date(payment.metadata.exchangeRateLock.expiresAt).toLocaleString()}
+                  {t({ zh: '汇率锁到期时间', en: 'Exchange rate lock expires' })}: {new Date(payment.metadata.exchangeRateLock.expiresAt).toLocaleString()}
                 </div>
               )}
             </div>
@@ -137,14 +139,14 @@ export default function PaymentSuccessPage() {
               onClick={() => router.push('/marketplace')}
               className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
             >
-              返回市场
+              {t({ zh: '返回市场', en: 'Back to Marketplace' })}
               <ArrowRight size={18} />
             </button>
             <button
               onClick={() => router.push('/app/user/transactions')}
               className="w-full bg-slate-100 text-slate-700 py-3 rounded-lg font-medium hover:bg-slate-200 transition-colors"
             >
-              查看订单
+              {t({ zh: '查看订单', en: 'View Orders' })}
             </button>
           </div>
 

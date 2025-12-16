@@ -143,6 +143,17 @@ class ApiClient {
         throw new Error('未授权，请重新登录');
       }
 
+      // 处理402需要支付错误 (X402 V2)
+      if (response.status === 402) {
+        const authHeader = response.headers.get('WWW-Authenticate');
+        // 触发全局事件或抛出特定错误供上层捕获
+        // 这里我们抛出一个带有元数据的错误
+        const error: any = new Error('Payment Required');
+        error.status = 402;
+        error.paymentParams = authHeader;
+        throw error;
+      }
+
       // 处理403禁止访问错误
       if (response.status === 403) {
         throw new Error('没有权限访问此资源');

@@ -32,8 +32,8 @@ export class CommissionService {
 
   async getSettlements(payeeId: string) {
     return this.settlementRepository.find({
-      where: { payeeId },
-      order: { settlementDate: 'DESC' },
+      where: { merchantId: payeeId },
+      order: { createdAt: 'DESC' },
     });
   }
 
@@ -65,11 +65,15 @@ export class CommissionService {
 
     // 创建结算记录
     const settlement = this.settlementRepository.create({
-      payeeId,
-      payeeType,
-      amount: totalAmount,
-      currency,
-      settlementDate: today,
+      merchantId: payeeId,
+      // payeeType,
+      merchantAmount: totalAmount.toString(),
+      totalAmount: totalAmount.toString(),
+      platformFee: '0',
+      channelFee: '0',
+      orderId: `BATCH-${Date.now()}`,
+      // currency,
+      // settlementDate: today,
       status: SettlementStatus.PENDING,
     });
 

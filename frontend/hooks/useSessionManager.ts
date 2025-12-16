@@ -13,6 +13,7 @@ export interface Session {
   id: string;
   sessionId: string;
   signer: string;
+  owner?: string; // Owner wallet address for payer identification
   singleLimit: number;
   dailyLimit: number;
   usedToday: number;
@@ -77,20 +78,23 @@ export function useSessionManager() {
       const message = `Authorize Session Key: ${sessionKey.publicKey}\nSingle Limit: ${config.singleLimit} USDC\nDaily Limit: ${config.dailyLimit} USDC\nExpiry: ${config.expiryDays} days`;
       const signature = await signMessage(message);
 
-      // 3. 获取ERC8004合约地址和USDT地址（从后端API或环境变量）
+      // 3. 获取合约地址（ERC8004、Commission、USDT）
       // 先尝试从后端获取，如果没有则使用环境变量
       let erc8004Address: string;
+      let commissionAddress: string;
       let tokenAddress: string;
       
       try {
         // 从后端API获取合约地址
         const contractInfo = await paymentApi.getContractAddress?.();
-        erc8004Address = contractInfo?.erc8004ContractAddress || process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        erc8004Address = contractInfo?.erc8004ContractAddress || process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
+        commissionAddress = contractInfo?.commissionContractAddress || '0x4d10DA389E0ADe7E7a7E3232531048aEaCa4021C'; // BSC Testnet Commission
         // 注意：API 返回的是 usdcAddress，但这里使用 USDT 地址作为默认值
         tokenAddress = contractInfo?.usdcAddress || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
       } catch {
         // 如果API不存在，使用环境变量或默认值
-        erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
+        commissionAddress = '0x4d10DA389E0ADe7E7a7E3232531048aEaCa4021C'; // BSC Testnet Commission
         tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
       }
 
@@ -138,50 +142,57 @@ export function useSessionManager() {
         );
         
         const decimals = await tokenContract.decimals?.().then((d: number) => Number(d)).catch(() => 18);
-        const currentAllowance = await tokenContract.allowance(userAddress, erc8004Address);
         // 授权额度 = dailyLimit * 3（支持3天的使用，既安全又实用）
         // 这样用户可以看到明确的授权额度，而不是"无限"
         const approvalHumanAmount = Number((safeDailyLimit * 3).toFixed(6));
         const approvalAmount = ethers.parseUnits(approvalHumanAmount.toString(), decimals);
-        
-        // 检查是否需要授权
-        const needsApproval = currentAllowance < approvalAmount;
-        
-        if (needsApproval) {
-          console.log('授权USDT给ERC8004合约...', {
-            tokenAddress,
-            erc8004Address,
-            currentAllowance: currentAllowance.toString(),
-            approvalAmount: approvalAmount.toString(),
-            dailyLimit: safeDailyLimit,
-            explanation: `授权额度为每日限额的3倍（${approvalHumanAmount} USDT），支持3天的使用`,
-          });
+
+        // 使用类型断言，因为 ethers.Contract 的 connect 方法返回的类型不完整
+        const tokenWithSigner = tokenContract.connect(signer) as any;
+
+        // 辅助函数：检查并授权单个合约
+        const checkAndApprove = async (spenderAddress: string, contractName: string) => {
+          const currentAllowance = await tokenContract.allowance(userAddress, spenderAddress);
+          const needsApproval = currentAllowance < approvalAmount;
           
-          // 使用类型断言，因为 ethers.Contract 的 connect 方法返回的类型不完整
-          const tokenWithSigner = tokenContract.connect(signer) as any;
-          
-          // 授权有限额度（dailyLimit * 3），而不是无限授权
-          try {
-            const approveTx = await tokenWithSigner.approve(erc8004Address, approvalAmount);
-            console.log('等待授权交易确认...', approveTx.hash);
-            await approveTx.wait();
-            console.log(`✅ USDT授权成功，授权额度：${approvalHumanAmount} USDT（有限授权）`);
-          } catch (approveError: any) {
-            console.error('❌ USDT授权失败:', approveError);
-            // 提供更友好的错误信息
-            if (approveError.code === 4001) {
-              throw new Error('用户拒绝了授权交易。请重新尝试并确认授权。');
-            } else if (approveError.message?.includes('insufficient funds') || approveError.message?.includes('gas')) {
-              throw new Error('Gas费用不足，请确保钱包有足够的BNB/BTC来支付交易费用。');
-            } else if (approveError.message?.includes('Transaction failed')) {
-              throw new Error('交易失败，可能是网络问题或合约调用失败。请稍后重试。');
-            } else {
-              throw new Error(`授权失败：${approveError.message || '未知错误'}`);
+          if (needsApproval) {
+            console.log(`授权USDT给${contractName}合约...`, {
+              tokenAddress,
+              spenderAddress,
+              currentAllowance: currentAllowance.toString(),
+              approvalAmount: approvalAmount.toString(),
+              dailyLimit: safeDailyLimit,
+              explanation: `授权额度为每日限额的3倍（${approvalHumanAmount} USDT），支持3天的使用`,
+            });
+            
+            try {
+              const approveTx = await tokenWithSigner.approve(spenderAddress, approvalAmount);
+              console.log(`等待${contractName}授权交易确认...`, approveTx.hash);
+              await approveTx.wait();
+              console.log(`✅ USDT授权给${contractName}成功，授权额度：${approvalHumanAmount} USDT（有限授权）`);
+            } catch (approveError: any) {
+              console.error(`❌ USDT授权给${contractName}失败:`, approveError);
+              // 提供更友好的错误信息
+              if (approveError.code === 4001) {
+                throw new Error(`用户拒绝了${contractName}授权交易。请重新尝试并确认授权。`);
+              } else if (approveError.message?.includes('insufficient funds') || approveError.message?.includes('gas')) {
+                throw new Error('Gas费用不足，请确保钱包有足够的BNB/BTC来支付交易费用。');
+              } else if (approveError.message?.includes('Transaction failed')) {
+                throw new Error('交易失败，可能是网络问题或合约调用失败。请稍后重试。');
+              } else {
+                throw new Error(`授权失败：${approveError.message || '未知错误'}`);
+              }
             }
+          } else {
+            console.log(`✅ USDT对${contractName}授权额度充足（当前：${ethers.formatUnits(currentAllowance, decimals)} USDT），无需重新授权`);
           }
-        } else {
-          console.log(`✅ USDT授权额度充足（当前：${ethers.formatUnits(currentAllowance, decimals)} USDT），无需重新授权`);
-        }
+        };
+
+        // 同时授权 ERC8004 和 Commission 合约（QuickPay 需要两者的授权）
+        // ERC8004: Session 管理需要
+        // Commission: quickPaySplitFrom 需要从用户钱包转账
+        await checkAndApprove(erc8004Address, 'ERC8004');
+        await checkAndApprove(commissionAddress, 'Commission');
       }
 
       // 5. 调用合约创建Session（需要用户钱包执行）
@@ -212,11 +223,15 @@ export function useSessionManager() {
           expiryTimestamp,
         );
 
+        // 增加 gasLimit 缓冲，防止因为 gas 估算不足导致失败
         const tx = await sessionManagerContract.createSession(
           sessionKey.publicKey,
           singleLimitUnits,
           dailyLimitUnits,
           expiryTimestamp,
+          {
+            gasLimit: 500000, // 增加到 50万 gas
+          }
         );
         console.log('等待Session创建交易确认...', tx.hash);
         await tx.wait();
@@ -273,7 +288,7 @@ export function useSessionManager() {
       }
 
       if (provider) {
-        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
         const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
         const signer = await provider.getSigner();

@@ -76,7 +76,40 @@ export class AgentAuthorizationService {
   }
 
   /**
-   * 获取Agent的激活授权
+   * 创建 X402 兼容的 Session (V2)
+   * 结合了 AgentAuthorization 和 Session Key 概念
+   */
+  async createX402Session(
+      userId: string,
+      agentId: string,
+      signerAddress: string,
+      limits: { single: number; daily: number }
+  ): Promise<AgentAuthorization> {
+      // 1. 生成 Session ID (模拟)
+      const sessionId = '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+      
+      // 2. 创建授权记录
+      const auth = this.authorizationRepository.create({
+          userId,
+          agentId,
+          sessionId,
+          walletAddress: signerAddress, // 这里复用 walletAddress 字段存储 Session Key Signer
+          authorizationType: 'session_key', // 需要确保 Entity 支持此 Enum 值或改为 String
+          singleLimit: limits.single,
+          dailyLimit: limits.daily,
+          totalLimit: limits.daily * 30, // 默认月限额
+          expiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30天过期
+          isActive: true,
+          usedToday: 0,
+          usedTotal: 0,
+          lastResetDate: new Date(),
+      });
+
+      return this.authorizationRepository.save(auth);
+  }
+
+  /**
+   * 获取Agent授权详情
    */
   async getActiveAuthorization(agentId: string): Promise<AgentAuthorization | null> {
     const authorization = await this.authorizationRepository.findOne({

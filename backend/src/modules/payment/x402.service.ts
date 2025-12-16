@@ -103,6 +103,9 @@ export class X402Service {
       currency: dto.currency,
       recipient: dto.metadata?.recipient || dto.merchantId,
       timestamp: Date.now(),
+      // V2 Fields: Scheme and Network separation
+      scheme: dto.metadata?.scheme || 'exact',
+      network: dto.metadata?.network || 'base',
     };
 
     // 使用简单的压缩算法（实际应该使用更高效的压缩）

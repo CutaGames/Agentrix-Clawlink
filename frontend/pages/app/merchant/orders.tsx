@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import { orderApi, Order } from '../../../lib/api/order.api'
 import { OrderDetailModal } from '../../../components/merchant/OrderDetailModal'
 import { useUser } from '../../../contexts/UserContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function MerchantOrders() {
   const { user } = useUser()
+  const { t } = useLocalization()
   const [filter, setFilter] = useState<'all' | 'pending' | 'shipped' | 'completed' | 'cancelled'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
@@ -102,26 +104,26 @@ export default function MerchantOrders() {
   }
 
   const displayStats = [
-    { label: '总订单数', value: stats.totalOrders.toString(), change: '' },
-    { label: '今日订单', value: stats.todayOrders.toString(), change: '' },
-    { label: '待处理订单', value: orders.filter(o => o.status === 'pending').length.toString(), change: '' },
-    { label: '今日销售额', value: `¥${stats.todayGMV.toLocaleString()}`, change: '' },
+    { label: t('merchantOrders.stats.totalOrders'), value: stats.totalOrders.toString(), change: '' },
+    { label: t('merchantOrders.stats.todayOrders'), value: stats.todayOrders.toString(), change: '' },
+    { label: t('merchantOrders.stats.pendingOrders'), value: orders.filter(o => o.status === 'pending').length.toString(), change: '' },
+    { label: t('merchantOrders.stats.todaySales'), value: `¥${stats.todayGMV.toLocaleString()}`, change: '' },
   ];
 
   return (
     <>
       <Head>
-        <title>订单管理 - Agentrix</title>
+        <title>{t('merchantOrders.pageTitle')} - Agentrix</title>
       </Head>
       <DashboardLayout userType="merchant">
         <div className="mb-8">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">订单管理</h1>
-              <p className="text-gray-600">管理您的所有订单和发货状态</p>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('merchantOrders.pageTitle')}</h1>
+              <p className="text-gray-600">{t('merchantOrders.pageDescription')}</p>
             </div>
             <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
-              导出订单
+              {t('merchantOrders.exportOrders')}
             </button>
           </div>
           {/* Stats */}
@@ -141,11 +143,11 @@ export default function MerchantOrders() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: 'all', name: '全部订单' },
-                  { id: 'pending', name: '待处理' },
-                  { id: 'shipped', name: '已发货' },
-                  { id: 'completed', name: '已完成' },
-                  { id: 'cancelled', name: '已取消' }
+                  { id: 'all', name: t('merchantOrders.filters.all') },
+                  { id: 'pending', name: t('merchantOrders.filters.pending') },
+                  { id: 'shipped', name: t('merchantOrders.filters.shipped') },
+                  { id: 'completed', name: t('merchantOrders.filters.completed') },
+                  { id: 'cancelled', name: t('merchantOrders.filters.cancelled') }
                 ].map((filterOption) => (
                   <button
                     key={filterOption.id}
@@ -202,7 +204,7 @@ export default function MerchantOrders() {
             {!loading && !error && filteredOrders.length === 0 && (
               <div className="text-center py-8 text-gray-500">
                 <div className="text-4xl mb-4">📦</div>
-                <p>没有找到符合条件的订单</p>
+                <p>{t('merchantOrders.noOrdersFound')}</p>
               </div>
             )}
             {!loading && !error && filteredOrders.length > 0 && (() => {
@@ -210,7 +212,7 @@ export default function MerchantOrders() {
               const ordersByCategory = filteredOrders.reduce((acc, order) => {
                 const category = order.metadata?.items?.[0]?.category || 
                                  order.metadata?.category || 
-                                 '未分类';
+                                 t('merchantOrders.uncategorized');
                 if (!acc[category]) {
                   acc[category] = [];
                 }
@@ -226,20 +228,20 @@ export default function MerchantOrders() {
                     <div key={category} className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                         <h3 className="text-lg font-semibold text-gray-900">{category}</h3>
-                        <p className="text-sm text-gray-600">{ordersByCategory[category].length} 个订单</p>
+                        <p className="text-sm text-gray-600">{ordersByCategory[category].length} {t('merchantOrders.orderCount')}</p>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">订单号</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">客户</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">商品</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">金额</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">渠道</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">日期</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">状态</th>
-                      <th className="text-left py-3 text-sm font-medium text-gray-600">操作</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.orderId')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.customer')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.product')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.amount')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.channel')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.date')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.status')}</th>
+                      <th className="text-left py-3 text-sm font-medium text-gray-600">{t('merchantOrders.table.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -297,7 +299,7 @@ export default function MerchantOrders() {
                                 onClick={() => setSelectedOrder(order)}
                                 className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                               >
-                              详情
+                              {t('merchantOrders.actions.details')}
                             </button>
                             {order.status === 'pending' && (
                                 <button 
@@ -306,12 +308,12 @@ export default function MerchantOrders() {
                                       await orderApi.updateOrderStatus(order.id, 'shipped');
                                       await loadOrders();
                                     } catch (err: any) {
-                                      alert(err.message || '发货失败，请稍后重试');
+                                      alert(err.message || t('merchantOrders.errors.shipFailed'));
                                     }
                                   }}
                                   className="text-green-600 hover:text-green-700 text-sm font-medium"
                                 >
-                                发货
+                                {t('merchantOrders.actions.ship')}
                               </button>
                             )}
                           </div>
@@ -350,7 +352,7 @@ export default function MerchantOrders() {
                 await loadOrders()
                 setSelectedOrder(null)
               } catch (err: any) {
-                alert(err.message || '退款失败，请稍后重试')
+                alert(err.message || t('merchantOrders.errors.refundFailed'))
               }
             }}
           />
@@ -359,11 +361,11 @@ export default function MerchantOrders() {
         {/* Pagination */}
         <div className="mt-6 flex justify-between items-center">
           <p className="text-sm text-gray-600">
-            显示 1-{filteredOrders.length} 条，共 {orders.length} 条订单
+            {t('merchantOrders.pagination.showing', { start: 1, end: filteredOrders.length, total: orders.length })}
           </p>
           <div className="flex space-x-2">
             <button className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-600 hover:bg-gray-50">
-              上一页
+              {t('merchantOrders.pagination.previous')}
             </button>
             <button className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
               1
@@ -372,7 +374,7 @@ export default function MerchantOrders() {
               2
             </button>
             <button className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-600 hover:bg-gray-50">
-              下一页
+              {t('merchantOrders.pagination.next')}
             </button>
           </div>
         </div>

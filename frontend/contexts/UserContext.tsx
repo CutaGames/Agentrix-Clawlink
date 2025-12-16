@@ -5,10 +5,11 @@ interface UserContextType {
   user: User | null
   currentRole: UserRole
   isAuthenticated: boolean
+  isLoading: boolean
   login: (userData: Partial<User>) => void
   logout: () => void
   switchRole: (role: UserRole) => void
-  registerRole: (role: 'merchant' | 'agent') => Promise<void>
+  registerRole: (role: 'merchant' | 'agent', data?: any) => Promise<void>
   updateKYC: (kycLevel: KYCLevel, status: 'pending' | 'approved' | 'rejected') => void
   updateUser: (userData: Partial<User>) => void
 }
@@ -16,7 +17,7 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | null>(null)
 
 function generateAgentrixId(): string {
-  const prefix = 'PM'
+  const prefix = 'AX'
   const timestamp = Date.now().toString(36).toUpperCase()
   const random = Math.random().toString(36).substring(2, 8).toUpperCase()
   return `${prefix}-${timestamp}-${random}`
@@ -25,6 +26,7 @@ function generateAgentrixId(): string {
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [currentRole, setCurrentRole] = useState<UserRole>('user')
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const savedUser = localStorage.getItem('agentrix_user')
@@ -34,6 +36,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setUser(parsedUser)
       setCurrentRole(savedRole || parsedUser.role || 'user')
     }
+    setIsLoading(false)
   }, [])
 
   const login = (userData: Partial<User>) => {
@@ -101,7 +104,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const registerRole = async (role: 'merchant' | 'agent') => {
+  const registerRole = async (role: 'merchant' | 'agent', data?: any) => {
     if (!user) return
 
     try {
@@ -117,7 +120,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           email?: string;
           nickname?: string;
         };
-      }>('/users/register-role', { role })
+      }>('/users/register-role', { role, ...data })
 
       if (response?.success && response?.user) {
         // 使用后端返回的用户数据更新本地状态
@@ -187,6 +190,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         user,
         currentRole,
         isAuthenticated: !!user,
+        isLoading,
         login,
         logout,
         switchRole,

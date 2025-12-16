@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { userAgentApi, type TransactionClassification } from '../../../lib/api/user-agent.api'
 import { useToast } from '../../../contexts/ToastContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 interface CategoryStatistics {
   [category: string]: number;
@@ -14,6 +15,7 @@ export default function TransactionClassificationPage() {
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const { showToast } = useToast()
+  const { t } = useLocalization()
 
   useEffect(() => {
     loadStatistics()
@@ -61,14 +63,14 @@ export default function TransactionClassificationPage() {
 
   const getCategoryLabel = (category: string) => {
     const labels: Record<string, string> = {
-      shopping: '购物',
-      food: '餐饮',
-      entertainment: '娱乐',
-      transportation: '交通',
-      bills: '账单',
-      healthcare: '医疗',
-      education: '教育',
-      other: '其他',
+      shopping: t('transactionClassification.categories.shopping'),
+      food: t('transactionClassification.categories.food'),
+      entertainment: t('transactionClassification.categories.entertainment'),
+      transportation: t('transactionClassification.categories.transportation'),
+      bills: t('transactionClassification.categories.bills'),
+      healthcare: t('transactionClassification.categories.healthcare'),
+      education: t('transactionClassification.categories.education'),
+      other: t('transactionClassification.categories.other'),
     }
     return labels[category] || category
   }
@@ -87,12 +89,12 @@ export default function TransactionClassificationPage() {
   return (
     <DashboardLayout userType="user">
       <Head>
-        <title>交易分类 - 用户中心</title>
+        <title>{t('transactionClassification.pageTitle')}</title>
       </Head>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">交易分类</h1>
-          <p className="text-gray-600 mt-1">查看和管理您的交易分类统计</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('transactionClassification.pageTitle')}</h1>
+          <p className="text-gray-600 mt-1">{t('transactionClassification.pageDescription')}</p>
         </div>
 
         {loading ? (
@@ -103,11 +105,11 @@ export default function TransactionClassificationPage() {
           <>
             {/* 分类统计概览 */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">分类统计</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">{t('transactionClassification.statisticsTitle')}</h2>
               
               {categories.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  还没有交易分类数据
+                  {t('transactionClassification.noData')}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -131,7 +133,7 @@ export default function TransactionClassificationPage() {
                               {getCategoryLabel(category)}
                             </span>
                             <span className="text-sm text-gray-600">
-                              {count} 笔交易
+                              {count} {t('transactionClassification.transactions')}
                             </span>
                           </div>
                           <span className="text-lg font-semibold text-gray-900">
@@ -155,9 +157,9 @@ export default function TransactionClassificationPage() {
               {categories.length > 0 && (
                 <div className="mt-6 pt-6 border-t border-gray-200">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-700">总交易数</span>
+                    <span className="text-sm font-medium text-gray-700">{t('transactionClassification.totalTransactions')}</span>
                     <span className="text-lg font-bold text-gray-900">
-                      {getTotalTransactions()} 笔
+                      {getTotalTransactions()} {t('transactionClassification.transactions')}
                     </span>
                   </div>
                 </div>
@@ -169,7 +171,7 @@ export default function TransactionClassificationPage() {
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold text-gray-900">
-                    {getCategoryLabel(selectedCategory)} 详情
+                    {getCategoryLabel(selectedCategory)} {t('transactionClassification.details')}
                   </h2>
                   <button
                     onClick={() => setSelectedCategory(null)}
@@ -179,27 +181,27 @@ export default function TransactionClassificationPage() {
                   </button>
                 </div>
                 <div className="text-gray-600">
-                  <p>该分类共有 <strong>{statistics[selectedCategory]}</strong> 笔交易</p>
-                  <p className="mt-2">占比: <strong>{getCategoryPercentage(statistics[selectedCategory])}%</strong></p>
+                  <p>{t('transactionClassification.categoryHas')} <strong>{statistics[selectedCategory]}</strong> {t('transactionClassification.transactions')}</p>
+                  <p className="mt-2">{t('transactionClassification.percentage')}: <strong>{getCategoryPercentage(statistics[selectedCategory])}%</strong></p>
                 </div>
               </div>
             )}
 
             {/* 分类方法说明 */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-blue-900 mb-2">分类方法</h3>
+              <h3 className="text-lg font-semibold text-blue-900 mb-2">{t('transactionClassification.classificationMethod')}</h3>
               <div className="space-y-2 text-sm text-blue-800">
                 <div className="flex items-start">
-                  <span className="font-medium mr-2">• 规则引擎:</span>
-                  <span>基于交易描述、商家信息等规则自动分类</span>
+                  <span className="font-medium mr-2">{t('transactionClassification.ruleEngine')}:</span>
+                  <span>{t('transactionClassification.ruleEngineDesc')}</span>
                 </div>
                 <div className="flex items-start">
-                  <span className="font-medium mr-2">• 机器学习:</span>
-                  <span>使用AI模型分析交易模式进行分类</span>
+                  <span className="font-medium mr-2">{t('transactionClassification.machineLearning')}:</span>
+                  <span>{t('transactionClassification.machineLearningDesc')}</span>
                 </div>
                 <div className="flex items-start">
-                  <span className="font-medium mr-2">• 手动分类:</span>
-                  <span>您可以手动调整交易分类</span>
+                  <span className="font-medium mr-2">{t('transactionClassification.manualClassification')}:</span>
+                  <span>{t('transactionClassification.manualClassificationDesc')}</span>
                 </div>
               </div>
             </div>

@@ -33,7 +33,7 @@ export function AgentChat({ onProductSelect, onOrderQuery, onCodeGenerate }: Age
     {
       id: '1',
       role: 'assistant',
-      content: '👋 您好！我是 Agentrix Agent，您的智能商业与支付助手。\n\n我可以帮您：\n• 浏览和购买商品、服务、链上资产\n• 查询订单状态\n• 接入 API/SDK（生成示例代码）\n• 解答常见问题\n\n请告诉我您需要什么帮助？',
+      content: '👋 您好！我是 AX Agent，您的智能商业与支付助手。\n\n我可以帮您：\n• 浏览和购买商品、服务、链上资产\n• 查询订单状态\n• 接入 API/SDK（生成示例代码）\n• 解答常见问题\n\n请告诉我您需要什么帮助？',
       timestamp: new Date(),
     },
   ]);

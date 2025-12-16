@@ -3,8 +3,9 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  OneToMany,
 } from 'typeorm';
-import { PayeeType } from './commission.entity';
+import { CommissionAllocation } from './commission-allocation.entity';
 
 export enum SettlementStatus {
   PENDING = 'pending',
@@ -13,28 +14,28 @@ export enum SettlementStatus {
   FAILED = 'failed',
 }
 
-@Entity('commission_settlements')
+@Entity('commission_settlements_v4')
 export class CommissionSettlement {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  payeeId: string;
+  @Column({ name: 'merchant_id', nullable: true })
+  merchantId: string;
 
-  @Column({
-    type: 'enum',
-    enum: PayeeType,
-  })
-  payeeType: PayeeType;
+  @Column({ name: 'order_id' })
+  orderId: string;
 
-  @Column('decimal', { precision: 15, scale: 2 })
-  amount: number;
+  @Column('numeric', { name: 'total_amount', precision: 20, scale: 6 })
+  totalAmount: string;
 
-  @Column({ length: 10 })
-  currency: string;
+  @Column('numeric', { name: 'merchant_amount', precision: 20, scale: 6 })
+  merchantAmount: string;
 
-  @Column({ type: 'date' })
-  settlementDate: Date;
+  @Column('numeric', { name: 'platform_fee', precision: 20, scale: 6 })
+  platformFee: string;
+
+  @Column('numeric', { name: 'channel_fee', precision: 20, scale: 6 })
+  channelFee: string;
 
   @Column({
     type: 'enum',
@@ -43,10 +44,18 @@ export class CommissionSettlement {
   })
   status: SettlementStatus;
 
-  @Column({ nullable: true })
-  transactionHash: string;
+  @Column({ name: 'trigger_type', nullable: true })
+  triggerType: string;
 
-  @CreateDateColumn()
+  @Column({ name: 'unlock_at', type: 'timestamp', nullable: true })
+  unlockAt: Date;
+
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  @OneToMany(() => CommissionAllocation, (allocation) => allocation.settlement, {
+    cascade: true,
+  })
+  allocations: CommissionAllocation[];
 }
 

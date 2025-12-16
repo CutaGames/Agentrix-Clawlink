@@ -43,6 +43,7 @@ export class MerchantManagementService {
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
+      .leftJoinAndSelect('user.merchantProfile', 'profile')
       .where(':role = ANY(user.roles)', { role: 'merchant' });
 
     if (query.search) {
@@ -82,6 +83,7 @@ export class MerchantManagementService {
 
         return {
           ...merchant,
+          agentrixId: merchant.paymindId,
           stats: {
             productCount,
             orderCount,

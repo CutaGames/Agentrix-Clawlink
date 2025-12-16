@@ -3,12 +3,14 @@ import { useState, useEffect } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { quickPayGrantApi, type QuickPayGrant } from '../../../lib/api/quick-pay-grant.api'
 import { useToast } from '../../../contexts/ToastContext'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function QuickPayPage() {
   const [grants, setGrants] = useState<QuickPayGrant[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const { showToast } = useToast()
+  const { t } = useLocalization()
 
   useEffect(() => {
     loadGrants()
@@ -28,7 +30,7 @@ export default function QuickPayPage() {
   }
 
   const handleRevoke = async (grantId: string) => {
-    if (!confirm('确定要撤销这个授权吗？')) return
+    if (!confirm(t('quickPay.confirmRevoke'))) return
 
     try {
       await quickPayGrantApi.revoke(grantId)
@@ -56,19 +58,19 @@ export default function QuickPayPage() {
   return (
     <DashboardLayout userType="user">
       <Head>
-        <title>QuickPay授权管理 - 用户中心</title>
+        <title>{t('quickPay.pageTitle')}</title>
       </Head>
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">QuickPay授权管理</h1>
-            <p className="text-gray-600 mt-1">管理您的快速支付授权</p>
+            <h1 className="text-3xl font-bold text-gray-900">{t('quickPay.pageTitle')}</h1>
+            <p className="text-gray-600 mt-1">{t('quickPay.pageDescription')}</p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
           >
-            创建授权
+            {t('quickPay.createGrant')}
           </button>
         </div>
 
@@ -80,12 +82,12 @@ export default function QuickPayPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {grants.length === 0 ? (
               <div className="col-span-full bg-white rounded-lg shadow p-12 text-center">
-                <p className="text-gray-500 mb-4">暂无QuickPay授权</p>
+                <p className="text-gray-500 mb-4">{t('quickPay.noGrants')}</p>
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 >
-                  创建第一个授权
+                  {t('quickPay.createFirstGrant')}
                 </button>
               </div>
             ) : (
@@ -95,36 +97,36 @@ export default function QuickPayPage() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{grant.description || 'QuickPay授权'}</h3>
                       <p className="text-sm text-gray-500 mt-1">
-                        {grant.paymentMethod.type === 'x402' ? 'X402协议' : grant.paymentMethod.type}
+                        {grant.paymentMethod.type === 'x402' ? t('quickPay.methodX402') : grant.paymentMethod.type}
                       </p>
                     </div>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(grant.status)}`}>
-                      {grant.status === 'active' ? '活跃' : grant.status === 'revoked' ? '已撤销' : '已过期'}
+                      {grant.status === 'active' ? t('quickPay.statusActive') : grant.status === 'revoked' ? t('quickPay.statusRevoked') : t('quickPay.statusExpired')}
                     </span>
                   </div>
                   
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">单笔限额</span>
+                      <span className="text-gray-600">{t('quickPay.maxAmount')}</span>
                       <span className="font-medium">
                         {grant.permissions.maxAmount ? `$${grant.permissions.maxAmount}` : '无限制'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">每日限额</span>
+                      <span className="text-gray-600">{t('quickPay.maxDailyAmount')}</span>
                       <span className="font-medium">
                         {grant.permissions.maxDailyAmount ? `$${grant.permissions.maxDailyAmount}` : '无限制'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">已使用</span>
+                      <span className="text-gray-600">{t('quickPay.used')}</span>
                       <span className="font-medium">
-                        ${grant.usage.totalAmount.toFixed(2)} / {grant.usage.transactionCount} 笔
+                        ${grant.usage.totalAmount.toFixed(2)} / {grant.usage.transactionCount} {t('quickPay.transactions')}
                       </span>
                     </div>
                     {grant.expiresAt && (
                       <div className="flex justify-between">
-                        <span className="text-gray-600">过期时间</span>
+                        <span className="text-gray-600">{t('quickPay.expiresAt')}</span>
                         <span className="font-medium">
                           {new Date(grant.expiresAt).toLocaleDateString('zh-CN')}
                         </span>
@@ -137,7 +139,7 @@ export default function QuickPayPage() {
                       onClick={() => handleRevoke(grant.id)}
                       className="mt-4 w-full text-red-600 hover:text-red-800 text-sm"
                     >
-                      撤销授权
+                      {t('quickPay.revokeGrant')}
                     </button>
                   )}
                 </div>
@@ -149,16 +151,16 @@ export default function QuickPayPage() {
         {showCreateModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h2 className="text-xl font-semibold mb-4">创建QuickPay授权</h2>
+              <h2 className="text-xl font-semibold mb-4">{t('quickPay.createModalTitle')}</h2>
               <p className="text-gray-600 mb-4">
-                创建QuickPay授权后，您可以在支持的商家处快速完成支付，无需每次输入支付信息。
+                {t('quickPay.createModalDescription')}
               </p>
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowCreateModal(false)}
                   className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50"
                 >
-                  取消
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={() => {
@@ -168,7 +170,7 @@ export default function QuickPayPage() {
                   }}
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 >
-                  创建
+                  {t('common.create')}
                 </button>
               </div>
             </div>

@@ -12,7 +12,7 @@ interface StandaloneLayoutProps {
  */
 export function StandaloneLayout({
   children,
-  title = 'Agentrix Agent',
+  title = 'AX Agent',
   theme = 'dark',
 }: StandaloneLayoutProps) {
   return (
@@ -26,7 +26,7 @@ export function StandaloneLayout({
           <div>
             <h1 className="text-lg font-semibold">{title}</h1>
             <p className={`text-xs ${theme === 'dark' ? 'text-neutral-400' : 'text-gray-500'}`}>
-              Agentrix Agent
+              AX Agent
             </p>
           </div>
         </div>

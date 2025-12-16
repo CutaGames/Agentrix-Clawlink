@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useWeb3 } from '../../contexts/Web3Context'
 import { useUser } from '../../contexts/UserContext'
 import { useToast } from '../../contexts/ToastContext'
+import { useLocalization } from '../../contexts/LocalizationContext'
 import type { WalletType, WalletInfo } from '../../lib/wallet/WalletService'
 import { authApi } from '../../lib/api/auth.api'
 import { apiClient } from '../../lib/api/client'
@@ -24,6 +25,7 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
   const { login, isAuthenticated } = useUser()
   const router = useRouter()
   const toast = useToast()
+  const { t } = useLocalization()
 
   const handleWalletConnect = async (walletType: WalletType) => {
     try {
@@ -49,7 +51,8 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
     
     try {
       // 使用 Web3Context 中的 signMessage（它会委托给 walletService）
-      const signature = await signMessage(loginMessage)
+      // 显式传入 walletInfo，避免依赖尚未更新的 defaultWallet 状态
+      const signature = await signMessage!(loginMessage, walletInfo)
       console.log('签名成功，开始登录验证')
 
       if (isAuthenticated) {
@@ -238,7 +241,7 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">登录 Agentrix</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t('auth.login.title')}</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 text-2xl"

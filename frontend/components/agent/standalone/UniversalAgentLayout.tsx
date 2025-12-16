@@ -65,7 +65,7 @@ export function UniversalAgentLayout({
           </div>
           <div>
             <h1 className="text-lg font-semibold">{config.title || defaultTitle}</h1>
-            <p className="text-xs text-neutral-400">{t({ zh: 'Agentrix Agent', en: 'Agentrix Agent' })}</p>
+            <p className="text-xs text-neutral-400">{t({ zh: 'AX Agent', en: 'AX Agent' })}</p>
           </div>
         </div>
         <button

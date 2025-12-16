@@ -29,7 +29,7 @@ export class AuthService {
     }
 
     // 生成PayMind ID（如果未提供）
-    const paymindId = dto.paymindId || `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const paymindId = dto.paymindId || `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
     // 加密密码
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -52,6 +52,7 @@ export class AuthService {
       access_token,
       user: {
         id: savedUser.id,
+        agentrixId: savedUser.paymindId,
         paymindId: savedUser.paymindId,
         email: savedUser.email,
         roles: Array.isArray(savedUser.roles) ? savedUser.roles : ['user'],
@@ -81,6 +82,7 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: {
         id: user.id,
+        agentrixId: user.paymindId,
         paymindId: user.paymindId,
         email: user.email,
         roles: user.roles,
@@ -110,7 +112,7 @@ export class AuthService {
       }
     } else {
       // 创建新用户
-      const paymindId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const paymindId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
       user = this.userRepository.create({
         googleId,
         email,
@@ -190,7 +192,7 @@ export class AuthService {
     } else {
       // 4b. 如果钱包不存在，创建新用户和钱包连接
       // 生成PayMind ID
-      const paymindId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const paymindId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
       // 创建用户
       user = this.userRepository.create({
@@ -201,14 +203,15 @@ export class AuthService {
 
       // 创建钱包连接
       walletConnection = this.walletRepository.create({
-        userId: user.id,
-        walletType: walletType as WalletType,
+        user,
         walletAddress: normalizedAddress,
+        walletType: walletType as WalletType,
         chain: chain as ChainType,
         chainId,
-        isDefault: true, // 第一个钱包设为默认
+        isDefault: true,
+        lastUsedAt: new Date(),
       });
-      walletConnection = await this.walletRepository.save(walletConnection);
+      await this.walletRepository.save(walletConnection);
     }
 
     const defaultWalletCount = await this.walletRepository.count({
@@ -232,6 +235,7 @@ export class AuthService {
       access_token,
       user: {
         id: user.id,
+        agentrixId: user.paymindId,
         paymindId: user.paymindId,
         email: user.email,
         roles: Array.isArray(user.roles) ? user.roles : [UserRole.USER],

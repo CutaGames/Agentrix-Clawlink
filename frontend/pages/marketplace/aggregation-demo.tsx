@@ -258,7 +258,7 @@ export default function AggregationDemoPage() {
                 </h3>
                 <p className="mt-2 text-sm text-slate-600">
                   {t({
-                    zh: '支持一键同步库存、收益模型、链上凭证，直接输出给 Agentrix Agent 与联盟网络。',
+                    zh: '支持一键同步库存、收益模型、链上凭证，直接输出给 AX Agent 与联盟网络。',
                     en: 'Sync inventory, revenue and on-chain proofs in one click for agents and alliances.',
                   })}
                 </p>

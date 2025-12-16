@@ -54,12 +54,8 @@ export function SessionManager({ onClose }: SessionManagerProps) {
   const loadSessions = async () => {
     try {
       setLoading(true);
-      // 这里应该调用 API 获取用户的 Session 列表
-      // const data = await paymentApi.getSessions();
-      // setSessions(data);
-      
-      // Mock data for now
-      setSessions([]);
+      const data = await paymentApi.getSessions();
+      setSessions(data);
     } catch (error) {
       console.error('Failed to load sessions:', error);
     } finally {
@@ -87,7 +83,7 @@ export function SessionManager({ onClose }: SessionManagerProps) {
       const signature = await signMessage(message);
 
       // 3. 获取ERC8004合约地址和USDT地址
-      const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+      const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
       const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
       // 4. 检查并授权USDT给ERC8004合约
@@ -321,7 +317,7 @@ export function SessionManager({ onClose }: SessionManagerProps) {
 
       // 2. 撤销USDT授权（将授权额度设为0）
       if (window.ethereum) {
-        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0xFfEf72198A71B288EfE403AC07f9c60A1a99f29e';
         const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
         const provider = new ethers.BrowserProvider(window.ethereum);
@@ -452,7 +448,7 @@ export function SessionManager({ onClose }: SessionManagerProps) {
                       Single Limit
                     </div>
                     <div className="font-bold text-slate-900">
-                      ${session.singleLimit.toFixed(2)}
+                      ${Number(session.singleLimit).toFixed(2)}
                     </div>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
@@ -461,7 +457,7 @@ export function SessionManager({ onClose }: SessionManagerProps) {
                       Daily Limit
                     </div>
                     <div className="font-bold text-slate-900">
-                      ${session.dailyLimit.toFixed(2)}
+                      ${Number(session.dailyLimit).toFixed(2)}
                     </div>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
@@ -470,7 +466,7 @@ export function SessionManager({ onClose }: SessionManagerProps) {
                       Used Today
                     </div>
                     <div className="font-bold text-slate-900">
-                      ${session.usedToday.toFixed(2)}
+                      ${Number(session.usedToday).toFixed(2)}
                     </div>
                   </div>
                 </div>

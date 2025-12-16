@@ -29,7 +29,7 @@ const flows = [
   {
     step: '02',
     title: { zh: '任务 / 支付流入', en: 'Task inflow' },
-    detail: { zh: '来自 Agentrix Agent / Marketplace / 推广 Agent', en: 'Source from agents, marketplace or promotion agents' },
+    detail: { zh: '来自 AX Agent / Marketplace / 推广 Agent', en: 'Source from agents, marketplace or promotion agents' },
   },
   {
     step: '03',

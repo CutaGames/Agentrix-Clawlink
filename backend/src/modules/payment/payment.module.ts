@@ -46,6 +46,7 @@ import { ReferralModule } from '../referral/referral.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { TaxModule } from '../tax/tax.module';
 import { RelayerModule } from '../relayer/relayer.module';
+import { SessionModule } from '../session/session.module';
 import { FeeEstimationService } from './fee-estimation.service';
 import { RiskAssessmentService } from './risk-assessment.service';
 import { RiskAssessment } from '../../entities/risk-assessment.entity';
@@ -56,6 +57,8 @@ import { WalletConnection } from '../../entities/wallet-connection.entity';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { OffRampCommissionService } from './off-ramp-commission.service';
 import { OnRampCommissionService } from './on-ramp-commission.service';
+import { FacilitatorController } from './facilitator.controller';
+import { FacilitatorService } from './facilitator.service';
 
 @Module({
   imports: [
@@ -66,8 +69,10 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     forwardRef(() => RelayerModule),
     PricingModule,
     TaxModule,
+    SessionModule,
   ],
   controllers: [
+    WithdrawalController,
     PaymentController,
     ProviderWebhookController,
     StripeWebhookController,
@@ -75,9 +80,9 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     PayIntentController,
     QuickPayGrantController,
     RefundController,
-    WithdrawalController,
     PreflightCheckController,
     TransakWebhookController,
+    FacilitatorController,
   ],
   providers: [
     PaymentService,
@@ -110,6 +115,7 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     ProviderManagerService,
     OffRampCommissionService,
     OnRampCommissionService,
+    FacilitatorService,
   ],
   exports: [
     PaymentService,
@@ -127,6 +133,7 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     CryptoRailService,
     ProviderManagerService,
     OffRampCommissionService,
+    FacilitatorService,
   ],
 })
 export class PaymentModule {}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { useUser } from '../../contexts/UserContext'
 import { UserMenu } from '../auth/UserMenu'
 import { NotificationCenter } from '../notification/NotificationCenter'
+import { useLocalization } from '../../contexts/LocalizationContext'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -13,51 +14,47 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, userType }: DashboardLayoutProps) {
   const router = useRouter()
   const { user, isAuthenticated } = useUser()
+  const { t } = useLocalization()
 
   const userMenu = [
-    { name: '概览', href: '/app/user', icon: '📊' },
-    { name: 'KYC认证', href: '/app/user/kyc', icon: '✅' },
-    { name: '支付历史与统计', href: '/app/user/transactions', icon: '💳' },
-    { name: '钱包与支付方式', href: '/app/user/wallets', icon: '👛' },
-    { name: '自动支付授权', href: '/app/user/grants', icon: '🔐' },
-    { name: '订阅管理', href: '/app/user/subscriptions', icon: '🔄' },
-    { name: '授权管理', href: '/app/user/authorizations', icon: '🔓' },
-    { name: 'Agent授权管理', href: '/app/user/agent-authorizations', icon: '🤖' },
-    { name: '执行历史', href: '/app/user/execution-history', icon: '📋' },
-    { name: '安全设置', href: '/app/user/security', icon: '⚙️' },
-    { name: '通知设置', href: '/app/user/notifications', icon: '🔔' },
+    { name: t('navigation.user.overview'), href: '/app/user', icon: '📊' },
+    { name: t('navigation.user.kyc'), href: '/app/user/kyc', icon: '✅' },
+    { name: t('navigation.user.transactions'), href: '/app/user/transactions', icon: '💳' },
+    { name: t('navigation.user.wallets'), href: '/app/user/wallets', icon: '👛' },
+    { name: t('navigation.user.grants'), href: '/app/user/grants', icon: '🔐' },
+    { name: t('navigation.user.subscriptions'), href: '/app/user/subscriptions', icon: '🔄' },
+    { name: t('navigation.user.authorizations'), href: '/app/user/authorizations', icon: '🔓' },
+    { name: t('navigation.user.agentAuthorizations'), href: '/app/user/agent-authorizations', icon: '🤖' },
+    { name: t('navigation.user.executionHistory'), href: '/app/user/execution-history', icon: '📋' },
+    { name: t('navigation.user.security'), href: '/app/user/security', icon: '⚙️' },
+    { name: t('navigation.user.notifications'), href: '/app/user/notifications', icon: '🔔' },
+    { name: t('navigation.user.profile'), href: '/app/user/profile', icon: '👤' },
   ]
 
   const agentMenu = [
-    { name: '概览', href: '/app/agent', icon: '📊' },
-    { name: 'KYC认证', href: '/app/agent/kyc', icon: '✅' },
-    { name: '收益与佣金统计', href: '/app/agent/earnings', icon: '💰' },
-    { name: '商品推荐与统计', href: '/app/agent/products', icon: '🛒' },
-    { name: '支付配置', href: '/app/agent/grants', icon: '⚙️' },
-    { name: '数据分析', href: '/app/agent/analytics', icon: '📈' },
-    { name: 'API统计', href: '/app/agent/api-stats', icon: '📡' },
-    { name: '错误日志', href: '/app/agent/error-logs', icon: '🐛' },
-    { name: '测试环境', href: '/app/agent/sandbox', icon: '🧪' },
-    { name: '集成文档', href: '/app/agent/docs', icon: '📚' },
+    { name: t('navigation.agent.overview'), href: '/app/agent', icon: '📊' },
+    { name: t('navigation.agent.kyc'), href: '/app/agent/kyc', icon: '✅' },
+    { name: t('navigation.agent.earnings'), href: '/app/agent/earnings', icon: '💰' },
+    { name: t('navigation.agent.products'), href: '/app/agent/products', icon: '🛒' },
+    { name: t('navigation.agent.grants'), href: '/app/agent/grants', icon: '⚙️' },
+    { name: t('navigation.agent.analytics'), href: '/app/agent/analytics', icon: '📈' },
+    { name: t('navigation.agent.apiStats'), href: '/app/agent/api-stats', icon: '📡' },
+    { name: t('navigation.agent.errorLogs'), href: '/app/agent/error-logs', icon: '🐛' },
+    { name: t('navigation.agent.sandbox'), href: '/app/agent/sandbox', icon: '🧪' },
+    { name: t('navigation.agent.docs'), href: '/app/agent/docs', icon: '📚' },
   ]
 
   const merchantMenu = [
-    { name: '概览', href: '/app/merchant', icon: '📊' },
-    { name: 'KYC认证', href: '/app/merchant/kyc', icon: '✅' },
-    { name: '商品管理', href: '/app/merchant/products', icon: '🛒' },
-    { name: '订单管理', href: '/app/merchant/orders', icon: '📦' },
-    { name: '提现管理', href: '/app/merchant/withdrawals', icon: '💸' },
-    { name: '分润设置', href: '/app/merchant/commissions', icon: '💰' },
-    { name: '结算中心', href: '/app/merchant/settlements', icon: '💵' },
-    { name: 'MPC钱包', href: '/app/merchant/mpc-wallet', icon: '🔐' },
-    { name: '支付统计', href: '/app/merchant/analytics', icon: '📈' },
-    { name: '收入报表', href: '/app/merchant/reports', icon: '📊' },
-    { name: '客户管理', href: '/app/merchant/customers', icon: '👥' },
-    { name: '退款管理', href: '/app/merchant/refunds', icon: '🔄' },
-    { name: '支付配置', href: '/app/merchant/payment-settings', icon: '⚙️' },
-    { name: 'Webhook', href: '/app/merchant/webhooks', icon: '🔔' },
-    { name: 'API密钥', href: '/app/merchant/api-keys', icon: '🔐' },
-    { name: '商品分析', href: '/app/merchant/product-analytics', icon: '📊' },
+    { name: t('navigation.merchant.overview'), href: '/app/merchant', icon: '📊' },
+    { name: t('navigation.merchant.kyc'), href: '/app/merchant/kyc', icon: '✅' },
+    { name: t('navigation.merchant.products'), href: '/app/merchant/products', icon: '🛒' },
+    { name: t('navigation.merchant.orders'), href: '/app/merchant/orders', icon: '📦' },
+    { name: t('navigation.merchant.finance'), href: '/app/merchant/finance', icon: '💰' },
+    { name: t('navigation.merchant.customers'), href: '/app/merchant/customers', icon: '👥' },
+    { name: t('navigation.merchant.refunds'), href: '/app/merchant/refunds', icon: '🔄' },
+    { name: t('navigation.merchant.webhooks'), href: '/app/merchant/webhooks', icon: '🔔' },
+    { name: t('navigation.merchant.apiKeys'), href: '/app/merchant/api-keys', icon: '🔐' },
+    { name: t('navigation.merchant.productAnalytics'), href: '/app/merchant/product-analytics', icon: '📊' },
   ]
 
   const menu = userType === 'user' ? userMenu : 
@@ -66,9 +63,9 @@ export function DashboardLayout({ children, userType }: DashboardLayoutProps) {
 
   const getRoleName = () => {
     switch (userType) {
-      case 'user': return '用户中心'
-      case 'agent': return 'Agent控制台'
-      case 'merchant': return '商户后台'
+      case 'user': return t('navigation.userCenter')
+      case 'agent': return t('navigation.agentConsole')
+      case 'merchant': return t('navigation.merchantDashboard')
     }
   }
 

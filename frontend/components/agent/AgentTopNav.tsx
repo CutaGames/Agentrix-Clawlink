@@ -2,6 +2,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { Home, ArrowLeft } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
+import { useLocalization } from '../../contexts/LocalizationContext';
 
 interface AgentTopNavProps {
   // 简化顶部导航，只保留Logo和Agent Builder
@@ -10,6 +11,7 @@ interface AgentTopNavProps {
 export function AgentTopNav({}: AgentTopNavProps) {
   const router = useRouter();
   const { user, isAuthenticated } = useUser();
+  const { t } = useLocalization();
 
   return (
     <div className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
@@ -34,8 +36,8 @@ export function AgentTopNav({}: AgentTopNavProps) {
                 <span className="text-white text-lg">🤖</span>
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Agentrix Agent</h1>
-                <p className="text-xs text-gray-500">AI 商业智能体工作台</p>
+                <h1 className="text-lg font-bold text-gray-900">{t({ zh: 'AX Agent', en: 'AX Agent' })}</h1>
+                <p className="text-xs text-gray-500">{t({ zh: 'AI 商业智能体工作台', en: 'AI Business Intelligence Workspace' })}</p>
               </div>
             </div>
           </div>

@@ -8,6 +8,8 @@ import {
   UseInterceptors,
   UploadedFile,
   Body,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -15,13 +17,18 @@ import { UserService } from './user.service';
 import { UpdateUserDto, UploadAvatarDto, RegisterRoleDto } from './dto/user.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
 import { UserRole } from '../../entities/user.entity';
+import { MerchantProfileService } from '../merchant/merchant-profile.service';
 
 @ApiTags('用户')
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    @Inject(forwardRef(() => MerchantProfileService))
+    private readonly merchantProfileService: MerchantProfileService,
+  ) {}
 
   @Get('profile')
   @ApiOperation({ summary: '获取用户信息' })
@@ -62,6 +69,15 @@ export class UserController {
   async registerRole(@Request() req, @Body() dto: RegisterRoleDto) {
     const role = dto.role === 'merchant' ? UserRole.MERCHANT : UserRole.AGENT;
     const user = await this.userService.addRole(req.user.id, role);
+
+    if (role === UserRole.MERCHANT) {
+      await this.merchantProfileService.updateProfile(req.user.id, {
+        businessName: dto.businessName,
+        businessInfo: dto.businessInfo,
+        contactInfo: dto.contactInfo,
+      });
+    }
+
     return {
       success: true,
       message: `已成功注册为${dto.role === 'merchant' ? '商户' : 'Agent'}`,

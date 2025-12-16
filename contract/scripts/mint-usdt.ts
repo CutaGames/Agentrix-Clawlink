@@ -24,7 +24,16 @@ async function main() {
   console.log("Amount:", amount, "USDT");
 
   const token = await ethers.getContractAt("MockERC20", usdtAddress);
-  const tx = await token.mint(targetAddress, ethers.parseUnits(amount, 6));
+  
+  let decimals = 18;
+  try {
+      decimals = Number(await token.decimals());
+  } catch (e) {
+      console.warn("Could not fetch decimals, defaulting to 18");
+  }
+  console.log("Decimals:", decimals);
+
+  const tx = await token.mint(targetAddress, ethers.parseUnits(amount, decimals));
   console.log("⛽️ Tx sent:", tx.hash);
   await tx.wait();
   console.log("✅ Mint success!");

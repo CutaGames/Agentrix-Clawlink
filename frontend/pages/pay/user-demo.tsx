@@ -209,7 +209,7 @@ export default function UserDemoPage() {
                             <p>{t({ zh: '我想买一台AI智能音箱，预算1500以内', en: 'I want to buy an AI smart speaker, budget under 1500' })}</p>
                           </div>
                           <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                            <p className="text-xs text-blue-300 mb-1">{t({ zh: 'Agentrix Agent', en: 'Agentrix Agent' })}</p>
+                            <p className="text-xs text-blue-300 mb-1">{t({ zh: 'AX Agent', en: 'AX Agent' })}</p>
                             <p className="mb-3">
                               {t({
                                 zh: '为您推荐：AI智能音箱套装，¥1,299，支持语音控制、智能家居联动',

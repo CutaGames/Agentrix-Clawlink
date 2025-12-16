@@ -1,8 +1,10 @@
 import Head from 'next/head'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useState, useEffect } from 'react'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function UserGrants() {
+  const { t } = useLocalization()
   const [activeGrants, setActiveGrants] = useState([
     {
       id: '1',
@@ -73,7 +75,7 @@ export default function UserGrants() {
       setActiveGrants(grants => grants.filter(g => g.id !== grantId))
     } catch (error: any) {
       console.error('撤销授权失败:', error)
-      alert(error.message || '撤销授权失败，请重试')
+      alert(error.message || t('grants.errors.revokeFailed'))
     }
   }
 
@@ -81,7 +83,7 @@ export default function UserGrants() {
     e.preventDefault()
     const agent = availableAgents.find(a => a.id === newGrant.agentId)
     if (!agent) {
-      alert('请选择AI Agent')
+      alert(t('grants.new.selectAgentError'))
       return
     }
 
@@ -98,31 +100,31 @@ export default function UserGrants() {
       setNewGrant({ agentId: '', singleLimit: '100', dailyLimit: '500', duration: '30' })
     } catch (error: any) {
       console.error('创建授权失败:', error)
-      alert(error.message || '创建授权失败，请重试')
+      alert(error.message || t('grants.errors.createFailed'))
     }
   }
 
   return (
     <>
       <Head>
-        <title>自动支付授权 - Agentrix</title>
+        <title>{t('grants.title')} - Agentrix</title>
       </Head>
       <DashboardLayout userType="user">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">自动支付授权</h1>
-          <p className="text-gray-600">管理AI Agent的自动支付权限和限额</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{t('grants.title')}</h1>
+          <p className="text-gray-600">{t('grants.description')}</p>
         </div>
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Active Grants */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">活跃授权</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('grants.active.title')}</h2>
             </div>
             <div className="p-6">
               {activeGrants.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <div className="text-4xl mb-4">🔐</div>
-                  <p>暂无自动支付授权</p>
+                  <p>{t('grants.active.empty')}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -133,32 +135,32 @@ export default function UserGrants() {
                           <span className="text-2xl">{grant.agentIcon}</span>
                           <div>
                             <h3 className="font-semibold text-gray-900">{grant.agentName}</h3>
-                            <p className="text-sm text-gray-500">创建于 {grant.createdAt}</p>
+                            <p className="text-sm text-gray-500">{t('grants.active.createdAt')} {grant.createdAt}</p>
                           </div>
                         </div>
                         <button
                           onClick={() => handleRevokeGrant(grant.id)}
                           className="text-red-600 hover:text-red-700 text-sm font-medium"
                         >
-                          撤销授权
+                          {t('grants.active.revoke')}
                         </button>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <p className="text-gray-600">单次限额</p>
+                          <p className="text-gray-600">{t('grants.active.singleLimit')}</p>
                           <p className="font-semibold text-gray-900">{grant.singleLimit}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600">日限额</p>
+                          <p className="text-gray-600">{t('grants.active.dailyLimit')}</p>
                           <p className="font-semibold text-gray-900">{grant.dailyLimit}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600">今日已用</p>
+                          <p className="text-gray-600">{t('grants.active.usedToday')}</p>
                           <p className="font-semibold text-gray-900">{grant.usedToday}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600">到期时间</p>
+                          <p className="text-gray-600">{t('grants.active.expiresAt')}</p>
                           <p className="font-semibold text-gray-900">{grant.expiresAt}</p>
                         </div>
                       </div>
@@ -171,13 +173,13 @@ export default function UserGrants() {
           {/* New Grant Form */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">新建授权</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('grants.new.title')}</h2>
             </div>
             <div className="p-6">
               <form onSubmit={handleCreateGrant} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    选择AI Agent
+                    {t('grants.new.selectAgent')}
                   </label>
                   <select
                     value={newGrant.agentId}
@@ -185,7 +187,7 @@ export default function UserGrants() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   >
-                    <option value="">请选择AI Agent</option>
+                    <option value="">{t('grants.new.selectAgentPlaceholder')}</option>
                     {availableAgents.map(agent => (
                       <option key={agent.id} value={agent.id}>
                         {agent.name} - {agent.description}
@@ -195,7 +197,7 @@ export default function UserGrants() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    单次支付限额 (¥)
+                    {t('grants.new.singleLimit')} (¥)
                   </label>
                   <input
                     type="number"
@@ -209,7 +211,7 @@ export default function UserGrants() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    每日累计限额 (¥)
+                    {t('grants.new.dailyLimit')} (¥)
                   </label>
                   <input
                     type="number"
@@ -223,24 +225,24 @@ export default function UserGrants() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    授权时长 (天)
+                    {t('grants.new.duration')} ({t('grants.new.days')})
                   </label>
                   <select
                     value={newGrant.duration}
                     onChange={(e) => setNewGrant({...newGrant, duration: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="7">7天</option>
-                    <option value="30">30天</option>
-                    <option value="90">90天</option>
-                    <option value="180">180天</option>
+                    <option value="7">7{t('grants.new.days')}</option>
+                    <option value="30">30{t('grants.new.days')}</option>
+                    <option value="90">90{t('grants.new.days')}</option>
+                    <option value="180">180{t('grants.new.days')}</option>
                   </select>
                 </div>
                 <button
                   type="submit"
                   className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                 >
-                  创建授权
+                  {t('grants.new.create')}
                 </button>
               </form>
             </div>

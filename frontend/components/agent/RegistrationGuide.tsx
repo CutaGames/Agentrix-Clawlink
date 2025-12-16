@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
+import { useUser } from '../../contexts/UserContext';
 
 type GuideType = 'user' | 'merchant' | 'agent' | 'api';
 
@@ -9,6 +10,7 @@ interface RegistrationGuideProps {
 
 export function RegistrationGuide({ type = 'user' }: RegistrationGuideProps) {
   const router = useRouter();
+  const { user } = useUser();
   const [selectedType, setSelectedType] = useState<GuideType>(type);
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -135,10 +137,16 @@ export function RegistrationGuide({ type = 'user' }: RegistrationGuideProps) {
             下一步
           </button>
           <button
-            onClick={() => router.push(currentGuide.actionUrl)}
+            onClick={() => {
+              if (selectedType === 'merchant' && user?.roles?.includes('merchant')) {
+                router.push('/app/merchant');
+              } else {
+                router.push(currentGuide.actionUrl);
+              }
+            }}
             className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
           >
-            开始{selectedType === 'api' ? '接入' : '注册'}
+            {selectedType === 'merchant' && user?.roles?.includes('merchant') ? '进入商家后台' : `开始${selectedType === 'api' ? '接入' : '注册'}`}
           </button>
         </div>
       </div>

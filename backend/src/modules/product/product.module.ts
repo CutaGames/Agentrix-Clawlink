@@ -15,6 +15,7 @@ import { EcommerceConnection } from '../../entities/ecommerce-connection.entity'
 import { ProductSyncMapping } from '../../entities/product-sync-mapping.entity';
 import { SearchModule } from '../search/search.module';
 import { AiCapabilityModule } from '../ai-capability/ai-capability.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AiCapabilityModule } from '../ai-capability/ai-capability.module';
     }),
     forwardRef(() => SearchModule),
     forwardRef(() => AiCapabilityModule),
+    forwardRef(() => NotificationModule),
   ],
   controllers: [
     ProductController,

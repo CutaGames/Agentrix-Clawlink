@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IProvider, ProviderQuote, OnRampParams, OnRampResult, OffRampParams, OffRampResult } from './provider-abstract.service';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 /**
  * Transak Provider Service
@@ -20,10 +20,14 @@ export class TransakProviderService implements IProvider {
   supportsOffRamp = true;
 
   private readonly apiKey: string;
+  private readonly apiSecret: string;
   private readonly environment: 'STAGING' | 'PRODUCTION';
   private readonly webhookSecret: string;
   private readonly webhookUrl: string;
   private readonly baseUrl: string;
+  private readonly gatewayBaseUrl: string;
+  private cachedAccessToken: string | null = null;
+  private cachedAccessTokenExpiresAt = 0;
 
   constructor(private configService: ConfigService) {
     // 从环境变量读取 Transak 配置
@@ -40,6 +44,14 @@ export class TransakProviderService implements IProvider {
       this.apiKey = this.configService.get<string>('TRANSAK_API_KEY_STAGING') || 
                      this.configService.get<string>('TRANSAK_API_KEY') || '';
     }
+
+    if (this.environment === 'PRODUCTION') {
+      this.apiSecret = this.configService.get<string>('TRANSAK_API_SECRET_PRODUCTION') ||
+                       this.configService.get<string>('TRANSAK_API_SECRET') || '';
+    } else {
+      this.apiSecret = this.configService.get<string>('TRANSAK_API_SECRET_STAGING') ||
+                       this.configService.get<string>('TRANSAK_API_SECRET') || '';
+    }
     
     // 验证配置
     if (!this.apiKey) {
@@ -54,6 +66,10 @@ export class TransakProviderService implements IProvider {
       if (this.environment === 'STAGING' && this.apiKey.includes('prod')) {
         this.logger.warn('⚠️ Using STAGING environment but API Key may be for PRODUCTION. Please verify your configuration.');
       }
+    }
+
+    if (!this.apiSecret) {
+      this.logger.warn('⚠️ Transak API Secret not configured. Create Session API will fail until it is provided.');
     }
     
     this.webhookSecret = this.configService.get<string>('TRANSAK_WEBHOOK_SECRET') || '';
@@ -78,6 +94,16 @@ export class TransakProviderService implements IProvider {
         this.logger.warn(`⚠️ STAGING environment using api.transak.com (api-staging.transak.com is not accessible).`);
         this.logger.warn(`⚠️ Ensure you're using a STAGING API Key with api.transak.com.`);
       }
+    }
+
+    const gatewayOverride = this.configService.get<string>('TRANSAK_GATEWAY_BASE_URL');
+    this.gatewayBaseUrl = gatewayOverride ||
+      (this.environment === 'PRODUCTION'
+        ? 'https://api-gateway.transak.com'
+        : 'https://api-gateway-stg.transak.com');
+
+    if (gatewayOverride) {
+      this.logger.warn(`⚠️ Using custom Transak gateway base URL: ${gatewayOverride}`);
     }
     
     // 记录配置信息（用于调试）
@@ -264,6 +290,66 @@ export class TransakProviderService implements IProvider {
     }
   }
 
+  private async getAccessToken(forceRefresh = false): Promise<string> {
+    if (
+      !forceRefresh &&
+      this.cachedAccessToken &&
+      Date.now() < this.cachedAccessTokenExpiresAt - 30_000
+    ) {
+      return this.cachedAccessToken;
+    }
+
+    if (!this.apiSecret) {
+      throw new Error('Transak API Secret not configured');
+    }
+
+    try {
+      const tokenUrl = `${this.gatewayBaseUrl}/api/v2/auth/token`;
+      this.logger.debug(`Transak: Requesting access token from ${tokenUrl}`);
+
+      const response = await axios.post(
+        tokenUrl,
+        {
+          apiKey: this.apiKey,
+          apiSecret: this.apiSecret,
+        },
+        {
+          timeout: 15000,
+        },
+      );
+
+      const tokenData = response.data || {};
+      const accessToken = tokenData.access_token || tokenData.accessToken;
+      if (!accessToken) {
+        throw new Error('Token response missing access_token');
+      }
+
+      const expiresIn = Number(tokenData.expires_in || tokenData.expiresIn || 3600);
+      const ttl = Math.max(expiresIn - 30, 30) * 1000;
+      this.cachedAccessToken = accessToken;
+      this.cachedAccessTokenExpiresAt = Date.now() + ttl;
+      this.logger.debug(`Transak: Access token acquired, expires in ~${expiresIn}s`);
+
+      return accessToken;
+    } catch (error: any) {
+      this.cachedAccessToken = null;
+      this.cachedAccessTokenExpiresAt = 0;
+
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const data = error.response?.data;
+        this.logger.error(
+          `Transak: Failed to retrieve access token${status ? ` (status ${status})` : ''}`,
+          typeof data === 'object' ? JSON.stringify(data) : data || error.message,
+        );
+      } else {
+        this.logger.error(`Transak: Failed to retrieve access token: ${error.message}`);
+      }
+
+      throw new Error(`Failed to fetch Transak access token: ${error.message || error}`);
+    }
+  }
+
   /**
    * 创建 Transak Session（使用 Create Session API）
    * 这是 Transak 推荐的方式，可以更好地控制 Widget 参数，包括锁定金额
@@ -290,15 +376,6 @@ export class TransakProviderService implements IProvider {
       `Transak: Creating session for ${params.amount} ${params.fiatCurrency} -> ${params.cryptoCurrency}`,
     );
     this.logger.debug(`Transak: Environment=${this.environment}, BaseUrl=${this.baseUrl}`);
-
-    // 解析 URL（在 try 块外定义，以便在 catch 块中使用）
-    const { URL } = require('url');
-    let sessionApiUrl = `${this.baseUrl}/auth/public/v2/session`;
-    if (!sessionApiUrl.startsWith('https://')) {
-      sessionApiUrl = sessionApiUrl.replace(/^http:\/\//, 'https://');
-      this.logger.warn(`Transak: Fixed HTTP URL to HTTPS: ${sessionApiUrl}`);
-    }
-    const url = new URL(sessionApiUrl);
 
     try {
       // 获取 referrerDomain（从请求或环境变量中获取）
@@ -332,111 +409,27 @@ export class TransakProviderService implements IProvider {
       };
 
       // 调用 Transak Create Session API
-      // 注意：根据 Transak 文档，Create Session API 使用 'access-token' header
-      // 但实际使用的是 API Key（不是 OAuth access token）
-      // 如果配置了 TRANSAK_ACCESS_TOKEN 则使用它，否则使用 TRANSAK_API_KEY
-      const accessToken = this.configService.get<string>('TRANSAK_ACCESS_TOKEN') || this.apiKey;
-      
-      if (!accessToken) {
-        throw new Error('Transak API Key or Access Token not configured');
-      }
-      
-      // 使用 Node.js 原生 https 模块，避免 axios 的协议问题
-      const https = require('https');
-      
-      this.logger.debug(`Transak: Calling Create Session API: ${sessionApiUrl}`);
+      const sessionUrl = `${this.gatewayBaseUrl}/api/v2/auth/session`;
+      const accessToken = await this.getAccessToken();
+
+      this.logger.debug(`Transak: Calling Create Session API: ${sessionUrl}`);
       this.logger.debug(`Transak: Request payload:`, JSON.stringify({ widgetParams }, null, 2));
-      this.logger.debug(`Transak: Using access-token: ${accessToken ? `${accessToken.substring(0, 8)}...` : 'NOT SET'}`);
-      
-      const requestData = JSON.stringify({ widgetParams });
-      
-      // 使用原生 https 模块发送请求
-      const data = await new Promise<any>((resolve, reject) => {
-        const options = {
-          hostname: url.hostname,
-          port: url.port || 443,
-          path: url.pathname,
-          method: 'POST',
+
+      const response = await axios.post(
+        sessionUrl,
+        { widgetParams },
+        {
           headers: {
-            'accept': 'application/json',
-            'access-token': accessToken,
+            accept: 'application/json',
+            Authorization: `Bearer ${accessToken}`,
             'content-type': 'application/json',
-            'content-length': Buffer.byteLength(requestData),
-            // 使用更真实的 User-Agent 来绕过 Cloudflare 检查
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'accept-language': 'en-US,en;q=0.9',
-            'origin': 'https://global.transak.com',
-            'referer': 'https://global.transak.com/',
           },
-          // SSL/TLS 选项
-          rejectUnauthorized: true, // 验证 SSL 证书
-          timeout: 30000, // 30秒超时
-        };
-        
-        const req = https.request(options, (res: any) => {
-          let responseData = '';
-          
-          res.on('data', (chunk: Buffer) => {
-            responseData += chunk.toString();
-          });
-          
-          res.on('end', () => {
-            if (res.statusCode >= 400) {
-              this.logger.error(`Transak: Create Session API returned error status: ${res.statusCode}`);
-              this.logger.error(`Transak: Response data:`, responseData);
-              reject(new Error(`Transak Create Session API returned ${res.statusCode}: ${responseData}`));
-              return;
-            }
-            
-            try {
-              const parsed = JSON.parse(responseData);
-              resolve(parsed);
-            } catch (e) {
-              reject(new Error(`Failed to parse response: ${responseData}`));
-            }
-          });
-        });
-        
-        req.on('error', (error: Error) => {
-          this.logger.error(`Transak: Request error:`, error);
-          this.logger.error(`Transak: Error name: ${error.name}, message: ${error.message}`);
-          this.logger.error(`Transak: Error stack:`, error.stack);
-          
-          // 处理 AggregateError（可能包含多个错误）
-          if (error.name === 'AggregateError' && (error as any).errors) {
-            const aggregateError = error as any;
-            this.logger.error(`Transak: AggregateError contains ${aggregateError.errors.length} errors:`);
-            aggregateError.errors.forEach((err: Error, index: number) => {
-              this.logger.error(`Transak: Error ${index + 1}: ${err.name} - ${err.message}`);
-            });
-          }
-          
-          reject(error);
-        });
-        
-        req.setTimeout(30000, () => {
-          req.destroy();
-          reject(new Error('Request timeout after 30 seconds'));
-        });
-        
-        try {
-          req.write(requestData);
-          req.end();
-        } catch (writeError: any) {
-          this.logger.error(`Transak: Error writing request data:`, writeError);
-          reject(new Error(`Failed to write request: ${writeError.message}`));
-        }
-      }).catch((promiseError: any) => {
-        // 捕获 Promise 中的错误
-        this.logger.error(`Transak: Promise rejection:`, promiseError);
-        if (promiseError.name === 'AggregateError' && promiseError.errors) {
-          const errorMessages = promiseError.errors.map((e: Error) => e.message).join('; ');
-          throw new Error(`Failed to create Transak session: ${errorMessages}`);
-        }
-        throw promiseError;
-      });
-      
-      const sessionId = data.session_id || data.sessionId;
+          timeout: 30000,
+        },
+      );
+
+      const data = response.data?.data || response.data;
+      const sessionId = data?.sessionId || data?.session_id;
 
       if (!sessionId) {
         throw new Error('Transak Create Session API did not return sessionId');
@@ -457,60 +450,25 @@ export class TransakProviderService implements IProvider {
         widgetUrl,
       };
     } catch (error: any) {
-      // 详细记录错误信息
-      this.logger.error(`Transak: Failed to create session`);
-      this.logger.error(`Transak: Error type: ${error.constructor.name}`);
-      this.logger.error(`Transak: Error name: ${error.name}`);
-      this.logger.error(`Transak: Error message: ${error.message}`);
-      
-      // 处理 AggregateError
-      if (error.name === 'AggregateError' || error.constructor.name === 'AggregateError') {
-        const aggregateError = error as any;
-        if (aggregateError.errors && Array.isArray(aggregateError.errors)) {
-          this.logger.error(`Transak: AggregateError contains ${aggregateError.errors.length} errors:`);
-          const errorMessages: string[] = [];
-          aggregateError.errors.forEach((err: any, index: number) => {
-            const errMsg = err.message || err.toString();
-            errorMessages.push(`Error ${index + 1}: ${errMsg}`);
-            this.logger.error(`Transak: ${errorMessages[errorMessages.length - 1]}`);
-            if (err.stack) {
-              this.logger.error(`Transak: Error ${index + 1} stack:`, err.stack);
-            }
-          });
-          throw new Error(`Failed to create Transak session: ${errorMessages.join('; ')}`);
+      const axiosError = error as AxiosError;
+      if (axiosError?.isAxiosError) {
+        const status = axiosError.response?.status;
+        const data = axiosError.response?.data;
+        this.logger.error(
+          `Transak: Create Session API failed${status ? ` (status ${status})` : ''}`,
+          typeof data === 'object' ? JSON.stringify(data) : data || axiosError.message,
+        );
+
+        if (status === 401) {
+          this.cachedAccessToken = null;
+          this.cachedAccessTokenExpiresAt = 0;
         }
-      }
-      
-      // 处理网络错误
-      if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-        this.logger.error(`Transak: Network error - ${error.code}: ${error.message}`);
-        throw new Error(`Network error: Unable to connect to Transak API (${error.code}). Please check your network connection.`);
-      }
-      
-      // 处理 HTTP 响应错误
-      if (error.response) {
-        this.logger.error(`Transak: HTTP error - Status: ${error.response.status}`);
-        this.logger.error(`Transak: Response data:`, JSON.stringify(error.response.data, null, 2));
-        this.logger.error(`Transak: Response headers:`, JSON.stringify(error.response.headers, null, 2));
-        throw new Error(`Transak API returned ${error.response.status}: ${JSON.stringify(error.response.data)}`);
-      } else if (error.request) {
-        this.logger.error(`Transak: No response received`);
-        this.logger.error(`Transak: Request details:`, {
-          hostname: url.hostname,
-          path: url.pathname,
-          method: 'POST',
-        });
-        throw new Error(`No response from Transak API. Please check your network connection and API key configuration.`);
       } else {
-        this.logger.error(`Transak: Error setting up request:`, error.message);
-        if (error.stack) {
-          this.logger.error(`Transak: Error stack:`, error.stack);
-        }
+        this.logger.error(`Transak: Failed to create session`, error);
       }
-      
-      // 通用错误处理
-      const errorMessage = error.message || error.toString() || 'Unknown error';
-      throw new Error(`Failed to create Transak session: ${errorMessage}`);
+
+      const message = axiosError?.message || error?.message || 'Unknown error';
+      throw new Error(`Failed to create Transak session: ${message}`);
     }
   }
 

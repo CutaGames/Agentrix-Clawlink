@@ -15,6 +15,7 @@ import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
 import { useCart, CartItem } from '../../contexts/CartContext'
 import { orderApi } from '../../lib/api/order.api'
+import { useLocalization } from '../../contexts/LocalizationContext'
 
 export default function CartPage() {
   const router = useRouter()
@@ -30,6 +31,7 @@ export default function CartPage() {
   } = useCart()
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const { t } = useLocalization()
 
   const handleLoginClick = () => {
     router.push('/auth/login')
@@ -50,7 +52,7 @@ export default function CartPage() {
   }
 
   const handleClearCart = async () => {
-    if (confirm('确定要清空购物车吗？')) {
+    if (confirm(t({ zh: '确定要清空购物车吗？', en: 'Are you sure you want to clear the cart?' }))) {
       await clearCart()
       setSelectedItems(new Set())
     }
@@ -87,7 +89,7 @@ export default function CartPage() {
 
   const handleCheckout = async () => {
     if (selectedItems.size === 0) {
-      alert('请选择要结算的商品')
+      alert(t({ zh: '请选择要结算的商品', en: 'Please select items to checkout' }))
       return
     }
 
@@ -149,10 +151,10 @@ export default function CartPage() {
             <div className="flex items-center justify-between mb-8">
               <h1 className="text-3xl font-bold flex items-center gap-3">
                 <span className="text-3xl">🛒</span>
-                购物车
+                {t({ zh: '购物车', en: 'Shopping Cart' })}
                 {itemCount > 0 && (
                   <span className="text-lg text-slate-400">
-                    ({itemCount} 件商品)
+                    ({itemCount} {t({ zh: '件商品', en: 'items' })})
                   </span>
                 )}
               </h1>
@@ -161,7 +163,7 @@ export default function CartPage() {
                   onClick={handleClearCart}
                   className="text-sm text-slate-400 hover:text-red-400 transition-colors"
                 >
-                  清空购物车
+                  {t({ zh: '清空购物车', en: 'Clear Cart' })}
                 </button>
               )}
             </div>
@@ -170,13 +172,13 @@ export default function CartPage() {
             {items.length === 0 && !loading && (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
                 <div className="text-6xl mb-4">🛒</div>
-                <h2 className="text-xl font-semibold mb-2">购物车是空的</h2>
-                <p className="text-slate-400 mb-6">快去商城逛逛吧~</p>
+                <h2 className="text-xl font-semibold mb-2">{t({ zh: '购物车是空的', en: 'Your cart is empty' })}</h2>
+                <p className="text-slate-400 mb-6">{t({ zh: '快去商城逛逛吧~', en: 'Go shopping in the marketplace!' })}</p>
                 <button
                   onClick={() => router.push('/marketplace')}
                   className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors"
                 >
-                  去购物
+                  {t({ zh: '去购物', en: 'Shop Now' })}
                 </button>
               </div>
             )}
@@ -185,7 +187,7 @@ export default function CartPage() {
             {loading && items.length === 0 && (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center">
                 <div className="text-4xl mb-4 animate-spin">⏳</div>
-                <p className="text-slate-400">加载中...</p>
+                <p className="text-slate-400">{t({ zh: '加载中...', en: 'Loading...' })}</p>
               </div>
             )}
 
@@ -201,10 +203,10 @@ export default function CartPage() {
                       onChange={toggleSelectAll}
                       className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-slate-300">全选</span>
+                    <span className="text-slate-300">{t({ zh: '全选', en: 'Select All' })}</span>
                   </label>
                   <span className="text-sm text-slate-400">
-                    已选 {selectedItems.size} 件商品
+                    {t({ zh: '已选', en: 'Selected' })} {selectedItems.size} {t({ zh: '件商品', en: 'items' })}
                   </span>
                 </div>
 
@@ -228,10 +230,10 @@ export default function CartPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-6">
                       <div className="text-slate-400">
-                        已选择 <span className="text-white font-semibold">{selectedCount}</span> 件商品
+                        {t({ zh: '已选择', en: 'Selected' })} <span className="text-white font-semibold">{selectedCount}</span> {t({ zh: '件商品', en: 'items' })}
                       </div>
                       <div className="text-slate-400">
-                        合计: 
+                        {t({ zh: '合计', en: 'Total' })}: 
                         <span className="text-2xl font-bold text-green-400 ml-2">
                           {getCurrencySymbol(currency)}{selectedTotal.toFixed(2)}
                         </span>
@@ -245,10 +247,10 @@ export default function CartPage() {
                       {checkoutLoading ? (
                         <span className="flex items-center gap-2">
                           <span className="animate-spin">⏳</span>
-                          处理中...
+                          {t({ zh: '处理中...', en: 'Processing...' })}
                         </span>
                       ) : (
-                        `结算 (${selectedItems.size})`
+                        `${t({ zh: '结算', en: 'Checkout' })} (${selectedItems.size})`
                       )}
                     </button>
                   </div>
@@ -282,6 +284,7 @@ function CartItemCard({
   onRemove,
   currencySymbol,
 }: CartItemCardProps) {
+  const { t } = useLocalization()
   const product = item.product
 
   return (
@@ -299,7 +302,7 @@ function CartItemCard({
         {product?.image ? (
           <img
             src={product.image}
-            alt={product.name || '商品图片'}
+            alt={product.name || t({ zh: '商品图片', en: 'Product image' })}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -312,7 +315,7 @@ function CartItemCard({
       {/* 商品信息 */}
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-white truncate">
-          {product?.name || '未知商品'}
+          {product?.name || t({ zh: '未知商品', en: 'Unknown product' })}
         </h3>
         {product?.description && (
           <p className="text-sm text-slate-400 truncate mt-1">
@@ -358,7 +361,7 @@ function CartItemCard({
       <button
         onClick={onRemove}
         className="p-2 text-slate-400 hover:text-red-400 transition-colors flex-shrink-0"
-        title="删除"
+        title={t({ zh: '删除', en: 'Remove' })}
       >
         🗑️
       </button>

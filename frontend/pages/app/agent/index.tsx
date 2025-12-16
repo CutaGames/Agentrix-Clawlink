@@ -1,12 +1,15 @@
 import Head from 'next/head'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
+import { useLocalization } from '../../../contexts/LocalizationContext'
 
 export default function AgentDashboard() {
+  const { t } = useLocalization()
+
   const stats = [
-    { name: '本月收益', value: '¥2,456', change: '+15.3%' },
-    { name: '完成交易', value: '48', change: '+22.1%' },
-    { name: '活跃用户', value: '156', change: '+8.7%' },
-    { name: '推荐商品', value: '23', change: '+3' }
+    { name: t('agent.dashboard.monthlyRevenue'), value: '¥2,456', change: '+15.3%' },
+    { name: t('agent.dashboard.completedTransactions'), value: '48', change: '+22.1%' },
+    { name: t('agent.dashboard.activeUsers'), value: '156', change: '+8.7%' },
+    { name: t('agent.dashboard.recommendedProducts'), value: '23', change: '+3' }
   ]
 
   const earningsData = [
@@ -25,7 +28,7 @@ export default function AgentDashboard() {
   return (
     <>
       <Head>
-        <title>Agent控制台 - Agentrix</title>
+        <title>{t('agent.dashboard.title')} - Agentrix</title>
       </Head>
       <DashboardLayout userType="agent">
         {/* Stats Grid */}
@@ -48,7 +51,7 @@ export default function AgentDashboard() {
           {/* Earnings Chart */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">收益趋势</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('agent.dashboard.earningsTrend')}</h2>
             </div>
             <div className="p-6">
               <div className="space-y-4">
@@ -72,7 +75,7 @@ export default function AgentDashboard() {
           {/* Top Products */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">热门推荐商品</h2>
+              <h2 className="text-lg font-semibold text-gray-900">{t('agent.dashboard.topRecommendedProducts')}</h2>
             </div>
             <div className="p-6">
               <div className="space-y-4">
@@ -80,7 +83,7 @@ export default function AgentDashboard() {
                   <div key={index} className="flex justify-between items-center py-2">
                     <div>
                       <p className="font-medium text-gray-900">{product.name}</p>
-                      <p className="text-sm text-gray-500">{product.conversions} 次转化</p>
+                      <p className="text-sm text-gray-500">{product.conversions} {t('agent.dashboard.conversions')}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-green-600">{product.earnings}</p>
@@ -89,7 +92,7 @@ export default function AgentDashboard() {
                 ))}
               </div>
               <button className="w-full mt-4 text-center text-blue-600 hover:text-blue-700 font-medium">
-                查看商品库
+                {t('agent.dashboard.viewProductLibrary')}
               </button>
             </div>
           </div>
@@ -97,26 +100,26 @@ export default function AgentDashboard() {
         {/* Quick Actions */}
         <div className="mt-8 grid md:grid-cols-3 gap-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-            <h3 className="font-semibold text-blue-900 mb-2">集成 SDK</h3>
-            <p className="text-blue-700 text-sm mb-4">快速为您的 AI Agent 集成支付能力</p>
+            <h3 className="font-semibold text-blue-900 mb-2">{t('agent.dashboard.integrateSDK')}</h3>
+            <p className="text-blue-700 text-sm mb-4">{t('agent.dashboard.integrateSDKDesc')}</p>
             <button className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700">
-              查看文档
+              {t('agent.dashboard.viewDocs')}
             </button>
           </div>
           
           <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-            <h3 className="font-semibold text-green-900 mb-2">管理授权</h3>
-            <p className="text-green-700 text-sm mb-4">查看和管理用户的自动支付授权</p>
+            <h3 className="font-semibold text-green-900 mb-2">{t('agent.dashboard.manageAuthorizations')}</h3>
+            <p className="text-green-700 text-sm mb-4">{t('agent.dashboard.manageAuthorizationsDesc')}</p>
             <button className="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700">
-              查看授权
+              {t('agent.dashboard.viewAuthorizations')}
             </button>
           </div>
           
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
-            <h3 className="font-semibold text-purple-900 mb-2">数据分析</h3>
-            <p className="text-purple-700 text-sm mb-4">深入了解用户行为和转化数据</p>
+            <h3 className="font-semibold text-purple-900 mb-2">{t('agent.dashboard.dataAnalytics')}</h3>
+            <p className="text-purple-700 text-sm mb-4">{t('agent.dashboard.dataAnalyticsDesc')}</p>
             <button className="bg-purple-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-purple-700">
-              查看分析
+              {t('agent.dashboard.viewAnalytics')}
             </button>
           </div>
         </div>

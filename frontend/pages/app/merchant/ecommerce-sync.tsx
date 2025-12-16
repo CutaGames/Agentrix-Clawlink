@@ -102,7 +102,7 @@ export default function EcommerceSyncPage() {
       : 'https://api.agentrix.top/api')
     : 'http://localhost:3001/api';
 
-  const getToken = () => localStorage.getItem('token');
+  const getToken = () => localStorage.getItem('access_token');
 
   useEffect(() => {
     fetchConnections();

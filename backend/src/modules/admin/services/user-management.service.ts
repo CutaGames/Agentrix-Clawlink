@@ -58,7 +58,10 @@ export class UserManagementService {
     const [users, total] = await queryBuilder.getManyAndCount();
 
     return {
-      data: users,
+      data: users.map(user => ({
+        ...user,
+        agentrixId: user.paymindId,
+      })),
       total,
       page,
       limit,

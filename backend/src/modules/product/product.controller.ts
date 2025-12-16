@@ -54,6 +54,15 @@ export class ProductController {
     return this.productService.getProduct(id);
   }
 
+  @Post('discover')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '自动发现并注册服务 (X402 V2)' })
+  @ApiResponse({ status: 201, description: '服务注册成功' })
+  async discoverProduct(@Request() req, @Body() body: { url: string }) {
+    return this.productService.discoverFromUrl(body.url, req.user.id);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
