@@ -47,7 +47,7 @@ export async function createTestUser(
     registerResult = await authService.register({
       email,
       password,
-      agentrixId: `pm-test-${Date.now()}`,
+//       agentrixId: `pm-test-${Date.now()}`,
     });
   } catch (error: any) {
     // 如果用户已存在，尝试登录
