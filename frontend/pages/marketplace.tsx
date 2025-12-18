@@ -5,12 +5,13 @@ import { Navigation } from '../components/ui/Navigation'
 import { Footer } from '../components/layout/Footer'
 import { LoginModal } from '../components/auth/LoginModal'
 import { ProductServiceSection } from '../components/marketplace/ProductServiceSection'
+import { X402ProductSection } from '../components/marketplace/X402ProductSection'
 import { ShoppingCart } from '../components/marketplace/ShoppingCart'
 import { useLocalization } from '../contexts/LocalizationContext'
 
 export default function MarketplacePage() {
   const [showLogin, setShowLogin] = useState(false)
-  const [activeTab, setActiveTab] = useState<'physical' | 'service' | 'digital' | 'plugin'>('physical')
+  const [activeTab, setActiveTab] = useState<'physical' | 'service' | 'digital' | 'x402' | 'plugin'>('physical')
   const router = useRouter()
   const { t } = useLocalization()
 
@@ -18,6 +19,7 @@ export default function MarketplacePage() {
     { id: 'physical', label: { zh: '实物商品', en: 'Physical Goods' } },
     { id: 'service', label: { zh: '服务', en: 'Services' } },
     { id: 'digital', label: { zh: '虚拟资产', en: 'Digital Assets' } },
+    { id: 'x402', label: { zh: 'X402 专区', en: 'X402 Zone' }, badge: 'NEW' },
     { id: 'plugin', label: { zh: '插件市场', en: 'Plugins' } },
   ]
 
@@ -52,13 +54,18 @@ export default function MarketplacePage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`pb-4 text-sm font-medium transition-colors border-b-2 ${
+                  className={`pb-4 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${
                     activeTab === tab.id
                       ? 'border-blue-600 text-blue-600'
                       : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                   }`}
                 >
                   {t(tab.label)}
+                  {tab.badge && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded">
+                      {tab.badge}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -75,6 +82,9 @@ export default function MarketplacePage() {
           )}
           {activeTab === 'digital' && (
             <ProductServiceSection type="digital" />
+          )}
+          {activeTab === 'x402' && (
+            <X402ProductSection />
           )}
           {activeTab === 'plugin' && (
              <div className="text-center py-20">

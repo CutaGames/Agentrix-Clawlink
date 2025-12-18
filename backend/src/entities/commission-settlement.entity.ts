@@ -3,8 +3,10 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  OneToMany,
 } from 'typeorm';
 import { PayeeType } from './commission.entity';
+import { CommissionAllocation } from './commission-allocation.entity';
 
 export enum SettlementStatus {
   PENDING = 'pending',
@@ -18,22 +20,38 @@ export class CommissionSettlement {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ nullable: true })
+  orderId: string;
+
+  @Column({ nullable: true })
   payeeId: string;
 
   @Column({
     type: 'enum',
     enum: PayeeType,
+    nullable: true,
   })
   payeeType: PayeeType;
 
-  @Column('decimal', { precision: 15, scale: 2 })
+  @Column('decimal', { precision: 15, scale: 6, nullable: true })
   amount: number;
 
-  @Column({ length: 10 })
+  @Column('decimal', { precision: 20, scale: 6, nullable: true, name: 'total_amount' })
+  totalAmount: string;
+
+  @Column('decimal', { precision: 20, scale: 6, nullable: true, name: 'merchant_amount' })
+  merchantAmount: string;
+
+  @Column('decimal', { precision: 20, scale: 6, nullable: true, name: 'platform_fee' })
+  platformFee: string;
+
+  @Column('decimal', { precision: 20, scale: 6, nullable: true, name: 'channel_fee' })
+  channelFee: string;
+
+  @Column({ length: 10, default: 'USDT' })
   currency: string;
 
-  @Column({ type: 'date' })
+  @Column({ type: 'date', nullable: true })
   settlementDate: Date;
 
   @Column({
@@ -45,6 +63,9 @@ export class CommissionSettlement {
 
   @Column({ nullable: true })
   transactionHash: string;
+
+  @OneToMany(() => CommissionAllocation, (allocation) => allocation.settlement)
+  allocations: CommissionAllocation[];
 
   @CreateDateColumn()
   createdAt: Date;

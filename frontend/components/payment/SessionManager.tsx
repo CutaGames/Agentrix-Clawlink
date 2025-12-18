@@ -204,18 +204,31 @@ export function SessionManager({ onClose }: SessionManagerProps) {
           const receipt = await tx.wait();
           
           // 从事件中解析实际的 sessionId
+          // SessionCreated 事件: event SessionCreated(bytes32 indexed sessionId, address indexed owner, address indexed signer, ...)
           if (receipt && receipt.logs) {
             const eventInterface = new ethers.Interface(SESSION_MANAGER_ABI);
             for (const log of receipt.logs) {
               try {
-                const parsed = eventInterface.parseLog(log);
+                const parsed = eventInterface.parseLog({
+                  topics: log.topics as string[],
+                  data: log.data,
+                });
                 if (parsed && parsed.name === 'SessionCreated') {
-                  onChainSessionId = parsed.args.sessionId;
+                  // indexed 参数 sessionId 在 args 中
+                  onChainSessionId = parsed.args.sessionId || parsed.args[0];
                   console.log(`✅ 从事件中解析到 Session ID: ${onChainSessionId}`);
                   break;
                 }
               } catch (e) {
-                // 忽略解析失败的事件
+                // 如果解析失败，尝试直接从 topics 获取
+                if (log.topics && log.topics.length >= 2) {
+                  const eventSignature = ethers.id('SessionCreated(bytes32,address,address,uint256,uint256,uint256)');
+                  if (log.topics[0] === eventSignature) {
+                    onChainSessionId = log.topics[1];
+                    console.log(`✅ 从 topics 直接获取 Session ID: ${onChainSessionId}`);
+                    break;
+                  }
+                }
               }
             }
           }

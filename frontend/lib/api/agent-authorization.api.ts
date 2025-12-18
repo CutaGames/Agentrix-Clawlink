@@ -24,7 +24,11 @@ export interface StrategyPermissionConfig {
 
 export interface AgentAuthorization {
   id: string;
+  // Friendly name of the agent (optional, provided by backend when available)
+  agentName?: string;
   agentId: string;
+  // compatibility alias used in some UI code
+  type?: string;
   userId: string;
   walletAddress: string;
   authorizationType: 'erc8004' | 'mpc' | 'api_key';

@@ -11,6 +11,15 @@ const nextConfig = {
     // 在构建时忽略 TypeScript 错误（不推荐，但可以临时使用）
     ignoreBuildErrors: false,
   },
+  // API 代理到后端服务
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:3001/api/:path*',
+      },
+    ];
+  },
   // 允许加载 Transak SDK 的外部脚本
   async headers() {
     return [

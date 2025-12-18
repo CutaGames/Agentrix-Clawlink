@@ -226,6 +226,11 @@ export class CommissionCalculatorService {
     const baseAmount = commissionBase || payment.amount;
     const channelFee = payment.channelFee || 0;
 
+    // X402 V2 通道费处理（从平台费中扣除）
+    const isX402 = payment.metadata?.isX402 || payment.metadata?.paymentMethod === 'x402';
+    const x402ChannelFeeRate = 0.003; // 0.3% 固定费率
+    let x402ChannelFee = 0;
+
     let order: Order | null = null;
     if (payment.metadata?.orderId) {
       try {
@@ -290,6 +295,14 @@ export class CommissionCalculatorService {
     let paymindBaseRevenue = this.roundCurrency(netRevenue * rates.baseRate);
     let intendedCommissionPool = this.roundCurrency(netRevenue * rates.poolRate);
     let commissionPool = intendedCommissionPool;
+
+    // X402 V2 通道费计算：从平台费中扣除 0.3%
+    if (isX402) {
+      x402ChannelFee = this.roundCurrency(baseAmount * x402ChannelFeeRate);
+      // 从平台基础收入中扣除通道费
+      paymindBaseRevenue = Math.max(this.roundCurrency(paymindBaseRevenue - x402ChannelFee), 0);
+      this.logger.log(`X402 通道费计算: 基础金额=${baseAmount}, 通道费率=${x402ChannelFeeRate}, 通道费=${x402ChannelFee}`);
+    }
 
     // 将 On-ramp 平台费用添加到 PayMind 最终收入中
     // 这样在分账时，这部分费用会被正确分配到 paymindTreasury
@@ -452,6 +465,21 @@ export class CommissionCalculatorService {
       paymindFinalRevenue = this.roundCurrency(paymindFinalRevenue + rebatePayout);
     }
 
+    // X402 通道费记录（如果使用 X402 支付）
+    if (isX402 && x402ChannelFee > 0) {
+      await createCommissionRecord({
+        payeeId: 'x402_channel',
+        payeeType: PayeeType.PAYMIND,
+        amount: x402ChannelFee,
+        breakdown: { 
+          type: 'x402_channel_fee', 
+          rate: x402ChannelFeeRate,
+          baseAmount,
+          deductedFromPlatformFee: true, // 标记是从平台费中扣除的
+        },
+      });
+    }
+
     if (paymindFinalRevenue > 0) {
       await createCommissionRecord({
         payeeId: 'paymind',
@@ -461,6 +489,7 @@ export class CommissionCalculatorService {
           type: 'platform', 
           promoterPayout,
           onRampAgentrixFee: onRampAgentrixFee > 0 ? onRampAgentrixFee : undefined, // 记录 On-ramp 平台费用
+          x402ChannelFee: isX402 && x402ChannelFee > 0 ? x402ChannelFee : undefined, // 记录 X402 通道费
         },
       });
     }
@@ -519,6 +548,10 @@ export class CommissionCalculatorService {
       rebatePayout,
       merchantAmount,
       onRampAgentrixFee: onRampAgentrixFee > 0 ? onRampAgentrixFee : undefined, // 记录 On-ramp 平台费用
+      // X402 V2 通道费信息
+      isX402,
+      x402ChannelFee: isX402 && x402ChannelFee > 0 ? x402ChannelFee : undefined,
+      x402ChannelFeeRate: isX402 ? x402ChannelFeeRate : undefined,
     };
 
     payment.metadata = {

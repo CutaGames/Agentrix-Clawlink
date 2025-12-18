@@ -23,7 +23,7 @@ export function AgentrixLogo({ size = 'md', showText = true, className }: Agentr
   return (
     <div className={combinedClass}>
       <Image
-        src="/brand/agentrix-logo.svg"
+        src="/brand/agentrix-logo.png"
         alt="Agentrix"
         width={dimension}
         height={dimension}

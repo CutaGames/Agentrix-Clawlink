@@ -16,6 +16,8 @@ export enum ProductStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
   OUT_OF_STOCK = 'out_of_stock',
+  PENDING_REVIEW = 'pending_review',
+  REJECTED = 'rejected',
 }
 
 export enum ProductType {
@@ -86,6 +88,12 @@ export class Product {
     default: ProductStatus.ACTIVE,
   })
   status: ProductStatus;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  syncSource: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  externalId: string;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: any;

@@ -16,6 +16,7 @@ interface TransakWidgetProps {
   onSuccess?: (data: any) => void;
   onError?: (error: any) => void;
   onClose?: () => void;
+  onEvent?: (eventType: string, data?: any) => void; // 新增：通用事件回调
 }
 
 /**
@@ -39,6 +40,7 @@ export function TransakWidget({
   onSuccess,
   onError,
   onClose,
+  onEvent, // 新增：通用事件回调
 }: TransakWidgetProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [transakSessionId, setTransakSessionId] = useState<string | null>(null);
@@ -250,40 +252,22 @@ export function TransakWidget({
         // 统一使用 BSC 链
         defaultNetwork: network || 'bsc',
         // 设置金额（包含佣金的总价）
-        // 注意：根据 Transak 文档，使用 fiatAmount 和 defaultAmount 来预设金额
         ...(amount && { 
-          fiatAmount: amount.toString(), // 主要参数：法币金额
-          defaultAmount: amount.toString(), // 备用参数：默认金额
+          fiatAmount: amount.toString(),
+          defaultAmount: amount.toString(),
         }),
-        // 使用分润佣金合约地址，不是用户钱包地址
-        // Provider 兑换后自动打入此地址
+        // 使用分润佣金合约地址
         ...(walletAddress && { walletAddress: walletAddress }),
         ...(orderId && { partnerOrderId: orderId }),
+        // 邮箱配置：自动填充但允许用户编辑
         ...(email && { email: email }),
+        isAutoFillUserData: 'true', // 允许用户编辑预填的信息
         redirectURL: `${window.location.origin}/payment/callback`,
-        // 方案 A1：简化界面，减少用户操作
-        // 无论是否需要 KYC，都简化界面（hideMenu, disableWalletAddressForm, disableFiatAmountEditing）
-        // 如果 directPayment=true（用户已完成 KYC），不启用 KYC，直接支付
-        // 如果 directPayment=false（用户未完成 KYC），启用 KYC，但在支付过程中检查
-        // 锁定金额的参数（根据 Transak 最新文档）
-        // 注意：Transak 可能不支持直接锁定金额的参数
-        // 如果这些参数无效，可能需要使用 Create Session API 或联系 Transak 技术支持
-        disableFiatAmountEditing: 'true', // 尝试锁定金额
-        isAmountEditable: 'false', // 备用参数
-        // 尝试使用其他可能的参数名称
-        lockAmount: 'true', // 备用参数
-        readonlyAmount: 'true', // 备用参数
-        ...(directPayment ? {
-          // 已完成 KYC：直接支付模式（不显示兑换界面，不启用 KYC）
-          isKYCRequired: 'false',
-          hideMenu: 'true',
-          disableWalletAddressForm: 'true',
-        } : {
-          // 未完成 KYC：启用 KYC 流程，但简化界面
-          isKYCRequired: 'true',
-          hideMenu: 'true', // 隐藏菜单，简化界面
-          disableWalletAddressForm: 'true', // 禁用钱包地址表单（已设置 walletAddress）
-        }),
+        // Transak 白标集成配置
+        hideMenu: 'true',
+        disableWalletAddressForm: 'true',
+        disableFiatAmountEditing: 'true',
+        themeColor: '4F46E5', // Indigo 主题色（不带#）
       });
 
       const transakUrl = `${baseUrl}?${params.toString()}`;
@@ -327,24 +311,60 @@ export function TransakWidget({
             }
           };
           
-          // 监听来自 iframe 的消息（如果 Transak 支持 postMessage）
+          // 监听来自 iframe 的消息（Transak 通过 postMessage 发送事件）
           const messageHandler = (event: MessageEvent) => {
-            // 验证消息来源
-            if (!event.origin.includes('transak.com')) return;
+            // 验证消息来源（Transak 使用多个域名）
+            const validOrigins = ['transak.com', 'global.transak.com', 'global-stg.transak.com'];
+            const isValidOrigin = validOrigins.some(domain => event.origin.includes(domain));
+            if (!isValidOrigin) return;
             
             console.log('📨 Message from Transak iframe:', event.data);
             
             // 处理 Transak 事件
             if (event.data && typeof event.data === 'object') {
-              if (event.data.eventName === 'TRANSAK_ORDER_SUCCESSFUL' || event.data.status === 'COMPLETED') {
-                console.log('✅ Transak order successful via iframe:', event.data);
+              // 触发通用事件回调 - 支持多种事件名称格式
+              const eventName = event.data.eventName || event.data.event_id || event.data.type;
+              if (eventName) {
+                console.log('🎯 Transak event:', eventName, event.data);
+                onEvent?.(eventName, event.data);
+              }
+              
+              // 处理各种事件
+              switch (eventName) {
+                case 'TRANSAK_ORDER_SUCCESSFUL':
+                  console.log('✅ Transak order successful via iframe:', event.data);
+                  onSuccess?.(event.data);
+                  break;
+                case 'TRANSAK_ORDER_FAILED':
+                  console.error('❌ Transak order failed via iframe:', event.data);
+                  onError?.(event.data);
+                  break;
+                case 'TRANSAK_WIDGET_CLOSE':
+                  console.log('🔒 Transak widget closed via iframe');
+                  onClose?.();
+                  break;
+                // 以下事件已通过 onEvent 回调传递，无需额外处理
+                case 'TRANSAK_WIDGET_INITIALISED':
+                case 'TRANSAK_WIDGET_OPEN':
+                case 'TRANSAK_ORDER_CREATED':
+                case 'TRANSAK_ORDER_PROCESSING':
+                case 'TRANSAK_KYC_INIT':
+                case 'TRANSAK_KYC_VERIFIED':
+                case 'KYC_INIT':
+                case 'KYC_VERIFIED':
+                  // 这些事件已通过 onEvent 传递
+                  break;
+              }
+              
+              // 处理状态变化（某些事件可能以 status 形式发送）
+              if (event.data.status === 'COMPLETED') {
+                console.log('✅ Transak order completed via status:', event.data);
+                onEvent?.('TRANSAK_ORDER_SUCCESSFUL', event.data);
                 onSuccess?.(event.data);
-              } else if (event.data.eventName === 'TRANSAK_ORDER_FAILED' || event.data.status === 'FAILED') {
-                console.error('❌ Transak order failed via iframe:', event.data);
+              } else if (event.data.status === 'FAILED') {
+                console.error('❌ Transak order failed via status:', event.data);
+                onEvent?.('TRANSAK_ORDER_FAILED', event.data);
                 onError?.(event.data);
-              } else if (event.data.eventName === 'TRANSAK_WIDGET_CLOSE') {
-                console.log('🔒 Transak widget closed via iframe');
-                onClose?.();
               }
             }
           };
@@ -443,15 +463,32 @@ export function TransakWidget({
             console.log('📨 Message from Transak iframe:', event.data);
             
             if (event.data && typeof event.data === 'object') {
+              // 触发通用事件回调
+              const eventName = event.data.eventName || event.data.event_id;
+              if (eventName) {
+                onEvent?.(eventName, event.data);
+              }
+              
               if (event.data.eventName === 'TRANSAK_ORDER_SUCCESSFUL' || event.data.status === 'COMPLETED') {
                 console.log('✅ Transak order successful via iframe:', event.data);
+                onEvent?.('TRANSAK_ORDER_SUCCESSFUL', event.data);
                 onSuccess?.(event.data);
               } else if (event.data.eventName === 'TRANSAK_ORDER_FAILED' || event.data.status === 'FAILED') {
                 console.error('❌ Transak order failed via iframe:', event.data);
+                onEvent?.('TRANSAK_ORDER_FAILED', event.data);
                 onError?.(event.data);
               } else if (event.data.eventName === 'TRANSAK_WIDGET_CLOSE') {
                 console.log('🔒 Transak widget closed via iframe');
+                onEvent?.('TRANSAK_WIDGET_CLOSE', event.data);
                 onClose?.();
+              } else if (event.data.eventName === 'TRANSAK_WIDGET_INITIALISED') {
+                onEvent?.('TRANSAK_WIDGET_INITIALISED', event.data);
+              } else if (event.data.eventName === 'TRANSAK_WIDGET_OPEN') {
+                onEvent?.('TRANSAK_WIDGET_OPEN', event.data);
+              } else if (event.data.eventName === 'TRANSAK_ORDER_CREATED') {
+                onEvent?.('TRANSAK_ORDER_CREATED', event.data);
+              } else if (event.data.eventName === 'TRANSAK_ORDER_PROCESSING') {
+                onEvent?.('TRANSAK_ORDER_PROCESSING', event.data);
               }
             }
           };
@@ -477,6 +514,8 @@ export function TransakWidget({
     });
 
     // 初始化 Transak Widget
+    // 重要：根据 Transak 文档，email 参数会跳过邮箱输入界面
+    // 使用 isAutoFillUserData=true 让用户可以编辑
     const transakConfig = {
       apiKey: apiKey,
       environment: environment,
@@ -493,28 +532,21 @@ export function TransakWidget({
       // Provider 兑换后自动打入此地址
       walletAddress: walletAddress,
       partnerOrderId: orderId,
-      email: email,
+      // 邮箱配置：如果有邮箱则自动填充，但让用户可以编辑
+      // 注意：根据 Transak 文档，传入 email 会跳过邮箱输入界面
+      // 如果希望用户能编辑，需要设置 isAutoFillUserData: true
+      ...(email && { email: email }),
+      isAutoFillUserData: true, // 允许用户编辑预填的信息（包括邮箱）
       redirectURL: `${window.location.origin}/payment/callback`,
-      // 方案 A1：简化界面，减少用户操作
-      // 无论是否需要 KYC，都简化界面（hideMenu, disableWalletAddressForm, disableFiatAmountEditing）
-      // 如果 directPayment=true（用户已完成 KYC），不启用 KYC，直接支付
-      // 如果 directPayment=false（用户未完成 KYC），启用 KYC，但在支付过程中检查
-      // 锁定金额的参数（尝试多个可能的参数名称）
+      // Transak 白标集成配置
+      // 注意：KYC 是 Transak 强制要求的，无法完全跳过
+      // 但在 staging 环境，KYC 会自动通过（测试特性）
+      // 在 production 环境，用户必须完成真实 KYC
+      hideMenu: true, // 隐藏菜单
+      disableWalletAddressForm: true, // 禁用钱包地址表单（已设置 walletAddress）
       disableFiatAmountEditing: true, // 锁定金额，不允许修改
-      isAmountEditable: false, // 备用参数（如果 disableFiatAmountEditing 不支持）
-      ...(directPayment ? {
-        // 已完成 KYC：直接支付模式（不显示兑换界面，不启用 KYC）
-        isKYCRequired: false,
-        hideMenu: true,
-        disableWalletAddressForm: true,
-      } : {
-        // 未完成 KYC：启用 KYC 流程，但简化界面
-        isKYCRequired: true,
-        hideMenu: true, // 隐藏菜单，简化界面
-        disableWalletAddressForm: true, // 禁用钱包地址表单（已设置 walletAddress）
-      }),
       // 主题配置
-      themeColor: '#000000',
+      themeColor: '#4F46E5', // Indigo 主题色
       // 语言
       language: 'zh-CN',
       // 重要：指定容器 ID，让 Widget 嵌入到我们的 UI 中
@@ -528,18 +560,41 @@ export function TransakWidget({
         widgetRef.current = new window.TransakSDK(transakConfig);
 
         // 监听事件
+        widgetRef.current.on('TRANSAK_WIDGET_INITIALISED', (data: any) => {
+          console.log('🔧 Transak widget initialised:', data);
+          onEvent?.('TRANSAK_WIDGET_INITIALISED', data);
+        });
+        
+        widgetRef.current.on('TRANSAK_WIDGET_OPEN', (data: any) => {
+          console.log('📖 Transak widget open:', data);
+          onEvent?.('TRANSAK_WIDGET_OPEN', data);
+        });
+        
+        widgetRef.current.on('TRANSAK_ORDER_CREATED', (orderData: any) => {
+          console.log('📝 Transak order created:', orderData);
+          onEvent?.('TRANSAK_ORDER_CREATED', orderData);
+        });
+        
+        widgetRef.current.on('TRANSAK_ORDER_PROCESSING', (orderData: any) => {
+          console.log('⏳ Transak order processing:', orderData);
+          onEvent?.('TRANSAK_ORDER_PROCESSING', orderData);
+        });
+
         widgetRef.current.on('TRANSAK_ORDER_SUCCESSFUL', (orderData: any) => {
           console.log('✅ Transak order successful:', orderData);
+          onEvent?.('TRANSAK_ORDER_SUCCESSFUL', orderData);
           onSuccess?.(orderData);
         });
 
         widgetRef.current.on('TRANSAK_ORDER_FAILED', (errorData: any) => {
           console.error('❌ Transak order failed:', errorData);
+          onEvent?.('TRANSAK_ORDER_FAILED', errorData);
           onError?.(errorData);
         });
 
         widgetRef.current.on('TRANSAK_WIDGET_CLOSE', () => {
           console.log('🔒 Transak widget closed');
+          onEvent?.('TRANSAK_WIDGET_CLOSE', null);
           onClose?.();
         });
 
@@ -561,7 +616,7 @@ export function TransakWidget({
         code: 'SDK_NOT_LOADED',
       });
     }
-  }, [isLoaded, apiKey, environment, amount, fiatCurrency, cryptoCurrency, network, walletAddress, orderId, email, directPayment, onSuccess, onError, onClose]);
+  }, [isLoaded, apiKey, environment, amount, fiatCurrency, cryptoCurrency, network, walletAddress, orderId, email, directPayment, onSuccess, onError, onClose, onEvent]);
 
   return (
     <div ref={containerRef} className="transak-widget-container">

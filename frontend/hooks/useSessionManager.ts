@@ -4,9 +4,11 @@ import { paymentApi } from '@/lib/api/payment.api';
 import { useWeb3 } from '@/contexts/Web3Context';
 import { ethers } from 'ethers';
 
+// 完整的 ERC8004SessionManager ABI（包含事件）
 const SESSION_MANAGER_ABI = [
   'function createSession(address signer, uint256 singleLimit, uint256 dailyLimit, uint256 expiry) returns (bytes32)',
   'function getSession(bytes32) view returns (tuple(address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive))',
+  'event SessionCreated(bytes32 indexed sessionId, address indexed owner, address indexed signer, uint256 singleLimit, uint256 dailyLimit, uint256 expiry)',
 ];
 
 export interface Session {
@@ -85,12 +87,12 @@ export function useSessionManager() {
       try {
         // 从后端API获取合约地址
         const contractInfo = await paymentApi.getContractAddress?.();
-        erc8004Address = contractInfo?.erc8004ContractAddress || process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        erc8004Address = contractInfo?.erc8004ContractAddress || process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
         // 注意：API 返回的是 usdcAddress，但这里使用 USDT 地址作为默认值
         tokenAddress = contractInfo?.usdcAddress || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
       } catch {
         // 如果API不存在，使用环境变量或默认值
-        erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
         tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
       }
 
@@ -167,11 +169,11 @@ export function useSessionManager() {
             if (approveError.code === 4001) {
               throw new Error('用户拒绝了授权交易。请重新尝试并确认授权。');
             } else if (approveError.message?.includes('insufficient funds') || approveError.message?.includes('gas')) {
-              throw new Error('Gas费用不足，请确保钱包有足够的BNB/BTC来支付交易费用。');
+              throw new Error('Gas费用不足。请确保钱包有足够的BNB（BSC测试网）来支付交易费用。\n\n获取测试网BNB：https://testnet.bnbchain.org/faucet-smart');
             } else if (approveError.message?.includes('Transaction failed')) {
-              throw new Error('交易失败，可能是网络问题或合约调用失败。请稍后重试。');
+              throw new Error('交易失败。可能原因：\n1. 钱包BNB余额不足（需要支付Gas费）\n2. USDT余额不足\n3. 网络拥堵\n\n请检查钱包余额后重试。\n获取测试网资产：https://testnet.bnbchain.org/faucet-smart');
             } else {
-              throw new Error(`授权失败：${approveError.message || '未知错误'}`);
+              throw new Error(`授权失败：${approveError.message || '未知错误'}\n\n请确保钱包有足够的BNB和USDT。`);
             }
           }
         } else {
@@ -200,23 +202,103 @@ export function useSessionManager() {
           expiryTimestamp,
         });
 
-        const predictedSessionId = await sessionManagerContract.createSession.staticCall(
-          sessionKey.publicKey,
-          singleLimitUnits,
-          dailyLimitUnits,
-          expiryTimestamp,
-        );
+        // 先使用 staticCall 预检查，获取可能的错误信息
+        try {
+          // 预检查 - 如果这一步失败，说明合约会拒绝交易
+          const predictedSessionId = await sessionManagerContract.createSession.staticCall(
+            sessionKey.publicKey,
+            singleLimitUnits,
+            dailyLimitUnits,
+            expiryTimestamp,
+          );
+          console.log('预测的 SessionId:', predictedSessionId);
 
-        const tx = await sessionManagerContract.createSession(
-          sessionKey.publicKey,
-          singleLimitUnits,
-          dailyLimitUnits,
-          expiryTimestamp,
-        );
-        console.log('等待Session创建交易确认...', tx.hash);
-        await tx.wait();
-        onChainSessionId = predictedSessionId;
-        console.log(`✅ Session 已在链上注册: ${predictedSessionId}`);
+          // 执行实际交易
+          const tx = await sessionManagerContract.createSession(
+            sessionKey.publicKey,
+            singleLimitUnits,
+            dailyLimitUnits,
+            expiryTimestamp,
+          );
+          console.log('等待Session创建交易确认...', tx.hash);
+          
+          // 等待交易确认
+          const receipt = await tx.wait();
+          
+          if (!receipt || receipt.status === 0) {
+            throw new Error('交易已发送但执行失败，请检查钱包中的交易状态');
+          }
+          
+          // 从交易日志中获取实际的 sessionId
+          // SessionCreated 事件: event SessionCreated(bytes32 indexed sessionId, address indexed owner, address indexed signer, ...)
+          // indexed 参数在 topics 中: topics[0]=事件签名, topics[1]=sessionId, topics[2]=owner, topics[3]=signer
+          let foundSessionId: string | null = null;
+          
+          for (const log of receipt.logs) {
+            try {
+              const parsed = sessionManagerContract.interface.parseLog({
+                topics: log.topics as string[],
+                data: log.data,
+              });
+              
+              if (parsed?.name === 'SessionCreated') {
+                // 对于 indexed 参数，ethers v6 会正确解析到 args 中
+                foundSessionId = parsed.args.sessionId || parsed.args[0];
+                console.log(`✅ 从 SessionCreated 事件获取 sessionId: ${foundSessionId}`);
+                break;
+              }
+            } catch (e) {
+              // 如果解析失败，尝试直接从 topics 获取（sessionId 是第一个 indexed 参数）
+              if (log.topics && log.topics.length >= 2) {
+                // 检查是否是 SessionCreated 事件（通过事件签名）
+                const eventSignature = ethers.id('SessionCreated(bytes32,address,address,uint256,uint256,uint256)');
+                if (log.topics[0] === eventSignature) {
+                  foundSessionId = log.topics[1]; // sessionId 在 topics[1]
+                  console.log(`✅ 从 topics 直接获取 sessionId: ${foundSessionId}`);
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (foundSessionId) {
+            onChainSessionId = foundSessionId;
+            console.log(`✅ Session 已在链上注册: ${onChainSessionId}`);
+          } else {
+            // 最后的 fallback：使用预测值（但这可能不准确）
+            console.warn('⚠️ 无法从事件解析 sessionId，使用预测值（可能不准确）');
+            onChainSessionId = predictedSessionId;
+          }
+          
+          // 验证 session 是否真的存在
+          console.log('验证链上 Session...');
+          try {
+            const verifySession = await sessionManagerContract.getSession(onChainSessionId);
+            if (!verifySession || verifySession.signer === ethers.ZeroAddress) {
+              console.warn('⚠️ 链上验证失败：Session 未找到，可能需要等待区块同步');
+              // 不抛出错误，让后端重试
+            } else {
+              console.log('✅ 链上验证成功');
+            }
+          } catch (verifyError) {
+            console.warn('⚠️ 链上验证出错:', verifyError);
+          }
+          
+        } catch (txError: any) {
+          console.error('❌ Session创建交易失败:', txError);
+          // 提供更友好的错误提示
+          if (txError.code === 4001) {
+            throw new Error('用户拒绝了交易。请重新尝试并在钱包中确认交易。');
+          } else if (txError.message?.includes('insufficient funds') || txError.message?.includes('gas')) {
+            throw new Error('Gas费用不足。请确保钱包有足够的BNB（BSC测试网）来支付交易费用。\n\n获取测试网BNB：https://testnet.bnbchain.org/faucet-smart');
+          } else if (txError.message?.includes('Transaction failed') || txError.code === -32603) {
+            throw new Error('链上交易执行失败。可能原因：\n1. 已存在相同配置的 Session\n2. 合约状态检查未通过\n3. Gas 估算不准确\n\n请稍后重试或联系支持。');
+          } else if (txError.message?.includes('nonce')) {
+            throw new Error('交易 nonce 冲突。请等待之前的交易完成后重试。');
+          } else {
+            throw new Error(`Session创建失败：${txError.message || '未知错误'}\n\n请检查钱包状态后重试。`);
+          }
+        }
       } else {
         console.warn('无法获取浏览器签名器，跳过链上Session注册（仅用于本地调试）');
       }
@@ -260,7 +342,7 @@ export function useSessionManager() {
 
       // 2. 撤销USDT授权（将授权额度设为0）
       if (typeof window !== 'undefined' && window.ethereum) {
-        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
+        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
         const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
         const provider = new ethers.BrowserProvider(window.ethereum);
@@ -300,6 +382,7 @@ export function useSessionManager() {
   // 加载活跃 Session
   const loadActiveSession = async () => {
     try {
+      setLoading(true);  // 设置加载状态
       const response = await paymentApi.getActiveSession();
       // 后端现在返回 { data: session } 或 { data: null }
       const session = response?.data !== undefined ? response.data : response;
@@ -308,6 +391,8 @@ export function useSessionManager() {
     } catch (err: any) {
       console.error('Failed to load active session:', err);
       return null;
+    } finally {
+      setLoading(false);  // 无论成功还是失败都重置加载状态
     }
   };
 

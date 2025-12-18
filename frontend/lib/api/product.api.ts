@@ -123,11 +123,13 @@ export const productApi = {
     search?: string;
     merchantId?: string;
     status?: 'active' | 'inactive' | 'out_of_stock';
+    type?: 'physical' | 'service' | 'digital' | 'x402';
   }): Promise<ProductInfo[]> => {
     const queryParams = new URLSearchParams();
     if (params?.search) queryParams.append('search', params.search);
     if (params?.merchantId) queryParams.append('merchantId', params.merchantId);
     if (params?.status) queryParams.append('status', params.status);
+    if (params?.type) queryParams.append('type', params.type);
     
     const queryString = queryParams.toString();
     const url = `/products${queryString ? `?${queryString}` : ''}`;

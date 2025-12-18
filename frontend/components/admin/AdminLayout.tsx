@@ -13,6 +13,7 @@ const menuItems = [
   { name: '商户管理', path: '/admin/merchants', icon: '🏪' },
   { name: '开发者管理', path: '/admin/developers', icon: '👨‍💻' },
   { name: '推广者管理', path: '/admin/promoters', icon: '📢' },
+  { name: '资金路径', path: '/admin/fund-paths', icon: '💰' },
   { name: '工单管理', path: '/admin/tickets', icon: '🎫' },
   { name: '营销管理', path: '/admin/marketing', icon: '📢' },
   { name: '风控管理', path: '/admin/risk', icon: '🛡️' },

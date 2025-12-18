@@ -7,8 +7,8 @@ export default function AutoPaySetup() {
   const router = useRouter()
   const { agentId } = router.query
   const [grantSettings, setGrantSettings] = useState({
-    singleLimit: '100',
-    dailyLimit: '500',
+    singleLimit: '10',
+    dailyLimit: '100',
     duration: '30',
     agentName: 'AI购物助手'
   })

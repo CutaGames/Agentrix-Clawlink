@@ -48,6 +48,7 @@ export interface PreflightResult {
 // ERC8004SessionManager ABI (简化版)
 const ERC8004_ABI = [
   'function sessions(bytes32) view returns (address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive)',
+  'function getSession(bytes32) view returns (tuple(address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive))',
   'function getUserSessions(address) view returns (bytes32[])',
 ];
 

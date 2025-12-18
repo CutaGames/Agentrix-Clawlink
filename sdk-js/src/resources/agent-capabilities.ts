@@ -65,7 +65,7 @@ export class AgentCapabilitiesResource {
       this.cachedCapabilities.set(platform, result);
       return result;
     } catch (error) {
-      throw new Error(`Failed to get capabilities for platform ${platform}: ${error.message}`);
+      throw new Error(`Failed to get capabilities for platform ${platform}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -79,7 +79,7 @@ export class AgentCapabilitiesResource {
       );
       return result.platforms;
     } catch (error) {
-      throw new Error(`Failed to get platforms: ${error.message}`);
+      throw new Error(`Failed to get platforms: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -131,7 +131,7 @@ export class AgentCapabilitiesResource {
       });
       return result;
     } catch (error) {
-      throw new Error(`Failed to execute capability: ${error.message}`);
+      throw new Error(`Failed to execute capability: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -180,7 +180,7 @@ export class AgentCapabilitiesResource {
       });
       return result;
     } catch (error) {
-      throw new Error(`RAG search failed: ${error.message}`);
+      throw new Error(`RAG search failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

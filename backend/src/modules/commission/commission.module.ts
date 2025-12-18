@@ -5,8 +5,11 @@ import { CommissionController } from './commission.controller';
 import { CommissionService } from './commission.service';
 import { CommissionCalculatorService } from './commission-calculator.service';
 import { CommissionSchedulerService } from './commission-scheduler.service';
+import { CommissionStrategyV4Service } from './commission-strategy-v4.service';
 import { Commission } from '../../entities/commission.entity';
 import { CommissionSettlement } from '../../entities/commission-settlement.entity';
+import { CommissionAllocation } from '../../entities/commission-allocation.entity';
+import { FundPath } from '../../entities/fund-path.entity';
 import { Payment } from '../../entities/payment.entity';
 import { Product } from '../../entities/product.entity';
 import { User } from '../../entities/user.entity';
@@ -17,6 +20,8 @@ import { Order } from '../../entities/order.entity';
     TypeOrmModule.forFeature([
       Commission,
       CommissionSettlement,
+      CommissionAllocation,
+      FundPath,
       Payment,
       Product,
       User,
@@ -29,8 +34,9 @@ import { Order } from '../../entities/order.entity';
     CommissionService,
     CommissionCalculatorService,
     CommissionSchedulerService,
+    CommissionStrategyV4Service,
   ],
-  exports: [CommissionService, CommissionCalculatorService],
+  exports: [CommissionService, CommissionCalculatorService, CommissionStrategyV4Service],
 })
 export class CommissionModule {}
 

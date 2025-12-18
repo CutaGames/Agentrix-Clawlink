@@ -18,12 +18,11 @@ export function DashboardLayout({ children, userType }: DashboardLayoutProps) {
 
   const userMenu = [
     { name: t('navigation.user.overview'), href: '/app/user', icon: '📊' },
+    { name: t('navigation.user.agentHub'), href: '/app/user/agent-hub', icon: '🚀' },
     { name: t('navigation.user.kyc'), href: '/app/user/kyc', icon: '✅' },
     { name: t('navigation.user.transactions'), href: '/app/user/transactions', icon: '💳' },
-    { name: t('navigation.user.wallets'), href: '/app/user/wallets', icon: '👛' },
-    { name: t('navigation.user.grants'), href: '/app/user/grants', icon: '🔐' },
+    { name: t('navigation.user.authorizations'), href: '/app/user/authorizations', icon: '🔑' },
     { name: t('navigation.user.subscriptions'), href: '/app/user/subscriptions', icon: '🔄' },
-    { name: t('navigation.user.authorizations'), href: '/app/user/authorizations', icon: '🔓' },
     { name: t('navigation.user.agentAuthorizations'), href: '/app/user/agent-authorizations', icon: '🤖' },
     { name: t('navigation.user.executionHistory'), href: '/app/user/execution-history', icon: '📋' },
     { name: t('navigation.user.security'), href: '/app/user/security', icon: '⚙️' },

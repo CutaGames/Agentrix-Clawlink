@@ -1,5 +1,42 @@
 import { apiClient } from './client';
 
+export interface MerchantCustomer {
+  id: string;
+  merchantId: string;
+  email?: string;
+  name?: string;
+  phone?: string;
+  walletAddress?: string;
+  totalOrders: number;
+  orderCount?: number; // alias for totalOrders
+  totalSpent: number;
+  lastOrderAt?: string;
+  lastOrderDate?: string; // alias
+  createdAt: string;
+  tags?: string[];
+  metadata?: Record<string, any>;
+}
+
+export interface MerchantRefund {
+  id: string;
+  orderId: string;
+  merchantId: string;
+  customerId?: string;
+  amount: number;
+  currency: string;
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed';
+  rejectReason?: string;
+  processedAt?: string;
+  requestedAt?: string;
+  createdAt: string;
+  orderInfo?: {
+    productName?: string;
+    quantity?: number;
+    originalAmount?: number;
+  };
+}
+
 export interface AutoOrderConfig {
   merchantId: string;
   enabled: boolean;
@@ -320,6 +357,59 @@ export const merchantApi = {
     const result = await apiClient.post<any>(`/payments/withdraw/${id}/cancel`);
     if (result === null) {
       throw new Error('无法取消提现，请稍后重试');
+    }
+    return result;
+  },
+
+  // ========== 客户管理 ==========
+  /**
+   * 获取商户客户列表
+   */
+  async getCustomers(params?: { page?: number; limit?: number; search?: string }): Promise<{
+    customers: MerchantCustomer[];
+    total: number;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    
+    const result = await apiClient.get<{
+      customers: MerchantCustomer[];
+      total: number;
+    }>(`/merchant/customers?${queryParams.toString()}`);
+    
+    if (result === null) {
+      return { customers: [], total: 0 };
+    }
+    return result;
+  },
+
+  /**
+   * 获取客户详情
+   */
+  async getCustomer(customerId: string): Promise<MerchantCustomer | null> {
+    const result = await apiClient.get<MerchantCustomer>(`/merchant/customers/${customerId}`);
+    return result;
+  },
+
+  // ========== 退款管理 ==========
+  /**
+   * 获取退款列表
+   */
+  async getRefunds(status?: 'all' | 'pending' | 'approved' | 'rejected' | 'completed'): Promise<MerchantRefund[]> {
+    const params = status && status !== 'all' ? `?status=${status}` : '';
+    const result = await apiClient.get<MerchantRefund[]>(`/merchant/refunds${params}`);
+    return result || [];
+  },
+
+  /**
+   * 处理退款
+   */
+  async processRefund(refundId: string, action: 'approve' | 'reject', reason?: string): Promise<MerchantRefund> {
+    const result = await apiClient.post<MerchantRefund>(`/merchant/refunds/${refundId}/${action}`, { reason });
+    if (result === null) {
+      throw new Error(`无法${action === 'approve' ? '批准' : '拒绝'}退款，请稍后重试`);
     }
     return result;
   },

@@ -626,4 +626,37 @@ export const paymentApi = {
     }
     return result;
   },
+
+  /**
+   * 检查X402授权状态
+   */
+  checkX402Authorization: async (): Promise<X402Authorization | null> => {
+    try {
+      const result = await apiClient.get<X402Authorization>('/payments/x402/authorization');
+      return result;
+    } catch (error: any) {
+      // 如果是404或未授权，返回null
+      if (error?.status === 404 || error?.status === 401) {
+        return null;
+      }
+      // 其他错误也返回null，不阻塞用户体验
+      console.warn('检查X402授权失败:', error);
+      return null;
+    }
+  },
+
+  /**
+   * 创建X402授权
+   */
+  createX402Authorization: async (request: {
+    singleLimit: number;
+    dailyLimit: number;
+    durationDays?: number;
+  }): Promise<X402Authorization> => {
+    const result = await apiClient.post<X402Authorization>('/payments/x402/authorization', request);
+    if (result === null) {
+      throw new Error('无法创建X402授权，请稍后重试');
+    }
+    return result;
+  },
 };

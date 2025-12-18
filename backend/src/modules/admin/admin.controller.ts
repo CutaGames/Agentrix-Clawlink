@@ -12,7 +12,7 @@ import {
   Request,
   HttpCode,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AdminAuthService } from './services/admin-auth.service';
 import { UserManagementService } from './services/user-management.service';
 import { MerchantManagementService } from './services/merchant-management.service';
@@ -23,6 +23,7 @@ import { MarketingManagementService } from './services/marketing-management.serv
 import { SystemManagementService } from './services/system-management.service';
 import { RiskManagementService } from './services/risk-management.service';
 import { ProductManagementService, QueryProductsDto } from './services/product-management.service';
+import { FundPathManagementService, FundPathQueryDto } from './services/fund-path-management.service';
 import { AdminLoginDto, QueryAdminUsersDto } from './dto/admin-user.dto';
 import { QueryUsersDto, QueryTransactionsDto, UpdateUserStatusDto } from './dto/user-management.dto';
 import {
@@ -33,6 +34,7 @@ import {
 } from './dto/support-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { FundPathType } from '../../entities/fund-path.entity';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -50,6 +52,7 @@ export class AdminController {
     private systemManagementService: SystemManagementService,
     private riskManagementService: RiskManagementService,
     private productManagementService: ProductManagementService,
+    private fundPathManagementService: FundPathManagementService,
   ) {}
 
   // ========== 管理员认证 ==========
@@ -508,6 +511,53 @@ export class AdminController {
   @ApiOperation({ summary: '获取风险用户列表' })
   async getRiskUsers(@Query() query: any) {
     return this.riskManagementService.getRiskUsers(query);
+  }
+
+  // ========== 资金路径管理 ==========
+
+  @Get('fund-paths')
+  @ApiOperation({ summary: '获取资金路径列表' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'startDate', required: false, type: String })
+  @ApiQuery({ name: 'endDate', required: false, type: String })
+  @ApiQuery({ name: 'pathType', required: false, enum: FundPathType })
+  @ApiQuery({ name: 'isX402', required: false, type: Boolean })
+  @ApiQuery({ name: 'paymentId', required: false, type: String })
+  @ApiQuery({ name: 'transactionHash', required: false, type: String })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  async getFundPaths(@Query() query: FundPathQueryDto) {
+    return this.fundPathManagementService.getFundPaths(query);
+  }
+
+  @Get('fund-paths/statistics')
+  @ApiOperation({ summary: '获取资金路径统计' })
+  @ApiQuery({ name: 'startDate', required: false, type: String })
+  @ApiQuery({ name: 'endDate', required: false, type: String })
+  async getFundPathStatistics(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.fundPathManagementService.getFundPathStatistics({ startDate, endDate });
+  }
+
+  @Get('fund-paths/recent')
+  @ApiOperation({ summary: '获取最近交易的资金路径' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getRecentFundPaths(@Query('limit') limit?: number) {
+    return this.fundPathManagementService.getRecentTransactions(limit || 10);
+  }
+
+  @Get('fund-paths/payment/:paymentId')
+  @ApiOperation({ summary: '根据支付ID获取资金路径详情' })
+  async getFundPathByPaymentId(@Param('paymentId') paymentId: string) {
+    return this.fundPathManagementService.getFundPathsByTransaction(paymentId);
+  }
+
+  @Get('fund-paths/tx/:transactionHash')
+  @ApiOperation({ summary: '根据交易哈希获取资金路径详情' })
+  async getFundPathByTxHash(@Param('transactionHash') transactionHash: string) {
+    return this.fundPathManagementService.getFundPathsByTxHash(transactionHash);
   }
 }
 

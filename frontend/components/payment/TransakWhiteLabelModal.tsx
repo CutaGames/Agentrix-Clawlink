@@ -13,6 +13,7 @@ import {
 import { AgentrixLogo } from '../common/AgentrixLogo';
 import { TransakWidget } from './TransakWidget';
 import { paymentApi, PaymentInfo } from '@/lib/api/payment.api';
+import { FiatPaymentSteps, FiatPaymentStep } from './FiatPaymentSteps';
 
 interface OrderSummary {
   id: string;
@@ -45,6 +46,7 @@ interface TransakWhiteLabelModalProps {
   providerOption?: ProviderQuoteOption | null;
   providerOptions?: ProviderQuoteOption[];
   userProfile?: any;
+  initialStage?: 'selection' | 'widget';
   onClose: () => void;
   onSuccess?: (result: PaymentInfo) => void;
   onError?: (message: string) => void;
@@ -78,18 +80,38 @@ export function TransakWhiteLabelModal({
   providerOption,
   providerOptions,
   userProfile,
+  initialStage = 'selection',
   onClose,
   onSuccess,
   onError,
 }: TransakWhiteLabelModalProps) {
-  const [stage, setStage] = useState<'selection' | 'widget'>('selection');
+  const [stage, setStage] = useState<'selection' | 'widget'>(initialStage);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  // 默认使用 BSC Testnet 的 Commission 合约地址
+  const DEFAULT_COMMISSION_ADDRESS = process.env.NEXT_PUBLIC_COMMISSION_CONTRACT_ADDRESS || '0x4d10DA389E0ADe7E7a7E3232531048aEaCa4021C';
   const [commissionContractAddress, setCommissionContractAddress] = useState<string | undefined>(
-    providerOption?.commissionContractAddress,
+    providerOption?.commissionContractAddress || DEFAULT_COMMISSION_ADDRESS,
   );
   const defaultOption = providerOption || providerOptions?.[0] || null;
   const [activeOption, setActiveOption] = useState<ProviderQuoteOption | null>(defaultOption);
+  
+  // 支付流程步骤状态
+  const [paymentStep, setPaymentStep] = useState<FiatPaymentStep>('price');
+  
+  // 根据 stage 自动更新步骤
+  // Transak 流程：选择支付 → 邮箱验证 → 身份认证(KYC) → 支付 → 完成
+  useEffect(() => {
+    if (stage === 'selection') {
+      setPaymentStep('price');
+    } else if (stage === 'widget') {
+      // 进入 widget 阶段，Transak 首先显示邮箱验证
+      // 即使用户之前验证过，Transak 也会显示验证界面
+      setPaymentStep('email');
+    }
+  }, [stage]);
+
+  const kycCompleted = userProfile?.kycLevel && userProfile.kycLevel !== 'none' && userProfile.kycLevel !== 'NONE';
 
   const selectionList = useMemo(() => {
     if (providerOptions && providerOptions.length > 0) {
@@ -102,6 +124,11 @@ export function TransakWhiteLabelModal({
     setActiveOption(providerOption || providerOptions?.[0] || null);
   }, [providerOption, providerOptions]);
 
+  // Update stage when initialStage prop changes
+  useEffect(() => {
+    setStage(initialStage);
+  }, [initialStage]);
+
   useEffect(() => {
     if (!open) {
       setStage('selection');
@@ -110,12 +137,14 @@ export function TransakWhiteLabelModal({
     }
   }, [open]);
 
+  // 在 Modal 打开时就获取合约地址，不等到 widget 阶段
   useEffect(() => {
-    if (stage === 'widget' && !commissionContractAddress) {
+    if (open && !commissionContractAddress) {
       paymentApi
         .getContractAddress()
         .then((contractInfo) => {
           if (contractInfo.commissionContractAddress) {
+            console.log('✅ 获取到 Commission 合约地址:', contractInfo.commissionContractAddress);
             setCommissionContractAddress(contractInfo.commissionContractAddress);
           }
         })
@@ -123,7 +152,7 @@ export function TransakWhiteLabelModal({
           console.warn('获取合约地址失败:', error);
         });
     }
-  }, [stage, commissionContractAddress]);
+  }, [open, commissionContractAddress]);
 
   const needsGlobalKYC = !userProfile || !userProfile.kycLevel || userProfile.kycLevel === 'none' || userProfile.kycLevel === 'NONE';
   const selectedFiatCurrency = activeOption?.currency || order.currency;
@@ -182,11 +211,72 @@ export function TransakWhiteLabelModal({
     }
     setActiveOption(option);
     setStage('widget');
+    // 进入 widget 阶段，Transak 首先要求邮箱验证
+    setPaymentStep('email');
     setErrorMessage(null);
+  };
+  
+  // Transak Widget 事件回调 - 根据 Transak 真实流程更新步骤状态
+  // Transak 流程：Widget打开 → 邮箱验证 → KYC(如需) → 确认订单 → 支付
+  const handleTransakEvent = (eventType: string, data?: any) => {
+    console.log('📨 Transak event:', eventType, data);
+    switch (eventType) {
+      case 'TRANSAK_WIDGET_INITIALISED':
+        // Widget 初始化完成，开始邮箱验证流程
+        console.log('🔧 Transak Widget 初始化');
+        setPaymentStep('email');
+        break;
+        
+      case 'TRANSAK_WIDGET_OPEN':
+        // Widget 打开，用户看到邮箱输入界面
+        console.log('📖 Transak Widget 打开');
+        setPaymentStep('email');
+        break;
+        
+      case 'TRANSAK_ORDER_CREATED':
+        // 订单创建成功，说明邮箱已验证完成
+        // 现在进入 KYC 身份认证阶段
+        console.log('📝 Transak 订单已创建，邮箱验证完成，进入身份认证阶段');
+        setPaymentStep('kyc');
+        break;
+        
+      case 'TRANSAK_ORDER_PROCESSING':
+        // 订单处理中，KYC 已完成，正在进行支付
+        console.log('⏳ Transak 订单处理中，身份认证完成，进入支付阶段');
+        setPaymentStep('payment');
+        break;
+        
+      case 'TRANSAK_ORDER_SUCCESSFUL':
+        // 支付成功
+        console.log('✅ Transak 支付成功');
+        setPaymentStep('complete');
+        break;
+        
+      case 'TRANSAK_ORDER_FAILED':
+        // 支付失败
+        console.log('❌ Transak 支付失败');
+        break;
+        
+      // Transak 特有的事件
+      case 'TRANSAK_KYC_INIT':
+      case 'KYC_INIT':
+        // KYC 开始
+        console.log('🔐 Transak KYC 开始');
+        setPaymentStep('kyc');
+        break;
+        
+      case 'TRANSAK_KYC_VERIFIED':
+      case 'KYC_VERIFIED':
+        // KYC 验证通过，进入支付阶段
+        console.log('✅ Transak KYC 验证通过，进入支付阶段');
+        setPaymentStep('payment');
+        break;
+    }
   };
 
   const handleTransakSuccess = async (transakData: any) => {
     try {
+      setPaymentStep('complete');
       setIsRecording(true);
       const result = await paymentApi.process({
         amount: order.amount,
@@ -231,213 +321,190 @@ export function TransakWhiteLabelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-8 py-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-2 sm:p-4 overflow-y-auto">
+      <div className="relative w-full max-w-3xl rounded-2xl bg-white shadow-2xl my-2 sm:my-4 max-h-[98vh] flex flex-col">
+        {/* Header - 只显示 Logo、步骤指示器和关闭按钮 */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 sm:px-6 py-2 sm:py-3 shrink-0">
           <AgentrixLogo size="sm" showText />
-          <div className="flex items-center gap-3">
-            <div className="text-xs uppercase tracking-[0.3em] text-slate-400">Agentrix Pay</div>
-            <button
-              type="button"
-              onClick={() => {
-                setStage('selection');
-                setErrorMessage(null);
-                onClose();
-              }}
-              className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-              aria-label="关闭"
-            >
-              <XIcon size={18} />
-            </button>
+          
+          {/* 支付流程步骤指示器 */}
+          <div className="flex-1 flex justify-center">
+            <FiatPaymentSteps 
+              currentStep={paymentStep} 
+              kycCompleted={kycCompleted}
+            />
           </div>
+          
+          <button
+            type="button"
+            onClick={() => {
+              setStage('selection');
+              setPaymentStep('price');
+              setErrorMessage(null);
+              onClose();
+            }}
+            className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            aria-label="关闭"
+          >
+            <XIcon size={20} />
+          </button>
         </div>
 
-        <div className="grid gap-8 px-8 py-6 lg:grid-cols-2">
-          <div className="flex flex-col gap-4">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-6">
-              <div className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">支付摘要</div>
-              <div className="mt-3 text-3xl font-bold text-slate-900">
-                {formatFiatAmount(order.amount, order.currency)}
+        {/* 根据 stage 显示不同内容 */}
+        {stage === 'selection' ? (
+          /* 选择支付渠道阶段 */
+          <div className="p-6">
+            {/* 支付摘要 */}
+            <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50/70 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">支付金额</div>
+                  <div className="mt-1 text-2xl font-bold text-slate-900">
+                    {formatFiatAmount(order.amount, order.currency)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">预计到账</div>
+                  <div className="text-sm font-semibold text-slate-700">{activeOption?.estimatedTime || '约 2-5 分钟'}</div>
+                </div>
               </div>
               <p className="mt-2 text-sm text-slate-500">{order.description}</p>
-
-              <div className="mt-6 space-y-3 text-sm">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>法币金额（含费用）</span>
-                  <span className="font-semibold text-slate-900">{formatFiatAmount(lockedAmount, selectedFiatCurrency)}</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>预计到账</span>
-                  <span className="font-semibold text-slate-900">{activeOption?.estimatedTime || '约 2-5 分钟'}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-xl border border-dashed border-slate-200 bg-white/70 p-4">
-                {breakdown.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between text-xs text-slate-500 py-1">
-                    <span>{item.label}</span>
-                    <span className="font-semibold text-slate-800">{item.value}</span>
-                  </div>
-                ))}
-              </div>
             </div>
 
-            <div className="grid gap-3 rounded-2xl border border-slate-100 p-4 shadow-sm sm:grid-cols-2">
-              {highlights.map((item) => (
-                <div key={item.label} className="flex gap-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                  {item.icon}
-                  <div>
-                    <div className="font-semibold text-slate-900">{item.label}</div>
-                    <div>{item.description}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-lg">
-            <div className="flex items-center justify-between text-xs uppercase tracking-[0.4em] text-slate-400">
-              <span>可选支付渠道</span>
-              <span>{activeOption?.requiresKYC || needsGlobalKYC ? 'KYC + Pay' : 'Instant Pay'}</span>
-            </div>
-
-            <div className="mt-4 space-y-3">
+            {/* 支付渠道选择 */}
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 mb-3">选择支付方式</div>
+            <div className="grid gap-3 sm:grid-cols-2">
               {selectionList.length > 0 ? (
                 selectionList.map((option) => {
                   const disabled = option.available === false;
                   return (
-                    <div
+                    <button
                       key={option.id}
-                      className={`rounded-2xl border px-4 py-3 transition ${
-                        option.id === activeOption?.id
-                          ? 'border-slate-900 bg-slate-900/5'
-                          : 'border-slate-200 bg-white'
-                      } ${disabled ? 'opacity-60' : ''}`}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleStartPayment(option)}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        disabled 
+                          ? 'opacity-60 cursor-not-allowed border-slate-200' 
+                          : 'border-slate-200 hover:border-indigo-300 hover:shadow-md cursor-pointer'
+                      }`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                            {option.name}
-                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              option.requiresKYC ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-                            }`}>
-                              {option.requiresKYC ? '需 KYC' : '免 KYC'}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-500 mt-1">
-                            Powered by {option.provider?.toUpperCase?.() || 'Transak'}
-                            {option.estimatedTime && ` • ${option.estimatedTime}`}
-                          </div>
-                          {option.minAmount && option.available === false && (
-                            <div className="text-[11px] text-red-500 mt-1">
-                              最低 {formatFiatAmount(option.minAmount, option.currency)}
-                            </div>
-                          )}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          {option.name}
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            option.requiresKYC ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {option.requiresKYC ? 'KYC' : '免KYC'}
+                          </span>
                         </div>
-                        <div className="text-right">
-                          <div className="text-base font-bold text-slate-900">
-                            {formatFiatAmount(option.price, option.currency)}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            含费用 {option.fee ? `${formatFiatSymbol(option.currency)}${option.fee.toFixed(2)}` : '获取中'}
-                          </div>
+                        <div className="text-base font-bold text-slate-900">
+                          {formatFiatAmount(option.price, option.currency)}
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Google Pay
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Apple Pay
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          VISA/Master
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          本地通道
-                        </span>
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        {option.provider?.toUpperCase?.() || 'Transak'} • {option.estimatedTime || '2-5分钟'}
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => handleStartPayment(option)}
-                          className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                            disabled
-                              ? 'bg-slate-100 text-slate-400'
-                              : option.id === activeOption?.id && stage === 'widget'
-                              ? 'bg-slate-900 text-white'
-                              : 'bg-slate-900/5 text-slate-900 hover:bg-slate-900/10'
-                          }`}
-                        >
-                          {option.id === activeOption?.id && stage === 'widget' ? '正在支付' : '立即支付'}
-                        </button>
-                      </div>
-                    </div>
+                      {option.minAmount && disabled && (
+                        <div className="text-[11px] text-red-500 mt-1">
+                          最低 {formatFiatAmount(option.minAmount, option.currency)}
+                        </div>
+                      )}
+                    </button>
                   );
                 })
               ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                  尚未获取报价，请稍后重试。
+                <div className="col-span-2 rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500 text-center">
+                  正在获取支付渠道报价...
                 </div>
               )}
             </div>
 
-            {stage === 'widget' && activeOption ? (
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center justify-between text-xs uppercase tracking-[0.4em] text-slate-400">
-                  <span>Secure Checkout</span>
-                  <button
-                    type="button"
-                    onClick={() => setStage('selection')}
-                    className="text-indigo-600 hover:text-indigo-800"
-                  >
-                    切换支付方式
-                  </button>
+            {/* 亮点说明 */}
+            <div className="mt-6 grid gap-2 sm:grid-cols-4">
+              {highlights.map((item) => (
+                <div key={item.label} className="flex items-center gap-2 rounded-xl bg-slate-50 p-2 text-[11px] text-slate-600">
+                  {item.icon}
+                  <span className="font-medium">{item.label}</span>
                 </div>
-                <div className="relative min-h-[520px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-50">
-                  <TransakWidget
-                    apiKey={process.env.NEXT_PUBLIC_TRANSAK_API_KEY || ''}
-                    environment={(process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT as 'STAGING' | 'PRODUCTION') || 'STAGING'}
-                    amount={activeOption.price}
-                    fiatCurrency={activeOption.currency || order.currency || 'USD'}
-                    cryptoCurrency="USDC"
-                    network="bsc"
-                    walletAddress={commissionContractAddress || activeOption.commissionContractAddress}
-                    orderId={order.id}
-                    userId={userProfile?.id}
-                    email={userProfile?.email}
-                    directPayment={activeDirectPayment}
-                    onSuccess={handleTransakSuccess}
-                    onError={handleWidgetError}
-                    onClose={() => {
-                      setStage('selection');
-                      setErrorMessage(null);
-                      onClose();
-                    }}
-                  />
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* 支付进行中阶段 - 只显示 Transak Widget */
+          <div className="p-3 sm:p-4 flex-1 overflow-y-auto">
+            {/* 简化的支付信息 */}
+            <div className="mb-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="text-xs sm:text-sm text-slate-500">支付金额</div>
+                <div className="text-base sm:text-lg font-bold text-slate-900">
+                  {formatFiatAmount(lockedAmount, selectedFiatCurrency)}
                 </div>
-                {isRecording && (
-                  <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
-                    <CheckCircle2 size={14} />
-                    <span>支付成功，正在同步订单状态…</span>
-                  </div>
-                )}
               </div>
-            ) : (
-              <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-4 text-xs text-slate-500">
-                选择上方通道后即可在此处打开支付窗口。
+              <button
+                type="button"
+                onClick={() => {
+                  setStage('selection');
+                  setPaymentStep('price');
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                ← 更换
+              </button>
+            </div>
+
+            {/* Transak Widget - 增加高度以确保所有内容可见 */}
+            <div className="relative rounded-xl border border-slate-100 bg-white overflow-hidden" style={{ height: '700px' }}>
+              {/* 确保 walletAddress 有值才渲染 Widget，钱打到我们的合约地址 */}
+              {commissionContractAddress ? (
+                <TransakWidget
+                  apiKey={process.env.NEXT_PUBLIC_TRANSAK_API_KEY || ''}
+                  environment={(process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT as 'STAGING' | 'PRODUCTION') || 'STAGING'}
+                  amount={activeOption?.price || order.amount}
+                  fiatCurrency={activeOption?.currency || order.currency || 'USD'}
+                  cryptoCurrency="USDC"
+                  network="bsc"
+                  walletAddress={commissionContractAddress}
+                  orderId={order.id}
+                  userId={userProfile?.id}
+                  email={userProfile?.email}
+                  directPayment={activeDirectPayment}
+                  onSuccess={handleTransakSuccess}
+                  onError={handleWidgetError}
+                  onEvent={handleTransakEvent}
+                  onClose={() => {
+                    setStage('selection');
+                    setPaymentStep('price');
+                    setErrorMessage(null);
+                    onClose();
+                  }}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center text-slate-500">
+                    <div className="animate-spin h-8 w-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-sm">正在加载支付配置...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 状态提示 */}
+            {isRecording && (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+                <CheckCircle2 size={16} />
+                <span>支付成功，正在同步订单状态…</span>
               </div>
             )}
 
             {errorMessage && (
-              <div className="mt-4 flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-xs text-red-600">
-                <AlertCircle size={14} />
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                <AlertCircle size={16} />
                 <span>{errorMessage}</span>
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

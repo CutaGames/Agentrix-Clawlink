@@ -6,11 +6,13 @@ import { useToast } from '@/contexts/ToastContext'
 import { agentAuthorizationApi, AgentAuthorization } from '../../../lib/api/agent-authorization.api'
 import { quickPayGrantApi, type QuickPayGrant } from '../../../lib/api/quick-pay-grant.api'
 import { useLocalization } from '../../../contexts/LocalizationContext'
+import { SessionKeyManager } from '@/lib/session-key-manager'
 
 const statusBadge = {
   active: 'text-green-600 bg-green-50',
   revoked: 'text-red-600 bg-red-50',
   expired: 'text-gray-600 bg-gray-100',
+  keyMissing: 'text-amber-600 bg-amber-50',
 }
 
 type TabType = 'payment' | 'agent'
@@ -29,10 +31,17 @@ export default function UserAuthorizations() {
   // Agent Authorizations
   const [agentAuths, setAgentAuths] = useState<AgentAuthorization[]>([])
   const [agentAuthsLoading, setAgentAuthsLoading] = useState(false)
+  
+  // 本地 Session Key 检查
+  const [localSessionKeys, setLocalSessionKeys] = useState<string[]>([])
 
   useEffect(() => {
     loadSessions()
     loadGrants()
+    // 检查本地存储的 Session Keys
+    SessionKeyManager.listSessionKeys().then(keys => {
+      setLocalSessionKeys(keys)
+    })
   }, [])
   
   useEffect(() => {
@@ -184,39 +193,63 @@ export default function UserAuthorizations() {
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">⚡ {t('authorizations.sections.quickPaySessions')}</h3>
                 <div className="space-y-4">
-                  {sessionList.map((session) => (
-                    <div key={session.sessionId} className="bg-white rounded-lg shadow p-6">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-gray-900">Session Key</h4>
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              session.isActive ? statusBadge.active : statusBadge.revoked
-                            }`}>
-                              {session.isActive ? t('authorizations.status.active') : t('authorizations.status.revoked')}
-                            </span>
+                  {sessionList.map((session) => {
+                    const hasLocalKey = localSessionKeys.includes(session.signer)
+                    const isKeyMissing = session.isActive && !hasLocalKey
+                    
+                    return (
+                      <div key={session.sessionId} className="bg-white rounded-lg shadow p-6">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-gray-900">Session Key</h4>
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                isKeyMissing ? statusBadge.keyMissing :
+                                session.isActive ? statusBadge.active : statusBadge.revoked
+                              }`}>
+                                {isKeyMissing ? '⚠️ 密钥丢失' :
+                                 session.isActive ? t('authorizations.status.active') : t('authorizations.status.revoked')}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 font-mono mb-2">
+                              {session.signer.slice(0, 8)}...{session.signer.slice(-6)}
+                            </p>
+                            
+                            {/* 密钥丢失警告 */}
+                            {isKeyMissing && (
+                              <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                                <p className="text-sm text-amber-800 font-medium">⚠️ 本地密钥已丢失</p>
+                                <p className="text-xs text-amber-600 mt-1">
+                                  可能原因：浏览器数据被清除、换了浏览器或设备。
+                                  此 Session 无法用于 QuickPay 支付，请撤销后重新创建。
+                                </p>
+                              </div>
+                            )}
+                            
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <div>{t('authorizations.labels.singleLimit')}: ${parseFloat(String(session.singleLimit ?? 0)).toFixed(2)}</div>
+                              <div>{t('authorizations.labels.dailyLimit')}: ${parseFloat(String(session.dailyLimit ?? 0)).toFixed(2)}</div>
+                              <div>{t('authorizations.labels.expiry')}: {new Date(session.expiry).toLocaleDateString('zh-CN')}</div>
+                            </div>
                           </div>
-                          <p className="text-xs text-gray-500 font-mono mb-2">
-                            {session.signer.slice(0, 8)}...{session.signer.slice(-6)}
-                          </p>
-                          <div className="text-sm text-gray-600 space-y-1">
-                            <div>{t('authorizations.labels.singleLimit')}: ${parseFloat(String(session.singleLimit ?? 0)).toFixed(2)}</div>
-                            <div>{t('authorizations.labels.dailyLimit')}: ${parseFloat(String(session.dailyLimit ?? 0)).toFixed(2)}</div>
-                            <div>{t('authorizations.labels.expiry')}: {new Date(session.expiry).toLocaleDateString('zh-CN')}</div>
-                          </div>
+                          {session.isActive && (
+                            <button
+                              onClick={() => handleRevokeSession(session.sessionId)}
+                              disabled={revokingId === session.sessionId}
+                              className={`px-4 py-2 border rounded-lg disabled:opacity-50 ${
+                                isKeyMissing 
+                                  ? 'border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100' 
+                                  : 'border-red-200 text-red-600 hover:bg-red-50'
+                              }`}
+                            >
+                              {revokingId === session.sessionId ? t('authorizations.actions.revoking') : 
+                               isKeyMissing ? '撤销并重建' : t('authorizations.actions.revoke')}
+                            </button>
+                          )}
                         </div>
-                        {session.isActive && (
-                          <button
-                            onClick={() => handleRevokeSession(session.sessionId)}
-                            disabled={revokingId === session.sessionId}
-                            className="px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                          >
-                            {revokingId === session.sessionId ? t('authorizations.actions.revoking') : t('authorizations.actions.revoke')}
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

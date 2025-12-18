@@ -143,7 +143,11 @@ const mockServices: Service[] = [
   },
 ]
 
-export function ProductServiceSection() {
+interface ProductServiceSectionProps {
+  type?: 'physical' | 'service' | 'digital';
+}
+
+export function ProductServiceSection({ type }: ProductServiceSectionProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'products' | 'services'>('products')
   const [products, setProducts] = useState<ProductInfo[]>([])
@@ -151,12 +155,12 @@ export function ProductServiceSection() {
 
   useEffect(() => {
     loadProducts()
-  }, [])
+  }, [type])
 
   const loadProducts = async () => {
     try {
       setLoading(true)
-      const data = await productApi.getProducts()
+      const data = await productApi.getProducts({ type })
       setProducts(data || [])
     } catch (error) {
       console.error('加载商品失败:', error)

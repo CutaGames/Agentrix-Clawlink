@@ -10,8 +10,8 @@ export default function UserGrants() {
       id: '1',
       agentName: 'AI购物助手',
       agentIcon: '🤖',
-      singleLimit: '¥100',
-      dailyLimit: '¥500',
+      singleLimit: '¥10',
+      dailyLimit: '¥100',
       usedToday: '¥0',
       totalUsed: '¥0',
       expiresAt: '2024-02-15',
@@ -32,8 +32,8 @@ export default function UserGrants() {
 
   const [newGrant, setNewGrant] = useState({
     agentId: '',
-    singleLimit: '100',
-    dailyLimit: '500',
+    singleLimit: '10',
+    dailyLimit: '100',
     duration: '30'
   })
 
@@ -97,7 +97,7 @@ export default function UserGrants() {
       })
       
       await loadGrants()
-      setNewGrant({ agentId: '', singleLimit: '100', dailyLimit: '500', duration: '30' })
+      setNewGrant({ agentId: '', singleLimit: '10', dailyLimit: '100', duration: '30' })
     } catch (error: any) {
       console.error('创建授权失败:', error)
       alert(error.message || t('grants.errors.createFailed'))

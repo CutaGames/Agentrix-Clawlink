@@ -20,6 +20,7 @@ const ERC8004_ABI = [
   'function createSession(address, uint256, uint256, uint256) returns (bytes32)',
   'function revokeSession(bytes32)',
   'function sessions(bytes32) view returns (address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive)',
+  'function getSession(bytes32) view returns (tuple(address signer, address owner, uint256 singleLimit, uint256 dailyLimit, uint256 usedToday, uint256 expiry, uint256 lastResetDate, bool isActive))',
 ];
 
 @Injectable()

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CommissionSettlement, SettlementStatus } from '../../entities/commission-settlement.entity';
 import { CommissionAllocation } from '../../entities/commission-allocation.entity';
+import { FundPath, FundPathType } from '../../entities/fund-path.entity';
 
 export interface SplitRoles {
   promoter?: string; // Wallet Address or ID
@@ -10,25 +11,41 @@ export interface SplitRoles {
   executor?: string;
 }
 
+export interface SplitOptions {
+  isX402?: boolean;  // Whether this is an X402 V2 payment
+  paymentId?: string;
+  orderId?: string;
+  transactionHash?: string;
+  customerAddress?: string;
+  merchantAddress?: string;
+}
+
 export interface SplitResult {
   merchant: bigint;
   platform: bigint;
-  channel: bigint; // ARN 0.3%
+  channel: bigint; // ARN/X402 0.3% - deducted from platform fee
   promoter: bigint;
   referrer: bigint;
   executor: bigint;
   platformFund: bigint;
+  isX402: boolean;
 }
 
 @Injectable()
 export class CommissionStrategyV4Service {
+  private readonly logger = new Logger(CommissionStrategyV4Service.name);
   
   constructor(
     @InjectRepository(CommissionSettlement)
     private settlementRepo: Repository<CommissionSettlement>,
     @InjectRepository(CommissionAllocation)
     private allocationRepo: Repository<CommissionAllocation>,
+    @InjectRepository(FundPath)
+    private fundPathRepo: Repository<FundPath>,
   ) {}
+
+  // X402 V2 Channel Fee Rate - deducted from platform fee
+  private readonly X402_CHANNEL_FEE_RATE = 0.003; // 0.3%
 
   // Rates based on V4.0 Design
   private readonly RATES = {
@@ -38,28 +55,54 @@ export class CommissionStrategyV4Service {
     nft: { pool: 0.017, platform: 0.005, channel: 0.003 },
   };
 
-  calculate(amount: bigint, productType: 'physical' | 'service' | 'virtual' | 'nft', roles: SplitRoles): SplitResult {
+  /**
+   * Calculate fund splits with X402 V2 support
+   * When isX402 is true, the 0.3% channel fee is deducted from the platform fee
+   */
+  calculate(
+    amount: bigint, 
+    productType: 'physical' | 'service' | 'virtual' | 'nft', 
+    roles: SplitRoles,
+    options: SplitOptions = {}
+  ): SplitResult {
     const rates = this.RATES[productType] || this.RATES.physical;
+    const isX402 = options.isX402 || false;
     
     // 1. Base Fees
-    // Use BigInt arithmetic, assuming amount is in smallest unit (wei/cents)
-    // To avoid precision loss, we multiply by 10000 for rate calculation then divide
-    
-    const channelFee = this.calculateShare(amount, rates.channel);
     const platformFeeTotal = this.calculateShare(amount, rates.platform);
     const incentivePool = this.calculateShare(amount, rates.pool);
     
-    // 2. Platform Fee Allocation (Promoter Logic)
-    // Promoter gets 20% of Platform Fee
-    let promoterShare = 0n;
-    let platformNet = platformFeeTotal;
+    // 2. X402 V2 Channel Fee Logic
+    // When using X402, the 0.3% channel fee is deducted FROM the platform fee
+    // This means platform receives less, but merchant receives the same
+    let channelFee: bigint;
+    let platformNet: bigint;
     
-    if (roles.promoter) {
-        promoterShare = platformFeeTotal * 20n / 100n;
-        platformNet -= promoterShare;
+    if (isX402) {
+      // X402 V2: Channel fee comes from platform fee
+      channelFee = this.calculateShare(amount, this.X402_CHANNEL_FEE_RATE);
+      // Ensure channel fee doesn't exceed platform fee
+      if (channelFee > platformFeeTotal) {
+        channelFee = platformFeeTotal;
+        this.logger.warn(`X402 channel fee exceeds platform fee, capping at platform fee`);
+      }
+      platformNet = platformFeeTotal - channelFee;
+    } else {
+      // Non-X402: Channel fee is separate (traditional flow)
+      channelFee = this.calculateShare(amount, rates.channel);
+      platformNet = platformFeeTotal;
     }
     
-    // 3. Incentive Pool Allocation (Agent Logic)
+    // 3. Platform Fee Allocation (Promoter Logic)
+    // Promoter gets 20% of Platform Fee (after X402 deduction)
+    let promoterShare = 0n;
+    
+    if (roles.promoter) {
+      promoterShare = platformNet * 20n / 100n;
+      platformNet -= promoterShare;
+    }
+    
+    // 4. Incentive Pool Allocation (Agent Logic)
     let executorShare = 0n;
     let referrerShare = 0n;
     let platformFund = 0n;
@@ -67,30 +110,34 @@ export class CommissionStrategyV4Service {
     // Executor (70%)
     const executorBudget = incentivePool * 70n / 100n;
     if (roles.executor) {
-        executorShare = executorBudget;
+      executorShare = executorBudget;
     } else {
-        platformFund += executorBudget;
+      platformFund += executorBudget;
     }
     
     // Referrer (30%)
     const referrerBudget = incentivePool * 30n / 100n;
     if (roles.referrer) {
-        referrerShare = referrerBudget;
+      referrerShare = referrerBudget;
     } else {
-        platformFund += referrerBudget;
+      platformFund += referrerBudget;
     }
     
-    // Merchant Net
-    const merchantNet = amount - channelFee - platformFeeTotal - incentivePool;
+    // 5. Merchant Net
+    // For X402, merchant receives the same as non-X402 (channel fee comes from platform)
+    const merchantNet = isX402 
+      ? amount - platformFeeTotal - incentivePool  // X402: channel fee is from platform
+      : amount - channelFee - platformFeeTotal - incentivePool;  // Traditional: channel fee separate
     
     return {
-        merchant: merchantNet,
-        platform: platformNet,
-        channel: channelFee,
-        promoter: promoterShare,
-        referrer: referrerShare,
-        executor: executorShare,
-        platformFund: platformFund
+      merchant: merchantNet,
+      platform: platformNet,
+      channel: channelFee,
+      promoter: promoterShare,
+      referrer: referrerShare,
+      executor: executorShare,
+      platformFund: platformFund,
+      isX402,
     };
   }
   
@@ -102,16 +149,20 @@ export class CommissionStrategyV4Service {
       return amount * bps / 10000n;
   }
 
+  /**
+   * Calculate and record commission with fund path tracking
+   */
   async calculateAndRecordCommission(
     orderId: string,
     amount: string, // Decimal string
     productType: 'physical' | 'service' | 'virtual' | 'nft',
-    roles: SplitRoles
+    roles: SplitRoles,
+    options: SplitOptions = {}
   ): Promise<CommissionSettlement> {
       const decimals = 6;
       const amountBigInt = this.parseDecimal(amount, decimals);
       
-      const result = this.calculate(amountBigInt, productType, roles);
+      const result = this.calculate(amountBigInt, productType, roles, options);
       
       // Save Settlement
       const settlement = this.settlementRepo.create({
@@ -164,8 +215,237 @@ export class CommissionStrategyV4Service {
       if (allocations.length > 0) {
           await this.allocationRepo.save(allocations);
       }
+
+      // Record Fund Paths for admin tracking
+      await this.recordFundPaths(
+        options.paymentId || orderId,
+        orderId,
+        amount,
+        'USDT', // Default currency
+        result,
+        roles,
+        options
+      );
       
       return savedSettlement;
+  }
+
+  /**
+   * Record detailed fund paths for a transaction
+   */
+  async recordFundPaths(
+    paymentId: string,
+    orderId: string,
+    totalAmount: string,
+    currency: string,
+    result: SplitResult,
+    roles: SplitRoles,
+    options: SplitOptions = {}
+  ): Promise<FundPath[]> {
+    const decimals = 6;
+    const fundPaths: FundPath[] = [];
+    const txHash = options.transactionHash;
+    const customerAddress = options.customerAddress || 'Customer';
+    const merchantAddress = options.merchantAddress || 'Merchant';
+
+    // 1. Merchant Net
+    if (result.merchant > 0n) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.MERCHANT_NET,
+        fromAddress: customerAddress,
+        fromLabel: '客户',
+        toAddress: merchantAddress,
+        toLabel: '商户',
+        amount: this.formatDecimal(result.merchant, decimals),
+        currency,
+        description: '商户实收金额',
+        isX402: result.isX402,
+      }));
+    }
+
+    // 2. Platform Fee
+    if (result.platform > 0n) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.PLATFORM_FEE,
+        fromAddress: customerAddress,
+        fromLabel: '客户',
+        toAddress: 'platform',
+        toLabel: 'PayMind平台',
+        amount: this.formatDecimal(result.platform, decimals),
+        currency,
+        description: '平台服务费',
+        isX402: result.isX402,
+      }));
+    }
+
+    // 3. X402/ARN Channel Fee (0.3%)
+    if (result.channel > 0n) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.CHANNEL_FEE,
+        fromAddress: result.isX402 ? 'platform' : customerAddress,
+        fromLabel: result.isX402 ? 'PayMind平台' : '客户',
+        toAddress: 'arn_treasury',
+        toLabel: 'X402/ARN 通道',
+        amount: this.formatDecimal(result.channel, decimals),
+        currency,
+        rate: '0.003',
+        description: result.isX402 
+          ? 'X402 V2 通道费 (从平台费扣除)' 
+          : 'ARN 通道费',
+        isX402: result.isX402,
+      }));
+    }
+
+    // 4. Promoter Share
+    if (result.promoter > 0n && roles.promoter) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.PROMOTER_SHARE,
+        fromAddress: 'platform',
+        fromLabel: 'PayMind平台',
+        toAddress: roles.promoter,
+        toLabel: '推广Agent',
+        amount: this.formatDecimal(result.promoter, decimals),
+        currency,
+        rate: '0.20', // 20% of platform fee
+        description: '推广者分成 (平台费的20%)',
+        isX402: result.isX402,
+      }));
+    }
+
+    // 5. Executor Share
+    if (result.executor > 0n && roles.executor) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.EXECUTOR_SHARE,
+        fromAddress: 'incentive_pool',
+        fromLabel: '激励池',
+        toAddress: roles.executor,
+        toLabel: '执行Agent',
+        amount: this.formatDecimal(result.executor, decimals),
+        currency,
+        rate: '0.70', // 70% of incentive pool
+        description: '执行Agent分成 (激励池的70%)',
+        isX402: result.isX402,
+      }));
+    }
+
+    // 6. Referrer Share
+    if (result.referrer > 0n && roles.referrer) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.REFERRER_SHARE,
+        fromAddress: 'incentive_pool',
+        fromLabel: '激励池',
+        toAddress: roles.referrer,
+        toLabel: '推荐Agent',
+        amount: this.formatDecimal(result.referrer, decimals),
+        currency,
+        rate: '0.30', // 30% of incentive pool
+        description: '推荐Agent分成 (激励池的30%)',
+        isX402: result.isX402,
+      }));
+    }
+
+    // 7. Platform Fund (unclaimed agent shares)
+    if (result.platformFund > 0n) {
+      fundPaths.push(this.fundPathRepo.create({
+        paymentId,
+        orderId,
+        transactionHash: txHash,
+        pathType: FundPathType.PLATFORM_FUND,
+        fromAddress: 'incentive_pool',
+        fromLabel: '激励池',
+        toAddress: 'platform_fund',
+        toLabel: '平台基金池',
+        amount: this.formatDecimal(result.platformFund, decimals),
+        currency,
+        description: '无Agent时归入平台基金',
+        isX402: result.isX402,
+      }));
+    }
+
+    // Save all fund paths
+    if (fundPaths.length > 0) {
+      await this.fundPathRepo.save(fundPaths);
+      this.logger.log(`Recorded ${fundPaths.length} fund paths for payment ${paymentId}`);
+    }
+
+    return fundPaths;
+  }
+
+  /**
+   * Get fund paths for a specific payment
+   */
+  async getFundPathsByPaymentId(paymentId: string): Promise<FundPath[]> {
+    return this.fundPathRepo.find({
+      where: { paymentId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Get fund paths for a specific transaction hash
+   */
+  async getFundPathsByTxHash(transactionHash: string): Promise<FundPath[]> {
+    return this.fundPathRepo.find({
+      where: { transactionHash },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Get all fund paths with pagination for admin view
+   */
+  async getAllFundPaths(options: {
+    page?: number;
+    limit?: number;
+    startDate?: Date;
+    endDate?: Date;
+    pathType?: FundPathType;
+    isX402?: boolean;
+  } = {}): Promise<{ items: FundPath[]; total: number; page: number; limit: number }> {
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.fundPathRepo.createQueryBuilder('fp');
+
+    if (options.startDate) {
+      queryBuilder.andWhere('fp.createdAt >= :startDate', { startDate: options.startDate });
+    }
+    if (options.endDate) {
+      queryBuilder.andWhere('fp.createdAt <= :endDate', { endDate: options.endDate });
+    }
+    if (options.pathType) {
+      queryBuilder.andWhere('fp.pathType = :pathType', { pathType: options.pathType });
+    }
+    if (options.isX402 !== undefined) {
+      queryBuilder.andWhere('fp.isX402 = :isX402', { isX402: options.isX402 });
+    }
+
+    const [items, total] = await queryBuilder
+      .orderBy('fp.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return { items, total, page, limit };
   }
   
   private parseDecimal(value: string, decimals: number): bigint {

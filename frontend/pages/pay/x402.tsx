@@ -2,13 +2,19 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState, useCallback } from 'react'
 import { SmartCheckout } from '../../components/payment/SmartCheckout'
+import { useWeb3 } from '../../contexts/Web3Context'
+import { paymentApi } from '../../lib/api/payment.api'
 
 export default function X402Payment() {
   const router = useRouter()
+  const { isConnected, defaultWallet, connect, connectors } = useWeb3()
   const [hasAuthorization, setHasAuthorization] = useState(false)
+  const [authorizationLoading, setAuthorizationLoading] = useState(true)
+  const [authorizationError, setAuthorizationError] = useState<string | null>(null)
   const [paymentRequest, setPaymentRequest] = useState<any>(null)
   const [paymentType, setPaymentType] = useState<'subscription' | 'tipping'>('subscription')
   const [showCheckout, setShowCheckout] = useState(false)
+  const [showWalletSelector, setShowWalletSelector] = useState(false)
 
   const updatePaymentRequest = useCallback(() => {
     if (paymentType === 'subscription') {
@@ -47,44 +53,90 @@ export default function X402Payment() {
     }
   }, [paymentType])
 
+  // 检查X402授权状态
   useEffect(() => {
-    // 检查是否有X402授权
     const checkAuthorization = async () => {
+      setAuthorizationLoading(true)
+      setAuthorizationError(null)
+      
       try {
-        const { paymentApi } = await import('../../lib/api/payment.api')
         // 调用API检查授权状态
-        // TODO: 实现 checkX402Authorization API
-        const auth = null as any; // await paymentApi.checkX402Authorization()
-        setHasAuthorization(auth !== null && auth.isActive)
-      } catch (error) {
-        console.error('检查授权失败:', error)
+        const auth = await paymentApi.checkX402Authorization()
+        if (auth && auth.isActive) {
+          setHasAuthorization(true)
+          localStorage.setItem('x402_authorized', 'true')
+        } else {
+          setHasAuthorization(false)
+          localStorage.removeItem('x402_authorized')
+        }
+      } catch (error: any) {
+        console.warn('检查授权失败:', error)
         // 如果API失败，检查本地存储作为fallback
         const authorized = localStorage.getItem('x402_authorized') === 'true'
         setHasAuthorization(authorized)
+        
+        // 如果是因为未登录，显示提示
+        if (error?.status === 401 || error?.message?.includes('unauthorized')) {
+          setAuthorizationError('请先登录后再使用X402支付')
+        }
+      } finally {
+        setAuthorizationLoading(false)
       }
     }
+    
     checkAuthorization()
     updatePaymentRequest()
   }, [paymentType, updatePaymentRequest])
 
+  // 创建X402授权
   const handleAuthorize = async () => {
+    // 如果钱包未连接，先连接钱包
+    if (!isConnected) {
+      setShowWalletSelector(true)
+      return
+    }
+    
+    setAuthorizationLoading(true)
+    setAuthorizationError(null)
+    
     try {
-      const { paymentApi } = await import('../../lib/api/payment.api')
       // 调用API创建授权
-      // TODO: 实现 createX402Authorization API
-      // await paymentApi.createX402Authorization({
-      await Promise.resolve({
+      const auth = await paymentApi.createX402Authorization({
         singleLimit: 50,
-        dailyLimit: 500,
+        dailyLimit: 100,
         durationDays: 30,
       })
-      setHasAuthorization(true)
-      localStorage.setItem('x402_authorized', 'true')
-    } catch (error) {
+      
+      if (auth) {
+        setHasAuthorization(true)
+        localStorage.setItem('x402_authorized', 'true')
+      }
+    } catch (error: any) {
       console.error('创建授权失败:', error)
-      // 如果API失败，使用本地存储作为fallback
-      localStorage.setItem('x402_authorized', 'true')
-      setHasAuthorization(true)
+      
+      // 如果是因为未登录
+      if (error?.status === 401) {
+        setAuthorizationError('请先登录后再创建授权')
+        // 尝试钱包登录
+        if (isConnected && defaultWallet) {
+          setAuthorizationError('正在尝试钱包登录...')
+          // TODO: 实现钱包登录
+        }
+      } else {
+        setAuthorizationError(error?.message || '创建授权失败，请稍后重试')
+      }
+    } finally {
+      setAuthorizationLoading(false)
+    }
+  }
+
+  // 连接钱包
+  const handleConnectWallet = async (walletType: string) => {
+    try {
+      await connect(walletType as any)
+      setShowWalletSelector(false)
+    } catch (error) {
+      console.error('连接钱包失败:', error)
     }
   }
 
@@ -196,6 +248,44 @@ export default function X402Payment() {
               </div>
             </div>
 
+            {/* 钱包连接状态 */}
+            <div className={`border rounded-lg p-4 mb-6 ${isConnected ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <span className="text-2xl">{isConnected ? '🔗' : '💳'}</span>
+                  <div>
+                    <h3 className={`font-semibold ${isConnected ? 'text-green-900' : 'text-blue-900'}`}>
+                      {isConnected ? '钱包已连接' : '请先连接钱包'}
+                    </h3>
+                    <p className={`text-sm ${isConnected ? 'text-green-700' : 'text-blue-700'}`}>
+                      {isConnected 
+                        ? `${defaultWallet?.address?.slice(0, 6)}...${defaultWallet?.address?.slice(-4)}`
+                        : '连接钱包后才能使用X402支付'
+                      }
+                    </p>
+                  </div>
+                </div>
+                {!isConnected && (
+                  <button
+                    onClick={() => setShowWalletSelector(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    连接钱包
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 授权错误提示 */}
+            {authorizationError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center space-x-3">
+                  <span className="text-2xl">⚠️</span>
+                  <p className="text-sm text-red-700">{authorizationError}</p>
+                </div>
+              </div>
+            )}
+
             {!hasAuthorization ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
                 <div className="flex items-start space-x-3">
@@ -221,9 +311,15 @@ export default function X402Payment() {
                     </div>
                     <button
                       onClick={handleAuthorize}
-                      className="w-full bg-yellow-600 text-white py-3 rounded-lg font-semibold hover:bg-yellow-700 transition-colors"
+                      disabled={authorizationLoading}
+                      className="w-full bg-yellow-600 text-white py-3 rounded-lg font-semibold hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      授权X402支付
+                      {authorizationLoading 
+                        ? '处理中...' 
+                        : isConnected 
+                          ? '授权X402支付' 
+                          : '连接钱包并授权'
+                      }
                     </button>
                   </div>
                 </div>
@@ -331,7 +427,57 @@ export default function X402Payment() {
           </div>
         </div>
       )}
+
+      {/* 钱包选择器弹窗 */}
+      {showWalletSelector && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">选择钱包</h3>
+              <button
+                onClick={() => setShowWalletSelector(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-3">
+              {connectors.map((connector) => (
+                <button
+                  key={connector.id}
+                  onClick={() => handleConnectWallet(connector.id)}
+                  disabled={!connector.isInstalled && connector.id !== 'walletconnect'}
+                  className={`w-full flex items-center p-4 border rounded-xl transition-all ${
+                    connector.isInstalled || connector.id === 'walletconnect'
+                      ? 'border-gray-200 hover:border-purple-300 hover:bg-purple-50'
+                      : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  <img 
+                    src={connector.icon} 
+                    alt={connector.name} 
+                    className="w-10 h-10 mr-4 rounded-lg"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '🔗';
+                    }}
+                  />
+                  <div className="text-left flex-1">
+                    <div className="font-semibold text-gray-900">{connector.name}</div>
+                    <div className="text-sm text-gray-500">
+                      {connector.isInstalled || connector.id === 'walletconnect'
+                        ? connector.description
+                        : '未安装'}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="mt-4 text-center text-sm text-gray-500">
+              连接钱包即表示您同意我们的服务条款
+            </p>
+          </div>
+        </div>
+      )}
     </>
   )
 }
-

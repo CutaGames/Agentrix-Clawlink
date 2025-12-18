@@ -11,8 +11,8 @@ export default function MerchantCustomers() {
   const loadCustomers = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await merchantApi.getCustomers(search || undefined)
-      setCustomers(data)
+      const data = await merchantApi.getCustomers({ search: search || undefined })
+      setCustomers(data.customers || [])
     } catch (error) {
       console.error('加载客户列表失败:', error)
       setCustomers([])
@@ -26,8 +26,8 @@ export default function MerchantCustomers() {
   }, [loadCustomers])
 
   const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email.toLowerCase().includes(search.toLowerCase())
+    (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -79,13 +79,13 @@ export default function MerchantCustomers() {
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                       ¥{(customer.totalSpent || 0).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{customer.orderCount || 0}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{customer.orderCount || customer.totalOrders || 0}</td>
                     <td className="px-6 py-4 text-sm text-gray-700">
-                      {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString('zh-CN') : '-'}
+                      {(customer.lastOrderDate || customer.lastOrderAt) ? new Date(customer.lastOrderDate || customer.lastOrderAt!).toLocaleDateString('zh-CN') : '-'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex space-x-1">
-                        {customer.tags.map((tag, idx) => (
+                        {(customer.tags || []).map((tag, idx) => (
                           <span
                             key={idx}
                             className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full"

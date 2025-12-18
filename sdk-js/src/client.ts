@@ -101,6 +101,14 @@ export class AgentrixClient {
     }
   }
 
+  async patch<T = any>(path: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+    try {
+      return await this.client.patch(path, data, config);
+    } catch (error) {
+      throw handleError(error);
+    }
+  }
+
   setApiKey(apiKey: string): void {
     this.apiKey = apiKey;
     this.client.defaults.headers['Authorization'] = `Bearer ${apiKey}`;

@@ -29,6 +29,11 @@ import { CartResource } from './resources/cart';
 import { SandboxResource } from './resources/sandbox';
 import { AgentTemplateResource } from './resources/agent-templates';
 import { AgentCapabilitiesResource } from './resources/agent-capabilities';
+import { AgentAuthorizationResource } from './resources/agent-authorization';
+import { AirdropResource } from './resources/airdrop';
+import { AutoEarnResource } from './resources/auto-earn';
+import { MPCWalletResource } from './resources/mpc-wallet';
+import { AIEcosystemIntegration } from './resources/ai-ecosystem';
 import { validateApiKey } from './utils/validation';
 
 export class Agentrix {
@@ -57,6 +62,12 @@ export class Agentrix {
   public agentTemplates: AgentTemplateResource;
   public capabilities: AgentCapabilitiesResource;
   public webhooks: WebhookHandler;
+  
+  // 新增 Agent 核心功能模块
+  public agentAuthorization: AgentAuthorizationResource;
+  public airdrop: AirdropResource;
+  public autoEarn: AutoEarnResource;
+  public mpcWallet: MPCWalletResource;
 
   private client: AgentrixClient;
 
@@ -90,8 +101,22 @@ export class Agentrix {
     this.capabilities = new AgentCapabilitiesResource(this.client);
     this.webhooks = new WebhookHandler(config.webhookSecret || '');
     
+    // 初始化 Agent 核心功能模块
+    this.agentAuthorization = new AgentAuthorizationResource(this.client);
+    this.airdrop = new AirdropResource(this.client);
+    this.autoEarn = new AutoEarnResource(this.client);
+    this.mpcWallet = new MPCWalletResource(this.client);
+    
     // Make marketplace available to agents for unified search
     (this.client as any).marketplace = this.marketplace;
+  }
+
+  /**
+   * 获取 AI 生态集成工具
+   * 用于接入 GPTs、Claude MCP 等 AI 系统
+   */
+  static get AIIntegration() {
+    return AIEcosystemIntegration;
   }
 
   /**
@@ -153,6 +178,34 @@ export * from './resources/cart';
 export * from './resources/sandbox';
 export * from './resources/agent-templates';
 export * from './resources/agent-capabilities';
+
+// Export new Agent core modules (with selective exports to avoid conflicts)
+export { 
+  AgentAuthorizationResource,
+  AgentAuthorizationType,
+  AgentAuthorizationStatus,
+  AgentStrategyType,
+  type AgentAuthorization,
+  type CreateAgentAuthorizationParams,
+  type PermissionCheckResult
+} from './resources/agent-authorization';
+export * from './resources/airdrop';
+export { 
+  AutoEarnResource,
+  TasksResource,
+  StrategiesResource,
+  ArbitrageResource,
+  LaunchpadResource,
+  AutoEarnTaskType,
+  AutoEarnStrategyType,
+  type Task,
+  type Strategy,
+  type ArbitrageOpportunity,
+  type LaunchpadProject,
+  type EarningsStats
+} from './resources/auto-earn';
+export * from './resources/mpc-wallet';
+export * from './resources/ai-ecosystem';
 
 // Export semantic search utilities
 export * from './utils/semantic-search';

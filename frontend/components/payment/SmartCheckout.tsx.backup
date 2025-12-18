@@ -164,7 +164,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [selectedProviderOption, setSelectedProviderOption] = useState<ProviderOption | null>(null);
-  const { activeSession, loadActiveSession, createSession, loading: sessionLoading } = useSessionManager();
+  const { activeSession, loadActiveSession, createSession } = useSessionManager();
   const { isConnected, defaultWallet, connect, connectors } = useWeb3();
   const tokenMetadataCache = useRef<Record<string, { address: string; decimals: number }>>({});
   const providerModalAutoOpened = useRef(false);
@@ -315,37 +315,11 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   }, [merchantAllowsCrypto, isFiatOrderCurrency, normalizedCurrency, order.amount]);
 
   // Check allowance when connected or amount changes
-  // ⚠️ QuickPay 使用 Session 的链上授权，不需要检查 ERC20 allowance
-  // 只有 Wallet Pay 模式需要检查
   useEffect(() => {
-    const session = currentSession || activeSession;
-    // 如果有活跃 Session，QuickPay 不需要检查 allowance
-    if (session) {
-        console.log('✅ 有活跃 Session，跳过 allowance 检查');
-        setNeedsApproval(false);
-        return;
-    }
-    // 如果 Session 还在加载中，等待加载完成
-    if (sessionLoading) {
-        console.log('⏳ Session 加载中（sessionLoading=true），暂不检查 allowance');
-        return;
-    }
-    // 如果整体状态还是 loading，说明初始化未完成，等待
-    if (status === 'loading') {
-        console.log('⏳ 页面初始化中（status=loading），暂不检查 allowance');
-        return;
-    }
-    // 如果 preflightResult 显示 quickPayAvailable，说明后端认为有可用 Session，等待 Session 数据
-    if (preflightResult?.quickPayAvailable && !session) {
-        console.log('⏳ Preflight 显示 QuickPay 可用，等待 Session 数据...');
-        return;
-    }
-    // 没有 Session，Wallet Pay 模式需要检查 allowance
     if (isConnected && (cryptoAmount || order.amount)) {
-        console.log('🔍 没有活跃 Session，检查 Wallet Pay allowance');
         checkAllowance();
     }
-  }, [isConnected, cryptoAmount, order.amount, order.currency, currentSession, activeSession, sessionLoading, status, preflightResult?.quickPayAvailable]);
+  }, [isConnected, cryptoAmount, order.amount, order.currency]);
 
   const getTokenMetadata = (symbol: string) => {
     const tokenSymbol = symbol?.toUpperCase();
@@ -433,9 +407,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       let approvalAmount: bigint;
       
       if (session) {
-        // ⚠️ 后端 Session API 返回的 dailyLimit 已经是人类可读格式（例如 100 表示 100 USDT）
-        // 不需要再除以 1e6，直接使用
-        const dailyLimitHuman = parseFloat(String(session.dailyLimit)) || 100;
+        // Session 限额已经是 6 decimals，需要转换为 token decimals
+        const dailyLimitHuman = session.dailyLimit / 1e6;
         const approvalHumanAmount = dailyLimitHuman * 3;
         approvalAmount = ethers.parseUnits(approvalHumanAmount.toFixed(6), decimals);
         console.log(`授权额度基于 Session 限额：${approvalHumanAmount} ${tokenSymbol}`);
@@ -480,19 +453,6 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const handleQuickPay = async () => {
     const session = currentSession || activeSession;
     if (!session) throw new Error('No active session found.');
-    
-    // 检查本地是否有 Session Key（私钥）
-    // Session 数据存储在后端，但私钥存储在浏览器本地
-    // 如果用户清除了浏览器数据或换了浏览器，私钥会丢失
-    const sessionKeys = await SessionKeyManager.listSessionKeys();
-    const hasLocalSessionKey = sessionKeys.includes(session.signer);
-    
-    if (!hasLocalSessionKey) {
-      console.warn('⚠️ Session Key 私钥在本地不存在，可能是浏览器数据被清除或换了浏览器');
-      console.warn('Session signer:', session.signer);
-      console.warn('本地存储的 Session Keys:', sessionKeys);
-      throw new Error('Session 密钥已丢失（浏览器数据被清除或换了浏览器），请重新创建 QuickPay Session 或使用钱包支付');
-    }
     
     let paymentAmount = order.amount;
     let paymentCurrency = order.currency || 'USDC';
@@ -583,9 +543,6 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
     const signature = await SessionKeyManager.signWithSessionKey(session.signer, innerHash);
 
-    // Check if X402 V2 params are provided
-    const isX402V2 = order.x402Params?.scheme === 'exact' || order.x402Params?.network;
-
     const paymentRequest = {
         amount: paymentAmount,
         currency: paymentCurrency,
@@ -603,9 +560,6 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           orderId: order.id,
           from: session.owner || userProfile?.walletAddress, // Pass payer address for quickPaySplitFrom
           walletAddress: session.owner || userProfile?.walletAddress, // Add walletAddress as fallback
-          isX402: true, // Flag for X402 payment - channel fee deducted from platform fee
-          x402Version: isX402V2 ? 'v2' : 'v1',
-          x402Params: order.x402Params, // Pass X402 V2 params if provided
           ...(isFiatCurrency && exchangeRate && {
             exchangeRateLockId: lockId,
             originalAmount: order.amount,
@@ -882,125 +836,37 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   };
 
   const FiatSection = () => {
-    // 默认支付通道配置
-    const defaultChannels: Array<{
-      id: string;
-      name: string;
-      icon: string;
-    }> = [
+    // Use provider options from API if available, otherwise fallback to defaults
+    const defaultChannels = [
         { id: 'google_pay', name: 'Google Pay', icon: 'https://assets.transak.com/images/payment-methods/google_pay.svg' },
         { id: 'apple_pay', name: 'Apple Pay', icon: 'https://assets.transak.com/images/payment-methods/apple_pay.svg' },
         { id: 'credit_debit_card', name: 'Credit/Debit Card', icon: 'https://assets.transak.com/images/payment-methods/credit_debit_card.svg' },
     ];
 
-    // 根据货币动态添加本地支付方式
-    const currency = order.currency?.toUpperCase();
-    if (currency === 'EUR') {
-        defaultChannels.push({ id: 'sepa_bank_transfer', name: 'SEPA Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/sepa_bank_transfer.svg' });
-    } else if (currency === 'GBP') {
-        defaultChannels.push({ id: 'gbp_bank_transfer', name: 'Faster Payments', icon: 'https://assets.transak.com/images/payment-methods/gbp_bank_transfer.svg' });
-    } else if (currency === 'USD') {
-        defaultChannels.push({ id: 'usa_bank_transfer', name: 'Fedwire / ACH', icon: 'https://assets.transak.com/images/payment-methods/usa_bank_transfer.svg' });
-    } else if (currency === 'CNY') {
-        defaultChannels.push({
-            id: 'cny_bank_transfer',
-            name: '本地银行卡',
-            icon: 'https://assets.transak.com/images/payment-methods/cny_bank_transfer.svg'
-        });
-        defaultChannels.push({
-            id: 'alipay',
-            name: '支付宝',
-            icon: 'https://assets.transak.com/images/payment-methods/alipay.svg'
-        });
-    } else {
-        // 其他货币默认添加本地银行转账
-        defaultChannels.push({ id: 'local_bank_transfer', name: 'Local Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/local_bank_transfer.svg' });
-    }
-
-    // 合并 API 数据获取费用和限额
-    const channelsWithData = defaultChannels.map(channel => {
-        // 查找匹配的 API 选项
-        const apiOption = preflightResult?.providerOptions?.find(opt =>
-            opt.id === channel.id || opt.paymentMethod === channel.id
-        ) || preflightResult?.providerOptions?.[0]; // 回退到通用 transak 选项
-
-        // 估算费用（如果 API 未返回）
-        let estimatedFee = apiOption?.fee;
-        if (estimatedFee === undefined) {
-            const isCard = channel.id.includes('card') || channel.id.includes('pay');
-            const rate = isCard ? 0.035 : 0.01;
-            estimatedFee = order.amount * rate;
-        }
-
-        // 估算最低金额
-        const minAmount = apiOption?.minAmount || (channel.id.includes('transfer') ? 20 : 10);
-
-        return {
-            ...channel,
-            fee: estimatedFee,
-            minAmount: minAmount,
-            estimatedTime: apiOption?.estimatedTime || (channel.id.includes('transfer') ? '1-3 Days' : 'Instant'),
-            currency: apiOption?.currency || order.currency,
-            totalPrice: order.amount + (estimatedFee || 0),
-            available: order.amount >= minAmount,
-        };
-    });
-    
-    const [iconErrors, setIconErrors] = React.useState<Set<string>>(new Set());
-    
-    const handleIconError = (channelId: string) => {
-      setIconErrors(prev => new Set(prev).add(channelId));
-    };
-
     return (
-      <div className="p-6 bg-white flex-1">
-        <div className="flex items-center gap-2 mb-4">
-            <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600">
-                <CreditCard size={16} />
+      <div className="p-6 bg-slate-50/50">
+        <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-green-100 rounded-lg text-green-600">
+                    <Globe size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Fiat Payment</h3>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Fiat Payment</h3>
         </div>
 
         <div className="space-y-3">
-            {channelsWithData.map(channel => (
+            {defaultChannels.map(channel => (
                 <button
                     key={channel.id}
                     onClick={() => handleFiatChannelClick(channel.id)}
-                    disabled={!channel.available}
-                    className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all group ${
-                        channel.available
-                            ? 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30'
-                            : 'border-slate-100 bg-slate-50/50 opacity-60 cursor-not-allowed'
-                    }`}
+                    className="w-full flex items-center p-4 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all"
                 >
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center p-2 border border-slate-100">
-                            {!iconErrors.has(channel.id) ? (
-                                <img 
-                                    src={channel.icon} 
-                                    alt={channel.name} 
-                                    className="w-full h-full object-contain" 
-                                    onError={() => handleIconError(channel.id)}
-                                />
-                            ) : (
-                                <CreditCard size={20} className="text-slate-400" />
-                            )}
-                        </div>
-                        <div className="text-left">
-                            <div className="font-semibold text-slate-900">{channel.name}</div>
-                            <div className="flex flex-col gap-0.5 text-xs text-slate-500">
-                                <div className="flex items-center gap-2">
-                                    <span>Min: {formatFiatSymbol(channel.currency)}{channel.minAmount}</span>
-                                    <span>•</span>
-                                    <span>Fee: {formatFiatSymbol(channel.currency)}{channel.fee?.toFixed(2)}</span>
-                                </div>
-                                <div className="text-[10px] text-slate-400">
-                                    Total: {formatFiatSymbol(channel.currency)}{channel.totalPrice.toFixed(2)} • {channel.estimatedTime}
-                                </div>
-                            </div>
-                        </div>
+                    <img src={channel.icon} alt={channel.name} className="w-8 h-8 mr-3" />
+                    <div className="text-left">
+                        <div className="font-semibold text-slate-900">{channel.name}</div>
+                        <div className="text-xs text-slate-500">Powered by Transak</div>
                     </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                    <ChevronRight size={16} className="text-slate-300 ml-auto" />
                 </button>
             ))}
         </div>
@@ -1051,7 +917,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             </div>
           </div>
           <div className="text-xs text-indigo-700 space-y-1">
-            <div>额度: ¥{preflightResult?.sessionLimit?.singleLimit || '10'}</div>
+            <div>额度: ¥{preflightResult?.sessionLimit?.singleLimit || '100'}</div>
             <div>有效期: {session.expiry ? new Date(session.expiry).toLocaleDateString() : '永久'}</div>
           </div>
         </div>
@@ -1152,70 +1018,84 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       );
     }
 
-    // 钱包已连接，显示钱包支付详情
+    // Merge with API data to get fees and limits
+    const defaultChannels = [
+        { id: 'google_pay', name: 'Google Pay', icon: 'https://assets.transak.com/images/payment-methods/google_pay.svg' },
+        { id: 'apple_pay', name: 'Apple Pay', icon: 'https://assets.transak.com/images/payment-methods/apple_pay.svg' },
+        { id: 'credit_debit_card', name: 'Credit/Debit Card', icon: 'https://assets.transak.com/images/payment-methods/credit_debit_card.svg' },
+    ];
+    const channelsWithData = defaultChannels.map(channel => {
+        // Find matching option in preflightResult
+        // Note: preflightResult.providerOptions usually returns a generic 'transak' option
+        // We might need to infer fees from the generic option if specific ones aren't there
+        const apiOption = preflightResult?.providerOptions?.find(opt => 
+            opt.id === channel.id || opt.paymentMethod === channel.id
+        ) || preflightResult?.providerOptions?.[0]; // Fallback to generic transak option for fee estimate
+
+        // Estimate fee if not available (approx 3.5% + fixed fee for cards, 1% for bank transfers)
+        let estimatedFee = apiOption?.fee;
+        if (estimatedFee === undefined) {
+            const isCard = channel.id.includes('card') || channel.id.includes('pay');
+            const rate = isCard ? 0.035 : 0.01;
+            estimatedFee = order.amount * rate;
+        }
+
+        // Estimate min amount if not available
+        const minAmount = apiOption?.minAmount || (channel.id.includes('transfer') ? 20 : 10);
+
+        return {
+            ...channel,
+            fee: estimatedFee,
+            minAmount: minAmount,
+            estimatedTime: apiOption?.estimatedTime || (channel.id.includes('transfer') ? '1-3 Days' : 'Instant'),
+            currency: apiOption?.currency || order.currency,
+            totalPrice: order.amount + (estimatedFee || 0)
+        };
+    });
+
     return (
       <div className="p-6 bg-white flex-1">
         <div className="flex items-center gap-2 mb-4">
-            <div className="p-1.5 bg-slate-100 rounded-lg text-slate-600">
-                <Wallet size={16} />
+            <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600">
+                <CreditCard size={16} />
             </div>
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">钱包支付</h3>
-        </div>
-
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium text-slate-900">已连接钱包</div>
-            <div className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
-              ✓ 已连接
-            </div>
-          </div>
-          <div className="text-xs text-slate-600 space-y-1">
-            <div>地址: {defaultWallet?.address ? `${defaultWallet.address.slice(0, 8)}...${defaultWallet.address.slice(-6)}` : 'N/A'}</div>
-            <div>网络: BSC Testnet</div>
-          </div>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Fiat Payment</h3>
         </div>
 
         <div className="space-y-3">
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-slate-100 text-slate-600">
-                  <Wallet size={20} />
-                </div>
-                <div>
-                  <div className="font-bold text-slate-900">直接钱包支付</div>
-                  <div className="text-xs text-slate-500">需要钱包确认，自付Gas费</div>
-                </div>
-              </div>
-              <div className="text-sm font-bold text-slate-900">
-                {cryptoAmount ? `≈ ${cryptoAmount.toFixed(2)} USDT` : ''}
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleWalletPay()}
-              disabled={status === 'processing'}
-              className="w-full bg-slate-800 text-white py-3 rounded-lg font-medium hover:bg-slate-900 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {status === 'processing' && routeType === 'wallet' ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  请在钱包中确认...
-                </>
-              ) : (
-                <>
-                  <Wallet size={16} />
-                  使用钱包支付
-                </>
-              )}
-            </button>
-          </div>
+            {channelsWithData.map(channel => (
+                <button
+                    key={channel.id}
+                    onClick={() => handleFiatChannelClick(channel.id)}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30 transition-all group"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center p-2 border border-slate-100">
+                            <img src={channel.icon} alt={channel.name} className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+                        </div>
+                        <div className="text-left">
+                            <div className="font-semibold text-slate-900">{channel.name}</div>
+                            <div className="flex flex-col gap-0.5 text-xs text-slate-500">
+                                <div className="flex items-center gap-2">
+                                    <span>Min: {formatFiatSymbol(channel.currency)}{channel.minAmount}</span>
+                                    <span>•</span>
+                                    <span>Fee: {formatFiatSymbol(channel.currency)}{channel.fee?.toFixed(2)}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                    Total: {formatFiatSymbol(channel.currency)}{channel.totalPrice.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <ChevronRight size={16} className="text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                    </div>
+                </button>
+            ))}
         </div>
       </div>
     );
   };
-
-  return (
     <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col h-[85vh] md:h-auto md:min-h-[600px]">
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
@@ -1270,8 +1150,11 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           </div>
       )}
 
-      {/* Success View - Only show when successful */}
-      {status === 'success' && (
+      {/* Modals */}
+            {routeType === 'quickpay' && <QuickPayView />}
+            {routeType === 'wallet' && <WalletView />}
+
+            {status === 'success' && (
           <div className="flex flex-col items-center justify-center py-12">
             <CheckCircle2 className="text-green-500 mb-4" size={48} />
             <div className="text-lg font-bold text-slate-900 mb-2">Payment Successful!</div>
@@ -1279,7 +1162,80 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           </div>
         )}
 
-      {/* Modals */}
+            {status === 'error' && error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertCircle size={20} />
+              <span className="font-medium">Payment Failed</span>
+            </div>
+            <div className="text-sm text-red-600 mt-2">{error}</div>
+          </div>
+        )}
+
+            {status === 'ready' && hasFiatOptions && (
+          <div className="mt-6">
+            <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">法币通道</p>
+                  <h4 className="text-lg font-semibold text-slate-900 mt-1">没有钱包？使用银行卡 / Apple Pay / Google Pay</h4>
+                  <p className="text-xs text-slate-500">金额已锁定，包含 On-Ramp 费率与 Agentrix 0.1% 平台费</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleFiatChannelClick('transak')}
+                  className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  法币支付
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {topFiatOptions.map((option) => {
+                  const disabled = option.available === false;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleFiatChannelClick(option.id)}
+                      className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                        disabled ? 'border-slate-100 bg-slate-50 opacity-70 cursor-not-allowed' : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                            {option.name}
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              option.requiresKYC ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {option.requiresKYC ? '需 KYC' : '免 KYC'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-1">
+                            Powered by {option.provider?.toUpperCase?.() || 'Transak'}
+                            {option.minAmount && option.available === false && (
+                              <span className="ml-2 text-red-500">最低 {formatFiatAmount(option.minAmount, option.currency)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-base font-bold text-slate-900">
+                            {formatFiatAmount(option.price, option.currency)}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            费用 {option.fee ? `${formatFiatSymbol(option.currency)}${option.fee.toFixed(2)}` : '获取中'}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* KYC 引导弹窗 */}
         {showKYCGuide && (
@@ -1409,66 +1365,12 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
                 <p className="text-sm text-slate-600 mb-4">
                   创建 QuickPay Session 后，您就可以享受免密支付体验了。
                 </p>
-                
-                {/* 用户可配置的限额设置 */}
-                <div className="space-y-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">单笔限额 (USDT)</label>
-                    <input
-                      type="number"
-                      id="sessionSingleLimit"
-                      defaultValue={10}
-                      min={0.01}
-                      max={1000}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">每笔交易的最大金额</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">每日限额 (USDT)</label>
-                    <input
-                      type="number"
-                      id="sessionDailyLimit"
-                      defaultValue={100}
-                      min={0.1}
-                      max={5000}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">24小时内累计支付上限</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">有效期</label>
-                    <select
-                      id="sessionExpiryDays"
-                      defaultValue={30}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                      <option value={7}>7天</option>
-                      <option value={30}>30天</option>
-                      <option value={90}>90天</option>
-                      <option value={180}>180天</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* 授权金额说明 */}
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                  <div className="text-sm font-medium text-amber-900 mb-1">💡 授权金额说明</div>
-                  <p className="text-xs text-amber-700">
-                    链上授权金额 = 每日限额 × 3（安全缓冲），实际扣款仍受限额控制
-                  </p>
-                </div>
-
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="text-sm font-medium text-green-900 mb-2">Session 信息：</div>
                   <div className="text-xs text-green-700">
-                    • 状态：{currentSession ? '已激活' : '未创建'}<br/>
-                    {currentSession && (
-                      <>
-                        • 当前额度：${currentSession.singleLimit || '10'}<br/>
-                        • 有效期：{currentSession.expiry ? new Date(currentSession.expiry).toLocaleDateString() : '永久'}
-                      </>
-                    )}
+                    • 额度：¥{preflightResult?.sessionLimit?.singleLimit || '100'}<br/>
+                    • 有效期：{currentSession?.expiry ? new Date(currentSession.expiry).toLocaleDateString() : '永久'}<br/>
+                    • 状态：{currentSession ? '已激活' : '未创建'}
                   </div>
                 </div>
               </div>
@@ -1477,36 +1379,19 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
                   <button
                     onClick={async () => {
                       try {
-                        const singleLimitInput = document.getElementById('sessionSingleLimit') as HTMLInputElement;
-                        const dailyLimitInput = document.getElementById('sessionDailyLimit') as HTMLInputElement;
-                        const expiryDaysSelect = document.getElementById('sessionExpiryDays') as HTMLSelectElement;
-                        
-                        const singleLimit = parseFloat(singleLimitInput?.value || '10');
-                        const dailyLimit = parseFloat(dailyLimitInput?.value || '100');
-                        const expiryDays = parseInt(expiryDaysSelect?.value || '30');
-                        
-                        // 注意：链上授权金额由 useSessionManager 内部计算为 dailyLimit * 3
                         await createSession({
-                          singleLimit,
-                          dailyLimit,
-                          expiryDays,
+                          singleLimit: 100, // 默认单笔限额100 USDC
+                          dailyLimit: 500,  // 默认日限额500 USDC
+                          expiryDays: 30,   // 默认30天有效期
                         });
                         setShowSessionManager(false);
                       } catch (e: any) {
                         setError(e.message || '创建 Session 失败');
                       }
                     }}
-                    disabled={sessionLoading}
-                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2"
+                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
                   >
-                    {sessionLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        创建中...
-                      </>
-                    ) : (
-                      '创建 Session'
-                    )}
+                    创建 Session
                   </button>
                 ) : (
                   <button
@@ -1533,13 +1418,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           providerOption={selectedProviderOption || preflightResult?.providerOptions?.[0] || null}
           providerOptions={providerOptions}
           userProfile={userProfile}
-          initialStage={selectedProviderOption?.paymentMethod ? 'widget' : 'selection'}
           onClose={() => {
             setShowProviderModal(false);
-          }}
-          onSuccess={(result: any) => {
-            setShowProviderModal(false);
-            if (onSuccess) onSuccess(result);
           }}
           onError={(msg) => setError(msg)}
         />

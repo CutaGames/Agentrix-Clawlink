@@ -35,6 +35,7 @@ export class ProductController {
     @Query('search') search?: string,
     @Query('merchantId') merchantId?: string,
     @Query('status') status?: string,
+    @Query('type') type?: string,
     @Request() req?: any,
   ) {
     // 如果用户已登录且是商户，且没有指定merchantId，默认使用当前用户的merchantId
@@ -43,7 +44,7 @@ export class ProductController {
       finalMerchantId = req.user.id;
     }
     
-    return this.productService.getProducts(search, finalMerchantId, status);
+    return this.productService.getProducts(search, finalMerchantId, status, type);
   }
 
   @Get(':id')
@@ -83,6 +84,23 @@ export class ProductController {
   @ApiResponse({ status: 200, description: '删除成功' })
   async deleteProduct(@Request() req, @Param('id') id: string) {
     return this.productService.deleteProduct(req.user.id, id);
+  }
+
+  @Post('x402/auto-fetch')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '自动获取X402商品' })
+  @ApiResponse({ status: 200, description: '返回获取的X402商品' })
+  async autoFetchX402Products(@Request() req) {
+    return this.productService.autoFetchX402Products(req.user.id);
+  }
+
+  @Get('x402/available')
+  @ApiOperation({ summary: '获取可用的X402商品列表' })
+  @ApiResponse({ status: 200, description: '返回X402商品列表' })
+  @Public()
+  async getX402Products() {
+    return this.productService.getX402Products();
   }
 }
 

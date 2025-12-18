@@ -13,6 +13,7 @@ import { MarketingManagementService } from './services/marketing-management.serv
 import { SystemManagementService } from './services/system-management.service';
 import { RiskManagementService } from './services/risk-management.service';
 import { ProductManagementService } from './services/product-management.service';
+import { FundPathManagementService } from './services/fund-path-management.service';
 import { AdminBootstrapService } from './services/admin-bootstrap.service';
 import { AdminUser } from '../../entities/admin-user.entity';
 import { AdminRole } from '../../entities/admin-role.entity';
@@ -34,6 +35,7 @@ import { MarketingCampaign } from '../../entities/marketing-campaign.entity';
 import { Coupon } from '../../entities/coupon.entity';
 import { CouponUsage } from '../../entities/coupon-usage.entity';
 import { RiskAssessment } from '../../entities/risk-assessment.entity';
+import { FundPath } from '../../entities/fund-path.entity';
 
 @Module({
   imports: [
@@ -59,6 +61,7 @@ import { RiskAssessment } from '../../entities/risk-assessment.entity';
       Coupon,
       CouponUsage,
       RiskAssessment,
+      FundPath,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -81,6 +84,7 @@ import { RiskAssessment } from '../../entities/risk-assessment.entity';
     SystemManagementService,
     RiskManagementService,
     ProductManagementService,
+    FundPathManagementService,
     AdminBootstrapService,
   ],
   exports: [
@@ -94,6 +98,7 @@ import { RiskAssessment } from '../../entities/risk-assessment.entity';
     SystemManagementService,
     RiskManagementService,
     ProductManagementService,
+    FundPathManagementService,
   ],
 })
 export class AdminModule {}

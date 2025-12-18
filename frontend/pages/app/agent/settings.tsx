@@ -16,8 +16,8 @@ export default function AgentSettings() {
     name: '我的AI助手',
     description: '智能购物助手',
     autoPayEnabled: true,
-    dailyLimit: 500,
-    singleLimit: 100,
+    dailyLimit: 100,
+    singleLimit: 10,
     paymentMethods: ['x402', 'crypto'],
   })
   const [saving, setSaving] = useState(false)
