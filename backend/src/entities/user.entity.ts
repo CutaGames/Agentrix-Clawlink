@@ -30,9 +30,7 @@ export class User {
   paymindId: string;
 
   @Column({
-    type: 'enum',
-    enum: UserRole,
-    array: true,
+    type: 'jsonb',
     default: [UserRole.USER],
   })
   roles: UserRole[];
