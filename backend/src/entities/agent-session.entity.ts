@@ -25,31 +25,31 @@ export class AgentSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'sessionId', length: 66, unique: true, nullable: true })
+  @Column({ name: 'session_id', length: 66, unique: true, nullable: true })
   sessionId?: string; // bytes32 hex string (用于支付 Session)
 
-  @Column({ nullable: true })
+  @Column({ name: 'user_id', nullable: true })
   userId: string | null;
 
   @ManyToOne(() => User, { nullable: true })
   user: User | null;
 
-  @Column({ nullable: true })
+  @Column({ name: 'agent_id', nullable: true })
   agentId?: string;
 
-  @Column({ length: 42, nullable: true })
+  @Column({ name: 'signer_address', length: 42, nullable: true })
   signerAddress?: string; // Session Key 地址（用于支付 Session）
 
-  @Column({ length: 42, nullable: true })
+  @Column({ name: 'owner_address', length: 42, nullable: true })
   ownerAddress?: string; // 主钱包地址（用于支付 Session）
 
-  @Column('decimal', { precision: 18, scale: 6, nullable: true })
+  @Column('decimal', { name: 'single_limit', precision: 18, scale: 6, nullable: true })
   singleLimit?: number; // USDC, 6 decimals（用于支付 Session）
 
-  @Column('decimal', { precision: 18, scale: 6, nullable: true })
+  @Column('decimal', { name: 'daily_limit', precision: 18, scale: 6, nullable: true })
   dailyLimit?: number; // USDC, 6 decimals（用于支付 Session）
 
-  @Column('decimal', { precision: 18, scale: 6, default: 0, nullable: true })
+  @Column('decimal', { name: 'used_today', precision: 18, scale: 6, default: 0, nullable: true })
   usedToday?: number; // USDC, 6 decimals（用于支付 Session）
 
   @Column('timestamp', { nullable: true })

@@ -139,10 +139,17 @@ export class OpenAIIntegrationController {
    */
   @Get('openapi.json')
   getOpenAPISpec() {
-    // 优先使用 API_URL（包含 /api），否则使用 API_BASE_URL，最后回退到默认值
-    const baseUrl = process.env.API_URL || 
-                    (process.env.API_BASE_URL ? `${process.env.API_BASE_URL}/api` : null) ||
-                    'https://api.agentrix.top/api';
+    // 优先使用 API_URL，否则使用 API_BASE_URL，最后回退到默认值
+    // 注意：如果 API_BASE_URL 已经包含了 /api，不要再加一次
+    let baseUrl = process.env.API_URL || process.env.API_BASE_URL || 'https://api.agentrix.top/api';
+    
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    
+    // 如果 baseUrl 不以 /api 结尾，且不是根路径，则尝试添加 /api
+    // 但在当前配置中，API_BASE_URL 已经是 https://api.agentrix.top/api
+    // 所以我们直接使用它即可。
     
     // 读取优化后的 OpenAPI Schema
     let schema: any = null;

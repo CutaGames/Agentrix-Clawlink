@@ -267,6 +267,7 @@ export function TransakWidget({
         hideMenu: 'true',
         disableWalletAddressForm: 'true',
         disableFiatAmountEditing: 'true',
+        isReadOnlyFiatAmount: 'true', // 锁定金额（URL参数方式）
         themeColor: '4F46E5', // Indigo 主题色（不带#）
       });
 

@@ -99,8 +99,9 @@ export class ProviderManagerService implements OnModuleInit {
     };
 
     try {
-      // 尝试获取一个小额报价来测试连通性
-      await provider.getQuote(10, 'USD', 'ETH');
+      // 尝试获取一个报价来测试连通性
+      // 使用 100 USD -> BNB (BSC) 作为测试，因为 10 USD 可能低于 Transak 最小限额
+      await provider.getQuote(100, 'USD', 'BNB');
       
       // 成功，重置健康状态
       health.isHealthy = true;

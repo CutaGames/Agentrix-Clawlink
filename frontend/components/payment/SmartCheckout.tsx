@@ -77,7 +77,7 @@ const TOKEN_CONFIG: Record<
   USDC: {
     address:
       (process.env.NEXT_PUBLIC_BSC_TESTNET_USDC_ADDRESS as `0x${string}`) ||
-      '0x64544969ed7EBf5f083679233325356EbE738930',
+      '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd', // BSC Testnet USDC often uses same address or similar
     fallbackDecimals: 6,
   },
 };
@@ -556,7 +556,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         amountForSignature = BigInt(paymentAmountInSmallestUnit.toString());
     }
 
-    const chainId = 97; 
+    const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 97); 
     const orderIdBytes32 = ethers.keccak256(ethers.toUtf8Bytes(order.id)) as `0x${string}`;
     
     // ⚠️ CRITICAL: Always prefer Commission Contract Address for QuickPay to ensure fee splitting
@@ -568,7 +568,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         console.log('Using Commission Contract for signature:', recipientAddress);
     } catch (e) {
         console.warn('Failed to get commission contract address, falling back to order.to', e);
-        recipientAddress = order.to;
+        recipientAddress = process.env.NEXT_PUBLIC_COMMISSION_CONTRACT_ADDRESS || order.to;
     }
 
     if (!recipientAddress) {

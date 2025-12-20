@@ -87,8 +87,8 @@ export function SessionManager({ onClose }: SessionManagerProps) {
       const signature = await signMessage(message);
 
       // 3. 获取ERC8004合约地址和USDT地址
-      const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
-      const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
+      const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
+      const tokenAddress = process.env.NEXT_PUBLIC_USDT_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
       // 4. 检查并授权USDT给ERC8004合约
       if (window.ethereum) {
@@ -334,8 +334,8 @@ export function SessionManager({ onClose }: SessionManagerProps) {
 
       // 2. 撤销USDT授权（将授权额度设为0）
       if (window.ethereum) {
-        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x88b3993250Da39041C9263358C3c24C6a69a955e';
-        const tokenAddress = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
+        const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
+        const tokenAddress = process.env.NEXT_PUBLIC_USDT_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'; // BSC Testnet USDT
 
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();

@@ -34,7 +34,7 @@ export class AdminRole {
   })
   type: AdminRoleType;
 
-  @Column('simple-array', { nullable: true })
+  @Column('text', { array: true, nullable: true })
   permissions: string[];
 
   @OneToMany(() => AdminUser, (user) => user.role)
