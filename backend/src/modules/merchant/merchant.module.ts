@@ -21,12 +21,14 @@ import { MarketingCampaign } from '../../entities/marketing-campaign.entity';
 import { ConversationHistory } from '../../entities/conversation-history.entity';
 import { Order } from '../../entities/order.entity';
 import { User } from '../../entities/user.entity';
+import { PayIntent } from '../../entities/pay-intent.entity';
+import { AuditProof } from '../../entities/audit-proof.entity';
 import { MerchantProfile } from '../../entities/merchant-profile.entity';
 import { MerchantProfileService } from './merchant-profile.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, Product, Coupon, MarketingCampaign, ConversationHistory, Order, User, MerchantProfile]),
+    TypeOrmModule.forFeature([Payment, Product, Coupon, MarketingCampaign, ConversationHistory, Order, User, PayIntent, AuditProof, MerchantProfile]),
     forwardRef(() => NotificationModule),
     forwardRef(() => LogisticsModule),
     forwardRef(() => UserModule),

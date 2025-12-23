@@ -101,8 +101,8 @@ export class WebhookHandlerService {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-PayMind-Event': payload.event,
-            'X-PayMind-Signature': this.generateSignature(payload, config.secret),
+            'X-Agentrix-Event': payload.event,
+            'X-Agentrix-Signature': this.generateSignature(payload, config.secret),
           },
           timeout,
         },

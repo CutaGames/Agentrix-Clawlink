@@ -47,71 +47,105 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth 回调' })
   async googleAuthCallback(@Request() req, @Res() res: Response) {
+    return this.handleSocialAuthCallback(req, res, SocialAccountType.GOOGLE);
+  }
+
+  @Get('apple')
+  @UseGuards(AuthGuard('apple'))
+  @ApiOperation({ summary: 'Apple OAuth 登录' })
+  async appleAuth() {}
+
+  @Get('apple/callback')
+  @UseGuards(AuthGuard('apple'))
+  @ApiOperation({ summary: 'Apple OAuth 回调' })
+  async appleAuthCallback(@Request() req, @Res() res) {
+    return this.handleSocialAuthCallback(req, res, SocialAccountType.APPLE);
+  }
+
+  @Get('twitter')
+  @UseGuards(AuthGuard('twitter'))
+  @ApiOperation({ summary: 'Twitter OAuth 登录' })
+  async twitterAuth() {}
+
+  @Get('twitter/callback')
+  @UseGuards(AuthGuard('twitter'))
+  @ApiOperation({ summary: 'Twitter OAuth 回调' })
+  async twitterAuthCallback(@Request() req, @Res() res) {
+    return this.handleSocialAuthCallback(req, res, SocialAccountType.X);
+  }
+
+  private async handleSocialAuthCallback(req: any, res: any, type: SocialAccountType) {
     try {
-      // 检查req.user是否存在
       if (!req.user) {
-        throw new BadRequestException('Google OAuth认证失败：未获取到用户信息');
+        throw new BadRequestException(`${type} OAuth认证失败：未获取到用户信息`);
       }
 
-      const { googleId, email, firstName, lastName, picture } = req.user;
-      const profileData = {
-        email,
-        displayName: firstName && lastName ? `${firstName} ${lastName}` : undefined,
-        avatarUrl: picture,
-      };
+      let socialId: string;
+      let profileData: any;
 
-      // 检查是否已有用户通过Google登录（查找SocialAccount）
-      let user = await this.socialAccountService.findUserBySocialId(
-        SocialAccountType.GOOGLE,
-        googleId,
-      );
+      if (type === SocialAccountType.GOOGLE) {
+        const { googleId, email, firstName, lastName, picture } = req.user;
+        socialId = googleId;
+        profileData = {
+          email,
+          displayName: firstName && lastName ? `${firstName} ${lastName}` : undefined,
+          avatarUrl: picture,
+        };
+      } else if (type === SocialAccountType.APPLE) {
+        const { appleId, email, firstName, lastName } = req.user;
+        socialId = appleId;
+        profileData = {
+          email,
+          displayName: firstName && lastName ? `${firstName} ${lastName}` : undefined,
+        };
+      } else if (type === SocialAccountType.X) {
+        const { twitterId, email, displayName, picture } = req.user;
+        socialId = twitterId;
+        profileData = {
+          email,
+          displayName,
+          avatarUrl: picture,
+        };
+      }
+
+      // 检查是否已有用户通过该社交账号登录
+      let user = await this.socialAccountService.findUserBySocialId(type, socialId);
 
       if (!user) {
-        // 如果没有，检查是否通过email找到用户（用于绑定）
-        if (email) {
-          user = await this.authService.findUserByEmail(email);
+        // 检查是否通过email找到用户（用于绑定）
+        if (profileData.email) {
+          user = await this.authService.findUserByEmail(profileData.email);
         }
 
         if (user) {
-          // 如果找到用户，绑定Google账号
-          await this.socialAccountService.bindSocialAccount(
-            user.id,
-            SocialAccountType.GOOGLE,
-            googleId,
-            profileData,
-          );
+          // 绑定社交账号
+          await this.socialAccountService.bindSocialAccount(user.id, type, socialId, profileData);
         } else {
           // 创建新用户
-          user = await this.authService.validateGoogleUser(req.user);
-          await this.socialAccountService.bindSocialAccount(
-            user.id,
-            SocialAccountType.GOOGLE,
-            googleId,
-            profileData,
-          );
+          if (type === SocialAccountType.GOOGLE) {
+            user = await this.authService.validateGoogleUser(req.user);
+          } else if (type === SocialAccountType.APPLE) {
+            user = await this.authService.validateAppleUser(req.user);
+          } else if (type === SocialAccountType.X) {
+            user = await this.authService.validateTwitterUser(req.user);
+          }
+          await this.socialAccountService.bindSocialAccount(user.id, type, socialId, profileData);
         }
       }
 
       const loginResult = await this.authService.login(user);
-      
-      // 获取前端 URL
-      const frontendUrl =
-        this.configService.get<string>('FRONTEND_URL') || req.headers.origin || 'http://localhost:3000';
-      
-      // 将 token 和用户信息通过 URL 参数传递给前端
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
       const redirectUrl = new URL(`${frontendUrl}/auth/callback`);
       redirectUrl.searchParams.set('token', loginResult.access_token);
       redirectUrl.searchParams.set('userId', loginResult.user.id);
       redirectUrl.searchParams.set('email', loginResult.user.email || '');
-      redirectUrl.searchParams.set('paymindId', loginResult.user.paymindId);
-      
+      redirectUrl.searchParams.set('agentrixId', loginResult.user.agentrixId);
+
       res.redirect(redirectUrl.toString());
     } catch (error) {
-      // 获取前端 URL
-      const frontendUrl =
-        this.configService.get<string>('FRONTEND_URL') || req.headers.origin || 'http://localhost:3000';
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
       const errorUrl = new URL(`${frontendUrl}/auth/callback`);
-      errorUrl.searchParams.set('error', error.message || 'Google登录失败');
+      errorUrl.searchParams.set('error', error.message || `${type}登录失败`);
       res.redirect(errorUrl.toString());
     }
   }

@@ -18,42 +18,26 @@ export function DashboardLayout({ children, userType }: DashboardLayoutProps) {
 
   const userMenu = [
     { name: t('navigation.user.overview'), href: '/app/user', icon: '📊' },
-    { name: t('navigation.user.agentHub'), href: '/app/user/agent-hub', icon: '🚀' },
-    { name: t('navigation.user.kyc'), href: '/app/user/kyc', icon: '✅' },
+    { name: t({ zh: 'Agent 工作台', en: 'Agent Workbench' }), href: '/agent-enhanced', icon: '🤖' },
     { name: t('navigation.user.transactions'), href: '/app/user/transactions', icon: '💳' },
-    { name: t('navigation.user.authorizations'), href: '/app/user/authorizations', icon: '🔑' },
     { name: t('navigation.user.subscriptions'), href: '/app/user/subscriptions', icon: '🔄' },
-    { name: t('navigation.user.agentAuthorizations'), href: '/app/user/agent-authorizations', icon: '🤖' },
-    { name: t('navigation.user.executionHistory'), href: '/app/user/execution-history', icon: '📋' },
-    { name: t('navigation.user.security'), href: '/app/user/security', icon: '⚙️' },
-    { name: t('navigation.user.notifications'), href: '/app/user/notifications', icon: '🔔' },
+    { name: t('navigation.user.security'), href: '/app/user/security', icon: '🛡️' },
     { name: t('navigation.user.profile'), href: '/app/user/profile', icon: '👤' },
   ]
 
   const agentMenu = [
     { name: t('navigation.agent.overview'), href: '/app/agent', icon: '📊' },
-    { name: t('navigation.agent.kyc'), href: '/app/agent/kyc', icon: '✅' },
+    { name: t({ zh: 'Agent 工作台', en: 'Agent Workbench' }), href: '/agent-enhanced', icon: '🤖' },
     { name: t('navigation.agent.earnings'), href: '/app/agent/earnings', icon: '💰' },
-    { name: t('navigation.agent.products'), href: '/app/agent/products', icon: '🛒' },
-    { name: t('navigation.agent.grants'), href: '/app/agent/grants', icon: '⚙️' },
     { name: t('navigation.agent.analytics'), href: '/app/agent/analytics', icon: '📈' },
-    { name: t('navigation.agent.apiStats'), href: '/app/agent/api-stats', icon: '📡' },
-    { name: t('navigation.agent.errorLogs'), href: '/app/agent/error-logs', icon: '🐛' },
-    { name: t('navigation.agent.sandbox'), href: '/app/agent/sandbox', icon: '🧪' },
-    { name: t('navigation.agent.docs'), href: '/app/agent/docs', icon: '📚' },
   ]
 
   const merchantMenu = [
     { name: t('navigation.merchant.overview'), href: '/app/merchant', icon: '📊' },
-    { name: t('navigation.merchant.kyc'), href: '/app/merchant/kyc', icon: '✅' },
+    { name: t({ zh: 'Agent 工作台', en: 'Agent Workbench' }), href: '/agent-enhanced', icon: '🤖' },
     { name: t('navigation.merchant.products'), href: '/app/merchant/products', icon: '🛒' },
     { name: t('navigation.merchant.orders'), href: '/app/merchant/orders', icon: '📦' },
     { name: t('navigation.merchant.finance'), href: '/app/merchant/finance', icon: '💰' },
-    { name: t('navigation.merchant.customers'), href: '/app/merchant/customers', icon: '👥' },
-    { name: t('navigation.merchant.refunds'), href: '/app/merchant/refunds', icon: '🔄' },
-    { name: t('navigation.merchant.webhooks'), href: '/app/merchant/webhooks', icon: '🔔' },
-    { name: t('navigation.merchant.apiKeys'), href: '/app/merchant/api-keys', icon: '🔐' },
-    { name: t('navigation.merchant.productAnalytics'), href: '/app/merchant/product-analytics', icon: '📊' },
   ]
 
   const menu = userType === 'user' ? userMenu : 

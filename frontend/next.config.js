@@ -34,8 +34,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://global.transak.com https://staging-global.transak.com https://global-stg.transak.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data: https:",
-              // 允许连接到本地开发服务器和 Transak API
-              "connect-src 'self' http://localhost:3001 http://127.0.0.1:3001 https://global.transak.com https://staging-global.transak.com https://global-stg.transak.com https://api.transak.com https://api-staging.transak.com",
+              // 允许连接到本地开发服务器、生产服务器和 Transak API
+              "connect-src 'self' http://localhost:3001 http://127.0.0.1:3001 https://api.agentrix.top https://api.agentrix.io https://global.transak.com https://staging-global.transak.com https://global-stg.transak.com https://api.transak.com https://api-staging.transak.com",
               "frame-src 'self' https://global.transak.com https://staging-global.transak.com https://global-stg.transak.com",
             ].join('; '),
           },

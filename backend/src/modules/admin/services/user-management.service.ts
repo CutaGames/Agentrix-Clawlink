@@ -31,7 +31,7 @@ export class UserManagementService {
 
     if (query.search) {
       queryBuilder.where(
-        '(user.email LIKE :search OR user.paymindId LIKE :search OR user.nickname LIKE :search)',
+        '(user.email LIKE :search OR user.agentrixId LIKE :search OR user.nickname LIKE :search)',
         { search: `%${query.search}%` },
       );
     } else {
@@ -58,10 +58,7 @@ export class UserManagementService {
     const [users, total] = await queryBuilder.getManyAndCount();
 
     return {
-      data: users.map(user => ({
-        ...user,
-        agentrixId: user.paymindId,
-      })),
+      data: users,
       total,
       page,
       limit,

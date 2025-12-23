@@ -26,8 +26,8 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
-  paymindId: string;
+  @Column({ name: 'paymindId', unique: true })
+  agentrixId: string;
 
   @Column({
     type: 'jsonb',
@@ -43,6 +43,12 @@ export class User {
 
   @Column({ nullable: true, unique: true })
   googleId: string;
+
+  @Column({ nullable: true, unique: true })
+  appleId: string;
+
+  @Column({ nullable: true, unique: true })
+  twitterId: string;
 
   @Column({
     type: 'enum',

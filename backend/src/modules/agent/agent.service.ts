@@ -16,6 +16,7 @@ import { LogisticsService } from '../logistics/logistics.service';
 import { RefundService } from '../payment/refund.service';
 import { AgentP0IntegrationService } from './agent-p0-integration.service';
 import { AgentRuntimeIntegrationService } from './agent-runtime-integration.service';
+import { GeminiIntegrationService } from '../ai-integration/gemini/gemini-integration.service';
 
 export interface ProductSearchResult {
   id: string;
@@ -91,6 +92,8 @@ export class AgentService {
     private p0IntegrationService: AgentP0IntegrationService,
     @Inject(forwardRef(() => AgentRuntimeIntegrationService))
     private runtimeIntegration: AgentRuntimeIntegrationService,
+    @Inject(forwardRef(() => GeminiIntegrationService))
+    private geminiService: GeminiIntegrationService,
   ) {}
 
   /**
@@ -644,6 +647,67 @@ export class AgentService {
       };
     }
 
+    // --- Deep Grounding: 使用 Gemini 处理通用查询并注入工作区上下文 ---
+    try {
+      this.logger.log(`使用 Gemini 处理通用查询 (Deep Grounding), mode: ${context?.mode || 'user'}`);
+      
+      // 构建历史消息
+      const geminiMessages: any[] = history.reverse().map(m => ({
+        role: m.role === MessageRole.USER ? 'user' : 'assistant',
+        content: m.content,
+      }));
+      
+      // 注入工作区上下文到系统提示词
+      const workspaceContext = context?.workspace || {};
+      const systemPrompt = `你是 Agentrix 智能助手。
+当前模式: ${context?.mode || 'user'}
+当前视图: ${workspaceContext.viewMode || 'unknown'}
+当前选中项: ${JSON.stringify(workspaceContext.selection || {})}
+工作区数据: ${JSON.stringify(workspaceContext.workspaceData || {})}
+
+请根据用户的工作区状态提供精准的帮助。
+如果用户想要切换视图，请在回复中包含指令，例如：[COMMAND:SWITCH_VIEW:wallet_management]
+支持的视图包括: wallet_management, order_management, product_management, analytics, developer_tools, sdk_generator 等。`;
+
+      const allMessages = [
+        { role: 'system', content: systemPrompt },
+        ...geminiMessages,
+        { role: 'user', content: message }
+      ];
+
+      const geminiResult = await this.geminiService.chatWithFunctions(allMessages as any, {
+        context: { userId, sessionId: session?.id },
+        mode: context?.mode || 'user'
+      } as any);
+
+      const response = {
+        response: geminiResult.text,
+        sessionId: session?.id,
+        intent: 'general_chat',
+        type: 'faq' as any, // 默认为 FAQ 类型，前端会根据内容解析指令
+        data: { 
+          geminiResponse: true,
+          workspaceAware: true,
+          functionCalls: geminiResult.functionCalls
+        }
+      };
+
+      // 保存助手消息
+      if (session) {
+        await this.saveMessage(
+          session.id,
+          userId || null,
+          MessageRole.ASSISTANT,
+          response.response,
+          MessageType.TEXT,
+          { intent: 'general_chat', workspaceAware: true },
+        );
+      }
+
+      return response;
+    } catch (geminiError) {
+      this.logger.error(`Gemini 处理失败，回退到默认响应: ${geminiError.message}`);
+      
       // 默认响应
       const defaultResponse = {
         response: '我理解您的需求。让我为您提供帮助...',
@@ -664,19 +728,9 @@ export class AgentService {
         );
       }
 
-      // 记录审计日志（支持未登录用户）
-      await this.logAudit(
-        userId || null,
-        AuditAction.AGENT_MESSAGE,
-        AuditStatus.SUCCESS,
-        `Agent对话: ${message}`,
-        { message, entities, intent },
-        defaultResponse,
-        { sessionId: session?.id, duration: Date.now() - startTime },
-      );
-
       return defaultResponse;
-    } catch (error) {
+    }
+  } catch (error) {
       this.logger.error('处理Agent消息失败:', error);
       
       // 记录错误审计日志（支持未登录用户）

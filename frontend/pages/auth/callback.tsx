@@ -29,12 +29,12 @@ export default function AuthCallback() {
           apiClient.setToken(token)
         }
 
-        const resolvedPaymindId = typeof agentrixId === 'string' ? agentrixId : undefined
+        const resolvedAgentrixId = typeof agentrixId === 'string' ? agentrixId : undefined
         const resolvedUserId = typeof userId === 'string' ? userId : `user_${Date.now()}`
 
         login({
           id: resolvedUserId,
-          agentrixId: resolvedPaymindId,
+          agentrixId: resolvedAgentrixId,
           email: typeof email === 'string' ? email : undefined,
           walletAddress: undefined,
           roles: ['user'],

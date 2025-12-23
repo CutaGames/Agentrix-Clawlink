@@ -8,6 +8,7 @@ import { CommandHandler } from './CommandHandler'
 import { RoleSwitcher } from './RoleSwitcher'
 import { AgentChatEnhanced } from '../AgentChatEnhanced'
 import { useLocalization } from '../../../contexts/LocalizationContext'
+import { MessageSquare, User, Store, Code, ShoppingBag, Zap, Layout } from 'lucide-react'
 
 export type WorkspaceView = 'chat' | 'user' | 'merchant' | 'developer' | 'marketplace' | 'autoEarn' | 'cart' | 'code' | 'sandbox' | 'orders' | 'referral'
 
@@ -70,7 +71,7 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
   return (
     <div className="flex h-full bg-slate-950 text-white">
       {/* 左侧：角色切换和快捷功能 */}
-      <div className="w-64 border-r border-white/10 bg-slate-900/50">
+      <div className="w-72 border-r border-white/5">
         <RoleSwitcher
           currentMode={mode}
           userRoles={userRoles}
@@ -80,32 +81,51 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
       </div>
 
       {/* 中间：主工作区 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-950">
         {/* 顶部导航 */}
-        <div className="border-b border-white/10 bg-slate-900/50 px-6 py-4">
+        <div className="border-b border-white/5 bg-slate-900/30 backdrop-blur-md px-8 py-5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-lg font-semibold">
-                {currentView === 'chat' && t({ zh: '对话工作台', en: 'Conversation Workspace' })}
-                {currentView === 'user' && t({ zh: '用户中心', en: 'User Center' })}
-                {currentView === 'merchant' && t({ zh: '商户后台', en: 'Merchant Backend' })}
-                {currentView === 'developer' && t({ zh: '开发者工具', en: 'Developer Tools' })}
-                {currentView === 'marketplace' && t({ zh: '商品市场', en: 'Marketplace' })}
-                {currentView === 'autoEarn' && t({ zh: 'Auto-Earn', en: 'Auto-Earn' })}
-                {currentView === 'orders' && t({ zh: '订单中心', en: 'Order Center' })}
-              </h2>
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 border border-cyan-500/20">
+                {currentView === 'chat' && <MessageSquare size={20} />}
+                {currentView === 'user' && <User size={20} />}
+                {currentView === 'merchant' && <Store size={20} />}
+                {currentView === 'developer' && <Code size={20} />}
+                {currentView === 'marketplace' && <ShoppingBag size={20} />}
+                {currentView === 'autoEarn' && <Zap size={20} />}
+                {currentView === 'orders' && <Layout size={20} />}
+              </div>
+              <div>
+                <h2 className="text-lg font-bold tracking-tight">
+                  {currentView === 'chat' && t({ zh: '对话工作台', en: 'Conversation Workspace' })}
+                  {currentView === 'user' && t({ zh: '用户中心', en: 'User Center' })}
+                  {currentView === 'merchant' && t({ zh: '商户后台', en: 'Merchant Backend' })}
+                  {currentView === 'developer' && t({ zh: '开发者工具', en: 'Developer Tools' })}
+                  {currentView === 'marketplace' && t({ zh: '商品市场', en: 'Marketplace' })}
+                  {currentView === 'autoEarn' && t({ zh: 'Auto-Earn', en: 'Auto-Earn' })}
+                  {currentView === 'orders' && t({ zh: '订单中心', en: 'Order Center' })}
+                </h2>
+                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">
+                  {mode === 'personal' ? 'Personal Mode' : mode === 'merchant' ? 'Merchant Mode' : 'Developer Mode'} • Active
+                </p>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setCurrentView('chat')}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  currentView === 'chat'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
+                  currentView === 'chat' 
+                    ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' 
+                    : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                {t({ zh: '对话', en: 'Chat' })}
+                {t({ zh: '返回对话', en: 'Back to Chat' })}
               </button>
+              <div className="w-px h-6 bg-white/10 mx-2" />
+              <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-white/5 border border-white/5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-xs font-mono text-slate-300">{user?.walletAddress ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}` : 'Not Connected'}</span>
+              </div>
             </div>
           </div>
         </div>

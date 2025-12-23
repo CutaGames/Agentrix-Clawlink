@@ -29,10 +29,12 @@ export class DatabaseConfig implements TypeOrmOptionsFactory, OnModuleInit {
   }
 
   createTypeOrmOptions(): TypeOrmModuleOptions {
+    const dbSyncConfig = this.configService.get('DB_SYNC');
     const shouldSync =
-      this.configService.get('NODE_ENV') === 'test' ||
-      this.configService.get('NODE_ENV') === 'development' ||
-      this.configService.get('DB_SYNC') === 'true';
+      dbSyncConfig === 'true' ||
+      (dbSyncConfig !== 'false' &&
+        (this.configService.get('NODE_ENV') === 'test' ||
+          this.configService.get('NODE_ENV') === 'development'));
 
     return {
       type: 'postgres',

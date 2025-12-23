@@ -67,6 +67,20 @@ export const userApi = {
     }
     return result;
   },
+
+  /**
+   * 通用文件上传
+   */
+  uploadFile: async (file: File): Promise<{ url: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const result = await apiClient.post<{ url: string }>('/users/upload', formData);
+    if (result === null) {
+      throw new Error('无法上传文件，请稍后重试');
+    }
+    return result;
+  },
 };
 
 /**

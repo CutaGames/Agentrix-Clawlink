@@ -187,11 +187,11 @@ export function Hero({ onGetStarted }: { onGetStarted: () => void }) {
 
 
   return (
-    <section className="relative bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 text-white overflow-hidden min-h-screen flex items-center">
+    <section className="relative bg-white text-gray-900 overflow-hidden min-h-screen flex items-center">
       {/* 背景装饰 */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-500 rounded-full blur-3xl"></div>
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-blue-100 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-100 rounded-full blur-3xl"></div>
       </div>
 
       <div className="container mx-auto px-6 py-20 relative z-10">
@@ -200,13 +200,13 @@ export function Hero({ onGetStarted }: { onGetStarted: () => void }) {
           <div className="space-y-8">
             {/* 主标题 */}
             <div className="space-y-4">
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight">
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight text-gray-900">
                 <span className="block">打造你的 AI 商业操作系统</span>
                 <span className="block">一键唤醒专属 Agent 即刻开赚</span>
               </h1>
 
               {/* 副标题 */}
-              <p className="text-xl md:text-2xl text-gray-300 leading-relaxed">
+              <p className="text-xl md:text-2xl text-gray-600 leading-relaxed">
                 支付、Agent、Marketplace、联盟激励一次打包，<br />
                 让个人用户、团队与品牌几分钟内构建自动化商业闭环。
               </p>
@@ -214,19 +214,19 @@ export function Hero({ onGetStarted }: { onGetStarted: () => void }) {
 
             {/* 核心能力标签 */}
             <div className="flex flex-wrap gap-3">
-              <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-white/20 text-white">
+              <div className="px-4 py-2 rounded-lg bg-gray-100 border border-gray-200 text-gray-700">
                 <span className="text-lg mr-2">🤖</span>
                 <span className="font-medium">AX Agent</span>
               </div>
-              <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-white/20 text-white">
+              <div className="px-4 py-2 rounded-lg bg-gray-100 border border-gray-200 text-gray-700">
                 <span className="text-lg mr-2">💳</span>
                 <span className="font-medium">智能支付</span>
               </div>
-              <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-white/20 text-white">
+              <div className="px-4 py-2 rounded-lg bg-gray-100 border border-gray-200 text-gray-700">
                 <span className="text-lg mr-2">🌐</span>
                 <span className="font-medium">AI Marketplace</span>
               </div>
-              <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur border border-white/20 text-white">
+              <div className="px-4 py-2 rounded-lg bg-gray-100 border border-gray-200 text-gray-700">
                 <span className="text-lg mr-2">⚡</span>
                 <span className="font-medium">Auto-Earn</span>
               </div>
@@ -236,14 +236,14 @@ export function Hero({ onGetStarted }: { onGetStarted: () => void }) {
             <div className="flex flex-col sm:flex-row gap-4">
               <button
                 onClick={() => router.push('/agent-enhanced')}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center"
               >
                 <span className="mr-2">🤖</span>
                 立即体验 AX Agent
               </button>
               <button
                 onClick={() => router.push('/developers')}
-                className="border-2 border-white text-white hover:bg-white hover:text-gray-900 px-8 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105"
+                className="border-2 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105"
               >
                 查看文档
               </button>

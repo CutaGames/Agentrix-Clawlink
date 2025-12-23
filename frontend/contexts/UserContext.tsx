@@ -115,7 +115,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         message: string;
         user: {
           id: string;
-          paymindId: string;
+          agentrixId: string;
           roles: string[];
           email?: string;
           nickname?: string;
@@ -189,7 +189,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         currentRole,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!(typeof window !== 'undefined' && localStorage.getItem('access_token')),
         isLoading,
         login,
         logout,

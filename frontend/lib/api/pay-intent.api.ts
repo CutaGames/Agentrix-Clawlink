@@ -23,7 +23,7 @@ export interface CreatePayIntentRequest {
 export interface PayIntent {
   id: string;
   type: string;
-  status: 'created' | 'authorized' | 'executing' | 'completed' | 'failed' | 'cancelled' | 'expired';
+  status: 'created' | 'requires_payment_method' | 'requires_confirmation' | 'requires_action' | 'processing' | 'requires_capture' | 'canceled' | 'succeeded' | 'completed' | 'failed' | 'expired';
   amount: number;
   currency: string;
   description?: string;
@@ -44,6 +44,9 @@ export interface PayIntent {
     qrCode?: string;
     deepLink?: string;
     transactionHash?: string;
+    returnUrl?: string;
+    cancelUrl?: string;
+    successUrl?: string;
   };
   expiresAt?: string;
   createdAt: string;

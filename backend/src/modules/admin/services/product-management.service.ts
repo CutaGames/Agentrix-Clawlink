@@ -77,7 +77,7 @@ export class ProductManagementService {
     const merchants = merchantIds.length > 0
       ? await this.userRepository.find({
           where: { id: In(merchantIds) },
-          select: ['id', 'email', 'nickname'],
+          select: ['id', 'email', 'nickname', 'agentrixId'],
         })
       : [];
     const merchantMap = new Map(merchants.map(m => [m.id, m]));
@@ -113,7 +113,7 @@ export class ProductManagementService {
     if (product.merchantId) {
       merchant = await this.userRepository.findOne({
         where: { id: product.merchantId },
-        select: ['id', 'email', 'nickname', 'paymindId'],
+        select: ['id', 'email', 'nickname', 'agentrixId'],
       });
     }
 

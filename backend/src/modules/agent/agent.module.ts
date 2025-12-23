@@ -16,9 +16,17 @@ import { RecommendationModule } from '../recommendation/recommendation.module';
 import { LogisticsModule } from '../logistics/logistics.module';
 import { AgentTemplate } from '../../entities/agent-template.entity';
 import { UserAgent } from '../../entities/user-agent.entity';
+import { AgentRegistry } from '../../entities/agent-registry.entity';
+import { Authorization } from '../../entities/authorization.entity';
+import { AuditProof } from '../../entities/audit-proof.entity';
 import { AgentTemplateService } from './agent-template.service';
 import { AgentP0IntegrationService } from './agent-p0-integration.service';
+import { AgentRegistryService } from './agent-registry.service';
+import { AuthorizationService } from './authorization.service';
+import { AgentCheckoutService } from './agent-checkout.service';
 import { TemplateSubscriptionService } from './template-subscription.service';
+import { EasService } from './eas.service';
+import { AuditAnchoringService } from './audit-anchoring.service';
 import { TemplateReviewService } from './template-review.service';
 import { TemplateReview } from '../../entities/template-review.entity';
 import { DeploymentModule } from './deployment/deployment.module';
@@ -31,6 +39,8 @@ import { UserModule } from '../user/user.module';
 import { User } from '../../entities/user.entity';
 import { RuntimeModule } from './runtime/runtime.module';
 import { AgentRuntimeIntegrationService } from './agent-runtime-integration.service';
+import { ApiKeyModule } from '../api-key/api-key.module';
+import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integration.module';
 
 @Module({
   imports: [
@@ -45,6 +55,9 @@ import { AgentRuntimeIntegrationService } from './agent-runtime-integration.serv
       UserAgent,
       TemplateReview,
       User,
+      AgentRegistry,
+      Authorization,
+      AuditProof,
     ]),
     forwardRef(() => ProductModule),
     forwardRef(() => OrderModule),
@@ -58,24 +71,35 @@ import { AgentRuntimeIntegrationService } from './agent-runtime-integration.serv
     forwardRef(() => AnalyticsModule),
     forwardRef(() => CartModule),
     forwardRef(() => UserModule),
+    ApiKeyModule,
     DeploymentModule,
     RuntimeModule,
+    forwardRef(() => GeminiIntegrationModule),
   ],
   controllers: [AgentController],
   providers: [
     AgentService,
     AgentTemplateService,
     AgentP0IntegrationService,
+    AgentRegistryService,
+    AuthorizationService,
+    AgentCheckoutService,
     TemplateSubscriptionService,
     TemplateReviewService,
+    EasService,
+    AuditAnchoringService,
     AgentRuntimeIntegrationService,
   ],
   exports: [
     AgentService,
     AgentTemplateService,
     AgentP0IntegrationService,
+    AgentRegistryService,
+    AuthorizationService,
+    AgentCheckoutService,
     TemplateSubscriptionService,
     TemplateReviewService,
+    EasService,
   ],
 })
 export class AgentModule {}

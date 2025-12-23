@@ -4,6 +4,7 @@ import { Repository, MoreThan } from 'typeorm';
 import { PayIntent, PayIntentStatus, PayIntentType } from '../../entities/pay-intent.entity';
 import { PaymentService } from './payment.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
+import { WebhookService } from '../webhook/webhook.service';
 
 export interface CreatePayIntentDto {
   type: PayIntentType;
@@ -25,6 +26,7 @@ export interface CreatePayIntentDto {
     [key: string]: any;
   };
   expiresIn?: number; // 过期时间（秒），默认1小时
+  mode?: 'sandbox' | 'production';
 }
 
 @Injectable()
@@ -37,7 +39,34 @@ export class PayIntentService {
     @Inject(forwardRef(() => PaymentService))
     private paymentService: PaymentService,
     private quickPayGrantService: QuickPayGrantService,
+    private webhookService: WebhookService,
   ) {}
+
+  /**
+   * 触发Webhook事件
+   */
+  private async triggerWebhook(payIntent: PayIntent, eventType: string) {
+    try {
+      // 如果有商户ID，通知商户
+      if (payIntent.merchantId) {
+        await this.webhookService.sendWebhookEvent(
+          payIntent.merchantId,
+          eventType,
+          {
+            id: payIntent.id,
+            status: payIntent.status,
+            amount: payIntent.amount,
+            currency: payIntent.currency,
+            orderId: payIntent.orderId,
+            metadata: payIntent.metadata,
+            attribution: payIntent.attribution,
+          },
+        );
+      }
+    } catch (error) {
+      this.logger.error(`触发Webhook失败: ${error.message}`);
+    }
+  }
 
   /**
    * 创建PayIntent（V3.0：统一支付意图规范）
@@ -57,7 +86,8 @@ export class PayIntentService {
       merchantId: dto.merchantId,
       agentId: dto.agentId,
       paymentMethod: dto.paymentMethod,
-      status: PayIntentStatus.CREATED,
+      status: PayIntentStatus.REQUIRES_PAYMENT_METHOD,
+      mode: dto.mode || 'production',
       authorization: {
         authorized: false,
       },
@@ -81,6 +111,9 @@ export class PayIntentService {
     await this.payIntentRepository.save(savedPayIntent);
 
     this.logger.log(`创建PayIntent: id=${savedPayIntent.id}, userId=${userId}, amount=${dto.amount}`);
+
+    // 触发Webhook
+    await this.triggerWebhook(savedPayIntent, 'payment_intent.created');
 
     return savedPayIntent;
   }
@@ -163,30 +196,54 @@ export class PayIntentService {
     payIntent.status = PayIntentStatus.EXECUTING;
 
     try {
-      // 创建实际支付
-      const payment = await this.paymentService.processPayment(userId, {
-        amount: payIntent.amount,
-        currency: payIntent.currency,
-        paymentMethod: payIntent.paymentMethod?.type as any,
-        description: payIntent.description || `PayIntent: ${payIntentId}`,
-        merchantId: payIntent.merchantId,
-        agentId: payIntent.agentId,
-        metadata: {
-          payIntentId: payIntent.id,
-          orderId: payIntent.orderId,
-          ...payIntent.metadata,
-        },
-      });
+      let paymentId = '';
+      let transactionHash = '';
 
-      payIntent.paymentId = payment.id;
-      payIntent.status = PayIntentStatus.COMPLETED;
+      if (payIntent.mode === 'sandbox') {
+        // 沙盒模式：模拟支付
+        this.logger.log(`沙盒模式支付模拟: id=${payIntentId}, amount=${payIntent.amount}`);
+        
+        // 模拟网络延迟
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        paymentId = `sim_${Math.random().toString(36).substring(2, 15)}`;
+        transactionHash = `0x${Math.random().toString(16).substring(2, 66)}`;
+        
+        // 如果金额是 66.66，模拟失败（用于测试）
+        if (payIntent.amount === 66.66) {
+          throw new Error('Sandbox simulated failure (Amount 66.66)');
+        }
+      } else {
+        // 生产模式：创建实际支付
+        const payment = await this.paymentService.processPayment(userId, {
+          amount: payIntent.amount,
+          currency: payIntent.currency,
+          paymentMethod: payIntent.paymentMethod?.type as any,
+          description: payIntent.description || `PayIntent: ${payIntentId}`,
+          merchantId: payIntent.merchantId,
+          agentId: payIntent.agentId,
+          metadata: {
+            payIntentId: payIntent.id,
+            orderId: payIntent.orderId,
+            ...payIntent.metadata,
+          },
+        });
+        paymentId = payment.id;
+        transactionHash = payment.transactionHash;
+      }
+
+      payIntent.paymentId = paymentId;
+      payIntent.status = PayIntentStatus.SUCCEEDED;
       payIntent.completedAt = new Date();
 
-      if (payment.transactionHash) {
-        payIntent.metadata.transactionHash = payment.transactionHash;
+      if (transactionHash) {
+        payIntent.metadata.transactionHash = transactionHash;
       }
 
       await this.payIntentRepository.save(payIntent);
+
+      // 触发Webhook
+      await this.triggerWebhook(payIntent, 'payment_intent.succeeded');
 
       // 更新QuickPay授权使用量
       if (payIntent.authorization.quickPayGrantId) {
@@ -196,7 +253,7 @@ export class PayIntentService {
         );
       }
 
-      this.logger.log(`执行PayIntent成功: id=${payIntentId}, paymentId=${payment.id}`);
+      this.logger.log(`执行PayIntent成功: id=${payIntentId}, paymentId=${paymentId}, mode=${payIntent.mode}`);
 
       return payIntent;
     } catch (error) {
@@ -204,6 +261,10 @@ export class PayIntentService {
       payIntent.status = PayIntentStatus.FAILED;
       payIntent.metadata.errorMessage = error.message;
       await this.payIntentRepository.save(payIntent);
+
+      // 触发Webhook
+      await this.triggerWebhook(payIntent, 'payment_intent.failed');
+
       throw error;
     }
   }

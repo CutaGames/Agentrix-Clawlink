@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiKeyService } from './api-key.service';
+import { ApiKeyMode } from '../../entities/api-key.entity';
 
 /**
  * API Key 管理控制器
@@ -36,6 +37,7 @@ export class ApiKeyController {
       name: string;
       expiresInDays?: number;
       scopes?: string[];
+      mode?: ApiKeyMode;
     },
   ) {
     try {
@@ -45,6 +47,7 @@ export class ApiKeyController {
         {
           expiresInDays: body.expiresInDays,
           scopes: body.scopes,
+          mode: body.mode,
         },
       );
 
@@ -56,6 +59,7 @@ export class ApiKeyController {
           apiKey: apiKey, // 只有这一次返回完整的 Key
           name: apiKeyRecord.name,
           keyPrefix: apiKeyRecord.keyPrefix,
+          mode: apiKeyRecord.mode,
           scopes: apiKeyRecord.scopes,
           expiresAt: apiKeyRecord.expiresAt,
           createdAt: apiKeyRecord.createdAt,
@@ -89,6 +93,7 @@ export class ApiKeyController {
         name: key.name,
         keyPrefix: key.keyPrefix,
         status: key.status,
+        mode: key.mode,
         scopes: key.scopes,
         lastUsedAt: key.lastUsedAt,
         usageCount: key.usageCount,

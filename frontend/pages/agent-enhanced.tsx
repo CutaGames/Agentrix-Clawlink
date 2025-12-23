@@ -1,6 +1,19 @@
 import Head from 'next/head';
 import { useState, useEffect, useRef } from 'react';
-import { Search } from 'lucide-react';
+import { 
+  Search, 
+  Bot, 
+  LayoutDashboard, 
+  ExternalLink, 
+  UserCircle, 
+  ShieldCheck, 
+  Lock, 
+  CreditCard,
+  BarChart3,
+  Package,
+  ShoppingBag,
+  Link2
+} from 'lucide-react';
 import { AgentSidebar } from '../components/agent/AgentSidebar';
 import { AgentTopNav } from '../components/agent/AgentTopNav';
 import { AgentChatEnhanced } from '../components/agent/AgentChatEnhanced';
@@ -12,25 +25,44 @@ import { OrderList } from '../components/agent/OrderList';
 import { Sandbox } from '../components/agent/Sandbox';
 import { AutoEarnPanel } from '../components/agent/AutoEarnPanel';
 import { AgentInsightsPanel } from '../components/agent/AgentInsightsPanel';
+import { WalletManagement } from '../components/agent/WalletManagement';
+import { PolicyEngine } from '../components/agent/PolicyEngine';
+import { AirdropDiscovery } from '../components/agent/AirdropDiscovery';
+import { UserModule } from '../components/agent/workspace/UserModule';
+import { MerchantModule } from '../components/agent/workspace/MerchantModule';
+import { DeveloperModule } from '../components/agent/workspace/DeveloperModule';
+import { CommandHandler } from '../components/agent/workspace/CommandHandler';
 import { ProductInfo } from '../lib/api/product.api';
 import { usePayment } from '../contexts/PaymentContext';
 import { useUser } from '../contexts/UserContext';
 import { useAgentMode } from '../contexts/AgentModeContext';
+import { useLocalization } from '../contexts/LocalizationContext';
 import { ViewMode } from '../types/agent';
 import { SmartCheckout } from '../components/payment/SmartCheckout';
 import { PaymentSuccessModal } from '../components/agent/PaymentSuccessModal';
 import { useRouter } from 'next/router';
+
+import { WorkbenchProvider, useWorkbench } from '../contexts/WorkbenchContext';
 
 /**
  * Agentrix Agent V3.0 增强版页面
  * 优化UI/UX，体现AI商业智能体的完整能力
  */
 export default function AgentEnhancedPage() {
+  return (
+    <WorkbenchProvider>
+      <AgentEnhancedContent />
+    </WorkbenchProvider>
+  );
+}
+
+function AgentEnhancedContent() {
   const router = useRouter();
   const { startPayment, currentPayment, cancelPayment } = usePayment();
   const { user } = useUser();
+  const { t } = useLocalization();
   const { mode: agentModeContext, setMode: setAgentModeContext } = useAgentMode();
-  const [viewMode, setViewMode] = useState<ViewMode>('chat');
+  const { viewMode, setViewMode, isChatExpanded, setIsChatExpanded } = useWorkbench();
   const [selectedProduct, setSelectedProduct] = useState<ProductInfo | null>(null);
   const [codePrompt, setCodePrompt] = useState<string>('');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -41,6 +73,10 @@ export default function AgentEnhancedPage() {
     amount?: number;
     currency?: string;
   } | null>(null);
+
+  const [userTab, setUserTab] = useState<'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile'>('payments');
+  const [merchantTab, setMerchantTab] = useState<'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings'>('products');
+  const [developerTab, setDeveloperTab] = useState<'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings'>('api');
   
   // 将AgentModeContext的mode映射到UnifiedAgentChat的AgentMode
   const mapModeToAgentMode = (mode: 'personal' | 'merchant' | 'developer'): AgentMode => {
@@ -50,6 +86,61 @@ export default function AgentEnhancedPage() {
   const agentMode = mapModeToAgentMode(agentModeContext);
   const [useUnifiedChat, setUseUnifiedChat] = useState(true); // 默认使用统一Agent对话
   
+  // 处理对话命令
+  const handleCommand = (command: string, data?: any) => {
+    // 处理直接的 switch_view 指令
+    if (command === 'switch_view' && data?.view) {
+      console.log('🔄 执行视图切换指令:', data.view);
+      setViewMode(data.view as ViewMode);
+      return { success: true, view: data.view };
+    }
+
+    // 处理 switch_tab 指令
+    if (command === 'switch_tab' && data?.module) {
+      console.log('🔄 执行标签切换指令:', data.module, data.tab);
+      const moduleToView: Record<string, ViewMode> = {
+        'user': 'user_module',
+        'merchant': 'merchant_module',
+        'developer': 'developer_module'
+      };
+      
+      const targetView = moduleToView[data.module];
+      if (targetView) {
+        setViewMode(targetView);
+        if (data.module === 'user') setUserTab(data.tab);
+        if (data.module === 'merchant') setMerchantTab(data.tab);
+        if (data.module === 'developer') setDeveloperTab(data.tab);
+      }
+      return { success: true };
+    }
+
+    const userRoles = {
+      isUser: true,
+      isMerchant: user?.roles?.includes('merchant' as any) || false,
+      isDeveloper: user?.roles?.includes('developer' as any) || false,
+    };
+    
+    const handler = new CommandHandler(userRoles, agentModeContext);
+    const result = handler.processCommand(command, data);
+    
+    if (result.view) {
+      // 映射 WorkspaceView 到 ViewMode
+      const viewMap: Record<string, ViewMode> = {
+        'user': 'wallet_management',
+        'merchant': 'merchant_orders',
+        'developer': 'sdk_generator',
+        'marketplace': 'marketplace',
+        'orders': 'order',
+        'chat': 'chat'
+      };
+      
+      const targetView = viewMap[result.view] || (result.view as ViewMode);
+      setViewMode(targetView);
+    }
+    
+    return result;
+  };
+
   // 同步agentMode到UnifiedAgentChat
   const setAgentMode = (mode: AgentMode) => {
     const contextMode = mode === 'user' ? 'personal' : mode;
@@ -115,7 +206,33 @@ export default function AgentEnhancedPage() {
       // 个人Agent能力
       case 'bill_assistant':
       case 'payment_assistant':
+      case 'payments':
+        handleCommand('switch_tab', { module: 'user', tab: 'payments' });
+        break;
       case 'wallet_management':
+      case 'wallets':
+        handleCommand('switch_tab', { module: 'user', tab: 'wallets' });
+        break;
+      case 'order':
+      case 'orders':
+        handleCommand('switch_tab', { module: 'user', tab: 'orders' });
+        break;
+      case 'policies':
+        handleCommand('switch_tab', { module: 'user', tab: 'policies' });
+        break;
+      case 'airdrops':
+        handleCommand('switch_tab', { module: 'user', tab: 'airdrops' });
+        break;
+      case 'autoEarn':
+      case 'auto_earn':
+        handleCommand('switch_tab', { module: 'user', tab: 'autoEarn' });
+        break;
+      case 'security':
+        handleCommand('switch_tab', { module: 'user', tab: 'security' });
+        break;
+      case 'profile':
+        handleCommand('switch_tab', { module: 'user', tab: 'profile' });
+        break;
       case 'risk_alert':
       case 'auto_purchase':
         // 这些功能在对话中处理，切换到对话模式
@@ -125,14 +242,6 @@ export default function AgentEnhancedPage() {
         break;
       case 'search':
       case 'shopping':
-        setViewMode('marketplace');
-        break;
-      case 'autoEarn':
-        setViewMode('autoEarn');
-        break;
-      case 'order':
-        setViewMode('orders');
-        break;
       case 'marketplace':
         setViewMode('marketplace');
         break;
@@ -142,51 +251,92 @@ export default function AgentEnhancedPage() {
         break;
       
       // 商家Agent能力
-      case 'payment_collection':
-      case 'order_analysis':
-      case 'risk_center':
+      case 'merchant_products':
+      case 'products':
+      case 'create_product':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'products' });
+        break;
+      case 'merchant_ecommerce':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'ecommerce' });
+        break;
+      case 'merchant_batch':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'batch_import' });
+        break;
+      case 'merchant_mpc':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'mpc_wallet' });
+        break;
+      case 'merchant_orders':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'orders' });
+        break;
+      case 'merchant_finance':
       case 'settlement':
+      case 'withdraw':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'settlement' });
+        break;
+      case 'merchant_off_ramp':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'off_ramp' });
+        break;
+      case 'merchant_integration':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'integration_guide' });
+        break;
+      case 'merchant_analytics':
+      case 'order_analysis':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'analytics' });
+        break;
+      case 'merchant_api':
+      case 'payment_collection':
+      case 'generate_payment_link':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'api_keys' });
+        break;
+      case 'merchant_webhooks':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'webhooks' });
+        break;
+      case 'merchant_audit':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'audit' });
+        break;
+      case 'merchant_settings':
+        handleCommand('switch_tab', { module: 'merchant', tab: 'settings' });
+        break;
+      case 'risk_center':
       case 'marketing_assistant':
       case 'compliance':
-      case 'products':
-        // 切换到对话模式，使用商户Agent
         setViewMode('chat');
-        setUseUnifiedChat(true);
-        setAgentModeContext('merchant');
-        break;
-      case 'create_product':
-        // 切换到对话模式，让Agent帮助创建商品
-        setViewMode('chat');
-        setUseUnifiedChat(true);
-        setAgentModeContext('merchant');
-        break;
-      case 'generate_payment_link':
-        // 切换到对话模式，让Agent帮助生成支付链接
-        setViewMode('chat');
-        setUseUnifiedChat(true);
-        setAgentModeContext('merchant');
-        break;
-      case 'withdraw':
-        // 切换到对话模式，让Agent帮助提现
-        setViewMode('chat');
-        setUseUnifiedChat(true);
         setAgentModeContext('merchant');
         break;
       
       // 开发者Agent能力
-      case 'sdk_generator':
+      case 'dev_api':
       case 'api_assistant':
-      case 'devops':
-      case 'contract_helper':
-      case 'logs':
-      case 'code':
-        setViewMode('code');
-        setUseUnifiedChat(true);
-        setAgentModeContext('developer');
+        handleCommand('switch_tab', { module: 'developer', tab: 'api' });
         break;
+      case 'dev_revenue':
+        handleCommand('switch_tab', { module: 'developer', tab: 'revenue' });
+        break;
+      case 'dev_agents':
+      case 'devops':
+        handleCommand('switch_tab', { module: 'developer', tab: 'agents' });
+        break;
+      case 'dev_code':
+      case 'code':
+      case 'sdk_generator':
+        handleCommand('switch_tab', { module: 'developer', tab: 'code' });
+        break;
+      case 'dev_webhooks':
+        handleCommand('switch_tab', { module: 'developer', tab: 'webhooks' });
+        break;
+      case 'dev_logs':
+      case 'logs':
+        handleCommand('switch_tab', { module: 'developer', tab: 'logs' });
+        break;
+      case 'dev_simulator':
       case 'sandbox':
-        setViewMode('sandbox');
-        setUseUnifiedChat(true);
+        handleCommand('switch_tab', { module: 'developer', tab: 'simulator' });
+        break;
+      case 'dev_settings':
+        handleCommand('switch_tab', { module: 'developer', tab: 'settings' });
+        break;
+      case 'contract_helper':
+        setViewMode('chat');
         setAgentModeContext('developer');
         break;
       
@@ -228,6 +378,95 @@ export default function AgentEnhancedPage() {
     }
   };
 
+  const renderWorkspace = () => {
+    switch (viewMode) {
+      case 'chat':
+        return (
+          <div className="h-full flex items-center justify-center p-12 text-center">
+            <div className="max-w-md">
+              <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20">
+                <Bot size={40} className="text-indigo-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-4">Agentrix Brain</h2>
+              <p className="text-slate-400 mb-8">
+                I am your AI business assistant. Use the chat on the right to command me, or select a capability from the sidebar to open a structured workspace.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setViewMode('marketplace')} className="p-3 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-sm text-slate-300 transition-all">
+                  Go Shopping
+                </button>
+                <button onClick={() => setViewMode('wallet_management')} className="p-3 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-sm text-slate-300 transition-all">
+                  Manage Wallet
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      case 'payment_assistant':
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="payments" /></div>;
+      case 'wallet':
+      case 'wallet_management': 
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="wallets" /></div>;
+      case 'autoEarn': 
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="autoEarn" /></div>;
+      case 'marketplace': return <div className="p-6"><MarketplaceView onProductClick={handleProductClick} /></div>;
+      case 'sdk_generator': return <div className="p-6"><DeveloperModule onCommand={handleCommand} initialTab="code" /></div>;
+      case 'user_module':
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab={userTab} /></div>;
+      case 'merchant_module':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab={merchantTab} /></div>;
+      case 'developer_module':
+        return <div className="p-6"><DeveloperModule onCommand={handleCommand} initialTab={developerTab} /></div>;
+      case 'cart': return <div className="p-6"><ShoppingCart items={cartItems} onUpdateQuantity={handleUpdateCartQuantity} onRemoveItem={handleRemoveCartItem} onCheckout={handleCartCheckout} /></div>;
+      case 'order': 
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="orders" /></div>;
+      case 'sandbox': return <div className="p-6"><Sandbox codeExample={selectedCodeExample} /></div>;
+      case 'policies': 
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="policies" /></div>;
+      case 'airdrops': 
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="airdrops" /></div>;
+      case 'security': return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="security" /></div>;
+      case 'profile': return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="profile" /></div>;
+      case 'merchant_products':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="products" /></div>;
+      case 'merchant_ecommerce':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="ecommerce" /></div>;
+      case 'merchant_batch':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="batch_import" /></div>;
+      case 'merchant_mpc':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="mpc_wallet" /></div>;
+      case 'merchant_orders': 
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="orders" /></div>;
+      case 'merchant_finance':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="settlement" /></div>;
+      case 'merchant_analytics': return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="analytics" /></div>;
+      case 'merchant_api':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="api_keys" /></div>;
+      case 'merchant_webhooks':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="webhooks" /></div>;
+      case 'merchant_audit':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="audit" /></div>;
+      case 'merchant_settings':
+        return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="settings" /></div>;
+      case 'api_assistant':
+        return <div className="p-6"><DeveloperModule onCommand={handleCommand} initialTab="api" /></div>;
+      case 'logs':
+        return <div className="p-6"><DeveloperModule onCommand={handleCommand} initialTab="logs" /></div>;
+      case 'devops':
+        return <div className="p-6"><DeveloperModule onCommand={handleCommand} initialTab="agents" /></div>;
+      default:
+        return (
+          <div className="p-6">
+            <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-8 text-center">
+              <Bot size={48} className="text-indigo-400 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2">{viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}</h3>
+              <p className="text-slate-400">This workspace is being initialized by your Agent.</p>
+            </div>
+          </div>
+        );
+    }
+  };
+
   return (
     <>
       <Head>
@@ -244,110 +483,57 @@ export default function AgentEnhancedPage() {
 
         {/* 主内容区 - 三栏布局 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 左侧功能面板 */}
-          <AgentSidebar onCapabilityClick={handleCapabilityClick} />
+          {/* 左侧功能面板 (Capabilities) */}
+          <AgentSidebar onCapabilityClick={handleCapabilityClick} activeMode={viewMode} />
 
-          {/* 中间主内容 */}
-          <div className="flex-1 overflow-hidden bg-[#0f1117] relative">
-            {viewMode === 'chat' && (
-              <div className="h-full flex flex-col">
-                {/* 顶部栏 */}
-                <div className="h-16 border-b border-slate-800/60 flex items-center justify-between px-6 bg-[#0f1117]/80 backdrop-blur-md sticky top-0 z-10">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-500 text-sm">工作台 /</span>
-                    <span className="text-slate-200 text-sm font-medium flex items-center gap-1">
-                      {agentModeContext === 'personal' ? '个人' : agentModeContext === 'merchant' ? '商家' : '开发者'} Agent 
-                      <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-1.5 py-0.5 rounded ml-2">v2.0</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button className="p-2 hover:bg-slate-800 rounded-full text-slate-400"><Search size={18}/></button>
-                    <button className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition-colors shadow-lg shadow-indigo-600/20">
-                      + 新建任务
-                    </button>
-                  </div>
-                </div>
-                
-                {/* 对话区域 */}
-                <div className="flex-1 overflow-hidden">
-                  <UnifiedAgentChat
-                    mode={agentMode}
-                    onModeChange={setAgentMode}
-                    standalone={false}
-                  />
-                </div>
+          {/* 中间主内容 (Structured Workspace) */}
+          <div className="flex-1 overflow-hidden bg-[#0f1117] relative border-r border-slate-800/40">
+            {/* 顶部面包屑/状态栏 */}
+            <div className="h-12 border-b border-slate-800/60 flex items-center justify-between px-6 bg-[#0f1117]/80 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">Workspace /</span>
+                <span className="text-slate-200 text-xs font-medium">
+                  {viewMode === 'chat' ? 'AI Dialogue' : 
+                   viewMode === 'wallet' ? 'Wallet Management' :
+                   viewMode === 'merchant_orders' ? 'Merchant Orders' :
+                   viewMode === 'merchant_products' ? 'Product Management' :
+                   viewMode === 'merchant_finance' ? 'Financial Settlement' :
+                   viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}
+                </span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                <span className="text-[9px] text-slate-400 font-mono uppercase tracking-tighter">Live Sync</span>
+              </div>
+            </div>
 
-            {viewMode === 'autoEarn' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <AutoEarnPanel />
-              </div>
-            )}
-
-            {viewMode === 'marketplace' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <MarketplaceView onProductClick={handleProductClick} />
-              </div>
-            )}
-
-            {viewMode === 'code' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <CodeGenerator prompt={codePrompt} />
-              </div>
-            )}
-
-            {viewMode === 'cart' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <ShoppingCart
-                  items={cartItems}
-                  onUpdateQuantity={handleUpdateCartQuantity}
-                  onRemoveItem={handleRemoveCartItem}
-                  onCheckout={handleCartCheckout}
-                />
-              </div>
-            )}
-
-            {viewMode === 'orders' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <OrderList
-                  onOrderClick={(order) => {
-                    window.location.href = `/app/user/transactions?orderId=${order.id}`;
-                  }}
-                />
-              </div>
-            )}
-
-            {viewMode === 'sandbox' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <Sandbox codeExample={selectedCodeExample} />
-              </div>
-            )}
-
-            {viewMode === 'settings' && (
-              <div className="h-full overflow-y-auto bg-[#0f1117] p-6">
-                <div className="max-w-4xl mx-auto">
-                  <h2 className="text-2xl font-bold text-white mb-6">设置</h2>
-                  <div className="space-y-6">
-                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-800">
-                      <h3 className="font-semibold text-white mb-2">Agent模式</h3>
-                      <p className="text-sm text-slate-400">
-                        当前模式: {user?.roles?.includes('merchant') ? '商户模式' : '用户模式'}
-                      </p>
-                    </div>
-                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-800">
-                      <h3 className="font-semibold text-white mb-2">KYC状态</h3>
-                      <p className="text-sm text-slate-400">
-                        {user?.kycLevel === 'verified' ? '✅ 已认证' : '⚠️ 未认证'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="h-[calc(100%-3rem)] overflow-y-auto custom-scrollbar">
+              {renderWorkspace()}
+            </div>
           </div>
 
-          <AgentInsightsPanel />
+          {/* 右侧：大脑 (The Brain - Dialogue) */}
+          <div className="w-[400px] flex flex-col bg-[#0f1117] border-l border-slate-800/40">
+            <div className="h-12 border-b border-slate-800/60 flex items-center justify-between px-4 bg-[#0f1117]/80 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-slate-200 uppercase tracking-widest">Agentrix Brain</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700 font-mono">
+                  {agentModeContext.toUpperCase()}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <UnifiedAgentChat
+                mode={agentMode}
+                onModeChange={setAgentMode}
+                onCommand={handleCommand}
+                standalone={false}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

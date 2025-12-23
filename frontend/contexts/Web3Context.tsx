@@ -37,15 +37,6 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     
     const restoreWallets = async () => {
       try {
-        // 检查是否有用户登录，如果没有用户，不恢复钱包连接
-        const savedUser = localStorage.getItem('agentrix_user')
-        if (!savedUser) {
-          // 没有用户登录，清除所有钱包连接
-          setConnectedWallets([])
-          setDefaultWallet(null)
-          return
-        }
-        
         // 静默恢复钱包连接，捕获所有错误（包括 MetaMask 未安装的情况）
         try {
           const restored = await walletService.restoreConnections()

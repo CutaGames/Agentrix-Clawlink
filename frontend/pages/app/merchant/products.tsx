@@ -8,6 +8,7 @@ import { productApi } from '../../../lib/api/product.api'
 import { convertToUnifiedProduct } from '../../../lib/utils/product-converter'
 import { useUser } from '../../../contexts/UserContext'
 import { useLocalization } from '../../../contexts/LocalizationContext'
+import { useToast } from '../../../contexts/ToastContext'
 
 interface ProductDisplay {
   id: string;
@@ -26,11 +27,13 @@ interface ProductDisplay {
 export default function MerchantProducts() {
   const { user } = useUser()
   const { t } = useLocalization()
+  const { success, error: showError } = useToast()
   const [products, setProducts] = useState<ProductDisplay[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   const [newProduct, setNewProduct] = useState({
     name: '',
@@ -46,6 +49,39 @@ export default function MerchantProducts() {
     image: '',
     tags: [] as string[],
   })
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/upload/image`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('Upload failed')
+      }
+
+      const data = await response.json()
+      setNewProduct({ ...newProduct, image: data.url })
+      success(t('common.success'))
+    } catch (error) {
+      console.error('Upload error:', error)
+      showError(t('common.error'))
+    } finally {
+      setIsUploading(false)
+    }
+  }
   
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [showPricingManager, setShowPricingManager] = useState(false)
@@ -68,14 +104,14 @@ export default function MerchantProducts() {
       const displayProducts: ProductDisplay[] = merchantProducts.map((product: any) => {
         // 价格提取：数据库存储的是数字，但可能为null或0
         let priceValue = 0;
-        if (typeof product.price === 'number' && product.price > 0) {
-          priceValue = product.price;
-        } else if (product.price && typeof product.price === 'object' && 'amount' in product.price) {
-          priceValue = product.price.amount || 0;
+        if (product.price && typeof product.price === 'object' && 'amount' in product.price) {
+          priceValue = Number(product.price.amount) || 0;
+        } else if (product.price !== undefined && product.price !== null) {
+          priceValue = Number(product.price) || 0;
         }
         
         // 调试日志：检查价格提取
-        if (priceValue === 0 && product.price !== undefined && product.price !== null) {
+        if (priceValue === 0 && product.price !== undefined && product.price !== null && Number(product.price) !== 0) {
           console.warn('⚠️ 商品价格提取为0:', {
             productId: product.id,
             productName: product.name,
@@ -566,8 +602,7 @@ export default function MerchantProducts() {
                     <option value="CNY">{t('merchantProducts.form.currencyOptions.cny')}</option>
                     <option value="USD">{t('merchantProducts.form.currencyOptions.usd')}</option>
                     <option value="USDT">{t('merchantProducts.form.currencyOptions.usdt')}</option>
-                    <option value="ETH">{t('merchantProducts.form.currencyOptions.eth')}</option>
-                  </select>
+                    <option value="ETH">{t('merchantProducts.form.currencyOptions.eth')}</option>                    <option value="ETH">{t('merchantProducts.form.currencyOptions.eth')}</option>                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -590,17 +625,58 @@ export default function MerchantProducts() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {t('merchantProducts.form.imageUrl')}
                   </label>
-                  <input
-                    type="url"
-                    value={newProduct.image}
-                    onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="https://example.com/image.jpg"
-                  />
+                  <div className="flex space-x-2">
+                    <input
+                      type="url"
+                      value={newProduct.image}
+                      onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://example.com/image.jpg"
+                    />
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        id="product-image-upload"
+                        disabled={isUploading}
+                      />
+                      <label
+                        htmlFor="product-image-upload"
+                        className={`px-4 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors flex items-center ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {isUploading ? (
+                          <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : (
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                          </svg>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                  {newProduct.image && (
+                    <div className="mt-2 relative w-20 h-20 border border-gray-200 rounded-lg overflow-hidden">
+                      <img src={newProduct.image} alt="Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setNewProduct({...newProduct, image: ''})}
+                        className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-bl-lg hover:bg-red-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    商品分类
+                    {t('merchantProducts.form.category')}
                   </label>
                   <input
                     type="text"
@@ -612,7 +688,7 @@ export default function MerchantProducts() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    产品类型
+                    {t('merchantProducts.form.productType')}
                   </label>
                   <select
                     value={newProduct.productType}
@@ -630,17 +706,17 @@ export default function MerchantProducts() {
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="physical">实体商品（佣金3%）</option>
-                    <option value="service">服务类（佣金5%）</option>
-                    <option value="nft">NFT（佣金2.5%）</option>
-                    <option value="ft">FT代币（佣金2.5%）</option>
-                    <option value="game_asset">游戏资产（佣金2.5%）</option>
-                    <option value="rwa">RWA（佣金2.5%）</option>
-                    <option value="plugin">插件（佣金5%）</option>
-                    <option value="subscription">订阅服务（佣金5%）</option>
+                    <option value="physical">{t('merchantProducts.form.productTypeOptions.physical')}</option>
+                    <option value="service">{t('merchantProducts.form.productTypeOptions.service')}</option>
+                    <option value="nft">{t('merchantProducts.form.productTypeOptions.nft')}</option>
+                    <option value="ft">{t('merchantProducts.form.productTypeOptions.ft')}</option>
+                    <option value="game_asset">{t('merchantProducts.form.productTypeOptions.gameAsset')}</option>
+                    <option value="rwa">{t('merchantProducts.form.productTypeOptions.rwa')}</option>
+                    <option value="plugin">{t('merchantProducts.form.productTypeOptions.plugin')}</option>
+                    <option value="subscription">{t('merchantProducts.form.productTypeOptions.subscription')}</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    固定佣金率：{newProduct.fixedCommissionRate}%（根据产品类型自动设置，符合统一数据标准）
+                    {t('merchantProducts.form.fixedCommissionRate', { rate: newProduct.fixedCommissionRate })}
                   </p>
                 </div>
                 <div>
@@ -728,7 +804,7 @@ export default function MerchantProducts() {
                       onClick={() => setShowPreview(false)}
                       className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
                     >
-                      返回编辑
+                      {t('merchantProducts.modal.backToEdit')}
                     </button>
                     <button
                       type="button"
@@ -741,7 +817,7 @@ export default function MerchantProducts() {
                       }}
                       className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                     >
-                      {editingProduct ? '确认修改' : '确认添加'}
+                      {editingProduct ? t('merchantProducts.modal.confirmEdit') : t('merchantProducts.modal.confirmAdd')}
                     </button>
                   </div>
                 </div>

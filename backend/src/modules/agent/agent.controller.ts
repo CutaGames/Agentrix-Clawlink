@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { AgentService } from './agent.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { CartService } from '../cart/cart.service';
 import { AgentTemplateService } from './agent-template.service';
@@ -29,6 +30,9 @@ import {
 import { AgentTemplateVisibility } from '../../entities/agent-template.entity';
 import { TemplateSubscriptionService } from './template-subscription.service';
 import { TemplateReviewService, CreateReviewDto } from './template-review.service';
+import { AgentRegistryService } from './agent-registry.service';
+import { AuthorizationService } from './authorization.service';
+import { AgentCheckoutService, AgentExecutePaymentDto } from './agent-checkout.service';
 
 @ApiTags('agent')
 @Controller('agent')
@@ -39,6 +43,9 @@ export class AgentController {
     private readonly templateSubscriptionService: TemplateSubscriptionService,
     private readonly templateReviewService: TemplateReviewService,
     private readonly cartService: CartService,
+    private readonly agentRegistryService: AgentRegistryService,
+    private readonly authorizationService: AuthorizationService,
+    private readonly agentCheckoutService: AgentCheckoutService,
   ) {}
 
   @Get('health')
@@ -50,8 +57,31 @@ export class AgentController {
       status: 'ok',
       timestamp: new Date().toISOString(),
       service: 'agent',
-      version: '3.0',
+      version: '1.0 (Agentrix Payment V1.0)',
     };
+  }
+
+  @Post('register')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '注册新Agent' })
+  async registerAgent(@Request() req: any, @Body() body: any) {
+    return this.agentRegistryService.registerAgent(req.user.id, body);
+  }
+
+  @Post('authorize')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '为Agent授权' })
+  async authorizeAgent(@Request() req: any, @Body() body: any) {
+    return this.authorizationService.createAuthorization(req.user.id, body);
+  }
+
+  @Post('execute-payment')
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({ summary: 'Agent执行支付 (Agent Checkout)' })
+  async executePayment(@Body() body: AgentExecutePaymentDto) {
+    return this.agentCheckoutService.executePayment(body);
   }
 
   @Post('chat')

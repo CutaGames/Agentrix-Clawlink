@@ -17,21 +17,24 @@ const sizeMap = {
 export function AgentrixLogo({ size = 'md', showText = true, className }: AgentrixLogoProps) {
   const dimension = sizeMap[size];
 
-  const baseClass = 'inline-flex items-center gap-2 text-slate-900';
-  const combinedClass = className ? `${baseClass} ${className}` : baseClass;
+  const baseClass = 'inline-flex items-center gap-3';
+  const combinedClass = className ? `${baseClass} ${className}` : `${baseClass} text-slate-900`;
 
   return (
     <div className={combinedClass}>
-      <Image
-        src="/brand/agentrix-logo.png"
-        alt="Agentrix"
-        width={dimension}
-        height={dimension}
-        className="text-slate-900"
-        priority={size === 'lg'}
-      />
+      <div className="relative group">
+        <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+        <Image
+          src="/brand/agentrix-logo.png"
+          alt="Agentrix"
+          width={dimension}
+          height={dimension}
+          className="relative rounded-full"
+          priority={size === 'lg'}
+        />
+      </div>
       {showText && (
-        <span className="font-extrabold tracking-[0.2em] text-xs uppercase text-slate-900">
+        <span className={`font-black tracking-[0.3em] text-sm uppercase ${className?.includes('text-gray') || className?.includes('text-slate-900') ? 'text-gray-900' : 'bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-slate-500'}`}>
           AGENTRIX
         </span>
       )}

@@ -26,13 +26,19 @@ const getApiBaseUrl = () => {
     }
     
     // 生产环境（agentrix.top 域名）
-    if (hostname.includes('agentrix.top') || hostname.includes('agentrix.io')) {
+    if (hostname.includes('agentrix.top')) {
       return 'https://api.agentrix.top/api';
+    }
+    
+    // 生产环境（agentrix.io 域名）
+    if (hostname.includes('agentrix.io')) {
+      return 'https://api.agentrix.io/api';
     }
   }
 
   // 服务端渲染或默认情况：根据 NODE_ENV 判断
   if (process.env.NODE_ENV === 'production') {
+    // 默认生产环境域名
     return 'https://api.agentrix.top/api';
   }
 
@@ -40,7 +46,7 @@ const getApiBaseUrl = () => {
   return 'http://localhost:3001/api';
 };
 
-const API_BASE_URL = getApiBaseUrl();
+export const API_BASE_URL = getApiBaseUrl();
 
 // 开发环境输出当前使用的 API baseURL
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
@@ -279,6 +285,13 @@ class ApiClient {
   async put<T>(endpoint: string, data?: any): Promise<T | null> {
     return this.request<T>(endpoint, {
       method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<T | null> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }

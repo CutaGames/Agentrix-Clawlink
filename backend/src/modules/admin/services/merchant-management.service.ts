@@ -32,7 +32,7 @@ export class MerchantManagementService {
     if (query.search) {
       where.$or = [
         { email: Like(`%${query.search}%`) },
-        { paymindId: Like(`%${query.search}%`) },
+        { agentrixId: Like(`%${query.search}%`) },
         { nickname: Like(`%${query.search}%`) },
       ];
     }
@@ -48,7 +48,7 @@ export class MerchantManagementService {
 
     if (query.search) {
       queryBuilder.andWhere(
-        '(user.email LIKE :search OR user.paymindId LIKE :search OR user.nickname LIKE :search)',
+        '(user.email LIKE :search OR user.agentrixId LIKE :search OR user.nickname LIKE :search)',
         { search: `%${query.search}%` },
       );
     }
@@ -83,7 +83,6 @@ export class MerchantManagementService {
 
         return {
           ...merchant,
-          agentrixId: merchant.paymindId,
           stats: {
             productCount,
             orderCount,

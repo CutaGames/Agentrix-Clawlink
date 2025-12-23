@@ -20,6 +20,14 @@ export enum ApiKeyStatus {
 }
 
 /**
+ * API Key 模式
+ */
+export enum ApiKeyMode {
+  SANDBOX = 'sandbox',
+  PRODUCTION = 'production',
+}
+
+/**
  * API Key 实体
  * 用于第三方应用（如 ChatGPT GPTs）访问 Agentrix API
  */
@@ -67,6 +75,16 @@ export class ApiKey {
     default: ApiKeyStatus.ACTIVE,
   })
   status: ApiKeyStatus;
+
+  /**
+   * 模式
+   */
+  @Column({
+    type: 'enum',
+    enum: ApiKeyMode,
+    default: ApiKeyMode.PRODUCTION,
+  })
+  mode: ApiKeyMode;
 
   /**
    * 过期时间（null 表示永不过期）

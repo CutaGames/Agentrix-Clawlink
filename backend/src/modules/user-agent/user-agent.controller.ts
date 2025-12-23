@@ -7,8 +7,10 @@ import { PaymentMemoryService } from './payment-memory.service';
 import { SubscriptionService } from './subscription.service';
 import { BudgetService } from './budget.service';
 import { TransactionClassificationService } from './transaction-classification.service';
+import { PolicyEngineService } from './policy-engine.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserAgent, UserAgentStatus } from '../../entities/user-agent.entity';
+import { PolicyType } from '../../entities/policy.entity';
 
 @ApiTags('user-agent')
 @Controller('user-agent')
@@ -23,6 +25,7 @@ export class UserAgentController {
     private readonly subscriptionService: SubscriptionService,
     private readonly budgetService: BudgetService,
     private readonly transactionClassificationService: TransactionClassificationService,
+    private readonly policyEngineService: PolicyEngineService,
   ) {}
 
   @Get('my-agents')
@@ -30,6 +33,23 @@ export class UserAgentController {
   @ApiResponse({ status: 200, description: '返回Agent列表' })
   async getMyAgents(@Request() req: any) {
     return this.userAgentService.getUserAgents(req.user?.id);
+  }
+
+  @Get('policies')
+  @ApiOperation({ summary: '获取用户策略列表' })
+  @ApiResponse({ status: 200, description: '返回策略列表' })
+  async getPolicies(@Request() req: any) {
+    return this.policyEngineService.getUserPolicies(req.user?.id);
+  }
+
+  @Post('policies')
+  @ApiOperation({ summary: '更新或创建策略' })
+  @ApiResponse({ status: 200, description: '策略已更新' })
+  async upsertPolicy(
+    @Request() req: any,
+    @Body() dto: { type: PolicyType; value: any; enabled?: boolean },
+  ) {
+    return this.policyEngineService.upsertPolicy(req.user?.id, dto.type, dto.value, dto.enabled);
   }
 
   // 具体路由必须在参数路由之前定义
@@ -69,6 +89,24 @@ export class UserAgentController {
   @ApiResponse({ status: 200, description: '返回预算列表' })
   async getBudgets(@Request() req: any) {
     return this.budgetService.getUserBudgets(req.user?.id);
+  }
+
+  @Post('budgets/check-alerts')
+  @ApiOperation({ summary: '手动触发预算警报检查' })
+  @ApiResponse({ status: 200, description: '检查完成' })
+  async checkBudgetAlerts(@Request() req: any) {
+    await this.budgetService.checkAndSendBudgetAlerts(req.user?.id);
+    return { success: true, message: 'Budget alerts checked' };
+  }
+
+  @Get('transactions/:paymentId/classify')
+  @ApiOperation({ summary: '分类特定交易' })
+  @ApiResponse({ status: 200, description: '返回分类结果' })
+  async classifyTransaction(
+    @Request() req: any,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.transactionClassificationService.classifyTransaction(paymentId);
   }
 
   @Get('transactions/category-statistics')
@@ -160,18 +198,18 @@ export class UserAgentController {
     );
   }
 
-  @Get('transactions/:paymentId/classify')
-  @ApiOperation({ summary: '分类交易' })
-  @ApiResponse({ status: 200, description: '返回分类结果' })
-  async classifyTransaction(@Param('paymentId') paymentId: string) {
-    return this.transactionClassificationService.classifyTransaction(paymentId);
-  }
-
   @Get(':agentId/stats')
   @ApiOperation({ summary: '获取Agent统计信息' })
   @ApiResponse({ status: 200, description: '返回统计信息' })
   async getStats(@Request() req: any, @Param('agentId') agentId: string) {
     return this.userAgentService.getAgentStats(req.user?.id, agentId);
+  }
+
+  @Get('transactions/classified')
+  @ApiOperation({ summary: '获取已分类的交易记录' })
+  @ApiResponse({ status: 200, description: '返回已分类的交易列表' })
+  async getClassifiedTransactions(@Request() req: any) {
+    return this.transactionClassificationService.getClassifiedTransactions(req.user?.id);
   }
 }
 

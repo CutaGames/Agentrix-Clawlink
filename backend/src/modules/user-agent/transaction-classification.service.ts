@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment } from '../../entities/payment.entity';
+import { GeminiIntegrationService } from '../ai-integration/gemini/gemini-integration.service';
 
 export interface TransactionCategory {
   id: string;
@@ -65,7 +66,47 @@ export class TransactionClassificationService {
   constructor(
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    private geminiService: GeminiIntegrationService,
   ) {}
+
+  /**
+   * 使用 AI 分类交易
+   */
+  async classifyWithAI(payment: Payment): Promise<Partial<ClassifiedTransaction>> {
+    try {
+      const prompt = `
+        请根据以下交易信息，将其分类。
+        交易描述: ${payment.description || '无'}
+        金额: ${payment.amount} ${payment.currency}
+        商户ID: ${payment.merchantId || '未知'}
+        元数据: ${JSON.stringify(payment.metadata || {})}
+
+        请返回 JSON 格式，包含 category (分类) 和 subcategory (子分类)。
+        可选分类: 购物, 服务, 数字资产, 订阅, 餐饮, 交通, 娱乐, 医疗, 教育, 其他。
+      `;
+
+      const response = await this.geminiService.chatWithFunctions([
+        { role: 'user', content: prompt }
+      ]);
+      
+      const text = response.text;
+      
+      // 简单解析 JSON (实际应更健壮)
+      const jsonMatch = text.match(/\{.*\}/s);
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[0]);
+        return {
+          category: data.category || '其他',
+          subcategory: data.subcategory,
+          confidence: 0.9,
+          method: 'ml',
+        };
+      }
+    } catch (error) {
+      this.logger.warn(`AI 分类失败: ${error.message}`);
+    }
+    return { category: '其他', confidence: 0.5, method: 'ml' };
+  }
 
   /**
    * 分类交易
@@ -141,7 +182,19 @@ export class TransactionClassificationService {
       }
     }
 
-    // 如果没有匹配，返回默认分类
+    // 如果没有匹配，尝试使用 AI 分类
+    const aiResult = await this.classifyWithAI(payment);
+    if (aiResult.category && aiResult.category !== '其他') {
+      return {
+        paymentId,
+        category: aiResult.category,
+        subcategory: aiResult.subcategory,
+        confidence: aiResult.confidence || 0.9,
+        method: 'ml',
+      };
+    }
+
+    // 如果 AI 也没有好的结果，返回默认分类
     return {
       paymentId,
       category: '其他',
@@ -183,6 +236,28 @@ export class TransactionClassificationService {
     }
 
     return statistics;
+  }
+
+  /**
+   * 获取用户的所有已分类交易
+   */
+  async getClassifiedTransactions(userId: string): Promise<any[]> {
+    const payments = await this.paymentRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
+
+    const results = [];
+    for (const payment of payments) {
+      const classification = await this.classifyTransaction(payment.id);
+      results.push({
+        ...payment,
+        classification,
+      });
+    }
+
+    return results;
   }
 }
 

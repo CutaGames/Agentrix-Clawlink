@@ -10,18 +10,21 @@ import { User } from './user.entity';
 import { Product } from './product.entity';
 
 export enum OrderStatus {
-  PENDING = 'pending',
+  CREATED = 'created',
   PAID = 'paid',
+  FULFILLED = 'fulfilled',
+  CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
+  // 兼容旧状态
+  PENDING = 'pending',
   PROCESSING = 'processing',
-  PENDING_SHIPMENT = 'pending_shipment', // backward compatibility
-  SHIPPED = 'shipped', // backward compatibility
+  PENDING_SHIPMENT = 'pending_shipment',
+  SHIPPED = 'shipped',
   DELIVERED = 'delivered',
   SETTLED = 'settled',
   FROZEN = 'frozen',
-  REFUNDED = 'refunded',
-  CANCELLED = 'cancelled',
-  DISPUTED = 'disputed', // legacy alias, mapped to FROZEN in services
-  COMPLETED = 'completed', // legacy alias, mapped to SETTLED
+  DISPUTED = 'disputed',
+  COMPLETED = 'completed',
 }
 
 export enum AssetType {

@@ -2,45 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import * as crypto from 'crypto';
-
-export interface WebhookConfig {
-  id: string;
-  userId: string;
-  url: string;
-  events: string[];
-  secret: string;
-  active: boolean;
-  retryCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface WebhookEvent {
-  id: string;
-  configId: string;
-  eventType: string;
-  payload: any;
-  status: 'pending' | 'delivered' | 'failed';
-  attempts: number;
-  lastAttemptAt?: Date;
-  deliveredAt?: Date;
-  error?: string;
-  createdAt: Date;
-}
+import { WebhookConfig } from '../../entities/webhook-config.entity';
+import { WebhookEvent } from '../../entities/webhook-event.entity';
 
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
-  private webhookConfigs: Map<string, WebhookConfig> = new Map();
-  private webhookEvents: Map<string, WebhookEvent> = new Map();
 
   constructor(
+    @InjectRepository(WebhookConfig)
+    private webhookConfigRepository: Repository<WebhookConfig>,
+    @InjectRepository(WebhookEvent)
+    private webhookEventRepository: Repository<WebhookEvent>,
     private configService: ConfigService,
-  ) {
-    // 初始化时加载配置
-    this.loadWebhookConfigs();
-  }
+    private readonly httpService: HttpService,
+  ) {}
 
   /**
    * 创建Webhook配置
@@ -51,31 +30,28 @@ export class WebhookService {
     events: string[];
   }): Promise<WebhookConfig> {
     const secret = crypto.randomBytes(32).toString('hex');
-    const config: WebhookConfig = {
-      id: `webhook_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
+    const config = this.webhookConfigRepository.create({
       userId: params.userId,
       url: params.url,
       events: params.events,
       secret,
       active: true,
       retryCount: 3,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    });
 
-    this.webhookConfigs.set(config.id, config);
-    this.logger.log(`创建Webhook配置: ${config.id} for user ${params.userId}`);
+    const savedConfig = await this.webhookConfigRepository.save(config);
+    this.logger.log(`创建Webhook配置: ${savedConfig.id} for user ${params.userId}`);
 
-    return config;
+    return savedConfig;
   }
 
   /**
    * 获取用户的Webhook配置列表
    */
   async getWebhookConfigs(userId: string): Promise<WebhookConfig[]> {
-    return Array.from(this.webhookConfigs.values()).filter(
-      config => config.userId === userId,
-    );
+    return this.webhookConfigRepository.find({
+      where: { userId },
+    });
   }
 
   /**
@@ -85,22 +61,20 @@ export class WebhookService {
     configId: string,
     updates: Partial<WebhookConfig>,
   ): Promise<WebhookConfig> {
-    const config = this.webhookConfigs.get(configId);
+    const config = await this.webhookConfigRepository.findOne({ where: { id: configId } });
     if (!config) {
       throw new Error('Webhook配置不存在');
     }
 
-    Object.assign(config, updates, { updatedAt: new Date() });
-    this.webhookConfigs.set(configId, config);
-
-    return config;
+    Object.assign(config, updates);
+    return this.webhookConfigRepository.save(config);
   }
 
   /**
    * 删除Webhook配置
    */
   async deleteWebhookConfig(configId: string): Promise<void> {
-    this.webhookConfigs.delete(configId);
+    await this.webhookConfigRepository.delete(configId);
     this.logger.log(`删除Webhook配置: ${configId}`);
   }
 
@@ -108,37 +82,36 @@ export class WebhookService {
    * 发送Webhook事件
    */
   async sendWebhookEvent(
-    configId: string,
+    userId: string,
     eventType: string,
     payload: any,
   ): Promise<void> {
-    const config = this.webhookConfigs.get(configId);
-    if (!config || !config.active) {
-      return;
-    }
-
-    // 检查事件类型是否在配置中
-    if (!config.events.includes(eventType) && !config.events.includes('*')) {
-      return;
-    }
-
-    // 创建Webhook事件记录
-    const event: WebhookEvent = {
-      id: `event_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
-      configId,
-      eventType,
-      payload,
-      status: 'pending',
-      attempts: 0,
-      createdAt: new Date(),
-    };
-
-    this.webhookEvents.set(event.id, event);
-
-    // 发送Webhook（异步）
-    this.deliverWebhook(event, config).catch(error => {
-      this.logger.error(`Webhook发送失败: ${error.message}`);
+    const configs = await this.webhookConfigRepository.find({
+      where: { userId, active: true },
     });
+
+    for (const config of configs) {
+      // 检查事件类型是否在配置中
+      if (!config.events.includes(eventType) && !config.events.includes('*')) {
+        continue;
+      }
+
+      // 创建Webhook事件记录
+      const event = this.webhookEventRepository.create({
+        configId: config.id,
+        eventType,
+        payload,
+        status: 'pending',
+        attempts: 0,
+      });
+
+      const savedEvent = await this.webhookEventRepository.save(event);
+
+      // 发送Webhook（异步）
+      this.deliverWebhook(savedEvent, config).catch(error => {
+        this.logger.error(`Webhook发送失败: ${error.message}`);
+      });
+    }
   }
 
   /**
@@ -157,23 +130,24 @@ export class WebhookService {
         const signature = this.generateSignature(JSON.stringify(event.payload), config.secret);
 
         // 发送HTTP请求
-        const response = await fetch(config.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-PayMind-Event': event.eventType,
-            'X-PayMind-Signature': signature,
-            'X-PayMind-Event-Id': event.id,
-          },
-          body: JSON.stringify(event.payload),
-        });
+        const response = await firstValueFrom(
+          this.httpService.post(config.url, event.payload, {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Agentrix-Event': event.eventType,
+              'X-Agentrix-Signature': signature,
+              'X-Agentrix-Event-Id': event.id,
+            },
+            timeout: 10000, // 10秒超时
+          })
+        );
 
-        if (response.ok) {
+        if (response.status >= 200 && response.status < 300) {
           // 成功
           event.status = 'delivered';
           event.deliveredAt = new Date();
           event.attempts = attempt + 1;
-          this.webhookEvents.set(event.id, event);
+          await this.webhookEventRepository.save(event);
           this.logger.log(`Webhook投递成功: ${event.id}`);
           return;
         } else {
@@ -191,7 +165,7 @@ export class WebhookService {
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           event.status = 'failed';
-          this.webhookEvents.set(event.id, event);
+          await this.webhookEventRepository.save(event);
           this.logger.error(`Webhook投递失败: ${event.id}, 错误: ${error.message}`);
         }
       }
@@ -213,10 +187,14 @@ export class WebhookService {
    */
   verifySignature(payload: string, signature: string, secret: string): boolean {
     const expectedSignature = this.generateSignature(payload, secret);
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature),
-    );
+    try {
+      return crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expectedSignature),
+      );
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
@@ -226,19 +204,11 @@ export class WebhookService {
     configId: string,
     limit: number = 50,
   ): Promise<WebhookEvent[]> {
-    return Array.from(this.webhookEvents.values())
-      .filter(event => event.configId === configId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(0, limit);
-  }
-
-  /**
-   * 加载Webhook配置
-   */
-  private loadWebhookConfigs(): void {
-    // 这里应该从数据库加载
-    // 暂时使用内存存储
-    this.logger.log('Webhook配置已加载');
+    return this.webhookEventRepository.find({
+      where: { configId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
   }
 }
 

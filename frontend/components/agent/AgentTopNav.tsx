@@ -2,6 +2,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { Home, ArrowLeft } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
+import { useLocalization } from '../../contexts/LocalizationContext';
 
 interface AgentTopNavProps {
   // 简化顶部导航，只保留Logo和Agent Builder
@@ -10,6 +11,7 @@ interface AgentTopNavProps {
 export function AgentTopNav({}: AgentTopNavProps) {
   const router = useRouter();
   const { user, isAuthenticated } = useUser();
+  const { t } = useLocalization();
 
   return (
     <div className="bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
@@ -21,10 +23,10 @@ export function AgentTopNav({}: AgentTopNavProps) {
             <Link
               href="/"
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              title="返回主页"
+              title={t({ zh: '返回主页', en: 'Back to Home' })}
             >
               <ArrowLeft size={16} />
-              <span>返回主页</span>
+              <span>{t({ zh: '返回主页', en: 'Back to Home' })}</span>
             </Link>
             
             <div className="h-6 w-px bg-gray-300" />
@@ -35,7 +37,7 @@ export function AgentTopNav({}: AgentTopNavProps) {
               </div>
               <div>
                 <h1 className="text-lg font-bold text-gray-900">Agentrix Agent</h1>
-                <p className="text-xs text-gray-500">AI 商业智能体工作台</p>
+                <p className="text-xs text-gray-500">{t({ zh: 'AI 商业智能体工作台', en: 'AI Business Agent Workbench' })}</p>
               </div>
             </div>
           </div>
@@ -52,10 +54,10 @@ export function AgentTopNav({}: AgentTopNavProps) {
                 </div>
                 <div className="text-xs">
                   <div className="text-gray-900 font-medium">
-                    {user.agentrixId || user.email || '用户'}
+                    {user.agentrixId || user.email || t({ zh: '用户', en: 'User' })}
                   </div>
                   <div className="text-gray-500">
-                    {user.role === 'merchant' ? '商家' : user.role === 'agent' ? 'Agent' : '个人'}
+                    {user.role === 'merchant' ? t({ zh: '商家', en: 'Merchant' }) : user.role === 'agent' ? 'Agent' : t({ zh: '个人', en: 'Personal' })}
                   </div>
                 </div>
               </div>

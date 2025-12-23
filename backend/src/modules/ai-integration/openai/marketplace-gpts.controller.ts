@@ -9,9 +9,12 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
+import { ApiKeyGuard } from '../../api-key/guards/api-key.guard';
 import { SearchService } from '../../search/search.service';
 import { ProductService } from '../../product/product.service';
 import { OrderService } from '../../order/order.service';
@@ -28,6 +31,7 @@ import { OrderStatus } from '../../../entities/order.entity';
 @ApiTags('Marketplace (GPTs)')
 @Controller('marketplace')
 @Public() // 允许 GPTs 访问，但需要通过 API Key 认证
+@UseGuards(ApiKeyGuard)
 export class MarketplaceGPTsController {
   private readonly logger = new Logger(MarketplaceGPTsController.name);
 
@@ -59,6 +63,7 @@ export class MarketplaceGPTsController {
   @ApiResponse({ status: 400, description: 'Bad Request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async searchProducts(
+    @Request() req: any,
     @Query('query') query: string,
     @Query('category') category?: string,
     @Query('priceMin') priceMin?: number,
@@ -66,7 +71,6 @@ export class MarketplaceGPTsController {
     @Query('currency') currency?: string,
     @Query('inStock') inStock?: boolean,
     @Query('limit') limit?: number,
-    @Headers('x-api-key') apiKey?: string,
   ) {
     try {
       // 验证必需参数
@@ -81,8 +85,8 @@ export class MarketplaceGPTsController {
         );
       }
 
-      // 通过 API Key 识别用户（如果提供）
-      const userId = await this.getUserIdFromApiKey(apiKey);
+      // 通过 API Key 识别用户
+      const userId = req.user.id;
       
       // 构建搜索过滤器
       const filters: Record<string, any> = {
@@ -170,7 +174,7 @@ export class MarketplaceGPTsController {
   @ApiResponse({ status: 404, description: 'Product not found' })
   async getProduct(
     @Param('id') id: string,
-    @Headers('x-api-key') apiKey?: string,
+    @Request() req: any,
   ) {
     try {
       const product = await this.productService.getProduct(id);
@@ -242,11 +246,11 @@ export class MarketplaceGPTsController {
       walletAddress?: string;
       chain?: string;
     },
-    @Headers('x-api-key') apiKey?: string,
+    @Request() req: any,
   ) {
     try {
       // 通过 API Key 识别用户
-      const userId = await this.getUserIdFromApiKey(apiKey);
+      const userId = req.user.id;
       if (!userId) {
         throw new HttpException(
           {
@@ -351,11 +355,11 @@ export class MarketplaceGPTsController {
       orderId: string;
       method?: string;
     },
-    @Headers('x-api-key') apiKey?: string,
+    @Request() req: any,
   ) {
     try {
       // 通过 API Key 识别用户
-      const userId = await this.getUserIdFromApiKey(apiKey);
+      const userId = req.user.id;
       if (!userId) {
         throw new HttpException(
           {
@@ -450,33 +454,6 @@ export class MarketplaceGPTsController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  /**
-   * 辅助方法：通过 API Key 获取用户 ID
-   * 
-   * TODO: 实现真正的 API Key 认证机制
-   * 当前实现：临时方案，使用 API Key 作为 User ID（仅用于测试）
-   * 生产环境需要：
-   * 1. 创建 API Key 表
-   * 2. 实现 API Key 到 User ID 的映射
-   * 3. 支持 API Key 的创建、撤销、过期等
-   */
-  private async getUserIdFromApiKey(apiKey?: string): Promise<string | null> {
-    if (!apiKey) {
-      return null;
-    }
-    
-    // TODO: 实现真正的 API Key 认证
-    // 临时方案：如果 API Key 格式是 "user-{userId}"，则提取 User ID
-    // 否则使用 API Key 作为 User ID（仅用于测试）
-    if (apiKey.startsWith('user-')) {
-      return apiKey.replace('user-', '');
-    }
-    
-    // 临时方案：直接使用 API Key 作为 User ID（不推荐，仅用于测试）
-    this.logger.warn('使用临时 API Key 认证方案，生产环境需要实现真正的认证机制');
-    return apiKey;
   }
 
   /**

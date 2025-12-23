@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Payment, PaymentStatus } from '../../entities/payment.entity';
 import { Budget, BudgetPeriod, BudgetStatus } from '../../entities/budget.entity';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../entities/notification.entity';
 
 export type BudgetDto = Omit<Budget, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -15,6 +17,7 @@ export class BudgetService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Budget)
     private budgetRepository: Repository<Budget>,
+    private notificationService: NotificationService,
   ) {}
 
   /**
@@ -58,7 +61,14 @@ export class BudgetService {
       status: spent >= amount ? BudgetStatus.EXCEEDED : BudgetStatus.ACTIVE,
     });
 
-    return await this.budgetRepository.save(budget);
+    const savedBudget = await this.budgetRepository.save(budget);
+    
+    // 异步检查警报
+    this.checkAndSendBudgetAlerts(userId).catch(err => 
+      this.logger.error(`Failed to check budget alerts: ${err.message}`)
+    );
+
+    return savedBudget;
   }
 
   /**
@@ -92,6 +102,19 @@ export class BudgetService {
   }
 
   /**
+   * 获取今日已花费金额
+   */
+  async getDailySpent(userId: string, currency: string): Promise<number> {
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    return this.calculateSpent(userId, currency, startDate, endDate);
+  }
+
+  /**
    * 获取用户预算列表
    */
   async getUserBudgets(userId: string): Promise<Budget[]> {
@@ -121,6 +144,39 @@ export class BudgetService {
       exceeded: exceededBudgets.length > 0,
       budgets: exceededBudgets,
     };
+  }
+
+  /**
+   * 检查并发送预算警报
+   */
+  async checkAndSendBudgetAlerts(userId: string): Promise<void> {
+    const budgets = await this.getUserBudgets(userId);
+    
+    for (const budget of budgets) {
+      const usagePercent = (budget.spent / budget.amount) * 100;
+      
+      if (usagePercent >= 100 && budget.status !== BudgetStatus.EXCEEDED) {
+        // 更新状态
+        budget.status = BudgetStatus.EXCEEDED;
+        await this.budgetRepository.save(budget);
+
+        // 发送通知
+        await this.notificationService.createNotification(userId, {
+          type: NotificationType.SYSTEM,
+          title: '预算超支警报',
+          message: `您的 ${budget.category || '总'} 预算 (${budget.amount} ${budget.currency}) 已超支！当前已花费 ${budget.spent} ${budget.currency}。`,
+          actionUrl: '/app/user/budgets',
+        });
+      } else if (usagePercent >= 80 && usagePercent < 100) {
+        // 发送预警通知（如果还没发过，这里简单处理为每次检查都发，实际可加标记）
+        await this.notificationService.createNotification(userId, {
+          type: NotificationType.SYSTEM,
+          title: '预算接近限额',
+          message: `您的 ${budget.category || '总'} 预算 (${budget.amount} ${budget.currency}) 已使用 ${usagePercent.toFixed(1)}%。请注意您的支出。`,
+          actionUrl: '/app/user/budgets',
+        });
+      }
+    }
   }
 }
 

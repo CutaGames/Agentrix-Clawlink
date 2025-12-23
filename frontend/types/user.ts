@@ -1,4 +1,4 @@
-export type UserRole = 'user' | 'merchant' | 'agent'
+export type UserRole = 'user' | 'merchant' | 'agent' | 'developer'
 
 export type KYCLevel = 'none' | 'basic' | 'verified'
 

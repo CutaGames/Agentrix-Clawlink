@@ -1,6 +1,30 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useLocalization } from '../../../contexts/LocalizationContext'
+import { useUser } from '../../../contexts/UserContext'
 import { userAgentApi } from '../../../lib/api/user-agent.api'
+import { statisticsApi } from '../../../lib/api/statistics.api'
+import { apiKeyApi, type ApiKey } from '../../../lib/api/api-key.api'
+import { webhookApi, type WebhookConfig } from '../../../lib/api/webhook.api'
+import type { TrendPoint } from '../../../lib/api/statistics.api'
+import { 
+  Plus, 
+  Search, 
+  Activity, 
+  Zap, 
+  Settings, 
+  Key, 
+  Webhook, 
+  Terminal, 
+  ShieldCheck,
+  Trash2,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  CreditCard,
+  Globe
+} from 'lucide-react'
 
 // 定义UserAgent类型（与后端实体对应）
 type UserAgent = {
@@ -20,20 +44,43 @@ type UserAgent = {
     [key: string]: any
   }
 }
-import { statisticsApi } from '../../../lib/api/statistics.api'
-import type { TrendPoint } from '../../../lib/api/statistics.api'
 
 interface DeveloperModuleProps {
   onCommand?: (command: string, data?: any) => any
+  initialTab?: 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings'
 }
 
 /**
  * 开发者功能模块
  * 集成API统计、收益查看、Agent管理等功能
  */
-export function DeveloperModule({ onCommand }: DeveloperModuleProps) {
+export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps) {
   const { t } = useLocalization()
-  const [activeTab, setActiveTab] = useState<'api' | 'revenue' | 'agents' | 'code'>('api')
+  const { user, registerRole } = useUser()
+  const isDeveloper = user?.roles?.includes('developer' as any)
+  const [activeTab, setActiveTab] = useState<'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings'>(initialTab || 'api')
+
+  // 注册状态
+  const [registering, setRegistering] = useState(false)
+  const handleRegister = async () => {
+    setRegistering(true)
+    try {
+      await registerRole('developer' as any)
+      alert(t({ zh: '开发者权限已开通！', en: 'Developer access enabled!' }))
+    } catch (error) {
+      console.error('注册失败:', error)
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  // 当 initialTab 改变时更新 activeTab
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab)
+    }
+  }, [initialTab])
+
   const [apiStats, setApiStats] = useState<any>(null)
   const [revenue, setRevenue] = useState<any>(null)
   const [agents, setAgents] = useState<any[]>([])
@@ -52,6 +99,34 @@ export function DeveloperModule({ onCommand }: DeveloperModuleProps) {
   const [selectedAgent, setSelectedAgent] = useState<UserAgent | null>(null)
   const [selectedAgentStats, setSelectedAgentStats] = useState<any>(null)
   const [agentStatsLoading, setAgentStatsLoading] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const [webhooks, setWebhooks] = useState<WebhookConfig[]>([])
+
+  const loadApiKeys = useCallback(async () => {
+    try {
+      const data = await apiKeyApi.list()
+      setApiKeys(data || [])
+    } catch (error) {
+      console.error('加载 API 密钥失败:', error)
+    }
+  }, [])
+
+  const loadWebhooks = useCallback(async () => {
+    try {
+      const data = await webhookApi.getWebhooks()
+      setWebhooks(data || [])
+    } catch (error) {
+      console.error('加载 Webhook 失败:', error)
+    }
+  }, [])
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
 
   const loadApiStats = useCallback(async () => {
     setLoading(true)
@@ -236,6 +311,10 @@ export function DeveloperModule({ onCommand }: DeveloperModuleProps) {
       loadRevenueTrend(revenueRange)
     } else if (activeTab === 'agents') {
       loadAgents()
+    } else if (activeTab === 'settings') {
+      loadApiKeys()
+    } else if (activeTab === 'webhooks') {
+      loadWebhooks()
     }
   }, [
     activeTab,
@@ -247,23 +326,52 @@ export function DeveloperModule({ onCommand }: DeveloperModuleProps) {
     loadAgents,
     loadApiTrend,
     loadRevenueTrend,
+    loadApiKeys,
+    loadWebhooks,
   ])
+
+  if (!isDeveloper) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-slate-950 p-6">
+        <div className="max-w-md w-full bg-slate-900 border border-white/10 rounded-2xl p-8 space-y-6 text-center">
+          <div className="w-16 h-16 bg-indigo-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Terminal className="w-8 h-8 text-indigo-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-white">{t({ zh: '开通开发者权限', en: 'Enable Developer Access' })}</h2>
+          <p className="text-slate-400">
+            {t({ zh: '开通后即可访问 API、SDK、Webhooks 以及 Agent 编排工具。', en: 'Access API, SDK, Webhooks and Agent orchestration tools after enabling.' })}
+          </p>
+          <button
+            onClick={handleRegister}
+            disabled={registering}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
+          >
+            {registering ? t({ zh: '开通中...', en: 'Enabling...' }) : t({ zh: '立即开通', en: 'Enable Now' })}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-950">
       {/* 标签页 */}
-      <div className="border-b border-white/10 bg-slate-900/50 px-6">
-        <div className="flex space-x-1">
+      <div className="border-b border-white/10 bg-slate-900/50 px-6 overflow-x-auto">
+        <div className="flex space-x-1 min-w-max">
           {[
-            { key: 'api' as const, label: { zh: 'API统计', en: 'API Statistics' } },
-            { key: 'revenue' as const, label: { zh: '收益查看', en: 'Revenue View' } },
-            { key: 'agents' as const, label: { zh: 'Agent管理', en: 'Agent Management' } },
-            { key: 'code' as const, label: { zh: '代码生成', en: 'Code Generation' } },
+            { key: 'api' as const, label: { zh: 'API统计', en: 'API Stats' } },
+            { key: 'revenue' as const, label: { zh: '收益查看', en: 'Revenue' } },
+            { key: 'agents' as const, label: { zh: 'Agent管理', en: 'Agents' } },
+            { key: 'code' as const, label: { zh: '代码生成', en: 'Code' } },
+            { key: 'webhooks' as const, label: { zh: 'Webhooks', en: 'Webhooks' } },
+            { key: 'logs' as const, label: { zh: '调用日志', en: 'Logs' } },
+            { key: 'simulator' as const, label: { zh: '沙盒模拟', en: 'Simulator' } },
+            { key: 'settings' as const, label: { zh: '开发者设置', en: 'Settings' } },
           ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
+              className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-b-2 border-blue-500 text-blue-400'
                   : 'text-slate-400 hover:text-slate-300'
@@ -518,12 +626,305 @@ export function DeveloperModule({ onCommand }: DeveloperModuleProps) {
                   en: 'Enter code generation requirements in the conversation, Agent will automatically generate corresponding code snippets',
                 })}
               </p>
-              <button
-                onClick={() => onCommand?.('generate_code', { type: 'payment' })}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <button
+                  onClick={() => onCommand?.('generate_code', { type: 'payment' })}
+                  className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl hover:border-blue-500/50 transition-colors group"
+                >
+                  <div className="text-left">
+                    <p className="font-medium text-white group-hover:text-blue-400 transition-colors">{t({ zh: '支付集成代码', en: 'Payment Integration' })}</p>
+                    <p className="text-xs text-slate-400">{t({ zh: '生成 React/Vue 支付组件', en: 'Generate React/Vue components' })}</p>
+                  </div>
+                  <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center text-blue-400">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                </button>
+                <button
+                  onClick={() => onCommand?.('generate_code', { type: 'webhook' })}
+                  className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl hover:border-blue-500/50 transition-colors group"
+                >
+                  <div className="text-left">
+                    <p className="font-medium text-white group-hover:text-blue-400 transition-colors">{t({ zh: 'Webhook 处理程序', en: 'Webhook Handler' })}</p>
+                    <p className="text-xs text-slate-400">{t({ zh: '生成 Node.js/Python 回调处理', en: 'Generate Node.js/Python handlers' })}</p>
+                  </div>
+                  <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center text-purple-400">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                </button>
+              </div>
+              <div className="bg-black/40 rounded-xl p-4 border border-white/5 font-mono text-xs text-blue-300 overflow-x-auto">
+                <pre>{`// Example: Initialize Agentrix SDK
+import { Agentrix } from '@agentrix/sdk';
+
+const agentrix = new Agentrix({
+  apiKey: 'your_api_key_here'
+});
+
+// Create a payment session
+const session = await agentrix.payments.create({
+  amount: 100,
+  currency: 'USDT',
+  orderId: 'order_123'
+});`}</pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'webhooks' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: 'Webhook 配置', en: 'Webhook Config' })}</h3>
+                <p className="text-xs text-slate-400">
+                  {t({ zh: '配置事件通知回调地址', en: 'Configure event notification callback URLs' })}
+                </p>
+              </div>
+              <button 
+                onClick={async () => {
+                  const url = prompt(t({ zh: '请输入 Webhook URL', en: 'Enter Webhook URL' }))
+                  if (url) {
+                    try {
+                      await webhookApi.create({ url, events: ['payment.success', 'payment.failed'] })
+                      loadWebhooks()
+                    } catch (error) {
+                      console.error('创建 Webhook 失败:', error)
+                    }
+                  }
+                }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
               >
-                {t({ zh: '生成支付代码', en: 'Generate Payment Code' })}
+                {t({ zh: '添加 Webhook', en: 'Add Webhook' })}
               </button>
+            </div>
+            {webhooks.length === 0 ? (
+              <div className="bg-white/5 border border-white/10 rounded-lg p-6 text-center text-slate-400">
+                {t({ zh: '暂无 Webhook 配置', en: 'No Webhook configurations' })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {webhooks.map((hook) => (
+                  <div key={hook.id} className="bg-white/5 border border-white/10 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">{hook.url}</p>
+                      <p className="text-xs text-slate-400">{hook.events.join(', ')}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] ${hook.active ? 'bg-green-500/20 text-green-400' : 'bg-slate-500/20 text-slate-400'}`}>
+                        {hook.active ? 'Active' : 'Inactive'}
+                      </span>
+                      <button 
+                        onClick={async () => {
+                          if (confirm(t({ zh: '确定删除吗？', en: 'Are you sure?' }))) {
+                            try {
+                              await webhookApi.delete(hook.id)
+                              loadWebhooks()
+                            } catch (error) {
+                              console.error('删除 Webhook 失败:', error)
+                            }
+                          }
+                        }}
+                        className="text-slate-400 hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'logs' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '运行日志', en: 'Runtime Logs' })}</h3>
+                <p className="text-xs text-slate-400">
+                  {t({ zh: '查看 API 调用与 Agent 运行日志', en: 'View API calls and Agent runtime logs' })}
+                </p>
+              </div>
+              <button className="px-4 py-2 border border-white/10 text-white rounded-lg text-sm hover:bg-white/10 transition-colors">
+                {t({ zh: '导出日志', en: 'Export Logs' })}
+              </button>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-white/5 text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">{t({ zh: '时间', en: 'Time' })}</th>
+                    <th className="px-4 py-3 font-medium">{t({ zh: '类型', en: 'Type' })}</th>
+                    <th className="px-4 py-3 font-medium">{t({ zh: '内容', en: 'Content' })}</th>
+                    <th className="px-4 py-3 font-medium">{t({ zh: '状态', en: 'Status' })}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr className="text-slate-300">
+                    <td className="px-4 py-3">2024-05-20 14:30:05</td>
+                    <td className="px-4 py-3">API_CALL</td>
+                    <td className="px-4 py-3">GET /api/v1/agents</td>
+                    <td className="px-4 py-3 text-green-400">200 OK</td>
+                  </tr>
+                  <tr className="text-slate-300">
+                    <td className="px-4 py-3">2024-05-20 14:28:12</td>
+                    <td className="px-4 py-3">AGENT_EVENT</td>
+                    <td className="px-4 py-3">Agent [Agent-001] started</td>
+                    <td className="px-4 py-3 text-blue-400">INFO</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'simulator' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold mb-4">{t({ zh: '接口模拟器', en: 'API Simulator' })}</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-1">
+                      {t({ zh: '模拟接口', en: 'Simulate API' })}
+                    </label>
+                    <select className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white">
+                      <option>POST /api/v1/payments/create</option>
+                      <option>GET /api/v1/agents/status</option>
+                      <option>POST /api/v1/webhooks/test</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-1">
+                      {t({ zh: '请求参数 (JSON)', en: 'Request Body (JSON)' })}
+                    </label>
+                    <textarea 
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-sm h-32"
+                      defaultValue='{ "amount": 100, "currency": "USDT" }'
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setLoading(true);
+                      setTimeout(() => {
+                        setLoading(false);
+                        alert(t({ zh: '模拟请求已发送，请查看响应', en: 'Mock request sent, check response' }));
+                      }, 1000);
+                    }}
+                    className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                    {t({ zh: '发送模拟请求', en: 'Send Mock Request' })}
+                  </button>
+                </div>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-6 font-mono text-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-slate-400">{t({ zh: '响应结果', en: 'Response' })}</span>
+                  <span className="text-green-400">200 OK</span>
+                </div>
+                <pre className="text-blue-300 overflow-x-auto">
+{`{
+  "status": "success",
+  "data": {
+    "id": "pay_sim_948201",
+    "amount": 100,
+    "currency": "USDT",
+    "status": "pending",
+    "checkoutUrl": "https://checkout.agentrix.ai/pay/sim_948201"
+  }
+}`}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold mb-4">{t({ zh: '开发者设置', en: 'Developer Settings' })}</h3>
+            
+            <div className="space-y-4">
+              <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="font-medium">{t({ zh: '开发者模式', en: 'Developer Mode' })}</p>
+                    <p className="text-xs text-slate-400">{t({ zh: '启用高级调试与沙盒环境', en: 'Enable advanced debugging and sandbox' })}</p>
+                  </div>
+                  <div className="w-12 h-6 bg-blue-600 rounded-full relative">
+                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="font-medium">{t({ zh: 'API 密钥管理', en: 'API Key Management' })}</p>
+                  <button 
+                    onClick={async () => {
+                      const name = prompt(t({ zh: '请输入密钥名称', en: 'Enter key name' }))
+                      if (name) {
+                        try {
+                          await apiKeyApi.create({ name })
+                          loadApiKeys()
+                        } catch (error) {
+                          console.error('创建密钥失败:', error)
+                        }
+                      }
+                    }}
+                    className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    {t({ zh: '创建新密钥', en: 'Create New Key' })}
+                  </button>
+                </div>
+                
+                {apiKeys.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">{t({ zh: '暂无 API 密钥', en: 'No API keys' })}</p>
+                ) : (
+                  <div className="space-y-3">
+                    {apiKeys.map((key) => (
+                      <div key={key.id} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-400">{key.name}</span>
+                          <button 
+                            onClick={async () => {
+                              if (confirm(t({ zh: '确定删除吗？', en: 'Are you sure?' }))) {
+                                try {
+                                  await apiKeyApi.delete(key.id)
+                                  loadApiKeys()
+                                } catch (error) {
+                                  console.error('删除密钥失败:', error)
+                                }
+                              }
+                            }}
+                            className="text-slate-500 hover:text-red-400"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 bg-black/20 p-2 rounded border border-white/5">
+                          <code className="text-xs text-blue-400 flex-1 truncate">
+                            {key.keyPrefix}****************************
+                          </code>
+                          <button 
+                            onClick={() => handleCopy(key.keyPrefix || '', key.id)}
+                            className="text-slate-400 hover:text-white"
+                          >
+                            {copiedId === key.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                <p className="font-medium mb-2 text-red-400">{t({ zh: '危险区域', en: 'Danger Zone' })}</p>
+                <button className="px-4 py-2 border border-red-500/50 text-red-400 rounded-lg text-sm hover:bg-red-500/10 transition-colors">
+                  {t({ zh: '重置开发者账户', en: 'Reset Developer Account' })}
+                </button>
+              </div>
             </div>
           </div>
         )}

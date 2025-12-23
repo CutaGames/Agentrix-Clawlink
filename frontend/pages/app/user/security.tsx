@@ -2,6 +2,7 @@ import Head from 'next/head'
 import { useState } from 'react'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useLocalization } from '../../../contexts/LocalizationContext'
+import { SessionManager } from '../../../components/payment/SessionManager'
 
 export default function UserSecurity() {
   const { t } = useLocalization()
@@ -117,6 +118,15 @@ export default function UserSecurity() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* 代理授权管理 */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('security.agentAuth.title') || 'Agent Authorizations'}</h2>
+          <p className="text-sm text-gray-600 mb-6">
+            {t('security.agentAuth.description') || 'Manage your agent authorizations for gasless and quick payments.'}
+          </p>
+          <SessionManager />
         </div>
       </div>
     </DashboardLayout>

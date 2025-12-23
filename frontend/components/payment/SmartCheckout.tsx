@@ -21,6 +21,7 @@ import {
 import { useRouter } from 'next/router';
 import { SessionKeyManager } from '@/lib/session-key-manager';
 import { paymentApi } from '@/lib/api/payment.api';
+import { sessionApi } from '@/lib/api/session.api';
 import { userApi } from '@/lib/api/user.api';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { useWeb3 } from '@/contexts/Web3Context';
@@ -161,6 +162,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [showKYCGuide, setShowKYCGuide] = useState(false);
   const [showQuickPayGuide, setShowQuickPayGuide] = useState(false);
   const [showSessionManager, setShowSessionManager] = useState(false);
+  const [sessionKeyMissing, setSessionKeyMissing] = useState(false);
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [selectedProviderOption, setSelectedProviderOption] = useState<ProviderOption | null>(null);
@@ -491,6 +493,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       console.warn('⚠️ Session Key 私钥在本地不存在，可能是浏览器数据被清除或换了浏览器');
       console.warn('Session signer:', session.signer);
       console.warn('本地存储的 Session Keys:', sessionKeys);
+      setSessionKeyMissing(true);
       throw new Error('Session 密钥已丢失（浏览器数据被清除或换了浏览器），请重新创建 QuickPay Session 或使用钱包支付');
     }
     
@@ -1254,7 +1257,20 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       {/* Footer / Status */}
       {status === 'error' && error && (
           <div className="p-4 bg-red-50 text-red-600 text-sm text-center border-t border-red-100">
-              {error}
+              <div className="mb-2">{error}</div>
+              {sessionKeyMissing && (
+                <button 
+                  onClick={() => {
+                    setSessionKeyMissing(false);
+                    setError(null);
+                    setStatus('ready');
+                    setShowSessionManager(true);
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+                >
+                  重新创建授权 (Re-authorize)
+                </button>
+              )}
           </div>
       )}
       

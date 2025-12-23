@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { usePayment } from '../../contexts/PaymentContext';
+import { useWorkbench } from '../../contexts/WorkbenchContext';
 import { agentApi } from '../../lib/api/agent.api';
 import { GlassCard } from '../ui/GlassCard';
 import { AIButton } from '../ui/AIButton';
@@ -8,7 +9,7 @@ import { StructuredResponseCard } from './StructuredResponseCard';
 import { QuickActionCards } from './QuickActionCards';
 import { VoiceInput } from './voice/VoiceInput';
 import { VoiceOutput } from './voice/VoiceOutput';
-import { Plus, Send, Search } from 'lucide-react';
+import { Plus, Send, Search, Eye } from 'lucide-react';
 
 export type AgentMode = 'user' | 'merchant' | 'developer';
 
@@ -27,6 +28,7 @@ export interface ChatMessage {
 interface UnifiedAgentChatProps {
   mode?: AgentMode;
   onModeChange?: (mode: AgentMode) => void;
+  onCommand?: (command: string, data?: any) => any;
   standalone?: boolean;
 }
 
@@ -38,10 +40,12 @@ interface UnifiedAgentChatProps {
 export function UnifiedAgentChat({
   mode: initialMode = 'user',
   onModeChange,
+  onCommand,
   standalone = false,
 }: UnifiedAgentChatProps) {
   const { user } = useUser();
   const { startPayment } = usePayment();
+  const { viewMode, workspaceData, selection } = useWorkbench();
   const [mode, setMode] = useState<AgentMode>(initialMode);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -216,7 +220,16 @@ export function UnifiedAgentChat({
       // 确保sessionId被正确传递（即使为undefined也要传递，让后端创建新session）
       const response = await agentApi.chat({
         message: messageText,
-        context: { mode, userId: user?.id },
+        context: { 
+          mode, 
+          userId: user?.id,
+          workspace: {
+            viewMode,
+            selection,
+            workspaceData: workspaceData ? (Object.keys(workspaceData).length > 10 ? { summary: 'Data too large' } : workspaceData) : null,
+            hasData: !!workspaceData
+          }
+        },
         sessionId: sessionId, // 传递当前的sessionId，如果不存在则后端会创建新的
       });
       
@@ -299,6 +312,29 @@ export function UnifiedAgentChat({
         messageData.products = response.data.products || [];
         messageData.query = response.data.query || messageText;
         messageData.total = response.data.total || response.data.count || response.data.products?.length || 0;
+      }
+
+      // 触发外部命令处理（如果存在）
+      if (onCommand && response.type) {
+        onCommand(response.type, response.data);
+      } else if (onCommand && response.data?.type) {
+        onCommand(response.data.type, response.data);
+      }
+
+      // 解析文本中的指令 (Deep Grounding 指令解析)
+      if (onCommand && response.response && response.response.includes('[COMMAND:')) {
+        const commandMatch = response.response.match(/\[COMMAND:([^:\]]+):?([^\]]*)\]/);
+        if (commandMatch) {
+          const cmdType = commandMatch[1];
+          const cmdValue = commandMatch[2];
+          console.log('🤖 解析到文本指令:', { cmdType, cmdValue });
+          
+          if (cmdType === 'SWITCH_VIEW') {
+            onCommand('switch_view', { view: cmdValue });
+          } else {
+            onCommand(cmdType.toLowerCase(), { value: cmdValue });
+          }
+        }
       }
       
       // 如果是购物车响应，检查是否已有购物车消息，如果有则更新而不是创建新消息
@@ -497,6 +533,16 @@ export function UnifiedAgentChat({
 
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto p-8 flex flex-col">
+        {/* Deep Grounding Indicator */}
+        {viewMode !== 'chat' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full w-fit mx-auto mb-8">
+            <Eye size={12} className="text-indigo-400 animate-pulse" />
+            <span className="text-[10px] font-medium text-indigo-300 uppercase tracking-wider">
+              Grounded in {viewMode.replace('_', ' ')}
+            </span>
+          </div>
+        )}
+
         {messages.length === 1 && messages[0].role === 'assistant' ? (
           // 显示欢迎界面和快捷指令卡片
           <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full space-y-8">

@@ -23,6 +23,7 @@ import { ProviderPaymentFlowService } from './provider-payment-flow.service';
 import { RiskAssessmentService } from './risk-assessment.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
 import { ExchangeRateService } from './exchange-rate.service';
+import { PolicyEngineService } from '../user-agent/policy-engine.service';
 import { PayMindRelayerService } from '../relayer/relayer.service';
 // import { WebSocketGateway } from '../websocket/websocket.gateway'; // 暂时禁用WebSocket
 
@@ -76,6 +77,7 @@ export class PaymentService {
     private riskAssessmentService: RiskAssessmentService,
     private quickPayGrantService: QuickPayGrantService,
     private exchangeRateService: ExchangeRateService,
+    private policyEngineService: PolicyEngineService,
     @Inject(forwardRef(() => PayMindRelayerService))
     private relayerService?: PayMindRelayerService,
     @Inject(forwardRef(() => ReferralService))
@@ -85,6 +87,19 @@ export class PaymentService {
   ) {}
 
   async createPaymentIntent(userId: string, dto: CreatePaymentIntentDto) {
+    // 1. 策略引擎验证 (Policy Engine Validation)
+    // 如果是 Agent 发起的交易（通常带有 agentId 或通过 X402 协议）
+    const validation = await this.policyEngineService.validateTransaction(userId, {
+      amount: dto.amount,
+      currency: dto.currency,
+      metadata: dto.metadata,
+    });
+
+    if (!validation.allowed) {
+      this.logger.warn(`交易被策略引擎拦截: ${validation.reason}`);
+      throw new BadRequestException(`Policy Violation: ${validation.reason}`);
+    }
+
     if (dto.paymentMethod === PaymentMethod.STRIPE) {
       // 先创建支付记录，用于Webhook回调
       const payment = this.paymentRepository.create({

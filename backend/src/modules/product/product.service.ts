@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Product, ProductStatus } from '../../entities/product.entity';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
 import { SearchService } from '../search/search.service';
@@ -15,6 +16,7 @@ export class ProductService {
     private searchService: SearchService,
     @Inject(forwardRef(() => CapabilityRegistryService))
     private capabilityRegistry: CapabilityRegistryService,
+    private configService: ConfigService,
   ) {}
 
   async getProducts(search?: string, merchantId?: string, status?: string, type?: string) {
@@ -419,6 +421,8 @@ export class ProductService {
    * 获取默认的 X402 示例商品
    */
   private getDefaultX402Products(): any[] {
+    const paymentAddress = this.configService.get<string>('X402_PAYMENT_ADDRESS') || '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC';
+    
     return [
       {
         id: 'x402-demo-api-1',
@@ -429,7 +433,7 @@ export class ProductService {
         productType: 'api',
         network: 'BSC Testnet',
         x402Params: {
-          paymentAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC',
+          paymentAddress: paymentAddress,
           pricePerRequest: '0.01',
           currency: 'USDT',
           scheme: 'exact',
@@ -446,7 +450,7 @@ export class ProductService {
         productType: 'api',
         network: 'BSC Testnet',
         x402Params: {
-          paymentAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC',
+          paymentAddress: paymentAddress,
           pricePerRequest: '0.005',
           currency: 'USDT',
           scheme: 'upto',
@@ -463,7 +467,7 @@ export class ProductService {
         productType: 'api',
         network: 'BSC Testnet',
         x402Params: {
-          paymentAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC',
+          paymentAddress: paymentAddress,
           pricePerQuery: '0.001',
           currency: 'USDT',
           scheme: 'exact',
@@ -480,7 +484,7 @@ export class ProductService {
         productType: 'api',
         network: 'BSC Testnet',
         x402Params: {
-          paymentAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC',
+          paymentAddress: paymentAddress,
           pricePerSecond: '0.0001',
           currency: 'USDT',
           scheme: 'upto',
@@ -497,7 +501,7 @@ export class ProductService {
         productType: 'api',
         network: 'BSC Testnet',
         x402Params: {
-          paymentAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC',
+          paymentAddress: paymentAddress,
           pricePerMB: '0.00001',
           currency: 'USDT',
           scheme: 'exact',

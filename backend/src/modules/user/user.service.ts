@@ -28,7 +28,7 @@ export class UserService {
   async getProfile(userId: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'paymindId', 'email', 'roles', 'kycLevel', 'kycStatus', 'avatarUrl', 'createdAt'],
+      select: ['id', 'agentrixId', 'email', 'roles', 'kycLevel', 'kycStatus', 'avatarUrl', 'nickname', 'bio', 'createdAt'],
     });
 
     if (!user) {
@@ -62,10 +62,7 @@ export class UserService {
 
     await this.userRepository.save(user);
 
-    return {
-      message: '用户信息更新成功',
-      user: await this.getProfile(userId),
-    };
+    return this.getProfile(userId);
   }
 
   async uploadAvatar(userId: string, file: Express.Multer.File) {

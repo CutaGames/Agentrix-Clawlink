@@ -6,7 +6,7 @@ import { useToast } from '../../contexts/ToastContext'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import type { WalletType, WalletInfo } from '../../lib/wallet/WalletService'
 import { authApi } from '../../lib/api/auth.api'
-import { apiClient } from '../../lib/api/client'
+import { apiClient, API_BASE_URL } from '../../lib/api/client'
 import type { UserRole } from '../../types/user'
 import { walletApi } from '../../lib/api/wallet.api'
 
@@ -30,6 +30,15 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
   const handleWalletConnect = async (walletType: WalletType) => {
     try {
       console.log('开始连接钱包:', walletType)
+
+      // 如果在登录页面，且当前有 token，说明可能是过期的，先清除以确保执行登录流程而不是绑定流程
+      const isAuthPage = typeof window !== 'undefined' && 
+        (window.location.pathname.includes('/auth') || window.location.pathname.includes('/login'));
+      if (isAuthPage) {
+        console.log('登录页面检测到现有 Token，正在清除以确保全新登录...')
+        apiClient.clearToken();
+      }
+
       const walletInfo = await connect(walletType)
       console.log('钱包连接成功，开始登录:', walletInfo)
       // 立即开始登录流程，不等待状态更新
@@ -55,7 +64,11 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
       const signature = await signMessage!(loginMessage, walletInfo)
       console.log('签名成功，开始登录验证')
 
-      if (isAuthenticated) {
+      // 检查是否在登录/注册页面，如果是，则优先执行登录而不是绑定
+      const isAuthPage = typeof window !== 'undefined' && 
+        (window.location.pathname.includes('/auth') || window.location.pathname.includes('/login'));
+
+      if (isAuthenticated && !isAuthPage) {
         try {
           await walletApi.bind({
             walletAddress: walletInfo.address,
@@ -71,21 +84,35 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
           return
         } catch (bindError: any) {
           console.error('钱包绑定失败:', bindError)
-          // 如果钱包已经绑定到当前用户，也视为成功
-          if (bindError.message?.includes('已绑定') || bindError.message?.includes('already bound')) {
-            toast.success('钱包已绑定')
-            onClose()
-            onWalletSuccess?.()
-            return
+          
+          // 如果是 401 错误，说明当前登录状态已失效，尝试直接登录
+          const isUnauthorized = 
+            bindError.status === 401 || 
+            bindError.message?.includes('401') || 
+            bindError.message?.includes('未授权') ||
+            bindError.message?.includes('Unauthorized');
+
+          if (isUnauthorized) {
+            console.log('检测到 401 错误，登录状态可能已失效，尝试直接登录...')
+            // 继续执行下面的 walletLogin 流程，不返回
+          } else {
+            // 如果钱包已经绑定到当前用户，也视为成功
+            if (bindError.message?.includes('已绑定') || bindError.message?.includes('already bound')) {
+              toast.success('钱包已绑定')
+              onClose()
+              onWalletSuccess?.()
+              return
+            }
+            // 如果钱包已绑定到其他账号，显示错误
+            if (bindError.message?.includes('其他账号') || bindError.message?.includes('other account')) {
+              throw new Error('该钱包已绑定其他账号，请使用其他钱包')
+            }
+            throw bindError
           }
-          // 如果钱包已绑定到其他账号，显示错误
-          if (bindError.message?.includes('其他账号') || bindError.message?.includes('other account')) {
-            throw new Error('该钱包已绑定其他账号，请使用其他钱包')
-          }
-          throw bindError
         }
       }
 
+      console.log('执行钱包登录流程...')
       const authResponse = await authApi.walletLogin({
         walletAddress: walletInfo.address,
         walletType: walletInfo.type,
@@ -152,85 +179,24 @@ export function LoginModal({ onClose, onWalletSuccess, adminMode, redirectTo }: 
       
       // Google OAuth 真实集成
       if (provider === 'google') {
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
-        // 重定向到后端 OAuth 端点
+        const apiBaseUrl = API_BASE_URL
         window.location.href = `${apiBaseUrl}/auth/google`
         return
       }
-      
-      // Apple 和 X 暂时使用演示模式（待实现）
-      const providerName = provider === 'apple' ? 'Apple' : 'X'
-      toast.info(`${providerName} 登录功能即将推出`)
-      
-      // 模拟登录流程（演示模式）
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      const socialEmail = `user-${provider}@agentrix.com`
-      const agentrixId = `user-${provider}-${Date.now()}`
-      
-      // 尝试调用后端API（如果可用）
-      try {
-          const { authApi } = await import('../../lib/api/auth.api')
-        
-        try {
-          const result = await authApi.register({
-            email: socialEmail,
-            password: 'social-login-temp-password',
-            agentrixId: agentrixId
-          })
-          
-          login({
-            email: result.user?.email || socialEmail,
-            walletAddress: undefined
-          })
-          
-          toast.success(`${providerName} 登录成功！`)
-          setTimeout(() => {
-            onClose()
-            router.push('/app/user')
-          }, 500)
-          return
-        } catch (registerError: any) {
-          if (registerError.message?.includes('already exists') || registerError.message?.includes('已存在')) {
-            try {
-              const loginResult = await authApi.login({
-                email: socialEmail,
-                password: 'social-login-temp-password'
-              })
-              
-              login({
-                email: loginResult.user?.email || socialEmail,
-                walletAddress: undefined
-              })
-              
-              toast.success(`${providerName} 登录成功！`)
-              setTimeout(() => {
-                onClose()
-                router.push('/app/user')
-              }, 500)
-              return
-            } catch (loginError: any) {
-              console.warn('API登录失败，使用本地模式:', loginError)
-            }
-          } else {
-            throw registerError
-          }
-        }
-      } catch (apiError: any) {
-        console.warn('API调用失败，使用本地模式:', apiError)
+
+      // Apple OAuth 真实集成
+      if (provider === 'apple') {
+        const apiBaseUrl = API_BASE_URL
+        window.location.href = `${apiBaseUrl}/auth/apple`
+        return
       }
-      
-      // 本地模式：直接创建用户（演示）
-      login({
-        email: socialEmail,
-        walletAddress: undefined
-      })
-      
-      toast.success(`${providerName} 登录成功！（演示模式）`)
-      setTimeout(() => {
-        onClose()
-        router.push('/app/user')
-      }, 500)
+
+      // X (Twitter) OAuth 真实集成
+      if (provider === 'x') {
+        const apiBaseUrl = API_BASE_URL
+        window.location.href = `${apiBaseUrl}/auth/twitter`
+        return
+      }
     } catch (error: any) {
       console.error(`${provider} 登录失败:`, error)
       toast.error(error.message || `${provider === 'google' ? 'Google' : provider === 'apple' ? 'Apple' : 'X'} 登录失败，请重试`)
@@ -423,7 +389,7 @@ function Web2Login({ onSocialLogin, onClose }: { onSocialLogin: (provider: 'goog
   const [isRegisterMode, setIsRegisterMode] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [agentrixId, setPaymindId] = useState('')
+  const [agentrixId, setAgentrixId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const { login } = useUser()
   const router = useRouter()
@@ -559,7 +525,7 @@ function Web2Login({ onSocialLogin, onClose }: { onSocialLogin: (provider: 'goog
               id="agentrixId"
               type="text"
               value={agentrixId}
-              onChange={(e) => setPaymindId(e.target.value)}
+              onChange={(e) => setAgentrixId(e.target.value)}
               disabled={isLoading !== null}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 text-gray-900"
               placeholder="自定义Agentrix ID"

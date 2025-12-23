@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
   Index,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { User } from './user.entity';
 import { AgentMessage } from './agent-message.entity';
@@ -32,6 +33,7 @@ export class AgentSession {
   userId: string | null;
 
   @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'user_id' })
   user: User | null;
 
   @Column({ name: 'agent_id', nullable: true })

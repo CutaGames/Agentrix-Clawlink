@@ -27,15 +27,10 @@ export class MPCWalletController {
   @ApiOperation({ summary: '创建 MPC 钱包' })
   @ApiResponse({ status: 201, description: 'MPC 钱包创建成功' })
   async createWallet(@Request() req, @Body() dto: CreateMPCWalletDto) {
-    const merchantId = req.user.id;
-
-    // 验证用户是否为商户
-    if (!req.user.roles?.includes('merchant')) {
-      throw new Error('Only merchants can create MPC wallets');
-    }
+    const ownerId = req.user.id;
 
     const result = await this.mpcWalletService.generateMPCWallet(
-      merchantId,
+      ownerId,
       dto.password,
     );
 
@@ -51,8 +46,8 @@ export class MPCWalletController {
   @ApiOperation({ summary: '获取我的 MPC 钱包' })
   @ApiResponse({ status: 200, description: '返回 MPC 钱包信息' })
   async getMyWallet(@Request() req) {
-    const merchantId = req.user.id;
-    const wallet = await this.mpcWalletService.getMPCWallet(merchantId);
+    const ownerId = req.user.id;
+    const wallet = await this.mpcWalletService.getMPCWallet(ownerId);
 
     // 不返回加密的分片 B
     return {
@@ -70,9 +65,9 @@ export class MPCWalletController {
   @ApiOperation({ summary: '恢复钱包（使用分片 A + C）' })
   @ApiResponse({ status: 200, description: '钱包恢复成功' })
   async recoverWallet(@Request() req, @Body() dto: RecoverWalletDto) {
-    const merchantId = req.user.id;
+    const ownerId = req.user.id;
     const walletAddress = await this.mpcWalletService.recoverWallet(
-      merchantId,
+      ownerId,
       dto.encryptedShardA,
       dto.encryptedShardC,
       dto.password,

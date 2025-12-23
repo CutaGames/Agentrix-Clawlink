@@ -13,6 +13,9 @@ import { SettlementRulesService } from './settlement-rules.service';
 import { MerchantProfileService, UpdateMerchantProfileDto } from './merchant-profile.service';
 import { MerchantCustomerService } from './merchant-customer.service';
 import { User } from '../../entities/user.entity';
+import { PayIntent, PayIntentStatus } from '../../entities/pay-intent.entity';
+import { AuditProof } from '../../entities/audit-proof.entity';
+import { Between } from 'typeorm';
 
 @Controller('merchant')
 @UseGuards(JwtAuthGuard)
@@ -30,7 +33,125 @@ export class MerchantController {
     private merchantCustomerService: MerchantCustomerService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(PayIntent)
+    private payIntentRepository: Repository<PayIntent>,
+    @InjectRepository(AuditProof)
+    private auditProofRepository: Repository<AuditProof>,
   ) {}
+
+  // ========== 统计与报表 ==========
+
+  @Get('stats')
+  async getStats(@Request() req, @Query('days') days: number = 7) {
+    const merchantId = req.user.id;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const intents = await this.payIntentRepository.find({
+      where: {
+        merchantId,
+        createdAt: Between(startDate, new Date()),
+      },
+      order: { createdAt: 'ASC' },
+    });
+
+    // 计算统计数据
+    const totalVolume = intents
+      .filter(i => i.status === PayIntentStatus.SUCCEEDED)
+      .reduce((sum, i) => sum + Number(i.amount), 0);
+    
+    const totalCount = intents.length;
+    const successCount = intents.filter(i => i.status === PayIntentStatus.SUCCEEDED).length;
+    const successRate = totalCount > 0 ? (successCount / totalCount) * 100 : 0;
+
+    // 按天分组
+    const dailyStats = {};
+    for (let i = 0; i < days; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyStats[dateStr] = { volume: 0, count: 0 };
+    }
+
+    intents.forEach(intent => {
+      const dateStr = intent.createdAt.toISOString().split('T')[0];
+      if (dailyStats[dateStr]) {
+        dailyStats[dateStr].count++;
+        if (intent.status === PayIntentStatus.SUCCEEDED) {
+          dailyStats[dateStr].volume += Number(intent.amount);
+        }
+      }
+    });
+
+    return {
+      summary: {
+        totalVolume,
+        totalCount,
+        successCount,
+        successRate,
+      },
+      chartData: Object.entries(dailyStats)
+        .map(([date, data]: [string, any]) => ({
+          date,
+          ...data,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  }
+
+  @Get('transactions')
+  async getTransactions(
+    @Request() req,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('status') status?: PayIntentStatus,
+    @Query('mode') mode?: string,
+  ) {
+    const merchantId = req.user.id;
+    const where: any = { merchantId };
+    if (status) where.status = status;
+    if (mode) where.mode = mode;
+
+    const [items, total] = await this.payIntentRepository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  @Get('audit-proofs')
+  async getAuditProofs(
+    @Request() req,
+    @Query('agentId') agentId?: string,
+    @Query('payIntentId') payIntentId?: string,
+    @Query('limit') limit: number = 20,
+  ) {
+    const where: any = {};
+    if (agentId) where.agentId = agentId;
+    if (payIntentId) where.payIntentId = payIntentId;
+
+    // 商家只能看到自己相关的证据
+    if (payIntentId) {
+      const intent = await this.payIntentRepository.findOne({ where: { id: payIntentId, merchantId: req.user.id } });
+      if (!intent) throw new BadRequestException('Invalid PayIntent ID');
+    }
+
+    const proofs = await this.auditProofRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+
+    return proofs;
+  }
 
   // ========== 自动接单 ==========
 

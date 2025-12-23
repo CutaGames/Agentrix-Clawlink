@@ -5,6 +5,7 @@ export interface ApiKey {
   name: string
   keyPrefix: string
   status: 'active' | 'revoked' | 'expired'
+  mode: 'sandbox' | 'production'
   scopes: string[]
   lastUsedAt?: string
   usageCount: number
@@ -16,6 +17,7 @@ export interface CreateApiKeyRequest {
   name: string
   expiresInDays?: number
   scopes?: string[]
+  mode?: 'sandbox' | 'production'
 }
 
 export interface CreateApiKeyResponse {
@@ -23,6 +25,7 @@ export interface CreateApiKeyResponse {
   apiKey: string
   name: string
   keyPrefix: string
+  mode: 'sandbox' | 'production'
   scopes: string[]
   expiresAt?: string
   createdAt: string

@@ -8,16 +8,23 @@ import { SocialAccountService } from './social-account.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { AppleStrategy } from './strategies/apple.strategy';
+import { TwitterStrategy } from './strategies/twitter.strategy';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../../entities/user.entity';
 import { WalletConnection } from '../../entities/wallet-connection.entity';
 import { SocialAccount } from '../../entities/social-account.entity';
 import { AdminUser } from '../../entities/admin-user.entity';
+import { ApiKeyModule } from '../api-key/api-key.module';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { UnifiedAuthGuard } from './guards/unified-auth.guard';
+import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, WalletConnection, SocialAccount, AdminUser]),
     PassportModule,
+    ApiKeyModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -30,8 +37,19 @@ import { AdminUser } from '../../entities/admin-user.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, SocialAccountService, JwtStrategy, LocalStrategy, GoogleStrategy],
-  exports: [AuthService, SocialAccountService],
+  providers: [
+    AuthService,
+    SocialAccountService,
+    JwtStrategy,
+    LocalStrategy,
+    GoogleStrategy,
+    AppleStrategy,
+    TwitterStrategy,
+    JwtAuthGuard,
+    ApiKeyGuard,
+    UnifiedAuthGuard,
+  ],
+  exports: [AuthService, SocialAccountService, JwtAuthGuard, ApiKeyGuard, UnifiedAuthGuard],
 })
 export class AuthModule {}
 

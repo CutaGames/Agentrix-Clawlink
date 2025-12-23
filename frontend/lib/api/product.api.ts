@@ -237,4 +237,48 @@ export const productApi = {
     const result = await apiClient.get<any>('/products/batch/template/columns');
     return result?.data || [];
   },
+
+  /**
+   * 获取电商平台连接列表
+   */
+  getEcommerceConnections: async (): Promise<any[]> => {
+    const result = await apiClient.get<any>('/products/ecommerce/connections');
+    return result?.data || result || [];
+  },
+
+  /**
+   * 创建电商平台连接
+   */
+  createEcommerceConnection: async (data: {
+    platform: 'shopify' | 'woocommerce' | 'magento' | 'bigcommerce' | 'custom';
+    storeName: string;
+    storeUrl?: string;
+    credentials: Record<string, string>;
+  }): Promise<any> => {
+    const result = await apiClient.post<any>('/products/ecommerce/connections', data);
+    return result?.data || result;
+  },
+
+  /**
+   * 更新电商平台连接
+   */
+  updateEcommerceConnection: async (id: string, data: any): Promise<any> => {
+    const result = await apiClient.patch<any>(`/products/ecommerce/connections/${id}`, data);
+    return result?.data || result;
+  },
+
+  /**
+   * 删除电商平台连接
+   */
+  deleteEcommerceConnection: async (id: string): Promise<void> => {
+    return apiClient.delete(`/products/ecommerce/connections/${id}`);
+  },
+
+  /**
+   * 同步电商平台数据
+   */
+  syncEcommerceConnection: async (id: string): Promise<any> => {
+    const result = await apiClient.post<any>(`/products/ecommerce/connections/${id}/sync`, {});
+    return result?.data || result;
+  },
 };

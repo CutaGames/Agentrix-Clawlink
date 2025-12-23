@@ -1,7 +1,7 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
-import { ApiKey, ApiKeyStatus } from '../../entities/api-key.entity';
+import { ApiKey, ApiKeyStatus, ApiKeyMode } from '../../entities/api-key.entity';
 import * as crypto from 'crypto';
 
 /**
@@ -24,7 +24,7 @@ export class ApiKeyService {
   private readonly GPTS_KEY_PREFIX = 'agx_gpts_';
   
   // 缓存验证结果（减少数据库查询）
-  private readonly validationCache = new Map<string, { userId: string; expiresAt: number }>();
+  private readonly validationCache = new Map<string, { userId: string; expiresAt: number; mode: ApiKeyMode }>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
   
   // 平台级 API Keys（从环境变量加载，或使用默认值）
@@ -109,11 +109,15 @@ export class ApiKeyService {
       rateLimit?: number;
       allowedOrigins?: string[];
       metadata?: Record<string, any>;
+      mode?: ApiKeyMode;
     },
   ): Promise<{ apiKey: string; apiKeyRecord: ApiKey }> {
+    const mode = options?.mode || ApiKeyMode.PRODUCTION;
+    const prefix = mode === ApiKeyMode.SANDBOX ? 'agx_test_' : 'agx_live_';
+
     // 生成随机 Key
     const randomBytes = crypto.randomBytes(32);
-    const apiKey = this.KEY_PREFIX + randomBytes.toString('base64url');
+    const apiKey = prefix + randomBytes.toString('base64url');
     
     // 计算哈希（用于存储）
     const keyHash = this.hashKey(apiKey);
@@ -135,6 +139,7 @@ export class ApiKeyService {
       name,
       userId,
       status: ApiKeyStatus.ACTIVE,
+      mode,
       expiresAt,
       scopes: options?.scopes || ['read', 'search', 'order', 'payment'],
       rateLimit: options?.rateLimit || 60,
@@ -144,7 +149,7 @@ export class ApiKeyService {
     
     await this.apiKeyRepository.save(apiKeyRecord);
     
-    this.logger.log(`Created API Key for user ${userId}: ${keyPrefix}`);
+    this.logger.log(`Created ${mode} API Key for user ${userId}: ${keyPrefix}`);
     
     // 返回原始 Key（只有这一次机会看到完整 Key）
     return { apiKey, apiKeyRecord };
@@ -159,7 +164,7 @@ export class ApiKeyService {
    * 2. 检查缓存
    * 3. 查询数据库验证用户级 Key
    */
-  async validateApiKey(apiKey: string): Promise<{ userId: string; scopes: string[]; isPlatform: boolean }> {
+  async validateApiKey(apiKey: string): Promise<{ userId: string; scopes: string[]; isPlatform: boolean; mode: ApiKeyMode }> {
     if (!apiKey) {
       throw new UnauthorizedException('API Key is required');
     }
@@ -170,14 +175,20 @@ export class ApiKeyService {
       return { 
         userId: 'platform', 
         scopes: ['read', 'search', 'order', 'payment'],
-        isPlatform: true 
+        isPlatform: true,
+        mode: ApiKeyMode.PRODUCTION
       };
     }
     
     // 2. 检查缓存
     const cached = this.validationCache.get(apiKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return { userId: cached.userId, scopes: ['read', 'search', 'order', 'payment'], isPlatform: false };
+      return { 
+        userId: cached.userId, 
+        scopes: ['read', 'search', 'order', 'payment'], 
+        isPlatform: false,
+        mode: cached.mode || ApiKeyMode.PRODUCTION
+      };
     }
     
     // 3. 计算哈希并查询数据库
@@ -200,24 +211,29 @@ export class ApiKeyService {
     
     // 检查过期
     if (apiKeyRecord.expiresAt && apiKeyRecord.expiresAt < new Date()) {
-      // 标记为过期
-      await this.apiKeyRepository.update(apiKeyRecord.id, { status: ApiKeyStatus.EXPIRED });
+      apiKeyRecord.status = ApiKeyStatus.EXPIRED;
+      await this.apiKeyRepository.save(apiKeyRecord);
       throw new UnauthorizedException('API Key has expired');
     }
     
-    // 更新使用信息
-    await this.apiKeyRepository.update(apiKeyRecord.id, {
-      lastUsedAt: new Date(),
-      usageCount: () => 'usage_count + 1',
+    // 更新最后使用时间（异步，不阻塞验证）
+    this.apiKeyRepository.update(apiKeyRecord.id, { lastUsedAt: new Date() }).catch(err => {
+      this.logger.error(`Failed to update lastUsedAt for API Key ${apiKeyRecord.id}: ${err.message}`);
     });
     
-    // 缓存结果
+    // 写入缓存
     this.validationCache.set(apiKey, {
       userId: apiKeyRecord.userId,
-      expiresAt: Date.now() + this.CACHE_TTL,
+      expiresAt: Date.now() + 1000 * 60 * 5, // 5 分钟缓存
+      mode: apiKeyRecord.mode
     });
     
-    return { userId: apiKeyRecord.userId, scopes: apiKeyRecord.scopes, isPlatform: false };
+    return { 
+      userId: apiKeyRecord.userId, 
+      scopes: apiKeyRecord.scopes, 
+      isPlatform: false,
+      mode: apiKeyRecord.mode
+    };
   }
 
   /**

@@ -26,6 +26,8 @@ import { QuickPayGrant } from '../../entities/quick-pay-grant.entity';
 import { Order } from '../../entities/order.entity';
 import { CommissionModule } from '../commission/commission.module';
 import { UserModule } from '../user/user.module';
+import { AuthModule } from '../auth/auth.module';
+import { ApiKeyModule } from '../api-key/api-key.module';
 import { PayIntentService } from './pay-intent.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
 import { PayIntentSchedulerService } from './pay-intent-scheduler.service';
@@ -45,7 +47,9 @@ import { ProviderManagerService } from './provider-manager.service';
 import { ReferralModule } from '../referral/referral.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { TaxModule } from '../tax/tax.module';
+import { WebhookModule } from '../webhook/webhook.module';
 import { RelayerModule } from '../relayer/relayer.module';
+import { UserAgentModule } from '../user-agent/user-agent.module';
 import { FeeEstimationService } from './fee-estimation.service';
 import { RiskAssessmentService } from './risk-assessment.service';
 import { RiskAssessment } from '../../entities/risk-assessment.entity';
@@ -64,8 +68,12 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     forwardRef(() => UserModule),
     forwardRef(() => ReferralModule),
     forwardRef(() => RelayerModule),
+    UserAgentModule,
     PricingModule,
     TaxModule,
+    WebhookModule,
+    AuthModule,
+    ApiKeyModule,
   ],
   controllers: [
     PaymentController,

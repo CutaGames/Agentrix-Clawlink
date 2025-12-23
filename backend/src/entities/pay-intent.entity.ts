@@ -9,13 +9,18 @@ import {
 import { User } from './user.entity';
 
 export enum PayIntentStatus {
+  REQUIRES_PAYMENT_METHOD = 'requires_payment_method',
+  PROCESSING = 'processing',
+  SUCCEEDED = 'succeeded',
+  FAILED = 'failed',
+  CANCELED = 'canceled',
+  EXPIRED = 'expired',
+  // 兼容旧状态
   CREATED = 'created',
   AUTHORIZED = 'authorized',
   EXECUTING = 'executing',
   COMPLETED = 'completed',
-  FAILED = 'failed',
   CANCELLED = 'cancelled',
-  EXPIRED = 'expired',
 }
 
 export enum PayIntentType {
@@ -50,6 +55,13 @@ export class PayIntent {
   })
   status: PayIntentStatus;
 
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: 'production',
+  })
+  mode: 'sandbox' | 'production';
+
   @Column('decimal', { precision: 15, scale: 2 })
   amount: number;
 
@@ -70,6 +82,9 @@ export class PayIntent {
 
   @Column({ nullable: true })
   agentId: string;
+
+  @Column({ nullable: true, unique: true })
+  idempotencyKey: string;
 
   @Column({ type: 'jsonb', nullable: true })
   paymentMethod: {
@@ -96,6 +111,15 @@ export class PayIntent {
     transactionHash?: string;
     errorMessage?: string;
     payUrl?: string; // 支付链接
+  };
+
+  @Column({ type: 'jsonb', nullable: true })
+  attribution: {
+    agentId?: string;
+    channel?: string;
+    campaignId?: string;
+    referrer?: string;
+    sessionId?: string;
   };
 
   @Column({ nullable: true })

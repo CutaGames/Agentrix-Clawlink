@@ -48,6 +48,7 @@ import { SessionModule } from './modules/session/session.module';
 import { MPCWalletModule } from './modules/mpc-wallet/mpc-wallet.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AiCapabilityModule } from './modules/ai-capability/ai-capability.module';
+import { UploadModule } from './modules/upload/upload.module';
 import { AIRAGModule } from './modules/ai-rag/ai-rag.module';
 import { OpenAIIntegrationModule } from './modules/ai-integration/openai/openai-integration.module';
 import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integration.module';
@@ -112,6 +113,7 @@ import { CartModule } from './modules/cart/cart.module';
     OpenAIIntegrationModule,
     GroqIntegrationModule,
     GeminiIntegrationModule,
+    UploadModule,
     CartModule,
   ],
   controllers: [AppController],
