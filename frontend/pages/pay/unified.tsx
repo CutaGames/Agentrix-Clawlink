@@ -569,7 +569,7 @@ export default function UnifiedPaymentDemo() {
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-5 space-y-4 text-sm text-slate-200">
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>Session</span>
-                    <span>UNIFIED-PM-4082</span>
+                    <span>UNIFIED-AX-4082</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>{t({ zh: '推荐路线', en: 'Recommended route' })}</span>

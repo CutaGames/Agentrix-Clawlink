@@ -39,5 +39,7 @@ export type ViewMode =
   | 'logs'
   | 'user_module'
   | 'merchant_module'
-  | 'developer_module';
+  | 'developer_module'
+  | 'unified_workbench';
+
 

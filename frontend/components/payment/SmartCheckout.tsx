@@ -21,6 +21,7 @@ import {
 import { useRouter } from 'next/router';
 import { SessionKeyManager } from '@/lib/session-key-manager';
 import { paymentApi } from '@/lib/api/payment.api';
+import { payIntentApi } from '@/lib/api/pay-intent.api';
 import { sessionApi } from '@/lib/api/session.api';
 import { userApi } from '@/lib/api/user.api';
 import { useSessionManager } from '@/hooks/useSessionManager';
@@ -29,6 +30,7 @@ import { SessionManager } from './SessionManager';
 import { AgentrixLogo } from '../common/AgentrixLogo';
 import { TransakWhiteLabelModal } from './TransakWhiteLabelModal';
 import { ethers } from 'ethers';
+import QRCode from 'qrcode.react';
 
 interface SmartCheckoutProps {
   order: {
@@ -50,7 +52,7 @@ interface SmartCheckoutProps {
   onCancel?: () => void;
 }
 
-type RouteType = 'quickpay' | 'provider' | 'wallet' | 'local-rail' | 'crypto-rail';
+type RouteType = 'quickpay' | 'provider' | 'wallet' | 'local-rail' | 'crypto-rail' | 'qrcode';
 type Status = 'loading' | 'ready' | 'processing' | 'success' | 'error';
 
 const TESTNET_NETWORK = {
@@ -153,6 +155,8 @@ const formatFiatAmount = (value: number, currency?: string) => {
 export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps) {
   const router = useRouter();
   const [status, setStatus] = useState<Status>('loading');
+  const [paymentResult, setPaymentResult] = useState<any>(null);
+  const [payIntent, setPayIntent] = useState<any>(null);
   const [routeType, setRouteType] = useState<RouteType>('quickpay');
   const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -623,6 +627,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     if (result.status === 'failed' || result.status === 'cancelled') {
         throw new Error(result.metadata?.relayerError || 'Payment failed');
     }
+    setPaymentResult(result);
     setStatus('success');
     if (onSuccess) onSuccess(result);
   };
@@ -697,7 +702,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         await tx.wait();
 
         // Record on backend
-        await paymentApi.process({
+        const result = await paymentApi.process({
             amount: paymentAmount,
             currency: paymentCurrency,
             paymentMethod: 'wallet',
@@ -711,12 +716,38 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             }
         });
 
+        setPaymentResult(result);
         setStatus('success');
         if (onSuccess) onSuccess({ status: 'completed', transactionHash: tx.hash });
     } catch (error: any) {
         console.error('Wallet payment failed:', error);
         setError(error.message || 'Payment failed');
         setStatus('error');
+    }
+  };
+
+  const handleQRCodePay = async () => {
+    setStatus('processing');
+    setError(null);
+    try {
+      const intent = await payIntentApi.create({
+        type: 'order_payment',
+        amount: order.amount,
+        currency: order.currency || 'USDC',
+        description: order.description,
+        orderId: order.id,
+        merchantId: order.merchantId,
+        paymentMethod: {
+          type: 'qrcode'
+        }
+      });
+      setPayIntent(intent);
+      setRouteType('qrcode');
+      setStatus('ready');
+    } catch (err: any) {
+      console.error('Failed to create QR code pay intent:', err);
+      setError(err.message || 'Failed to generate QR code');
+      setStatus('ready');
     }
   };
 
@@ -878,6 +909,39 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* QR Code Pay Card */}
+            <div 
+                onClick={() => {
+                    handleQRCodePay();
+                }}
+                className={`relative group cursor-pointer rounded-xl border p-4 transition-all ${
+                    routeType === 'qrcode'
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-200' 
+                    : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-md'
+                }`}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${
+                            routeType === 'qrcode' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-600'
+                        }`}>
+                            <Smartphone size={20} />
+                        </div>
+                        <div>
+                            <div className={`font-bold ${routeType === 'qrcode' ? 'text-white' : 'text-slate-900'}`}>
+                                Scan to Pay
+                            </div>
+                            <div className={`text-xs ${routeType === 'qrcode' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                                Pay with any mobile wallet
+                            </div>
+                        </div>
+                    </div>
+                    <div className={`text-sm font-bold ${routeType === 'qrcode' ? 'text-white' : 'text-slate-900'}`}>
+                        {cryptoAmount ? `≈ ${cryptoAmount.toFixed(2)} USDT` : ''}
+                    </div>
+                </div>
             </div>
         </div>
       </div>
@@ -1218,6 +1282,68 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     );
   };
 
+  // QR Code View
+  const QRCodeView = () => {
+    if (!payIntent || !payIntent.metadata?.qrCode) {
+      return (
+        <div className="p-12 flex flex-col items-center justify-center text-center">
+          <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
+          <p className="text-slate-500">Generating QR Code...</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-6 bg-white flex-1 flex flex-col items-center">
+        <div className="w-full flex items-center gap-2 mb-6">
+            <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600">
+                <Smartphone size={16} />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Scan to Pay</h3>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-sm mb-6">
+          <img 
+            src={payIntent.metadata.qrCode} 
+            alt="Payment QR Code" 
+            className="w-48 h-48"
+          />
+        </div>
+
+        <div className="text-center space-y-2 mb-8">
+          <div className="text-lg font-bold text-slate-900">
+            {cryptoAmount ? `≈ ${cryptoAmount.toFixed(2)} USDT` : `${order.amount} ${order.currency}`}
+          </div>
+          <p className="text-sm text-slate-500 max-w-[240px]">
+            Scan this QR code with your mobile wallet (MetaMask, Trust Wallet, OKX, etc.) to complete the payment.
+          </p>
+        </div>
+
+        <div className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-500">Network</span>
+            <span className="font-medium text-slate-900">BSC Testnet</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-500">Status</span>
+            <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Waiting for payment...
+            </span>
+          </div>
+        </div>
+        
+        <button 
+          onClick={() => setRouteType('quickpay')}
+          className="mt-6 text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+        >
+          <ChevronRight size={12} className="rotate-180" />
+          Back to other methods
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col h-[85vh] md:h-auto md:min-h-[600px]">
       {/* Header */}
@@ -1245,13 +1371,19 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
       {/* Split Layout */}
       <div className="flex-1 overflow-y-auto">
-        <CryptoSection />
-        <div className="h-px bg-slate-100 w-full relative">
-            <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-xs text-slate-400 font-medium">
-                OR
+        {routeType === 'qrcode' ? (
+          <QRCodeView />
+        ) : (
+          <>
+            <CryptoSection />
+            <div className="h-px bg-slate-100 w-full relative">
+                <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-xs text-slate-400 font-medium">
+                    OR
+                </div>
             </div>
-        </div>
-        <FiatSection />
+            <FiatSection />
+          </>
+        )}
       </div>
 
       {/* Footer / Status */}
@@ -1288,10 +1420,65 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
       {/* Success View - Only show when successful */}
       {status === 'success' && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <CheckCircle2 className="text-green-500 mb-4" size={48} />
-            <div className="text-lg font-bold text-slate-900 mb-2">Payment Successful!</div>
-            <div className="text-sm text-slate-500">Your payment has been confirmed</div>
+          <div className="flex flex-col items-center justify-center py-8 px-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle2 className="text-green-600" size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-1">Payment Successful</h3>
+            <p className="text-sm text-slate-500 mb-8 text-center">Your transaction has been processed and verified by Agentrix Audit Protocol.</p>
+            
+            <div className="w-full bg-slate-50 rounded-2xl p-5 space-y-4 border border-slate-100">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">AX ID</span>
+                <span className="text-sm font-bold text-slate-900">{userProfile?.agentrixId || 'Anonymous'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Amount</span>
+                <span className="text-sm font-bold text-slate-900">
+                  {paymentResult?.amount || order.amount} {paymentResult?.currency || order.currency}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Status</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                  <span className="text-sm font-bold text-green-600">Verified</span>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-slate-200">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Audit Proof</span>
+                  <span className="text-[10px] font-mono text-slate-400 break-all text-right max-w-[180px]">
+                    {paymentResult?.transactionHash || paymentResult?.metadata?.txHash || 'Pending...'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] text-indigo-600 font-medium">
+                  <ShieldCheck size={10} />
+                  <span>Secured by ERC8004 & EAS</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 w-full space-y-3">
+              <button 
+                onClick={() => {
+                  const hash = paymentResult?.transactionHash || paymentResult?.metadata?.txHash;
+                  if (hash) {
+                    window.open(`https://testnet.bscscan.com/tx/${hash}`, '_blank');
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all"
+              >
+                <Globe size={16} />
+                View on Explorer
+              </button>
+              <button 
+                onClick={() => onSuccess && onSuccess(paymentResult)}
+                className="w-full py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all"
+              >
+                Return to Merchant
+              </button>
+            </div>
           </div>
         )}
 

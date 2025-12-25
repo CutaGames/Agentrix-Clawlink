@@ -9,6 +9,10 @@ import {
   DollarSign,
   TrendingUp,
   Loader2,
+  Clock,
+  Lock,
+  Activity,
+  ChevronRight,
 } from 'lucide-react';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { useWeb3 } from '@/contexts/Web3Context';
@@ -109,78 +113,95 @@ export function SessionManager({ onClose }: SessionManagerProps) {
             {sessions.map((session) => (
               <div
                 key={session.id}
-                className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow"
+                className="border border-slate-200 rounded-2xl p-5 hover:shadow-lg hover:border-indigo-100 transition-all bg-white group"
               >
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
-                        <Zap size={16} className="text-indigo-600" />
-                      </div>
-                      <div>
-                        <div className="font-medium text-slate-900">
-                          {session.agentId || 'Default Session'}
-                        </div>
-                        <div className="text-xs text-slate-500 font-mono">
+                <div className="flex justify-between items-start mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center border border-indigo-100 group-hover:scale-110 transition-transform">
+                      <ShieldCheck size={20} className="text-indigo-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900">
+                          {session.agentId || 'Global Agent Policy'}
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-mono rounded uppercase tracking-tight">
                           {session.signer.slice(0, 6)}...{session.signer.slice(-4)}
-                        </div>
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                        <Clock size={10} />
+                        Expires {new Date(session.expiry).toLocaleDateString()}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {session.isActive ? (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
-                        Active
-                      </span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs rounded-full font-bold border border-emerald-100">
+                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                        ACTIVE
+                      </div>
                     ) : (
-                      <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">
-                        Revoked
-                      </span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 text-slate-500 text-xs rounded-full font-bold border border-slate-100">
+                        REVOKED
+                      </div>
                     )}
                     {session.isActive && (
                       <button
                         onClick={() => handleRevokeSession(session.sessionId)}
-                        className="p-1 hover:bg-red-50 rounded text-red-600 transition-colors"
+                        className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-all"
                         title="Revoke Session"
                       >
-                        <X size={16} />
+                        <X size={18} />
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-4">
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-                      <DollarSign size={12} />
+                <div className="grid grid-cols-3 gap-4 mb-5">
+                  <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100">
+                    <div className="text-[10px] text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Lock size={10} />
                       Single Limit
                     </div>
                     <div className="font-bold text-slate-900">
                       ${session.singleLimit.toFixed(2)}
                     </div>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-                      <TrendingUp size={12} />
+                  <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100">
+                    <div className="text-[10px] text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Activity size={10} />
                       Daily Limit
                     </div>
                     <div className="font-bold text-slate-900">
                       ${session.dailyLimit.toFixed(2)}
                     </div>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-                      <Calendar size={12} />
+                  <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100">
+                    <div className="text-[10px] text-slate-400 mb-1 font-bold uppercase tracking-wider flex items-center gap-1">
+                      <TrendingUp size={10} />
                       Used Today
                     </div>
-                    <div className="font-bold text-slate-900">
+                    <div className="font-bold text-indigo-600">
                       ${session.usedToday.toFixed(2)}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-500">
-                  Expires: {new Date(session.expiry).toLocaleDateString()}
+                {/* Progress Bar for Daily Limit */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Daily Usage</span>
+                    <span>{Math.min(100, (session.usedToday / session.dailyLimit) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-500 ${
+                        (session.usedToday / session.dailyLimit) > 0.8 ? 'bg-amber-500' : 'bg-indigo-500'
+                      }`}
+                      style={{ width: `${Math.min(100, (session.usedToday / session.dailyLimit) * 100)}%` }}
+                    ></div>
+                  </div>
                 </div>
               </div>
             ))}

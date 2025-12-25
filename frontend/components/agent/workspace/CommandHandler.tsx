@@ -65,7 +65,34 @@ export class CommandHandler {
       return this.handleKYCCommand(lowerCommand, data)
     }
 
+    // 引导与清单相关命令
+    if (this.matchCommand(lowerCommand, ['清单', '进度', '引导', 'checklist', 'guide', 'status', 'workflow'])) {
+      return this.handleGuideCommand(lowerCommand, data)
+    }
+
+    // 市场相关命令
+    if (this.matchCommand(lowerCommand, ['市场', 'marketplace', '商店', 'shop', '技能库', 'skills'])) {
+      return {
+        success: true,
+        message: '正在打开商品与技能市场...',
+        view: 'marketplace',
+        action: 'view_marketplace',
+      }
+    }
+
+    // 自动收益/空投相关命令
+    if (this.matchCommand(lowerCommand, ['收益', 'earn', '空投', 'airdrop', 'autoearn'])) {
+      return {
+        success: true,
+        message: '正在打开收益与空投面板...',
+        view: 'autoEarn',
+        action: 'view_auto_earn',
+      }
+    }
+
     // 默认：返回对话视图
+
+
     return {
       success: true,
       message: '请告诉我您需要什么帮助',
@@ -182,5 +209,31 @@ export class CommandHandler {
     }
     return { success: false, message: '无法处理KYC命令' }
   }
+
+  private handleGuideCommand(command: string, data?: any): CommandResult {
+    if (this.currentMode === 'merchant') {
+      return {
+        success: true,
+        message: '正在打开商户上线清单...',
+        view: 'merchant',
+        action: 'view_checklist',
+      }
+    } else if (this.currentMode === 'developer') {
+      return {
+        success: true,
+        message: '正在打开技能开发进度...',
+        view: 'developer',
+        action: 'view_lifecycle',
+      }
+    } else {
+      return {
+        success: true,
+        message: '正在打开授权向导...',
+        view: 'user',
+        action: 'view_auth_guide',
+      }
+    }
+  }
 }
+
 

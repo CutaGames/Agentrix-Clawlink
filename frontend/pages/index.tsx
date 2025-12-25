@@ -145,7 +145,7 @@ export default function Home() {
                   </div>
                   <div className="bg-emerald-400/10 border border-emerald-400/30 rounded-2xl p-4">
                     <p className="text-xs text-emerald-300 mb-1">{t({ zh: '支付结果', en: 'Payment Result' })}</p>
-                    <p className="text-sm">{t({ zh: '支付成功 · Session #PM-5F8D · 商户到账 ¥17,372 · Agent 分成 3%', en: 'Payment successful · Session #PM-5F8D · Merchant received ¥17,372 · Agent commission 3%' })}</p>
+                    <p className="text-sm">{t({ zh: '支付成功 · Session #AX-5F8D · 商户到账 ¥17,372 · Agent 分成 3%', en: 'Payment successful · Session #AX-5F8D · Merchant received ¥17,372 · Agent commission 3%' })}</p>
                   </div>
                 </div>
                 <div className="text-xs text-slate-400 flex items-center gap-2">

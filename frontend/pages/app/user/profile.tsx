@@ -187,10 +187,10 @@ export default function UserProfile() {
             <AvatarUpload size="lg" />
           </div>
 
-          {/* Agentrix ID */}
+          {/* AX ID */}
           <div className="mb-6 pb-6 border-b border-gray-200">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Agentrix ID
+              AX ID
             </label>
             <div className="flex items-center space-x-3">
               <div className="flex-1 bg-gray-50 px-4 py-3 rounded-lg">

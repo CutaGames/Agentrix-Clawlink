@@ -66,7 +66,7 @@ export function UserMenu() {
 
   // 显示的用户标识
   const displayIdentifier = user.agentrixId || user.walletAddress || user.email || 'User'
-  const displayType = user.agentrixId ? 'Agentrix ID' : 
+  const displayType = user.agentrixId ? 'AX ID' : 
                      user.walletAddress ? 'Wallet' : 
                      user.email ? 'Email' : 'User'
 
@@ -75,7 +75,7 @@ export function UserMenu() {
     if (type === 'Wallet' && value.length > 10) {
       return `${value.slice(0, 6)}...${value.slice(-4)}`
     }
-    if (type === 'Agentrix ID') {
+    if (type === 'AX ID') {
       return value
     }
     return value
@@ -85,19 +85,19 @@ export function UserMenu() {
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors"
       >
         <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
           {user.agentrixId?.slice(0, 2) || user.email?.slice(0, 2).toUpperCase() || 'U'}
         </div>
         <div className="text-left hidden md:block">
-          <div className="text-sm font-medium text-gray-900">
+          <div className="text-sm font-medium text-white">
             {formatDisplay(displayIdentifier, displayType)}
           </div>
-          <div className="text-xs text-gray-500">{displayType}</div>
+          <div className="text-xs text-slate-400">{displayType}</div>
         </div>
         <svg
-          className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -107,29 +107,29 @@ export function UserMenu() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+        <div className="absolute right-0 mt-2 w-64 bg-slate-900 rounded-lg shadow-xl border border-white/10 py-2 z-50">
           {/* 用户信息 */}
-          <div className="px-4 py-3 border-b border-gray-200">
+          <div className="px-4 py-3 border-b border-white/10">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
                 {user.agentrixId?.slice(0, 2) || 'U'}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-900 truncate">
+                <div className="text-sm font-semibold text-white truncate">
                   {user.agentrixId && (
                     <div>
-                      <div className="text-xs text-gray-500 mb-1">Agentrix ID</div>
-                      <div className="font-mono text-xs">{user.agentrixId}</div>
+                      <div className="text-xs text-slate-400 mb-1">AX ID</div>
+                      <div className="font-mono text-xs text-cyan-400">{user.agentrixId}</div>
                     </div>
                   )}
                 </div>
                 {user.walletAddress && (
-                  <div className="text-xs text-gray-500 mt-1 font-mono">
+                  <div className="text-xs text-slate-400 mt-1 font-mono">
                     {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}
                   </div>
                 )}
                 {user.email && (
-                  <div className="text-xs text-gray-500 mt-1">{user.email}</div>
+                  <div className="text-xs text-slate-400 mt-1">{user.email}</div>
                 )}
               </div>
             </div>
@@ -140,7 +140,7 @@ export function UserMenu() {
             <Link
               href="/app/user"
               onClick={() => setIsOpen(false)}
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
             >
               <div className="flex items-center space-x-2">
                 <span>👤</span>
@@ -150,28 +150,27 @@ export function UserMenu() {
             <Link
               href="/app/user/profile"
               onClick={() => setIsOpen(false)}
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
             >
               <div className="flex items-center space-x-2">
                 <span>⚙️</span>
                 <span>账户设置</span>
               </div>
             </Link>
-            <div className="border-t border-gray-200 my-1"></div>
+            <div className="border-t border-white/10 my-1"></div>
             <Link
               href={user.roles?.includes('merchant') ? "/app/merchant" : "/app/register/merchant"}
               onClick={() => setIsOpen(false)}
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
             >
               <div className="flex items-center space-x-2">
                 <span>🏪</span>
                 <span>{user.roles?.includes('merchant') ? "商家后台" : "注册成为商家"}</span>
               </div>
             </Link>
-            {/* 管理员入口已移除，避免在公网暴露管理员登录 */}
             <button
               onClick={handleLogout}
-              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+              className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-400/10"
             >
               <div className="flex items-center space-x-2">
                 <span>🚪</span>

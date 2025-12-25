@@ -64,6 +64,13 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
   // 个人Agent能力模块 - 完整版
   const personalCapabilities = [
     {
+      id: 'user_module',
+      icon: '🧭',
+      title: t({ zh: '授权向导', en: 'Auth Guide' }),
+      description: t({ zh: '配置 Agent 自动支付授权与策略', en: 'Configure auto-pay and policies' }),
+      status: 'available',
+    },
+    {
       id: 'payment_assistant',
       icon: '💳',
       title: t({ zh: '支付与账单', en: 'Payments & Bills' }),
@@ -130,6 +137,13 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
 
   // 商家Agent能力模块 - 完整版
   const merchantCapabilities = [
+    {
+      id: 'merchant_module',
+      icon: '📋',
+      title: t({ zh: '上线清单', en: 'Go-live Checklist' }),
+      description: t({ zh: '商户入驻、商品导入与支付集成进度', en: 'Onboarding and integration progress' }),
+      status: 'available',
+    },
     {
       id: 'merchant_products',
       icon: '🛍️',
@@ -226,6 +240,13 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
   // 开发者Agent能力模块 - 完整版
   const developerCapabilities = [
     {
+      id: 'developer_module',
+      icon: '🚀',
+      title: t({ zh: '开发进度', en: 'Skill Lifecycle' }),
+      description: t({ zh: '技能构建、测试、打包与发布进度', en: 'Build, test, and publish skills' }),
+      status: 'available',
+    },
+    {
       id: 'dev_api',
       icon: '🔗',
       title: t({ zh: 'API 统计', en: 'API Stats' }),
@@ -292,6 +313,9 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
 
   // 图标映射
   const iconMap: Record<string, any> = {
+    user_module: CheckCircle,
+    merchant_module: CheckCircle,
+    developer_module: CheckCircle,
     payment_assistant: Wallet,
     payments: Wallet,
     wallet_management: Wallet,
@@ -347,7 +371,7 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
           <button 
             onClick={() => {
               setMode('personal');
-              setViewMode('chat');
+              setViewMode('user_module');
             }}
             className={`flex flex-col items-center justify-center py-2 rounded-md text-[10px] font-medium transition-all ${
               mode === 'personal' 
@@ -361,7 +385,7 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
           <button 
             onClick={() => {
               setMode('merchant');
-              setViewMode('merchant_orders');
+              setViewMode('merchant_module');
             }}
             className={`flex flex-col items-center justify-center py-2 rounded-md text-[10px] font-medium transition-all relative ${
               mode === 'merchant' 
@@ -377,7 +401,7 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
           <button 
             onClick={() => {
               setMode('developer');
-              setViewMode('sdk_generator');
+              setViewMode('developer_module');
             }}
             className={`flex flex-col items-center justify-center py-2 rounded-md text-[10px] font-medium transition-all relative ${
               mode === 'developer' 

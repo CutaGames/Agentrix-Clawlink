@@ -12,7 +12,11 @@ import {
   BarChart3,
   Package,
   ShoppingBag,
-  Link2
+  Link2,
+  Sparkles,
+  ArrowRight,
+  Code2,
+  Store
 } from 'lucide-react';
 import { AgentSidebar } from '../components/agent/AgentSidebar';
 import { AgentTopNav } from '../components/agent/AgentTopNav';
@@ -31,7 +35,11 @@ import { AirdropDiscovery } from '../components/agent/AirdropDiscovery';
 import { UserModule } from '../components/agent/workspace/UserModule';
 import { MerchantModule } from '../components/agent/workspace/MerchantModule';
 import { DeveloperModule } from '../components/agent/workspace/DeveloperModule';
+import { UnifiedWorkspace } from '../components/agent/workspace/UnifiedWorkspace';
 import { CommandHandler } from '../components/agent/workspace/CommandHandler';
+
+import { TaskPanel } from '../components/workspace/TaskPanel';
+
 import { ProductInfo } from '../lib/api/product.api';
 import { usePayment } from '../contexts/PaymentContext';
 import { useUser } from '../contexts/UserContext';
@@ -74,9 +82,9 @@ function AgentEnhancedContent() {
     currency?: string;
   } | null>(null);
 
-  const [userTab, setUserTab] = useState<'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile'>('payments');
-  const [merchantTab, setMerchantTab] = useState<'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings'>('products');
-  const [developerTab, setDeveloperTab] = useState<'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings'>('api');
+  const [userTab, setUserTab] = useState<'checklist' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile'>('checklist');
+  const [merchantTab, setMerchantTab] = useState<'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'integration_guide' | 'off_ramp'>('checklist');
+  const [developerTab, setDeveloperTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace'>('checklist');
   
   // 将AgentModeContext的mode映射到UnifiedAgentChat的AgentMode
   const mapModeToAgentMode = (mode: 'personal' | 'merchant' | 'developer'): AgentMode => {
@@ -126,9 +134,9 @@ function AgentEnhancedContent() {
     if (result.view) {
       // 映射 WorkspaceView 到 ViewMode
       const viewMap: Record<string, ViewMode> = {
-        'user': 'wallet_management',
-        'merchant': 'merchant_orders',
-        'developer': 'sdk_generator',
+        'user': 'user_module',
+        'merchant': 'merchant_module',
+        'developer': 'developer_module',
         'marketplace': 'marketplace',
         'orders': 'order',
         'chat': 'chat'
@@ -136,6 +144,13 @@ function AgentEnhancedContent() {
       
       const targetView = viewMap[result.view] || (result.view as ViewMode);
       setViewMode(targetView);
+      
+      // 如果命令指定了 action，尝试映射到正确的 tab
+      if (result.action === 'view_checklist' || result.action === 'view_lifecycle' || result.action === 'view_auth_guide') {
+        if (result.view === 'user') setUserTab('checklist');
+        if (result.view === 'merchant') setMerchantTab('checklist');
+        if (result.view === 'developer') setDeveloperTab('checklist');
+      }
     }
     
     return result;
@@ -382,21 +397,84 @@ function AgentEnhancedContent() {
     switch (viewMode) {
       case 'chat':
         return (
-          <div className="h-full flex items-center justify-center p-12 text-center">
-            <div className="max-w-md">
+          <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-slate-950/40">
+            <div className="max-w-4xl w-full">
               <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20">
-                <Bot size={40} className="text-indigo-400" />
+                <Sparkles size={40} className="text-indigo-400" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-4">Agentrix Brain</h2>
-              <p className="text-slate-400 mb-8">
-                I am your AI business assistant. Use the chat on the right to command me, or select a capability from the sidebar to open a structured workspace.
+              <h2 className="text-3xl font-bold text-white mb-4">Welcome to Agentrix Workbench</h2>
+              <p className="text-slate-400 mb-12 max-w-2xl mx-auto text-lg">
+                Agentrix empowers everyone to build, earn, and automate with AI Agents. Choose your path to get started.
               </p>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => setViewMode('marketplace')} className="p-3 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-sm text-slate-300 transition-all">
-                  Go Shopping
-                </button>
-                <button onClick={() => setViewMode('wallet_management')} className="p-3 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl text-sm text-slate-300 transition-all">
-                  Manage Wallet
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div 
+                  onClick={() => {
+                    setAgentModeContext('personal');
+                    setViewMode('user_module');
+                  }}
+                  className="bg-slate-900/50 border border-slate-800 hover:border-cyan-500/50 p-6 rounded-2xl cursor-pointer transition-all group"
+                >
+                  <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-cyan-500/20 transition-colors">
+                    <UserCircle className="text-cyan-400" size={24} />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2 text-left">Path 1: Individual</h3>
+                  <p className="text-slate-400 text-sm text-left mb-4">Authorize agents to handle your payments and manage your digital assets automatically.</p>
+                  <div className="flex items-center text-cyan-400 text-xs font-bold gap-2">
+                    START AUTHORIZATION <ArrowRight size={14} />
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => {
+                    setAgentModeContext('merchant');
+                    setViewMode('merchant_module');
+                  }}
+                  className="bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 p-6 rounded-2xl cursor-pointer transition-all group"
+                >
+                  <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
+                    <Store className="text-blue-400" size={24} />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2 text-left">Path 2: Merchant</h3>
+                  <p className="text-slate-400 text-sm text-left mb-4">List your products and integrate AX Pay to start receiving payments from the AI ecosystem.</p>
+                  <div className="flex items-center text-blue-400 text-xs font-bold gap-2">
+                    GO-LIVE CHECKLIST <ArrowRight size={14} />
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => {
+                    setAgentModeContext('developer');
+                    setViewMode('developer_module');
+                  }}
+                  className="bg-slate-900/50 border border-slate-800 hover:border-purple-500/50 p-6 rounded-2xl cursor-pointer transition-all group"
+                >
+                  <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-500/20 transition-colors">
+                    <Code2 className="text-purple-400" size={24} />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2 text-left">Path 3: Developer</h3>
+                  <p className="text-slate-400 text-sm text-left mb-4">Build once, deploy everywhere. Create skills and distribute them across all major AI platforms.</p>
+                  <div className="flex items-center text-purple-400 text-xs font-bold gap-2">
+                    START BUILDING <ArrowRight size={14} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-12 p-6 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center">
+                    <Bot size={20} className="text-indigo-400" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-white">Need help getting started?</p>
+                    <p className="text-xs text-slate-500">Just ask the Agentrix Brain on the right side.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsChatExpanded(true)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all"
+                >
+                  TALK TO AGENT
                 </button>
               </div>
             </div>
@@ -417,7 +495,10 @@ function AgentEnhancedContent() {
         return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab={merchantTab} /></div>;
       case 'developer_module':
         return <div className="p-6"><DeveloperModule onCommand={handleCommand} initialTab={developerTab} /></div>;
+      case 'unified_workbench':
+        return <UnifiedWorkspace onAction={handleAction} />;
       case 'cart': return <div className="p-6"><ShoppingCart items={cartItems} onUpdateQuantity={handleUpdateCartQuantity} onRemoveItem={handleRemoveCartItem} onCheckout={handleCartCheckout} /></div>;
+
       case 'order': 
         return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="orders" /></div>;
       case 'sandbox': return <div className="p-6"><Sandbox codeExample={selectedCodeExample} /></div>;
@@ -608,6 +689,11 @@ function AgentEnhancedContent() {
         amount={paymentSuccessData?.amount}
         currency={paymentSuccessData?.currency}
       />
+
+      {/* Floating Task Guidance Panel */}
+      {agentModeContext === 'merchant' && viewMode.includes('merchant') && <TaskPanel type="merchant" />}
+      {agentModeContext === 'developer' && (viewMode.includes('developer') || viewMode === 'sdk_generator') && <TaskPanel type="developer" />}
+      {agentModeContext === 'personal' && (viewMode.includes('user') || viewMode === 'order' || viewMode === 'wallet') && <TaskPanel type="personal" />}
     </>
   );
 }

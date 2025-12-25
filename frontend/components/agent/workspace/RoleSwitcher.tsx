@@ -1,6 +1,7 @@
 import { useLocalization } from '../../../contexts/LocalizationContext'
 import { WorkspaceView } from './UnifiedWorkspace'
-import { User, Store, Code, ChevronRight, Zap, Shield, BarChart3, Layout } from 'lucide-react'
+import { User, Store, Code, ChevronRight, Zap, Shield, BarChart3, Layout, FileText, Link2 } from 'lucide-react'
+
 
 interface RoleSwitcherProps {
   currentMode: 'personal' | 'merchant' | 'developer'
@@ -64,21 +65,22 @@ export function RoleSwitcher({ currentMode, userRoles, onRoleSwitch, onViewChang
 
   const quickActions = {
     personal: [
-      { label: { zh: '查看支付历史', en: 'View Payment History' }, view: 'user' as WorkspaceView, action: 'view_payment_history', icon: <BarChart3 size={14} /> },
+      { label: { zh: '审计与收据', en: 'Audit & Receipts' }, view: 'receipts' as WorkspaceView, action: 'view_receipts', icon: <FileText size={14} /> },
       { label: { zh: '管理钱包', en: 'Manage Wallets' }, view: 'user' as WorkspaceView, action: 'manage_wallets', icon: <Shield size={14} /> },
       { label: { zh: '查看订单', en: 'View Orders' }, view: 'orders' as WorkspaceView, action: 'view_orders', icon: <Layout size={14} /> },
     ],
     merchant: [
       { label: { zh: '商品管理', en: 'Manage Products' }, view: 'merchant' as WorkspaceView, action: 'manage_products', icon: <Zap size={14} /> },
       { label: { zh: '订单管理', en: 'Manage Orders' }, view: 'merchant' as WorkspaceView, action: 'manage_orders', icon: <Layout size={14} /> },
-      { label: { zh: '查看结算', en: 'View Settlement' }, view: 'merchant' as WorkspaceView, action: 'view_settlement', icon: <BarChart3 size={14} /> },
+      { label: { zh: '合规审计', en: 'Compliance Audit' }, view: 'receipts' as WorkspaceView, action: 'view_receipts', icon: <FileText size={14} /> },
     ],
     developer: [
-      { label: { zh: 'API统计', en: 'API Statistics' }, view: 'developer' as WorkspaceView, action: 'view_api_stats', icon: <BarChart3 size={14} /> },
+      { label: { zh: '连接器中心', en: 'Connectors Hub' }, view: 'connectors' as WorkspaceView, action: 'view_connectors', icon: <Link2 size={14} /> },
       { label: { zh: '代码生成', en: 'Generate Code' }, view: 'code' as WorkspaceView, action: 'generate_code', icon: <Code size={14} /> },
       { label: { zh: '查看收益', en: 'View Revenue' }, view: 'developer' as WorkspaceView, action: 'view_revenue', icon: <Zap size={14} /> },
     ],
   }
+
 
   return (
     <div className="h-full flex flex-col bg-slate-900/50 backdrop-blur-xl">

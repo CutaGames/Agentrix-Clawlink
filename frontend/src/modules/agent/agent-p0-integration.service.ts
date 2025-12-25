@@ -2030,7 +2030,7 @@ export class AgentP0IntegrationService {
       const user = await this.userService.addRole(userId, 'merchant' as any);
 
       return {
-        response: `✅ 注册商户成功！\n\n• 商户ID：${user.id}\n• Agentrix ID：${user.agentrixId}\n• 角色：${user.roles.join(', ')}\n\n💡 您现在可以：\n• 上传商品到Marketplace\n• 查看和管理订单\n• 生成收款链接\n• 查看销售分析`,
+        response: `✅ 注册商户成功！\n\n• 商户ID：${user.id}\n• AX ID：${user.agentrixId}\n• 角色：${user.roles.join(', ')}\n\n💡 您现在可以：\n• 上传商品到Marketplace\n• 查看和管理订单\n• 生成收款链接\n• 查看销售分析`,
         type: 'register_merchant',
         data: {
           userId: user.id,

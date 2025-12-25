@@ -9,7 +9,7 @@ interface UserContextType {
   login: (userData: Partial<User>) => void
   logout: () => void
   switchRole: (role: UserRole) => void
-  registerRole: (role: 'merchant' | 'agent', data?: any) => Promise<void>
+  registerRole: (role: 'merchant' | 'agent' | 'developer', data?: any) => Promise<void>
   updateKYC: (kycLevel: KYCLevel, status: 'pending' | 'approved' | 'rejected') => void
   updateUser: (userData: Partial<User>) => void
 }
@@ -104,7 +104,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const registerRole = async (role: 'merchant' | 'agent', data?: any) => {
+  const registerRole = async (role: 'merchant' | 'agent' | 'developer', data?: any) => {
     if (!user) return
 
     try {
@@ -123,17 +123,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }>('/users/register-role', { role, ...data })
 
       if (response?.success && response?.user) {
+        console.log('✅ Backend role registration success:', response.user);
         // 使用后端返回的用户数据更新本地状态
         const updatedUser: User = {
           ...user,
+          role: role as UserRole, // 设置为当前新注册的角色
           roles: response.user.roles as UserRole[],
           email: response.user.email || user.email,
         }
         
+        console.log('🔄 Updating user state with roles:', updatedUser.roles);
         setUser(updatedUser)
         localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
         
-        setCurrentRole(role)
+        setCurrentRole(role as UserRole)
         localStorage.setItem('agentrix_current_role', role)
       } else {
         throw new Error('角色注册失败')
@@ -142,16 +145,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
       console.error('注册角色失败:', error)
       
       // 如果后端API失败，降级为本地更新（确保用户体验）
-      const updatedRoles = [...user.roles, role]
+      const updatedRoles = user.roles.includes(role as UserRole) ? user.roles : [...user.roles, role as UserRole]
       const updatedUser: User = {
         ...user,
+        role: role as UserRole, // 设置为当前新注册的角色
         roles: updatedRoles
       }
 
+      console.log('🔄 Fallback: Updating user state with roles:', updatedUser.roles);
       setUser(updatedUser)
       localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
 
-      setCurrentRole(role)
+      setCurrentRole(role as UserRole)
       localStorage.setItem('agentrix_current_role', role)
       
       // 不抛出错误，让用户继续使用

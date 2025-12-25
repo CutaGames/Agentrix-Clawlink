@@ -31,7 +31,7 @@ describe('Agentrix V3.0 功能测试', () => {
       .send({
         email: 'test@agentrix.test',
         password: 'test123456',
-        agentrixId: 'PM-TEST-001',
+        agentrixId: 'AX-TEST-001',
       });
 
     userId = userResponse.body.id;
@@ -43,7 +43,7 @@ describe('Agentrix V3.0 功能测试', () => {
       .send({
         email: 'merchant@agentrix.test',
         password: 'test123456',
-        agentrixId: 'PM-MERCHANT-001',
+        agentrixId: 'AX-MERCHANT-001',
         roles: ['merchant'],
       });
 

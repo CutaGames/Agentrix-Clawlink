@@ -26,7 +26,12 @@ import {
   Globe
 } from 'lucide-react'
 
+import { SkillRegistry } from '../../workspace/SkillRegistry'
+import { PackCenter } from '../../workspace/PackCenter'
+import { TestHarness } from '../../workspace/TestHarness'
+
 // 定义UserAgent类型（与后端实体对应）
+
 type UserAgent = {
   id: string
   userId: string
@@ -47,7 +52,7 @@ type UserAgent = {
 
 interface DeveloperModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings'
+  initialTab?: 'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace'
 }
 
 /**
@@ -57,16 +62,40 @@ interface DeveloperModuleProps {
 export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps) {
   const { t } = useLocalization()
   const { user, registerRole } = useUser()
+
+  // 增加日志以诊断注册跳转问题
+  useEffect(() => {
+    console.log('[DeveloperModule] User state changed:', {
+      hasUser: !!user,
+      roles: user?.roles,
+      isDeveloper: user?.roles?.includes('developer' as any)
+    })
+  }, [user])
+
   const isDeveloper = user?.roles?.includes('developer' as any)
-  const [activeTab, setActiveTab] = useState<'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings'>(initialTab || 'api')
+
+  const [activeTab, setActiveTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'skills' | 'packs' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'marketplace' | 'settings'>(initialTab || 'checklist')
+
+
 
   // 注册状态
   const [registering, setRegistering] = useState(false)
   const handleRegister = async () => {
     setRegistering(true)
     try {
+      console.log('[DeveloperModule] Registering as developer...')
       await registerRole('developer' as any)
-      alert(t({ zh: '开发者权限已开通！', en: 'Developer access enabled!' }))
+      
+      // 提醒用户并强制刷新以确保所有状态同步
+      if (confirm(t({ 
+        zh: '开发者权限已开通！点击“确定”刷新页面进入开发者工具。', 
+        en: 'Developer access enabled! Click OK to refresh and enter tools.' 
+      }))) {
+        window.location.reload()
+      } else {
+        // 如果不刷新，也尝试分发事件
+        window.dispatchEvent(new Event('role-updated'))
+      }
     } catch (error) {
       console.error('注册失败:', error)
     } finally {
@@ -74,12 +103,33 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
     }
   }
 
+
+
   // 当 initialTab 改变时更新 activeTab
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab)
     }
   }, [initialTab])
+
+  // 处理命令
+  useEffect(() => {
+    if (onCommand) {
+      const handleCommand = (command: string) => {
+        const result = onCommand(command)
+        if (result?.view === 'developer') {
+          if (result.action === 'view_lifecycle') {
+            setActiveTab('checklist')
+          } else if (result.action === 'view_api_stats') {
+            setActiveTab('api')
+          } else if (result.action === 'view_revenue') {
+            setActiveTab('revenue')
+          }
+        }
+      }
+    }
+  }, [onCommand])
+
 
   const [apiStats, setApiStats] = useState<any>(null)
   const [revenue, setRevenue] = useState<any>(null)
@@ -359,14 +409,21 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
       <div className="border-b border-white/10 bg-slate-900/50 px-6 overflow-x-auto">
         <div className="flex space-x-1 min-w-max">
           {[
+            { key: 'checklist' as const, label: { zh: '开发进度', en: 'Skill Lifecycle' } },
             { key: 'api' as const, label: { zh: 'API统计', en: 'API Stats' } },
+
             { key: 'revenue' as const, label: { zh: '收益查看', en: 'Revenue' } },
             { key: 'agents' as const, label: { zh: 'Agent管理', en: 'Agents' } },
+            { key: 'skills' as const, label: { zh: '技能库', en: 'Skill Registry' } },
+            { key: 'packs' as const, label: { zh: '打包中心', en: 'Pack Center' } },
             { key: 'code' as const, label: { zh: '代码生成', en: 'Code' } },
             { key: 'webhooks' as const, label: { zh: 'Webhooks', en: 'Webhooks' } },
             { key: 'logs' as const, label: { zh: '调用日志', en: 'Logs' } },
-            { key: 'simulator' as const, label: { zh: '沙盒模拟', en: 'Simulator' } },
+            { key: 'simulator' as const, label: { zh: '测试台', en: 'Test Harness' } },
+            { key: 'marketplace' as const, label: { zh: '市场发布', en: 'Marketplace' } },
+
             { key: 'settings' as const, label: { zh: '开发者设置', en: 'Settings' } },
+
           ].map((tab) => (
             <button
               key={tab.key}
@@ -385,7 +442,84 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'checklist' && (
+          <div className="space-y-6 max-w-4xl">
+            <div className="bg-purple-600/10 border border-purple-500/20 rounded-2xl p-6 mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-purple-400 mb-2">Skill Build → Test → Publish</h3>
+                  <p className="text-sm text-slate-400">开发一次，自动适配多 AI 生态产物</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-3xl font-bold text-purple-400">25%</span>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Build Status</p>
+                </div>
+              </div>
+              <div className="w-full bg-slate-800 h-2 rounded-full mt-4 overflow-hidden">
+                <div className="bg-purple-500 h-full w-[25%] transition-all"></div>
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              {[
+                { title: '创建 Skill (commerce-min)', desc: '使用标准模板定义技能 Spec (Schema + Policy)', status: 'completed', tab: 'skills' },
+                { title: '校验 Spec & Policy', desc: '运行静态校验确保符合 AX Spec V2 标准', status: 'in_progress', tab: 'skills' },
+                { title: '一键 Build Packs', desc: '自动打包生成 OpenAI Actions 与 Claude MCP 产物', status: 'pending', tab: 'packs' },
+                { title: '一键 Test (E2E)', desc: '模拟 AI 调用、验证 Webhook 与沙盒交易流', status: 'pending', tab: 'simulator' },
+                { title: '发布到 Marketplace', desc: '配置 Skill 定价、使用权限与开发者分润', status: 'pending', tab: 'marketplace' },
+                { title: '分发连接器', desc: '选择目标生态并生成一键安装包/说明文件', status: 'pending', tab: 'packs' }
+              ].map((step, i) => (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center justify-between hover:bg-white/10 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                      step.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 
+                      step.status === 'in_progress' ? 'bg-purple-500/20 text-purple-400 animate-pulse' : 
+                      'bg-slate-800 text-slate-500'
+                    }`}>
+                      {step.status === 'completed' ? <Check size={16} /> : i + 1}
+                    </div>
+                    <div>
+                      <h4 className={`font-bold ${step.status === 'completed' ? 'text-slate-300' : 'text-white'}`}>{step.title}</h4>
+                      <p className="text-xs text-slate-500">{step.desc}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setActiveTab(step.tab as any)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                      step.status === 'completed' ? 'bg-slate-800 text-slate-500' : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                  >
+                    {step.status === 'completed' ? '查看' : step.status === 'in_progress' ? '继续' : '启动'}
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-8 p-6 bg-slate-900 border border-white/5 rounded-2xl">
+              <h4 className="font-bold mb-4 flex items-center gap-2">
+                <Zap size={18} className="text-yellow-400" />
+                验收交付产物
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">可安装包</p>
+                  <p className="text-xs font-medium">Connector-v1.zip</p>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">测试报告</p>
+                  <p className="text-xs font-medium text-emerald-400">Pass (12/12)</p>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Receipt 列表</p>
+                  <p className="text-xs font-medium text-blue-400">8 已生成</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'api' && (
+
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
@@ -487,7 +621,8 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
                   type="date"
                   value={revenueRange.endDate}
                   onChange={(e) => setRevenueRange((prev) => ({ ...prev, endDate: e.target.value }))}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text白 focus:border-blue-500 focus:ring-2 focus:ring-blue-400/30"
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-400/30"
+
                 />
                 <button
                   onClick={() => {
@@ -616,7 +751,54 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
           </div>
         )}
 
+        {activeTab === 'skills' && (
+          <div className="space-y-4">
+            <SkillRegistry />
+          </div>
+        )}
+
+        {activeTab === 'packs' && (
+          <div className="space-y-4">
+            <PackCenter />
+          </div>
+        )}
+
+        {activeTab === 'marketplace' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 border border-white/10 rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-4">市场发布管理</h3>
+              <p className="text-slate-400 mb-6">管理您的 Skills 和 Agents 在 Marketplace 的上架状态、定价与分润。</p>
+              
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6">
+                <p className="text-sm text-blue-300 flex items-center gap-2">
+                  <Zap size={16} />
+                  您的 3 个 Skill 正在热卖中，昨日产生分润 $120.50
+                </p>
+              </div>
+
+              <div className="divide-y divide-white/5">
+                {[
+                  { name: 'Crypto Payment Skill', status: 'Published', price: '$0.1/call', share: '70%' },
+                  { name: 'E-commerce Sync Tool', status: 'Pending Review', price: '$5/mo', share: '80%' }
+                ].map((item, i) => (
+                  <div key={i} className="py-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-xs text-slate-500">Status: {item.status} | Price: {item.price}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="px-3 py-1 text-xs bg-white/5 hover:bg-white/10 rounded border border-white/10">管理</button>
+                      <button className="px-3 py-1 text-xs bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded">更新</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'code' && (
+
           <div className="space-y-4">
             <h3 className="text-lg font-semibold mb-4">{t({ zh: '代码生成', en: 'Code Generation' })}</h3>
             <div className="bg-white/5 border border-white/10 rounded-lg p-6">
@@ -780,65 +962,10 @@ const session = await agentrix.payments.create({
 
         {activeTab === 'simulator' && (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold mb-4">{t({ zh: '接口模拟器', en: 'API Simulator' })}</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white/5 border border-white/10 rounded-lg p-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">
-                      {t({ zh: '模拟接口', en: 'Simulate API' })}
-                    </label>
-                    <select className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white">
-                      <option>POST /api/v1/payments/create</option>
-                      <option>GET /api/v1/agents/status</option>
-                      <option>POST /api/v1/webhooks/test</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">
-                      {t({ zh: '请求参数 (JSON)', en: 'Request Body (JSON)' })}
-                    </label>
-                    <textarea 
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white font-mono text-sm h-32"
-                      defaultValue='{ "amount": 100, "currency": "USDT" }'
-                    />
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setLoading(true);
-                      setTimeout(() => {
-                        setLoading(false);
-                        alert(t({ zh: '模拟请求已发送，请查看响应', en: 'Mock request sent, check response' }));
-                      }, 1000);
-                    }}
-                    className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
-                    {t({ zh: '发送模拟请求', en: 'Send Mock Request' })}
-                  </button>
-                </div>
-              </div>
-              <div className="bg-black/40 border border-white/10 rounded-lg p-6 font-mono text-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-slate-400">{t({ zh: '响应结果', en: 'Response' })}</span>
-                  <span className="text-green-400">200 OK</span>
-                </div>
-                <pre className="text-blue-300 overflow-x-auto">
-{`{
-  "status": "success",
-  "data": {
-    "id": "pay_sim_948201",
-    "amount": 100,
-    "currency": "USDT",
-    "status": "pending",
-    "checkoutUrl": "https://checkout.agentrix.ai/pay/sim_948201"
-  }
-}`}
-                </pre>
-              </div>
-            </div>
+            <TestHarness />
           </div>
         )}
+
 
         {activeTab === 'settings' && (
           <div className="space-y-6">
@@ -1006,4 +1133,5 @@ function AgentStatsDrawer({
     </div>
   )
 }
+
 

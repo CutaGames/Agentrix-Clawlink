@@ -151,41 +151,47 @@ const getMetaMaskProvider = () => {
 
 const getOKXProvider = () => {
   if (typeof window === 'undefined') return undefined
-  
+
   const { ethereum, okxwallet } = window as any
 
-  // 1. 优先检查 window.ethereum 是否为 OKX (兼容性更好)
+  // 1) 多钱包共存场景：优先从 ethereum.providers 中找到 OKX 的 EIP-1193 provider
+  if (ethereum?.providers?.length) {
+    console.debug('[getOKXProvider] Checking ethereum.providers for OKX providers...')
+    const found = ethereum.providers.find((provider: any) => {
+      const okxLike = !!provider?.isOkxWallet || !!provider?.isOKExWallet || !!provider?.isOkxwallet
+      const constructorNameOkx =
+        !!provider?.constructor?.name &&
+        (provider.constructor.name.includes('Okx') || provider.constructor.name.includes('OKX'))
+      return okxLike || constructorNameOkx
+    })
+
+    if (found && typeof found.request === 'function') {
+      console.log('[getOKXProvider] Found OKX in ethereum.providers')
+      return found
+    }
+  }
+
+  // 2) 兼容性：window.ethereum 本身就是 OKX
   if (ethereum && (ethereum.isOkxWallet || ethereum.isOKExWallet || ethereum.isOkxwallet)) {
     console.log('[getOKXProvider] Found OKX via window.ethereum')
     return ethereum
   }
 
-  // 2. 检查 okxwallet.ethereum
-  if (okxwallet?.ethereum) {
-    console.log('[getOKXProvider] Found window.okxwallet.ethereum');
+  // 3) OKX 标准注入：window.okxwallet.ethereum
+  if (okxwallet?.ethereum && typeof okxwallet.ethereum.request === 'function') {
+    console.log('[getOKXProvider] Found window.okxwallet.ethereum')
     return okxwallet.ethereum
   }
-  
-  // 3. 检查 window.okxwallet 是否存在且看起来像 provider
-  if (okxwallet) {
-    console.log('[getOKXProvider] Found window.okxwallet');
-    if (typeof okxwallet.request !== 'function') {
-       console.warn('[getOKXProvider] window.okxwallet exists but has no request method. It might be a namespace object.')
-       // 如果 okxwallet 是命名空间，尝试找其中的 provider? 暂时返回它，让调用者处理或失败
-    }
+
+  // 4) 回退：window.okxwallet 直接是 provider
+  if (okxwallet && typeof okxwallet.request === 'function') {
+    console.log('[getOKXProvider] Found window.okxwallet (direct provider)')
     return okxwallet
   }
-  
-  // 4. 最后检查 ethereum.providers 中的 OKX 钱包
-  console.debug('[getOKXProvider] Checking ethereum.providers for OKX providers...');
-  return getEthereumProvider((provider) => {
-    const okxLike = !!provider?.isOkxWallet || !!provider?.isOKExWallet || !!provider?.isOkxwallet
-    const constructorNameOkx = !!provider?.constructor?.name && (provider.constructor.name.includes('Okx') || provider.constructor.name.includes('OKX'))
-    const match = okxLike || constructorNameOkx || (provider?.isMetaMask === false && constructorNameOkx)
-    if (match) console.debug('[getOKXProvider] Matching provider found in providers list:', provider)
-    return match
-  })
+
+  return undefined
 }
+
 
 // 调试工具：在浏览器中调用 `walletService.inspectInjectedProviders()` 可以获取注入提供者的详细信息（便于排查所有插件）
 export function inspectInjectedProviders() {

@@ -36,12 +36,14 @@ import {
   ShieldCheck,
   ChevronRight,
   Clock,
-  Cpu
+  Cpu,
+  Check
 } from 'lucide-react'
+
 
 interface UserModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile'
+  initialTab?: 'checklist' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile' | 'subscriptions'
 }
 
 /**
@@ -53,7 +55,8 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
   const { user, updateUser } = useUser()
   const { connectedWallets } = useWeb3()
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile'>(initialTab || 'payments')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile' | 'subscriptions'>(initialTab || 'checklist')
+
 
   // 个人资料状态
   const [isEditingProfile, setIsEditingProfile] = useState(false)
@@ -286,21 +289,26 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
     if (onCommand) {
       const handleCommand = (command: string) => {
         const result = onCommand(command)
-        if (result?.view === 'user') {
-          if (command.includes('支付') || command.includes('payment')) {
+        if (result?.view === 'user' || result?.view === 'orders' || result?.view === 'autoEarn') {
+          if (result.action === 'view_auth_guide') {
+            setActiveTab('checklist')
+          } else if (result.action === 'view_payment_history') {
             setActiveTab('payments')
-          } else if (command.includes('钱包') || command.includes('wallet')) {
+          } else if (result.action === 'view_wallets') {
             setActiveTab('wallets')
-          } else if (command.includes('kyc') || command.includes('认证')) {
+          } else if (result.action === 'start_kyc') {
             setActiveTab('kyc')
-          } else if (command.includes('订单') || command.includes('order')) {
+          } else if (result.action === 'view_orders') {
             setActiveTab('orders')
+          } else if (result.action === 'view_auto_earn') {
+            setActiveTab('autoEarn')
           }
         }
+
       }
-      // 可以在这里监听命令
     }
   }, [onCommand])
+
 
   return (
     <div className="h-full flex flex-col bg-slate-950">
@@ -308,7 +316,9 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
       <div className="border-b border-white/10 bg-slate-900/50 px-6 overflow-x-auto">
         <div className="flex space-x-1 min-w-max">
           {[
+            { key: 'checklist' as const, label: { zh: '授权向导', en: 'Auth Guide' } },
             { key: 'payments' as const, label: { zh: '支付历史', en: 'Payment History' } },
+            { key: 'subscriptions' as const, label: { zh: '我的订阅', en: 'Subscriptions' } },
             { key: 'wallets' as const, label: { zh: '钱包管理', en: 'Wallet Management' } },
             { key: 'orders' as const, label: { zh: '订单跟踪', en: 'Order Tracking' } },
             { key: 'policies' as const, label: { zh: '策略授权', en: 'Policies' } },
@@ -335,7 +345,88 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'checklist' && (
+          <div className="space-y-6 max-w-4xl">
+            <div className="bg-cyan-600/10 border border-cyan-500/20 rounded-2xl p-6 mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-cyan-400 mb-2">Authorize Agent for Purchases</h3>
+                  <p className="text-sm text-slate-400">安全地为您的 Agent 授权，实现自动化商业闭环</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-3xl font-bold text-cyan-400">10%</span>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Setup Status</p>
+                </div>
+              </div>
+              <div className="w-full bg-slate-800 h-2 rounded-full mt-4 overflow-hidden">
+                <div className="bg-cyan-500 h-full w-[10%] transition-all"></div>
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              {[
+                { title: '选择 Agent/Skill', desc: '在 Marketplace 或个人库中挑选需要授权的 Agent', status: 'in_progress', tab: 'marketplace' },
+                { title: '设置授权 Mandate', desc: '配置单次/每日限额、有效期及授权范围 (Policies)', status: 'pending', tab: 'policies' },
+                { title: '模拟一次购买', desc: '在沙盒环境验证 Agent 触发的自动支付流', status: 'pending', tab: 'security' },
+                { title: '审计 Receipt', desc: '在 Receipts 中心验证 AI 行为的审计解释回执', status: 'pending', tab: 'payments' },
+                { title: '管理/撤销授权', desc: '随时调整权限或一键终止 Agent 的 Mandate', status: 'pending', tab: 'security' }
+              ].map((step, i) => (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center justify-between hover:bg-white/10 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                      step.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 
+                      step.status === 'in_progress' ? 'bg-cyan-500/20 text-cyan-400 animate-pulse' : 
+                      'bg-slate-800 text-slate-500'
+                    }`}>
+                      {step.status === 'completed' ? <Check size={16} /> : i + 1}
+                    </div>
+                    <div>
+                      <h4 className={`font-bold ${step.status === 'completed' ? 'text-slate-300' : 'text-white'}`}>{step.title}</h4>
+                      <p className="text-xs text-slate-500">{step.desc}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      if (step.tab === 'marketplace') {
+                        onCommand?.('marketplace')
+                      } else {
+                        setActiveTab(step.tab as any)
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                      step.status === 'completed' ? 'bg-slate-800 text-slate-500' : 'bg-cyan-600 text-white hover:bg-cyan-700'
+                    }`}
+                  >
+                    {step.status === 'completed' ? '重新设置' : step.status === 'in_progress' ? '立即开始' : '待处理'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            
+            <div className="mt-8 p-6 bg-slate-900 border border-white/5 rounded-2xl">
+              <h4 className="font-bold mb-4 flex items-center gap-2">
+                <ShieldCheck size={18} className="text-emerald-400" />
+                审计回溯保证
+              </h4>
+              <p className="text-sm text-slate-400 mb-4">
+                任何一次 agent-triggered 操作都能在 30 秒内生成人类可读的回执。
+              </p>
+              <div className="flex items-center gap-4 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-200 uppercase">实时监测中</p>
+                  <p className="text-[10px] text-slate-500">上次 Agent 支付操作：12 分钟前 (已验证)</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'payments' && (
+
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t({ zh: '支付历史', en: 'Payment History' })}</h3>
@@ -377,6 +468,69 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'subscriptions' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '我的订阅', en: 'My Subscriptions' })}</h3>
+                <p className="text-xs text-slate-400">{t({ zh: '管理您的周期性服务与自动扣款', en: 'Manage your recurring services and auto-payments' })}</p>
+              </div>
+              <button 
+                onClick={() => onCommand?.('marketplace')}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
+              >
+                {t({ zh: '发现更多服务', en: 'Discover More' })}
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-400">
+                  <Zap size={24} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">Premium AI Agent</h4>
+                  <p className="text-xs text-slate-400">Next billing: 2025-01-15</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm font-bold text-white">$49.00/mo</span>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-bold uppercase">Active</span>
+                  </div>
+                </div>
+                <button className="ml-auto p-2 hover:bg-white/10 rounded-lg text-slate-400 transition-colors">
+                  <Settings size={18} />
+                </button>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4 opacity-60">
+                <div className="w-12 h-12 bg-slate-700 rounded-xl flex items-center justify-center text-slate-400">
+                  <Package size={24} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">Basic Data Plugin</h4>
+                  <p className="text-xs text-slate-400">Cancelled on: 2024-12-01</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm font-bold text-white">$9.00/mo</span>
+                    <span className="px-2 py-0.5 bg-slate-500/20 text-slate-400 rounded-full text-[10px] font-bold uppercase">Expired</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-white">{t({ zh: '关于自动扣款', en: 'About Auto-payments' })}</h4>
+                <p className="text-xs text-slate-300 mt-1">
+                  {t({ 
+                    zh: '订阅服务通过 ERC8004 协议实现。您可以随时在“策略授权”中调整或撤销 Agent 的扣款权限。', 
+                    en: 'Subscriptions are powered by ERC8004. You can adjust or revoke payment permissions in the "Policies" tab at any time.' 
+                  })}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -809,7 +963,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
                   <p className="text-white font-mono text-sm">{user?.id}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">{t({ zh: 'Agentrix ID', en: 'Agentrix ID' })}</p>
+                  <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">{t({ zh: 'AX ID', en: 'AX ID' })}</p>
                   <div className="flex items-center gap-2">
                     <p className="text-white font-mono text-sm">{user?.agentrixId}</p>
                     <button 

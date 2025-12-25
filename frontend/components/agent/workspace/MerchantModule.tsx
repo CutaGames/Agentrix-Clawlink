@@ -48,12 +48,28 @@ import {
   ChevronRight,
   Bell,
   Code,
-  Play
+  Play,
+  FileText,
+  PieChart,
+  Sparkles,
+  CreditCard,
+  History,
+  Palette,
+  Layout,
+  Smartphone,
+  Users,
+  ShoppingBag,
+  Calendar,
+  DollarSign,
+  ArrowRight,
+  X,
+  Store
 } from 'lucide-react'
+
 
 interface MerchantModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide'
+  initialTab?: 'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide' | 'subscriptions' | 'checkout_config'
 }
 
 type MerchantOrder = Order & { description?: string }
@@ -91,8 +107,20 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
   const { t } = useLocalization()
   const { user, registerRole } = useUser()
   const { success, error: showError } = useToast()
+  
+  // 增加日志以诊断注册跳转问题
+  useEffect(() => {
+    console.log('[MerchantModule] User state changed:', {
+      hasUser: !!user,
+      roles: user?.roles,
+      isMerchant: user?.roles?.includes('merchant' as any)
+    })
+  }, [user])
+
   const isMerchant = user?.roles?.includes('merchant' as any)
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide'>(initialTab || 'products')
+
+  const [activeTab, setActiveTab] = useState<'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide' | 'subscriptions' | 'checkout_config'>(initialTab || 'checklist')
+
 
   // 注册表单状态
   const [registering, setRegistering] = useState(false)
@@ -107,15 +135,29 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
     e.preventDefault()
     setRegistering(true)
     try {
+      console.log('[MerchantModule] Registering as merchant...')
       // 调用后端API注册角色
       await registerRole('merchant', regForm)
-      alert(t({ zh: '商户注册成功！', en: 'Merchant registration successful!' }))
+      
+      // 提醒用户并强制刷新以确保所有状态同步
+      if (confirm(t({ 
+        zh: '商户注册成功！点击“确定”刷新页面进入商户后台。', 
+        en: 'Merchant registration successful! Click OK to refresh and enter dashboard.' 
+      }))) {
+        window.location.reload()
+      } else {
+        // 如果不刷新，也尝试分发事件
+        window.dispatchEvent(new Event('role-updated'))
+      }
     } catch (error) {
       console.error('注册失败:', error)
+      showError(t({ zh: '注册失败，请稍后重试', en: 'Registration failed, please try again' }))
     } finally {
       setRegistering(false)
     }
   }
+
+
 
   // 当 initialTab 改变时更新 activeTab
   useEffect(() => {
@@ -123,6 +165,33 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
       setActiveTab(initialTab)
     }
   }, [initialTab])
+
+  // 处理命令
+  useEffect(() => {
+    if (onCommand) {
+      const handleCommand = (command: string) => {
+        const result = onCommand(command)
+        if (result?.view === 'merchant') {
+          if (result.action === 'view_checklist') {
+            setActiveTab('checklist')
+          } else if (result.action === 'view_products') {
+            setActiveTab('products')
+          } else if (result.action === 'view_orders') {
+            setActiveTab('orders')
+          } else if (result.action === 'view_settlement') {
+            setActiveTab('settlement')
+          } else if (result.action === 'add_product') {
+            setActiveTab('products')
+            // 如果有 openCreateProduct 函数，可以在这里调用
+          } else if (result.action === 'view_analytics') {
+            setActiveTab('analytics')
+          }
+
+        }
+      }
+    }
+  }, [onCommand])
+
 
   const [products, setProducts] = useState<ProductInfo[]>([])
   const [orders, setOrders] = useState<MerchantOrder[]>([])
@@ -803,8 +872,10 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
       <div className="border-b border-white/10 bg-slate-900/50 px-6 overflow-x-auto">
         <div className="flex space-x-1 min-w-max">
           {[
+            { key: 'checklist' as const, label: { zh: '上线清单', en: 'Checklist' } },
             { key: 'products' as const, label: { zh: '商品管理', en: 'Products' } },
             { key: 'ecommerce' as const, label: { zh: '电商同步', en: 'Ecommerce' } },
+            { key: 'subscriptions' as const, label: { zh: '订阅管理', en: 'Subscriptions' } },
             { key: 'batch_import' as const, label: { zh: '批量导入', en: 'Batch Import' } },
             { key: 'orders' as const, label: { zh: '订单管理', en: 'Orders' } },
             { key: 'settlement' as const, label: { zh: '结算管理', en: 'Settlement' } },
@@ -813,6 +884,7 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
             { key: 'analytics' as const, label: { zh: '数据分析', en: 'Analytics' } },
             { key: 'api_keys' as const, label: { zh: 'API 密钥', en: 'API Keys' } },
             { key: 'integration_guide' as const, label: { zh: '支付集成', en: 'Integration' } },
+            { key: 'checkout_config' as const, label: { zh: '收银台配置', en: 'Checkout' } },
             { key: 'webhooks' as const, label: { zh: 'Webhooks', en: 'Webhooks' } },
             { key: 'audit' as const, label: { zh: '审计链', en: 'Audit Chain' } },
             { key: 'settings' as const, label: { zh: '商户设置', en: 'Settings' } },
@@ -834,7 +906,90 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'checklist' && (
+          <div className="space-y-6 max-w-4xl">
+            <div className="bg-blue-600/10 border border-blue-500/20 rounded-2xl p-6 mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-blue-400 mb-2">Merchant Go-live Checklist</h3>
+                  <p className="text-sm text-slate-400">完成以下步骤即可正式开始收款并接入 AI 生态</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-3xl font-bold text-blue-400">40%</span>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Completion</p>
+                </div>
+              </div>
+              <div className="w-full bg-slate-800 h-2 rounded-full mt-4 overflow-hidden">
+                <div className="bg-blue-500 h-full w-[40%] transition-all"></div>
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              {[
+                { title: '创建商户 & 绑定 AX ID', desc: '完成商户基本信息录入与链上身份初始化', status: 'completed', tab: 'settings' },
+                { title: '上传/导入 Catalog', desc: '添加至少 1 个商品，支持 AI 搜索识别与导入', status: 'completed', tab: 'products' },
+                { title: '配置 Fulfillment', desc: '设置交付规则与 Webhook 签名校验', status: 'pending', tab: 'webhooks' },
+                { title: '开通支付方式', desc: '启用 AX Checkout 及其 Fallback 模式', status: 'pending', tab: 'integration_guide' },
+                { title: '配置 Webhook', desc: '签名校验 + 重放测试', status: 'pending', tab: 'webhooks' },
+                { title: '跑通沙箱 E2E', desc: '自动生成审计 Receipts 与测试记录', status: 'pending', tab: 'integration_guide' },
+                { title: '发布到 Marketplace', desc: '将商户信息发布到生态市场 (可选)', status: 'pending', tab: 'settings' },
+                { title: '启用 Attribution & Rev-share', desc: '使用默认分润模板开启生态收益分享', status: 'pending', tab: 'settlement' }
+              ].map((step, i) => (
+
+                <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center justify-between hover:bg-white/10 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                      step.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                    }`}>
+                      {step.status === 'completed' ? <Check size={16} /> : i + 1}
+                    </div>
+                    <div>
+                      <h4 className={`font-bold ${step.status === 'completed' ? 'text-slate-300' : 'text-white'}`}>{step.title}</h4>
+                      <p className="text-xs text-slate-500">{step.desc}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setActiveTab(step.tab as any)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                      step.status === 'completed' ? 'bg-slate-800 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    {step.status === 'completed' ? '重新查看' : '立即处理'}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 p-6 bg-slate-900 border border-white/5 rounded-2xl">
+              <h4 className="font-bold mb-4 flex items-center gap-2">
+                <ShieldCheck size={18} className="text-blue-400" />
+                商户接入证明包 (Proof Package)
+              </h4>
+              <p className="text-sm text-slate-400 mb-4">
+                包含当前的配置快照、沙盒测试回执以及安全策略定义，用于满足合规审计需求。
+              </p>
+              <div className="flex items-center justify-between p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-200 uppercase">Go-live Proof Ready</p>
+                    <p className="text-[10px] text-slate-500">Last updated: Just now</p>
+                  </div>
+                </div>
+                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all">
+                  下载证明包 (ZIP)
+                </button>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+
         {activeTab === 'products' && (
+
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
@@ -1116,36 +1271,272 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
         )}
 
         {activeTab === 'analytics' && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold mb-4">{t({ zh: '数据分析', en: 'Data Analytics' })}</h3>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '数据分析与财务报表', en: 'Analytics & Financial Reports' })}</h3>
+                <p className="text-xs text-slate-400">{t({ zh: '监控业务增长与下载对账单', en: 'Monitor growth and download reconciliation statements' })}</p>
+              </div>
+              <div className="flex gap-2">
+                <button className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-slate-300 hover:bg-white/10 transition-all">
+                  <Download size={16} />
+                  {t({ zh: '导出 CSV', en: 'Export CSV' })}
+                </button>
+                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-all">
+                  <BarChart3 size={16} />
+                  {t({ zh: '生成月报', en: 'Monthly Report' })}
+                </button>
+              </div>
+            </div>
+
             {loading ? (
               <div className="text-center py-12">
                 <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
               </div>
             ) : analytics ? (
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <p className="text-sm text-slate-400 mb-1">{t({ zh: '今日GMV', en: 'Today GMV' })}</p>
-                  <p className="text-2xl font-bold">{analytics.todayGMV}</p>
+              <>
+                <div className="grid md:grid-cols-4 gap-4">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t({ zh: '今日GMV', en: 'Today GMV' })}</p>
+                    <p className="text-2xl font-bold text-white">{analytics.todayGMV}</p>
+                    <div className="flex items-center gap-1 mt-2 text-emerald-400 text-[10px] font-bold">
+                      <TrendingUp size={12} />
+                      +12.5%
+                    </div>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t({ zh: '今日订单', en: 'Today Orders' })}</p>
+                    <p className="text-2xl font-bold text-white">{analytics.todayOrders}</p>
+                    <div className="flex items-center gap-1 mt-2 text-emerald-400 text-[10px] font-bold">
+                      <TrendingUp size={12} />
+                      +5.2%
+                    </div>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t({ zh: '支付成功率', en: 'Success Rate' })}</p>
+                    <p className="text-2xl font-bold text-white">{analytics.successRate}</p>
+                    <div className="flex items-center gap-1 mt-2 text-blue-400 text-[10px] font-bold">
+                      <Activity size={12} />
+                      Stable
+                    </div>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t({ zh: '平均订单金额', en: 'Avg Order Value' })}</p>
+                    <p className="text-2xl font-bold text-white">{analytics.avgOrderValue}</p>
+                    <div className="flex items-center gap-1 mt-2 text-slate-500 text-[10px] font-bold">
+                      <Clock size={12} />
+                      Last 24h
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <p className="text-sm text-slate-400 mb-1">{t({ zh: '今日订单', en: 'Today Orders' })}</p>
-                  <p className="text-2xl font-bold">{analytics.todayOrders}</p>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                    <h4 className="font-bold text-white mb-6 flex items-center gap-2">
+                      <TrendingUp size={18} className="text-blue-400" />
+                      {t({ zh: '收入趋势', en: 'Revenue Trend' })}
+                    </h4>
+                    <div className="h-48 flex items-end gap-2 px-2">
+                      {[40, 60, 45, 90, 65, 80, 100].map((h, i) => (
+                        <div key={i} className="flex-1 bg-blue-600/20 rounded-t-lg relative group">
+                          <div 
+                            className="absolute bottom-0 left-0 right-0 bg-blue-500 rounded-t-lg transition-all duration-1000 group-hover:bg-blue-400" 
+                            style={{ height: `${h}%` }}
+                          ></div>
+                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                            Day {i+1}: ${h*10}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between mt-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                      <span>Mon</span>
+                      <span>Tue</span>
+                      <span>Wed</span>
+                      <span>Thu</span>
+                      <span>Fri</span>
+                      <span>Sat</span>
+                      <span>Sun</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                    <h4 className="font-bold text-white mb-6 flex items-center gap-2">
+                      <PieChart size={18} className="text-purple-400" />
+                      {t({ zh: '支付方式分布', en: 'Payment Methods' })}
+                    </h4>
+                    <div className="space-y-4">
+                      {[
+                        { label: 'QuickPay (X402)', value: 65, color: 'bg-blue-500' },
+                        { label: 'Wallet Pay', value: 25, color: 'bg-purple-500' },
+                        { label: 'Fiat (Transak)', value: 10, color: 'bg-emerald-500' }
+                      ].map((item, i) => (
+                        <div key={i} className="space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-300">{item.label}</span>
+                            <span className="text-white font-bold">{item.value}%</span>
+                          </div>
+                          <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                            <div className={`h-full ${item.color}`} style={{ width: `${item.value}%` }}></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <p className="text-sm text-slate-400 mb-1">{t({ zh: '支付成功率', en: 'Success Rate' })}</p>
-                  <p className="text-2xl font-bold">{analytics.successRate}</p>
-                </div>
-                <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <p className="text-sm text-slate-400 mb-1">{t({ zh: '平均订单金额', en: 'Avg Order Value' })}</p>
-                  <p className="text-2xl font-bold">{analytics.avgOrderValue}</p>
-                </div>
-              </div>
+              </>
             ) : (
               <div className="text-center py-12 text-slate-400">
                 {t({ zh: '暂无分析数据', en: 'No analytics data' })}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'subscriptions' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '订阅管理', en: 'Subscription Management' })}</h3>
+                <p className="text-xs text-slate-400">{t({ zh: '管理周期性扣款与订阅用户', en: 'Manage recurring payments and subscribers' })}</p>
+              </div>
+              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors">
+                {t({ zh: '创建订阅计划', en: 'Create Plan' })}
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                <p className="text-xs font-bold text-slate-500 uppercase mb-1">{t({ zh: '活跃订阅', en: 'Active Subs' })}</p>
+                <p className="text-2xl font-bold text-white">128</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                <p className="text-xs font-bold text-slate-500 uppercase mb-1">{t({ zh: 'MRR (月经常性收入)', en: 'MRR' })}</p>
+                <p className="text-2xl font-bold text-emerald-400">$12,450</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                <p className="text-xs font-bold text-slate-500 uppercase mb-1">{t({ zh: '流失率', en: 'Churn Rate' })}</p>
+                <p className="text-2xl font-bold text-amber-400">2.4%</p>
+              </div>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white/5 border-b border-white/10">
+                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">{t({ zh: '用户', en: 'User' })}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">{t({ zh: '计划', en: 'Plan' })}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">{t({ zh: '金额', en: 'Amount' })}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">{t({ zh: '下次账单', en: 'Next Billing' })}</th>
+                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase">{t({ zh: '状态', en: 'Status' })}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr className="hover:bg-white/5 transition-colors">
+                    <td className="px-6 py-4 font-medium text-white">AX-8829...1022</td>
+                    <td className="px-6 py-4 text-slate-300">Premium AI Agent</td>
+                    <td className="px-6 py-4 text-white font-bold">$49.00/mo</td>
+                    <td className="px-6 py-4 text-slate-400">2025-01-15</td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-bold">ACTIVE</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'checkout_config' && (
+          <div className="space-y-6 max-w-4xl">
+            <div>
+              <h3 className="text-lg font-semibold">{t({ zh: '托管收银台配置', en: 'Hosted Checkout Config' })}</h3>
+              <p className="text-xs text-slate-400">{t({ zh: '自定义您的支付页面外观与体验', en: 'Customize your payment page look and feel' })}</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Sparkles size={18} className="text-amber-400" />
+                    {t({ zh: '品牌设置', en: 'Branding' })}
+                  </h4>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{t({ zh: '品牌颜色', en: 'Brand Color' })}</label>
+                    <div className="flex gap-3">
+                      {['#2563eb', '#7c3aed', '#db2777', '#059669', '#d97706'].map(color => (
+                        <button 
+                          key={color}
+                          className="w-8 h-8 rounded-full border-2 border-white/10"
+                          style={{ backgroundColor: color }}
+                        ></button>
+                      ))}
+                      <button className="w-8 h-8 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center text-slate-500">+</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{t({ zh: '商户 Logo', en: 'Merchant Logo' })}</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center text-slate-600">
+                        <Store size={24} />
+                      </div>
+                      <button className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white hover:bg-white/10 transition-all">
+                        {t({ zh: '上传图片', en: 'Upload Image' })}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Settings size={18} className="text-blue-400" />
+                    {t({ zh: '支付选项', en: 'Payment Options' })}
+                  </h4>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'QuickPay (One-click)', enabled: true },
+                      { label: 'Wallet Transfer', enabled: true },
+                      { label: 'Fiat On-ramp (Transak)', enabled: false },
+                      { label: 'Apple/Google Pay', enabled: false }
+                    ].map((opt, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                        <span className="text-sm text-slate-300">{opt.label}</span>
+                        <div className={`w-10 h-5 rounded-full relative transition-colors ${opt.enabled ? 'bg-blue-600' : 'bg-slate-700'}`}>
+                          <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${opt.enabled ? 'right-1' : 'left-1'}`}></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">{t({ zh: '实时预览', en: 'Live Preview' })}</label>
+                <div className="bg-slate-900 border border-white/10 rounded-3xl overflow-hidden shadow-2xl aspect-[9/16] max-w-[300px] mx-auto">
+                  <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                    <div className="w-8 h-8 bg-blue-600 rounded-lg"></div>
+                    <div className="w-20 h-2 bg-slate-800 rounded"></div>
+                  </div>
+                  <div className="p-6 space-y-6">
+                    <div className="space-y-2">
+                      <div className="w-full h-4 bg-slate-800 rounded"></div>
+                      <div className="w-2/3 h-3 bg-slate-800/50 rounded"></div>
+                    </div>
+                    <div className="text-center py-8">
+                      <div className="text-3xl font-bold text-white">$49.00</div>
+                      <div className="text-[10px] text-slate-500 uppercase mt-1">Total Amount</div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="w-full h-12 bg-blue-600 rounded-xl flex items-center justify-center gap-2">
+                        <Zap size={16} className="text-white" />
+                        <div className="w-20 h-3 bg-white/20 rounded"></div>
+                      </div>
+                      <div className="w-full h-12 bg-white/5 border border-white/10 rounded-xl"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

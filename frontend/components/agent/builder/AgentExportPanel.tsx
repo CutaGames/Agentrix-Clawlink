@@ -34,6 +34,7 @@ export function AgentExportPanel({
   const [platform, setPlatform] = useState<ServerlessPlatform>('aws');
   const [exporting, setExporting] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
 
   const handleExport = async () => {
     if (!agentId) {
@@ -44,23 +45,7 @@ export function AgentExportPanel({
     setExporting(true);
     try {
       if (exportType === 'standalone') {
-        // SaaS 托管：如果没有 agentId，直接生成独立应用
-        if (!agentId) {
-          console.warn('没有 agentId，直接生成独立HTML/JS应用');
-          const exportPackage = generateExportPackage(exportType, platform);
-          downloadExportPackage(exportPackage, agentName, exportType);
-          success(
-            t({
-              zh: '已生成独立HTML/JS应用',
-              en: 'Standalone HTML/JS app generated',
-            })
-          );
-          onExport?.(exportType, platform);
-          setExporting(false);
-          return;
-        }
-
-        // 尝试调用部署 API
+        // SaaS 托管
         const deploymentRequest: DeploymentRequest = {
           agentId,
           deploymentType: 'saas',
@@ -75,31 +60,24 @@ export function AgentExportPanel({
 
         try {
           const deployment = await saasDeploymentApi.deploy(deploymentRequest);
+          setDeploymentUrl(deployment.url);
           success(
             t({
-              zh: `🎉 Agent 已部署到云端！访问链接: ${deployment.url || '生成中...'}`,
-              en: `🎉 Agent deployed to cloud! Access URL: ${deployment.url || 'Generating...'}`,
+              zh: `🎉 Agent 已部署到云端！`,
+              en: `🎉 Agent deployed to cloud!`,
             })
           );
           onExport?.(exportType, platform);
         } catch (deployError: any) {
-          // 如果部署失败，仍然生成独立HTML/JS应用
-          console.warn('SaaS部署失败，生成独立应用:', deployError);
+          console.warn('SaaS部署失败，回退到本地包:', deployError);
           const exportPackage = generateExportPackage(exportType, platform);
           downloadExportPackage(exportPackage, agentName, exportType);
-          success(
-            t({
-              zh: '已生成独立HTML/JS应用（SaaS部署失败，已下载本地版本）',
-              en: 'Standalone HTML/JS app generated (SaaS deployment failed, downloaded local version)',
-            })
-          );
-          onExport?.(exportType, platform);
         }
       } else {
-        // Docker/Serverless/Edge 导出：生成导出包
+        // Docker/Serverless/Edge 导出
         const exportPackage = generateExportPackage(exportType, platform);
         downloadExportPackage(exportPackage, agentName, exportType);
-        success(t({ zh: '导出成功！', en: 'Export successful!' }));
+        success(t({ zh: '导出成功！正在下载压缩包', en: 'Export successful! Downloading ZIP' }));
         onExport?.(exportType, platform);
       }
     } catch (err: any) {
@@ -121,7 +99,8 @@ export function AgentExportPanel({
     if (type === 'docker') {
       packageData['Dockerfile'] = generateDockerfile(agentType);
       packageData['docker-compose.yml'] = generateDockerCompose();
-      packageData['deploy.sh'] = generateDeployScript('docker');
+      packageData['start.sh'] = generateStartScript();
+      packageData['.dockerignore'] = `node_modules\n.git\n*.zip\n.env`;
     } else if (type === 'serverless') {
       if (platform === 'aws') {
         packageData['serverless.yml'] = generateServerlessYml('aws');
@@ -444,22 +423,65 @@ export function AgentExportPanel({
       </div>
 
       {/* 导出按钮 */}
-      <button
-        onClick={handleExport}
-        disabled={exporting}
-        className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-      >
-        {exporting ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            {t({ zh: '正在导出...', en: 'Exporting...' })}
-          </span>
-        ) : (
-          <span>
-            {t({ zh: '📦 下载导出包', en: '📦 Download Export Package' })}
-          </span>
+      <div className="space-y-4">
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-200"
+        >
+          {exporting ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              {t({ zh: '正在处理...', en: 'Processing...' })}
+            </span>
+          ) : (
+            <span>
+              {exportType === 'standalone' 
+                ? t({ zh: '🚀 立即云端发布', en: '🚀 Deploy to Cloud Now' })
+                : t({ zh: '📦 下载 Docker 运行包', en: '📦 Download Docker Bundle' })
+              }
+            </span>
+          )}
+        </button>
+
+        {/* 动态显示运行命令或链接 */}
+        {exportType === 'docker' && !exporting && (
+          <div className="bg-slate-900 rounded-xl p-4 border border-slate-700">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-mono text-slate-400">Quick Run (Local Docker)</span>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(`unzip agent-bundle.zip && cd agent-bundle && docker-compose up -d`);
+                  success(t({ zh: '命令已复制', en: 'Command copied' }));
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300"
+              >
+                {t({ zh: '复制', en: 'Copy' })}
+              </button>
+            </div>
+            <code className="text-xs text-emerald-400 font-mono break-all">
+              unzip agent-bundle.zip && cd agent-bundle && docker-compose up -d
+            </code>
+          </div>
         )}
-      </button>
+
+        {deploymentUrl && exportType === 'standalone' && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-emerald-800 font-semibold">{t({ zh: 'Agent 已在线运行', en: 'Agent is Live' })}</p>
+              <p className="text-xs text-emerald-600 truncate max-w-[200px]">{deploymentUrl}</p>
+            </div>
+            <a 
+              href={deploymentUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              {t({ zh: '立即访问', en: 'Open Link' })}
+            </a>
+          </div>
+        )}
+      </div>
 
       {/* 导出说明 */}
       <div className="p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
@@ -496,17 +518,23 @@ function generateREADME(
 ## 🚀 快速开始
 
 ${exportType === 'docker' ? `
-### Docker部署
+### Docker 快速运行
 
 \`\`\`bash
-# 构建镜像
-docker build -t ${name.toLowerCase()}-agent .
+# 1. 解压并进入目录
+unzip agent-bundle.zip && cd agent-bundle
 
-# 运行容器
-docker-compose up -d
+# 2. 设置 API Key
+# 编辑 .env 文件并填写 AGENTRIX_API_KEY
 
-# 查看日志
-docker-compose logs -f
+# 3. 一键启动
+chmod +x start.sh
+./start.sh
+\`\`\`
+
+或手动运行：
+\`\`\`bash
+docker-compose up -d --build
 \`\`\`
 ` : exportType === 'serverless' ? `
 ### ${platform?.toUpperCase()}部署
@@ -600,17 +628,31 @@ LOG_LEVEL=info
 }
 
 function generateDockerfile(agentType: string): string {
-  return `FROM node:18-alpine
+  return `FROM node:18-slim
 
+# 设置工作目录
 WORKDIR /app
 
+# 安装必要的系统依赖（如果需要）
+# RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖定义
 COPY package*.json ./
+
+# 安装依赖
 RUN npm install --production
 
+# 复制源码
 COPY . .
 
+# 设置环境变量默认值
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# 暴露端口
 EXPOSE 3000
 
+# 启动命令
 CMD ["node", "agent.js"]
 `;
 }
@@ -619,39 +661,64 @@ function generateDockerCompose(): string {
   return `version: '3.8'
 
 services:
-  agent:
-    build: .
+  agentrix-agent:
+    build: 
+      context: .
+    container_name: agentrix-live-agent
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=production
     env_file:
       - .env
+    environment:
+      - NODE_ENV=production
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 `;
 }
 
-function generateDeployScript(type: string): string {
+function generateStartScript(): string {
   return `#!/bin/bash
-# ${type}部署脚本
+# Agentrix Live Agent 一键启动脚本
 
-set -e
+# 颜色定义
+GREEN='\\x1b[0;32m'
+BLUE='\\x1b[0;34m'
+YELLOW='\\x1b[1;33m'
+NC='\\x1b[0m' # No Color
 
-echo "🚀 开始部署Agent..."
+echo -e "\${BLUE}🚀 正在初始化 Agentrix Live Agent...\${NC}"
 
-# 检查环境变量
-if [ ! -f .env ]; then
-  echo "⚠️  警告: .env文件不存在，请从.env.example复制并配置"
-  exit 1
+# 1. 检查 Docker
+if ! command -v docker &> /dev/null; then
+    echo -e "\${YELLOW}错误: 未检测到 Docker。请先安装 Docker。 \${NC}"
+    exit 1
 fi
 
-# 部署
-${type === 'docker' ? `
-docker-compose up -d
-echo "✅ Agent已部署到Docker"
-` : ''}
+# 2. 检查 .env 文件
+if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+        echo -e "\${YELLOW}正在从 .env.example 创建 .env 配置文件...\\x1b[0m"
+        cp .env.example .env
+        echo -e "\${YELLOW}请在 .env 中填写您的 AGENTRIX_API_KEY 后再次运行脚本...\\x1b[0m"
+        exit 0
+    else
+        echo -e "\${YELLOW}错误: 未找到 .env 或 .env.example 文件。\\x1b[0m"
+        exit 1
+    fi
+fi
 
-echo "✅ 部署完成！"
+# 3. 启动容器
+echo -e "\${GREEN}正在使用 Docker Compose 启动 Agent...\\x1b[0m"
+docker-compose up -d --build
+
+echo -e "\${GREEN}✅ Agent 已成功启动并在后台运行！\\x1b[0m"
+echo -e "\${BLUE}查看实时日志: \\x1b[0m docker-compose logs -f"
+echo -e "\${BLUE}停止运行: \\x1b[0m docker-compose down"
+echo -e "\${BLUE}访问本地监控面板: \\x1b[0m http://localhost:3000"
 `;
 }
 
@@ -919,6 +986,7 @@ function generateAgentRuntime(
   form?: any
 ): string {
   return `const { AgentrixAgent } = require('@agentrix/agent-sdk');
+const http = require('http');
 
 const agent = new AgentrixAgent({
   apiKey: process.env.AGENTRIX_API_KEY,
@@ -933,11 +1001,27 @@ const agent = new AgentrixAgent({
   },
 });
 
+// 简单的监控 HTTP 服务
+const server = http.createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'live', type: '${agentType}' }));
+  } else {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<h1>Agentrix Live Agent 正在运行</h1><p>状态: 运行中 (Live)</p><p>类型: ${agentType}</p>');
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(\`监控服务运行在 http://localhost:\${PORT}\`);
+});
+
 // 启动Agent
 agent.start().then(() => {
-  console.log('Agent started successfully');
+  console.log('Agent 核心已启动，正在监听任务...');
 }).catch((error) => {
-  console.error('Failed to start agent:', error);
+  console.error('启动 Agent 失败:', error);
   process.exit(1);
 });
 `;

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useUser } from '../../../contexts/UserContext'
 import { useAgentMode } from '../../../contexts/AgentModeContext'
 import { UserModule } from './UserModule'
@@ -8,9 +8,28 @@ import { CommandHandler } from './CommandHandler'
 import { RoleSwitcher } from './RoleSwitcher'
 import { AgentChatEnhanced } from '../AgentChatEnhanced'
 import { useLocalization } from '../../../contexts/LocalizationContext'
-import { MessageSquare, User, Store, Code, ShoppingBag, Zap, Layout } from 'lucide-react'
+import { MessageSquare, User, Store, Code, ShoppingBag, Zap, Layout, FileText, Link2 } from 'lucide-react'
+import { ReceiptsCenter } from '../../workspace/ReceiptsCenter'
+import { ConnectorsHub } from '../../workspace/ConnectorsHub'
+import { TaskPanel } from '../../workspace/TaskPanel'
+import { MarketplaceView } from '../MarketplaceView'
+import { AutoEarnPanel } from '../AutoEarnPanel'
+import { ShoppingCart } from '../ShoppingCart'
+import { CodeGenerator } from '../CodeGenerator'
+import { Sandbox } from '../Sandbox'
+import { ReferralDashboard } from '../../referral/ReferralDashboard'
+import { useToast } from '../../../contexts/ToastContext'
+import { useCart } from '../../../contexts/CartContext'
+import { ProductInfo } from '../../../lib/api/product.api'
 
-export type WorkspaceView = 'chat' | 'user' | 'merchant' | 'developer' | 'marketplace' | 'autoEarn' | 'cart' | 'code' | 'sandbox' | 'orders' | 'referral'
+
+
+
+
+
+
+
+export type WorkspaceView = 'chat' | 'user' | 'merchant' | 'developer' | 'marketplace' | 'autoEarn' | 'cart' | 'code' | 'sandbox' | 'orders' | 'referral' | 'receipts' | 'connectors'
 
 interface UnifiedWorkspaceProps {
   onAction?: (action: string, data?: any) => void
@@ -25,15 +44,26 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
   const { user, isAuthenticated } = useUser()
   const { mode, setMode } = useAgentMode()
   const { t } = useLocalization()
+  const cart = useCart()
   const [currentView, setCurrentView] = useState<WorkspaceView>('chat')
   const [commandHistory, setCommandHistory] = useState<Array<{ command: string; result: any }>>([])
 
+
   // 检测用户角色
+  useEffect(() => {
+    console.log('[UnifiedWorkspace] User or Auth state changed:', {
+      isAuthenticated,
+      hasUser: !!user,
+      roles: user?.roles
+    })
+  }, [user, isAuthenticated])
+
   const userRoles = {
-    isUser: !!(isAuthenticated && user),
-    isMerchant: !!(isAuthenticated && user?.roles?.includes('merchant' as any)),
-    isDeveloper: !!(isAuthenticated && user?.roles?.includes('developer' as any)),
+    isUser: !!user,
+    isMerchant: !!user?.roles?.includes('merchant' as any),
+    isDeveloper: !!user?.roles?.includes('developer' as any),
   }
+
 
   // 处理对话命令
   const handleCommand = useCallback((command: string, data?: any) => {
@@ -94,6 +124,8 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
                 {currentView === 'marketplace' && <ShoppingBag size={20} />}
                 {currentView === 'autoEarn' && <Zap size={20} />}
                 {currentView === 'orders' && <Layout size={20} />}
+                {currentView === 'receipts' && <FileText size={20} />}
+                {currentView === 'connectors' && <Link2 size={20} />}
               </div>
               <div>
                 <h2 className="text-lg font-bold tracking-tight">
@@ -104,7 +136,10 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
                   {currentView === 'marketplace' && t({ zh: '商品市场', en: 'Marketplace' })}
                   {currentView === 'autoEarn' && t({ zh: 'Auto-Earn', en: 'Auto-Earn' })}
                   {currentView === 'orders' && t({ zh: '订单中心', en: 'Order Center' })}
+                  {currentView === 'receipts' && t({ zh: '审计与收据', en: 'Receipts & Audit' })}
+                  {currentView === 'connectors' && t({ zh: '连接器中心', en: 'Connectors Hub' })}
                 </h2>
+
                 <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">
                   {mode === 'personal' ? 'Personal Mode' : mode === 'merchant' ? 'Merchant Mode' : 'Developer Mode'} • Active
                 </p>
@@ -144,8 +179,11 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
             />
           )}
 
-          {currentView === 'user' && userRoles.isUser && (
-            <UserModule onCommand={handleCommand} />
+          {(currentView === 'user' || currentView === 'orders') && userRoles.isUser && (
+            <UserModule 
+              onCommand={handleCommand} 
+              initialTab={currentView === 'orders' ? 'orders' : undefined} 
+            />
           )}
 
           {currentView === 'merchant' && (
@@ -156,12 +194,78 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
             <DeveloperModule onCommand={handleCommand} />
           )}
 
+          {currentView === 'marketplace' && (
+            <div className="p-6">
+              <MarketplaceView onProductClick={(p) => console.log('Product clicked:', p)} />
+            </div>
+          )}
+
+          {currentView === 'autoEarn' && (
+            <div className="p-6 h-full">
+              <AutoEarnPanel />
+            </div>
+          )}
+
+          {currentView === 'cart' && (
+            <div className="p-6">
+              <ShoppingCart 
+                items={cart.items
+                  .filter(item => item.product)
+                  .map(item => ({
+                    product: {
+                      ...item.product,
+                      commissionRate: 0,
+                      status: 'active'
+                    } as any,
+                    quantity: item.quantity
+                  }))}
+                onUpdateQuantity={cart.updateQuantity}
+                onRemoveItem={cart.removeItem}
+                onCheckout={() => console.log('Checking out from workbench...')}
+              />
+            </div>
+          )}
+
+          {currentView === 'code' && (
+            <div className="p-6 h-full">
+              <CodeGenerator />
+            </div>
+          )}
+
+          {currentView === 'sandbox' && (
+            <div className="p-6 h-full">
+              <Sandbox />
+            </div>
+          )}
+
+          {currentView === 'referral' && (
+            <div className="p-6 h-full">
+              <ReferralDashboard />
+            </div>
+          )}
+
+          {currentView === 'receipts' && (
+
+
+
+            <div className="p-6">
+              <ReceiptsCenter />
+            </div>
+          )}
+
+          {currentView === 'connectors' && (
+            <div className="p-6">
+              <ConnectorsHub />
+            </div>
+          )}
+
           {/* 其他视图保持原有逻辑 */}
-          {currentView !== 'chat' && currentView !== 'user' && currentView !== 'merchant' && currentView !== 'developer' && (
+          {!['chat', 'user', 'merchant', 'developer', 'receipts', 'connectors'].includes(currentView) && (
             <div className="p-6">
               <p className="text-slate-400">{t({ zh: '视图切换中...', en: 'Switching view...' })}</p>
             </div>
           )}
+
         </div>
       </div>
 
@@ -232,7 +336,13 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
           )}
         </div>
       </div>
+      {/* Floating Task Guidance Panel */}
+      {mode === 'merchant' && currentView === 'merchant' && <TaskPanel type="merchant" />}
+      {mode === 'developer' && currentView === 'developer' && <TaskPanel type="developer" />}
+      {mode === 'personal' && currentView === 'user' && <TaskPanel type="personal" />}
     </div>
+
   )
 }
+
 
