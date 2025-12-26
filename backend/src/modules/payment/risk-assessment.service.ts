@@ -39,7 +39,7 @@ export class RiskAssessmentService {
    * 评估交易风险
    */
   async assessRisk(
-    userId: string,
+    userId: string | undefined,
     amount: number,
     paymentMethod: PaymentMethod | string,
     metadata?: any,
@@ -161,7 +161,10 @@ export class RiskAssessmentService {
   /**
    * 评估频率风险
    */
-  private async assessFrequencyRisk(userId: string): Promise<{ score: number; description: string }> {
+  private async assessFrequencyRisk(userId: string | undefined): Promise<{ score: number; description: string }> {
+    if (!userId) {
+      return { score: 50, description: '匿名用户，无法评估频率风险' };
+    }
     // 查询最近1小时的交易次数
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const recentPayments = await this.paymentRepository.count({
@@ -185,7 +188,10 @@ export class RiskAssessmentService {
   /**
    * 评估KYC风险
    */
-  private async assessKYCRisk(userId: string): Promise<{ score: number; description: string }> {
+  private async assessKYCRisk(userId: string | undefined): Promise<{ score: number; description: string }> {
+    if (!userId) {
+      return { score: 80, description: '匿名用户，未进行KYC' };
+    }
     const user = await this.userRepository.findOne({
       where: { id: userId },
       select: ['id', 'kycLevel', 'kycStatus'],
@@ -209,7 +215,10 @@ export class RiskAssessmentService {
   /**
    * 评估历史风险
    */
-  private async assessHistoryRisk(userId: string): Promise<{ score: number; description: string }> {
+  private async assessHistoryRisk(userId: string | undefined): Promise<{ score: number; description: string }> {
+    if (!userId) {
+      return { score: 50, description: '匿名用户，无历史记录' };
+    }
     // 查询用户历史交易
     const totalPayments = await this.paymentRepository.count({
       where: { userId },

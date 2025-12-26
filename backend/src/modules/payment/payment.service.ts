@@ -86,10 +86,10 @@ export class PaymentService {
     // private wsGateway: WebSocketGateway, // 暂时禁用WebSocket
   ) {}
 
-  async createPaymentIntent(userId: string, dto: CreatePaymentIntentDto) {
+  async createPaymentIntent(userId: string | undefined, dto: CreatePaymentIntentDto) {
     // 1. 策略引擎验证 (Policy Engine Validation)
     // 如果是 Agent 发起的交易（通常带有 agentId 或通过 X402 协议）
-    const validation = await this.policyEngineService.validateTransaction(userId, {
+    const validation = await this.policyEngineService.validateTransaction(userId || '', {
       amount: dto.amount,
       currency: dto.currency,
       metadata: dto.metadata,
@@ -125,12 +125,12 @@ export class PaymentService {
   /**
    * 处理支付（使用智能路由）
    */
-  async processPayment(userId: string, dto: ProcessPaymentDto) {
+  async processPayment(userId: string | undefined, dto: ProcessPaymentDto) {
     // 获取用户信息（用于KYC状态和国家信息）
-    const user = await this.userRepository.findOne({
+    const user = userId ? await this.userRepository.findOne({
       where: { id: userId },
       select: ['id', 'kycLevel', 'kycStatus'],
-    });
+    }) : null;
 
     // 构建路由上下文
     const routingContext: RoutingContext = {
@@ -194,7 +194,7 @@ export class PaymentService {
     if (actualPaymentMethod === PaymentMethod.WALLET && dto.metadata?.txHash) {
       // 钱包支付已完成链上转账，直接处理，不需要路由选择
       this.logger.log(`Wallet payment with txHash: ${dto.metadata.txHash}, skipping routing`);
-    } else if (!actualPaymentMethod) {
+    } else if (!actualPaymentMethod && userId) {
       // 如果没有指定支付方式，先检查QuickPay授权
       // 1. 优先检查X402授权（最快、最安全）
       const x402Auth = await this.x402AuthService.checkAuthorization(userId);
@@ -749,13 +749,21 @@ export class PaymentService {
   /**
    * 检查QuickPay授权和额度
    */
-  async checkQuickPayEligibility(userId: string, amount: number): Promise<{
+  async checkQuickPayEligibility(userId: string | undefined, amount: number): Promise<{
     eligible: boolean;
     hasAuth: boolean;
     withinLimit: boolean;
     isSmallAmount: boolean;
     authorization?: any;
   }> {
+    if (!userId) {
+      return {
+        eligible: false,
+        hasAuth: false,
+        withinLimit: false,
+        isSmallAmount: false,
+      };
+    }
     const SMALL_AMOUNT_THRESHOLD = 20; // 小额支付阈值（USD）
     const isSmallAmount = amount <= SMALL_AMOUNT_THRESHOLD;
 
@@ -786,20 +794,26 @@ export class PaymentService {
    * V3.0新增：计算总手续费和汇率信息
    */
   async getPaymentRouting(
-    userId: string,
+    userId: string | undefined,
     amount: number,
     currency: string,
     isOnChain?: boolean,
     context?: Partial<RoutingContext>,
   ) {
     // 获取用户信息
-    const user = await this.userRepository.findOne({
+    const user = userId ? await this.userRepository.findOne({
       where: { id: userId },
       select: ['id', 'kycLevel', 'kycStatus'],
-    });
+    }) : null;
 
     // 检查QuickPay资格
-    const quickPayCheck = await this.checkQuickPayEligibility(userId, amount);
+    const quickPayCheck = userId ? await this.checkQuickPayEligibility(userId, amount) : { 
+      eligible: false,
+      hasAuth: false,
+      withinLimit: false,
+      isSmallAmount: false,
+      authorization: null
+    };
 
     const routingContext: RoutingContext = {
       amount,
@@ -1007,13 +1021,17 @@ export class PaymentService {
     };
   }
 
-  async createProviderPaymentSession(userId: string, dto: CreateProviderPaymentSessionDto) {
+  async createProviderPaymentSession(userId: string | undefined, dto: CreateProviderPaymentSessionDto) {
     return this.providerPaymentFlow.createSession(userId, dto);
   }
 
-  async getProviderPaymentSession(userId: string, sessionId: string) {
+  async getProviderPaymentSession(userId: string | undefined, sessionId: string) {
+    const where: any = { sessionId };
+    if (userId) {
+      where.userId = userId;
+    }
     const payment = await this.paymentRepository.findOne({
-      where: { sessionId, userId },
+      where,
     });
     if (!payment) {
       throw new NotFoundException('Provider session not found');
@@ -1022,12 +1040,16 @@ export class PaymentService {
   }
 
   async completeProviderPaymentSession(
-    userId: string,
+    userId: string | undefined,
     sessionId: string,
     payload?: { transactionHash?: string },
   ) {
+    const where: any = { sessionId };
+    if (userId) {
+      where.userId = userId;
+    }
     const payment = await this.paymentRepository.findOne({
-      where: { sessionId, userId },
+      where,
     });
     if (!payment) {
       throw new NotFoundException('Provider session not found');
@@ -1148,12 +1170,16 @@ export class PaymentService {
    * 更新支付状态（用于钱包支付回调）
    */
   async updatePaymentStatusByHash(
-    userId: string,
+    userId: string | undefined,
     paymentId: string,
     transactionHash: string,
   ) {
+    const where: any = { id: paymentId };
+    if (userId) {
+      where.userId = userId;
+    }
     const payment = await this.paymentRepository.findOne({
-      where: { id: paymentId, userId },
+      where,
     });
 
     if (!payment) {

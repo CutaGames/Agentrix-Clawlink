@@ -31,6 +31,7 @@ export class User {
 
   @Column({
     type: 'jsonb',
+    nullable: false,
     default: [UserRole.USER],
   })
   roles: UserRole[];

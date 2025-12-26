@@ -19,6 +19,7 @@ import {
 import { PaymentService } from './payment.service';
 import { CreatePaymentIntentDto, ProcessPaymentDto, CreateProviderPaymentSessionDto } from './dto/payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { FiatToCryptoService } from './fiat-to-crypto.service';
 import { EscrowService } from './escrow.service';
 import { X402AuthorizationService } from './x402-authorization.service';
@@ -35,7 +36,6 @@ import { ProviderManagerService } from './provider-manager.service';
 @ApiTags('payments')
 @ApiBearerAuth()
 @Controller('payments')
-@UseGuards(JwtAuthGuard)
 export class PaymentController {
   constructor(
     private readonly paymentService: PaymentService,
@@ -54,20 +54,23 @@ export class PaymentController {
   @Post('create-intent')
   @ApiOperation({ summary: '创建支付意图（Stripe）' })
   @ApiResponse({ status: 201, description: '支付意图创建成功' })
+  @UseGuards(OptionalJwtAuthGuard)
   async createPaymentIntent(@Request() req, @Body() dto: CreatePaymentIntentDto) {
-    return this.paymentService.createPaymentIntent(req.user.id, dto);
+    return this.paymentService.createPaymentIntent(req.user?.id, dto);
   }
 
   @Post('process')
   @ApiOperation({ summary: '处理支付' })
   @ApiResponse({ status: 201, description: '支付处理成功' })
+  @UseGuards(OptionalJwtAuthGuard)
   async processPayment(@Request() req, @Body() dto: ProcessPaymentDto) {
-    return this.paymentService.processPayment(req.user.id, dto);
+    return this.paymentService.processPayment(req.user?.id, dto);
   }
 
   @Get('routing')
   @ApiOperation({ summary: '获取支付路由建议' })
   @ApiResponse({ status: 200, description: '返回路由建议' })
+  @UseGuards(OptionalJwtAuthGuard)
   async getPaymentRouting(
     @Request() req,
     @Query('amount') amount: number,
@@ -85,7 +88,7 @@ export class PaymentController {
       typeof walletConnected === 'string' ? walletConnected === 'true' : undefined;
 
     return this.paymentService.getPaymentRouting(
-      req.user.id,
+      req.user?.id,
       Number(amount),
       currency,
       isOnChain === true,
@@ -105,13 +108,14 @@ export class PaymentController {
   @Post(':paymentId/update-status')
   @ApiOperation({ summary: '更新支付状态' })
   @ApiResponse({ status: 200, description: '状态更新成功' })
+  @UseGuards(OptionalJwtAuthGuard)
   async updatePaymentStatus(
     @Request() req,
     @Param('paymentId') paymentId: string,
     @Body() body: { transactionHash: string },
   ) {
     return this.paymentService.updatePaymentStatusByHash(
-      req.user.id,
+      req.user?.id,
       paymentId,
       body.transactionHash,
     );
@@ -120,13 +124,15 @@ export class PaymentController {
   @Post('provider/session')
   @ApiOperation({ summary: '创建Provider支付会话' })
   @ApiResponse({ status: 201, description: 'Provider支付会话已创建' })
+  @UseGuards(OptionalJwtAuthGuard)
   async createProviderSession(@Request() req, @Body() dto: CreateProviderPaymentSessionDto) {
-    return this.paymentService.createProviderPaymentSession(req.user.id, dto);
+    return this.paymentService.createProviderPaymentSession(req.user?.id, dto);
   }
 
   @Post('provider/transak/session')
   @ApiOperation({ summary: '创建 Transak Session（使用 Create Session API）' })
   @ApiResponse({ status: 201, description: 'Transak Session 已创建' })
+  @UseGuards(OptionalJwtAuthGuard)
   async createTransakSession(
     @Request() req,
     @Body() dto: {
@@ -154,7 +160,7 @@ export class PaymentController {
     }
 
     // 获取用户信息
-    const user = req.user;
+    const user = req.user || {};
     const defaultFrontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
     const headerValue = (value?: string | string[]): string | undefined => {
@@ -227,19 +233,21 @@ export class PaymentController {
   @Get('provider/session/:sessionId')
   @ApiOperation({ summary: '查询Provider支付会话状态' })
   @ApiResponse({ status: 200, description: '返回会话状态' })
+  @UseGuards(OptionalJwtAuthGuard)
   async getProviderSession(@Request() req, @Param('sessionId') sessionId: string) {
-    return this.paymentService.getProviderPaymentSession(req.user.id, sessionId);
+    return this.paymentService.getProviderPaymentSession(req.user?.id, sessionId);
   }
 
   @Post('provider/session/:sessionId/complete')
   @ApiOperation({ summary: '确认Provider会话已完成（回调/前端）' })
   @ApiResponse({ status: 200, description: '会话状态更新成功' })
+  @UseGuards(OptionalJwtAuthGuard)
   async completeProviderSession(
     @Request() req,
     @Param('sessionId') sessionId: string,
     @Body() body: { transactionHash?: string },
   ) {
-    return this.paymentService.completeProviderPaymentSession(req.user.id, sessionId, body);
+    return this.paymentService.completeProviderPaymentSession(req.user?.id, sessionId, body);
   }
 
   // 具体路由必须在参数路由之前定义

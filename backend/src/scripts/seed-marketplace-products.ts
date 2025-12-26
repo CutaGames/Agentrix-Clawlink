@@ -914,7 +914,7 @@ async function seedMarketplaceProducts() {
     if (!merchant) {
       console.log('📝 创建测试商户...');
       merchant = userRepository.create({
-        agentrixId: `atx-merchant-${Date.now()}`,
+        agentrixId: `AX-merchant-${Date.now()}`,
         email: 'merchant@agentrix.test',
         roles: [UserRole.MERCHANT],
       });

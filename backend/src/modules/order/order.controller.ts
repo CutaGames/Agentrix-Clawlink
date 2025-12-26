@@ -17,26 +17,28 @@ import {
 import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { UserRole } from '../../entities/user.entity';
 import { OrderStatus } from '../../entities/order.entity';
 
 @ApiTags('orders')
 @ApiBearerAuth()
 @Controller('orders')
-@UseGuards(JwtAuthGuard)
 export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
   @ApiOperation({ summary: '创建订单' })
   @ApiResponse({ status: 201, description: '订单创建成功' })
+  @UseGuards(OptionalJwtAuthGuard)
   async createOrder(@Request() req, @Body() dto: CreateOrderDto) {
-    return this.orderService.createOrder(req.user.id, dto);
+    return this.orderService.createOrder(req.user?.id, dto);
   }
 
   @Get()
   @ApiOperation({ summary: '获取订单列表' })
   @ApiResponse({ status: 200, description: '返回订单列表' })
+  @UseGuards(JwtAuthGuard)
   async getOrders(
     @Request() req,
     @Query('merchantId') merchantId?: string,
@@ -67,6 +69,7 @@ export class OrderController {
   @Get(':id')
   @ApiOperation({ summary: '获取订单详情' })
   @ApiResponse({ status: 200, description: '返回订单详情' })
+  @UseGuards(JwtAuthGuard)
   async getOrder(@Request() req, @Param('id') id: string) {
     return this.orderService.getOrder(req.user.id, id);
   }
@@ -74,6 +77,7 @@ export class OrderController {
   @Post(':id/cancel')
   @ApiOperation({ summary: '取消订单' })
   @ApiResponse({ status: 200, description: '订单已取消' })
+  @UseGuards(JwtAuthGuard)
   async cancelOrder(@Request() req, @Param('id') id: string) {
     return this.orderService.cancelOrder(req.user.id, id);
   }

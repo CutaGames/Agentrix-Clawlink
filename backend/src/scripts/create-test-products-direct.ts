@@ -181,7 +181,7 @@ async function createTestProductsDirect() {
     if (!merchant) {
       console.log('📝 创建测试商户...');
       merchant = userRepository.create({
-        agentrixId: `atx-merchant-${Date.now()}`,
+        agentrixId: `AX-merchant-${Date.now()}`,
         email: 'merchant@agentrix.test',
         passwordHash: await bcrypt.hash('Test@123', 10),
         roles: [UserRole.MERCHANT],

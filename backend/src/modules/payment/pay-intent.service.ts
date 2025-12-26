@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
+import * as QRCode from 'qrcode';
 import { PayIntent, PayIntentStatus, PayIntentType } from '../../entities/pay-intent.entity';
 import { PaymentService } from './payment.service';
 import { QuickPayGrantService } from './quick-pay-grant.service';
@@ -331,12 +332,15 @@ export class PayIntentService {
   }
 
   /**
-   * 生成二维码（模拟，实际应使用二维码库）
+   * 生成二维码
    */
   private async generateQRCode(data: string): Promise<string> {
-    // TODO: 使用qrcode库生成二维码
-    // 这里返回一个模拟的二维码数据URL
-    return `data:image/png;base64,${Buffer.from(data).toString('base64')}`;
+    try {
+      return await QRCode.toDataURL(data);
+    } catch (err) {
+      this.logger.error(`生成二维码失败: ${err.message}`);
+      return '';
+    }
   }
 }
 

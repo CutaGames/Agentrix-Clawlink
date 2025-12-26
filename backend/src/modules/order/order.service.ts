@@ -11,9 +11,9 @@ export class OrderService {
     private orderRepository: Repository<Order>,
   ) {}
 
-  async createOrder(userId: string, dto: CreateOrderDto) {
+  async createOrder(userId: string | undefined, dto: CreateOrderDto) {
     const order = this.orderRepository.create({
-      userId,
+      userId: userId || null,
       ...dto,
       assetType:
         dto.assetType ||

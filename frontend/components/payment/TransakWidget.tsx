@@ -255,6 +255,7 @@ export function TransakWidget({
         ...(amount && { 
           fiatAmount: amount.toString(),
           defaultAmount: amount.toString(),
+          defaultFiatAmount: amount.toString(),
         }),
         // 使用分润佣金合约地址
         ...(walletAddress && { walletAddress: walletAddress }),

@@ -23,7 +23,7 @@ export class AddPaymindIdToUsers1771000000000 implements MigrationInterface {
         // 为现有用户生成 paymindId（如果表中有数据）
         await queryRunner.query(`
           UPDATE "users" 
-          SET "paymindId" = 'pm-' || EXTRACT(EPOCH FROM NOW())::bigint || '-' || SUBSTRING(MD5(RANDOM()::text), 1, 9)
+          SET "paymindId" = 'AX-' || EXTRACT(EPOCH FROM NOW())::bigint || '-' || SUBSTRING(MD5(RANDOM()::text), 1, 9)
           WHERE "paymindId" IS NULL OR "paymindId" = '';
         `);
         

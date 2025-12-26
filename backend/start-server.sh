@@ -67,8 +67,5 @@ echo "   健康检查: http://localhost:3001/api/health"
 echo "   按 Ctrl+C 停止"
 echo ""
 
-# 取消代理设置
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
-
 npm run start:dev
 

@@ -82,17 +82,15 @@ export class TransakProviderService implements IProvider {
     if (this.environment === 'PRODUCTION') {
       this.baseUrl = 'https://api.transak.com';
     } else {
-      // STAGING 环境：api-staging.transak.com 无法访问，使用 api.transak.com
-      // 如果配置了备用 URL，优先使用备用 URL
+      // STAGING 环境：使用 api-stg.transak.com
       const alternateApiUrl = this.configService.get<string>('TRANSAK_API_URL_ALTERNATE');
       if (alternateApiUrl) {
         this.baseUrl = alternateApiUrl;
         this.logger.warn(`⚠️ STAGING environment using alternate API URL: ${alternateApiUrl}`);
       } else {
-        // 默认使用 api.transak.com（因为 api-staging.transak.com DNS 失败）
-        this.baseUrl = 'https://api.transak.com';
-        this.logger.warn(`⚠️ STAGING environment using api.transak.com (api-staging.transak.com is not accessible).`);
-        this.logger.warn(`⚠️ Ensure you're using a STAGING API Key with api.transak.com.`);
+        // 默认使用 api-stg.transak.com（api.transak.com 不接受 staging key）
+        this.baseUrl = 'https://api-stg.transak.com';
+        this.logger.log(`✅ STAGING environment using api-stg.transak.com`);
       }
     }
 
@@ -335,62 +333,44 @@ export class TransakProviderService implements IProvider {
   }
 
   private async getAccessToken(forceRefresh = false): Promise<string> {
-    if (
-      !forceRefresh &&
-      this.cachedAccessToken &&
-      Date.now() < this.cachedAccessTokenExpiresAt - 30_000
-    ) {
+    if (!forceRefresh && this.cachedAccessToken && Date.now() < this.cachedAccessTokenExpiresAt) {
       return this.cachedAccessToken;
     }
 
     if (!this.apiSecret) {
-      throw new Error('Transak API Secret not configured');
+      this.logger.warn('Transak API Secret not configured, using API Key as fallback (may fail)');
+      return this.apiKey;
     }
 
     try {
-      const tokenUrl = `${this.gatewayBaseUrl}/api/v2/auth/token`;
-      this.logger.debug(`Transak: Requesting access token from ${tokenUrl}`);
+      // 注意：获取 Token 的端点通常在 api.transak.com (即使是 staging)
+      // 但为了保险，我们使用 baseUrl
+      const tokenUrl = `${this.baseUrl}/auth/v2/token`;
+      this.logger.debug(`Transak: Fetching access token from ${tokenUrl}`);
+      
+      const response = await axios.post(tokenUrl, {
+        apiKey: this.apiKey,
+        apiSecret: this.apiSecret,
+      });
 
-      const response = await axios.post(
-        tokenUrl,
-        {
-          apiKey: this.apiKey,
-          apiSecret: this.apiSecret,
-        },
-        {
-          timeout: 15000,
-        },
-      );
-
-      const tokenData = response.data || {};
-      const accessToken = tokenData.access_token || tokenData.accessToken;
-      if (!accessToken) {
-        throw new Error('Token response missing access_token');
-      }
-
-      const expiresIn = Number(tokenData.expires_in || tokenData.expiresIn || 3600);
-      const ttl = Math.max(expiresIn - 30, 30) * 1000;
-      this.cachedAccessToken = accessToken;
-      this.cachedAccessTokenExpiresAt = Date.now() + ttl;
-      this.logger.debug(`Transak: Access token acquired, expires in ~${expiresIn}s`);
-
-      return accessToken;
-    } catch (error: any) {
-      this.cachedAccessToken = null;
-      this.cachedAccessTokenExpiresAt = 0;
-
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const data = error.response?.data;
-        this.logger.error(
-          `Transak: Failed to retrieve access token${status ? ` (status ${status})` : ''}`,
-          typeof data === 'object' ? JSON.stringify(data) : data || error.message,
-        );
+      const data = response.data?.data || response.data;
+      if (data?.accessToken) {
+        this.cachedAccessToken = data.accessToken;
+        // Token 通常有效期较长，我们缓存 23 小时
+        this.cachedAccessTokenExpiresAt = Date.now() + 23 * 60 * 60 * 1000;
+        this.logger.log('Transak: Access token fetched and cached successfully');
+        return this.cachedAccessToken;
       } else {
-        this.logger.error(`Transak: Failed to retrieve access token: ${error.message}`);
+        this.logger.warn('Transak: Token API response missing accessToken, falling back to API Key');
+        return this.apiKey;
       }
-
-      throw new Error(`Failed to fetch Transak access token: ${error.message || error}`);
+    } catch (error: any) {
+      const axiosError = error as AxiosError;
+      this.logger.error(
+        `Transak: Failed to fetch access token: ${axiosError.message}`,
+        axiosError.response?.data ? JSON.stringify(axiosError.response.data) : undefined
+      );
+      return this.apiKey; // 回退到 API Key
     }
   }
 
@@ -432,6 +412,7 @@ export class TransakProviderService implements IProvider {
       const widgetParams: Record<string, any> = {
         referrerDomain: resolvedReferrerDomain,
         fiatAmount: params.amount.toString(),
+        defaultFiatAmount: params.amount.toString(),
         fiatCurrency: params.fiatCurrency,
         cryptoCurrencyCode: params.cryptoCurrency,
         ...(params.network && { network: params.network }),
@@ -440,20 +421,22 @@ export class TransakProviderService implements IProvider {
         ...(params.email && { email: params.email }),
         ...(params.redirectURL && { redirectURL: params.redirectURL }),
         // 界面控制参数
-        ...(params.hideMenu !== undefined && { hideMenu: params.hideMenu.toString() }),
+        ...(params.hideMenu !== undefined && { hideMenu: params.hideMenu }),
         ...(params.disableWalletAddressForm !== undefined && { 
-          disableWalletAddressForm: params.disableWalletAddressForm.toString() 
+          disableWalletAddressForm: params.disableWalletAddressForm 
         }),
         ...(params.disableFiatAmountEditing !== undefined && { 
-          disableFiatAmountEditing: params.disableFiatAmountEditing.toString() 
+          disableFiatAmountEditing: params.disableFiatAmountEditing,
+          isReadOnlyFiatAmount: params.disableFiatAmountEditing
         }),
         ...(params.isKYCRequired !== undefined && { 
-          isKYCRequired: params.isKYCRequired.toString() 
+          isKYCRequired: params.isKYCRequired 
         }),
       };
 
       // 调用 Transak Create Session API
-      const sessionUrl = `${this.gatewayBaseUrl}/api/v2/auth/session`;
+      // 根据文档，使用 /auth/public/v2/session 端点，并将 API Key 作为 access-token 传入
+      const sessionUrl = `${this.baseUrl}/auth/public/v2/session`;
       const accessToken = await this.getAccessToken();
 
       this.logger.debug(`Transak: Calling Create Session API: ${sessionUrl}`);
@@ -465,7 +448,7 @@ export class TransakProviderService implements IProvider {
         {
           headers: {
             accept: 'application/json',
-            Authorization: `Bearer ${accessToken}`,
+            'access-token': accessToken,
             'content-type': 'application/json',
           },
           timeout: 30000,

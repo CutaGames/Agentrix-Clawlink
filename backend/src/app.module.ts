@@ -54,6 +54,7 @@ import { OpenAIIntegrationModule } from './modules/ai-integration/openai/openai-
 import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integration.module';
 import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
 import { CartModule } from './modules/cart/cart.module';
+import { SkillModule } from './modules/skill/skill.module';
 
 @Module({
   imports: [
@@ -115,6 +116,7 @@ import { CartModule } from './modules/cart/cart.module';
     GeminiIntegrationModule,
     UploadModule,
     CartModule,
+    SkillModule,
   ],
   controllers: [AppController],
   providers: [AppService],

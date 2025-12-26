@@ -7,13 +7,15 @@ import { ConfigService } from '@nestjs/config';
 export class AppleStrategy extends PassportStrategy(Strategy, 'apple') {
   constructor(private configService: ConfigService) {
     const clientID = configService.get<string>('APPLE_CLIENT_ID');
+    const apiBaseUrl = configService.get<string>('API_BASE_URL') || 'http://localhost:3001';
+    const callbackURL = configService.get<string>('APPLE_CALLBACK_URL') || `${apiBaseUrl}/auth/apple/callback`;
     
     super({
       clientID: clientID || 'placeholder-client-id',
       teamID: configService.get<string>('APPLE_TEAM_ID') || 'placeholder-team-id',
       keyID: configService.get<string>('APPLE_KEY_ID') || 'placeholder-key-id',
       privateKeyString: configService.get<string>('APPLE_PRIVATE_KEY')?.replace(/\\n/g, '\n') || 'placeholder-private-key',
-      callbackURL: configService.get<string>('APPLE_CALLBACK_URL', 'http://localhost:3001/api/auth/apple/callback'),
+      callbackURL: callbackURL,
       passReqToCallback: false,
       scope: ['email', 'name'],
     });

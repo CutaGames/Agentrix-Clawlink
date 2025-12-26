@@ -34,6 +34,7 @@ import { AirdropResource } from './resources/airdrop';
 import { AutoEarnResource } from './resources/auto-earn';
 import { MPCWalletResource } from './resources/mpc-wallet';
 import { AIEcosystemIntegration } from './resources/ai-ecosystem';
+import { SkillResource } from './resources/skills';
 import { validateApiKey } from './utils/validation';
 
 export class Agentrix {
@@ -63,11 +64,14 @@ export class Agentrix {
   public capabilities: AgentCapabilitiesResource;
   public webhooks: WebhookHandler;
   
-  // 新增 Agent 核心功能模块
+  // Agent 核心功能模块
   public agentAuthorization: AgentAuthorizationResource;
   public airdrop: AirdropResource;
   public autoEarn: AutoEarnResource;
   public mpcWallet: MPCWalletResource;
+  
+  // AX Skill - 开发者写一次，自动生成各平台格式
+  public skills: SkillResource;
 
   private client: AgentrixClient;
 
@@ -106,6 +110,9 @@ export class Agentrix {
     this.airdrop = new AirdropResource(this.client);
     this.autoEarn = new AutoEarnResource(this.client);
     this.mpcWallet = new MPCWalletResource(this.client);
+    
+    // 初始化 AX Skill 模块
+    this.skills = new SkillResource(this.client);
     
     // Make marketplace available to agents for unified search
     (this.client as any).marketplace = this.marketplace;
@@ -206,6 +213,9 @@ export {
 } from './resources/auto-earn';
 export * from './resources/mpc-wallet';
 export * from './resources/ai-ecosystem';
+
+// Export Skills module
+export { SkillResource, AXSkillDefinition, AXSkill, SkillExecutionResult } from './resources/skills';
 
 // Export semantic search utilities
 export * from './utils/semantic-search';

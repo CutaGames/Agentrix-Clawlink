@@ -54,6 +54,12 @@ export default function MerchantProducts() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // 限制文件大小为 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      showError(t({ zh: '图片大小不能超过 5MB', en: 'Image size cannot exceed 5MB' }))
+      return
+    }
+
     setIsUploading(true)
     const formData = new FormData()
     formData.append('file', file)
@@ -592,7 +598,7 @@ export default function MerchantProducts() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('merchantProducts.form.currency')}
+                    {t('merchantProducts.form.currency')} *
                   </label>
                   <select
                     value={newProduct.currency}
@@ -602,7 +608,11 @@ export default function MerchantProducts() {
                     <option value="CNY">{t('merchantProducts.form.currencyOptions.cny')}</option>
                     <option value="USD">{t('merchantProducts.form.currencyOptions.usd')}</option>
                     <option value="USDT">{t('merchantProducts.form.currencyOptions.usdt')}</option>
-                    <option value="ETH">{t('merchantProducts.form.currencyOptions.eth')}</option>                    <option value="ETH">{t('merchantProducts.form.currencyOptions.eth')}</option>                  </select>
+                    <option value="EUR">{t('merchantProducts.form.currencyOptions.eur')}</option>
+                    <option value="GBP">{t('merchantProducts.form.currencyOptions.gbp')}</option>
+                    <option value="HKD">{t('merchantProducts.form.currencyOptions.hkd')}</option>
+                    <option value="JPY">{t('merchantProducts.form.currencyOptions.jpy')}</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -676,7 +686,7 @@ export default function MerchantProducts() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('merchantProducts.form.category')}
+                    {t('merchantProducts.form.category')} *
                   </label>
                   <input
                     type="text"
@@ -688,7 +698,7 @@ export default function MerchantProducts() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('merchantProducts.form.productType')}
+                    {t('merchantProducts.form.productType')} *
                   </label>
                   <select
                     value={newProduct.productType}

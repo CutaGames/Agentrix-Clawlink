@@ -7,11 +7,15 @@ import { ConfigService } from '@nestjs/config';
 export class TwitterStrategy extends PassportStrategy(Strategy, 'twitter') {
   constructor(private configService: ConfigService) {
     const consumerKey = configService.get<string>('TWITTER_CONSUMER_KEY');
+    const apiBaseUrl = configService.get<string>('API_BASE_URL') || 'http://localhost:3001';
+    const callbackURL = configService.get<string>('TWITTER_CALLBACK_URL') || `${apiBaseUrl}/auth/twitter/callback`;
+
+    console.log(`Twitter OAuth initialized with callbackURL: ${callbackURL}`);
 
     super({
       consumerKey: consumerKey || 'placeholder-consumer-key',
       consumerSecret: configService.get<string>('TWITTER_CONSUMER_SECRET') || 'placeholder-consumer-secret',
-      callbackURL: configService.get<string>('TWITTER_CALLBACK_URL', 'http://localhost:3001/api/auth/twitter/callback'),
+      callbackURL: callbackURL,
       includeEmail: true,
     });
 

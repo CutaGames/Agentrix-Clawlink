@@ -136,13 +136,18 @@ class ApiClient {
         // 如果在浏览器环境，重定向到登录页
         if (typeof window !== 'undefined') {
           const currentPath = window.location.pathname;
-          // 如果是访问 admin 路由，跳到管理员专用登录页
-          if (currentPath.includes('/admin')) {
-            window.location.href = `/admin11091?redirect=${encodeURIComponent(currentPath)}`;
-          } else {
-            // 避免重复重定向
-            if (!currentPath.includes('/auth/') && !currentPath.includes('/login')) {
-              window.location.href = `/auth/login?redirect=${encodeURIComponent(currentPath)}`;
+          // 只有在受保护的路径下才自动重定向到登录页
+          const isProtectedPath = currentPath.startsWith('/app') || currentPath.startsWith('/admin');
+          
+          if (isProtectedPath) {
+            // 如果是访问 admin 路由，跳到管理员专用登录页
+            if (currentPath.includes('/admin')) {
+              window.location.href = `/admin11091?redirect=${encodeURIComponent(currentPath)}`;
+            } else {
+              // 避免重复重定向
+              if (!currentPath.includes('/auth/') && !currentPath.includes('/login')) {
+                window.location.href = `/auth/login?redirect=${encodeURIComponent(currentPath)}`;
+              }
             }
           }
         }

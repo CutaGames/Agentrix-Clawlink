@@ -7,6 +7,7 @@ export interface ProductInfo {
   price: number;
   stock: number;
   category: string;
+  productType?: string;
   commissionRate: number;
   status: string;
   merchantId: string;

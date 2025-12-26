@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import * as session from 'express-session';
 import { AppModule } from './app.module';
 import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
 
@@ -16,6 +17,24 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+
+  // Trust proxy for secure cookies behind Nginx
+  app.set('trust proxy', 1);
+
+  // Twitter OAuth 1.0a requires session support
+  app.use(
+    session({
+      secret: process.env.SESSION_SECRET || 'agentrix-secret-key-2025',
+      resave: false,
+      saveUninitialized: false,
+      name: 'agentrix.sid', // Custom session cookie name
+      cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 3600000, // 1 hour
+      },
+    }),
+  );
 
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/api/uploads/',

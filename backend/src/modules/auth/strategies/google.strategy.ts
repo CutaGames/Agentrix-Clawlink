@@ -11,12 +11,17 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     private authService: AuthService,
   ) {
     const clientID = configService.get<string>('GOOGLE_CLIENT_ID');
+    const apiBaseUrl = configService.get<string>('API_BASE_URL') || 'http://localhost:3001';
+    const callbackURL = configService.get<string>('GOOGLE_CALLBACK_URL') || `${apiBaseUrl}/auth/google/callback`;
+    
+    console.log(`Google OAuth initialized with callbackURL: ${callbackURL}`);
 
     super({
       clientID: clientID || 'placeholder-client-id',
       clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET') || 'placeholder-client-secret',
-      callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL', 'http://localhost:3001/api/auth/google/callback'),
+      callbackURL: callbackURL,
       scope: ['email', 'profile'],
+      proxy: true,
     });
 
     if (!clientID) {

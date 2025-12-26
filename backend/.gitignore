@@ -5,8 +5,8 @@
 # Logs
 logs
 *.log
-npm-debug.log*
-pnpm-debug.log*
+nAX-debug.log*
+pnAX-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*

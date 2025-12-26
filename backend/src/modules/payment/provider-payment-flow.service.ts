@@ -27,7 +27,7 @@ export class ProviderPaymentFlowService {
     private readonly configService: ConfigService,
   ) {}
 
-  async createSession(userId: string, dto: CreateProviderPaymentSessionDto) {
+  async createSession(userId: string | undefined, dto: CreateProviderPaymentSessionDto) {
     const quote: ExchangeQuote =
       dto.quote ||
       (await this.pickBestQuote(dto.amount, dto.currency, dto.toCurrency, dto.providerId));
@@ -45,7 +45,7 @@ export class ProviderPaymentFlowService {
     };
 
     const payment = this.paymentRepository.create({
-      userId,
+      userId: userId || null,
       amount: dto.amount,
       currency: dto.currency,
       paymentMethod: PaymentMethod.STRIPE, // 复用法币渠道存储

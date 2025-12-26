@@ -121,6 +121,13 @@ export function MarketplaceView({ onProductClick, searchQuery }: MarketplaceView
           {products
             .filter((p) => {
               if (selectedCategory === 'all') return true;
+              
+              // 检查产品类型匹配
+              const pType = (p.productType || '').toLowerCase();
+              if (selectedCategory === 'token' && pType === 'ft') return true;
+              if (selectedCategory === 'nft' && pType === 'nft') return true;
+              if (selectedCategory === 'services' && pType === 'service') return true;
+              
               // 支持多种分类匹配方式
               const productCategory = (p.category || '').toLowerCase();
               const selectedCat = selectedCategory.toLowerCase();

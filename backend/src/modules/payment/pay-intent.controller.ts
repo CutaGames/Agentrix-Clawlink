@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { PayIntentService, CreatePayIntentDto } from './pay-intent.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
 import { UnifiedAuthGuard } from '../auth/guards/unified-auth.guard';
 
@@ -29,7 +30,7 @@ export class PayIntentController {
   @ApiOperation({ summary: '创建PayIntent（支持JWT或API Key）' })
   @ApiResponse({ status: 201, description: '返回创建的PayIntent' })
   @ApiHeader({ name: 'x-api-key', description: 'API Key (agx_test_... or agx_live_...)', required: false })
-  @UseGuards(UnifiedAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   async createPayIntent(
     @Request() req: any,
     @Body() dto: CreatePayIntentDto,

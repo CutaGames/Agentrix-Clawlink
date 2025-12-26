@@ -29,7 +29,7 @@ export class AuthService {
     }
 
     // 生成 Agentrix ID（如果未提供）
-    const agentrixId = dto.agentrixId || `atx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const agentrixId = dto.agentrixId || `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // 加密密码
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -39,7 +39,7 @@ export class AuthService {
       email: dto.email,
       passwordHash,
       agentrixId,
-      roles: ['user'] as UserRole[],
+      roles: [UserRole.USER],
     });
 
     const savedUser = await this.userRepository.save(user);
@@ -110,7 +110,7 @@ export class AuthService {
       }
     } else {
       // 创建新用户
-      const agentrixId = `atx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       user = this.userRepository.create({
         googleId,
         email,
@@ -141,7 +141,7 @@ export class AuthService {
         await this.userRepository.save(user);
       }
     } else {
-      const agentrixId = `atx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       user = this.userRepository.create({
         appleId,
         email,
@@ -174,7 +174,7 @@ export class AuthService {
         await this.userRepository.save(user);
       }
     } else {
-      const agentrixId = `atx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       user = this.userRepository.create({
         twitterId,
         email,
@@ -254,7 +254,7 @@ export class AuthService {
     } else {
       // 4b. 如果钱包不存在，创建新用户和钱包连接
       // 生成 Agentrix ID
-      const agentrixId = `atx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // 创建用户
       user = this.userRepository.create({

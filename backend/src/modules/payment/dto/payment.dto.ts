@@ -32,6 +32,10 @@ export class CreatePaymentIntentDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiProperty({ description: '元数据', required: false })
+  @IsOptional()
+  metadata?: any;
 }
 
 export class ProcessPaymentDto {
