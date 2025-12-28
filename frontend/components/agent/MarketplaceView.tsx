@@ -53,6 +53,7 @@ export function MarketplaceView({ onProductClick, searchQuery }: MarketplaceView
 
   const categories = [
     { id: 'all', name: '全部' },
+    { id: 'virtual', name: '虚拟资产' },
     { id: 'electronics', name: '电子产品' },
     { id: 'clothing', name: '服装' },
     { id: 'food', name: '食品' },
@@ -116,14 +117,28 @@ export function MarketplaceView({ onProductClick, searchQuery }: MarketplaceView
       </div>
 
       {/* 商品网格 */}
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold text-gray-900 text-center mb-2">
+          {selectedCategory === 'virtual' || selectedCategory === 'token' || selectedCategory === 'nft' 
+            ? '虚拟资产' 
+            : '实体产品与服务'}
+        </h2>
+        <p className="text-gray-600 text-center max-w-2xl mx-auto">
+          {selectedCategory === 'virtual' || selectedCategory === 'token' || selectedCategory === 'nft'
+            ? 'Agentrix Marketplace 聚合了全链资产，为您提供最优质的数字资产交易体验'
+            : 'Agentrix Marketplace 不仅聚合链上资产，还支持实体商品和各类服务的交易'}
+        </p>
+      </div>
+
       {!showAssets ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {products
             .filter((p) => {
-              if (selectedCategory === 'all') return true;
-              
               // 检查产品类型匹配
               const pType = (p.productType || '').toLowerCase();
+              
+              if (selectedCategory === 'all') return true;
+              if (selectedCategory === 'virtual' && (pType === 'ft' || pType === 'nft' || pType === 'game_asset')) return true;
               if (selectedCategory === 'token' && pType === 'ft') return true;
               if (selectedCategory === 'nft' && pType === 'nft') return true;
               if (selectedCategory === 'services' && pType === 'service') return true;
@@ -131,6 +146,12 @@ export function MarketplaceView({ onProductClick, searchQuery }: MarketplaceView
               // 支持多种分类匹配方式
               const productCategory = (p.category || '').toLowerCase();
               const selectedCat = selectedCategory.toLowerCase();
+              
+              // 如果是虚拟资产分类，但 productType 不匹配，则不显示
+              if (selectedCategory === 'virtual' || selectedCategory === 'token' || selectedCategory === 'nft') {
+                return false;
+              }
+
               return productCategory === selectedCat || 
                      productCategory.includes(selectedCat) ||
                      selectedCat.includes(productCategory);
@@ -142,8 +163,12 @@ export function MarketplaceView({ onProductClick, searchQuery }: MarketplaceView
               className="bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:shadow-lg transition-shadow"
             >
               <div className="aspect-w-16 aspect-h-9 bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
-                {product.metadata?.image ? (
-                  <img src={product.metadata.image} alt={product.name} className="w-full h-full object-cover rounded-lg" />
+                {(product.metadata?.image || product.metadata?.core?.media?.images?.[0]?.url) ? (
+                  <img 
+                    src={product.metadata?.image || product.metadata?.core?.media?.images?.[0]?.url} 
+                    alt={product.name} 
+                    className="w-full h-full object-cover rounded-lg" 
+                  />
                 ) : (
                   <div className="text-gray-400 text-4xl">📦</div>
                 )}

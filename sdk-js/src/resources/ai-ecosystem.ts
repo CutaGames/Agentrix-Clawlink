@@ -7,6 +7,8 @@ import { AgentAuthorizationResource } from './agent-authorization';
 import { AirdropResource } from './airdrop';
 import { AutoEarnResource } from './auto-earn';
 import { MPCWalletResource } from './mpc-wallet';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 // ========== MCP (Model Context Protocol) 工具定义 ==========
 
@@ -603,6 +605,35 @@ export class AIEcosystemIntegration {
    */
   static getMCPTools(): MCPTool[] {
     return generateMCPTools();
+  }
+
+  /**
+   * 创建一个本地 MCP Server
+   * 允许开发者将 Agent 功能暴露给 Claude Desktop 等
+   */
+  static createMcpServer(options: {
+    name: string;
+    version: string;
+  }) {
+    const server = new Server(
+      { name: options.name, version: options.version },
+      { capabilities: { tools: {} } }
+    );
+
+    const tools = this.getMCPTools();
+
+    server.setRequestHandler('tools/list', async () => ({
+      tools: tools
+    }));
+
+    return {
+      server,
+      async start() {
+        const transport = new StdioServerTransport();
+        await server.connect(transport);
+        console.log(`MCP Server "${options.name}" started via Stdio`);
+      }
+    };
   }
 
   /**

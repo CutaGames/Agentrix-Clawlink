@@ -168,7 +168,9 @@ export function UnifiedAgentChat({
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/agent/health');
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+        const healthUrl = apiUrl.endsWith('/api') ? `${apiUrl}/agent/health` : `${apiUrl}/api/agent/health`;
+        const response = await fetch(healthUrl);
         if (response.ok) {
           console.log('✅ Agent服务健康检查通过');
         } else {

@@ -79,6 +79,40 @@ export function useSessionManager() {
       if (!signMessage) {
         throw new Error('Wallet signMessage not available');
       }
+
+      // 检查并切换网络
+      if (typeof window !== 'undefined' && window.ethereum) {
+        const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(chainIdHex as string, 16);
+        const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 97);
+        
+        if (currentChainId !== targetChainId) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: `0x${targetChainId.toString(16)}` }],
+            });
+          } catch (switchError: any) {
+            if (switchError.code === 4902) {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [
+                  {
+                    chainId: `0x${targetChainId.toString(16)}`,
+                    chainName: 'BSC Testnet',
+                    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                    rpcUrls: [process.env.NEXT_PUBLIC_BSC_TESTNET_RPC_URL || 'https://bsc-testnet.publicnode.com'],
+                    blockExplorerUrls: ['https://testnet.bscscan.com'],
+                  },
+                ],
+              });
+            } else {
+              throw new Error(`Please switch to BSC Testnet (Chain ID: ${targetChainId})`);
+            }
+          }
+        }
+      }
+
       const message = `Authorize Session Key: ${sessionKey.publicKey}\nSingle Limit: ${config.singleLimit} USDC\nDaily Limit: ${config.dailyLimit} USDC\nExpiry: ${config.expiryDays} days`;
       const signature = await signMessage(message);
 

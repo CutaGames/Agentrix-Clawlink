@@ -49,6 +49,8 @@ export function convertToUnifiedProduct(data: {
       quantity: inventoryType === 'finite' ? stockQuantity : undefined,
     },
     metadata: {
+      image: data.image, // 保留旧字段用于兼容
+      currency: data.currency || 'CNY', // 保留旧字段用于兼容
       core: {
         media: {
           images: data.image ? [{
@@ -63,7 +65,7 @@ export function convertToUnifiedProduct(data: {
         ...(data.metadata || {}),
         ...(data.commissionRate ? { commissionRate: data.commissionRate } : {}),
       },
-    },
+    } as any,
     ...(data.tags && data.tags.length > 0 ? { tags: data.tags } : {}),
   };
 
@@ -154,6 +156,7 @@ export function convertToUpdateProductDto(data: {
       ...(data.metadata || {}),
       ...(data.currency ? { currency: data.currency } : {}),
       ...(data.image ? { 
+        image: data.image, // 保留旧字段用于兼容
         core: {
           media: {
             images: [{

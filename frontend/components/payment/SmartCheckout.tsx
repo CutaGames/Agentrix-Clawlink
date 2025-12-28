@@ -81,7 +81,7 @@ const TOKEN_CONFIG: Record<
     address:
       (process.env.NEXT_PUBLIC_BSC_TESTNET_USDC_ADDRESS as `0x${string}`) ||
       '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd', // BSC Testnet USDC often uses same address or similar
-    fallbackDecimals: 6,
+    fallbackDecimals: 18,
   },
 };
 
@@ -730,15 +730,37 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     setStatus('processing');
     setError(null);
     try {
+      // 如果是法币，尝试使用转换后的加密货币金额
+      const isFiat = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes((order.currency || 'USDC').toUpperCase());
+      const finalAmount = isFiat && cryptoAmount ? cryptoAmount : order.amount;
+      const finalCurrency = isFiat && cryptoAmount ? 'USDT' : (order.currency || 'USDC');
+
+      // 获取收款地址
+      let toAddress = order.to;
+      if (!toAddress) {
+        try {
+          const contractAddresses = await paymentApi.getContractAddress();
+          toAddress = contractAddresses.commissionContractAddress;
+        } catch (e) {
+          toAddress = process.env.NEXT_PUBLIC_COMMISSION_CONTRACT_ADDRESS;
+        }
+      }
+
       const intent = await payIntentApi.create({
         type: 'order_payment',
-        amount: order.amount,
-        currency: order.currency || 'USDC',
+        amount: finalAmount,
+        currency: finalCurrency,
         description: order.description,
         orderId: order.id,
         merchantId: order.merchantId,
         paymentMethod: {
           type: 'qrcode'
+        },
+        metadata: {
+          to: toAddress,
+          originalAmount: order.amount,
+          originalCurrency: order.currency,
+          isFiat: isFiat
         }
       });
       setPayIntent(intent);

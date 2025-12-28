@@ -182,63 +182,71 @@ export function ProductServiceSection({ type }: ProductServiceSectionProps) {
 
   // 将商品按类型分类
   const physicalProducts = products.filter(
-    (p) => p.metadata?.productType === 'physical' || !p.metadata?.productType
+    (p) => p.productType === 'physical' || p.metadata?.productType === 'physical' || (!p.productType && !p.metadata?.productType)
   )
   const serviceProducts = products.filter(
-    (p) => p.metadata?.productType === 'service'
+    (p) => p.productType === 'service' || p.metadata?.productType === 'service'
   )
+  const digitalProducts = products.filter(
+    (p) => p.productType === 'ft' || p.productType === 'nft' || p.productType === 'game_asset' || p.metadata?.productType === 'digital'
+  )
+
+  const displayProducts = type === 'digital' ? digitalProducts : activeTab === 'products' ? physicalProducts : serviceProducts;
 
   return (
     <section className="py-16 bg-white">
       <div className="container mx-auto px-6">
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            实体产品与服务
+            {type === 'digital' ? '虚拟资产' : '实体产品与服务'}
           </h2>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Agentrix Marketplace 不仅聚合链上资产，还支持实体商品和各类服务的交易
+            {type === 'digital' 
+              ? 'Agentrix Marketplace 聚合了全链资产，为您提供最优质的数字资产交易体验' 
+              : 'Agentrix Marketplace 不仅聚合链上资产，还支持实体商品和各类服务的交易'}
           </p>
         </div>
 
-        {/* Tab切换 */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`px-6 py-2 rounded-lg font-semibold transition-all ${
-                activeTab === 'products'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              实体产品
-            </button>
-            <button
-              onClick={() => setActiveTab('services')}
-              className={`px-6 py-2 rounded-lg font-semibold transition-all ${
-                activeTab === 'services'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              服务
-            </button>
+        {/* Tab切换 - 仅在非数字资产模式下显示 */}
+        {type !== 'digital' && (
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setActiveTab('products')}
+                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                  activeTab === 'products'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                实体产品
+              </button>
+              <button
+                onClick={() => setActiveTab('services')}
+                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                  activeTab === 'services'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                服务
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 产品列表 */}
-        {activeTab === 'products' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {loading ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                加载中...
-              </div>
-            ) : physicalProducts.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                暂无商品，请先创建测试商品
-              </div>
-            ) : (
-              physicalProducts.map((product) => (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {loading ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              加载中...
+            </div>
+          ) : displayProducts.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              {type === 'digital' ? '暂无虚拟资产，请先创建代币或NFT商品' : '暂无商品，请先创建测试商品'}
+            </div>
+          ) : (
+            displayProducts.map((product) => (
               <div
                 key={product.id}
                 className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer"
@@ -299,88 +307,9 @@ export function ProductServiceSection({ type }: ProductServiceSectionProps) {
                   立即购买
                 </button>
               </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* 服务列表 */}
-        {activeTab === 'services' && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {loading ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                加载中...
-              </div>
-            ) : serviceProducts.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                暂无服务，请先创建测试商品
-              </div>
-            ) : (
-              serviceProducts.map((service) => (
-              <div
-                key={service.id}
-                className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => handleServiceClick(service)}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                      {service.name}
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                      {service.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {service.metadata?.currency === 'USDT' ? '$' : '¥'}
-                      {service.price.toLocaleString()}
-                    </span>
-                    {service.metadata?.currency && (
-                      <span className="text-sm text-gray-500 ml-1">
-                        {service.metadata.currency}
-                      </span>
-                    )}
-                  </div>
-                  {service.metadata?.paymentMethod && (
-                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                      {service.metadata.paymentMethod === 'quickpay' ? 'QuickPay' :
-                       service.metadata.paymentMethod === 'wallet' ? '钱包支付' :
-                       service.metadata.paymentMethod === 'stripe' ? 'Stripe' : '其他'}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                  <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded">
-                    {service.category}
-                  </span>
-                  <span>库存: {service.stock}</span>
-                </div>
-                {service.metadata?.image && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    <img
-                      src={service.metadata.image}
-                      alt={service.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  </div>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleServiceClick(service)
-                  }}
-                  className="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  立即购买
-                </button>
-              </div>
-              ))
-            )}
-          </div>
-        )}
+            ))
+          )}
+        </div>
 
         {/* CTA */}
         <div className="text-center mt-12">

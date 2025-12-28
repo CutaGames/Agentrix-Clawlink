@@ -374,9 +374,8 @@ export class TransakProviderService implements IProvider {
 
     try {
       // 注意：获取 Token 的端点通常在 api.transak.com (即使是 staging)
-      // 但为了保险，我们使用 baseUrl
-      const tokenUrl = `${this.baseUrl}/auth/v2/token`;
-      this.logger.debug(`Transak: Fetching access token from ${tokenUrl}`);
+      const tokenUrl = 'https://api.transak.com/auth/v2/token';
+      this.logger.log(`Transak: Fetching access token from ${tokenUrl}`);
       
       const response = await axios.post(tokenUrl, {
         apiKey: this.apiKey,
@@ -583,6 +582,10 @@ export class TransakProviderService implements IProvider {
       partnerOrderId: params.orderId,
       email: params.email,
       redirectURL: params.redirectURL || `${this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000'}/payment/callback`,
+      // Transak 特定配置
+      isAutoFillUserData: true,
+      disableEmail: false,
+      skipEmailOTA: false,
       // Webhook URL
       webhookURL: this.webhookUrl,
     };

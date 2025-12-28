@@ -436,6 +436,12 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
 
   const handleImageUpload = async (file: File) => {
+    // 检查文件大小 (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert(t({ zh: '图片大小不能超过 5MB', en: 'Image size cannot exceed 5MB' }))
+      return
+    }
+
     setIsUploadingImage(true)
     try {
       const response = await userApi.uploadFile(file)
@@ -699,7 +705,27 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
   }
 
   const handleProductSubmit = async () => {
-    if (!productForm.name || !productForm.price) return
+    if (!productForm.name) {
+      alert(t({ zh: '请输入商品名称', en: 'Please enter product name' }))
+      return
+    }
+    if (productForm.price === undefined || productForm.price === null) {
+      alert(t({ zh: '请输入商品价格', en: 'Please enter product price' }))
+      return
+    }
+    if (!productForm.category) {
+      alert(t({ zh: '请选择或输入商品分类', en: 'Please enter product category' }))
+      return
+    }
+    if (!productForm.description) {
+      alert(t({ zh: '请输入商品描述', en: 'Please enter product description' }))
+      return
+    }
+    if (!productForm.image) {
+      alert(t({ zh: '请上传商品图片', en: 'Please upload product image' }))
+      return
+    }
+
     setProductSubmitting(true)
     try {
       // 导入转换工具
@@ -2777,7 +2803,10 @@ function ProductEditorModal({
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           <div className="grid md:grid-cols-2 gap-4">
             <label className="text-sm text-gray-600 flex flex-col space-y-1">
-              {t({ zh: '商品名称', en: 'Product name' })}
+              <span className="flex items-center gap-1">
+                {t({ zh: '商品名称', en: 'Product name' })}
+                <span className="text-red-500">*</span>
+              </span>
               <input
                 type="text"
                 value={form.name}
@@ -2786,7 +2815,10 @@ function ProductEditorModal({
               />
             </label>
             <label className="text-sm text-gray-600 flex flex-col space-y-1">
-              {t({ zh: '分类', en: 'Category' })}
+              <span className="flex items-center gap-1">
+                {t({ zh: '分类', en: 'Category' })}
+                <span className="text-red-500">*</span>
+              </span>
               <input
                 type="text"
                 value={form.category}
@@ -2820,18 +2852,23 @@ function ProductEditorModal({
                 onChange={(e) => updateField('currency', e.target.value)}
                 className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
-                <option value="CNY">CNY</option>
                 <option value="USD">USD</option>
+                <option value="CNY">CNY</option>
+                <option value="HKD">HKD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="JPY">JPY</option>
                 <option value="USDT">USDT</option>
                 <option value="USDC">USDC</option>
-                <option value="BNB">BNB</option>
-                <option value="ETH">ETH</option>
               </select>
             </label>
           </div>
           <div className="grid md:grid-cols-3 gap-4">
             <label className="text-sm text-gray-600 flex flex-col space-y-1">
-              {t({ zh: '价格', en: 'Price' })}
+              <span className="flex items-center gap-1">
+                {t({ zh: '价格', en: 'Price' })}
+                <span className="text-red-500">*</span>
+              </span>
               <input
                 type="number"
                 min={0}
@@ -2841,7 +2878,10 @@ function ProductEditorModal({
               />
             </label>
             <label className="text-sm text-gray-600 flex flex-col space-y-1">
-              {t({ zh: '库存', en: 'Stock' })}
+              <span className="flex items-center gap-1">
+                {t({ zh: '库存', en: 'Stock' })}
+                <span className="text-red-500">*</span>
+              </span>
               <input
                 type="number"
                 min={0}
@@ -2864,7 +2904,11 @@ function ProductEditorModal({
           </div>
           <div className="space-y-2">
             <label className="text-sm text-gray-600 flex flex-col space-y-1">
-              {t({ zh: '商品图片', en: 'Product Image' })}
+              <span className="flex items-center gap-1">
+                {t({ zh: '商品图片', en: 'Product Image' })}
+                <span className="text-red-500">*</span>
+                <span className="text-xs text-gray-400 ml-2">(Max 5MB)</span>
+              </span>
               <div className="flex gap-2">
                 <input
                   type="url"
@@ -2893,8 +2937,16 @@ function ProductEditorModal({
               </div>
             </label>
             {form.image && (
-              <div className="mt-2 relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200">
+              <div className="mt-2 relative w-32 h-32 rounded-lg overflow-hidden border border-gray-200 shadow-sm group">
                 <img src={form.image} alt="Preview" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <button 
+                    onClick={() => updateField('image', '')}
+                    className="text-white bg-red-500 rounded-full p-1 hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2909,7 +2961,10 @@ function ProductEditorModal({
             />
           </label>
           <label className="text-sm text-gray-600 flex flex-col space-y-1">
-            {t({ zh: '商品描述', en: 'Description' })}
+            <span className="flex items-center gap-1">
+              {t({ zh: '商品描述', en: 'Description' })}
+              <span className="text-red-500">*</span>
+            </span>
             <textarea
               rows={4}
               value={form.description}

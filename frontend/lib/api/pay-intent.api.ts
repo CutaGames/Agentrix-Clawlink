@@ -2,6 +2,7 @@ import { apiClient } from './client';
 
 export interface CreatePayIntentRequest {
   type: 'order_payment' | 'service_payment' | 'asset_payment' | 'task_payment' | 'subscription';
+  userId?: string;
   amount: number;
   currency: string;
   description?: string;
@@ -16,6 +17,7 @@ export interface CreatePayIntentRequest {
     returnUrl?: string;
     cancelUrl?: string;
     successUrl?: string;
+    [key: string]: any;
   };
   expiresIn?: number;
 }
@@ -47,6 +49,7 @@ export interface PayIntent {
     returnUrl?: string;
     cancelUrl?: string;
     successUrl?: string;
+    [key: string]: any;
   };
   expiresAt?: string;
   createdAt: string;
@@ -85,8 +88,8 @@ export const payIntentApi = {
   /**
    * 执行PayIntent
    */
-  execute: async (payIntentId: string): Promise<PayIntent> => {
-    return apiClient.post<PayIntent>(`/pay-intents/${payIntentId}/execute`);
+  execute: async (payIntentId: string, metadata?: any): Promise<PayIntent> => {
+    return apiClient.post<PayIntent>(`/pay-intents/${payIntentId}/execute`, metadata);
   },
 
   /**

@@ -222,27 +222,36 @@ export function TransakWhiteLabelModal({
     console.log('📨 Transak event:', eventType, data);
     switch (eventType) {
       case 'TRANSAK_WIDGET_INITIALISED':
-        // Widget 初始化完成，开始邮箱验证流程
-        console.log('🔧 Transak Widget 初始化');
-        setPaymentStep('email');
-        break;
-        
       case 'TRANSAK_WIDGET_OPEN':
-        // Widget 打开，用户看到邮箱输入界面
-        console.log('📖 Transak Widget 打开');
+        // Widget 初始化或打开，用户看到邮箱输入界面
+        console.log('🔧 Transak Widget 已就绪');
         setPaymentStep('email');
         break;
         
       case 'TRANSAK_ORDER_CREATED':
         // 订单创建成功，说明邮箱已验证完成
-        // 现在进入 KYC 身份认证阶段
-        console.log('📝 Transak 订单已创建，邮箱验证完成，进入身份认证阶段');
+        // 现在进入 KYC 身份认证阶段（如果需要）或支付阶段
+        console.log('📝 Transak 订单已创建');
+        // 如果用户已经完成过 KYC，Transak 可能会直接跳到支付
+        // 我们先设为 kyc，如果有 KYC_VERIFIED 事件会再更新
         setPaymentStep('kyc');
+        break;
+
+      case 'TRANSAK_KYC_INIT':
+      case 'KYC_INIT':
+        console.log('🆔 Transak KYC 流程开始');
+        setPaymentStep('kyc');
+        break;
+
+      case 'TRANSAK_KYC_VERIFIED':
+      case 'KYC_VERIFIED':
+        console.log('✅ Transak KYC 已验证');
+        setPaymentStep('payment');
         break;
         
       case 'TRANSAK_ORDER_PROCESSING':
-        // 订单处理中，KYC 已完成，正在进行支付
-        console.log('⏳ Transak 订单处理中，身份认证完成，进入支付阶段');
+        // 订单处理中，说明用户已经提交了支付（如输入了卡号并点击支付）
+        console.log('⏳ Transak 订单处理中，进入支付确认阶段');
         setPaymentStep('payment');
         break;
         

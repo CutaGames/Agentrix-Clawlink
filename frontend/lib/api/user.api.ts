@@ -75,7 +75,7 @@ export const userApi = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const result = await apiClient.post<{ url: string }>('/users/upload', formData);
+    const result = await apiClient.post<{ url: string }>('/upload/image', formData);
     if (result === null) {
       throw new Error('无法上传文件，请稍后重试');
     }

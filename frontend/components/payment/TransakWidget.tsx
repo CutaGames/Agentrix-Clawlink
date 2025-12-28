@@ -89,7 +89,7 @@ export function TransakWidget({
           hideMenu: true,
           disableWalletAddressForm: true,
           disableFiatAmountEditing: true, // 锁定金额
-          isKYCRequired: !directPayment, // 如果 directPayment=false，需要 KYC
+          isKYCRequired: false, // 默认不强制 KYC，由 Transak 根据金额自动判断
         });
 
         console.log('✅ Transak Session 创建成功:', result);
@@ -253,9 +253,10 @@ export function TransakWidget({
         defaultNetwork: network || 'bsc',
         // 设置金额（包含佣金的总价）
         ...(amount && { 
-          fiatAmount: amount.toString(),
-          defaultAmount: amount.toString(),
-          defaultFiatAmount: amount.toString(),
+          fiatAmount: (Math.round(amount * 100) / 100).toString(),
+          defaultAmount: (Math.round(amount * 100) / 100).toString(),
+          defaultFiatAmount: (Math.round(amount * 100) / 100).toString(),
+          amount: (Math.round(amount * 100) / 100).toString(), // 额外添加 amount 参数
         }),
         // 使用分润佣金合约地址
         ...(walletAddress && { walletAddress: walletAddress }),
@@ -263,13 +264,18 @@ export function TransakWidget({
         // 邮箱配置：自动填充但允许用户编辑
         ...(email && { email: email }),
         isAutoFillUserData: 'true', // 允许用户编辑预填的信息
+        disableEmail: 'false', // 不禁用 email，确保不跳过 email OTA
+        skipEmailOTA: 'false', // 明确不跳过 email OTA
         redirectURL: `${window.location.origin}/payment/callback`,
         // Transak 白标集成配置
         hideMenu: 'true',
         disableWalletAddressForm: 'true',
         disableFiatAmountEditing: 'true',
         isReadOnlyFiatAmount: 'true', // 锁定金额（URL参数方式）
+        lockFiatAmount: 'true', // 强制锁定法币金额
+        lockCryptoCurrency: 'true', // 强制锁定数字货币
         themeColor: '4F46E5', // Indigo 主题色（不带#）
+        exchangeScreenTitle: 'Agentrix Payment', // 自定义标题
       });
 
       const transakUrl = `${baseUrl}?${params.toString()}`;
@@ -528,8 +534,8 @@ export function TransakWidget({
       // 统一使用 BSC 链
       defaultNetwork: network || 'bsc',
       // 设置金额（包含佣金的总价）
-      defaultAmount: amount,
-      fiatAmount: amount, // 同时设置 fiatAmount 确保金额锁定
+      defaultAmount: Math.round((amount || 0) * 100) / 100,
+      fiatAmount: Math.round((amount || 0) * 100) / 100, // 同时设置 fiatAmount 确保金额锁定
       // 使用分润佣金合约地址，不是用户钱包地址
       // Provider 兑换后自动打入此地址
       walletAddress: walletAddress,

@@ -14,22 +14,59 @@ import {
 } from 'lucide-react';
 import { payIntentApi, PayIntent } from '../../../lib/api/pay-intent.api';
 import { formatCurrency } from '../../../utils/format';
+import { useWeb3 } from '../../../contexts/Web3Context';
+import { ethers } from 'ethers';
+
+const TOKEN_CONFIG: Record<string, { address: string; decimals: number }> = {
+  USDT: {
+    address: process.env.NEXT_PUBLIC_BSC_TESTNET_USDT_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd',
+    decimals: 18,
+  },
+  USDC: {
+    address: process.env.NEXT_PUBLIC_BSC_TESTNET_USDC_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd',
+    decimals: 18,
+  },
+};
+
+const ERC20_ABI = [
+  'function transfer(address to, uint256 amount) external returns (bool)',
+  'function decimals() external view returns (uint8)',
+  'function balanceOf(address account) external view returns (uint256)',
+];
 
 const PayIntentPage = () => {
   const router = useRouter();
-  const { id } = router.query;
+  const { id, auto } = router.query;
+  const { address, isConnected, connect } = useWeb3();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payIntent, setPayIntent] = useState<PayIntent | null>(null);
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [autoTriggered, setAutoTriggered] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchPayIntent();
     }
   }, [id]);
+
+  // 自动触发逻辑
+  useEffect(() => {
+    if (auto === 'true' && payIntent && !loading && !processing && !success && !autoTriggered) {
+      if (isConnected) {
+        console.log('Auto-triggering payment for connected wallet:', address);
+        setAutoTriggered(true);
+        handleConfirm();
+      } else if (window.ethereum) {
+        // 如果在钱包浏览器中但未连接，尝试自动连接
+        console.log('Attempting auto-connect in wallet browser...');
+        // 默认尝试连接 metamask (EVM 兼容钱包)
+        connect('metamask').catch(err => console.error('Auto-connect failed:', err));
+      }
+    }
+  }, [auto, payIntent, loading, isConnected, autoTriggered]);
 
   const fetchPayIntent = async () => {
     try {
@@ -56,11 +93,55 @@ const PayIntentPage = () => {
       setProcessing(true);
       setError(null);
       
+      let txHash = '';
+
+      // 如果在钱包浏览器中，且是加密货币支付，则执行链上转账
+      const isCrypto = ['USDT', 'USDC', 'BNB', 'ETH'].includes(payIntent.currency.toUpperCase());
+      
+      if (isCrypto && window.ethereum && isConnected) {
+        try {
+          console.log('Starting on-chain transaction for PayIntent:', payIntent.id);
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          
+          const to = payIntent.metadata?.to || 
+                     process.env.NEXT_PUBLIC_COMMISSION_CONTRACT_ADDRESS || 
+                     '0x4d10DA389E0ADe7E7a7E3232531048aEaCa4021C';
+          if (!to) throw new Error('未找到收款地址');
+
+          const tokenSymbol = payIntent.currency.toUpperCase();
+          const config = TOKEN_CONFIG[tokenSymbol];
+          
+          if (config) {
+            const tokenContract = new ethers.Contract(config.address, ERC20_ABI, signer);
+            const amountInWei = ethers.parseUnits(payIntent.amount.toString(), config.decimals);
+            
+            console.log(`Transferring ${payIntent.amount} ${tokenSymbol} to ${to}`);
+            const tx = await tokenContract.transfer(to, amountInWei);
+            console.log('Transaction sent:', tx.hash);
+            txHash = tx.hash;
+            
+            // 等待交易确认（可选，但为了用户体验建议等待）
+            // await tx.wait(); 
+          } else if (tokenSymbol === 'BNB' || tokenSymbol === 'ETH') {
+            const amountInWei = ethers.parseUnits(payIntent.amount.toString(), 18);
+            const tx = await signer.sendTransaction({
+              to,
+              value: amountInWei
+            });
+            txHash = tx.hash;
+          }
+        } catch (txErr: any) {
+          console.error('On-chain transaction failed:', txErr);
+          throw new Error('钱包交易失败: ' + (txErr.reason || txErr.message));
+        }
+      }
+
       // 1. 授权
       await payIntentApi.authorize(payIntent.id, 'user');
       
       // 2. 执行
-      const result = await payIntentApi.execute(payIntent.id);
+      const result = await payIntentApi.execute(payIntent.id, { txHash });
       
       if (result.status === 'completed' || result.status === 'succeeded') {
         setSuccess(true);
