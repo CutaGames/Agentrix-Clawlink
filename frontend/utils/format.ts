@@ -10,8 +10,17 @@ export const formatDateTime = (date: string | Date) => {
 };
 
 export const formatCurrency = (amount: number, currency: string = 'USD') => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency,
-  }).format(amount);
+  const upperCurrency = currency.toUpperCase();
+  if (upperCurrency === 'USDT' || upperCurrency === 'USDC') {
+    return `${upperCurrency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: upperCurrency,
+    }).format(amount);
+  } catch (e) {
+    return `${upperCurrency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
 };

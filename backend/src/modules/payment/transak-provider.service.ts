@@ -79,10 +79,6 @@ export class TransakProviderService implements IProvider {
     this.webhookSecret = this.configService.get<string>('TRANSAK_WEBHOOK_SECRET') || '';
     
     // Transak API 基础 URL
-    // 注意：api-staging.transak.com 有 DNS 问题（ENOTFOUND），无法访问
-    // 因此 STAGING 环境也使用 api.transak.com（但必须使用 staging API Key）
-    // api.transak.com 根路径返回 not found 是正常的（API 需要完整端点路径）
-    // 完整的 API 端点路径（如 /auth/public/v2/session）应该可以工作
     if (this.environment === 'PRODUCTION') {
       this.baseUrl = 'https://api.transak.com';
     } else {
@@ -92,7 +88,6 @@ export class TransakProviderService implements IProvider {
         this.baseUrl = alternateApiUrl;
         this.logger.warn(`⚠️ STAGING environment using alternate API URL: ${alternateApiUrl}`);
       } else {
-        // 默认使用 api-stg.transak.com（api.transak.com 不接受 staging key）
         this.baseUrl = 'https://api-stg.transak.com';
         this.logger.log(`✅ STAGING environment using api-stg.transak.com`);
       }
@@ -373,8 +368,12 @@ export class TransakProviderService implements IProvider {
     }
 
     try {
-      // 注意：获取 Token 的端点通常在 api.transak.com (即使是 staging)
-      const tokenUrl = 'https://api.transak.com/auth/v2/token';
+      // 注意：获取 Token 的端点通常在 api-gateway.transak.com
+      // V3.0: 使用 /api/v2/auth/token 端点
+      const tokenUrl = this.environment === 'PRODUCTION' 
+        ? 'https://api-gateway.transak.com/api/v2/auth/token'
+        : 'https://api-gateway-stg.transak.com/api/v2/auth/token';
+      
       this.logger.log(`Transak: Fetching access token from ${tokenUrl}`);
       
       const response = await axios.post(tokenUrl, {
@@ -489,7 +488,7 @@ export class TransakProviderService implements IProvider {
       };
 
       // 调用 Transak Create Session API
-      // 根据文档，使用 /auth/public/v2/session 端点，并将 API Key 作为 access-token 传入
+      // V3.0: 使用 /auth/public/v2/session 端点
       const sessionUrl = `${this.baseUrl}/auth/public/v2/session`;
       const accessToken = await this.getAccessToken();
 

@@ -17,8 +17,8 @@ export function validateAmount(amount: number): void {
 }
 
 export function validateCurrency(currency: string): void {
-  if (!currency || typeof currency !== 'string' || currency.length !== 3) {
-    throw new AgentrixValidationError('Currency must be a 3-letter code (e.g., USD, CNY)');
+  if (!currency || typeof currency !== 'string' || (currency.length !== 3 && currency.length !== 4)) {
+    throw new AgentrixValidationError('Currency must be a 3 or 4-letter code (e.g., USD, CNY, USDT, USDC)');
   }
 }
 

@@ -206,8 +206,10 @@ export class SmartRouterService {
     if (availableChannels.length === 0) {
       // 检查Stripe通道是否可用（即使被过滤掉，也尝试作为兜底）
       const stripeChannel = this.channels.get(PaymentMethod.STRIPE);
-      if (stripeChannel && stripeChannel.available) {
-        // 放宽条件：只要金额在范围内，就允许使用Stripe
+      const isCryptoCurrency = !['USD', 'EUR', 'GBP', 'CNY', 'JPY'].includes(currency.toUpperCase());
+      
+      if (stripeChannel && stripeChannel.available && !isCryptoCurrency) {
+        // 放宽条件：只要金额在范围内，且不是数字货币，就允许使用Stripe
         if (amount >= stripeChannel.minAmount && amount <= stripeChannel.maxAmount) {
           availableChannels.push({ ...stripeChannel });
           this.logger.warn(`没有可用支付通道，使用Stripe作为兜底通道`);
@@ -217,7 +219,7 @@ export class SmartRouterService {
       // 如果还是没有可用通道，抛出错误
       if (availableChannels.length === 0) {
         this.logger.error(`没有可用的支付通道。金额: ${amount}, 货币: ${currency}, 场景: ${scenarioType}, 商家配置: ${merchantConfig}`);
-        throw new Error('没有可用的支付通道。请检查支付金额、货币或联系客服。');
+        throw new Error(`没有可用的支付通道支持 ${currency}。请检查支付金额、货币或联系客服。`);
       }
     }
 

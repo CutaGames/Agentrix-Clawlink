@@ -96,7 +96,9 @@ const PayIntentPage = () => {
       let txHash = '';
 
       // 如果在钱包浏览器中，且是加密货币支付，则执行链上转账
-      const isCrypto = ['USDT', 'USDC', 'BNB', 'ETH'].includes(payIntent.currency.toUpperCase());
+      // V3.0: 增加对 USD 的支持，将其视为 USDT 进行链上转账
+      const currencyUpper = payIntent.currency.toUpperCase();
+      const isCrypto = ['USDT', 'USDC', 'BNB', 'ETH', 'USD'].includes(currencyUpper);
       
       if (isCrypto && window.ethereum && isConnected) {
         try {
@@ -109,7 +111,8 @@ const PayIntentPage = () => {
                      '0x4d10DA389E0ADe7E7a7E3232531048aEaCa4021C';
           if (!to) throw new Error('未找到收款地址');
 
-          const tokenSymbol = payIntent.currency.toUpperCase();
+          // 如果是 USD，映射到 USDT 进行链上转账
+          const tokenSymbol = currencyUpper === 'USD' ? 'USDT' : currencyUpper;
           const config = TOKEN_CONFIG[tokenSymbol];
           
           if (config) {
@@ -316,7 +319,7 @@ const PayIntentPage = () => {
             </div>
 
             <button 
-              onClick={handleConfirm}
+              onClick={isConnected ? handleConfirm : () => connect('metamask')}
               disabled={processing || success}
               className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-200 transition-all flex items-center justify-center space-x-2 ${
                 processing 
@@ -328,6 +331,11 @@ const PayIntentPage = () => {
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
                   <span>正在处理...</span>
+                </>
+              ) : !isConnected ? (
+                <>
+                  <Wallet className="w-5 h-5" />
+                  <span>连接钱包支付</span>
                 </>
               ) : (
                 <>

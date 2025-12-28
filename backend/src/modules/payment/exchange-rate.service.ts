@@ -139,8 +139,16 @@ export class ExchangeRateService {
     const fromId = coinGeckoIds[from];
     const toId = coinGeckoIds[to];
 
-    if (!fromId || !toId) {
-      throw new Error(`不支持的货币: ${fromCurrency} 或 ${toCurrency}`);
+    // CoinGecko simple/price 只支持加密货币 ID 作为 ids 参数
+    // 如果 from 和 to 都是法币，CoinGecko simple/price 无法直接获取汇率
+    // 我们检查是否至少有一个是加密货币（通常 CoinGecko ID 比较长，或者在特定列表中）
+    const cryptoIds = ['bitcoin', 'ethereum', 'binancecoin', 'solana', 'ripple', 'cardano', 'dogecoin', 'usd-coin', 'tether', 'dai', 'binance-usd', 'true-usd'];
+    const isFromCrypto = cryptoIds.includes(fromId);
+    const isToCrypto = cryptoIds.includes(toId);
+
+    if (!fromId || !toId || (!isFromCrypto && !isToCrypto)) {
+      this.logger.debug(`CoinGecko simple/price 不支持法币对法币转换: ${from}->${to}，将尝试其他方式`);
+      throw new Error(`不支持的货币对: ${fromCurrency} -> ${toCurrency}`);
     }
 
     try {

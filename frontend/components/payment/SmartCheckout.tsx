@@ -270,16 +270,14 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
   // Exchange Rate Logic
   useEffect(() => {
-    const requiresCryptoSettlement =
-      isFiatOrderCurrency &&
-      merchantAllowsCrypto;
+    // V3.0: 只要是法币订单，就获取汇率用于显示（即使商家只收法币）
+    const needsExchangeRate = isFiatOrderCurrency;
 
     let isMounted = true;
 
-    if (!requiresCryptoSettlement) {
+    if (!needsExchangeRate) {
       setExchangeRate(null);
-      // If it's not fiat, we can directly use the order amount as crypto amount (assuming 1:1 for stablecoins or handled elsewhere)
-      // But wait, if currency is USDC/USDT, we should set cryptoAmount immediately.
+      // If it's not fiat, we can directly use the order amount as crypto amount (assuming 1:1 for stablecoins)
       if (['USDC', 'USDT'].includes(normalizedCurrency)) {
           setCryptoAmount(order.amount);
       } else {
@@ -732,8 +730,11 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     try {
       // 如果是法币，尝试使用转换后的加密货币金额
       const isFiat = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes((order.currency || 'USDC').toUpperCase());
-      const finalAmount = isFiat && cryptoAmount ? cryptoAmount : order.amount;
-      const finalCurrency = isFiat && cryptoAmount ? 'USDT' : (order.currency || 'USDC');
+      // V3.0: 统一使用 USD 作为显示货币，避免后端验证 USDT 失败
+      const finalAmount = isFiat 
+        ? (cryptoAmount || (order.amount * (normalizedCurrency === 'CNY' ? 0.14 : 1.0))) 
+        : order.amount;
+      const finalCurrency = isFiat ? 'USD' : (order.currency || 'USDC');
 
       // 获取收款地址
       let toAddress = order.to;
@@ -1013,12 +1014,21 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             opt.id === channel.id || opt.paymentMethod === channel.id
         ) || preflightResult?.providerOptions?.[0]; // 回退到通用 transak 选项
 
+        // 决定显示金额和货币
+        // 如果是法币订单且有转换后的加密货币金额，则显示加密货币金额（通常是 USD/USDT）
+        // V3.0: 统一使用 USD 作为显示货币，避免后端验证 USDT 失败
+        // 如果汇率还在加载，使用一个近似值避免显示错误的金额（如 100 CNY 显示为 100 USD）
+        const displayAmount = isFiatOrderCurrency 
+            ? (cryptoAmount || (order.amount * (normalizedCurrency === 'CNY' ? 0.14 : 1.0))) 
+            : order.amount;
+        const displayCurrency = isFiatOrderCurrency ? 'USD' : order.currency;
+
         // 估算费用（如果 API 未返回）
         let estimatedFee = apiOption?.fee;
         if (estimatedFee === undefined) {
             const isCard = channel.id.includes('card') || channel.id.includes('pay');
             const rate = isCard ? 0.035 : 0.01;
-            estimatedFee = order.amount * rate;
+            estimatedFee = displayAmount * rate;
         }
 
         // 估算最低金额
@@ -1029,9 +1039,9 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             fee: estimatedFee,
             minAmount: minAmount,
             estimatedTime: apiOption?.estimatedTime || (channel.id.includes('transfer') ? '1-3 Days' : 'Instant'),
-            currency: apiOption?.currency || order.currency,
-            totalPrice: order.amount + (estimatedFee || 0),
-            available: order.amount >= minAmount,
+            currency: apiOption?.currency || displayCurrency,
+            totalPrice: displayAmount + (estimatedFee || 0),
+            available: displayAmount >= minAmount,
         };
     });
     
