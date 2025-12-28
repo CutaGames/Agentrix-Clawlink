@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IProvider, ProviderQuote, OnRampParams, OnRampResult, OffRampParams, OffRampResult } from './provider-abstract.service';
 import axios, { AxiosError } from 'axios';
+import { ExchangeRateService } from './exchange-rate.service';
 
 /**
  * Transak Provider Service
@@ -29,7 +30,10 @@ export class TransakProviderService implements IProvider {
   private cachedAccessToken: string | null = null;
   private cachedAccessTokenExpiresAt = 0;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private exchangeRateService: ExchangeRateService,
+  ) {
     // 从环境变量读取 Transak 配置
     const envValue = this.configService.get<string>('TRANSAK_ENVIRONMENT') || 'STAGING';
     this.environment = (envValue.toUpperCase() === 'PRODUCTION' ? 'PRODUCTION' : 'STAGING') as 'STAGING' | 'PRODUCTION';
@@ -124,8 +128,24 @@ export class TransakProviderService implements IProvider {
     fromCurrency: string,
     toCurrency: string,
   ): Promise<ProviderQuote> {
+    let normalizedAmount = amount;
+    let normalizedFromCurrency = fromCurrency;
+
+    // 如果是 CNY 或 HKD，Transak 可能不支持，转换为 USD 获取报价
+    const unsupportedCurrencies = ['CNY', 'HKD'];
+    if (unsupportedCurrencies.includes(fromCurrency.toUpperCase())) {
+      try {
+        const rate = await this.exchangeRateService.getExchangeRate(fromCurrency, 'USD');
+        normalizedAmount = amount * rate;
+        normalizedFromCurrency = 'USD';
+        this.logger.log(`Transak: Converted ${fromCurrency} ${amount} to USD ${normalizedAmount.toFixed(2)} for quote`);
+      } catch (error) {
+        this.logger.warn(`Transak: Failed to convert ${fromCurrency} to USD for quote: ${error.message}`);
+      }
+    }
+
     this.logger.log(
-      `Transak: Get quote for ${amount} ${fromCurrency} -> ${toCurrency}`,
+      `Transak: Get quote for ${normalizedAmount} ${normalizedFromCurrency} -> ${toCurrency} (original: ${amount} ${fromCurrency})`,
     );
 
     try {
@@ -137,9 +157,9 @@ export class TransakProviderService implements IProvider {
       // 3. isSourceAmount: true 表示 fiatAmount 是输入金额
       
       const params: any = {
-        fiatCurrency: fromCurrency,
+        fiatCurrency: normalizedFromCurrency,
         cryptoCurrency: toCurrency,
-        fiatAmount: amount,
+        fiatAmount: normalizedAmount,
         isSourceAmount: true,
         partnerApiKey: this.apiKey,
         isBuyOrSell: 'BUY',
@@ -150,6 +170,14 @@ export class TransakProviderService implements IProvider {
         params.network = 'bsc';
       } else if (toCurrency.toUpperCase() === 'ETH') {
         params.network = 'ethereum';
+      } else if (toCurrency.toUpperCase() === 'BNB') {
+        params.network = 'bsc';
+      } else if (toCurrency.toUpperCase() === 'MATIC') {
+        params.network = 'polygon';
+      } else if (toCurrency.toUpperCase() === 'SOL') {
+        params.network = 'solana';
+      } else if (toCurrency.toUpperCase() === 'TRX') {
+        params.network = 'tron';
       }
 
       this.logger.debug(`Transak: Requesting quote from ${this.baseUrl}/api/v2/currencies/price with params: ${JSON.stringify(params)}`);
@@ -338,7 +366,9 @@ export class TransakProviderService implements IProvider {
     }
 
     if (!this.apiSecret) {
-      this.logger.warn('Transak API Secret not configured, using API Key as fallback (may fail)');
+      this.logger.warn('⚠️ Transak API Secret not configured. Create Session API will use API Key as fallback.');
+      // 不再抛出错误，而是回退到使用 API Key
+      // throw new Error('Transak API Secret is missing. Please configure TRANSAK_API_SECRET in environment variables.');
       return this.apiKey;
     }
 
@@ -396,8 +426,29 @@ export class TransakProviderService implements IProvider {
     isKYCRequired?: boolean;
     referrerDomain?: string;
   }): Promise<{ sessionId: string; widgetUrl: string }> {
+    let amount = params.amount;
+    let fiatCurrency = params.fiatCurrency;
+
+    // 如果是 CNY 或 HKD，Transak 不支持锁定金额，需要转换为 USD
+    const unsupportedCurrencies = ['CNY', 'HKD'];
+    if (unsupportedCurrencies.includes(fiatCurrency.toUpperCase())) {
+      try {
+        const rate = await this.exchangeRateService.getExchangeRate(fiatCurrency, 'USD');
+        this.logger.log(`Transak: Fetched ${fiatCurrency}/USD rate: ${rate}`);
+        if (rate && rate !== 1.0) {
+          amount = amount * rate;
+          fiatCurrency = 'USD';
+          this.logger.log(`Transak: Converted ${params.fiatCurrency} ${params.amount} to USD ${amount.toFixed(2)} (rate: ${rate})`);
+        } else {
+          this.logger.warn(`Transak: Exchange rate is 1.0 or invalid, skipping conversion to avoid ${params.amount} ${fiatCurrency} -> ${params.amount} USD bug`);
+        }
+      } catch (error) {
+        this.logger.warn(`Transak: Failed to convert ${fiatCurrency} to USD, falling back to original currency: ${error.message}`);
+      }
+    }
+
     this.logger.log(
-      `Transak: Creating session for ${params.amount} ${params.fiatCurrency} -> ${params.cryptoCurrency}`,
+      `Transak: Creating session for ${amount} ${fiatCurrency} -> ${params.cryptoCurrency}`,
     );
     this.logger.debug(`Transak: Environment=${this.environment}, BaseUrl=${this.baseUrl}`);
 
@@ -411,9 +462,9 @@ export class TransakProviderService implements IProvider {
       // 构建 widgetParams（这些参数会在 Session 创建时锁定）
       const widgetParams: Record<string, any> = {
         referrerDomain: resolvedReferrerDomain,
-        fiatAmount: params.amount.toString(),
-        defaultFiatAmount: params.amount.toString(),
-        fiatCurrency: params.fiatCurrency,
+        fiatAmount: amount.toString(),
+        defaultFiatAmount: amount.toString(),
+        fiatCurrency: fiatCurrency,
         cryptoCurrencyCode: params.cryptoCurrency,
         ...(params.network && { network: params.network }),
         ...(params.walletAddress && { walletAddress: params.walletAddress }),
@@ -429,9 +480,13 @@ export class TransakProviderService implements IProvider {
           disableFiatAmountEditing: params.disableFiatAmountEditing,
           isReadOnlyFiatAmount: params.disableFiatAmountEditing
         }),
-        ...(params.isKYCRequired !== undefined && { 
-          isKYCRequired: params.isKYCRequired 
-        }),
+        // 锁定币种
+        isReadOnlyCryptoCurrency: true,
+        disableCryptoCurrencyCode: true,
+        ...(params.isKYCRequired !== undefined ? { isKYCRequired: params.isKYCRequired } : { isKYCRequired: false }),
+        isAutoFillUserData: true,
+        disableEmail: false, // 不禁用 email，确保不跳过 email OTA
+        skipEmailOTA: false, // 明确不跳过 email OTA
       };
 
       // 调用 Transak Create Session API

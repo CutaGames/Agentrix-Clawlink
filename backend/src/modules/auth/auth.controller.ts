@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { SocialAccountService } from './social-account.service';
@@ -13,6 +13,7 @@ import { SocialAccountType } from '../../entities/social-account.entity';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
   constructor(
     private authService: AuthService,
     private socialAccountService: SocialAccountService,
@@ -248,6 +249,50 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '返回社交账号列表' })
   async getUserSocialAccounts(@Request() req) {
     return this.socialAccountService.getUserSocialAccounts(req.user.id);
+  }
+
+  // ========== MCP OAuth (Dummy for ChatGPT/Claude) ==========
+
+  @Get('mcp/authorize')
+  @ApiOperation({ summary: 'MCP OAuth 授权端点' })
+  async mcpAuthorize(@Request() req, @Res() res) {
+    const { client_id, response_type, redirect_uri, state, scope } = req.query;
+    this.logger.log(`MCP Authorize request: client_id=${client_id}, redirect_uri=${redirect_uri}`);
+    
+    // 简单起见，直接重定向回 redirect_uri 并带上 code
+    // 在生产环境中，这里应该先验证用户登录状态
+    const code = 'mcp_code_' + Math.random().toString(36).substring(7);
+    
+    try {
+      const redirectUrl = new URL(redirect_uri);
+      redirectUrl.searchParams.set('code', code);
+      if (state) redirectUrl.searchParams.set('state', state);
+      return res.redirect(redirectUrl.toString());
+    } catch (error) {
+      return res.status(400).send('Invalid redirect_uri');
+    }
+  }
+
+  @Post('mcp/token')
+  @ApiOperation({ summary: 'MCP OAuth 令牌端点' })
+  async mcpToken(@Body() body: any) {
+    this.logger.log(`MCP Token request: grant_type=${body.grant_type}, code=${body.code}`);
+    
+    // 返回一个模拟的 Token
+    // ChatGPT 只需要一个 access_token 放在 Authorization header 中
+    return {
+      access_token: 'mcp_token_' + Math.random().toString(36).substring(7),
+      token_type: 'Bearer',
+      expires_in: 3600,
+      refresh_token: 'mcp_refresh_' + Math.random().toString(36).substring(7),
+      scope: body.scope || 'mcp',
+    };
+  }
+
+  @Get('mcp/jwks')
+  @ApiOperation({ summary: 'MCP JWKS 端点' })
+  async mcpJwks() {
+    return { keys: [] };
   }
 }
 

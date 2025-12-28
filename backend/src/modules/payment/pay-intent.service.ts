@@ -72,13 +72,18 @@ export class PayIntentService {
   /**
    * 创建PayIntent（V3.0：统一支付意图规范）
    */
-  async createPayIntent(userId: string, dto: CreatePayIntentDto): Promise<PayIntent> {
+  async createPayIntent(creatorId: string, dto: CreatePayIntentDto): Promise<PayIntent> {
     // 计算过期时间
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + (dto.expiresIn || 3600)); // 默认1小时
 
+    // 逻辑调整：如果创建者是商户或代理，不应将其设为 payer (userId)
+    // userId 应该留空，等待支付者授权时绑定
+    const isMerchantOrAgent = dto.merchantId === creatorId || dto.agentId === creatorId;
+    const payerId = isMerchantOrAgent ? null : creatorId;
+
     const payIntent = this.payIntentRepository.create({
-      userId,
+      userId: payerId,
       type: dto.type,
       amount: dto.amount,
       currency: dto.currency,
@@ -99,7 +104,8 @@ export class PayIntentService {
     const savedPayIntent = await this.payIntentRepository.save(payIntent);
 
     // 生成支付链接和二维码
-    const payUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/pay/intent/${savedPayIntent.id}`;
+    // 添加 auto=true 参数，让前端在钱包环境下自动触发支付
+    const payUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/pay/intent/${savedPayIntent.id}?auto=true`;
     savedPayIntent.metadata = {
       ...(savedPayIntent.metadata || {}),
       returnUrl: dto.metadata?.returnUrl,
@@ -111,7 +117,7 @@ export class PayIntentService {
 
     await this.payIntentRepository.save(savedPayIntent);
 
-    this.logger.log(`创建PayIntent: id=${savedPayIntent.id}, userId=${userId}, amount=${dto.amount}`);
+    this.logger.log(`创建PayIntent: id=${savedPayIntent.id}, creatorId=${creatorId}, payerId=${payerId}, amount=${dto.amount}`);
 
     // 触发Webhook
     await this.triggerWebhook(savedPayIntent, 'payment_intent.created');
@@ -124,16 +130,27 @@ export class PayIntentService {
    */
   async authorizePayIntent(
     payIntentId: string,
-    userId: string,
+    userId?: string,
     authorizationType: 'user' | 'agent' | 'quickpay' = 'user',
     quickPayGrantId?: string,
   ): Promise<PayIntent> {
+    // V3.0: 授权时不强制校验创建者，允许支付者授权
     const payIntent = await this.payIntentRepository.findOne({
-      where: { id: payIntentId, userId },
+      where: { id: payIntentId },
     });
 
     if (!payIntent) {
       throw new NotFoundException('PayIntent不存在');
+    }
+
+    // 如果 intent 已绑定了 userId，且不是当前用户，则不允许授权
+    if (payIntent.userId && userId && payIntent.userId !== userId) {
+      throw new BadRequestException('该支付意图已被其他用户绑定');
+    }
+
+    // 绑定当前用户为支付者
+    if (!payIntent.userId && userId) {
+      payIntent.userId = userId;
     }
 
     if (payIntent.status !== PayIntentStatus.CREATED) {
@@ -147,7 +164,7 @@ export class PayIntentService {
     }
 
     // 如果是QuickPay授权，验证授权
-    if (authorizationType === 'quickpay' && quickPayGrantId) {
+    if (authorizationType === 'quickpay' && quickPayGrantId && userId) {
       const grant = await this.quickPayGrantService.getGrant(quickPayGrantId, userId);
       if (!grant) {
         throw new BadRequestException('QuickPay授权无效');
@@ -171,7 +188,8 @@ export class PayIntentService {
     payIntent.authorization = {
       authorized: true,
       authorizedAt: new Date(),
-      authorizedBy: authorizationType,
+      authorizedBy: userId || 'guest',
+      authorizationType,
       quickPayGrantId: payIntent.authorization.quickPayGrantId,
     };
 
@@ -181,13 +199,18 @@ export class PayIntentService {
   /**
    * 执行PayIntent（创建实际支付）
    */
-  async executePayIntent(payIntentId: string, userId: string): Promise<PayIntent> {
+  async executePayIntent(payIntentId: string, userId?: string, metadata?: any): Promise<PayIntent> {
+    // V3.0: 执行时校验当前用户是否为绑定的支付者
     const payIntent = await this.payIntentRepository.findOne({
-      where: { id: payIntentId, userId },
+      where: { id: payIntentId },
     });
 
     if (!payIntent) {
       throw new NotFoundException('PayIntent不存在');
+    }
+
+    if (payIntent.userId && userId && payIntent.userId !== userId) {
+      throw new BadRequestException('无权执行此支付意图');
     }
 
     if (payIntent.status !== PayIntentStatus.AUTHORIZED) {
@@ -198,7 +221,7 @@ export class PayIntentService {
 
     try {
       let paymentId = '';
-      let transactionHash = '';
+      let transactionHash = metadata?.txHash || '';
 
       if (payIntent.mode === 'sandbox') {
         // 沙盒模式：模拟支付
@@ -208,7 +231,7 @@ export class PayIntentService {
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         paymentId = `sim_${Math.random().toString(36).substring(2, 15)}`;
-        transactionHash = `0x${Math.random().toString(16).substring(2, 66)}`;
+        transactionHash = transactionHash || `0x${Math.random().toString(16).substring(2, 66)}`;
         
         // 如果金额是 66.66，模拟失败（用于测试）
         if (payIntent.amount === 66.66) {
@@ -226,11 +249,13 @@ export class PayIntentService {
           metadata: {
             payIntentId: payIntent.id,
             orderId: payIntent.orderId,
+            txHash: transactionHash,
             ...payIntent.metadata,
+            ...metadata,
           },
         });
         paymentId = payment.id;
-        transactionHash = payment.transactionHash;
+        transactionHash = transactionHash || payment.transactionHash;
       }
 
       payIntent.paymentId = paymentId;
@@ -274,15 +299,20 @@ export class PayIntentService {
    * 获取PayIntent
    */
   async getPayIntent(payIntentId: string, userId?: string): Promise<PayIntent> {
-    const where: any = { id: payIntentId };
-    if (userId) {
-      where.userId = userId;
-    }
-
-    const payIntent = await this.payIntentRepository.findOne({ where });
+    // V3.0: 获取详情时不强制校验 userId，因为扫码支付时用户可能尚未登录或不是创建者
+    // 只要知道 ID 就可以查看详情，授权和执行时会进行权限校验
+    const payIntent = await this.payIntentRepository.findOne({ 
+      where: { id: payIntentId } 
+    });
 
     if (!payIntent) {
       throw new NotFoundException('PayIntent不存在');
+    }
+
+    // 如果提供了 userId，且 intent 已有 userId，且两者不一致
+    // 注意：这里不抛出异常，只是记录，因为扫码者和创建者通常不同
+    if (userId && payIntent.userId && userId !== payIntent.userId) {
+      this.logger.debug(`用户 ${userId} 正在查看由 ${payIntent.userId} 创建的 PayIntent ${payIntentId}`);
     }
 
     // 检查是否过期
@@ -299,11 +329,16 @@ export class PayIntentService {
    */
   async cancelPayIntent(payIntentId: string, userId: string): Promise<PayIntent> {
     const payIntent = await this.payIntentRepository.findOne({
-      where: { id: payIntentId, userId },
+      where: { id: payIntentId },
     });
 
     if (!payIntent) {
       throw new NotFoundException('PayIntent不存在');
+    }
+
+    // 只有创建者或绑定的支付者可以取消
+    if (payIntent.userId && payIntent.userId !== userId && payIntent.merchantId !== userId) {
+      throw new BadRequestException('无权取消此支付意图');
     }
 
     if ([PayIntentStatus.COMPLETED, PayIntentStatus.EXECUTING].includes(payIntent.status)) {

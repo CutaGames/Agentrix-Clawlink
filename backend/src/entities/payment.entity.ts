@@ -31,10 +31,10 @@ export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   user: User;
 
-  @Column()
+  @Column({ nullable: true })
   userId: string;
 
   @Column('decimal', { precision: 15, scale: 2 })

@@ -55,6 +55,7 @@ import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integr
 import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
 import { CartModule } from './modules/cart/cart.module';
 import { SkillModule } from './modules/skill/skill.module';
+import { McpModule } from './modules/mcp/mcp.module';
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { SkillModule } from './modules/skill/skill.module';
     UploadModule,
     CartModule,
     SkillModule,
+    McpModule,
   ],
   controllers: [AppController],
   providers: [AppService],

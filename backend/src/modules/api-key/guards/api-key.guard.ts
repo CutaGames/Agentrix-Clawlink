@@ -12,7 +12,13 @@ export class ApiKeyGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const apiKey = request.headers['x-api-key'] || request.query['api_key'];
+    let apiKey = request.headers['x-api-key'] || request.query['api_key'];
+
+    // 支持 Authorization: Bearer <key> 格式 (ChatGPT 常用)
+    const authHeader = request.headers['authorization'];
+    if (!apiKey && authHeader && authHeader.startsWith('Bearer ')) {
+      apiKey = authHeader.substring(7);
+    }
 
     if (!apiKey) {
       throw new UnauthorizedException('API Key is required');

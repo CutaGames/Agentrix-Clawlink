@@ -274,7 +274,9 @@ export class PaymentController {
   async getContractAddress() {
     const commissionAddress = this.configService.get<string>('COMMISSION_CONTRACT_ADDRESS');
     const erc8004Address = this.configService.get<string>('ERC8004_CONTRACT_ADDRESS');
-    const usdcAddress = this.configService.get<string>('USDC_ADDRESS');
+    const usdcAddress = this.configService.get<string>('SETTLEMENT_TOKEN_ADDRESS') || 
+                        this.configService.get<string>('BSC_TESTNET_USDC_ADDRESS') ||
+                        this.configService.get<string>('USDC_ADDRESS');
     
     if (!commissionAddress) {
       throw new BadRequestException('Commission合约地址未配置，请联系管理员');
@@ -308,8 +310,9 @@ export class PaymentController {
   @Get(':paymentId')
   @ApiOperation({ summary: '查询支付状态' })
   @ApiResponse({ status: 200, description: '返回支付信息' })
+  @UseGuards(OptionalJwtAuthGuard)
   async getPayment(@Request() req, @Param('paymentId') paymentId: string) {
-    return this.paymentService.getPayment(req.user.id, paymentId);
+    return this.paymentService.getPayment(req.user?.id, paymentId);
   }
 
   @Get('fiat-to-crypto/quotes')

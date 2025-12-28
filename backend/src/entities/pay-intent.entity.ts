@@ -36,10 +36,10 @@ export class PayIntent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   user: User;
 
-  @Column()
+  @Column({ nullable: true })
   userId: string;
 
   @Column({
@@ -97,6 +97,7 @@ export class PayIntent {
     authorized: boolean;
     authorizedAt?: Date;
     authorizedBy?: string; // 'user', 'agent', 'quickpay'
+    authorizationType?: string; // 'manual', 'quickpay', 'agent'
     quickPayGrantId?: string;
     expiresAt?: Date;
   };

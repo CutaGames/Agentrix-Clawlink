@@ -2,7 +2,7 @@ import { Controller, Post, Body, Get, Query } from '@nestjs/common';
 import { RAGAPIService } from './services/rag-api.service';
 import { RAGSearchRequest, RAGSearchResponse } from './interfaces/rag.interface';
 
-@Controller('api/ai/rag')
+@Controller('ai/rag')
 export class AIRAGController {
   constructor(private ragService: RAGAPIService) {}
 

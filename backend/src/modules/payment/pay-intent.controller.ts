@@ -51,7 +51,7 @@ export class PayIntentController {
   @Post(':payIntentId/authorize')
   @ApiOperation({ summary: '授权PayIntent' })
   @ApiResponse({ status: 200, description: '返回授权的PayIntent' })
-  @UseGuards(UnifiedAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   async authorizePayIntent(
     @Request() req: any,
@@ -68,20 +68,21 @@ export class PayIntentController {
 
   @Post(':payIntentId/execute')
   @ApiOperation({ summary: '执行PayIntent（创建实际支付）' })
-  @ApiResponse({ status: 200, description: '返回执行的PayIntent' })
-  @UseGuards(UnifiedAuthGuard)
+  @ApiResponse({ status: 200, description: '返回执行 of the PayIntent' })
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   async executePayIntent(
     @Request() req: any,
     @Param('payIntentId') payIntentId: string,
+    @Body() body: any,
   ) {
-    return this.payIntentService.executePayIntent(payIntentId, req.user?.id);
+    return this.payIntentService.executePayIntent(payIntentId, req.user?.id, body);
   }
 
   @Get(':payIntentId')
   @ApiOperation({ summary: '获取PayIntent详情' })
   @ApiResponse({ status: 200, description: '返回PayIntent详情' })
-  @UseGuards(UnifiedAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   async getPayIntent(
     @Request() req: any,

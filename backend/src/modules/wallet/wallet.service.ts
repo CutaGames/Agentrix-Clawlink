@@ -131,6 +131,16 @@ export class WalletService {
     }
   }
 
+  async getWalletBalance(userId: string, address?: string) {
+    // 这是一个模拟实现，实际应该调用区块链提供商或索引器
+    return {
+      address: address || '0x...',
+      balance: '1.25',
+      symbol: 'ETH',
+      usdValue: 2500.50,
+    };
+  }
+
   private validateAddress(address: string, chain: ChainType) {
     if (chain === ChainType.EVM) {
       if (!ethers.isAddress(address)) {

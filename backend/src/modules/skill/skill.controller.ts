@@ -11,7 +11,7 @@ import {
 import { SkillService } from './skill.service';
 import { Skill, SkillStatus } from '../../entities/skill.entity';
 
-@Controller('api/skills')
+@Controller('skills')
 export class SkillController {
   constructor(private readonly skillService: SkillService) {}
 

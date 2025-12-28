@@ -11,6 +11,9 @@ export class TwitterStrategy extends PassportStrategy(Strategy, 'twitter') {
     const callbackURL = configService.get<string>('TWITTER_CALLBACK_URL') || `${apiBaseUrl}/auth/twitter/callback`;
 
     console.log(`Twitter OAuth initialized with callbackURL: ${callbackURL}`);
+    if (!consumerKey || consumerKey === 'placeholder-consumer-key') {
+      console.error('❌ Twitter OAuth is NOT configured correctly. TWITTER_CONSUMER_KEY is missing or placeholder.');
+    }
 
     super({
       consumerKey: consumerKey || 'placeholder-consumer-key',
@@ -30,6 +33,7 @@ export class TwitterStrategy extends PassportStrategy(Strategy, 'twitter') {
     profile: any,
     done: (err: any, user: any) => void,
   ): Promise<any> {
+    console.log('Twitter profile received:', JSON.stringify(profile, null, 2));
     const { id, username, displayName, emails, photos } = profile;
     const user = {
       twitterId: id,

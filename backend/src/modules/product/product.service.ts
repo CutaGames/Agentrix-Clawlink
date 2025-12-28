@@ -61,6 +61,24 @@ export class ProductService {
         qb.orderBy('product.createdAt', 'DESC');
         
         return qb.getMany();
+      } else if (type === 'digital') {
+        // 虚拟资产：包含 ft, nft, game_asset
+        const qb = this.productRepository.createQueryBuilder('product');
+        
+        if (where.merchantId) {
+          qb.andWhere('product.merchantId = :merchantId', { merchantId: where.merchantId });
+        }
+        if (where.status) {
+          qb.andWhere('product.status = :status', { status: where.status });
+        }
+        if (where.name) {
+          qb.andWhere('product.name LIKE :name', { name: `%${search}%` });
+        }
+        
+        qb.andWhere('product.productType IN (:...types)', { types: ['ft', 'nft', 'game_asset'] });
+        qb.orderBy('product.createdAt', 'DESC');
+        
+        return qb.getMany();
       } else {
         where.productType = type;
       }

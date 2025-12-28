@@ -162,12 +162,16 @@ export class ExchangeRateService {
         throw new Error(`无法获取价格: ${fromId}=${fromPrice}, ${toId}=${toPrice}`);
       }
 
-      // 计算汇率：to / from
-      // 例如：CNY -> USDT
+      // 计算汇率：fromPrice / toPrice
+      // 例如：CNY -> USD
       // CNY价格 = 0.139 USD (1 CNY = 0.139 USD)
-      // USDT价格 = 1.0 USD (1 USDT = 1.0 USD)
-      // 汇率 = 1.0 / 0.139 = 7.19 (1 CNY = 0.139 USDT)
-      const rate = toPrice / fromPrice;
+      // USD价格 = 1.0 USD (1 USD = 1.0 USD)
+      // 汇率 = 0.139 / 1.0 = 0.139 (1 CNY = 0.139 USD)
+      // 例如：BTC -> USD
+      // BTC价格 = 60000 USD
+      // USD价格 = 1.0 USD
+      // 汇率 = 60000 / 1.0 = 60000 (1 BTC = 60000 USD)
+      const rate = fromPrice / toPrice;
 
       this.logger.log(
         `CoinGecko rate: ${from} -> ${to} = ${rate.toFixed(6)} (fromPrice=${fromPrice}, toPrice=${toPrice})`,
@@ -230,14 +234,14 @@ export class ExchangeRateService {
           throw new Error(`Binance不支持法币交易对: ${from}${to}`);
         }
 
-        const rate = toToUsdt / fromToUsdt;
+        const rate = fromToUsdt / toToUsdt;
         this.logger.log(
           `Binance rate (via USDT): ${from} -> ${to} = ${rate.toFixed(6)} (${from}/USDT=${fromToUsdt}, ${to}/USDT=${toToUsdt})`,
         );
         return rate;
       } catch (e) {
-        this.logger.error(`Binance API错误: ${error.message}`);
-        throw error;
+        this.logger.error(`Binance API错误: ${e.message}`);
+        throw e;
       }
     }
   }
