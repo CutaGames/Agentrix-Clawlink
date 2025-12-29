@@ -71,7 +71,7 @@ export default function AdminProductReview() {
       setError(null);
       const token = getToken();
       if (!token) {
-        setError('未登录，请先登录管理后台');
+        setError('鏈櫥褰曪紝璇峰厛鐧诲綍绠＄悊鍚庡彴');
         return;
       }
 
@@ -86,21 +86,21 @@ export default function AdminProductReview() {
       );
 
       if (response.status === 401) {
-        setError('登录已过期，请重新登录');
+        setError('鐧诲綍宸茶繃鏈燂紝璇烽噸鏂扮櫥褰?);
         localStorage.removeItem('admin_token');
         return;
       }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || `请求失败: ${response.status}`);
+        setError(errorData.message || `璇锋眰澶辫触: ${response.status}`);
         return;
       }
 
       const data = await response.json();
       setReviews(data.data?.reviews || []);
     } catch (err: any) {
-      setError(err.message || '获取审核列表失败');
+      setError(err.message || '鑾峰彇瀹℃牳鍒楄〃澶辫触');
     } finally {
       setLoading(false);
     }
@@ -131,7 +131,7 @@ export default function AdminProductReview() {
     if (!selectedReview) return;
     
     if (action === 'reject' && !rejectionReason.trim()) {
-      alert('请输入拒绝原因');
+      alert('璇疯緭鍏ユ嫆缁濆師鍥?);
       return;
     }
 
@@ -154,17 +154,17 @@ export default function AdminProductReview() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || '操作失败');
+        throw new Error(errorData.message || '鎿嶄綔澶辫触');
       }
 
-      alert(action === 'approve' ? '商品已批准' : action === 'reject' ? '商品已拒绝' : '已请求修改');
+      alert(action === 'approve' ? '鍟嗗搧宸叉壒鍑? : action === 'reject' ? '鍟嗗搧宸叉嫆缁? : '宸茶姹備慨鏀?);
       setSelectedReview(null);
       setReviewComment('');
       setRejectionReason('');
       fetchReviews();
       fetchStats();
     } catch (err: any) {
-      alert(err.message || '操作失败');
+      alert(err.message || '鎿嶄綔澶辫触');
     } finally {
       setActionLoading(false);
     }
@@ -172,11 +172,11 @@ export default function AdminProductReview() {
 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '待审核' },
-      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: '审核中' },
-      approved: { bg: 'bg-green-100', text: 'text-green-800', label: '已通过' },
-      rejected: { bg: 'bg-red-100', text: 'text-red-800', label: '已拒绝' },
-      revision_requested: { bg: 'bg-orange-100', text: 'text-orange-800', label: '需修改' },
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '寰呭鏍? },
+      in_review: { bg: 'bg-blue-100', text: 'text-blue-800', label: '瀹℃牳涓? },
+      approved: { bg: 'bg-green-100', text: 'text-green-800', label: '宸查€氳繃' },
+      rejected: { bg: 'bg-red-100', text: 'text-red-800', label: '宸叉嫆缁? },
+      revision_requested: { bg: 'bg-orange-100', text: 'text-orange-800', label: '闇€淇敼' },
     };
     const badge = badges[status] || badges.pending;
     return (
@@ -188,9 +188,9 @@ export default function AdminProductReview() {
 
   const getTypeBadge = (type: string) => {
     const types: Record<string, string> = {
-      new_product: '新商品',
-      update: '更新',
-      reactivation: '重新上架',
+      new_product: '鏂板晢鍝?,
+      update: '鏇存柊',
+      reactivation: '閲嶆柊涓婃灦',
     };
     return types[type] || type;
   };
@@ -207,32 +207,32 @@ export default function AdminProductReview() {
   return (
     <>
       <Head>
-        <title>商品审核 - Agentrix 管理后台</title>
+        <title>鍟嗗搧瀹℃牳 - Agentrix 绠＄悊鍚庡彴</title>
       </Head>
-      <AdminLayout title="商品审核" description="审核商户提交的商品">
-        {/* 统计卡片 */}
+      <AdminLayout title="鍟嗗搧瀹℃牳" description="瀹℃牳鍟嗘埛鎻愪氦鐨勫晢鍝?>
+        {/* 缁熻鍗＄墖 */}
         {stats && (
           <div className="grid grid-cols-4 gap-4 mb-6">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-              <div className="text-sm text-yellow-700">待审核</div>
+              <div className="text-sm text-yellow-700">寰呭鏍?/div>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="text-2xl font-bold text-blue-600">{stats.inReview}</div>
-              <div className="text-sm text-blue-700">审核中</div>
+              <div className="text-sm text-blue-700">瀹℃牳涓?/div>
             </div>
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="text-2xl font-bold text-green-600">{stats.approvedToday}</div>
-              <div className="text-sm text-green-700">今日通过</div>
+              <div className="text-sm text-green-700">浠婃棩閫氳繃</div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="text-2xl font-bold text-red-600">{stats.rejectedToday}</div>
-              <div className="text-sm text-red-700">今日拒绝</div>
+              <div className="text-sm text-red-700">浠婃棩鎷掔粷</div>
             </div>
           </div>
         )}
 
-        {/* 筛选器 */}
+        {/* 绛涢€夊櫒 */}
         <div className="mb-6 flex gap-2">
           {['pending', 'in_review', 'approved', 'rejected', 'revision_requested'].map((status) => (
             <button
@@ -249,35 +249,35 @@ export default function AdminProductReview() {
           ))}
         </div>
 
-        {/* 审核列表 */}
+        {/* 瀹℃牳鍒楄〃 */}
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <p className="mt-4 text-gray-600">加载中...</p>
+            <p className="mt-4 text-gray-600">鍔犺浇涓?..</p>
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <p className="text-red-600">{error}</p>
             <button onClick={fetchReviews} className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
-              重试
+              閲嶈瘯
             </button>
           </div>
         ) : reviews.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
-            暂无审核请求
+            鏆傛棤瀹℃牳璇锋眰
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商户</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">类型</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">自动评分</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">提交时间</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">鍟嗗搧</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">鍟嗘埛</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">绫诲瀷</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">鐘舵€?/th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">鑷姩璇勫垎</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">鎻愪氦鏃堕棿</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">鎿嶄綔</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -294,7 +294,7 @@ export default function AdminProductReview() {
                         )}
                         <div>
                           <div className="text-sm font-medium text-gray-900">{review.productSnapshot.name}</div>
-                          <div className="text-sm text-gray-500">¥{review.productSnapshot.price}</div>
+                          <div className="text-sm text-gray-500">楼{review.productSnapshot.price}</div>
                         </div>
                       </div>
                     </td>
@@ -314,10 +314,10 @@ export default function AdminProductReview() {
                           review.autoReviewResult.score >= 80 ? 'text-green-600' :
                           review.autoReviewResult.score >= 60 ? 'text-yellow-600' : 'text-red-600'
                         }`}>
-                          {review.autoReviewResult.score}分
+                          {review.autoReviewResult.score}鍒?
                           {review.autoReviewResult.issues.length > 0 && (
                             <span className="text-gray-400 ml-1">
-                              ({review.autoReviewResult.issues.length}个问题)
+                              ({review.autoReviewResult.issues.length}涓棶棰?
                             </span>
                           )}
                         </div>
@@ -331,7 +331,7 @@ export default function AdminProductReview() {
                         onClick={() => setSelectedReview(review)}
                         className="text-indigo-600 hover:text-indigo-900"
                       >
-                        审核
+                        瀹℃牳
                       </button>
                     </td>
                   </tr>
@@ -341,24 +341,24 @@ export default function AdminProductReview() {
           </div>
         )}
 
-        {/* 审核详情模态框 */}
+        {/* 瀹℃牳璇︽儏妯℃€佹 */}
         {selectedReview && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b flex justify-between items-center">
-                <h3 className="text-lg font-semibold">审核商品详情</h3>
+                <h3 className="text-lg font-semibold">瀹℃牳鍟嗗搧璇︽儏</h3>
                 <button
                   onClick={() => setSelectedReview(null)}
                   className="text-gray-400 hover:text-gray-600"
                 >
-                  ✕
+                  鉁?
                 </button>
               </div>
 
               <div className="p-6 grid grid-cols-2 gap-6">
-                {/* 左侧：商品信息 */}
+                {/* 宸︿晶锛氬晢鍝佷俊鎭?*/}
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-4">商品信息</h4>
+                  <h4 className="font-medium text-gray-900 mb-4">鍟嗗搧淇℃伅</h4>
                   
                   {selectedReview.productSnapshot.images?.length > 0 && (
                     <div className="mb-4">
@@ -372,31 +372,31 @@ export default function AdminProductReview() {
 
                   <dl className="space-y-2">
                     <div>
-                      <dt className="text-sm text-gray-500">商品名称</dt>
+                      <dt className="text-sm text-gray-500">鍟嗗搧鍚嶇О</dt>
                       <dd className="text-sm font-medium">{selectedReview.productSnapshot.name}</dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-gray-500">描述</dt>
-                      <dd className="text-sm">{selectedReview.productSnapshot.description || '无描述'}</dd>
+                      <dt className="text-sm text-gray-500">鎻忚堪</dt>
+                      <dd className="text-sm">{selectedReview.productSnapshot.description || '鏃犳弿杩?}</dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-gray-500">价格</dt>
-                      <dd className="text-sm font-medium">¥{selectedReview.productSnapshot.price}</dd>
+                      <dt className="text-sm text-gray-500">浠锋牸</dt>
+                      <dd className="text-sm font-medium">楼{selectedReview.productSnapshot.price}</dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-gray-500">分类</dt>
+                      <dt className="text-sm text-gray-500">鍒嗙被</dt>
                       <dd className="text-sm">{selectedReview.productSnapshot.category || '-'}</dd>
                     </div>
                     <div>
-                      <dt className="text-sm text-gray-500">商品类型</dt>
+                      <dt className="text-sm text-gray-500">鍟嗗搧绫诲瀷</dt>
                       <dd className="text-sm">{selectedReview.productSnapshot.productType}</dd>
                     </div>
                   </dl>
                 </div>
 
-                {/* 右侧：审核信息 */}
+                {/* 鍙充晶锛氬鏍镐俊鎭?*/}
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-4">自动审核结果</h4>
+                  <h4 className="font-medium text-gray-900 mb-4">鑷姩瀹℃牳缁撴灉</h4>
                   
                   {selectedReview.autoReviewResult ? (
                     <div className="space-y-4">
@@ -404,7 +404,7 @@ export default function AdminProductReview() {
                         selectedReview.autoReviewResult.passed ? 'bg-green-50' : 'bg-yellow-50'
                       }`}>
                         <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium">自动评分</span>
+                          <span className="text-sm font-medium">鑷姩璇勫垎</span>
                           <span className={`text-2xl font-bold ${
                             selectedReview.autoReviewResult.score >= 80 ? 'text-green-600' :
                             selectedReview.autoReviewResult.score >= 60 ? 'text-yellow-600' : 'text-red-600'
@@ -413,13 +413,13 @@ export default function AdminProductReview() {
                           </span>
                         </div>
                         <div className="mt-1 text-sm text-gray-600">
-                          {selectedReview.autoReviewResult.passed ? '✅ 建议通过' : '⚠️ 需人工审核'}
+                          {selectedReview.autoReviewResult.passed ? '鉁?寤鸿閫氳繃' : '鈿狅笍 闇€浜哄伐瀹℃牳'}
                         </div>
                       </div>
 
                       {selectedReview.autoReviewResult.issues.length > 0 && (
                         <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">发现的问题</h5>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">鍙戠幇鐨勯棶棰?/h5>
                           <ul className="space-y-2">
                             {selectedReview.autoReviewResult.issues.map((issue, idx) => (
                               <li
@@ -434,35 +434,35 @@ export default function AdminProductReview() {
                       )}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-500">无自动审核结果</div>
+                    <div className="text-sm text-gray-500">鏃犺嚜鍔ㄥ鏍哥粨鏋?/div>
                   )}
 
-                  {/* 审核操作 */}
+                  {/* 瀹℃牳鎿嶄綔 */}
                   {(selectedReview.status === 'pending' || selectedReview.status === 'in_review') && (
                     <div className="mt-6 space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          审核备注
+                          瀹℃牳澶囨敞
                         </label>
                         <textarea
                           value={reviewComment}
                           onChange={(e) => setReviewComment(e.target.value)}
                           className="w-full border rounded-lg p-2 text-sm"
                           rows={2}
-                          placeholder="可选的审核备注..."
+                          placeholder="鍙€夌殑瀹℃牳澶囨敞..."
                         />
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          拒绝原因（拒绝时必填）
+                          鎷掔粷鍘熷洜锛堟嫆缁濇椂蹇呭～锛?
                         </label>
                         <textarea
                           value={rejectionReason}
                           onChange={(e) => setRejectionReason(e.target.value)}
                           className="w-full border rounded-lg p-2 text-sm"
                           rows={2}
-                          placeholder="说明拒绝的原因..."
+                          placeholder="璇存槑鎷掔粷鐨勫師鍥?.."
                         />
                       </div>
 
@@ -472,21 +472,21 @@ export default function AdminProductReview() {
                           disabled={actionLoading}
                           className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50"
                         >
-                          ✓ 批准
+                          鉁?鎵瑰噯
                         </button>
                         <button
                           onClick={() => handleReviewAction('request_revision')}
                           disabled={actionLoading}
                           className="flex-1 bg-yellow-600 text-white py-2 px-4 rounded-lg hover:bg-yellow-700 disabled:opacity-50"
                         >
-                          ↻ 请求修改
+                          鈫?璇锋眰淇敼
                         </button>
                         <button
                           onClick={() => handleReviewAction('reject')}
                           disabled={actionLoading}
                           className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 disabled:opacity-50"
                         >
-                          ✕ 拒绝
+                          鉁?鎷掔粷
                         </button>
                       </div>
                     </div>

@@ -47,7 +47,7 @@ export default function AdminRisk() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/risk/statistics', {
+      const response = await fetch('https://api.agentrix.top/api/admin/risk/statistics', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -64,7 +64,7 @@ export default function AdminRisk() {
   const fetchAssessments = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/risk/assessments?limit=20', {
+      const response = await fetch('https://api.agentrix.top/api/admin/risk/assessments?limit=20', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -83,7 +83,7 @@ export default function AdminRisk() {
   const fetchRiskOrders = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/risk/orders?limit=20', {
+      const response = await fetch('https://api.agentrix.top/api/admin/risk/orders?limit=20', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -128,34 +128,34 @@ export default function AdminRisk() {
   return (
     <>
       <Head>
-        <title>风控管理 - Agentrix 管理后台</title>
+        <title>椋庢帶绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
       </Head>
       <div className="min-h-screen bg-gray-50">
         <div className="ml-64 p-8">
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">风控管理</h2>
-            <p className="text-gray-600 mt-2">风险监控和处理</p>
+            <h2 className="text-3xl font-bold text-gray-900">椋庢帶绠＄悊</h2>
+            <p className="text-gray-600 mt-2">椋庨櫓鐩戞帶鍜屽鐞?/p>
           </div>
 
-          {/* 统计卡片 */}
+          {/* 缁熻鍗＄墖 */}
           {stats && (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
               <div className="bg-white rounded-lg shadow p-6">
-                <div className="text-sm text-gray-600">总风险评估</div>
+                <div className="text-sm text-gray-600">鎬婚闄╄瘎浼?/div>
                 <div className="text-3xl font-bold text-gray-900 mt-2">{stats.total || 0}</div>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <div className="text-sm text-gray-600">高风险数量</div>
+                <div className="text-sm text-gray-600">楂橀闄╂暟閲?/div>
                 <div className="text-3xl font-bold text-red-600 mt-2">{stats.highRiskCount || 0}</div>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <div className="text-sm text-gray-600">待审核</div>
+                <div className="text-sm text-gray-600">寰呭鏍?/div>
                 <div className="text-3xl font-bold text-yellow-600 mt-2">
                   {stats.byDecision?.review || 0}
                 </div>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <div className="text-sm text-gray-600">已拒绝</div>
+                <div className="text-sm text-gray-600">宸叉嫆缁?/div>
                 <div className="text-3xl font-bold text-red-600 mt-2">
                   {stats.byDecision?.reject || 0}
                 </div>
@@ -163,7 +163,7 @@ export default function AdminRisk() {
             </div>
           )}
 
-          {/* 标签页 */}
+          {/* 鏍囩椤?*/}
           <div className="mb-6 border-b border-gray-200">
             <nav className="flex space-x-8">
               <button
@@ -174,7 +174,7 @@ export default function AdminRisk() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                风险评估
+                椋庨櫓璇勪及
               </button>
               <button
                 onClick={() => setActiveTab('orders')}
@@ -184,7 +184,7 @@ export default function AdminRisk() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                风险订单
+                椋庨櫓璁㈠崟
               </button>
               <button
                 onClick={() => setActiveTab('users')}
@@ -194,35 +194,35 @@ export default function AdminRisk() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                风险用户
+                椋庨櫓鐢ㄦ埛
               </button>
             </nav>
           </div>
 
           {loading ? (
-            <div className="text-center py-12">加载中...</div>
+            <div className="text-center py-12">鍔犺浇涓?..</div>
           ) : activeTab === 'assessments' ? (
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      风险评分
+                      椋庨櫓璇勫垎
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      风险等级
+                      椋庨櫓绛夌骇
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      决策
+                      鍐崇瓥
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      用户
+                      鐢ㄦ埛
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      创建时间
+                      鍒涘缓鏃堕棿
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -253,7 +253,7 @@ export default function AdminRisk() {
                           onClick={() => router.push(`/admin/risk/assessments/${assessment.id}`)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
-                          查看
+                          鏌ョ湅
                         </button>
                       </td>
                     </tr>
@@ -267,22 +267,22 @@ export default function AdminRisk() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      订单ID
+                      璁㈠崟ID
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      金额
+                      閲戦
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      状态
+                      鐘舵€?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      用户
+                      鐢ㄦ埛
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      创建时间
+                      鍒涘缓鏃堕棿
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -313,7 +313,7 @@ export default function AdminRisk() {
                           <button
                             onClick={async () => {
                               const token = localStorage.getItem('admin_token');
-                              await fetch(`http://localhost:3002/api/admin/risk/orders/${order.id}/release`, {
+                              await fetch(`https://api.agentrix.top/api/admin/risk/orders/${order.id}/release`, {
                                 method: 'POST',
                                 headers: { Authorization: `Bearer ${token}` },
                               });
@@ -321,15 +321,15 @@ export default function AdminRisk() {
                             }}
                             className="text-green-600 hover:text-green-900 mr-2"
                           >
-                            解冻
+                            瑙ｅ喕
                           </button>
                         ) : (
                           <button
                             onClick={async () => {
-                              const reason = prompt('请输入冻结原因:');
+                              const reason = prompt('璇疯緭鍏ュ喕缁撳師鍥?');
                               if (reason) {
                                 const token = localStorage.getItem('admin_token');
-                                await fetch(`http://localhost:3002/api/admin/risk/orders/${order.id}/block`, {
+                                await fetch(`https://api.agentrix.top/api/admin/risk/orders/${order.id}/block`, {
                                   method: 'POST',
                                   headers: {
                                     Authorization: `Bearer ${token}`,
@@ -342,7 +342,7 @@ export default function AdminRisk() {
                             }}
                             className="text-red-600 hover:text-red-900"
                           >
-                            冻结
+                            鍐荤粨
                           </button>
                         )}
                       </td>
@@ -353,7 +353,7 @@ export default function AdminRisk() {
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-500">风险用户功能开发中...</p>
+              <p className="text-gray-500">椋庨櫓鐢ㄦ埛鍔熻兘寮€鍙戜腑...</p>
             </div>
           )}
         </div>

@@ -52,7 +52,7 @@ export default function AdminSystem() {
   const fetchAdmins = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/system/admins?limit=20', {
+      const response = await fetch('https://api.agentrix.top/api/admin/system/admins?limit=20', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -71,7 +71,7 @@ export default function AdminSystem() {
   const fetchRoles = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/system/roles', {
+      const response = await fetch('https://api.agentrix.top/api/admin/system/roles', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -90,7 +90,7 @@ export default function AdminSystem() {
   const fetchConfigs = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('http://localhost:3002/api/admin/system/configs', {
+      const response = await fetch('https://api.agentrix.top/api/admin/system/configs', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -122,16 +122,16 @@ export default function AdminSystem() {
   return (
     <>
       <Head>
-        <title>系统管理 - Agentrix 管理后台</title>
+        <title>绯荤粺绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
       </Head>
       <div className="min-h-screen bg-gray-50">
         <div className="ml-64 p-8">
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">系统管理</h2>
-            <p className="text-gray-600 mt-2">管理系统配置、管理员和角色</p>
+            <h2 className="text-3xl font-bold text-gray-900">绯荤粺绠＄悊</h2>
+            <p className="text-gray-600 mt-2">绠＄悊绯荤粺閰嶇疆銆佺鐞嗗憳鍜岃鑹?/p>
           </div>
 
-          {/* 标签页 */}
+          {/* 鏍囩椤?*/}
           <div className="mb-6 border-b border-gray-200">
             <nav className="flex space-x-8">
               <button
@@ -142,7 +142,7 @@ export default function AdminSystem() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                管理员
+                绠＄悊鍛?
               </button>
               <button
                 onClick={() => setActiveTab('roles')}
@@ -152,7 +152,7 @@ export default function AdminSystem() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                角色权限
+                瑙掕壊鏉冮檺
               </button>
               <button
                 onClick={() => setActiveTab('configs')}
@@ -162,7 +162,7 @@ export default function AdminSystem() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                系统配置
+                绯荤粺閰嶇疆
               </button>
               <button
                 onClick={() => setActiveTab('logs')}
@@ -172,24 +172,24 @@ export default function AdminSystem() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                操作日志
+                鎿嶄綔鏃ュ織
               </button>
             </nav>
           </div>
 
           {loading ? (
-            <div className="text-center py-12">加载中...</div>
+            <div className="text-center py-12">鍔犺浇涓?..</div>
           ) : activeTab === 'admins' ? (
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex justify-end">
                 <button
                   onClick={() => {
-                    const username = prompt('用户名:');
-                    const email = prompt('邮箱:');
-                    const password = prompt('密码:');
+                    const username = prompt('鐢ㄦ埛鍚?');
+                    const email = prompt('閭:');
+                    const password = prompt('瀵嗙爜:');
                     if (username && email && password) {
                       const token = localStorage.getItem('admin_token');
-                      fetch('http://localhost:3002/api/admin/system/admins', {
+                      fetch('https://api.agentrix.top/api/admin/system/admins', {
                         method: 'POST',
                         headers: {
                           Authorization: `Bearer ${token}`,
@@ -201,29 +201,29 @@ export default function AdminSystem() {
                   }}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
-                  创建管理员
+                  鍒涘缓绠＄悊鍛?
                 </button>
               </div>
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      用户名
+                      鐢ㄦ埛鍚?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      邮箱
+                      閭
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      角色
+                      瑙掕壊
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      状态
+                      鐘舵€?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      创建时间
+                      鍒涘缓鏃堕棿
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -252,7 +252,7 @@ export default function AdminSystem() {
                           onClick={() => router.push(`/admin/system/admins/${admin.id}`)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
-                          查看
+                          鏌ョ湅
                         </button>
                       </td>
                     </tr>
@@ -265,11 +265,11 @@ export default function AdminSystem() {
               <div className="p-4 border-b border-gray-200 flex justify-end">
                 <button
                   onClick={() => {
-                    const name = prompt('角色名称:');
-                    const description = prompt('角色描述:');
+                    const name = prompt('瑙掕壊鍚嶇О:');
+                    const description = prompt('瑙掕壊鎻忚堪:');
                     if (name && description) {
                       const token = localStorage.getItem('admin_token');
-                      fetch('http://localhost:3002/api/admin/system/roles', {
+                      fetch('https://api.agentrix.top/api/admin/system/roles', {
                         method: 'POST',
                         headers: {
                           Authorization: `Bearer ${token}`,
@@ -286,29 +286,29 @@ export default function AdminSystem() {
                   }}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
-                  创建角色
+                  鍒涘缓瑙掕壊
                 </button>
               </div>
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      角色名称
+                      瑙掕壊鍚嶇О
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      类型
+                      绫诲瀷
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      描述
+                      鎻忚堪
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      权限数
+                      鏉冮檺鏁?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      创建时间
+                      鍒涘缓鏃堕棿
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -335,7 +335,7 @@ export default function AdminSystem() {
                           onClick={() => router.push(`/admin/system/roles/${role.id}`)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
-                          查看
+                          鏌ョ湅
                         </button>
                       </td>
                     </tr>
@@ -349,22 +349,22 @@ export default function AdminSystem() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      配置键
+                      閰嶇疆閿?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      分类
+                      鍒嗙被
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      值
+                      鍊?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      描述
+                      鎻忚堪
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      公开
+                      鍏紑
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -387,16 +387,16 @@ export default function AdminSystem() {
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           config.isPublic ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {config.isPublic ? '是' : '否'}
+                          {config.isPublic ? '鏄? : '鍚?}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <button
                           onClick={() => {
-                            const newValue = prompt('新值:', config.value);
+                            const newValue = prompt('鏂板€?', config.value);
                             if (newValue !== null) {
                               const token = localStorage.getItem('admin_token');
-                              fetch(`http://localhost:3002/api/admin/system/configs/${config.key}`, {
+                              fetch(`https://api.agentrix.top/api/admin/system/configs/${config.key}`, {
                                 method: 'PUT',
                                 headers: {
                                   Authorization: `Bearer ${token}`,
@@ -408,7 +408,7 @@ export default function AdminSystem() {
                           }}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
-                          编辑
+                          缂栬緫
                         </button>
                       </td>
                     </tr>
@@ -418,7 +418,7 @@ export default function AdminSystem() {
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-gray-500">操作日志功能开发中...</p>
+              <p className="text-gray-500">鎿嶄綔鏃ュ織鍔熻兘寮€鍙戜腑...</p>
             </div>
           )}
         </div>

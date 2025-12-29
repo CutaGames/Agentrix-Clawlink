@@ -84,6 +84,7 @@ export class OSLProviderService implements IProvider {
     amount: number,
     fromCurrency: string,
     toCurrency: string,
+    isSourceAmount: boolean = false,
   ): Promise<ProviderQuote> {
     try {
       const timestamp = Date.now().toString();
@@ -91,6 +92,7 @@ export class OSLProviderService implements IProvider {
         amount: amount.toString(),
         fromCurrency,
         toCurrency,
+        isSourceAmount: isSourceAmount.toString(),
       };
 
       const signature = this.generateSignature(params, timestamp);

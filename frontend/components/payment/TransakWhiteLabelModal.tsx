@@ -217,7 +217,7 @@ export function TransakWhiteLabelModal({
   };
   
   // Transak Widget 事件回调 - 根据 Transak 真实流程更新步骤状态
-  // Transak 流程：Widget打开 → 邮箱验证 → KYC(如需) → 确认订单 → 支付
+  // Transak 流程：Widget打开 → 邮箱验证 → 确认订单 → KYC(如需) → 支付
   const handleTransakEvent = (eventType: string, data?: any) => {
     console.log('📨 Transak event:', eventType, data);
     switch (eventType) {
@@ -230,11 +230,16 @@ export function TransakWhiteLabelModal({
         
       case 'TRANSAK_ORDER_CREATED':
         // 订单创建成功，说明邮箱已验证完成
-        // 现在进入 KYC 身份认证阶段（如果需要）或支付阶段
-        console.log('📝 Transak 订单已创建');
         // 如果用户已经完成过 KYC，Transak 可能会直接跳到支付
-        // 我们先设为 kyc，如果有 KYC_VERIFIED 事件会再更新
-        setPaymentStep('kyc');
+        // 否则需要先进行 KYC
+        console.log('📝 Transak 订单已创建');
+        if (kycCompleted || !activeOption?.requiresKYC) {
+          // 已完成 KYC 或不需要 KYC，直接进入支付阶段
+          setPaymentStep('payment');
+        } else {
+          // 需要 KYC
+          setPaymentStep('kyc');
+        }
         break;
 
       case 'TRANSAK_KYC_INIT':
@@ -469,7 +474,9 @@ export function TransakWhiteLabelModal({
                 <TransakWidget
                   apiKey={process.env.NEXT_PUBLIC_TRANSAK_API_KEY || ''}
                   environment={(process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT as 'STAGING' | 'PRODUCTION') || 'STAGING'}
-                  amount={activeOption?.price || order.amount}
+                  // V3.0: 始终使用原始订单金额作为目标加密货币金额
+                  // 这样 Transak 会计算用户需要支付多少法币，确保合约收到足额代币
+                  amount={order.amount}
                   fiatCurrency={activeOption?.currency || order.currency || 'USD'}
                   cryptoCurrency="USDC"
                   network="bsc"

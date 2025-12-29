@@ -30,7 +30,7 @@ export default function AdminTickets() {
   const fetchTickets = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const url = new URL('http://localhost:3002/api/admin/tickets');
+      const url = new URL('https://api.agentrix.top/api/admin/tickets');
       url.searchParams.set('page', page.toString());
       url.searchParams.set('limit', '20');
       if (filterStatus) {
@@ -87,55 +87,55 @@ export default function AdminTickets() {
   return (
     <>
       <Head>
-        <title>工单管理 - Agentrix 管理后台</title>
+        <title>宸ュ崟绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
       </Head>
       <div className="min-h-screen bg-gray-50">
         <div className="ml-64 p-8">
           <div className="mb-8 flex justify-between items-center">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900">工单管理</h2>
-              <p className="text-gray-600 mt-2">处理用户工单</p>
+              <h2 className="text-3xl font-bold text-gray-900">宸ュ崟绠＄悊</h2>
+              <p className="text-gray-600 mt-2">澶勭悊鐢ㄦ埛宸ュ崟</p>
             </div>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg"
             >
-              <option value="">全部状态</option>
-              <option value="pending">待处理</option>
-              <option value="in_progress">处理中</option>
-              <option value="resolved">已解决</option>
-              <option value="closed">已关闭</option>
+              <option value="">鍏ㄩ儴鐘舵€?/option>
+              <option value="pending">寰呭鐞?/option>
+              <option value="in_progress">澶勭悊涓?/option>
+              <option value="resolved">宸茶В鍐?/option>
+              <option value="closed">宸插叧闂?/option>
             </select>
           </div>
 
           {loading ? (
-            <div className="text-center py-12">加载中...</div>
+            <div className="text-center py-12">鍔犺浇涓?..</div>
           ) : (
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      工单号
+                      宸ュ崟鍙?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      类型
+                      绫诲瀷
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      主题
+                      涓婚
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      状态
+                      鐘舵€?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      优先级
+                      浼樺厛绾?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      创建时间
+                      鍒涘缓鏃堕棿
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -167,7 +167,7 @@ export default function AdminTickets() {
                           onClick={() => router.push(`/admin/tickets/${ticket.id}`)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
-                          查看
+                          鏌ョ湅
                         </button>
                       </td>
                     </tr>

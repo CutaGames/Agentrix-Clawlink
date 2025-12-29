@@ -29,7 +29,7 @@ export default function AdminPromoters() {
   const fetchPromoters = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const url = new URL('http://localhost:3002/api/admin/promoters');
+      const url = new URL('https://api.agentrix.top/api/admin/promoters');
       url.searchParams.set('page', page.toString());
       url.searchParams.set('limit', '20');
       if (search) {
@@ -56,19 +56,19 @@ export default function AdminPromoters() {
   return (
     <>
       <Head>
-        <title>推广者管理 - Agentrix 管理后台</title>
+        <title>鎺ㄥ箍鑰呯鐞?- Agentrix 绠＄悊鍚庡彴</title>
       </Head>
       <div className="min-h-screen bg-gray-50">
         <div className="ml-64 p-8">
           <div className="mb-8 flex justify-between items-center">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900">推广者管理</h2>
-              <p className="text-gray-600 mt-2">管理平台推广者</p>
+              <h2 className="text-3xl font-bold text-gray-900">鎺ㄥ箍鑰呯鐞?/h2>
+              <p className="text-gray-600 mt-2">绠＄悊骞冲彴鎺ㄥ箍鑰?/p>
             </div>
             <div className="flex gap-4">
               <input
                 type="text"
-                placeholder="搜索推广者..."
+                placeholder="鎼滅储鎺ㄥ箍鑰?.."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg"
@@ -77,29 +77,29 @@ export default function AdminPromoters() {
           </div>
 
           {loading ? (
-            <div className="text-center py-12">加载中...</div>
+            <div className="text-center py-12">鍔犺浇涓?..</div>
           ) : (
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      推广者ID
+                      鎺ㄥ箍鑰匢D
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      邮箱
+                      閭
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      推广商户数
+                      鎺ㄥ箍鍟嗘埛鏁?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      总分成
+                      鎬诲垎鎴?
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      注册时间
+                      娉ㄥ唽鏃堕棿
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      操作
+                      鎿嶄綔
                     </th>
                   </tr>
                 </thead>
@@ -126,7 +126,7 @@ export default function AdminPromoters() {
                           onClick={() => router.push(`/admin/promoters/${promoter.id}`)}
                           className="text-indigo-600 hover:text-indigo-900"
                         >
-                          查看
+                          鏌ョ湅
                         </button>
                       </td>
                     </tr>
@@ -136,7 +136,7 @@ export default function AdminPromoters() {
               {total > 0 && (
                 <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
                   <div className="text-sm text-gray-500">
-                    共 {total} 条记录，第 {page} 页
+                    鍏?{total} 鏉¤褰曪紝绗?{page} 椤?
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -144,14 +144,14 @@ export default function AdminPromoters() {
                       disabled={page === 1}
                       className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50"
                     >
-                      上一页
+                      涓婁竴椤?
                     </button>
                     <button
                       onClick={() => setPage(page + 1)}
                       disabled={page * 20 >= total}
                       className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50"
                     >
-                      下一页
+                      涓嬩竴椤?
                     </button>
                   </div>
                 </div>

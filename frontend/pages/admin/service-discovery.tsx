@@ -18,7 +18,7 @@ export default function ServiceDiscoveryPage() {
   const handleDiscover = async () => {
     if (!url) return;
     
-    // 简单的 URL 校验
+    // 绠€鍗曠殑 URL 鏍￠獙
     if (!url.startsWith('http')) {
         error("Invalid URL: Please enter a valid URL starting with http:// or https://");
         return;
@@ -28,8 +28,8 @@ export default function ServiceDiscoveryPage() {
     setResult(null);
 
     try {
-      // 调用后端 API (需要确保 productApi 中有 discover 方法，或者直接 fetch)
-      // 这里假设 productApi 尚未更新，直接使用 fetch
+      // 璋冪敤鍚庣 API (闇€瑕佺‘淇?productApi 涓湁 discover 鏂规硶锛屾垨鑰呯洿鎺?fetch)
+      // 杩欓噷鍋囪 productApi 灏氭湭鏇存柊锛岀洿鎺ヤ娇鐢?fetch
       const token = localStorage.getItem('token');
       const response = await fetch('/api/products/discover', {
           method: 'POST',

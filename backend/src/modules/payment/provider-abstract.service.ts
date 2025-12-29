@@ -64,6 +64,7 @@ export interface IProvider {
     amount: number,
     fromCurrency: string,
     toCurrency: string,
+    isSourceAmount?: boolean,
   ): Promise<ProviderQuote>;
 
   // 执行 On-ramp（法币转数字货币）

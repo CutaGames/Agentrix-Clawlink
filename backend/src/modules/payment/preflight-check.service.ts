@@ -200,11 +200,15 @@ export class PreflightCheckService {
                 try {
                   const quote = await provider.getQuote(amount, currency, targetCrypto);
                   const actualFee = quote.fee || 0;
+                  // V3.0: 使用 quote.estimatedAmount 作为 totalPrice
+                  // 对于 On-ramp，estimatedAmount 是用户需要支付的法币总额（包含手续费）
+                  const totalPrice = quote.estimatedAmount || (amount + actualFee);
+                  
                   return {
                     providerId: provider.id,
                     providerName: provider.name || provider.id,
                     fee: actualFee,
-                    totalPrice: amount + actualFee,
+                    totalPrice: totalPrice,
                     estimatedTime: '2-5 minutes',
                   };
                 } catch (error: any) {
@@ -469,15 +473,18 @@ export class PreflightCheckService {
             const quotePromises = onRampProviders.map(async (provider) => {
               try {
                 // 为每个 Provider 设置超时（5秒）
+                // V3.0: 使用 isSourceAmount: false，因为我们知道要收多少加密货币 (amount)
+                // 这样 Provider 会返回用户需要支付的法币金额 (totalPrice)
                 const quote = await Promise.race([
-                  provider.getQuote(amount, currency, targetCrypto),
+                  provider.getQuote(amount, currency, targetCrypto, false),
                   new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('Quote timeout')), 5000)
                   ),
                 ]) as any;
                 
                 const actualFee = quote.fee || 0;
-                const totalPrice = amount + actualFee; // 用户承担费用
+                // 如果 isSourceAmount 为 false，estimatedAmount 就是用户需要支付的法币金额
+                const totalPrice = quote.estimatedAmount || (amount + actualFee);
                 
                 return {
                   providerId: provider.id,

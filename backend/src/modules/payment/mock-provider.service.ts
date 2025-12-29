@@ -18,17 +18,19 @@ export class MockProviderService implements IProvider {
     amount: number,
     fromCurrency: string,
     toCurrency: string,
+    isSourceAmount: boolean = false,
   ): Promise<ProviderQuote> {
     this.logger.log(
-      `Mock Provider: Get quote for ${amount} ${fromCurrency} -> ${toCurrency}`,
+      `Mock Provider: Get quote for ${amount} ${fromCurrency} -> ${toCurrency} (isSourceAmount: ${isSourceAmount})`,
     );
 
     // 返回模拟报价
+    const fee = amount * 0.03;
     return {
       providerId: this.id,
       rate: 1.0, // 1:1 汇率（测试用）
-      fee: amount * 0.03, // 3% 手续费
-      estimatedAmount: amount * 0.97,
+      fee: fee, // 3% 手续费
+      estimatedAmount: isSourceAmount ? amount - fee : amount + fee,
       expiresAt: new Date(Date.now() + 60000), // 1分钟过期
     };
   }

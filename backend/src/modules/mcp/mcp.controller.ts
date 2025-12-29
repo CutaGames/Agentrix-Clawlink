@@ -3,8 +3,10 @@ import { Request, Response } from 'express';
 import { McpService } from './mcp.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('mcp')
+@Public()
 export class McpController {
   private readonly logger = new Logger(McpController.name);
 

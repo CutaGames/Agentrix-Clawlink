@@ -34,6 +34,18 @@ const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
 ];
 
+const BSC_TESTNET_PARAMS = {
+  chainId: '0x61', // 97
+  chainName: 'Binance Smart Chain Testnet',
+  nativeCurrency: {
+    name: 'tBNB',
+    symbol: 'tBNB',
+    decimals: 18,
+  },
+  rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
+  blockExplorerUrls: ['https://testnet.bscscan.com'],
+};
+
 const PayIntentPage = () => {
   const router = useRouter();
   const { id, auto } = router.query;
@@ -103,7 +115,33 @@ const PayIntentPage = () => {
       if (isCrypto && window.ethereum && isConnected) {
         try {
           console.log('Starting on-chain transaction for PayIntent:', payIntent.id);
+          
+          // 检查并切换到 BSC Testnet
           const provider = new ethers.BrowserProvider(window.ethereum);
+          const network = await provider.getNetwork();
+          const targetChainId = BigInt(BSC_TESTNET_PARAMS.chainId);
+          
+          if (network.chainId !== targetChainId) {
+            console.log(`Switching network from ${network.chainId} to ${targetChainId}`);
+            try {
+              await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: BSC_TESTNET_PARAMS.chainId }],
+              });
+            } catch (switchError: any) {
+              if (switchError.code === 4902) {
+                await window.ethereum.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [BSC_TESTNET_PARAMS],
+                });
+              } else {
+                throw switchError;
+              }
+            }
+            // 切换后重新获取 provider 和 signer
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 等待切换生效
+          }
+
           const signer = await provider.getSigner();
           
           const to = payIntent.metadata?.to || 

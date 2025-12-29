@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import * as QRCode from 'qrcode';
@@ -41,6 +42,7 @@ export class PayIntentService {
     private paymentService: PaymentService,
     private quickPayGrantService: QuickPayGrantService,
     private webhookService: WebhookService,
+    private configService: ConfigService,
   ) {}
 
   /**
@@ -104,8 +106,14 @@ export class PayIntentService {
     const savedPayIntent = await this.payIntentRepository.save(payIntent);
 
     // 生成支付链接和二维码
-    // 添加 auto=true 参数，让前端在钱包环境下自动触发支付
-    const payUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/pay/intent/${savedPayIntent.id}?auto=true`;
+    // 优先使用 ConfigService 获取 FRONTEND_URL，确保在生产环境下正确
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || process.env.FRONTEND_URL || 'http://localhost:3000';
+    const payUrl = `${frontendUrl}/pay/intent/${savedPayIntent.id}?auto=true`;
+    
+    if (frontendUrl.includes('localhost') && process.env.NODE_ENV === 'production') {
+      this.logger.warn(`⚠️ 生产环境下 FRONTEND_URL 仍为 localhost: ${frontendUrl}`);
+    }
+
     savedPayIntent.metadata = {
       ...(savedPayIntent.metadata || {}),
       returnUrl: dto.metadata?.returnUrl,

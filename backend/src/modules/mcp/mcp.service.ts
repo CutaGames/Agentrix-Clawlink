@@ -37,33 +37,6 @@ export class McpService implements OnModuleInit {
       {
         capabilities: {
           tools: {},
-          // ChatGPT 可能会寻找顶层的 authentication
-          authentication: {
-            type: 'oauth2',
-            flows: {
-              authorizationCode: {
-                authorizationUrl: 'https://api.agentrix.top/api/oauth/authorize',
-                tokenUrl: 'https://api.agentrix.top/api/oauth/token',
-                scopes: {
-                  all: 'Full access to Agentrix'
-                }
-              }
-            }
-          },
-          experimental: {
-            authentication: {
-              type: 'oauth2',
-              flows: {
-                authorizationCode: {
-                  authorizationUrl: 'https://api.agentrix.top/api/oauth/authorize',
-                  tokenUrl: 'https://api.agentrix.top/api/oauth/token',
-                  scopes: {
-                    all: 'Full access to Agentrix'
-                  }
-                }
-              }
-            }
-          }
         } as any,
       },
     );
@@ -89,29 +62,14 @@ export class McpService implements OnModuleInit {
   }
 
   public getCapabilities() {
-    const authConfig = {
-      type: 'oauth2',
-      flows: {
-        authorizationCode: {
-          authorizationUrl: 'https://agentrix.top/api/oauth/authorize',
-          tokenUrl: 'https://agentrix.top/api/oauth/token',
-          scopes: {
-            'read:tools': 'Read available tools',
-            'use:tools': 'Execute tools',
-          },
-        },
-      },
-    };
-
+    // MCP Server 支持两种认证模式：
+    // 1. no-auth：无需认证，直接访问
+    // 2. OAuth：通过 OAuth2 授权码流认证
     return {
       tools: {},
       resources: {},
       prompts: {},
       logging: {},
-      authentication: authConfig,
-      experimental: {
-        authentication: authConfig,
-      },
     };
   }
 

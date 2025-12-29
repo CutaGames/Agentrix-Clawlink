@@ -40,12 +40,12 @@ export default function AdminMerchants() {
       setError(null);
       const token = localStorage.getItem('admin_token');
       if (!token) {
-        setError('未登录，请先登录管理后台');
+        setError('鏈櫥褰曪紝璇峰厛鐧诲綍绠＄悊鍚庡彴');
         setLoading(false);
         return;
       }
 
-      const response = await fetch(`http://localhost:3002/api/admin/merchants?page=${page}&limit=20`, {
+      const response = await fetch(`https://api.agentrix.top/api/admin/merchants?page=${page}&limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -53,14 +53,14 @@ export default function AdminMerchants() {
       });
 
       if (response.status === 401) {
-        setError('登录已过期，请重新登录');
+        setError('鐧诲綍宸茶繃鏈燂紝璇烽噸鏂扮櫥褰?);
         localStorage.removeItem('admin_token');
         return;
       }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || `请求失败: ${response.status}`);
+        setError(errorData.message || `璇锋眰澶辫触: ${response.status}`);
         return;
       }
 
@@ -69,7 +69,7 @@ export default function AdminMerchants() {
       setTotal(data.total || 0);
     } catch (error: any) {
       console.error('Failed to fetch merchants:', error);
-      setError(error.message || '获取商户列表失败，请检查网络连接');
+      setError(error.message || '鑾峰彇鍟嗘埛鍒楄〃澶辫触锛岃妫€鏌ョ綉缁滆繛鎺?);
     } finally {
       setLoading(false);
     }
@@ -78,55 +78,55 @@ export default function AdminMerchants() {
   return (
     <>
       <Head>
-        <title>商户管理 - Agentrix 管理后台</title>
+        <title>鍟嗘埛绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
       </Head>
-      <AdminLayout title="商户管理" description="管理平台商户">
+      <AdminLayout title="鍟嗘埛绠＄悊" description="绠＄悊骞冲彴鍟嗘埛">
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <p className="mt-4 text-gray-600">加载中...</p>
+            <p className="mt-4 text-gray-600">鍔犺浇涓?..</p>
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6">
             <div className="flex items-center">
-              <span className="text-red-600 text-2xl mr-3">⚠️</span>
+              <span className="text-red-600 text-2xl mr-3">鈿狅笍</span>
               <div>
-                <h3 className="text-red-800 font-semibold">加载失败</h3>
+                <h3 className="text-red-800 font-semibold">鍔犺浇澶辫触</h3>
                 <p className="text-red-600 mt-1">{error}</p>
                 <button
                   onClick={fetchMerchants}
                   className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
                 >
-                  重试
+                  閲嶈瘯
                 </button>
               </div>
             </div>
           </div>
         ) : merchants.length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-            <p className="text-yellow-800">暂无商户数据</p>
-            <p className="text-yellow-600 text-sm mt-2">数据库中还没有商户，请先创建一些测试商户</p>
+            <p className="text-yellow-800">鏆傛棤鍟嗘埛鏁版嵁</p>
+            <p className="text-yellow-600 text-sm mt-2">鏁版嵁搴撲腑杩樻病鏈夊晢鎴凤紝璇峰厛鍒涘缓涓€浜涙祴璇曞晢鎴?/p>
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <div className="flex justify-between items-center">
-                <p className="text-sm text-gray-600">共 {total} 个商户</p>
+                <p className="text-sm text-gray-600">鍏?{total} 涓晢鎴?/p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPage(Math.max(1, page - 1))}
                     disabled={page === 1}
                     className="px-3 py-1 border rounded disabled:opacity-50"
                   >
-                    上一页
+                    涓婁竴椤?
                   </button>
-                  <span className="px-3 py-1">第 {page} 页</span>
+                  <span className="px-3 py-1">绗?{page} 椤?/span>
                   <button
                     onClick={() => setPage(page + 1)}
                     disabled={page * 20 >= total}
                     className="px-3 py-1 border rounded disabled:opacity-50"
                   >
-                    下一页
+                    涓嬩竴椤?
                   </button>
                 </div>
               </div>
@@ -135,28 +135,28 @@ export default function AdminMerchants() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    商户ID
+                    鍟嗘埛ID
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    邮箱
+                    閭
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    KYC状态
+                    KYC鐘舵€?
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    MPC钱包
+                    MPC閽卞寘
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    商品数
+                    鍟嗗搧鏁?
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    订单数
+                    璁㈠崟鏁?
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    总GMV
+                    鎬籊MV
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    操作
+                    鎿嶄綔
                   </th>
                 </tr>
               </thead>
@@ -190,7 +190,7 @@ export default function AdminMerchants() {
                           ))}
                         </div>
                       ) : (
-                        <span className="text-gray-400">未创建</span>
+                        <span className="text-gray-400">鏈垱寤?/span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -207,7 +207,7 @@ export default function AdminMerchants() {
                         onClick={() => router.push(`/admin/merchants/${merchant.id}`)}
                         className="text-indigo-600 hover:text-indigo-900"
                       >
-                        查看
+                        鏌ョ湅
                       </button>
                     </td>
                   </tr>

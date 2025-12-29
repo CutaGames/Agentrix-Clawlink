@@ -1015,13 +1015,10 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         ) || preflightResult?.providerOptions?.[0]; // 回退到通用 transak 选项
 
         // 决定显示金额和货币
-        // 如果是法币订单且有转换后的加密货币金额，则显示加密货币金额（通常是 USD/USDT）
-        // V3.0: 统一使用 USD 作为显示货币，避免后端验证 USDT 失败
-        // 如果汇率还在加载，使用一个近似值避免显示错误的金额（如 100 CNY 显示为 100 USD）
-        const displayAmount = isFiatOrderCurrency 
-            ? (cryptoAmount || (order.amount * (normalizedCurrency === 'CNY' ? 0.14 : 1.0))) 
-            : order.amount;
-        const displayCurrency = isFiatOrderCurrency ? 'USD' : order.currency;
+        // V3.0: 统一使用订单原始货币显示，避免汇率转换带来的困惑
+        // 只有在真正进入 Transak 支付流程时，才根据需要进行转换
+        const displayAmount = order.amount;
+        const displayCurrency = order.currency || 'USD';
 
         // 估算费用（如果 API 未返回）
         let estimatedFee = apiOption?.fee;
@@ -1039,7 +1036,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             fee: estimatedFee,
             minAmount: minAmount,
             estimatedTime: apiOption?.estimatedTime || (channel.id.includes('transfer') ? '1-3 Days' : 'Instant'),
-            currency: apiOption?.currency || displayCurrency,
+            currency: displayCurrency,
             totalPrice: displayAmount + (estimatedFee || 0),
             available: displayAmount >= minAmount,
         };
@@ -1327,11 +1324,16 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
     return (
       <div className="p-6 bg-white flex-1 flex flex-col items-center">
-        <div className="w-full flex items-center gap-2 mb-6">
-            <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600">
-                <Smartphone size={16} />
+        <div className="w-full flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-600">
+                    <Smartphone size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Scan to Pay</h3>
             </div>
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Scan to Pay</h3>
+            <div className="px-2 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded uppercase tracking-wider">
+                BSC Testnet
+            </div>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-sm mb-6">

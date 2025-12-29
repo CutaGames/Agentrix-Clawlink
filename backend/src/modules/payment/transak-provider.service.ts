@@ -117,11 +117,17 @@ export class TransakProviderService implements IProvider {
   /**
    * 获取报价
    * Transak 通过 API 获取实时报价
+   * 
+   * @param amount 金额
+   * @param fromCurrency 源货币 (法币)
+   * @param toCurrency 目标货币 (加密货币)
+   * @param isSourceAmount 是否为源金额 (true: amount 是法币, false: amount 是加密货币)
    */
   async getQuote(
     amount: number,
     fromCurrency: string,
     toCurrency: string,
+    isSourceAmount: boolean = false, // 默认 false，因为我们通常知道要收多少加密货币
   ): Promise<ProviderQuote> {
     let normalizedAmount = amount;
     let normalizedFromCurrency = fromCurrency;
@@ -131,34 +137,35 @@ export class TransakProviderService implements IProvider {
     if (unsupportedCurrencies.includes(fromCurrency.toUpperCase())) {
       try {
         const rate = await this.exchangeRateService.getExchangeRate(fromCurrency, 'USD');
-        normalizedAmount = amount * rate;
+        // 如果 isSourceAmount 为 true，转换法币金额
+        if (isSourceAmount) {
+          normalizedAmount = amount * rate;
+        }
         normalizedFromCurrency = 'USD';
-        this.logger.log(`Transak: Converted ${fromCurrency} ${amount} to USD ${normalizedAmount.toFixed(2)} for quote`);
+        this.logger.log(`Transak: Using USD for quote (original: ${fromCurrency})`);
       } catch (error) {
         this.logger.warn(`Transak: Failed to convert ${fromCurrency} to USD for quote: ${error.message}`);
       }
     }
 
     this.logger.log(
-      `Transak: Get quote for ${normalizedAmount} ${normalizedFromCurrency} -> ${toCurrency} (original: ${amount} ${fromCurrency})`,
+      `Transak: Get quote for ${normalizedAmount} ${isSourceAmount ? normalizedFromCurrency : toCurrency} -> ${isSourceAmount ? toCurrency : normalizedFromCurrency}`,
     );
 
     try {
-      // Transak 提供价格 API
-      // 参考文档: https://docs.transak.com/docs/get-quote-price
-      // 注意：Transak API 对参数非常敏感
-      // 1. cryptoCurrency 应该是币种符号 (如 ETH, USDT)
-      // 2. network 应该是网络名称 (如 ethereum, bsc, polygon)
-      // 3. isSourceAmount: true 表示 fiatAmount 是输入金额
-      
       const params: any = {
         fiatCurrency: normalizedFromCurrency,
         cryptoCurrency: toCurrency,
-        fiatAmount: normalizedAmount,
-        isSourceAmount: true,
         partnerApiKey: this.apiKey,
         isBuyOrSell: 'BUY',
+        isSourceAmount: isSourceAmount,
       };
+
+      if (isSourceAmount) {
+        params.fiatAmount = normalizedAmount;
+      } else {
+        params.cryptoAmount = normalizedAmount;
+      }
 
       // 根据币种设置默认网络
       if (toCurrency.toUpperCase() === 'USDT' || toCurrency.toUpperCase() === 'USDC') {
@@ -186,15 +193,34 @@ export class TransakProviderService implements IProvider {
       });
 
       const data = response.data?.response || response.data;
+      
+      // 如果 isSourceAmount 为 false，我们关心的是 fiatAmount (用户需要支付多少法币)
+      // 如果 isSourceAmount 为 true，我们关心的是 cryptoAmount (用户能得到多少加密货币)
       const cryptoAmount = parseFloat(data.cryptoAmount || data.amount || '0');
-      const fee = parseFloat(data.totalFee || data.fee || '0');
-      const rate = cryptoAmount / amount;
+      const fiatAmount = parseFloat(data.fiatAmount || '0');
+      let fee = parseFloat(data.totalFee || data.fee || '0');
+      
+      // 如果我们之前为了获取报价将 CNY 转换成了 USD，现在需要将返回的 USD fee 转换回 CNY
+      if (fromCurrency.toUpperCase() === 'CNY' && normalizedFromCurrency === 'USD') {
+        try {
+          const backRate = await this.exchangeRateService.getExchangeRate('USD', 'CNY');
+          fee = fee * backRate;
+          this.logger.log(`Transak: Converted fee back to CNY: ${fee.toFixed(2)} (rate: ${backRate})`);
+        } catch (error) {
+          this.logger.warn(`Transak: Failed to convert fee back to CNY: ${error.message}`);
+          // 如果转换失败，使用近似汇率 7.1
+          fee = fee * 7.1;
+        }
+      }
+
+      // 汇率计算：1 单位法币兑换多少加密货币
+      const rate = isSourceAmount ? (cryptoAmount / amount) : (amount / fiatAmount);
 
       return {
         providerId: this.id,
         rate,
         fee,
-        estimatedAmount: cryptoAmount,
+        estimatedAmount: isSourceAmount ? cryptoAmount : fiatAmount,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5分钟有效期
       };
     } catch (error: any) {
@@ -368,30 +394,40 @@ export class TransakProviderService implements IProvider {
     }
 
     try {
-      // 注意：获取 Token 的端点通常在 api-gateway.transak.com
-      // V3.0: 使用 /api/v2/auth/token 端点
-      const tokenUrl = this.environment === 'PRODUCTION' 
-        ? 'https://api-gateway.transak.com/api/v2/auth/token'
-        : 'https://api-gateway-stg.transak.com/api/v2/auth/token';
+      // 注意：获取 Token 的端点
+      // V3.0: 使用 /auth/v2/token 端点
+      // 尝试多个可能的端点以应对不同环境的域名差异
+      const tokenUrls = this.environment === 'PRODUCTION' 
+        ? ['https://api.transak.com/auth/v2/token']
+        : [
+            'https://api-stg.transak.com/auth/v2/token',
+            'https://api-staging.transak.com/auth/v2/token'
+          ];
       
-      this.logger.log(`Transak: Fetching access token from ${tokenUrl}`);
-      
-      const response = await axios.post(tokenUrl, {
-        apiKey: this.apiKey,
-        apiSecret: this.apiSecret,
-      });
+      let lastError = null;
+      for (const tokenUrl of tokenUrls) {
+        try {
+          this.logger.log(`Transak: Fetching access token from ${tokenUrl}`);
+          const response = await axios.post(tokenUrl, {
+            apiKey: this.apiKey,
+            apiSecret: this.apiSecret,
+          }, { timeout: 10000 });
 
-      const data = response.data?.data || response.data;
-      if (data?.accessToken) {
-        this.cachedAccessToken = data.accessToken;
-        // Token 通常有效期较长，我们缓存 23 小时
-        this.cachedAccessTokenExpiresAt = Date.now() + 23 * 60 * 60 * 1000;
-        this.logger.log('Transak: Access token fetched and cached successfully');
-        return this.cachedAccessToken;
-      } else {
-        this.logger.warn('Transak: Token API response missing accessToken, falling back to API Key');
-        return this.apiKey;
+          const data = response.data?.data || response.data;
+          if (data?.accessToken) {
+            this.cachedAccessToken = data.accessToken;
+            this.cachedAccessTokenExpiresAt = Date.now() + 23 * 60 * 60 * 1000;
+            this.logger.log(`Transak: Access token fetched successfully from ${tokenUrl}`);
+            return this.cachedAccessToken;
+          }
+        } catch (e: any) {
+          lastError = e;
+          this.logger.warn(`Transak: Failed to fetch token from ${tokenUrl}: ${e.message}`);
+        }
       }
+
+      this.logger.warn('Transak: All token API endpoints failed, falling back to API Key');
+      return this.apiKey;
     } catch (error: any) {
       const axiosError = error as AxiosError;
       this.logger.error(
@@ -460,8 +496,10 @@ export class TransakProviderService implements IProvider {
       // 构建 widgetParams（这些参数会在 Session 创建时锁定）
       const widgetParams: Record<string, any> = {
         referrerDomain: resolvedReferrerDomain,
+        // 使用 fiatAmount 锁定用户需要支付的法币金额（包含手续费）
+        // 同时设置 cryptoAmount 确保合约收到指定数量的代币
         fiatAmount: amount.toString(),
-        defaultFiatAmount: amount.toString(),
+        cryptoAmount: params.amount.toString(), // 原始商品金额（合约应收到的金额）
         fiatCurrency: fiatCurrency,
         cryptoCurrencyCode: params.cryptoCurrency,
         ...(params.network && { network: params.network }),
@@ -491,6 +529,10 @@ export class TransakProviderService implements IProvider {
       // V3.0: 使用 /auth/public/v2/session 端点
       const sessionUrl = `${this.baseUrl}/auth/public/v2/session`;
       const accessToken = await this.getAccessToken();
+      
+      // 判断是使用 access-token 还是 api-key
+      const isRealToken = accessToken && accessToken.length > 64; // JWT token 通常很长
+      const authHeader = isRealToken ? { 'access-token': accessToken } : { 'api-key': this.apiKey };
 
       this.logger.debug(`Transak: Calling Create Session API: ${sessionUrl}`);
       this.logger.debug(`Transak: Request payload:`, JSON.stringify({ widgetParams }, null, 2));
@@ -501,7 +543,7 @@ export class TransakProviderService implements IProvider {
         {
           headers: {
             accept: 'application/json',
-            'access-token': accessToken,
+            ...authHeader,
             'content-type': 'application/json',
           },
           timeout: 30000,

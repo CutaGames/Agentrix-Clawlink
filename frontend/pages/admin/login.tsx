@@ -9,9 +9,10 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 如果已经有 admin_token，直接跳转到后台首页
+  // Redirect if already logged in
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    
     const token = localStorage.getItem('admin_token');
     if (token) {
       router.replace('/admin');
@@ -24,7 +25,7 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3002/api/admin/auth/login', {
+      const response = await fetch('https://api.agentrix.top/api/admin/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -35,27 +36,27 @@ export default function AdminLoginPage() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        const message =
-          data?.message ||
-          (response.status === 401 ? '用户名或密码错误' : `登录失败：${response.status}`);
+        const message = 
+          data?.message || 
+          (response.status === 401 ? 'Invalid username or password' : `Login failed (Status: ${response.status})`);
         setError(message);
         return;
       }
 
       if (!data.access_token) {
-        setError('登录响应异常，未返回令牌');
+        setError('Login successful but no access token received');
         return;
       }
 
-      // 保存 token 并跳转到后台首页
+      // Save token and redirect
       if (typeof window !== 'undefined') {
         localStorage.setItem('admin_token', data.access_token as string);
       }
-
+      
       router.replace('/admin');
     } catch (err: any) {
       console.error('Admin login failed:', err);
-      setError(err?.message || '网络异常，请稍后重试');
+      setError(err?.message || 'Connection failed, please check your network or API URL');
     } finally {
       setLoading(false);
     }
@@ -64,18 +65,18 @@ export default function AdminLoginPage() {
   return (
     <>
       <Head>
-        <title>管理员登录 - Agentrix 管理后台</title>
+        <title>Admin Login - Agentrix</title>
       </Head>
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-indigo-50 p-8">
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Agentrix 管理后台</h1>
-            <p className="mt-2 text-gray-500 text-sm">仅限平台管理员访问</p>
+            <h1 className="text-2xl font-bold text-gray-900">Agentrix Admin</h1>
+            <p className="mt-2 text-gray-500 text-sm">Please enter your credentials to continue</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
               <input
                 type="text"
                 value={username}
@@ -87,13 +88,13 @@ export default function AdminLoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                placeholder="请输入密码"
+                placeholder="Enter password"
                 autoComplete="current-password"
               />
             </div>
@@ -109,29 +110,28 @@ export default function AdminLoginPage() {
               disabled={loading}
               className="w-full flex justify-center items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? '登录中…' : '登录'}
+              {loading ? 'Logging in...' : 'Login Now'}
             </button>
           </form>
 
           <div className="mt-6 text-xs text-gray-400 text-center space-y-1">
-            <p>默认开发账号：用户名 admin / 密码 admin123456</p>
-            <p>建议登录后尽快在“系统管理 - 管理员管理”中修改密码</p>
+            <p>Default: admin / admin123456</p>
           </div>
 
           <div className="mt-6 flex justify-between text-xs text-gray-500">
-            <button
+            <button 
               type="button"
               onClick={() => router.push('/')}
               className="hover:text-indigo-600"
             >
-              ← 返回官网首页
+              ← Back to Home
             </button>
             <button
               type="button"
               onClick={() => router.push('/admin')}
               className="hover:text-indigo-600"
             >
-              直接进入后台首页
+              Admin Dashboard →
             </button>
           </div>
         </div>
@@ -139,5 +139,3 @@ export default function AdminLoginPage() {
     </>
   );
 }
-
-
