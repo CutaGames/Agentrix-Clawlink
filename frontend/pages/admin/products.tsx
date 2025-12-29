@@ -189,10 +189,10 @@ export default function AdminProducts() {
   return (
     <>
       <Head>
-        <title>鍟嗗搧绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
+        <title>Product Management - Agentrix Admin</title>
       </Head>
-      <AdminLayout title="鍟嗗搧绠＄悊" description="绠＄悊骞冲彴鎵€鏈夊晢鍝?>
-        {/* 缁熻鍗＄墖 */}
+      <AdminLayout title="Product Management" description="Manage all products on the platform">
+        {/* Statistics Cards */}
         {stats && (
           <div className="grid grid-cols-4 gap-4 mb-6">
             <div className="bg-white border rounded-lg p-4">

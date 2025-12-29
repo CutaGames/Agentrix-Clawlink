@@ -122,7 +122,7 @@ export default function AdminSystem() {
   return (
     <>
       <Head>
-        <title>绯荤粺绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
+        <title>System Management - Agentrix Admin</title>
       </Head>
       <div className="min-h-screen bg-gray-50">
         <div className="ml-64 p-8">

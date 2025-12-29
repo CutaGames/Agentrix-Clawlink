@@ -87,7 +87,7 @@ export default function AdminTickets() {
   return (
     <>
       <Head>
-        <title>宸ュ崟绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
+        <title>Ticket Management - Agentrix Admin</title>
       </Head>
       <div className="min-h-screen bg-gray-50">
         <div className="ml-64 p-8">

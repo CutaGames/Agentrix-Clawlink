@@ -71,7 +71,7 @@ export default function AdminProductReview() {
       setError(null);
       const token = getToken();
       if (!token) {
-        setError('鏈櫥褰曪紝璇峰厛鐧诲綍绠＄悊鍚庡彴');
+        setError('Not logged in, please login to admin panel');
         return;
       }
 
@@ -207,10 +207,10 @@ export default function AdminProductReview() {
   return (
     <>
       <Head>
-        <title>鍟嗗搧瀹℃牳 - Agentrix 绠＄悊鍚庡彴</title>
+        <title>Product Review - Agentrix Admin</title>
       </Head>
-      <AdminLayout title="鍟嗗搧瀹℃牳" description="瀹℃牳鍟嗘埛鎻愪氦鐨勫晢鍝?>
-        {/* 缁熻鍗＄墖 */}
+      <AdminLayout title="Product Review" description="Review products submitted by merchants">
+        {/* Statistics Cards */}
         {stats && (
           <div className="grid grid-cols-4 gap-4 mb-6">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">

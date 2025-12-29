@@ -40,7 +40,7 @@ export default function AdminMerchants() {
       setError(null);
       const token = localStorage.getItem('admin_token');
       if (!token) {
-        setError('鏈櫥褰曪紝璇峰厛鐧诲綍绠＄悊鍚庡彴');
+        setError('Not logged in, please login to admin panel');
         setLoading(false);
         return;
       }
@@ -78,9 +78,9 @@ export default function AdminMerchants() {
   return (
     <>
       <Head>
-        <title>鍟嗘埛绠＄悊 - Agentrix 绠＄悊鍚庡彴</title>
+        <title>Merchant Management - Agentrix Admin</title>
       </Head>
-      <AdminLayout title="鍟嗘埛绠＄悊" description="绠＄悊骞冲彴鍟嗘埛">
+      <AdminLayout title="Merchant Management" description="Manage platform merchants">
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
