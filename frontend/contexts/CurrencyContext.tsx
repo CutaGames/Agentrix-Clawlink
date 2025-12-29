@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 
-export type SupportedCurrency = 'USD' | 'CNY' | 'EUR' | 'SGD' | 'JPY' | 'GBP'
+export type SupportedCurrency = 'USD' | 'CNY' | 'EUR' | 'SGD' | 'JPY' | 'GBP' | 'INR'
 
 interface CurrencyMeta {
   code: SupportedCurrency
@@ -24,6 +24,7 @@ const currencyMetaList: CurrencyMeta[] = [
   { code: 'SGD', label: 'SGD · Singapore Dollar', symbol: 'S$', locale: 'en-SG', usdPerUnit: 0.74 },
   { code: 'JPY', label: 'JPY · 日元', symbol: '¥', locale: 'ja-JP', usdPerUnit: 0.0068 },
   { code: 'GBP', label: 'GBP · Pound Sterling', symbol: '£', locale: 'en-GB', usdPerUnit: 1.27 },
+  { code: 'INR', label: 'INR · भारतीय रुपया', symbol: '₹', locale: 'en-IN', usdPerUnit: 0.012 },
 ]
 
 const metaMap = currencyMetaList.reduce<Record<SupportedCurrency, CurrencyMeta>>((acc, meta) => {

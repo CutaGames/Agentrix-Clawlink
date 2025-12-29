@@ -140,6 +140,8 @@ const formatFiatSymbol = (currency?: string) => {
       return '€';
     case 'GBP':
       return '£';
+    case 'INR':
+      return '₹'; // 印度卢比符号
     case 'USD':
     default:
       return '$';
@@ -176,7 +178,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const providerModalAutoOpened = useRef(false);
 
   const normalizedCurrency = (order.currency || 'USDC').toUpperCase();
-  const isFiatOrderCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(normalizedCurrency);
+  // 支持的法币列表（包括 INR 印度卢比）
+  const isFiatOrderCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(normalizedCurrency);
   const merchantConfig = order.metadata?.merchantPaymentConfig || 'both';
   const merchantAllowsCrypto = merchantConfig === 'both' || merchantConfig === 'crypto_only';
   const providerOptions = preflightResult?.providerOptions || [];
@@ -504,7 +507,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     let lockId = exchangeRateLockId;
     
     const currency = order.currency || 'USDC';
-    const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(currency.toUpperCase());
+    const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(currency.toUpperCase());
     
     // For fiat currencies, we MUST convert to crypto (USDT) first
     if (isFiatCurrency) {
@@ -663,7 +666,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
         let paymentAmount = order.amount;
         let paymentCurrency = order.currency || 'USDC';
-        const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(paymentCurrency.toUpperCase());
+        const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(paymentCurrency.toUpperCase());
 
         if (isFiatCurrency) {
              // Exchange rate logic similar to QuickPay
@@ -729,7 +732,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     setError(null);
     try {
       // 如果是法币，尝试使用转换后的加密货币金额
-      const isFiat = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes((order.currency || 'USDC').toUpperCase());
+      const isFiat = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes((order.currency || 'USDC').toUpperCase());
       // V3.0: 统一使用 USD 作为显示货币，避免后端验证 USDT 失败
       const finalAmount = isFiat 
         ? (cryptoAmount || (order.amount * (normalizedCurrency === 'CNY' ? 0.14 : 1.0))) 

@@ -62,6 +62,8 @@ const formatFiatSymbol = (currency?: string) => {
       return '€';
     case 'GBP':
       return '£';
+    case 'INR':
+      return '₹'; // 印度卢比符号
     case 'USD':
     default:
       return '$';

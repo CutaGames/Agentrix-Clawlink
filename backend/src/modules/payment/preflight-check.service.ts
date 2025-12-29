@@ -142,7 +142,8 @@ export class PreflightCheckService {
     try {
       // 0. 货币转换：如果是法币，转换为 USDC
       let amountInUSDC = amount;
-      const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(currency.toUpperCase());
+      // 支持的法币列表（包括新增的 INR 印度卢比）
+      const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(currency.toUpperCase());
       
       if (isFiatCurrency) {
         // 法币需要转换为 USDC 才能检查 QuickPay 额度
@@ -152,13 +153,14 @@ export class PreflightCheckService {
           this.logger.log(`货币转换: ${amount} ${currency} = ${amountInUSDC} USDC (汇率: ${rate})`);
         } catch (error) {
           this.logger.warn(`汇率转换失败: ${error.message}，使用默认汇率`);
-          // 使用默认汇率
+          // 使用默认汇率（INR 约为 0.012，即 1 INR ≈ 0.012 USD）
           const defaultRates: Record<string, number> = {
             'CNY': 0.142, // 1 CNY = 0.142 USDC
             'USD': 1.0,
             'EUR': 1.08,
             'GBP': 1.27,
             'JPY': 0.0067,
+            'INR': 0.012, // 1 INR ≈ 0.012 USD
           };
           amountInUSDC = amount * (defaultRates[currency.toUpperCase()] || 1.0);
         }
@@ -720,7 +722,7 @@ export class PreflightCheckService {
     } catch (error) {
       this.logger.error(`Pre-flight check failed: ${error.message}`);
       // 降级到默认路由
-      const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(currency.toUpperCase());
+      const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(currency.toUpperCase());
       let providerOptions: ProviderOption[] | undefined;
       
       if (isFiatCurrency) {

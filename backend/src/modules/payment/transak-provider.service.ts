@@ -132,8 +132,8 @@ export class TransakProviderService implements IProvider {
     let normalizedAmount = amount;
     let normalizedFromCurrency = fromCurrency;
 
-    // 如果是 CNY 或 HKD，Transak 可能不支持，转换为 USD 获取报价
-    const unsupportedCurrencies = ['CNY', 'HKD'];
+    // 如果是 CNY、HKD 或 INR，Transak 可能不支持或支持不好，转换为 USD 获取报价
+    const unsupportedCurrencies = ['CNY', 'HKD', 'INR'];
     if (unsupportedCurrencies.includes(fromCurrency.toUpperCase())) {
       try {
         const rate = await this.exchangeRateService.getExchangeRate(fromCurrency, 'USD');
@@ -463,8 +463,8 @@ export class TransakProviderService implements IProvider {
     let amount = params.amount;
     let fiatCurrency = params.fiatCurrency;
 
-    // 如果是 CNY 或 HKD，Transak 不支持锁定金额，需要转换为 USD
-    const unsupportedCurrencies = ['CNY', 'HKD'];
+    // 如果是 CNY、HKD 或 INR，Transak 不支持锁定金额，需要转换为 USD
+    const unsupportedCurrencies = ['CNY', 'HKD', 'INR'];
     if (unsupportedCurrencies.includes(fiatCurrency.toUpperCase())) {
       try {
         const rate = await this.exchangeRateService.getExchangeRate(fiatCurrency, 'USD');
@@ -496,11 +496,11 @@ export class TransakProviderService implements IProvider {
       // 构建 widgetParams（这些参数会在 Session 创建时锁定）
       const widgetParams: Record<string, any> = {
         referrerDomain: resolvedReferrerDomain,
-        // 使用 fiatAmount 锁定用户需要支付的法币金额（包含手续费）
-        // 同时设置 cryptoAmount 确保合约收到指定数量的代币
-        fiatAmount: amount.toString(),
-        cryptoAmount: params.amount.toString(), // 原始商品金额（合约应收到的金额）
-        fiatCurrency: fiatCurrency,
+        // ✅ 核心修复：只使用 cryptoAmount 锁定合约需要收到的代币数量
+        // fee 由 Transak 根据用户选择的支付通道动态计算
+        // 用户实际支付金额 = cryptoAmount + Transak动态fee
+        cryptoAmount: params.amount.toString(), // 商品价格，合约收到的金额
+        fiatCurrency: fiatCurrency, // 用户选择的支付法币
         cryptoCurrencyCode: params.cryptoCurrency,
         ...(params.network && { network: params.network }),
         ...(params.walletAddress && { walletAddress: params.walletAddress }),

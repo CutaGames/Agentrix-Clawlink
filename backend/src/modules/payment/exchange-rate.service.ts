@@ -234,7 +234,7 @@ export class ExchangeRateService {
         // 例如：CNY -> USDT
         // CNY/USDT 不存在，但可以通过 USD 中转
         // 如果 from 是法币，需要特殊处理
-        if (['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(from)) {
+        if (['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(from)) {
           // 法币转加密货币：需要通过USD中转
           // 1 CNY = 0.139 USD, 1 USDT = 1 USD
           // 汇率 = 1 / 0.139 = 7.19 (1 CNY = 0.139 USDT)

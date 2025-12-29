@@ -252,7 +252,7 @@ export class PaymentService {
           actualPaymentMethod = routing.recommendedMethod;
         } catch (error) {
           // 如果路由选择失败，根据货币类型降级
-          const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY'].includes(dto.currency.toUpperCase());
+          const isFiatCurrency = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes(dto.currency.toUpperCase());
           if (isFiatCurrency) {
             actualPaymentMethod = PaymentMethod.TRANSAK; // 法币走 Transak
           } else {
