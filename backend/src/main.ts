@@ -68,7 +68,10 @@ async function bootstrap() {
   const { LoggingInterceptor } = await import('./common/interceptors/logging.interceptor');
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  app.setGlobalPrefix('api');
+  // 设置全局前缀，但排除 .well-known 路径（OAuth/OIDC 标准要求根路径）
+  app.setGlobalPrefix('api', {
+    exclude: ['.well-known/(.*)'],
+  });
 
   const config = new DocumentBuilder()
     .setTitle('Agentrix API')
