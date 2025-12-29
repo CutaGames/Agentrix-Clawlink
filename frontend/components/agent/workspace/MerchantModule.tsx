@@ -2854,6 +2854,7 @@ function ProductEditorModal({
               >
                 <option value="USD">USD</option>
                 <option value="CNY">CNY</option>
+                <option value="INR">INR</option>
                 <option value="HKD">HKD</option>
                 <option value="EUR">EUR</option>
                 <option value="GBP">GBP</option>
