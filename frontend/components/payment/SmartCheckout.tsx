@@ -1010,38 +1010,52 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         defaultChannels.push({ id: 'local_bank_transfer', name: 'Local Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/local_bank_transfer.svg' });
     }
 
+    // ID 映射：前端 channel ID -> 后端 providerOption ID
+    const channelIdMapping: Record<string, string[]> = {
+        'google_pay': ['google', 'google_pay'],
+        'apple_pay': ['apple', 'apple_pay'],
+        'credit_debit_card': ['card', 'credit_debit_card', 'debit_card', 'credit_card'],
+        'sepa_bank_transfer': ['sepa', 'sepa_bank_transfer'],
+        'gbp_bank_transfer': ['gbp', 'gbp_bank_transfer', 'faster_payments'],
+        'usa_bank_transfer': ['usa', 'usa_bank_transfer', 'ach', 'fedwire'],
+        'cny_bank_transfer': ['cny', 'cny_bank_transfer', 'local'],
+        'alipay': ['alipay'],
+        'local_bank_transfer': ['local', 'local_bank_transfer'],
+    };
+
     // 合并 API 数据获取费用和限额
     const channelsWithData = defaultChannels.map(channel => {
-        // 查找匹配的 API 选项
+        // 查找匹配的 API 选项（使用 ID 映射）
+        const possibleIds = channelIdMapping[channel.id] || [channel.id];
         const apiOption = preflightResult?.providerOptions?.find(opt =>
-            opt.id === channel.id || opt.paymentMethod === channel.id
-        ) || preflightResult?.providerOptions?.[0]; // 回退到通用 transak 选项
+            possibleIds.includes(opt.id) || possibleIds.includes(opt.paymentMethod || '')
+        ) || preflightResult?.providerOptions?.[0]; // 回退到通用选项
 
-        // 决定显示金额和货币
-        // V3.0: 统一使用订单原始货币显示，避免汇率转换带来的困惑
-        // 只有在真正进入 Transak 支付流程时，才根据需要进行转换
-        const displayAmount = order.amount;
-        const displayCurrency = order.currency || 'USD';
+        // 使用 API 返回的价格和货币（如果有），否则使用订单原始值
+        const displayAmount = apiOption?.price ?? order.amount;
+        const displayCurrency = apiOption?.currency || order.currency || 'USD';
 
-        // 估算费用（如果 API 未返回）
+        // 使用 API 返回的费用（如果有），否则估算
         let estimatedFee = apiOption?.fee;
-        if (estimatedFee === undefined) {
+        if (estimatedFee === undefined || estimatedFee === 0) {
             const isCard = channel.id.includes('card') || channel.id.includes('pay');
             const rate = isCard ? 0.035 : 0.01;
-            estimatedFee = displayAmount * rate;
+            estimatedFee = order.amount * rate;
         }
 
-        // 估算最低金额
+        // 使用 API 返回的最低金额（如果有），否则使用默认值
         const minAmount = apiOption?.minAmount || (channel.id.includes('transfer') ? 20 : 10);
 
         return {
             ...channel,
             fee: estimatedFee,
+            providerFee: apiOption?.providerFee,
+            agentrixFee: apiOption?.agentrixFee,
             minAmount: minAmount,
             estimatedTime: apiOption?.estimatedTime || (channel.id.includes('transfer') ? '1-3 Days' : 'Instant'),
             currency: displayCurrency,
-            totalPrice: displayAmount + (estimatedFee || 0),
-            available: displayAmount >= minAmount,
+            totalPrice: displayAmount,
+            available: order.amount >= minAmount,
         };
     });
     

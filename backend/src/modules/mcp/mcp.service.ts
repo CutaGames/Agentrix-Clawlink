@@ -17,6 +17,9 @@ export class McpService implements OnModuleInit {
   private readonly logger = new Logger(McpService.name);
   private server: Server;
   private isInitialized = false;
+  
+  // 维护 sessionId -> transport 的映射
+  private transports: Map<string, any> = new Map();
 
   constructor(
     private readonly configService: ConfigService,
@@ -276,10 +279,45 @@ export class McpService implements OnModuleInit {
   }
 
   /**
-   * 连接 Transport
+   * 连接 Transport 并注册到 session 映射
    */
-  async connectTransport(transport: any) {
+  async connectTransport(transport: any): Promise<string> {
+    // 获取 transport 的 sessionId（如果有的话）
+    const sessionId = transport.sessionId || transport._sessionId || 
+      `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 存储到映射
+    this.transports.set(sessionId, transport);
+    this.logger.log(`Registered transport with sessionId: ${sessionId}`);
+    
+    // 监听连接关闭，清理映射
+    if (transport.onclose) {
+      const originalOnClose = transport.onclose;
+      transport.onclose = () => {
+        this.transports.delete(sessionId);
+        this.logger.log(`Removed transport for sessionId: ${sessionId}`);
+        originalOnClose?.();
+      };
+    }
+    
     await this.server.connect(transport);
+    return sessionId;
+  }
+
+  /**
+   * 根据 sessionId 获取 transport
+   */
+  getTransport(sessionId: string): any {
+    return this.transports.get(sessionId);
+  }
+
+  /**
+   * 获取最新的 transport（用于单用户兼容）
+   */
+  getLatestTransport(): any {
+    const entries = Array.from(this.transports.entries());
+    if (entries.length === 0) return null;
+    return entries[entries.length - 1][1];
   }
 
   /**

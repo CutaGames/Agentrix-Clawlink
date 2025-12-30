@@ -29,11 +29,10 @@ export class McpController {
     this.logger.log('New MCP SSE connection request');
     
     // 创建一个新的 SSE transport 并连接到 server
-    // 注意：ChatGPT 可能会尝试 POST 到这个同一个 URL
     const transport = new (SSEServerTransport as any)('/api/mcp/messages', res);
-    await this.mcpService.connectTransport(transport);
+    const sessionId = await this.mcpService.connectTransport(transport);
     
-    this.logger.log('MCP SSE connection established');
+    this.logger.log(`MCP SSE connection established with sessionId: ${sessionId}`);
   }
 
   /**
@@ -54,14 +53,30 @@ export class McpController {
     const sessionId = req.query.sessionId as string;
     this.logger.log(`Received MCP message for session: ${sessionId}`);
 
-    // 这里需要找到对应的 transport 实例来处理消息
-    // 暂时使用 service 中最后连接的 transport (仅适用于单用户测试)
-    const transport = (this.mcpService as any).server.transport;
+    // 根据 sessionId 查找对应的 transport
+    let transport = sessionId ? this.mcpService.getTransport(sessionId) : null;
+    
+    // 如果找不到，尝试使用最新的 transport（单用户兼容）
+    if (!transport) {
+      this.logger.warn(`No transport found for sessionId: ${sessionId}, trying latest transport`);
+      transport = this.mcpService.getLatestTransport();
+    }
+    
     if (transport && (transport as any).handlePostMessage) {
-      await (transport as any).handlePostMessage(req, res);
+      try {
+        await (transport as any).handlePostMessage(req, res);
+      } catch (error: any) {
+        this.logger.error(`Failed to handle MCP message: ${error.message}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: error.message });
+        }
+      }
     } else {
       this.logger.warn('No active MCP transport found for message');
-      res.status(404).send('No active MCP transport found');
+      res.status(400).json({ 
+        error: 'No active MCP transport found',
+        hint: 'Please establish SSE connection first by connecting to GET /api/mcp/sse'
+      });
     }
   }
 
