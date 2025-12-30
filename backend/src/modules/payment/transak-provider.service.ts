@@ -445,8 +445,8 @@ export class TransakProviderService implements IProvider {
    * 文档: https://docs.transak.com/docs/transak-integration-update-mandatory-migration-to-create-session-api
    */
   async createSession(params: {
-    amount: number;
-    fiatCurrency: string;
+    amount: number;  // 这是商品的 USDC 价格（合约要收到的金额）
+    fiatCurrency: string;  // 用户选择的支付法币
     cryptoCurrency: string;
     network?: string;
     walletAddress?: string;
@@ -460,29 +460,20 @@ export class TransakProviderService implements IProvider {
     isKYCRequired?: boolean;
     referrerDomain?: string;
   }): Promise<{ sessionId: string; widgetUrl: string }> {
-    let amount = params.amount;
+    // V3.1: cryptoAmount 始终是商品的 USDC 价格，不需要汇率转换
+    // Transak 会根据用户选择的支付方式自动计算需要支付的法币金额
+    const cryptoAmount = params.amount;
+    
+    // 对于 Transak 不支持的法币（CNY），转换为 USD
+    // 但这只影响 fiatCurrency 参数，不影响 cryptoAmount
     let fiatCurrency = params.fiatCurrency;
-
-    // 如果是 CNY、HKD 或 INR，Transak 不支持锁定金额，需要转换为 USD
-    const unsupportedCurrencies = ['CNY', 'HKD', 'INR'];
-    if (unsupportedCurrencies.includes(fiatCurrency.toUpperCase())) {
-      try {
-        const rate = await this.exchangeRateService.getExchangeRate(fiatCurrency, 'USD');
-        this.logger.log(`Transak: Fetched ${fiatCurrency}/USD rate: ${rate}`);
-        if (rate && rate !== 1.0) {
-          amount = amount * rate;
-          fiatCurrency = 'USD';
-          this.logger.log(`Transak: Converted ${params.fiatCurrency} ${params.amount} to USD ${amount.toFixed(2)} (rate: ${rate})`);
-        } else {
-          this.logger.warn(`Transak: Exchange rate is 1.0 or invalid, skipping conversion to avoid ${params.amount} ${fiatCurrency} -> ${params.amount} USD bug`);
-        }
-      } catch (error) {
-        this.logger.warn(`Transak: Failed to convert ${fiatCurrency} to USD, falling back to original currency: ${error.message}`);
-      }
+    if (fiatCurrency.toUpperCase() === 'CNY') {
+      this.logger.log(`Transak: CNY not supported, switching to USD for fiat selection`);
+      fiatCurrency = 'USD';
     }
 
     this.logger.log(
-      `Transak: Creating session for ${amount} ${fiatCurrency} -> ${params.cryptoCurrency}`,
+      `Transak: Creating session for ${cryptoAmount} ${params.cryptoCurrency} (user pays in ${fiatCurrency})`,
     );
     this.logger.debug(`Transak: Environment=${this.environment}, BaseUrl=${this.baseUrl}`);
 

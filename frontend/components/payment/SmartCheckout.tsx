@@ -1646,6 +1646,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         <TransakWhiteLabelModal
           open={showProviderModal}
           order={order}
+          cryptoAmount={cryptoAmount ?? undefined}
           providerOption={selectedProviderOption || preflightResult?.providerOptions?.[0] || null}
           providerOptions={providerOptions}
           userProfile={userProfile}

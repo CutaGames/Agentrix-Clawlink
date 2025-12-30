@@ -43,6 +43,7 @@ interface ProviderQuoteOption {
 interface TransakWhiteLabelModalProps {
   open: boolean;
   order: OrderSummary;
+  cryptoAmount?: number; // USDC 金额（法币转换后的值）
   providerOption?: ProviderQuoteOption | null;
   providerOptions?: ProviderQuoteOption[];
   userProfile?: any;
@@ -79,6 +80,7 @@ const formatFiatAmount = (value: number, currency?: string) => {
 export function TransakWhiteLabelModal({
   open,
   order,
+  cryptoAmount: propCryptoAmount,
   providerOption,
   providerOptions,
   userProfile,
@@ -476,9 +478,9 @@ export function TransakWhiteLabelModal({
                 <TransakWidget
                   apiKey={process.env.NEXT_PUBLIC_TRANSAK_API_KEY || ''}
                   environment={(process.env.NEXT_PUBLIC_TRANSAK_ENVIRONMENT as 'STAGING' | 'PRODUCTION') || 'STAGING'}
-                  // V3.0: 始终使用原始订单金额作为目标加密货币金额
-                  // 这样 Transak 会计算用户需要支付多少法币，确保合约收到足额代币
-                  amount={order.amount}
+                  // V3.1: 使用 cryptoAmount (USDC 金额)，不是法币金额
+                  // 如果没有传入 cryptoAmount，对 USDC/USDT 订单使用原始金额，否则报错
+                  amount={propCryptoAmount ?? (order.currency === 'USDC' || order.currency === 'USDT' ? order.amount : undefined)}
                   fiatCurrency={activeOption?.currency || order.currency || 'USD'}
                   cryptoCurrency="USDC"
                   network="bsc"
