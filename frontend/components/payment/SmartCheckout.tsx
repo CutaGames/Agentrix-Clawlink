@@ -485,6 +485,13 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   };
 
   const handleQuickPay = async () => {
+    // 检查用户是否已登录 - QuickPay 需要用户身份
+    if (!userProfile) {
+        setError('请先登录后再进行 QuickPay 支付。');
+        setStatus('error');
+        return;
+    }
+
     const session = currentSession || activeSession;
     if (!session) throw new Error('No active session found.');
     
@@ -636,6 +643,13 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const handleWalletPay = async () => {
     if (!isConnected || !defaultWallet) {
         setShowWalletSelector(true);
+        return;
+    }
+
+    // 检查用户是否已登录 - 支付需要用户身份
+    if (!userProfile) {
+        setError('请先登录后再进行支付。点击右上角登录按钮登录您的账户。');
+        setStatus('error');
         return;
     }
 

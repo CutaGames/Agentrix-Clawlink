@@ -59,23 +59,18 @@ export class McpController {
         await (transport as any).handlePostMessage(req, res);
       } catch (error: any) {
         this.logger.error(`Failed to handle MCP message via POST /sse: ${error.message}`);
-        if (!res.headersSent) {
-          res.status(500).json({ error: error.message });
-        }
+        // 如果SSE连接失败，降级到无状态模式处理
+        return this.handleStatelessMessage(req, res);
       }
     } else {
-      // 没有活跃连接时，返回提示信息而不是 500 错误
-      this.logger.warn('No active MCP transport for POST /sse - SSE connection may not be established');
-      res.status(400).json({ 
-        error: 'SSE connection not established',
-        hint: 'Please establish SSE connection first by connecting to GET /api/mcp/sse',
-        message: 'No active Server-Sent Events connection found. The AI client should first establish a GET connection to /api/mcp/sse before sending POST messages.'
-      });
+      // 没有活跃连接时，使用无状态模式处理
+      return this.handleStatelessMessage(req, res);
     }
   }
 
   /**
    * 处理来自 AI 的消息
+   * 支持有状态（SSE）和无状态（直接HTTP）两种模式
    */
   @Post('messages')
   async messages(@Req() req: Request, @Res() res: Response) {
@@ -97,15 +92,122 @@ export class McpController {
         await (transport as any).handlePostMessage(req, res);
       } catch (error: any) {
         this.logger.error(`Failed to handle MCP message: ${error.message}`);
-        if (!res.headersSent) {
-          res.status(500).json({ error: error.message });
-        }
+        // SSE连接失效时，降级到无状态模式
+        return this.handleStatelessMessage(req, res);
       }
     } else {
-      this.logger.warn('No active MCP transport found for message');
-      res.status(400).json({ 
-        error: 'No active MCP transport found',
-        hint: 'Please establish SSE connection first by connecting to GET /api/mcp/sse'
+      // 没有活跃SSE连接时，使用无状态JSON-RPC模式处理
+      return this.handleStatelessMessage(req, res);
+    }
+  }
+
+  /**
+   * 无状态模式处理MCP JSON-RPC消息
+   * 当SSE连接不可用时，直接处理JSON-RPC请求
+   */
+  private async handleStatelessMessage(req: Request, res: Response) {
+    this.logger.log('Handling MCP message in stateless mode');
+    
+    try {
+      const body = req.body;
+      
+      // 检查请求体是否为空或无效
+      if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+        this.logger.warn('Empty or invalid request body received');
+        return res.status(400).json({
+          jsonrpc: '2.0',
+          error: { 
+            code: -32700, 
+            message: 'Parse error: Empty or invalid JSON body. Please send a valid JSON-RPC 2.0 request with jsonrpc, method, and id fields.' 
+          },
+          id: null
+        });
+      }
+
+      const { jsonrpc, method, params, id } = body;
+
+      // 验证JSON-RPC版本
+      if (jsonrpc !== '2.0') {
+        return res.status(400).json({
+          jsonrpc: '2.0',
+          error: { code: -32600, message: 'Invalid Request: jsonrpc must be "2.0"' },
+          id: id || null
+        });
+      }
+
+      this.logger.log(`Stateless MCP method: ${method}, id: ${id}`);
+
+      // 处理不同的MCP方法
+      let result: any;
+
+      switch (method) {
+        case 'initialize':
+          // MCP初始化请求
+          result = {
+            protocolVersion: '2024-11-05',
+            capabilities: this.mcpService.getCapabilities(),
+            serverInfo: {
+              name: 'agentrix-mcp-server',
+              version: '1.0.0'
+            }
+          };
+          break;
+
+        case 'tools/list':
+          // 列出可用工具
+          const tools = await this.mcpService.getToolsList();
+          result = { tools };
+          break;
+
+        case 'tools/call':
+          // 调用工具
+          if (!params?.name) {
+            return res.status(400).json({
+              jsonrpc: '2.0',
+              error: { code: -32602, message: 'Invalid params: tool name required' },
+              id
+            });
+          }
+          result = await this.mcpService.callTool(params.name, params.arguments || {});
+          break;
+
+        case 'resources/list':
+          result = { resources: [] };
+          break;
+
+        case 'prompts/list':
+          result = { prompts: [] };
+          break;
+
+        case 'ping':
+          result = {};
+          break;
+
+        case 'notifications/initialized':
+          // 客户端初始化完成通知，不需要响应
+          return res.status(202).send('Accepted');
+
+        default:
+          return res.status(400).json({
+            jsonrpc: '2.0',
+            error: { code: -32601, message: `Method not found: ${method}` },
+            id
+          });
+      }
+
+      // 返回JSON-RPC响应
+      return res.json({
+        jsonrpc: '2.0',
+        result,
+        id
+      });
+
+    } catch (error: any) {
+      this.logger.error(`Stateless MCP error: ${error.message}`);
+      return res.status(500).json({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: `Internal error: ${error.message}` },
+        id: req.body?.id || null
       });
     }
   }

@@ -6,13 +6,17 @@ import { productApi, ProductInfo } from '../../lib/api/product.api'
 import { orderApi } from '../../lib/api/order.api'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
+import { useUser } from '../../contexts/UserContext'
+import { LoginModal } from '../../components/auth/LoginModal'
 
 export default function CheckoutPage() {
   const router = useRouter()
   const { productId } = router.query
+  const { isAuthenticated } = useUser()
   const [product, setProduct] = useState<ProductInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [showCheckout, setShowCheckout] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
   const [order, setOrder] = useState<any>(null)
   const [orderError, setOrderError] = useState<string | null>(null)
 
@@ -40,6 +44,12 @@ export default function CheckoutPage() {
   const handleStartPayment = async () => {
     if (!product) return;
     
+    // 检查用户是否已登录
+    if (!isAuthenticated) {
+      setShowLogin(true);
+      return;
+    }
+    
     // 如果订单已创建，直接显示支付界面
     if (order) {
       setShowCheckout(true);
@@ -51,7 +61,13 @@ export default function CheckoutPage() {
       setOrderError(null);
       await createOrder(product);
     } catch (error: any) {
-      setOrderError(error.message || '创建订单失败');
+      // 检查是否是未授权错误
+      if (error.message?.includes('401') || error.message?.includes('请先登录') || error.message?.includes('Unauthorized')) {
+        setShowLogin(true);
+        setOrderError('请先登录后再进行支付');
+      } else {
+        setOrderError(error.message || '创建订单失败');
+      }
     }
   }
 
@@ -120,7 +136,16 @@ export default function CheckoutPage() {
   }
 
   const handleLoginClick = () => {
-    router.push('/auth/login')
+    setShowLogin(true)
+  }
+  
+  const handleLoginSuccess = () => {
+    setShowLogin(false)
+    setOrderError(null)
+    // 登录成功后自动重新尝试支付
+    if (product) {
+      handleStartPayment()
+    }
   }
 
   if (loading) {
@@ -281,6 +306,16 @@ export default function CheckoutPage() {
       </main>
 
       <Footer />
+      
+      {/* 登录弹窗 */}
+      {showLogin && (
+        <LoginModal
+          onClose={() => {
+            setShowLogin(false)
+            handleLoginSuccess()
+          }}
+        />
+      )}
     </>
   )
 }

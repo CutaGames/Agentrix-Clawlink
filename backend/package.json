@@ -34,6 +34,7 @@
     "migration:v3-only": "ts-node src/scripts/run-v3-migrations-only.ts",
     "seed:products": "ts-node src/scripts/seed-products.ts",
     "seed:marketplace": "ts-node src/scripts/seed-marketplace-products.ts",
+    "seed:templates": "ts-node src/database/seeds/agent-templates.seed.ts",
     "reindex:products": "ts-node src/scripts/reindex-products.ts",
     "backup:db": "ts-node src/scripts/backup-database.ts",
     "migrate:deactivate-non-unified": "ts-node src/scripts/deactivate-non-unified-products.ts",

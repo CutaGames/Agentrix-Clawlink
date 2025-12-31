@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Order, AssetType, OrderStatus } from '../../entities/order.entity';
@@ -13,8 +13,13 @@ export class OrderService {
   ) {}
 
   async createOrder(userId: string | undefined, dto: CreateOrderDto) {
+    // 如果未提供 userId，抛出未授权错误，提示用户登录
+    if (!userId) {
+      throw new UnauthorizedException('请先登录后再创建订单 / Please login before creating an order');
+    }
+    
     const order = this.orderRepository.create({
-      userId: userId || null,
+      userId,
       ...dto,
       assetType:
         dto.assetType ||

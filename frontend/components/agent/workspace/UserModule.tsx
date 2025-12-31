@@ -14,6 +14,7 @@ import { SessionManager } from '../../payment/SessionManager'
 import { AirdropDiscovery } from '../AirdropDiscovery'
 import { AutoEarnPanel } from '../AutoEarnPanel'
 import { AgentInsightsPanel } from '../AgentInsightsPanel'
+import { MyAgentsPanel } from '../MyAgentsPanel'
 import { LoginModal } from '../../auth/LoginModal'
 import { useToast } from '../../../contexts/ToastContext'
 import { 
@@ -43,7 +44,7 @@ import {
 
 interface UserModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'checklist' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile' | 'subscriptions'
+  initialTab?: 'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions'
 }
 
 /**
@@ -55,7 +56,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
   const { user, updateUser } = useUser()
   const { connectedWallets } = useWeb3()
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'checklist' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile' | 'subscriptions'>(initialTab || 'checklist')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions'>(initialTab || 'checklist')
 
 
   // 个人资料状态
@@ -278,11 +279,8 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
       loadWallets()
     } else if (activeTab === 'orders') {
       loadOrders()
-    } else if (activeTab === 'security') {
-      loadSessions()
-      loadAgentAuthorizations()
     }
-  }, [activeTab, loadPayments, loadWallets, loadOrders, loadSessions, loadAgentAuthorizations])
+  }, [activeTab, loadPayments, loadWallets, loadOrders])
 
   // 处理命令
   useEffect(() => {
@@ -317,14 +315,13 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
         <div className="flex space-x-1 min-w-max">
           {[
             { key: 'checklist' as const, label: { zh: '授权向导', en: 'Auth Guide' } },
+            { key: 'agents' as const, label: { zh: '我的Agent', en: 'My Agents' } },
             { key: 'payments' as const, label: { zh: '支付历史', en: 'Payment History' } },
             { key: 'subscriptions' as const, label: { zh: '我的订阅', en: 'Subscriptions' } },
             { key: 'wallets' as const, label: { zh: '钱包管理', en: 'Wallet Management' } },
             { key: 'orders' as const, label: { zh: '订单跟踪', en: 'Order Tracking' } },
-            { key: 'policies' as const, label: { zh: '策略授权', en: 'Policies' } },
             { key: 'airdrops' as const, label: { zh: '空投发现', en: 'Airdrops' } },
             { key: 'autoEarn' as const, label: { zh: '自动赚钱', en: 'Auto-Earn' } },
-            { key: 'security' as const, label: { zh: '安全中心', en: 'Security' } },
             { key: 'kyc' as const, label: { zh: 'KYC认证', en: 'KYC Verification' } },
             { key: 'profile' as const, label: { zh: '个人资料', en: 'Profile' } },
           ].map((tab) => (
@@ -365,11 +362,11 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
 
             <div className="grid gap-4">
               {[
-                { title: '选择 Agent/Skill', desc: '在 Marketplace 或个人库中挑选需要授权的 Agent', status: 'in_progress', tab: 'marketplace' },
-                { title: '设置授权 Mandate', desc: '配置单次/每日限额、有效期及授权范围 (Policies)', status: 'pending', tab: 'policies' },
-                { title: '模拟一次购买', desc: '在沙盒环境验证 Agent 触发的自动支付流', status: 'pending', tab: 'security' },
+                { title: '选择 Agent/Skill', desc: '在 Marketplace 或个人库中挑选需要授权的 Agent', status: 'in_progress', tab: 'agents' },
+                { title: '设置授权 Mandate', desc: '配置单次/每日限额、有效期及授权范围', status: 'pending', tab: 'agents' },
+                { title: '模拟一次购买', desc: '在沙盒环境验证 Agent 触发的自动支付流', status: 'pending', tab: 'agents' },
                 { title: '审计 Receipt', desc: '在 Receipts 中心验证 AI 行为的审计解释回执', status: 'pending', tab: 'payments' },
-                { title: '管理/撤销授权', desc: '随时调整权限或一键终止 Agent 的 Mandate', status: 'pending', tab: 'security' }
+                { title: '管理/撤销授权', desc: '随时调整权限或一键终止 Agent 的 Mandate', status: 'pending', tab: 'agents' }
               ].map((step, i) => (
                 <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-5 flex items-center justify-between hover:bg-white/10 transition-all">
                   <div className="flex items-center gap-4">
@@ -423,6 +420,11 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* 我的 Agent 管理 */}
+        {activeTab === 'agents' && (
+          <MyAgentsPanel />
         )}
 
         {activeTab === 'payments' && (
@@ -673,228 +675,6 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
           </div>
         )}
 
-        {activeTab === 'security' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{t({ zh: '安全中心 & 授权管理', en: 'Security & Authorizations' })}</h3>
-              <button 
-                onClick={() => {
-                  loadSessions()
-                  loadAgentAuthorizations()
-                }}
-                className="p-2 hover:bg-white/10 rounded-lg text-slate-400 transition-colors"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Agent Authorizations (ERC8004/MPC) */}
-              <div className="lg:col-span-2 space-y-6">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <Cpu className="w-5 h-5 text-cyan-400" />
-                      <h4 className="font-semibold">{t({ zh: 'Agent 商业授权 (ERC8004/MPC)', en: 'Agent Business Authorizations' })}</h4>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => setShowSessionManager(true)}
-                        className="px-3 py-1 bg-cyan-500 text-slate-950 text-[10px] font-bold rounded-full hover:bg-cyan-400 transition-colors uppercase tracking-wider"
-                      >
-                        {t({ zh: '新增授权', en: 'New Auth' })}
-                      </button>
-                      <span className="text-[10px] px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 font-mono uppercase tracking-wider">Production Ready</span>
-                    </div>
-                  </div>
-
-                  {loading ? (
-                    <div className="flex justify-center py-12">
-                      <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                  ) : agentAuthorizations.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500 border border-dashed border-white/10 rounded-xl">
-                      <div className="mb-4 flex justify-center">
-                        <Shield className="w-12 h-12 opacity-20" />
-                      </div>
-                      <p>{t({ zh: '暂无活跃的 Agent 商业授权', en: 'No active Agent business authorizations' })}</p>
-                      <p className="text-xs mt-2 opacity-50">{t({ zh: '在 Agent 工作台中与 Agent 交互即可开启授权', en: 'Interact with Agents in the workspace to start authorization' })}</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {agentAuthorizations.map((auth) => (
-                        <div key={auth.id} className="bg-slate-900/50 border border-white/5 rounded-xl p-5 hover:border-cyan-500/30 transition-all group">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400">
-                                <Cpu size={20} />
-                              </div>
-                              <div>
-                                <h5 className="font-bold text-sm">{auth.agentName || 'Unknown Agent'}</h5>
-                                <p className="text-[10px] text-slate-500 font-mono">{auth.agentId.substring(0, 12)}...</p>
-                              </div>
-                            </div>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                              auth.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400'
-                            }`}>
-                              {auth.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-
-                          <div className="space-y-3 mb-4">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-slate-500">{t({ zh: '授权类型', en: 'Auth Type' })}</span>
-                              <span className="text-slate-300 font-mono uppercase">{auth.authorizationType}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-slate-500">{t({ zh: '单次限额', en: 'Single Limit' })}</span>
-                              <span className="text-slate-300">{auth.singleLimit || '∞'} USDC</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-slate-500">{t({ zh: '每日限额', en: 'Daily Limit' })}</span>
-                              <span className="text-slate-300">{auth.dailyLimit || '∞'} USDC</span>
-                            </div>
-                            <div className="pt-2">
-                              <div className="flex justify-between text-[10px] mb-1">
-                                <span className="text-slate-500">{t({ zh: '今日已用', en: 'Used Today' })}</span>
-                                <span className="text-slate-400">{auth.usedToday} / {auth.dailyLimit || '∞'} USDC</span>
-                              </div>
-                              <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-cyan-500" 
-                                  style={{ width: `${auth.dailyLimit ? (auth.usedToday / auth.dailyLimit) * 100 : 0}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={async () => {
-                                if (confirm(t({ zh: '确定要撤销此 Agent 的所有授权吗？', en: 'Are you sure you want to revoke all authorizations for this Agent?' }))) {
-                                  try {
-                                    await agentAuthorizationApi.revokeAuthorization(auth.id)
-                                    toast.success(t({ zh: '授权已撤销', en: 'Authorization revoked' }))
-                                    loadAgentAuthorizations()
-                                  } catch (err) {
-                                    toast.error(t({ zh: '撤销失败', en: 'Revocation failed' }))
-                                  }
-                                }
-                              }}
-                              className="flex-1 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] font-bold rounded-lg transition-colors"
-                            >
-                              {t({ zh: '撤销授权', en: 'Revoke' })}
-                            </button>
-                            <button className="px-3 py-2 bg-white/5 hover:bg-white/10 text-slate-400 rounded-lg transition-colors">
-                              <Settings className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* QuickPay Sessions (Legacy/Simple) */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <Zap className="w-5 h-5 text-yellow-400" />
-                      <h4 className="font-semibold">{t({ zh: 'QuickPay 会话 (Legacy)', en: 'QuickPay Sessions (Legacy)' })}</h4>
-                    </div>
-                    <button 
-                      onClick={() => setShowSessionManager(true)}
-                      className="text-xs text-blue-400 hover:underline flex items-center gap-1"
-                    >
-                      <Settings className="w-3 h-3" />
-                      {t({ zh: '管理', en: 'Manage' })}
-                    </button>
-                  </div>
-                  
-                  {sessions.length === 0 ? (
-                    <div className="text-center py-6 text-slate-500 border border-dashed border-white/10 rounded-lg text-xs">
-                      {t({ zh: '暂无活跃会话', en: 'No active sessions' })}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {sessions.map((session) => (
-                        <div key={session.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-white/5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                            <span className="text-xs font-mono text-slate-300">{session.sessionId.substring(0, 12)}...</span>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-[10px] text-slate-500">{session.dailyLimit} USDC / Day</span>
-                            <button 
-                              onClick={() => handleRevokeSession(session.sessionId)}
-                              className="text-red-400 hover:text-red-300"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Account Security Sidebar */}
-              <div className="space-y-6">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <Lock className="w-5 h-5 text-purple-400" />
-                    <h4 className="font-semibold">{t({ zh: '账户安全', en: 'Account Security' })}</h4>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center text-green-400">
-                          <Mail className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold">{t({ zh: '邮箱验证', en: 'Email' })}</p>
-                          <p className="text-[10px] text-slate-500">{user?.email || 'Not bound'}</p>
-                        </div>
-                      </div>
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-white/5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-500/10 flex items-center justify-center text-slate-400">
-                          <Shield className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold">{t({ zh: '双重认证 (2FA)', en: '2FA' })}</p>
-                          <p className="text-[10px] text-slate-500">{t({ zh: '未启用', en: 'Disabled' })}</p>
-                        </div>
-                      </div>
-                      <button className="text-[10px] font-bold text-blue-400 hover:text-blue-300 uppercase tracking-wider">{t({ zh: '启用', en: 'Enable' })}</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-600/10 to-purple-600/10 border border-blue-500/20 rounded-xl p-6">
-                  <h4 className="text-sm font-bold mb-2 flex items-center gap-2">
-                    <Star className="w-4 h-4 text-yellow-400" />
-                    {t({ zh: '安全建议', en: 'Security Tips' })}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    {t({ 
-                      zh: '建议为高频交易 Agent 设置合理的每日限额，并定期检查授权列表。Agentrix 永远不会要求您提供私钥。', 
-                      en: 'Set reasonable daily limits for high-frequency Agents and check authorizations regularly. Agentrix never asks for your private keys.' 
-                    })}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <AgentInsightsPanel />
-            </div>
-          </div>
-        )}
-
         {activeTab === 'profile' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center mb-4">
@@ -1011,12 +791,6 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {activeTab === 'policies' && (
-          <div className="h-full">
-            <PolicyEngine />
           </div>
         )}
 

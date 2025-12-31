@@ -41,6 +41,7 @@ import { RuntimeModule } from './runtime/runtime.module';
 import { AgentRuntimeIntegrationService } from './agent-runtime-integration.service';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integration.module';
+import { AgentTemplateSeederService } from '../../database/seeds/agent-template-seeder.service';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integra
   providers: [
     AgentService,
     AgentTemplateService,
+    AgentTemplateSeederService, // Auto-seed default templates on startup
     AgentP0IntegrationService,
     AgentRegistryService,
     AuthorizationService,

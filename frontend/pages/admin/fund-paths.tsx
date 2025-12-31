@@ -36,9 +36,11 @@ export default function FundPathsPage() {
       });
       if (!response.ok) throw new Error('Failed to fetch fund paths');
       const data = await response.json();
-      setPaths(data);
+      // 后端返回 { items, total, page, ... } 结构，需要提取 items
+      setPaths(Array.isArray(data) ? data : (data?.items || []));
     } catch (err: any) {
       setError(err.message);
+      setPaths([]); // 确保 paths 是数组
     } finally {
       setLoading(false);
     }
@@ -114,39 +116,66 @@ export default function FundPathsPage() {
             <table className="w-full text-left">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Path Name</th>
-                  <th className="px-6 py-4 font-medium">Source</th>
-                  <th className="px-6 py-4 font-medium">Destination</th>
-                  <th className="px-6 py-4 font-medium">Fee (%)</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
+                  <th className="px-6 py-4 font-medium">Type</th>
+                  <th className="px-6 py-4 font-medium">From</th>
+                  <th className="px-6 py-4 font-medium">To</th>
+                  <th className="px-6 py-4 font-medium">Amount</th>
+                  <th className="px-6 py-4 font-medium">X402</th>
+                  <th className="px-6 py-4 font-medium">Created</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
                       <RefreshCw className="w-6 h-6 text-indigo-600 animate-spin mx-auto mb-2" />
                       Loading paths...
                     </td>
                   </tr>
+                ) : error ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-red-500">
+                      Error: {error}
+                    </td>
+                  </tr>
                 ) : paths.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
-                      No fund paths configured
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                      No fund paths found
                     </td>
                   </tr>
                 ) : paths.map((path) => (
                   <tr key={path.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-900">{path.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{path.source}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{path.destination}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{path.fee}%</td>
+                    <td className="px-6 py-4 font-medium text-gray-900">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        path.pathType === 'merchant_net' ? 'bg-green-100 text-green-700' :
+                        path.pathType === 'platform_fee' ? 'bg-blue-100 text-blue-700' :
+                        path.pathType === 'channel_fee' ? 'bg-purple-100 text-purple-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {path.pathType || 'unknown'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <div className="text-xs text-gray-400">{path.fromLabel || '-'}</div>
+                      <div className="font-mono text-xs">{path.fromAddress ? `${path.fromAddress.slice(0,8)}...` : '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <div className="text-xs text-gray-400">{path.toLabel || '-'}</div>
+                      <div className="font-mono text-xs">{path.toAddress ? `${path.toAddress.slice(0,8)}...` : '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      {parseFloat(path.amount || '0').toFixed(4)} {path.currency || 'USDT'}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        path.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        path.isX402 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
                       }`}>
-                        {path.active ? 'Active' : 'Disabled'}
+                        {path.isX402 ? 'X402' : 'Standard'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {path.createdAt ? new Date(path.createdAt).toLocaleString() : '-'}
                     </td>
                   </tr>
                 ))}

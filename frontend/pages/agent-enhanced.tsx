@@ -68,6 +68,9 @@ function AgentEnhancedContent() {
   const router = useRouter();
   const { startPayment, currentPayment, cancelPayment } = usePayment();
   const { user } = useUser();
+  
+  // 处理从 AgentBuilder 跳转过来的 agentId 参数
+  const { agentId: urlAgentId } = router.query;
   const { t } = useLocalization();
   const { mode: agentModeContext, setMode: setAgentModeContext } = useAgentMode();
   const { viewMode, setViewMode, isChatExpanded, setIsChatExpanded } = useWorkbench();
@@ -82,7 +85,7 @@ function AgentEnhancedContent() {
     currency?: string;
   } | null>(null);
 
-  const [userTab, setUserTab] = useState<'checklist' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'policies' | 'airdrops' | 'autoEarn' | 'security' | 'profile'>('checklist');
+  const [userTab, setUserTab] = useState<'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile'>('checklist');
   const [merchantTab, setMerchantTab] = useState<'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'integration_guide' | 'off_ramp'>('checklist');
   const [developerTab, setDeveloperTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace'>('checklist');
   
@@ -93,6 +96,22 @@ function AgentEnhancedContent() {
   
   const agentMode = mapModeToAgentMode(agentModeContext);
   const [useUnifiedChat, setUseUnifiedChat] = useState(true); // 默认使用统一Agent对话
+  
+  // 处理从 AgentBuilder 跳转过来时的 agentId 参数
+  // 自动切换到 developer 模式和 agents tab 显示新创建的 Agent
+  useEffect(() => {
+    if (urlAgentId && typeof urlAgentId === 'string') {
+      console.log('🔄 检测到 agentId 参数，切换到 Agent 管理界面:', urlAgentId);
+      // 切换到 developer 模式
+      setAgentModeContext('developer');
+      // 切换到 developer_module 视图
+      setViewMode('developer_module');
+      // 切换到 agents tab
+      setDeveloperTab('agents');
+      // 清除 URL 中的 agentId 参数（可选）
+      router.replace('/agent-enhanced', undefined, { shallow: true });
+    }
+  }, [urlAgentId, setAgentModeContext, setViewMode, router]);
   
   // 处理对话命令
   const handleCommand = (command: string, data?: any) => {
@@ -503,10 +522,11 @@ function AgentEnhancedContent() {
         return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="orders" /></div>;
       case 'sandbox': return <div className="p-6"><Sandbox codeExample={selectedCodeExample} /></div>;
       case 'policies': 
-        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="policies" /></div>;
+      case 'security':
+        // policies 和 security 已合并到 agents tab
+        return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="agents" /></div>;
       case 'airdrops': 
         return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="airdrops" /></div>;
-      case 'security': return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="security" /></div>;
       case 'profile': return <div className="p-6"><UserModule onCommand={handleCommand} initialTab="profile" /></div>;
       case 'merchant_products':
         return <div className="p-6"><MerchantModule onCommand={handleCommand} initialTab="products" /></div>;

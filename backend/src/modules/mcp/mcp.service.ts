@@ -1,10 +1,11 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { SkillService } from '../skill/skill.service';
 import { SkillExecutorService } from '../skill/skill-executor.service';
 import { MarketplaceService } from '../marketplace/marketplace.service';
+import { ProductService } from '../product/product.service';
 import { PaymentService } from '../payment/payment.service';
 import { WalletService } from '../wallet/wallet.service';
 import { AgentAuthorizationService } from '../agent-authorization/agent-authorization.service';
@@ -26,6 +27,8 @@ export class McpService implements OnModuleInit {
     private readonly skillService: SkillService,
     private readonly skillExecutorService: SkillExecutorService,
     private readonly marketplaceService: MarketplaceService,
+    @Inject(forwardRef(() => ProductService))
+    private readonly productService: ProductService,
     private readonly paymentService: PaymentService,
     private readonly walletService: WalletService,
     private readonly agentAuthorizationService: AgentAuthorizationService,
@@ -114,15 +117,60 @@ export class McpService implements OnModuleInit {
     const staticTools = [
       {
         name: 'search_products',
-        description: 'Search products in Agentrix Marketplace',
+        description: 'Search products in Agentrix Marketplace. Supports physical goods (like CUTA gaming console, electronics), services, and digital assets (tokens, NFTs).',
         inputSchema: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Search query' },
-            assetType: { type: 'string', enum: ['physical', 'service', 'nft', 'ft', 'game_asset', 'rwa'] },
-            limit: { type: 'number', default: 10 }
+            query: { type: 'string', description: 'Search query (e.g. "CUTA游戏机", "VR", "gaming console")' },
+            type: { type: 'string', enum: ['physical', 'service', 'digital', 'x402'], description: 'Product type filter' },
           },
           required: ['query']
+        }
+      },
+      {
+        name: 'get_product_details',
+        description: 'Get detailed information about a specific product by ID',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', description: 'Product ID' }
+          },
+          required: ['productId']
+        }
+      },
+      {
+        name: 'create_order',
+        description: 'Create a new order for purchasing a product. Returns order details and checkout URL.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', description: 'Product ID to purchase' },
+            quantity: { type: 'number', description: 'Quantity to purchase', default: 1 },
+            shippingAddress: { 
+              type: 'object',
+              description: 'Shipping address for physical products',
+              properties: {
+                name: { type: 'string' },
+                phone: { type: 'string' },
+                address: { type: 'string' },
+                city: { type: 'string' },
+                country: { type: 'string' }
+              }
+            }
+          },
+          required: ['productId']
+        }
+      },
+      {
+        name: 'get_checkout_url',
+        description: 'Get a payment checkout URL for an order or product',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', description: 'Product ID to checkout' },
+            orderId: { type: 'string', description: 'Order ID if already created' }
+          },
+          required: []
         }
       },
       {
@@ -190,20 +238,125 @@ export class McpService implements OnModuleInit {
   }
 
   /**
+   * 公开方法：获取工具列表（供无状态模式使用）
+   */
+  public async getToolsList() {
+    return this.getAllTools();
+  }
+
+  /**
    * 统一处理 Tool 调用逻辑
    */
   private async handleCallTool(name: string, args: any) {
     this.logger.log(`Tool Call: ${name} with args: ${JSON.stringify(args)}`);
 
     try {
+      // ============ E-Commerce Tools ============
       if (name === 'search_products') {
-        const results = await this.marketplaceService.getAssets({
-          search: (args as any).query,
-          type: (args as any).assetType,
-          pageSize: (args as any).limit
-        });
+        // Search from products table (physical goods, services, digital assets)
+        const products = await this.productService.getProducts(
+          (args as any).query,  // search query
+          undefined,             // merchantId - search all merchants
+          'active',              // only active products
+          (args as any).type     // type filter (physical, service, digital, x402)
+        );
+        
+        // Format results for AI-friendly response
+        const formattedProducts = products.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          price: p.price,
+          currency: p.metadata?.currency || 'CNY',
+          type: p.productType,
+          category: p.category,
+          stock: p.stock,
+          image: p.metadata?.image,
+          checkoutUrl: `https://agentrix.top/pay/checkout?productId=${p.id}`
+        }));
+        
         return {
-          content: [{ type: 'text', text: JSON.stringify(results) }],
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({
+              products: formattedProducts,
+              total: formattedProducts.length,
+              message: formattedProducts.length > 0 
+                ? `Found ${formattedProducts.length} products matching "${args.query}"`
+                : `No products found for "${args.query}". Try a different search term.`
+            }) 
+          }],
+        };
+      }
+
+      if (name === 'get_product_details') {
+        const product = await this.productService.getProduct(args.productId);
+        return {
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({
+              id: product.id,
+              name: product.name,
+              description: product.description,
+              price: product.price,
+              currency: product.metadata?.currency || 'CNY',
+              type: product.productType,
+              category: product.category,
+              stock: product.stock,
+              image: product.metadata?.image,
+              checkoutUrl: `https://agentrix.top/pay/checkout?productId=${product.id}`,
+              merchantId: product.merchantId
+            }) 
+          }],
+        };
+      }
+
+      if (name === 'create_order') {
+        // For now, return a checkout URL - full order creation would require OrderService
+        const product = await this.productService.getProduct(args.productId);
+        const quantity = args.quantity || 1;
+        const totalPrice = Number(product.price) * quantity;
+        
+        return {
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({
+              success: true,
+              product: {
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                currency: product.metadata?.currency || 'CNY'
+              },
+              quantity: quantity,
+              totalPrice: totalPrice,
+              checkoutUrl: `https://agentrix.top/pay/checkout?productId=${product.id}&quantity=${quantity}`,
+              message: `Order created for ${quantity}x ${product.name}. Total: ${totalPrice} ${product.metadata?.currency || 'CNY'}. Click the checkout URL to complete payment.`
+            }) 
+          }],
+        };
+      }
+
+      if (name === 'get_checkout_url') {
+        if (args.productId) {
+          const product = await this.productService.getProduct(args.productId);
+          return {
+            content: [{ 
+              type: 'text', 
+              text: JSON.stringify({
+                checkoutUrl: `https://agentrix.top/pay/checkout?productId=${args.productId}`,
+                product: {
+                  id: product.id,
+                  name: product.name,
+                  price: product.price,
+                  currency: product.metadata?.currency || 'CNY'
+                }
+              }) 
+            }],
+          };
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: 'Please provide productId' }) }],
         };
       }
 
