@@ -137,7 +137,7 @@ export class PaymentController {
     @Request() req,
     @Body() dto: {
       amount: number;
-      fiatCurrency: string;
+      fiatCurrency?: string;
       cryptoCurrency?: string;
       network?: string;
       walletAddress?: string;
@@ -151,6 +151,16 @@ export class PaymentController {
       referrerDomain?: string;
     },
   ) {
+    // 调试日志
+    console.log('[TransakSession] Raw body:', JSON.stringify(req.body));
+    console.log('[TransakSession] Parsed dto:', JSON.stringify(dto));
+    console.log('[TransakSession] dto.amount:', dto?.amount, 'type:', typeof dto?.amount);
+    
+    // 参数验证
+    if (!dto || !dto.amount || dto.amount <= 0) {
+      throw new BadRequestException(`Amount is required and must be greater than 0. Received: ${JSON.stringify(dto)}`);
+    }
+    
     const transakProvider = this.providerManagerService.getOnRampProviders().find(
       (p) => p.id === 'transak',
     ) as any;
@@ -214,7 +224,7 @@ export class PaymentController {
 
     return transakProvider.createSession({
       amount: dto.amount,
-      fiatCurrency: dto.fiatCurrency,
+      fiatCurrency: dto.fiatCurrency || 'USD',
       cryptoCurrency: dto.cryptoCurrency || 'USDC',
       network: dto.network || 'bsc',
       walletAddress: dto.walletAddress,

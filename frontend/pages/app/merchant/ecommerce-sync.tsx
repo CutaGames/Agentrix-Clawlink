@@ -117,7 +117,7 @@ export default function EcommerceSyncPage() {
         return;
       }
 
-      const response = await fetch(`${apiBaseUrl}/products/ecommerce/connections`, {
+      const response = await fetch(`${apiBaseUrl}/ecommerce/connections`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -149,7 +149,7 @@ export default function EcommerceSyncPage() {
         }
       });
 
-      const response = await fetch(`${apiBaseUrl}/products/ecommerce/connections`, {
+      const response = await fetch(`${apiBaseUrl}/ecommerce/connections`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -195,7 +195,7 @@ export default function EcommerceSyncPage() {
       setSyncResult(null);
       const token = getToken();
 
-      const response = await fetch(`${apiBaseUrl}/products/ecommerce/connections/${connectionId}/sync`, {
+      const response = await fetch(`${apiBaseUrl}/ecommerce/connections/${connectionId}/sync`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -219,7 +219,7 @@ export default function EcommerceSyncPage() {
   const handleToggleActive = async (connectionId: string, isActive: boolean) => {
     try {
       const token = getToken();
-      await fetch(`${apiBaseUrl}/products/ecommerce/connections/${connectionId}`, {
+      await fetch(`${apiBaseUrl}/ecommerce/connections/${connectionId}`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -238,7 +238,7 @@ export default function EcommerceSyncPage() {
 
     try {
       const token = getToken();
-      await fetch(`${apiBaseUrl}/products/ecommerce/connections/${connectionId}`, {
+      await fetch(`${apiBaseUrl}/ecommerce/connections/${connectionId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,

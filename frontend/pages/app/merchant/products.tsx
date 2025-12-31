@@ -65,7 +65,7 @@ export default function MerchantProducts() {
     formData.append('file', file)
 
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/upload/image`, {
         method: 'POST',
         headers: {

@@ -37,11 +37,41 @@ export class McpController {
 
   /**
    * 兼容性处理：有些客户端会尝试 POST 到 SSE 端点
+   * ChatGPT 会先 GET 建立 SSE 连接，然后 POST 发送消息
+   * 但如果没有 sessionId，我们需要特殊处理
    */
   @Post('sse')
   async ssePost(@Req() req: Request, @Res() res: Response) {
-    this.logger.log('Received POST request on SSE endpoint, redirecting to messages');
-    return this.messages(req, res);
+    const sessionId = req.query.sessionId as string;
+    
+    // 如果有 sessionId，正常处理消息
+    if (sessionId) {
+      this.logger.log(`POST /sse with sessionId: ${sessionId}, redirecting to messages`);
+      return this.messages(req, res);
+    }
+    
+    // 如果没有 sessionId，尝试使用最新的 transport
+    this.logger.log('POST /sse without sessionId, trying latest transport');
+    const transport = this.mcpService.getLatestTransport();
+    
+    if (transport && (transport as any).handlePostMessage) {
+      try {
+        await (transport as any).handlePostMessage(req, res);
+      } catch (error: any) {
+        this.logger.error(`Failed to handle MCP message via POST /sse: ${error.message}`);
+        if (!res.headersSent) {
+          res.status(500).json({ error: error.message });
+        }
+      }
+    } else {
+      // 没有活跃连接时，返回提示信息而不是 500 错误
+      this.logger.warn('No active MCP transport for POST /sse - SSE connection may not be established');
+      res.status(400).json({ 
+        error: 'SSE connection not established',
+        hint: 'Please establish SSE connection first by connecting to GET /api/mcp/sse',
+        message: 'No active Server-Sent Events connection found. The AI client should first establish a GET connection to /api/mcp/sse before sending POST messages.'
+      });
+    }
   }
 
   /**

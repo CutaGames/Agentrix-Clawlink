@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -135,6 +136,24 @@ export class EcommerceSyncController {
     @Request() req,
     @Param('id') id: string,
     @Body() updates: Partial<CreateConnectionDto>,
+  ) {
+    const connection = await this.syncService.updateConnection(id, req.user.id, updates);
+    return {
+      success: true,
+      message: '连接配置已更新',
+      data: {
+        ...connection,
+        credentials: undefined,
+      },
+    };
+  }
+
+  @Patch('connections/:id')
+  @ApiOperation({ summary: '更新连接配置（PATCH兼容）' })
+  async patchConnection(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() updates: any,
   ) {
     const connection = await this.syncService.updateConnection(id, req.user.id, updates);
     return {

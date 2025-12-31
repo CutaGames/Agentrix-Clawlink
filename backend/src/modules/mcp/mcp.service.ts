@@ -328,18 +328,51 @@ export class McpService implements OnModuleInit {
   }
 
   /**
-   * 获取 OpenAPI Schema (用于 Gemini/Grok)
+   * 获取 OpenAPI Schema (用于 ChatGPT GPTs / Gemini / Grok)
+   * 必须包含 servers 字段，否则 ChatGPT 无法识别
+   * 响应 schema 必须包含 properties，否则 ChatGPT 验证会报错
    */
   async getOpenApiSchema() {
     const tools = await this.getAllTools();
 
     const paths = {};
     for (const tool of tools) {
+      // 为每个工具生成完整的响应 schema
+      const responseSchema = {
+        type: 'object',
+        properties: {
+          content: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  description: 'Content type, usually "text"'
+                },
+                text: {
+                  type: 'string',
+                  description: 'The response content in JSON string format'
+                }
+              },
+              required: ['type', 'text']
+            },
+            description: 'Response content array'
+          },
+          isError: {
+            type: 'boolean',
+            description: 'Whether the operation resulted in an error'
+          }
+        },
+        required: ['content']
+      };
+
       paths[`/api/mcp/tool/${tool.name}`] = {
         post: {
           operationId: tool.name,
           summary: tool.description,
           requestBody: {
+            required: true,
             content: {
               'application/json': {
                 schema: tool.inputSchema,
@@ -351,7 +384,37 @@ export class McpService implements OnModuleInit {
               description: 'Successful response',
               content: {
                 'application/json': {
-                  schema: { type: 'object' },
+                  schema: responseSchema,
+                },
+              },
+            },
+            '400': {
+              description: 'Bad request - invalid parameters',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string', description: 'Error message' },
+                      statusCode: { type: 'number', description: 'HTTP status code' }
+                    },
+                    required: ['error']
+                  },
+                },
+              },
+            },
+            '500': {
+              description: 'Internal server error',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string', description: 'Error message' },
+                      statusCode: { type: 'number', description: 'HTTP status code' }
+                    },
+                    required: ['error']
+                  },
                 },
               },
             },
@@ -360,13 +423,23 @@ export class McpService implements OnModuleInit {
       };
     }
 
+    // 获取 API 基础 URL
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top';
+
     return {
       openapi: '3.1.0',
       info: {
         title: 'Agentrix MCP Tools API',
         version: '1.0.0',
-        description: 'REST API bridge for Agentrix MCP Tools',
+        description: 'REST API bridge for Agentrix MCP Tools. Use these tools to search products, create payments, and interact with the Agentrix marketplace.',
       },
+      // ChatGPT GPTs 必须有 servers 字段
+      servers: [
+        {
+          url: apiBaseUrl,
+          description: 'Agentrix API Server',
+        },
+      ],
       paths,
     };
   }

@@ -777,7 +777,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     }
   };
 
-  const handleFiatChannelClick = (methodId: string) => {
+  const handleFiatChannelClick = (methodId: string, channelData?: any) => {
     // Map methodId to ProviderOption
     const baseOption = preflightResult?.providerOptions?.[0] || {
         id: 'transak',
@@ -788,10 +788,16 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         provider: 'transak'
     };
 
+    // 使用传入的 channelData（包含预先计算的费用和金额）
     const option: ProviderOption = {
         ...baseOption,
         paymentMethod: methodId, // Pass the specific method ID (e.g., 'google_pay')
-        id: 'transak' // The provider is still Transak
+        id: 'transak', // The provider is still Transak
+        // 使用 channelData 中预先计算的数据
+        price: channelData?.totalPrice ?? baseOption.price,
+        fee: channelData?.fee ?? baseOption.fee,
+        estimatedTime: channelData?.estimatedTime ?? baseOption.estimatedTime,
+        currency: channelData?.currency ?? baseOption.currency,
     };
 
     setSelectedProviderOption(option);
@@ -1078,7 +1084,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             {channelsWithData.map(channel => (
                 <button
                     key={channel.id}
-                    onClick={() => handleFiatChannelClick(channel.id)}
+                    onClick={() => handleFiatChannelClick(channel.id, channel)}
                     disabled={!channel.available}
                     className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all group ${
                         channel.available

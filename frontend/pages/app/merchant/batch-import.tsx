@@ -85,7 +85,7 @@ export default function BatchImport() {
       const formData = new FormData()
       formData.append('file', selectedFile)
 
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const res = await fetch(`${API_URL}/api/products/batch/preview`, {
         method: 'POST',
         headers: {
@@ -118,7 +118,7 @@ export default function BatchImport() {
       formData.append('mode', mode)
       formData.append('skipErrors', String(skipErrors))
 
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('access_token')
       const res = await fetch(`${API_URL}/api/products/batch/import/csv`, {
         method: 'POST',
         headers: {

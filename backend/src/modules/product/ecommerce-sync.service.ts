@@ -182,6 +182,11 @@ export class EcommerceSyncService {
   async updateConnection(connectionId: string, merchantId: string, updates: Partial<CreateConnectionDto>) {
     const connection = await this.getConnection(connectionId, merchantId);
 
+    // Allow toggling isActive from UI payloads (backward-compatible)
+    if (typeof (updates as any).isActive === 'boolean') {
+      connection.isActive = (updates as any).isActive;
+    }
+
     if (updates.credentials) {
       connection.credentials = { ...connection.credentials, ...updates.credentials };
     }

@@ -243,7 +243,7 @@ export const productApi = {
    * 获取电商平台连接列表
    */
   getEcommerceConnections: async (): Promise<any[]> => {
-    const result = await apiClient.get<any>('/products/ecommerce/connections');
+    const result = await apiClient.get<any>('/ecommerce/connections');
     return result?.data || result || [];
   },
 
@@ -256,7 +256,7 @@ export const productApi = {
     storeUrl?: string;
     credentials: Record<string, string>;
   }): Promise<any> => {
-    const result = await apiClient.post<any>('/products/ecommerce/connections', data);
+    const result = await apiClient.post<any>('/ecommerce/connections', data);
     return result?.data || result;
   },
 
@@ -264,7 +264,7 @@ export const productApi = {
    * 更新电商平台连接
    */
   updateEcommerceConnection: async (id: string, data: any): Promise<any> => {
-    const result = await apiClient.patch<any>(`/products/ecommerce/connections/${id}`, data);
+    const result = await apiClient.patch<any>(`/ecommerce/connections/${id}`, data);
     return result?.data || result;
   },
 
@@ -272,14 +272,14 @@ export const productApi = {
    * 删除电商平台连接
    */
   deleteEcommerceConnection: async (id: string): Promise<void> => {
-    return apiClient.delete(`/products/ecommerce/connections/${id}`);
+    return apiClient.delete(`/ecommerce/connections/${id}`);
   },
 
   /**
    * 同步电商平台数据
    */
   syncEcommerceConnection: async (id: string): Promise<any> => {
-    const result = await apiClient.post<any>(`/products/ecommerce/connections/${id}/sync`, {});
+    const result = await apiClient.post<any>(`/ecommerce/connections/${id}/sync`, {});
     return result?.data || result;
   },
 };

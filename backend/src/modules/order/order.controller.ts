@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -71,7 +72,31 @@ export class OrderController {
   @ApiResponse({ status: 200, description: '返回订单详情' })
   @UseGuards(JwtAuthGuard)
   async getOrder(@Request() req, @Param('id') id: string) {
-    return this.orderService.getOrder(req.user.id, id);
+    return this.orderService.getOrderForRequester(req.user, id);
+  }
+
+  @Put(':id/status')
+  @ApiOperation({ summary: '更新订单状态（商户）' })
+  @ApiResponse({ status: 200, description: '订单状态更新成功' })
+  @UseGuards(JwtAuthGuard)
+  async updateOrderStatus(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: { status: OrderStatus },
+  ) {
+    return this.orderService.updateOrderStatus(req.user, id, body.status);
+  }
+
+  @Post(':id/refund')
+  @ApiOperation({ summary: '发起退款请求（创建争议/退款流程）' })
+  @ApiResponse({ status: 200, description: '退款请求已创建' })
+  @UseGuards(JwtAuthGuard)
+  async requestRefund(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.orderService.requestRefund(req.user, id, body.reason);
   }
 
   @Post(':id/cancel')

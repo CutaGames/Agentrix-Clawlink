@@ -374,15 +374,27 @@ export const merchantApi = {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.search) queryParams.append('search', params.search);
     
-    const result = await apiClient.get<{
-      customers: MerchantCustomer[];
-      total: number;
-    }>(`/merchant/customers?${queryParams.toString()}`);
-    
+    const result = await apiClient.get<any>(`/merchant/customers?${queryParams.toString()}`);
     if (result === null) {
       return { customers: [], total: 0 };
     }
-    return result;
+
+    // Normalize possible backend response shapes.
+    // - Current backend: { success: true, data: MerchantCustomer[] }
+    // - Possible future: { customers, total }
+    if (Array.isArray(result?.customers)) {
+      return {
+        customers: result.customers,
+        total: typeof result.total === 'number' ? result.total : result.customers.length,
+      };
+    }
+    if (Array.isArray(result?.data)) {
+      return {
+        customers: result.data,
+        total: result.data.length,
+      };
+    }
+    return { customers: [], total: 0 };
   },
 
   /**
@@ -399,19 +411,34 @@ export const merchantApi = {
    */
   async getRefunds(status?: 'all' | 'pending' | 'approved' | 'rejected' | 'completed'): Promise<MerchantRefund[]> {
     const params = status && status !== 'all' ? `?status=${status}` : '';
-    const result = await apiClient.get<MerchantRefund[]>(`/merchant/refunds${params}`);
-    return result || [];
+    const result = await apiClient.get<any>(`/merchant/refunds${params}`);
+    if (result === null) return [];
+
+    // Normalize possible backend response shapes.
+    // - Current backend: { success: true, data: MerchantRefund[] }
+    // - Possible future: MerchantRefund[]
+    if (Array.isArray(result)) return result;
+    if (Array.isArray(result?.data)) return result.data;
+    return [];
   },
 
   /**
    * 处理退款
    */
   async processRefund(refundId: string, action: 'approve' | 'reject', reason?: string): Promise<MerchantRefund> {
-    const result = await apiClient.post<MerchantRefund>(`/merchant/refunds/${refundId}/${action}`, { reason });
+    // Backend contract: POST /merchant/refunds/:refundId/process { action, reason? }
+    const result = await apiClient.post<any>(`/merchant/refunds/${refundId}/process`, {
+      action,
+      reason,
+    });
+
     if (result === null) {
       throw new Error(`无法${action === 'approve' ? '批准' : '拒绝'}退款，请稍后重试`);
     }
-    return result;
+
+    // Normalize: backend returns { success, data }
+    if (result?.data) return result.data;
+    return result as MerchantRefund;
   },
 };
 

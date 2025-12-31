@@ -460,13 +460,22 @@ export class TransakProviderService implements IProvider {
     isKYCRequired?: boolean;
     referrerDomain?: string;
   }): Promise<{ sessionId: string; widgetUrl: string }> {
+    // 参数验证
+    if (!params.amount || params.amount <= 0) {
+      throw new Error('Amount is required and must be greater than 0');
+    }
+    if (!params.cryptoCurrency) {
+      params.cryptoCurrency = 'USDC'; // 默认使用 USDC
+    }
+    
     // V3.1: cryptoAmount 始终是商品的 USDC 价格，不需要汇率转换
     // Transak 会根据用户选择的支付方式自动计算需要支付的法币金额
     const cryptoAmount = params.amount;
     
     // 对于 Transak 不支持的法币（CNY），转换为 USD
     // 但这只影响 fiatCurrency 参数，不影响 cryptoAmount
-    let fiatCurrency = params.fiatCurrency;
+    // 如果没有提供 fiatCurrency，默认使用 USD
+    let fiatCurrency = params.fiatCurrency || 'USD';
     if (fiatCurrency.toUpperCase() === 'CNY') {
       this.logger.log(`Transak: CNY not supported, switching to USD for fiat selection`);
       fiatCurrency = 'USD';
@@ -581,9 +590,102 @@ export class TransakProviderService implements IProvider {
         this.logger.error(`Transak: Failed to create session`, error);
       }
 
-      const message = axiosError?.message || error?.message || 'Unknown error';
-      throw new Error(`Failed to create Transak session: ${message}`);
+      // ✅ V3.2 FIX: 当 Create Session API 失败时，回退到直接 Widget URL 方式
+      // Transak staging API 有 bug (返回 500 "error must be a string")
+      // Production API 需要 OAuth token (不是 api-key)
+      // 直接 Widget URL 是 Transak 官方支持的方式
+      this.logger.warn('Transak: Create Session API failed, falling back to direct widget URL');
+      return this.createDirectWidgetUrl(params);
     }
+  }
+
+  /**
+   * 创建直接 Widget URL（不使用 Create Session API）
+   * 当 Create Session API 不可用时的回退方案
+   * 
+   * 注意：直接 URL 方式不支持某些高级功能（如完全锁定金额）
+   * 但仍然可以通过 URL 参数预填充大部分字段
+   */
+  private createDirectWidgetUrl(params: {
+    amount: number;
+    fiatCurrency: string;
+    cryptoCurrency: string;
+    network?: string;
+    walletAddress?: string;
+    orderId?: string;
+    email?: string;
+    redirectURL?: string;
+    hideMenu?: boolean;
+    disableWalletAddressForm?: boolean;
+    disableFiatAmountEditing?: boolean;
+  }): { sessionId: string; widgetUrl: string } {
+    // 生成一个虚拟的 sessionId 用于追踪
+    const sessionId = `direct_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // 选择正确的 Widget 基础 URL
+    const widgetBaseUrl = this.environment === 'PRODUCTION'
+      ? 'https://global.transak.com'
+      : 'https://global-stg.transak.com';
+    
+    // 对于 Transak 不支持的法币（CNY），转换为 USD
+    // 如果没有提供 fiatCurrency，默认使用 USD
+    let fiatCurrency = params.fiatCurrency || 'USD';
+    if (fiatCurrency.toUpperCase() === 'CNY') {
+      fiatCurrency = 'USD';
+    }
+    
+    // 验证必要参数
+    if (!params.amount || params.amount <= 0) {
+      throw new Error('Amount is required and must be greater than 0');
+    }
+    if (!params.cryptoCurrency) {
+      throw new Error('Crypto currency is required');
+    }
+    
+    // 构建 URL 参数
+    const urlParams = new URLSearchParams();
+    urlParams.set('apiKey', this.apiKey);
+    urlParams.set('defaultCryptoAmount', String(params.amount));
+    urlParams.set('cryptoCurrencyCode', params.cryptoCurrency);
+    urlParams.set('defaultCryptoCurrency', params.cryptoCurrency);
+    urlParams.set('fiatCurrency', fiatCurrency);
+    urlParams.set('defaultFiatCurrency', fiatCurrency);
+    
+    if (params.network) {
+      urlParams.set('network', params.network);
+      urlParams.set('defaultNetwork', params.network);
+    }
+    if (params.walletAddress) {
+      urlParams.set('walletAddress', params.walletAddress);
+      urlParams.set('disableWalletAddressForm', 'true');
+    }
+    if (params.orderId) {
+      urlParams.set('partnerOrderId', params.orderId);
+    }
+    if (params.email) {
+      urlParams.set('email', params.email);
+    }
+    if (params.redirectURL) {
+      urlParams.set('redirectURL', params.redirectURL);
+    }
+    if (params.hideMenu) {
+      urlParams.set('hideMenu', 'true');
+    }
+    
+    // 尝试锁定金额（通过 disablePaymentMethods 等间接方式）
+    // 注意：直接 URL 方式可能无法完全锁定金额编辑
+    urlParams.set('themeColor', '4f46e5'); // 主题色
+    urlParams.set('productsAvailed', 'BUY'); // 只显示购买选项
+    
+    const widgetUrl = `${widgetBaseUrl}?${urlParams.toString()}`;
+    
+    this.logger.log(`Transak: Created direct widget URL (fallback mode), sessionId=${sessionId}`);
+    this.logger.debug(`Transak: Widget URL: ${widgetUrl}`);
+    
+    return {
+      sessionId,
+      widgetUrl,
+    };
   }
 
   /**

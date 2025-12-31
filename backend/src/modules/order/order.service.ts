@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Order, AssetType, OrderStatus } from '../../entities/order.entity';
 import { CreateOrderDto } from './dto/order.dto';
+import { UserRole } from '../../entities/user.entity';
 
 @Injectable()
 export class OrderService {
@@ -72,9 +73,18 @@ export class OrderService {
     });
   }
 
+  /**
+   * Backwards-compatible API used by other modules.
+   * Buyer/user-scoped order lookup.
+   */
   async getOrder(userId: string, id: string) {
+    if (!userId) {
+      throw new BadRequestException('缺少用户信息');
+    }
+
     const order = await this.orderRepository.findOne({
       where: { id, userId },
+      relations: ['user', 'product'],
     });
 
     if (!order) {
@@ -82,6 +92,92 @@ export class OrderService {
     }
 
     return order;
+  }
+
+  async getOrderForRequester(requester: any, id: string) {
+    const isMerchant = requester?.roles?.includes(UserRole.MERCHANT);
+    const where = isMerchant
+      ? { id, merchantId: requester.id }
+      : { id, userId: requester.id };
+
+    const order = await this.orderRepository.findOne({
+      where,
+      relations: ['user', 'product'],
+    });
+
+    if (!order) {
+      throw new NotFoundException('订单不存在');
+    }
+
+    return order;
+  }
+
+  async updateOrderStatus(requester: any, id: string, status: OrderStatus) {
+    const isMerchant = requester?.roles?.includes(UserRole.MERCHANT);
+    if (!isMerchant) {
+      throw new ForbiddenException('只有商户可以更新订单状态');
+    }
+
+    const order = await this.orderRepository.findOne({ where: { id, merchantId: requester.id } });
+    if (!order) {
+      throw new NotFoundException('订单不存在');
+    }
+
+    const allowedStatuses: OrderStatus[] = [OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.COMPLETED];
+    if (!allowedStatuses.includes(status)) {
+      throw new BadRequestException(`不支持更新为状态: ${status}`);
+    }
+
+    order.status = status;
+    return this.orderRepository.save(order);
+  }
+
+  /**
+   * Create a refund request by moving order into DISPUTED and writing metadata.refund.
+   * This feeds the merchant-side refunds workflow under /merchant/refunds.
+   */
+  async requestRefund(requester: any, id: string, reason?: string) {
+    const isMerchant = requester?.roles?.includes(UserRole.MERCHANT);
+
+    const where = isMerchant
+      ? { id, merchantId: requester.id }
+      : { id, userId: requester.id };
+
+    const order = await this.orderRepository.findOne({ where });
+    if (!order) {
+      throw new NotFoundException('订单不存在');
+    }
+
+    // Only paid/shipped/delivered/completed/settled orders can enter refund flow.
+    const refundable: OrderStatus[] = [
+      OrderStatus.PAID,
+      OrderStatus.SHIPPED,
+      OrderStatus.DELIVERED,
+      OrderStatus.COMPLETED,
+      OrderStatus.SETTLED,
+    ];
+    if (!refundable.includes(order.status)) {
+      throw new BadRequestException(`订单状态为"${order.status}"，无法发起退款`);
+    }
+
+    const now = new Date().toISOString();
+    const previousStatus = order.status;
+    const refundInfo = order.metadata?.refund || {};
+
+    order.status = OrderStatus.DISPUTED;
+    order.metadata = {
+      ...order.metadata,
+      refund: {
+        ...refundInfo,
+        reason: reason || refundInfo.reason || '退款申请',
+        requestedAt: refundInfo.requestedAt || now,
+        requestedBy: requester?.id,
+        requestedByRole: isMerchant ? 'merchant' : 'user',
+        previousStatus: refundInfo.previousStatus || previousStatus,
+      },
+    };
+
+    return this.orderRepository.save(order);
   }
 
   async cancelOrder(userId: string, id: string): Promise<Order> {
