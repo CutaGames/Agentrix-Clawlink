@@ -16,6 +16,7 @@ import { AutoEarnPanel } from '../AutoEarnPanel'
 import { AgentInsightsPanel } from '../AgentInsightsPanel'
 import { MyAgentsPanel } from '../MyAgentsPanel'
 import { PromotionPanel } from '../PromotionPanel'
+import { SkillManagementPanel } from '../SkillManagementPanel'
 import { LoginModal } from '../../auth/LoginModal'
 import { useToast } from '../../../contexts/ToastContext'
 import { 
@@ -41,13 +42,14 @@ import {
   Clock,
   Cpu,
   Check,
-  Share2
+  Share2,
+  Plus,
 } from 'lucide-react'
 
 
 interface UserModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions' | 'promotion' | 'policies' | 'security'
+  initialTab?: 'checklist' | 'agents' | 'skills' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions' | 'promotion' | 'policies' | 'security'
 }
 
 /**
@@ -59,7 +61,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
   const { user, updateUser } = useUser()
   const { connectedWallets } = useWeb3()
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions' | 'promotion' | 'policies' | 'security'>(initialTab || 'checklist')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'agents' | 'skills' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions' | 'promotion' | 'policies' | 'security'>(initialTab || 'checklist')
 
 
   // 个人资料状态
@@ -322,6 +324,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
           {[
             { key: 'checklist' as const, label: { zh: '授权向导', en: 'Auth Guide' } },
             { key: 'agents' as const, label: { zh: '我的Agent', en: 'My Agents' } },
+            { key: 'skills' as const, label: { zh: '技能管理', en: 'Skills' } },
             { key: 'payments' as const, label: { zh: '支付历史', en: 'Payment History' } },
             { key: 'subscriptions' as const, label: { zh: '我的订阅', en: 'Subscriptions' } },
             { key: 'wallets' as const, label: { zh: '钱包管理', en: 'Wallet Management' } },
@@ -329,6 +332,8 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
             { key: 'airdrops' as const, label: { zh: '空投发现', en: 'Airdrops' } },
             { key: 'autoEarn' as const, label: { zh: '自动赚钱', en: 'Auto-Earn' } },
             { key: 'promotion' as const, label: { zh: '推广中心', en: 'Promotion' } },
+            { key: 'policies' as const, label: { zh: '策略与授权', en: 'Policies' } },
+            { key: 'security' as const, label: { zh: '安全中心', en: 'Security' } },
             { key: 'kyc' as const, label: { zh: 'KYC认证', en: 'KYC Verification' } },
             { key: 'profile' as const, label: { zh: '个人资料', en: 'Profile' } },
           ].map((tab) => (
@@ -432,6 +437,19 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
         {/* 我的 Agent 管理 */}
         {activeTab === 'agents' && (
           <MyAgentsPanel />
+        )}
+
+        {/* 技能管理 */}
+        {activeTab === 'skills' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '技能管理', en: 'Skill Management' })}</h3>
+                <p className="text-sm text-slate-400">{t({ zh: '管理Agent技能，从市场安装或配置已有技能', en: 'Manage agent skills, install from marketplace or configure existing ones' })}</p>
+              </div>
+            </div>
+            <SkillManagementPanel />
+          </div>
         )}
 
         {/* 推广中心 */}
@@ -821,16 +839,100 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
         {activeTab === 'policies' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{t({ zh: '策略与授权', en: 'Policies & Auth' })}</h3>
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '策略与授权', en: 'Policies & Authorization' })}</h3>
+                <p className="text-sm text-slate-400">{t({ zh: '配置 Agent 自动执行的边界与规则', en: 'Configure boundaries and rules for agent automation' })}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => window.open('/app/user/agent-authorizations/create', '_blank')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <Shield className="w-4 h-4" />
+                  {t({ zh: '新建授权', en: 'New Authorization' })}
+                </button>
+              </div>
             </div>
+            
+            {/* 快速概览卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  </div>
+                  <span className="text-sm text-slate-400">{t({ zh: '活跃策略', en: 'Active Policies' })}</span>
+                </div>
+                <p className="text-2xl font-bold">5</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <span className="text-sm text-slate-400">{t({ zh: 'Agent 授权', en: 'Agent Authorizations' })}</span>
+                </div>
+                <p className="text-2xl font-bold">{agentAuthorizations.length}</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                    <Zap className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <span className="text-sm text-slate-400">{t({ zh: '今日触发', en: 'Triggered Today' })}</span>
+                </div>
+                <p className="text-2xl font-bold">12</p>
+              </div>
+            </div>
+            
             <PolicyEngine />
+            
+            {/* Agent 授权列表 */}
+            {agentAuthorizations.length > 0 && (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6 mt-6">
+                <h4 className="font-semibold mb-4 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-purple-400" />
+                  {t({ zh: 'Agent 授权列表', en: 'Agent Authorizations' })}
+                </h4>
+                <div className="space-y-3">
+                  {agentAuthorizations.map(auth => (
+                    <div key={auth.id} className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-3 h-3 rounded-full ${auth.isActive ? 'bg-green-500' : 'bg-slate-500'}`} />
+                        <div>
+                          <p className="font-medium">{auth.agentName || auth.agentId}</p>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                            <span>{t({ zh: '单次', en: 'Per-tx' })}: ${auth.singleLimit || 0}</span>
+                            <span>{t({ zh: '日限额', en: 'Daily' })}: ${auth.dailyLimit || 0}</span>
+                            <span className="uppercase">{auth.authorizationType}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button className="px-3 py-1 text-sm bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
+                          {t({ zh: '编辑', en: 'Edit' })}
+                        </button>
+                        {auth.isActive && (
+                          <button className="px-3 py-1 text-sm text-red-400 hover:bg-red-500/20 rounded-lg transition-colors">
+                            {t({ zh: '撤销', en: 'Revoke' })}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'security' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{t({ zh: '安全中心', en: 'Security Center' })}</h3>
+              <div>
+                <h3 className="text-lg font-semibold">{t({ zh: '安全中心', en: 'Security Center' })}</h3>
+                <p className="text-sm text-slate-400">{t({ zh: '管理会话、设备和安全设置', en: 'Manage sessions, devices and security settings' })}</p>
+              </div>
               <div className="flex gap-2">
                 <button 
                   onClick={() => setShowSessionManager(true)}
@@ -842,28 +944,74 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
               </div>
             </div>
 
+            {/* 安全状态概览 */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border border-green-500/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldCheck className="w-5 h-5 text-green-400" />
+                  <span className="text-sm font-medium text-green-300">{t({ zh: '安全状态', en: 'Security Status' })}</span>
+                </div>
+                <p className="text-xl font-bold text-green-400">{t({ zh: '良好', en: 'Good' })}</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-5 h-5 text-blue-400" />
+                  <span className="text-sm text-slate-400">{t({ zh: '活跃会话', en: 'Active Sessions' })}</span>
+                </div>
+                <p className="text-xl font-bold">{sessions.length}</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-5 h-5 text-purple-400" />
+                  <span className="text-sm text-slate-400">{t({ zh: 'Agent 授权', en: 'Authorizations' })}</span>
+                </div>
+                <p className="text-xl font-bold">{agentAuthorizations.length}</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Activity className="w-5 h-5 text-amber-400" />
+                  <span className="text-sm text-slate-400">{t({ zh: '今日操作', en: 'Today\'s Actions' })}</span>
+                </div>
+                <p className="text-xl font-bold">24</p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Session 概览 */}
               <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-blue-500/20 rounded-lg">
-                    <Clock className="w-5 h-5 text-blue-400" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/20 rounded-lg">
+                      <Clock className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <h4 className="font-semibold">{t({ zh: '活跃会话', en: 'Active Sessions' })}</h4>
                   </div>
-                  <h4 className="font-semibold">{t({ zh: '活跃会话', en: 'Active Sessions' })}</h4>
+                  <button 
+                    onClick={() => setShowSessionManager(true)}
+                    className="text-sm text-blue-400 hover:text-blue-300"
+                  >
+                    {t({ zh: '管理', en: 'Manage' })}
+                  </button>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {sessions.length === 0 ? (
                     <p className="text-slate-500 text-sm py-4 text-center">{t({ zh: '暂无活跃会话', en: 'No active sessions' })}</p>
                   ) : (
                     sessions.slice(0, 3).map(session => (
                       <div key={session.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/5">
-                        <div>
-                          <p className="text-sm font-medium text-white">{session.agentId || 'Unknown Agent'}</p>
-                          <p className="text-xs text-slate-500">{new Date(session.createdAt).toLocaleDateString()}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                          <div>
+                            <p className="text-sm font-medium text-white">{session.agentId || 'Unknown Agent'}</p>
+                            <p className="text-xs text-slate-500">{new Date(session.createdAt).toLocaleDateString()}</p>
+                          </div>
                         </div>
-                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] rounded-full uppercase">
-                          Active
-                        </span>
+                        <button
+                          onClick={() => handleRevokeSession(session.id)}
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          {t({ zh: '撤销', en: 'Revoke' })}
+                        </button>
                       </div>
                     ))
                   )}
@@ -880,23 +1028,33 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
 
               {/* 授权概览 */}
               <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-purple-500/20 rounded-lg">
-                    <Shield className="w-5 h-5 text-purple-400" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/20 rounded-lg">
+                      <Shield className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <h4 className="font-semibold">{t({ zh: 'Agent 授权', en: 'Agent Authorizations' })}</h4>
                   </div>
-                  <h4 className="font-semibold">{t({ zh: 'Agent 授权', en: 'Agent Authorizations' })}</h4>
+                  <button 
+                    onClick={() => setActiveTab('policies')}
+                    className="text-sm text-blue-400 hover:text-blue-300"
+                  >
+                    {t({ zh: '管理', en: 'Manage' })}
+                  </button>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {agentAuthorizations.length === 0 ? (
                     <p className="text-slate-500 text-sm py-4 text-center">{t({ zh: '暂无 Agent 授权', en: 'No agent authorizations' })}</p>
                   ) : (
                     agentAuthorizations.slice(0, 3).map(auth => (
                       <div key={auth.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/5">
-                        <div>
-                          <p className="text-sm font-medium text-white">{auth.agentName || auth.agentId}</p>
-                          <p className="text-xs text-slate-500">{auth.authorizationType.toUpperCase()}</p>
+                        <div className="flex items-center gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-green-400" />
+                          <div>
+                            <p className="text-sm font-medium text-white">{auth.agentName || auth.agentId}</p>
+                            <p className="text-xs text-slate-500">{auth.authorizationType.toUpperCase()} • ${auth.dailyLimit || 0}/day</p>
+                          </div>
                         </div>
-                        <CheckCircle2 className="w-4 h-4 text-green-400" />
                       </div>
                     ))
                   )}
@@ -904,29 +1062,78 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
               </div>
             </div>
 
-            {/* 安全审计日志（模拟） */}
+            {/* 设备管理 */}
             <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-yellow-500/20 rounded-lg">
-                  <Activity className="w-5 h-5 text-yellow-400" />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-cyan-500/20 rounded-lg">
+                    <Cpu className="w-5 h-5 text-cyan-400" />
+                  </div>
+                  <h4 className="font-semibold">{t({ zh: '登录设备', en: 'Logged-in Devices' })}</h4>
                 </div>
-                <h4 className="font-semibold">{t({ zh: '安全审计日志', en: 'Security Audit Logs' })}</h4>
               </div>
               <div className="space-y-3">
-                <div className="flex items-center gap-4 p-3 border-b border-white/5">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm text-white">{t({ zh: '成功登录', en: 'Successful Login' })}</p>
-                    <p className="text-xs text-slate-500">2025-12-29 14:20:05 • IP: 192.168.1.1</p>
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-green-500/30">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+                      <Globe className="w-5 h-5 text-green-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{t({ zh: '当前设备', en: 'Current Device' })}</p>
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] rounded-full uppercase">{t({ zh: '在线', en: 'Online' })}</span>
+                      </div>
+                      <p className="text-xs text-slate-500">Windows • Chrome • {new Date().toLocaleString()}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4 p-3 border-b border-white/5">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm text-white">{t({ zh: '更新支付策略', en: 'Updated Payment Policy' })}</p>
-                    <p className="text-xs text-slate-500">2025-12-29 10:15:32 • {t({ zh: '每日限额修改为 100 USDC', en: 'Daily limit changed to 100 USDC' })}</p>
+                <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-slate-500/20 rounded-lg flex items-center justify-center">
+                      <Cpu className="w-5 h-5 text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">iPhone 15 Pro</p>
+                      <p className="text-xs text-slate-500">iOS • Safari • 2025-12-30 10:30</p>
+                    </div>
                   </div>
+                  <button className="text-sm text-red-400 hover:text-red-300">{t({ zh: '移除', en: 'Remove' })}</button>
                 </div>
+              </div>
+            </div>
+
+            {/* 安全审计日志 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-yellow-500/20 rounded-lg">
+                    <Activity className="w-5 h-5 text-yellow-400" />
+                  </div>
+                  <h4 className="font-semibold">{t({ zh: '安全审计日志', en: 'Security Audit Logs' })}</h4>
+                </div>
+                <button className="text-sm text-blue-400 hover:text-blue-300">
+                  {t({ zh: '查看全部', en: 'View All' })}
+                </button>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { type: 'success', event: { zh: '成功登录', en: 'Successful Login' }, time: '2025-12-31 14:20:05', detail: 'IP: 192.168.1.1' },
+                  { type: 'info', event: { zh: '更新支付策略', en: 'Updated Payment Policy' }, time: '2025-12-31 10:15:32', detail: { zh: '每日限额修改为 100 USDC', en: 'Daily limit changed to 100 USDC' } },
+                  { type: 'warning', event: { zh: '新设备登录', en: 'New Device Login' }, time: '2025-12-30 18:45:00', detail: 'iPhone 15 Pro • Safari' },
+                  { type: 'success', event: { zh: 'Session 创建', en: 'Session Created' }, time: '2025-12-30 15:30:22', detail: 'Agent: Shopping Assistant' },
+                ].map((log, i) => (
+                  <div key={i} className="flex items-center gap-4 p-3 border-b border-white/5 last:border-0">
+                    <div className={`w-2 h-2 rounded-full ${
+                      log.type === 'success' ? 'bg-green-500' :
+                      log.type === 'warning' ? 'bg-yellow-500' :
+                      'bg-blue-500'
+                    }`} />
+                    <div className="flex-1">
+                      <p className="text-sm text-white">{t(log.event)}</p>
+                      <p className="text-xs text-slate-500">{log.time} • {typeof log.detail === 'string' ? log.detail : t(log.detail)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
