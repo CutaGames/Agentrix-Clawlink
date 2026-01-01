@@ -186,6 +186,18 @@ export class McpService implements OnModuleInit {
         }
       },
       {
+        name: 'purchase_asset',
+        description: 'Quickly purchase a virtual asset or product by name. Just provide the asset name and quantity.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            assetName: { type: 'string', description: 'Name of the asset to purchase (e.g. "Gold Coins", "Premium Membership")' },
+            quantity: { type: 'number', description: 'Quantity to purchase', default: 1 }
+          },
+          required: ['assetName']
+        }
+      },
+      {
         name: 'get_balance',
         description: 'Get user wallet balance',
         inputSchema: {
@@ -368,6 +380,50 @@ export class McpService implements OnModuleInit {
         });
         return {
           content: [{ type: 'text', text: JSON.stringify(intent) }],
+        };
+      }
+
+      if (name === 'purchase_asset') {
+        const assetName = args.assetName;
+        const quantity = args.quantity || 1;
+        
+        // Search for the product by name
+        const products = await this.productService.getProducts(assetName, undefined, 'active');
+        
+        if (!products || products.length === 0) {
+          return {
+            content: [{ 
+              type: 'text', 
+              text: JSON.stringify({ 
+                success: false, 
+                message: `Could not find any asset named "${assetName}". Please try a different name or search for products first.` 
+              }) 
+            }],
+          };
+        }
+        
+        // Take the first match
+        const product = products[0];
+        const totalPrice = Number(product.price) * quantity;
+        const currency = product.metadata?.currency || 'CNY';
+        
+        return {
+          content: [{ 
+            type: 'text', 
+            text: JSON.stringify({
+              success: true,
+              product: {
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                currency: currency
+              },
+              quantity: quantity,
+              totalPrice: totalPrice,
+              checkoutUrl: `https://agentrix.top/pay/checkout?productId=${product.id}&quantity=${quantity}`,
+              message: `Ready to purchase ${quantity}x ${product.name}. Total: ${totalPrice} ${currency}. Click the checkout URL to complete payment.`
+            }) 
+          }],
         };
       }
 

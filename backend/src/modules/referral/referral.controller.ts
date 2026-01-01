@@ -61,6 +61,19 @@ export class ReferralController {
     return this.referralService.getAgentReferralStats(agentId);
   }
 
+  @Get('link')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取我的推广链接' })
+  async getMyReferralLink(@Request() req: any) {
+    const agentId = req.user.id;
+    const baseUrl = process.env.FRONTEND_URL || 'https://www.agentrix.top';
+    return {
+      link: `${baseUrl}?ref=${agentId}`,
+      agentId,
+    };
+  }
+
   @Get(':referralId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

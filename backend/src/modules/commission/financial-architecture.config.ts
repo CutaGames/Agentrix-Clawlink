@@ -27,8 +27,7 @@ export interface AssetRateConfig {
   dynamic?: 'virtual_band' | 'web2_upstream' | 'web3_fee';
   developerSplit?: {
     developer: number;
-    recommendation: number;
-    execution: number;
+    agent: number; // 简化为单层 Agent
     paymind: number;
   };
 }
@@ -46,8 +45,8 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
     rates: {
       assetType: AssetType.PHYSICAL,
       label: '实物商品',
-      baseRate: 0.005,
-      poolRate: 0.025,
+      baseRate: 0.005, // 0.5% 平台费
+      poolRate: 0.022, // 2.2% 激励池 (V4.0 标准)
     },
     settlement: {
       trigger: 'logistics_confirmation',
@@ -63,8 +62,8 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
     rates: {
       assetType: AssetType.SERVICE,
       label: '服务类',
-      baseRate: 0.01,
-      poolRate: 0.04,
+      baseRate: 0.01, // 1.0% 平台费
+      poolRate: 0.037, // 3.7% 激励池 (V4.0 标准)
     },
     settlement: {
       trigger: 'service_completed',
@@ -78,8 +77,8 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
     rates: {
       assetType: AssetType.VIRTUAL,
       label: '虚拟资产 / 数字商品',
-      baseRate: 0.01,
-      poolRate: 0.03,
+      baseRate: 0.005, // 0.5% 平台费
+      poolRate: 0.022, // 2.2% 激励池 (V4.0 标准)
       minPoolRate: 0.02,
       maxPoolRate: 0.04,
       dynamic: 'virtual_band',
@@ -95,8 +94,8 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
     rates: {
       assetType: AssetType.NFT_RWA,
       label: 'NFT / RWA',
-      baseRate: 0.01,
-      poolRate: 0.015,
+      baseRate: 0.005, // 0.5% 平台费
+      poolRate: 0.017, // 1.7% 激励池 (V4.0 标准)
     },
     settlement: {
       trigger: 'tx_success',
@@ -113,8 +112,7 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
       poolRate: 0.95,
       developerSplit: {
         developer: 0.8,
-        recommendation: 0.1,
-        execution: 0.05,
+        agent: 0.15,
         paymind: 0.05,
       },
     },

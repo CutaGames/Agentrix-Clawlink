@@ -52,38 +52,38 @@ export class CommissionCalculatorService {
   ) {}
 
   /**
-   * 根据产品类型获取佣金比例（新规则）
-   * 实体商品：总佣金3%（推荐Agent 0.9% + 执行Agent 2.1% + PayMind 0.5%）
-   * 服务类：总佣金5%（推荐Agent 1.5% + 执行Agent 3.5% + PayMind 1%）
-   * 链上资产：根据场景不同（在calculateAndRecordCommission中处理）
+   * 根据产品类型获取佣金比例（新规则 V4.0）
+   * 实体商品：激励池 2.2% + 平台费 0.5% + 通道费 0.3% = 3.0%
+   * 服务类：激励池 3.7% + 平台费 1.0% + 通道费 0.3% = 5.0%
+   * 虚拟资产：激励池 2.2% + 平台费 0.5% + 通道费 0.3% = 3.0%
    */
   getCommissionRates(
     productType: ProductType | string,
-  ): { totalRate: number; recommendationRate: number; executionRate: number; paymindRate: number } {
+  ): { totalRate: number; agentRate: number; paymindRate: number } {
     if (productType === ProductType.PHYSICAL || productType === 'physical') {
-      // 实体商品：总佣金3%
       return {
         totalRate: 0.03,
-        recommendationRate: 0.009, // 0.9%
-        executionRate: 0.021, // 2.1%
+        agentRate: 0.022, // 2.2%
         paymindRate: 0.005, // 0.5%
       };
     } else if (productType === ProductType.SERVICE || productType === 'service') {
-      // 服务类：总佣金5%
       return {
         totalRate: 0.05,
-        recommendationRate: 0.015, // 1.5%
-        executionRate: 0.035, // 3.5%
-        paymindRate: 0.01, // 1%
+        agentRate: 0.037, // 3.7%
+        paymindRate: 0.01, // 1.0%
       };
-    } else {
-      // 链上资产：根据场景不同，默认使用NFT二级市场比例
-      // 平台聚合NFT：2.5%（PayMind 1% + 其他 1.5%）
+    } else if (productType === ProductType.NFT || productType === 'nft' || productType === 'nft_rwa') {
       return {
         totalRate: 0.025,
-        recommendationRate: 0.0075, // 0.75%
-        executionRate: 0.0175, // 1.75%
-        paymindRate: 0.01, // 1%
+        agentRate: 0.017, // 1.7%
+        paymindRate: 0.005, // 0.5%
+      };
+    } else {
+      // 默认虚拟资产/数字商品
+      return {
+        totalRate: 0.03,
+        agentRate: 0.022, // 2.2%
+        paymindRate: 0.005, // 0.5%
       };
     }
   }
@@ -100,17 +100,21 @@ export class CommissionCalculatorService {
     let paymindRate: number;
     if (orderType === 'product' || orderType === 'physical') {
       paymindRate = 0.005; // 实体商品：0.5%
+    } else if (orderType === 'service') {
+      paymindRate = 0.01; // 服务类：1.0%
     } else {
-      paymindRate = 0.01; // 其他（服务/数字资产）：1%
+      paymindRate = 0.005; // 其他（虚拟资产）：0.5%
     }
 
-    // Agent手续费（只和商品属性有关系，跟转换没关系）
+    // Agent手续费
     let agentRate = 0;
     if (hasAgent) {
       if (orderType === 'product' || orderType === 'physical') {
-        agentRate = 0.02; // 实体商品：2%
+        agentRate = 0.022; // 实体商品：2.2%
+      } else if (orderType === 'service') {
+        agentRate = 0.037; // 服务类：3.7%
       } else {
-        agentRate = 0.03; // 服务/数字资产：3%
+        agentRate = 0.022; // 虚拟资产：2.2%
       }
     }
 
@@ -145,11 +149,13 @@ export class CommissionCalculatorService {
   ): { commission: CommissionConfig; settlement: SettlementCondition } {
     if (orderType === 'nft' || orderType === 'virtual') {
       // 链上资产（NFT、虚拟资产）：即时结算
+      // V4.0: Pool 2.2% + Platform 0.5% + Channel 0.3% = 3.0%
+      // Merchant gets 97.0%
       return {
         commission: {
-          merchant: 0.88,
-          agent: 0.06,
-          paymind: 0.06,
+          merchant: 0.97,
+          agent: 0.022,
+          paymind: 0.008, // 0.5% platform + 0.3% channel
         },
         settlement: {
           type: 'instant',
@@ -162,11 +168,13 @@ export class CommissionCalculatorService {
 
     if (orderType === 'service') {
       // 服务类：服务开始后结算
+      // V4.0: Pool 3.7% + Platform 1.0% + Channel 0.3% = 5.0%
+      // Merchant gets 95.0%
       return {
         commission: {
-          merchant: 0.82,
-          agent: 0.10,
-          paymind: 0.08,
+          merchant: 0.95,
+          agent: 0.037,
+          paymind: 0.013, // 1.0% platform + 0.3% channel
         },
         settlement: {
           type: 'service_started',
@@ -178,11 +186,13 @@ export class CommissionCalculatorService {
 
     if (orderType === 'product' || orderType === 'physical') {
       // 实体商品：确认收货后结算
+      // V4.0: Pool 2.2% + Platform 0.5% + Channel 0.3% = 3.0%
+      // Merchant gets 97.0%
       return {
         commission: {
-          merchant: 0.78,
-          agent: 0.12,
-          paymind: 0.10,
+          merchant: 0.97,
+          agent: 0.022,
+          paymind: 0.008, // 0.5% platform + 0.3% channel
         },
         settlement: {
           type: 'delivery_confirmed',
@@ -196,9 +206,9 @@ export class CommissionCalculatorService {
     // 默认配置（商品）
     return {
       commission: {
-        merchant: 0.78,
-        agent: 0.12,
-        paymind: 0.10,
+        merchant: 0.97,
+        agent: 0.022,
+        paymind: 0.008,
       },
       settlement: {
         type: 'delivery_confirmed',
@@ -346,26 +356,15 @@ export class CommissionCalculatorService {
       const devProfile = FINANCIAL_PROFILES[AssetType.DEV_TOOL].rates.developerSplit!;
       developerAmount = this.roundCurrency(netRevenue * devProfile.developer);
 
-      let recommendationShare = this.roundCurrency(
-        netRevenue * devProfile.recommendation,
-      );
-      if (!refAgentId) {
-        developerAmount = this.roundCurrency(developerAmount + recommendationShare);
-        recommendationShare = 0;
-      }
-      referrerPayout = recommendationShare;
-
-      let executionShare = this.roundCurrency(
-        netRevenue * devProfile.execution,
-      );
-      if (!execAgentId) {
-        developerAmount = this.roundCurrency(developerAmount + executionShare);
-        executionShare = 0;
-      } else if (!executorHasWallet) {
-        rebatePayout = executionShare;
-        executionShare = 0;
+      // 开发者模式也简化为单层 Agent
+      let agentShare = this.roundCurrency(netRevenue * devProfile.agent);
+      
+      if (refAgentId) {
+        referrerPayout = agentShare;
+      } else if (execAgentId) {
+        executorPayout = agentShare;
       } else {
-        executorPayout = executionShare;
+        developerAmount = this.roundCurrency(developerAmount + agentShare);
       }
 
       paymindBaseRevenue = this.roundCurrency(
@@ -382,13 +381,15 @@ export class CommissionCalculatorService {
         merchantAmount = 0;
       }
     } else {
-      const scene = this.getAgentScene(refAgentId, execAgentId);
-      if (scene === 'dual') {
-        referrerPayout = this.roundCurrency(commissionPool * 0.3);
-        executorPayout = this.roundCurrency(commissionPool * 0.7);
-      } else if (scene === 'execution-only') {
+      // 简化为单层 Agent：优先给推荐人，没有推荐人则给执行 Agent
+      if (refAgentId) {
+        referrerPayout = commissionPool;
+        executorPayout = 0;
+      } else if (execAgentId) {
         executorPayout = commissionPool;
+        referrerPayout = 0;
       } else {
+        // 如果都没有，进入平台基金池
         paymindFinalRevenue = this.roundCurrency(
           paymindFinalRevenue + commissionPool,
         );

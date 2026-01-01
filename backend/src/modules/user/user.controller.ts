@@ -54,5 +54,12 @@ export class UserController {
   async getAvatar(@Request() req) {
     return this.userService.getAvatar(req.user.id);
   }
+
+  @Post('register-role')
+  @ApiOperation({ summary: '注册用户角色（商户/Agent/开发者）' })
+  @ApiResponse({ status: 201, description: '注册成功' })
+  async registerRole(@Request() req, @Body() body: { role: string; [key: string]: any }) {
+    return this.userService.registerRole(req.user.id, body.role, body);
+  }
 }
 

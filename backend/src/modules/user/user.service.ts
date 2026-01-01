@@ -1,7 +1,9 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../../entities/user.entity';
+import { MerchantProfile } from '../../entities/merchant-profile.entity';
+import { ReferralService } from '../referral/referral.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
@@ -18,6 +20,10 @@ export class UserService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(MerchantProfile)
+    private merchantProfileRepository: Repository<MerchantProfile>,
+    @Inject(forwardRef(() => ReferralService))
+    private referralService: ReferralService,
   ) {
     // 确保上传目录存在
     if (!fs.existsSync(this.uploadDir)) {
@@ -167,6 +173,65 @@ export class UserService {
     this.logger.log(`用户 ${userId} 添加角色成功: ${role}`);
 
     return user;
+  }
+
+  /**
+   * 注册角色（商户/Agent/开发者）并处理相关逻辑
+   */
+  async registerRole(userId: string, role: string, data: any): Promise<any> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 1. 添加角色
+    const userRole = role as UserRole;
+    if (!user.roles.includes(userRole)) {
+      user.roles.push(userRole);
+      await this.userRepository.save(user);
+    }
+
+    // 2. 如果是商户，创建商户资料
+    if (role === 'merchant') {
+      let profile = await this.merchantProfileRepository.findOne({ where: { userId } });
+      if (!profile) {
+        profile = this.merchantProfileRepository.create({
+          userId,
+          businessName: data.businessName || user.nickname || '未命名商户',
+          contactInfo: data.contactInfo || {},
+          businessInfo: data.businessInfo || {},
+        });
+        await this.merchantProfileRepository.save(profile);
+      }
+
+      // 3. 处理推广关系
+      if (data.referralId) {
+        try {
+          await this.referralService.createReferral({
+            agentId: data.referralId,
+            merchantId: userId,
+            merchantName: data.businessName,
+            metadata: { source: 'registration' },
+          });
+          this.logger.log(`记录推广关系: agentId=${data.referralId}, merchantId=${userId}`);
+        } catch (err) {
+          this.logger.warn(`创建推广关系失败: ${err.message}`);
+          // 推广关系创建失败不影响商户注册
+        }
+      }
+    }
+
+    return {
+      success: true,
+      message: '角色注册成功',
+      user: {
+        id: user.id,
+        agentrixId: user.agentrixId,
+        roles: user.roles,
+        email: user.email,
+        nickname: user.nickname,
+      },
+    };
   }
 }
 
