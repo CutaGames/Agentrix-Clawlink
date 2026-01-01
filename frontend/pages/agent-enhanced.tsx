@@ -252,7 +252,7 @@ function AgentEnhancedContent() {
         handleCommand('switch_tab', { module: 'user', tab: 'orders' });
         break;
       case 'policies':
-        handleCommand('switch_tab', { module: 'user', tab: 'policies' });
+        handleCommand('switch_tab', { module: 'user', tab: 'agents' });
         break;
       case 'airdrops':
         handleCommand('switch_tab', { module: 'user', tab: 'airdrops' });
@@ -262,10 +262,16 @@ function AgentEnhancedContent() {
         handleCommand('switch_tab', { module: 'user', tab: 'autoEarn' });
         break;
       case 'security':
-        handleCommand('switch_tab', { module: 'user', tab: 'security' });
+        handleCommand('switch_tab', { module: 'user', tab: 'agents' });
         break;
       case 'profile':
         handleCommand('switch_tab', { module: 'user', tab: 'profile' });
+        break;
+      case 'promotion':
+        handleCommand('switch_tab', { 
+          module: agentModeContext === 'personal' ? 'user' : agentModeContext, 
+          tab: 'promotion' 
+        });
         break;
       case 'risk_alert':
       case 'auto_purchase':

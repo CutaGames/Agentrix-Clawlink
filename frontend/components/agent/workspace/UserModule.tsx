@@ -15,6 +15,7 @@ import { AirdropDiscovery } from '../AirdropDiscovery'
 import { AutoEarnPanel } from '../AutoEarnPanel'
 import { AgentInsightsPanel } from '../AgentInsightsPanel'
 import { MyAgentsPanel } from '../MyAgentsPanel'
+import { PromotionPanel } from '../PromotionPanel'
 import { LoginModal } from '../../auth/LoginModal'
 import { useToast } from '../../../contexts/ToastContext'
 import { 
@@ -27,6 +28,7 @@ import {
   Lock, 
   Globe, 
   CheckCircle2,
+  Activity,
   AlertCircle,
   RefreshCw,
   ExternalLink,
@@ -38,13 +40,14 @@ import {
   ChevronRight,
   Clock,
   Cpu,
-  Check
+  Check,
+  Share2
 } from 'lucide-react'
 
 
 interface UserModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions'
+  initialTab?: 'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions' | 'promotion' | 'policies' | 'security'
 }
 
 /**
@@ -56,7 +59,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
   const { user, updateUser } = useUser()
   const { connectedWallets } = useWeb3()
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions'>(initialTab || 'checklist')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'agents' | 'payments' | 'wallets' | 'kyc' | 'orders' | 'airdrops' | 'autoEarn' | 'profile' | 'subscriptions' | 'promotion' | 'policies' | 'security'>(initialTab || 'checklist')
 
 
   // 个人资料状态
@@ -279,8 +282,11 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
       loadWallets()
     } else if (activeTab === 'orders') {
       loadOrders()
+    } else if (activeTab === 'security') {
+      loadSessions()
+      loadAgentAuthorizations()
     }
-  }, [activeTab, loadPayments, loadWallets, loadOrders])
+  }, [activeTab, loadPayments, loadWallets, loadOrders, loadSessions, loadAgentAuthorizations])
 
   // 处理命令
   useEffect(() => {
@@ -322,6 +328,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
             { key: 'orders' as const, label: { zh: '订单跟踪', en: 'Order Tracking' } },
             { key: 'airdrops' as const, label: { zh: '空投发现', en: 'Airdrops' } },
             { key: 'autoEarn' as const, label: { zh: '自动赚钱', en: 'Auto-Earn' } },
+            { key: 'promotion' as const, label: { zh: '推广中心', en: 'Promotion' } },
             { key: 'kyc' as const, label: { zh: 'KYC认证', en: 'KYC Verification' } },
             { key: 'profile' as const, label: { zh: '个人资料', en: 'Profile' } },
           ].map((tab) => (
@@ -425,6 +432,11 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
         {/* 我的 Agent 管理 */}
         {activeTab === 'agents' && (
           <MyAgentsPanel />
+        )}
+
+        {/* 推广中心 */}
+        {activeTab === 'promotion' && (
+          <PromotionPanel />
         )}
 
         {activeTab === 'payments' && (
@@ -803,6 +815,120 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
         {activeTab === 'autoEarn' && (
           <div className="h-full">
             <AutoEarnPanel />
+          </div>
+        )}
+
+        {activeTab === 'policies' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{t({ zh: '策略与授权', en: 'Policies & Auth' })}</h3>
+            </div>
+            <PolicyEngine />
+          </div>
+        )}
+
+        {activeTab === 'security' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{t({ zh: '安全中心', en: 'Security Center' })}</h3>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowSessionManager(true)}
+                  className="px-4 py-2 bg-blue-600/20 text-blue-400 rounded-lg text-sm hover:bg-blue-600/30 transition-colors flex items-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  {t({ zh: '管理 Session', en: 'Manage Sessions' })}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Session 概览 */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-blue-500/20 rounded-lg">
+                    <Clock className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <h4 className="font-semibold">{t({ zh: '活跃会话', en: 'Active Sessions' })}</h4>
+                </div>
+                <div className="space-y-4">
+                  {sessions.length === 0 ? (
+                    <p className="text-slate-500 text-sm py-4 text-center">{t({ zh: '暂无活跃会话', en: 'No active sessions' })}</p>
+                  ) : (
+                    sessions.slice(0, 3).map(session => (
+                      <div key={session.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/5">
+                        <div>
+                          <p className="text-sm font-medium text-white">{session.agentId || 'Unknown Agent'}</p>
+                          <p className="text-xs text-slate-500">{new Date(session.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] rounded-full uppercase">
+                          Active
+                        </span>
+                      </div>
+                    ))
+                  )}
+                  {sessions.length > 3 && (
+                    <button 
+                      onClick={() => setShowSessionManager(true)}
+                      className="w-full py-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      {t({ zh: '查看全部', en: 'View All' })} ({sessions.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 授权概览 */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-purple-500/20 rounded-lg">
+                    <Shield className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <h4 className="font-semibold">{t({ zh: 'Agent 授权', en: 'Agent Authorizations' })}</h4>
+                </div>
+                <div className="space-y-4">
+                  {agentAuthorizations.length === 0 ? (
+                    <p className="text-slate-500 text-sm py-4 text-center">{t({ zh: '暂无 Agent 授权', en: 'No agent authorizations' })}</p>
+                  ) : (
+                    agentAuthorizations.slice(0, 3).map(auth => (
+                      <div key={auth.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/5">
+                        <div>
+                          <p className="text-sm font-medium text-white">{auth.agentName || auth.agentId}</p>
+                          <p className="text-xs text-slate-500">{auth.authorizationType.toUpperCase()}</p>
+                        </div>
+                        <CheckCircle2 className="w-4 h-4 text-green-400" />
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 安全审计日志（模拟） */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-yellow-500/20 rounded-lg">
+                  <Activity className="w-5 h-5 text-yellow-400" />
+                </div>
+                <h4 className="font-semibold">{t({ zh: '安全审计日志', en: 'Security Audit Logs' })}</h4>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 p-3 border-b border-white/5">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <div className="flex-1">
+                    <p className="text-sm text-white">{t({ zh: '成功登录', en: 'Successful Login' })}</p>
+                    <p className="text-xs text-slate-500">2025-12-29 14:20:05 • IP: 192.168.1.1</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 p-3 border-b border-white/5">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <div className="flex-1">
+                    <p className="text-sm text-white">{t({ zh: '更新支付策略', en: 'Updated Payment Policy' })}</p>
+                    <p className="text-xs text-slate-500">2025-12-29 10:15:32 • {t({ zh: '每日限额修改为 100 USDC', en: 'Daily limit changed to 100 USDC' })}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

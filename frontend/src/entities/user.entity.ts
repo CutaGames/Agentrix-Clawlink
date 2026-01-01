@@ -12,6 +12,7 @@ export enum UserRole {
   USER = 'user',
   AGENT = 'agent',
   MERCHANT = 'merchant',
+  DEVELOPER = 'developer',
 }
 
 export enum KYCLevel {

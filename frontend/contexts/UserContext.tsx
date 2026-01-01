@@ -108,6 +108,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (!user) return
 
     try {
+      // 获取推广 ID
+      const referralId = typeof window !== 'undefined' ? localStorage.getItem('agentrix_referral_id') : null;
+
       // 调用后端API注册角色
       const { apiClient } = await import('../lib/api/client')
       const response = await apiClient.post<{
@@ -120,7 +123,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
           email?: string;
           nickname?: string;
         };
-      }>('/users/register-role', { role, ...data })
+      }>('/users/register-role', { 
+        role, 
+        referralId,
+        ...data 
+      })
 
       if (response?.success && response?.user) {
         console.log('✅ Backend role registration success:', response.user);

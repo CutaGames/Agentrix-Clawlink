@@ -127,6 +127,13 @@ export function AgentSidebar({ onCapabilityClick, activeMode }: AgentSidebarProp
       status: 'available',
     },
     {
+      id: 'promotion',
+      icon: '📣',
+      title: t({ zh: '推广中心', en: 'Promotion' }),
+      description: t({ zh: '邀请好友、赚取佣金、查看统计', en: 'Invite friends and earn commission' }),
+      status: 'available',
+    },
+    {
       id: 'profile',
       icon: '👤',
       title: t({ zh: '个人资料', en: 'Profile' }),

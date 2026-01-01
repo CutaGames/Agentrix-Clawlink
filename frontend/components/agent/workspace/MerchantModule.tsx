@@ -10,6 +10,7 @@ import { commissionApi, type SettlementInfo } from '../../../lib/api/commission.
 import { analyticsApi } from '../../../lib/api/analytics.api'
 import { aiCapabilityApi } from '../../../lib/api/ai-capability.api'
 import { apiKeyApi, type ApiKey } from '../../../lib/api/api-key.api'
+import { PromotionPanel } from '../PromotionPanel'
 import { webhookApi, type WebhookConfig } from '../../../lib/api/webhook.api'
 import { mpcWalletApi, type MPCWallet } from '../../../lib/api/mpc-wallet.api'
 import { paymentApi } from '../../../lib/api/payment.api'
@@ -63,13 +64,14 @@ import {
   DollarSign,
   ArrowRight,
   X,
-  Store
+  Store,
+  Share2
 } from 'lucide-react'
 
 
 interface MerchantModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide' | 'subscriptions' | 'checkout_config'
+  initialTab?: 'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide' | 'subscriptions' | 'checkout_config' | 'promotion'
 }
 
 type MerchantOrder = Order & { description?: string }
@@ -119,7 +121,7 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
 
   const isMerchant = user?.roles?.includes('merchant' as any)
 
-  const [activeTab, setActiveTab] = useState<'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide' | 'subscriptions' | 'checkout_config'>(initialTab || 'checklist')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'products' | 'orders' | 'settlement' | 'analytics' | 'api_keys' | 'webhooks' | 'audit' | 'settings' | 'ecommerce' | 'batch_import' | 'mpc_wallet' | 'off_ramp' | 'integration_guide' | 'subscriptions' | 'checkout_config' | 'promotion'>(initialTab || 'checklist')
 
 
   // 注册表单状态
@@ -913,6 +915,7 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
             { key: 'checkout_config' as const, label: { zh: '收银台配置', en: 'Checkout' } },
             { key: 'webhooks' as const, label: { zh: 'Webhooks', en: 'Webhooks' } },
             { key: 'audit' as const, label: { zh: '审计链', en: 'Audit Chain' } },
+            { key: 'promotion' as const, label: { zh: '推广中心', en: 'Promotion' } },
             { key: 'settings' as const, label: { zh: '商户设置', en: 'Settings' } },
           ].map((tab) => (
             <button
@@ -2491,6 +2494,11 @@ window.location.href = session.url;`
               </div>
             )}
           </div>
+        )}
+
+        {/* 推广中心 */}
+        {activeTab === 'promotion' && (
+          <PromotionPanel />
         )}
 
         {activeTab === 'settings' && (

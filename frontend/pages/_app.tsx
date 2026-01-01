@@ -33,6 +33,19 @@ export default function App({ Component, pageProps }: AppProps) {
   // 管理后台页面不需要 Web3 功能
   const isAdminPage = router.pathname.startsWith('/admin')
 
+  // 处理推广链接
+  useEffect(() => {
+    if (typeof window !== 'undefined' && router.query.ref) {
+      const refId = router.query.ref as string;
+      console.log('🔍 检测到推广 ID:', refId);
+      localStorage.setItem('agentrix_referral_id', refId);
+      
+      // 可选：清除 URL 中的 ref 参数以保持美观
+      // const { ref, ...rest } = router.query;
+      // router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+    }
+  }, [router.query.ref])
+
   // 在开发环境中加载支付调试工具和授权诊断工具
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {

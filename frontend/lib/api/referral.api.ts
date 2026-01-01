@@ -79,6 +79,13 @@ export const referralApi = {
   },
 
   /**
+   * 获取我的推广链接
+   */
+  getReferralLink: async (): Promise<{ link: string; agentId: string }> => {
+    return apiClient.get<{ link: string; agentId: string }>('/referral/link');
+  },
+
+  /**
    * 获取推广关系详情
    */
   getReferral: async (referralId: string): Promise<MerchantReferral> => {

@@ -4,6 +4,7 @@ import { useUser } from '../../../contexts/UserContext'
 import { userAgentApi } from '../../../lib/api/user-agent.api'
 import { statisticsApi } from '../../../lib/api/statistics.api'
 import { apiKeyApi, type ApiKey } from '../../../lib/api/api-key.api'
+import { PromotionPanel } from '../PromotionPanel'
 import { webhookApi, type WebhookConfig } from '../../../lib/api/webhook.api'
 import type { TrendPoint } from '../../../lib/api/statistics.api'
 import { 
@@ -23,7 +24,8 @@ import {
   EyeOff,
   RefreshCw,
   CreditCard,
-  Globe
+  Globe,
+  Share2
 } from 'lucide-react'
 
 import { SkillRegistry } from '../../workspace/SkillRegistry'
@@ -52,7 +54,7 @@ type UserAgent = {
 
 interface DeveloperModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace'
+  initialTab?: 'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace' | 'promotion'
 }
 
 /**
@@ -74,7 +76,7 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
 
   const isDeveloper = user?.roles?.includes('developer' as any)
 
-  const [activeTab, setActiveTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'skills' | 'packs' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'marketplace' | 'settings'>(initialTab || 'checklist')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'skills' | 'packs' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'marketplace' | 'settings' | 'promotion'>(initialTab || 'checklist')
 
 
 
@@ -421,7 +423,7 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
             { key: 'logs' as const, label: { zh: '调用日志', en: 'Logs' } },
             { key: 'simulator' as const, label: { zh: '测试台', en: 'Test Harness' } },
             { key: 'marketplace' as const, label: { zh: '市场发布', en: 'Marketplace' } },
-
+            { key: 'promotion' as const, label: { zh: '推广中心', en: 'Promotion' } },
             { key: 'settings' as const, label: { zh: '开发者设置', en: 'Settings' } },
 
           ].map((tab) => (
@@ -966,6 +968,11 @@ const session = await agentrix.payments.create({
           </div>
         )}
 
+
+        {/* 推广中心 */}
+        {activeTab === 'promotion' && (
+          <PromotionPanel />
+        )}
 
         {activeTab === 'settings' && (
           <div className="space-y-6">
