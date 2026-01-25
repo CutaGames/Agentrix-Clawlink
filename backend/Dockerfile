@@ -23,24 +23,24 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Remove devDependencies
-RUN npm prune --production
-
 # Stage 2: Production
 FROM node:20-alpine AS production
 
 WORKDIR /app
 
 # Install production dependencies only
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init bash
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001
 
+# Install production dependencies using legacy-peer-deps to avoid conflicts
+COPY package.json ./
+RUN npm install --omit=dev --legacy-peer-deps
+
 # Copy built application from builder stage
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
 
 # Create uploads directory
