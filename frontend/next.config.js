@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   // 后端文件已在 tsconfig.json 中排除，Next.js 不会检查它们
   // 允许构建时显示警告但不阻止构建
   eslint: {
