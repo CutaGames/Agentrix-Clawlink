@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class SkillEcosystemV21736570400000 implements MigrationInterface {
-  name = 'SkillEcosystemV21736570400000';
+export class SkillEcosystemV21776570400000 implements MigrationInterface {
+  name = 'SkillEcosystemV21776570400000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // 1. 创建新的枚举类型

@@ -28,16 +28,16 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install production dependencies only
+# Install production dependencies and tools for migration
 RUN apk add --no-cache dumb-init bash
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001
 
-# Install production dependencies using legacy-peer-deps to avoid conflicts
+# Install all dependencies to support migrations in production environment
 COPY package.json ./
-RUN npm install --omit=dev --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Copy built application from builder stage
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
