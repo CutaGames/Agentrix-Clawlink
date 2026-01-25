@@ -6,6 +6,32 @@ version: '3.8'
 
 services:
   # -------------------------------------------
+  # PostgreSQL 数据库 (作为 RDS 的备选/初始方案)
+  # -------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: agentrix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-agentrix}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agentrix_password}
+      POSTGRES_DB: ${DB_DATABASE:-paymind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agentrix-network
+
+  # -------------------------------------------
+  # Redis 缓存
+  # -------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: agentrix-redis
+    restart: unless-stopped
+    networks:
+      - agentrix-network
+
+  # -------------------------------------------
   # Backend API
   # -------------------------------------------
   backend:
@@ -17,20 +43,23 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DB_HOST: ${RDS_HOSTNAME}
-      DB_PORT: 5432
-      DB_USERNAME: ${RDS_USERNAME}
-      DB_PASSWORD: ${RDS_PASSWORD}
-      DB_DATABASE: ${RDS_DB_NAME}
-      DB_SSL: "true"
-      REDIS_HOST: ${ELASTICACHE_HOST}
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USERNAME: ${DB_USERNAME:-agentrix}
+      DB_PASSWORD: ${DB_PASSWORD:-agentrix_password}
+      DB_DATABASE: ${DB_DATABASE:-paymind}
+      DB_SSL: ${DB_SSL:-false}
+      REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${ELASTICACHE_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       JWT_SECRET: ${JWT_SECRET}
-      CORS_ORIGIN: "https://www.agentrix.top,https://hq.agentrix.top"
+      CORS_ORIGIN: "https://agentrix.top,https://www.agentrix.top,https://hq.agentrix.top"
       FRONTEND_URL: "https://www.agentrix.top"
     expose:
       - "3001"
+    depends_on:
+      - postgres
+      - redis
     networks:
       - agentrix-network
 
@@ -88,6 +117,10 @@ services:
       - backend
     networks:
       - agentrix-network
+
+volumes:
+  postgres_data:
+  redis_data:
 
 networks:
   agentrix-network:
