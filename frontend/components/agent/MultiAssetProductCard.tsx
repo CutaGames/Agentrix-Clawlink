@@ -71,6 +71,7 @@ interface MultiAssetProductCardProps {
   onViewDetail?: (product: MultiAssetProduct) => void;
   onBuyNow?: (product: MultiAssetProduct) => void;
   isAddingToCart?: boolean;
+  isPaying?: boolean;
   compact?: boolean;
 }
 
@@ -263,6 +264,7 @@ export function MultiAssetProductCard({
   onViewDetail,
   onBuyNow,
   isAddingToCart = false,
+  isPaying = false,
   compact = false,
 }: MultiAssetProductCardProps) {
   const [imageError, setImageError] = useState(false);
@@ -393,18 +395,25 @@ export function MultiAssetProductCard({
             详情
           </button>
           
-          {onBuyNow && assetType !== 'physical' && (
-            <button
-              onClick={() => onBuyNow(product)}
-              disabled={product.stock === 0}
-              className={`flex-1 py-2 px-3 rounded-lg ${config.color.replace('text-', 'bg-').replace('-400', '-600')} hover:opacity-90 text-white text-sm font-medium flex items-center justify-center gap-1 transition-colors disabled:opacity-50`}
-            >
-              <Zap size={14} />
-              立即购买
-            </button>
-          )}
+          <button
+            onClick={() => onBuyNow?.(product)}
+            disabled={product.stock === 0 || isPaying}
+            className={`flex-1 py-2 px-3 rounded-lg ${config.color.replace('text-', 'bg-').replace('-400', '-600')} hover:opacity-90 text-white text-sm font-medium flex items-center justify-center gap-1 transition-colors disabled:opacity-50`}
+          >
+            {isPaying ? (
+              <>
+                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                支付中...
+              </>
+            ) : (
+              <>
+                <Zap size={14} />
+                立即购买
+              </>
+            )}
+          </button>
           
-          {(assetType === 'physical' || !onBuyNow) && (
+          {(assetType === 'physical') && (
             <button
               onClick={() => onAddToCart?.(product.id, 1)}
               disabled={isAddingToCart || product.stock === 0}
@@ -474,8 +483,10 @@ interface MultiAssetProductListProps {
   onAddToCart?: (productId: string, quantity?: number) => void;
   onViewProduct?: (product: MultiAssetProduct) => void;
   onViewDetail?: (product: MultiAssetProduct) => void;
+  onBuyNow?: (product: MultiAssetProduct) => void;
   isAddingToCart?: string | null;
   addingToCartId?: string | null;
+  payingProductId?: string | null;
   maxDisplay?: number;
   layout?: 'list' | 'grid';
   showTotal?: boolean;
@@ -487,8 +498,10 @@ export function MultiAssetProductList({
   onAddToCart,
   onViewProduct,
   onViewDetail,
+  onBuyNow,
   isAddingToCart,
   addingToCartId,
+  payingProductId,
   maxDisplay = 5,
   layout = 'list',
   showTotal = false,
@@ -517,7 +530,9 @@ export function MultiAssetProductList({
             product={product}
             onAddToCart={onAddToCart}
             onViewDetail={handleViewDetail}
+            onBuyNow={onBuyNow}
             isAddingToCart={loadingId === product.id}
+            isPaying={payingProductId === product.id}
             compact
           />
         ))}

@@ -1,18 +1,33 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title Commission
  * @dev 分润结算合约，管理Agent和商户的分润记录与自动结算
+ * @notice 支持多场景支付分账：QuickPay (X402)、钱包直接转账、Provider 法币转数字货币
+ * @notice V5.0: 支持扫描商品分佣、X402通道费可配置、Agent 7:3 分佣
  */
-contract Commission is Ownable, ReentrancyGuard {
+contract Commission is Ownable, ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
+    
+    // ============ V5.0 常量 ============
+    uint16 public constant BASIS_POINTS = 10000; // 100% = 10000
+    uint16 public constant EXECUTOR_SHARE = 7000; // 70%
+    uint16 public constant REFERRER_SHARE = 3000; // 30%
+    uint16 public constant PROMOTER_SHARE_OF_PLATFORM = 2000; // 平台费的20%
+    
     IERC20 public settlementToken;
     address public paymindTreasury;
     address public systemRebatePool;
+    
+    // V5.0: X402 通道费率 (可配置，默认0%，basis points)
+    uint16 public x402ChannelFeeRate = 0;
 
     // 分润记录
     struct CommissionRecord {
@@ -67,7 +82,27 @@ contract Commission is Ownable, ReentrancyGuard {
         QUICKPAY,      // QuickPay (X402)
         WALLET,        // 钱包直接转账
         PROVIDER_FIAT, // Provider 法币转数字货币
-        PROVIDER_CRYPTO // Provider 数字货币转法币（提现）
+        PROVIDER_CRYPTO, // Provider 数字货币转法币（提现）
+        AUTOPAY        // V5.0: 自动支付
+    }
+    
+    // V5.0: 商品来源枚举
+    enum SkillSource {
+        NATIVE,        // 用户/商户上传
+        IMPORTED,      // 外部导入
+        CONVERTED,     // 商品转换
+        SCANNED_UCP,   // 平台扫描 UCP (1%)
+        SCANNED_X402,  // 平台扫描 X402 (1%)
+        SCANNED_FT,    // 扫描的 FT 资产 (0.3%)
+        SCANNED_NFT    // 扫描的 NFT 资产 (0.3%)
+    }
+    
+    // V5.0: Skill 层级枚举
+    enum SkillLayer {
+        INFRA,         // 基础设施层 (0.5% + 2%)
+        RESOURCE,      // 资源层 (0.5% + 2.5%)
+        LOGIC,         // 逻辑层 (1% + 4%)
+        COMPOSITE      // 组合层/插件 (3% + 7%)
     }
 
     struct Order {
@@ -85,7 +120,7 @@ contract Commission is Ownable, ReentrancyGuard {
         Status status;
     }
 
-    // 分账配置（链上存储）
+    // 分账配置（链上存储）- 支持 Audit Proof
     struct SplitConfig {
         address merchantMPCWallet;  // 商户 MPC 钱包地址
         uint256 merchantAmount;     // 商户金额
@@ -99,6 +134,11 @@ contract Commission is Ownable, ReentrancyGuard {
         uint256 settlementTime;      // 结算时间（0表示即时结算）
         bool isDisputed;             // 是否有争议
         bytes32 sessionId;           // Session ID（三层ID之一）
+        // Audit Proof 扩展字段
+        bytes32 proofHash;           // 预期结果哈希（用于验证任务完成）
+        address auditor;             // 审计员地址（验证任务完成的签名者）
+        bool requiresProof;          // 是否需要 Proof 才能释放资金
+        bool proofVerified;          // Proof 是否已验证
     }
 
     // 事件
@@ -153,6 +193,22 @@ contract Commission is Ownable, ReentrancyGuard {
     
     event SplitConfigSet(bytes32 indexed orderId, SplitConfig config);
     event ProviderAuthorized(address indexed provider, bool authorized);
+    
+    // V5.0 事件
+    event X402ChannelFeeRateUpdated(uint16 oldRate, uint16 newRate);
+    event ScannedProductPayment(
+        bytes32 indexed orderId,
+        SkillSource source,
+        uint256 originalAmount,
+        uint256 userExtraFee,
+        uint256 merchantAmount
+    );
+    
+    // Audit Proof 事件
+    event ProofSubmitted(bytes32 indexed orderId, bytes32 resultHash, address indexed submitter);
+    event ProofVerified(bytes32 indexed orderId, bytes32 resultHash, address indexed auditor, uint256 quality);
+    event ProofRejected(bytes32 indexed orderId, string reason, address indexed auditor);
+    event TrustedAuditorUpdated(address indexed auditor, bool trusted);
 
     // 状态变量
     mapping(bytes32 => CommissionRecord) public commissions;
@@ -164,9 +220,31 @@ contract Commission is Ownable, ReentrancyGuard {
     mapping(bytes32 => SplitConfig) public orderSplitConfigs; // 订单分账配置
     mapping(address => bool) public authorizedProviders; // Provider 白名单
     mapping(address => bool) public relayers; // Relayer 白名单
+    
+    // Audit Proof 状态变量
+    mapping(address => bool) public trustedAuditors; // 受信任的审计员
+    mapping(bytes32 => bytes32) public submittedProofs; // orderId => submittedResultHash
+    
+    // V5.0: 扫描商品费率映射 (basis points)
+    mapping(SkillSource => uint16) public scannedFeeRates;
+    
+    // V5.0: Skill 层级费率映射 (basis points)
+    mapping(SkillLayer => uint16) public layerPlatformFees;
+    mapping(SkillLayer => uint16) public layerPoolRates;
 
     modifier onlyRelayer() {
         require(relayers[msg.sender] || msg.sender == owner(), "Not relayer");
+        _;
+    }
+    
+    modifier onlyAuditor(bytes32 orderId) {
+        SplitConfig storage config = orderSplitConfigs[orderId];
+        require(
+            trustedAuditors[msg.sender] || 
+            config.auditor == msg.sender || 
+            msg.sender == owner(),
+            "Not authorized auditor"
+        );
         _;
     }
 
@@ -187,6 +265,63 @@ contract Commission is Ownable, ReentrancyGuard {
 
     function updateSystemRebatePool(address rebatePool) external onlyOwner {
         systemRebatePool = rebatePool;
+    }
+    
+    /**
+     * @dev V5.0: 初始化默认费率
+     */
+    function initializeV5Rates() external onlyOwner {
+        // 扫描商品费率 (basis points)
+        scannedFeeRates[SkillSource.SCANNED_UCP] = 100;   // 1%
+        scannedFeeRates[SkillSource.SCANNED_X402] = 100;  // 1%
+        scannedFeeRates[SkillSource.SCANNED_FT] = 30;     // 0.3%
+        scannedFeeRates[SkillSource.SCANNED_NFT] = 30;    // 0.3%
+        
+        // Skill 层级平台费 (basis points)
+        layerPlatformFees[SkillLayer.INFRA] = 50;      // 0.5%
+        layerPlatformFees[SkillLayer.RESOURCE] = 50;   // 0.5%
+        layerPlatformFees[SkillLayer.LOGIC] = 100;     // 1%
+        layerPlatformFees[SkillLayer.COMPOSITE] = 300; // 3%
+        
+        // Skill 层级激励池 (basis points)
+        layerPoolRates[SkillLayer.INFRA] = 200;      // 2%
+        layerPoolRates[SkillLayer.RESOURCE] = 250;   // 2.5%
+        layerPoolRates[SkillLayer.LOGIC] = 400;      // 4%
+        layerPoolRates[SkillLayer.COMPOSITE] = 700;  // 7%
+    }
+    
+    /**
+     * @dev V5.0: 设置 X402 通道费率
+     * @param newRate 新费率 (basis points, 0-300 即 0%-3%)
+     */
+    function setX402ChannelFeeRate(uint16 newRate) external onlyOwner {
+        require(newRate <= 300, "Rate too high"); // 最大 3%
+        uint16 oldRate = x402ChannelFeeRate;
+        x402ChannelFeeRate = newRate;
+        emit X402ChannelFeeRateUpdated(oldRate, newRate);
+    }
+    
+    /**
+     * @dev V5.0: 设置扫描商品费率
+     * @param source 商品来源
+     * @param rate 费率 (basis points)
+     */
+    function setScannedFeeRate(SkillSource source, uint16 rate) external onlyOwner {
+        require(rate <= 200, "Rate too high"); // 最大 2%
+        scannedFeeRates[source] = rate;
+    }
+    
+    /**
+     * @dev V5.0: 设置 Skill 层级费率
+     * @param layer Skill 层级
+     * @param platformFee 平台费 (basis points)
+     * @param poolRate 激励池 (basis points)
+     */
+    function setLayerRates(SkillLayer layer, uint16 platformFee, uint16 poolRate) external onlyOwner {
+        require(platformFee <= 500, "Platform fee too high"); // 最大 5%
+        require(poolRate <= 1000, "Pool rate too high");      // 最大 10%
+        layerPlatformFees[layer] = platformFee;
+        layerPoolRates[layer] = poolRate;
     }
 
     function syncOrder(
@@ -233,11 +368,18 @@ contract Commission is Ownable, ReentrancyGuard {
      * 支持两种模式：
      * 1. 使用新的 SplitConfig（如果已设置）
      * 2. 使用旧的 Order 结构（向后兼容）
+     * 
+     * 如果 SplitConfig.requiresProof = true，则必须先验证 proof
      */
     function distributeCommission(bytes32 orderId) external nonReentrant {
         // 优先使用新的 SplitConfig
         SplitConfig storage config = orderSplitConfigs[orderId];
         if (config.merchantMPCWallet != address(0)) {
+            // 检查是否需要 Proof 验证
+            if (config.requiresProof) {
+                require(config.proofVerified, "Proof not verified");
+            }
+            
             // 使用新的分账配置
             uint256 contractBalance = settlementToken.balanceOf(address(this));
             require(contractBalance > 0, "No balance to distribute");
@@ -265,11 +407,11 @@ contract Commission is Ownable, ReentrancyGuard {
         require(paymindTreasury != address(0), "Treasury not configured");
 
         if (o.merchant != address(0) && o.merchantAmount > 0) {
-            settlementToken.transfer(o.merchant, o.merchantAmount);
+            settlementToken.safeTransfer(o.merchant, o.merchantAmount);
         }
 
         if (o.referralFee > 0 && o.referrer != address(0)) {
-            settlementToken.transfer(o.referrer, o.referralFee);
+            settlementToken.safeTransfer(o.referrer, o.referralFee);
         }
 
         if (o.executionFee > 0) {
@@ -277,11 +419,11 @@ contract Commission is Ownable, ReentrancyGuard {
             if (target == address(0)) {
                 target = paymindTreasury;
             }
-            settlementToken.transfer(target, o.executionFee);
+            settlementToken.safeTransfer(target, o.executionFee);
         }
 
         if (o.platformFee > 0) {
-            settlementToken.transfer(paymindTreasury, o.platformFee);
+            settlementToken.safeTransfer(paymindTreasury, o.platformFee);
         }
 
         o.status = Status.SETTLED;
@@ -471,17 +613,17 @@ contract Commission is Ownable, ReentrancyGuard {
 
         // 执行转账
         if (currency == address(0)) {
-            // ETH转账
-            require(address(this).balance >= amount, "Insufficient balance");
-            payable(settlement.payee).transfer(amount);
+            // ETH转账 - 使用 call 替代 transfer 以支持更高 gas 限制
+            (bool success, ) = payable(settlement.payee).call{value: amount}("");
+            require(success, "ETH transfer failed");
         } else {
-            // ERC20代币转账
+            // ERC20代币转账 - 使用 SafeERC20
             IERC20 token = IERC20(currency);
             require(
                 token.balanceOf(address(this)) >= amount,
                 "Insufficient token balance"
             );
-            token.transfer(settlement.payee, amount);
+            token.safeTransfer(settlement.payee, amount);
         }
 
         settlement.completed = true;
@@ -533,14 +675,19 @@ contract Commission is Ownable, ReentrancyGuard {
             "Insufficient USDC balance"
         );
         
+        // 记录已分配金额，用于防止精度损失
+        uint256 distributed = 0;
+        
         // 分账到商户 MPC 钱包
         if (config.merchantMPCWallet != address(0) && config.merchantAmount > 0) {
-            settlementToken.transfer(config.merchantMPCWallet, config.merchantAmount);
+            settlementToken.safeTransfer(config.merchantMPCWallet, config.merchantAmount);
+            distributed += config.merchantAmount;
         }
         
         // 分账到推荐人
         if (config.referralFee > 0 && config.referrer != address(0)) {
-            settlementToken.transfer(config.referrer, config.referralFee);
+            settlementToken.safeTransfer(config.referrer, config.referralFee);
+            distributed += config.referralFee;
         }
         
         // 分账到执行Agent
@@ -551,17 +698,26 @@ contract Commission is Ownable, ReentrancyGuard {
             if (target == address(0)) {
                 target = paymindTreasury;
             }
-            settlementToken.transfer(target, config.executionFee);
+            settlementToken.safeTransfer(target, config.executionFee);
+            distributed += config.executionFee;
         }
         
         // 分账到平台
         if (config.platformFee > 0) {
-            settlementToken.transfer(paymindTreasury, config.platformFee);
+            settlementToken.safeTransfer(paymindTreasury, config.platformFee);
+            distributed += config.platformFee;
         }
         
         // 分账到PayMind Treasury（Off-ramp分佣，可配置，可为0）
         if (config.offRampFee > 0) {
-            settlementToken.transfer(paymindTreasury, config.offRampFee);
+            settlementToken.safeTransfer(paymindTreasury, config.offRampFee);
+            distributed += config.offRampFee;
+        }
+        
+        // 处理精度损失：将剩余金额转给平台
+        if (totalAmount > distributed) {
+            uint256 remaining = totalAmount - distributed;
+            settlementToken.safeTransfer(paymindTreasury, remaining);
         }
         
         // 记录分账事件
@@ -588,12 +744,9 @@ contract Commission is Ownable, ReentrancyGuard {
     function quickPaySplit(
         bytes32 orderId,
         uint256 amount
-    ) external nonReentrant {
-        // 1. 从用户钱包转账 USDC 到合约
-        require(
-            settlementToken.transferFrom(msg.sender, address(this), amount),
-            "USDC transfer failed"
-        );
+    ) external nonReentrant whenNotPaused {
+        // 1. 从用户钱包转账 USDC 到合约 - 使用 SafeERC20
+        settlementToken.safeTransferFrom(msg.sender, address(this), amount);
         
         // 2. 记录支付
         emit PaymentReceived(orderId, PaymentScenario.QUICKPAY, msg.sender, amount);
@@ -613,13 +766,10 @@ contract Commission is Ownable, ReentrancyGuard {
         bytes32 orderId,
         uint256 amount,
         address payer
-    ) external nonReentrant onlyRelayer {
-        // 1. 从指定付款人钱包转账 USDC 到合约
+    ) external nonReentrant onlyRelayer whenNotPaused {
+        // 1. 从指定付款人钱包转账 USDC 到合约 - 使用 SafeERC20
         // 注意：付款人必须已授权 Commission 合约（或通过 Permit）
-        require(
-            settlementToken.transferFrom(payer, address(this), amount),
-            "USDC transfer failed"
-        );
+        settlementToken.safeTransferFrom(payer, address(this), amount);
         
         // 2. 记录支付
         emit PaymentReceived(orderId, PaymentScenario.QUICKPAY, payer, amount);
@@ -638,12 +788,9 @@ contract Commission is Ownable, ReentrancyGuard {
     function walletSplit(
         bytes32 orderId,
         uint256 amount
-    ) external nonReentrant {
-        // 1. 从用户钱包转账 USDC 到合约
-        require(
-            settlementToken.transferFrom(msg.sender, address(this), amount),
-            "USDC transfer failed"
-        );
+    ) external nonReentrant whenNotPaused {
+        // 1. 从用户钱包转账 USDC 到合约 - 使用 SafeERC20
+        settlementToken.safeTransferFrom(msg.sender, address(this), amount);
         
         // 2. 记录支付
         emit PaymentReceived(orderId, PaymentScenario.WALLET, msg.sender, amount);
@@ -662,21 +809,150 @@ contract Commission is Ownable, ReentrancyGuard {
     function providerFiatToCryptoSplit(
         bytes32 orderId,
         uint256 amount
-    ) external nonReentrant {
+    ) external nonReentrant whenNotPaused {
         // 1. 验证 Provider 地址（白名单）
         require(authorizedProviders[msg.sender], "Unauthorized provider");
         
-        // 2. 验证 USDC 已转入合约（Provider 需要先 approve 和 transfer）
-        require(
-            settlementToken.balanceOf(address(this)) >= amount,
-            "Insufficient USDC balance"
-        );
+        // 2. 从 Provider 钱包转账 USDC 到合约 - 使用 SafeERC20
+        // 验证转账前后余额变化，防止转账金额不匹配
+        uint256 balanceBefore = settlementToken.balanceOf(address(this));
+        settlementToken.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 balanceAfter = settlementToken.balanceOf(address(this));
+        require(balanceAfter - balanceBefore >= amount, "Transfer amount mismatch");
         
         // 3. 记录支付
         emit PaymentReceived(orderId, PaymentScenario.PROVIDER_FIAT, msg.sender, amount);
         
         // 4. 自动分账
         _autoSplit(orderId, amount);
+    }
+    
+    // ============ V5.0: AutoPay 分账 ============
+    
+    /**
+     * @dev V5.0: AutoPay 分账（由 AutoPay 合约调用）
+     * @param orderId 订单ID
+     * @param amount 支付金额
+     * @param payer 付款人地址
+     */
+    function autoPaySplit(
+        bytes32 orderId,
+        uint256 amount,
+        address payer
+    ) external nonReentrant onlyRelayer whenNotPaused {
+        // 1. 从付款人钱包转账 USDC 到合约
+        settlementToken.safeTransferFrom(payer, address(this), amount);
+        
+        // 2. 记录支付
+        emit PaymentReceived(orderId, PaymentScenario.AUTOPAY, payer, amount);
+        
+        // 3. 自动分账
+        _autoSplit(orderId, amount);
+    }
+    
+    // ============ V5.0: 扫描商品分账 ============
+    
+    /**
+     * @dev V5.0: 扫描商品分账（用户额外承担费用）
+     * @param orderId 订单ID
+     * @param originalAmount 原始商品金额（商户收到的金额）
+     * @param source 商品来源
+     * @param referrer 推荐Agent地址（可选）
+     */
+    function scannedProductSplit(
+        bytes32 orderId,
+        uint256 originalAmount,
+        SkillSource source,
+        address referrer
+    ) external nonReentrant whenNotPaused {
+        require(
+            source == SkillSource.SCANNED_UCP ||
+            source == SkillSource.SCANNED_X402 ||
+            source == SkillSource.SCANNED_FT ||
+            source == SkillSource.SCANNED_NFT,
+            "Not scanned source"
+        );
+        
+        // 1. 计算用户额外费用
+        uint16 feeRate = scannedFeeRates[source];
+        uint256 userExtraFee = (originalAmount * feeRate) / BASIS_POINTS;
+        uint256 totalAmount = originalAmount + userExtraFee;
+        
+        // 2. 从用户钱包转账到合约
+        settlementToken.safeTransferFrom(msg.sender, address(this), totalAmount);
+        
+        // 3. 商户收到原始金额
+        SplitConfig storage config = orderSplitConfigs[orderId];
+        require(config.merchantMPCWallet != address(0), "Config not found");
+        settlementToken.safeTransfer(config.merchantMPCWallet, originalAmount);
+        
+        // 4. 平台收取用户额外费用
+        uint256 platformNet = userExtraFee;
+        
+        // 5. 推荐Agent获得平台费用的20%
+        if (referrer != address(0) && userExtraFee > 0) {
+            uint256 referrerFee = (userExtraFee * PROMOTER_SHARE_OF_PLATFORM) / BASIS_POINTS;
+            settlementToken.safeTransfer(referrer, referrerFee);
+            platformNet = userExtraFee - referrerFee;
+        }
+        
+        // 6. 剩余给平台
+        if (platformNet > 0) {
+            settlementToken.safeTransfer(paymindTreasury, platformNet);
+        }
+        
+        emit ScannedProductPayment(orderId, source, originalAmount, userExtraFee, originalAmount);
+    }
+    
+    // ============ V5.0: 计算分账金额 ============
+    
+    /**
+     * @dev V5.0: 根据 Skill 层级计算分账金额
+     * @param amount 总金额
+     * @param layer Skill 层级
+     * @param hasReferrer 是否有推荐Agent
+     * @param hasExecutor 是否有执行Agent
+     * @param executorHasWallet 执行Agent是否有钱包
+     */
+    function calculateV5Split(
+        uint256 amount,
+        SkillLayer layer,
+        bool hasReferrer,
+        bool hasExecutor,
+        bool executorHasWallet
+    ) public view returns (
+        uint256 merchantAmount,
+        uint256 platformFee,
+        uint256 referrerFee,
+        uint256 executorFee,
+        uint256 treasuryFee
+    ) {
+        uint16 platformRate = layerPlatformFees[layer];
+        uint16 poolRate = layerPoolRates[layer];
+        
+        platformFee = (amount * platformRate) / BASIS_POINTS;
+        uint256 pool = (amount * poolRate) / BASIS_POINTS;
+        merchantAmount = amount - platformFee - pool;
+        
+        // Agent 分佣 (7:3)
+        if (hasReferrer && hasExecutor) {
+            executorFee = (pool * EXECUTOR_SHARE) / BASIS_POINTS;
+            referrerFee = pool - executorFee;
+        } else if (hasExecutor) {
+            executorFee = (pool * EXECUTOR_SHARE) / BASIS_POINTS;
+            treasuryFee = pool - executorFee;
+        } else if (hasReferrer) {
+            referrerFee = (pool * REFERRER_SHARE) / BASIS_POINTS;
+            treasuryFee = pool - referrerFee;
+        } else {
+            treasuryFee = pool;
+        }
+        
+        // 执行Agent无钱包时，其份额进Treasury
+        if (!executorHasWallet && executorFee > 0) {
+            treasuryFee += executorFee;
+            executorFee = 0;
+        }
     }
     
     // ============ 配置函数 ============
@@ -731,6 +1007,150 @@ contract Commission is Ownable, ReentrancyGuard {
      */
     function getContractBalance() external view returns (uint256) {
         return settlementToken.balanceOf(address(this));
+    }
+    
+    // ============ 紧急控制函数 ============
+    
+    /**
+     * @dev 暂停合约
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    /**
+     * @dev 恢复合约
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    /**
+     * @dev 紧急提款 ERC20 代币
+     * @param token 代币地址
+     * @param to 接收地址
+     * @param amount 金额
+     */
+    function emergencyWithdrawToken(
+        address token,
+        address to,
+        uint256 amount
+    ) external onlyOwner {
+        require(to != address(0), "Invalid recipient");
+        IERC20(token).safeTransfer(to, amount);
+    }
+    
+    /**
+     * @dev 紧急提款 ETH
+     * @param to 接收地址
+     * @param amount 金额
+     */
+    function emergencyWithdrawETH(
+        address to,
+        uint256 amount
+    ) external onlyOwner {
+        require(to != address(0), "Invalid recipient");
+        require(address(this).balance >= amount, "Insufficient balance");
+        (bool success, ) = payable(to).call{value: amount}("");
+        require(success, "ETH transfer failed");
+    }
+
+    // ============ Audit Proof 函数 ============
+
+    /**
+     * @dev 设置受信任的审计员
+     */
+    function setTrustedAuditor(address auditor, bool trusted) external onlyOwner {
+        trustedAuditors[auditor] = trusted;
+        emit TrustedAuditorUpdated(auditor, trusted);
+    }
+
+    /**
+     * @dev 设置订单的 Proof 要求
+     * @param orderId 订单 ID
+     * @param proofHash 预期结果哈希
+     * @param auditor 指定审计员（可选，address(0) 表示使用全局审计员）
+     */
+    function setProofRequirement(
+        bytes32 orderId,
+        bytes32 proofHash,
+        address auditor
+    ) external onlyRelayer {
+        SplitConfig storage config = orderSplitConfigs[orderId];
+        require(config.merchantMPCWallet != address(0), "Config not found");
+        
+        config.proofHash = proofHash;
+        config.auditor = auditor;
+        config.requiresProof = true;
+        config.proofVerified = false;
+    }
+
+    /**
+     * @dev 执行者提交任务结果哈希
+     * @param orderId 订单 ID
+     * @param resultHash 结果哈希（如图片哈希）
+     */
+    function submitProof(bytes32 orderId, bytes32 resultHash) external {
+        SplitConfig storage config = orderSplitConfigs[orderId];
+        require(config.requiresProof, "Proof not required");
+        require(!config.proofVerified, "Already verified");
+        require(
+            msg.sender == config.executor || msg.sender == config.merchantMPCWallet,
+            "Not authorized"
+        );
+        
+        submittedProofs[orderId] = resultHash;
+        emit ProofSubmitted(orderId, resultHash, msg.sender);
+        
+        // 如果预期哈希匹配，自动验证
+        if (config.proofHash != bytes32(0) && resultHash == config.proofHash) {
+            config.proofVerified = true;
+            emit ProofVerified(orderId, resultHash, address(this), 100);
+        }
+    }
+
+    /**
+     * @dev 审计员验证 Proof
+     * @param orderId 订单 ID
+     * @param approved 是否通过
+     * @param quality 质量评分 (0-100)
+     */
+    function verifyProof(
+        bytes32 orderId,
+        bool approved,
+        uint256 quality
+    ) external onlyAuditor(orderId) {
+        SplitConfig storage config = orderSplitConfigs[orderId];
+        require(config.requiresProof, "Proof not required");
+        require(!config.proofVerified, "Already verified");
+        require(submittedProofs[orderId] != bytes32(0), "No proof submitted");
+        
+        if (approved && quality >= 60) {
+            config.proofVerified = true;
+            emit ProofVerified(orderId, submittedProofs[orderId], msg.sender, quality);
+        } else {
+            emit ProofRejected(orderId, "Quality insufficient or rejected", msg.sender);
+        }
+    }
+
+    /**
+     * @dev 查询订单的 Proof 状态
+     */
+    function getProofStatus(bytes32 orderId) external view returns (
+        bool requiresProof,
+        bytes32 expectedHash,
+        bytes32 submittedHash,
+        bool verified,
+        address auditor
+    ) {
+        SplitConfig storage config = orderSplitConfigs[orderId];
+        return (
+            config.requiresProof,
+            config.proofHash,
+            submittedProofs[orderId],
+            config.proofVerified,
+            config.auditor
+        );
     }
     
     /**

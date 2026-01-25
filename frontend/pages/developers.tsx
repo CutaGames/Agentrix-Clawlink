@@ -2,12 +2,10 @@ import Head from 'next/head'
 import { Navigation } from '../components/ui/Navigation'
 import { useState } from 'react'
 import { useRouter } from 'next/router'
-import { LoginModal } from '../components/auth/LoginModal'
 import { useLocalization } from '../contexts/LocalizationContext'
 
 export default function Developers() {
   const router = useRouter()
-  const [showLogin, setShowLogin] = useState(false)
   const [activeTab, setActiveTab] = useState<'docs' | 'sdk' | 'api'>('docs')
   const { t } = useLocalization()
 
@@ -139,7 +137,7 @@ export default function Developers() {
         <meta name="description" content="Agentrix开发者文档：SDK下载、API参考、快速开始指南" />
       </Head>
 
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       
       <main className="min-h-screen bg-slate-950 text-white">
         {/* Hero Section */}
@@ -647,7 +645,7 @@ export default function Developers() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => setShowLogin(true)}
+                onClick={() => router.push('/auth/register')}
                 className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors shadow-lg"
               >
                 注册开发者账户
@@ -662,10 +660,6 @@ export default function Developers() {
           </div>
         </section>
       </main>
-
-      {showLogin && (
-        <LoginModal onClose={() => setShowLogin(false)} />
-      )}
     </>
   )
 }

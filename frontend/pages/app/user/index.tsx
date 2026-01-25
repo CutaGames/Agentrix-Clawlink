@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { DashboardLayout } from '../../../components/layout/DashboardLayout'
 import { useUser } from '../../../contexts/UserContext'
 import { useLocalization } from '../../../contexts/LocalizationContext'
+import { MPCWalletCard } from '../../../components/wallet/MPCWalletCard'
 
 export default function UserDashboard() {
   const { user } = useUser()
@@ -47,6 +48,11 @@ export default function UserDashboard() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* MPC Wallet Card */}
+        <div className="mb-8">
+          <MPCWalletCard />
         </div>
 
         {/* Role Registration Cards */}

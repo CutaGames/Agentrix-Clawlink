@@ -5,6 +5,19 @@ export interface CreateGrantDto {
   singleLimit: number;
   dailyLimit: number;
   duration: number;
+  description?: string;
+  monthlyLimit?: number;
+  merchantScope?: string[];
+  categoryScope?: string[];
+}
+
+export interface UpdateGrantDto {
+  singleLimit?: number;
+  dailyLimit?: number;
+  monthlyLimit?: number;
+  merchantScope?: string[];
+  categoryScope?: string[];
+  description?: string;
 }
 
 export interface GrantInfo {
@@ -12,11 +25,20 @@ export interface GrantInfo {
   agentId: string;
   singleLimit: number;
   dailyLimit: number;
+  monthlyLimit?: number;
   usedToday: number;
+  usedThisMonth?: number;
   totalUsed: number;
   expiresAt: string;
   isActive: boolean;
+  isAutoPay: boolean;
+  authorizationType: 'manual' | 'auto_pay';
+  merchantScope?: string[];
+  categoryScope?: string[];
+  description?: string;
+  status: 'active' | 'revoked' | 'expired' | 'suspended';
   createdAt: string;
+  updatedAt: string;
 }
 
 export const autoPayApi = {
@@ -37,10 +59,7 @@ export const autoPayApi = {
   /**
    * 更新授权
    */
-  updateGrant: async (
-    id: string,
-    dto: { singleLimit?: number; dailyLimit?: number },
-  ): Promise<GrantInfo> => {
+  updateGrant: async (id: string, dto: UpdateGrantDto): Promise<GrantInfo> => {
     return apiClient.put<GrantInfo>(`/auto-pay/grants/${id}`, dto);
   },
 

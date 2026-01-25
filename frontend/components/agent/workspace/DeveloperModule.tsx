@@ -25,12 +25,14 @@ import {
   RefreshCw,
   CreditCard,
   Globe,
-  Share2
+  Share2,
+  User
 } from 'lucide-react'
 
 import { SkillRegistry } from '../../workspace/SkillRegistry'
 import { PackCenter } from '../../workspace/PackCenter'
 import { TestHarness } from '../../workspace/TestHarness'
+import { DeveloperAccountDashboard } from '../../developer/DeveloperAccountDashboard'
 
 // 定义UserAgent类型（与后端实体对应）
 
@@ -54,7 +56,7 @@ type UserAgent = {
 
 interface DeveloperModuleProps {
   onCommand?: (command: string, data?: any) => any
-  initialTab?: 'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace' | 'promotion'
+  initialTab?: 'checklist' | 'api' | 'revenue' | 'agents' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'settings' | 'skills' | 'packs' | 'marketplace' | 'promotion' | 'account'
 }
 
 /**
@@ -76,7 +78,7 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
 
   const isDeveloper = user?.roles?.includes('developer' as any)
 
-  const [activeTab, setActiveTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'skills' | 'packs' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'marketplace' | 'settings' | 'promotion'>(initialTab || 'checklist')
+  const [activeTab, setActiveTab] = useState<'checklist' | 'api' | 'revenue' | 'agents' | 'skills' | 'packs' | 'code' | 'webhooks' | 'logs' | 'simulator' | 'marketplace' | 'settings' | 'promotion' | 'account'>(initialTab || 'checklist')
 
 
 
@@ -411,6 +413,7 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
       <div className="border-b border-white/10 bg-slate-900/50 px-6 overflow-x-auto">
         <div className="flex space-x-1 min-w-max">
           {[
+            { key: 'account' as const, label: { zh: '开发者账户', en: 'Account' } },
             { key: 'checklist' as const, label: { zh: '开发进度', en: 'Skill Lifecycle' } },
             { key: 'api' as const, label: { zh: 'API统计', en: 'API Stats' } },
 
@@ -444,6 +447,18 @@ export function DeveloperModule({ onCommand, initialTab }: DeveloperModuleProps)
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-6">
+        {/* 开发者账户 */}
+        {activeTab === 'account' && (
+          <DeveloperAccountDashboard 
+            onNavigate={(tab) => {
+              // 支持从账户仪表盘跳转到其他标签
+              if (['api', 'revenue', 'settings'].includes(tab)) {
+                setActiveTab(tab as any)
+              }
+            }} 
+          />
+        )}
+
         {activeTab === 'checklist' && (
           <div className="space-y-6 max-w-4xl">
             <div className="bg-purple-600/10 border border-purple-500/20 rounded-2xl p-6 mb-8">

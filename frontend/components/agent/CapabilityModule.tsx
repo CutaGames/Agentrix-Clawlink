@@ -320,6 +320,9 @@ export function CapabilityModule({ mode, capabilityId, onBack }: CapabilityModul
     user: personalModules,
     merchant: merchantModules,
     developer: developerModules,
+    shopping: personalModules, // 暂时复用个人及模块
+    expert: personalModules,
+    data: personalModules,
   };
 
   const capabilityModule = moduleMap[mode]?.[capabilityId];

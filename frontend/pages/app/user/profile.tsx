@@ -6,7 +6,6 @@ import { useToast } from '../../../contexts/ToastContext'
 import { useLocalization } from '../../../contexts/LocalizationContext'
 import { AvatarUpload } from '../../../components/user/AvatarUpload'
 import { SocialAccountBinding } from '../../../components/user/SocialAccountBinding'
-import { LoginModal } from '../../../components/auth/LoginModal'
 import { walletApi, WalletConnection } from '../../../lib/api/wallet.api'
 import { userApi } from '../../../lib/api/user.api'
 
@@ -18,7 +17,6 @@ export default function UserProfile() {
   const [isEditing, setIsEditing] = useState(false)
   const [wallets, setWallets] = useState<WalletConnection[]>([])
   const [walletLoading, setWalletLoading] = useState(false)
-  const [showWalletModal, setShowWalletModal] = useState(false)
   const [email, setEmail] = useState(user?.email || '')
   const [nickname, setNickname] = useState(user?.nickname || '')
   const [bio, setBio] = useState(user?.bio || '')
@@ -148,7 +146,17 @@ export default function UserProfile() {
   }
 
   if (isLoading) {
-    return <div className="flex items-center justify-center min-h-screen">{t('common.loading')}</div>
+    return (
+      <DashboardLayout userType="user">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">{t('profile.title')}</h1>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
   }
 
   if (!isAuthenticated || !user) {
@@ -157,15 +165,6 @@ export default function UserProfile() {
 
   return (
     <DashboardLayout userType="user">
-      {showWalletModal && (
-        <LoginModal
-          onClose={() => setShowWalletModal(false)}
-          onWalletSuccess={async () => {
-            setShowWalletModal(false)
-            await loadWallets()
-          }}
-        />
-      )}
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex justify-between items-center mb-6">
@@ -285,7 +284,7 @@ export default function UserProfile() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">{t('profile.wallets.title')}</h2>
               <button
-                onClick={() => setShowWalletModal(true)}
+                onClick={() => router.push('/auth/login?mode=wallet&bind=true')}
                 className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 {t('profile.wallets.bindNew')}
@@ -362,7 +361,7 @@ export default function UserProfile() {
               <div className="text-center py-8 text-gray-500">
                 <p>{t('profile.wallets.empty')}</p>
                 <button
-                  onClick={() => router.push('/app/user')}
+                  onClick={() => router.push('/auth/login?mode=wallet&bind=true')}
                   className="mt-4 px-4 py-2 text-sm text-blue-600 hover:text-blue-700"
                 >
                   {t('profile.wallets.goToBind')}

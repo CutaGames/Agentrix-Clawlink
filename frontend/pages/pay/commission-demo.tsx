@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency, type SupportedCurrency } from '../../contexts/CurrencyContext'
 
@@ -47,7 +47,7 @@ const assetConfigs: Record<
     label: { zh: '服务类', en: 'Services' },
     baseRate: 0.01,
     poolRate: 0.04,
-    description: { zh: '商户固定成本 5%，1% 基础设施，4% 用于执行/推荐', en: 'Merchant cost 5% with 1% base infra + 4% incentive' },
+    description: { zh: '商户固定成本 5%，1.0% 给平台，4.0% 进入佣金池', en: 'Merchant cost 5% total, 1.0% base and 4.0% incentive pool' },
     settlement: {
       trigger: '服务单 Completed',
       lock: '3 天锁定期',
@@ -56,10 +56,10 @@ const assetConfigs: Record<
     },
   },
   virtual: {
-    label: { zh: '虚拟资产', en: 'Virtual / digital goods' },
-    baseRate: 0.01,
-    poolRate: 0.03,
-    description: { zh: '3% - 5% 范围，1% 固定收入 + 2%-4% 佣金池', en: '3%-5% band, 1% base + 2%-4% pool' },
+    label: { zh: '虚拟资产', en: 'Virtual symbols' },
+    baseRate: 0.005,
+    poolRate: 0.025,
+    description: { zh: '商户固定成本 3%，0.5% 给平台，2.5% 进入佣金池', en: 'Merchant cost 3% total, 0.5% base and 2.5% pool' },
     settlement: {
       trigger: '链上确认 > 12 / 卡密发放成功',
       lock: 'T + 1',
@@ -69,9 +69,9 @@ const assetConfigs: Record<
   },
   nft_rwa: {
     label: { zh: 'NFT / RWA', en: 'NFT / RWA' },
-    baseRate: 0.01,
-    poolRate: 0.015,
-    description: { zh: '2.5% 总成本，链上转移成功后 T + 1 清算', en: '2.5% cost, settle T+1 after on-chain transfer' },
+    baseRate: 0.005,
+    poolRate: 0.02,
+    description: { zh: '2.5% 总成本，0.5% 给平台，2.0% 进入佣金池', en: '2.5% cost total, 0.5% base and 2.0% pool' },
     settlement: {
       trigger: 'Tx Success',
       lock: 'T + 1',
@@ -79,12 +79,12 @@ const assetConfigs: Record<
     },
   },
   dev_tool: {
-    label: { zh: '开发者工具', en: 'Developer tools' },
+    label: { zh: '专业用户工具/插件', en: 'Professional User tools/Plugins' },
     baseRate: 0.05,
-    poolRate: 0.95,
+    poolRate: 0.15,
     description: {
-      zh: '特殊 80% 开发者 + 15% 生态分润（10% 推荐 + 5% 执行）+ 5% Agentrix',
-      en: 'Special 80% developer + 15% alliance (10% referral + 5% execution) + 5% Agentrix',
+      zh: '固定成本 20.0%，5.0% 给平台，15.0% 进入佣金池',
+      en: 'Fixed cost 20.0%, 5.0% base and 15.0% incentive pool',
     },
     settlement: {
       trigger: '支付成功即履约完成',
@@ -168,7 +168,7 @@ const settlementTimelineRows = [
     auto: '无需自动兜底',
   },
   {
-    asset: { zh: '开发者工具', en: 'Developer tools' },
+    asset: { zh: '专业用户工具', en: 'Professional User tools' },
     trigger: 'Payment Success',
     lock: '0 天',
     payout: '即时',
@@ -230,10 +230,10 @@ function resolveRatesForAsset(asset: FinancialAsset, ctx: RateContext) {
 }
 
 export default function CommissionDemoPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [assetType, setAssetType] = useState<FinancialAsset>('physical')
   const [scenario, setScenario] = useState<Scenario>('dual')
   const [amount, setAmount] = useState(2000)
+  const router = useRouter()
   const [currencyCode, setCurrencyCode] = useState<SupportedCurrency>('USD')
   const [platformTaxRate, setPlatformTaxRate] = useState(0)
   const [virtualPoolRate, setVirtualPoolRate] = useState(0.03)
@@ -348,7 +348,7 @@ export default function CommissionDemoPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         <section className="border-b border-white/10 bg-gradient-to-br from-purple-600/90 to-blue-600/90 py-16 text-white">
           <div className="container mx-auto px-6">
@@ -708,7 +708,7 @@ export default function CommissionDemoPage() {
                   <li>• {t({ zh: '支持 Web3 钱包地址或 Web2 月结', en: 'Supports Web3 wallet payouts or Web2 monthly settlements' })}</li>
                 </ul>
                 <button
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => router.push('/developers')}
                   className="mt-6 w-full rounded-xl bg-purple-500 py-3 text-white transition hover:bg-purple-600"
                 >
                   {t({ zh: '接入联盟 API', en: 'Join alliance API' })}
@@ -719,7 +719,6 @@ export default function CommissionDemoPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

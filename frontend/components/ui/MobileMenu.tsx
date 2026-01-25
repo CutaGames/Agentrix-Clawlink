@@ -117,7 +117,7 @@ export function MobileMenu() {
                   <button
                     onClick={() => {
                       setIsOpen(false)
-                      window.dispatchEvent(new CustomEvent('openLoginModal'))
+                      router.push('/auth/login')
                     }}
                     className="flex w-full items-center space-x-3 rounded-lg bg-blue-600 px-4 py-3 text-white hover:bg-blue-700"
                   >

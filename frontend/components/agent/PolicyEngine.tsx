@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocalization } from '../../contexts/LocalizationContext';
 import { useToast } from '../../contexts/ToastContext';
 import { apiClient } from '../../lib/api/client';
-import { Shield, Zap, Lock, AlertTriangle, CheckCircle2, Clock, ShieldCheck } from 'lucide-react';
+import { Shield, Zap, Lock, AlertTriangle, CheckCircle2, Clock, ShieldCheck, RefreshCw } from 'lucide-react';
 
 interface Policy {
   id: string;
@@ -20,11 +20,7 @@ export function PolicyEngine() {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchPolicies();
-  }, []);
-
-  const fetchPolicies = async () => {
+  const fetchPolicies = useCallback(async () => {
     try {
       const data = await apiClient.get<Policy[]>('/user-agent/policies');
       if (data && Array.isArray(data) && data.length > 0) {
@@ -44,7 +40,11 @@ export function PolicyEngine() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    fetchPolicies();
+  }, [fetchPolicies]);
 
   const savePolicy = async (policy: Policy) => {
     try {
@@ -88,18 +88,27 @@ export function PolicyEngine() {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <ShieldCheck className="text-blue-500" />
-            {t({ zh: '授权中心 (Policy Engine)', en: 'Authorization Center (Policy Engine)' })}
+            {t({ zh: '授权中心', en: 'Authorization Center' })}
           </h2>
-          <p className="text-neutral-400 mt-1">
+          <p className="text-slate-400 mt-1">
             {t({ zh: '配置您的 Agent 自动化执行的边界与规则，确保资产安全', en: 'Configure boundaries and rules for your agent\'s automated execution' })}
           </p>
         </div>
-        <div className="bg-blue-500/10 text-blue-400 px-4 py-2 rounded-xl border border-blue-500/20 flex items-center gap-3">
-          <div className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+        <div className="flex gap-3">
+          <button 
+            onClick={fetchPolicies}
+            className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-white/5 transition-colors"
+            title={t({ zh: '刷新', en: 'Refresh' })}
+          >
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <div className="bg-blue-500/10 text-blue-400 px-4 py-2 rounded-xl border border-blue-500/20 flex items-center gap-3">
+            <div className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+            </div>
+            <span className="text-sm font-semibold uppercase tracking-wider">{t({ zh: '实时防护中', en: 'Real-time Protection' })}</span>
           </div>
-          <span className="text-sm font-semibold uppercase tracking-wider">{t({ zh: '实时防护中', en: 'Real-time Protection Active' })}</span>
         </div>
       </div>
 
@@ -107,8 +116,8 @@ export function PolicyEngine() {
         {policies.map((policy) => (
           <div 
             key={policy.id} 
-            className={`bg-neutral-900/50 rounded-2xl p-6 border transition-all duration-300 ${
-              policy.enabled ? 'border-neutral-700 shadow-lg' : 'border-neutral-800/50 opacity-60 grayscale-[0.5]'
+            className={`bg-slate-900/50 rounded-2xl p-6 border transition-all duration-300 ${
+              policy.enabled ? 'border-white/10 shadow-lg' : 'border-white/5 opacity-60 grayscale-[0.5]'
             }`}
           >
             <div className="flex justify-between items-start mb-6">
@@ -125,13 +134,13 @@ export function PolicyEngine() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">{policy.name}</h3>
-                  <p className="text-sm text-neutral-400 mt-1 max-w-md">{policy.description}</p>
+                  <p className="text-sm text-slate-400 mt-1 max-w-md">{policy.description}</p>
                 </div>
               </div>
               <button
                 onClick={() => togglePolicy(policy)}
                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all focus:outline-none ${
-                  policy.enabled ? 'bg-blue-600 shadow-[0_0_10px_rgba(37,99,235,0.4)]' : 'bg-neutral-700'
+                  policy.enabled ? 'bg-blue-600 shadow-[0_0_10px_rgba(37,99,235,0.4)]' : 'bg-slate-700'
                 }`}
               >
                 <span
@@ -143,11 +152,11 @@ export function PolicyEngine() {
             </div>
 
             {policy.enabled && (
-              <div className="mt-4 pt-6 border-t border-neutral-800 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="mt-4 pt-6 border-t border-white/5 animate-in fade-in slide-in-from-top-2 duration-300">
                 {policy.type.includes('limit') && (
                   <div className="space-y-4">
                     <div className="flex justify-between text-sm mb-2">
-                      <span className="text-neutral-500">{t({ zh: '当前设定', en: 'Current Setting' })}</span>
+                      <span className="text-slate-500">{t({ zh: '当前设定', en: 'Current Setting' })}</span>
                       <span className="text-blue-400 font-mono font-bold">${policy.value}</span>
                     </div>
                     <div className="flex items-center gap-6">
@@ -159,9 +168,9 @@ export function PolicyEngine() {
                         value={typeof policy.value === 'number' ? policy.value : 0}
                         onChange={(e) => updateValue(policy, parseInt(e.target.value))}
                         onMouseUp={() => handleValueBlur(policy)}
-                        className="flex-1 h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                       />
-                      <div className="bg-neutral-950 px-4 py-2 rounded-xl border border-neutral-800 min-w-[100px] text-center shadow-inner">
+                      <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/5 min-w-[100px] text-center shadow-inner">
                         <span className="font-mono font-bold text-blue-400">${policy.value}</span>
                       </div>
                     </div>
@@ -171,7 +180,7 @@ export function PolicyEngine() {
                 {policy.type.includes('whitelist') && Array.isArray(policy.value) && (
                   <div className="flex flex-wrap gap-2">
                     {policy.value.map((item: string) => (
-                      <span key={item} className="bg-neutral-950 px-4 py-1.5 rounded-full text-sm border border-neutral-800 text-neutral-300 flex items-center gap-2 hover:border-neutral-700 transition-colors">
+                      <span key={item} className="bg-black/40 px-4 py-1.5 rounded-full text-sm border border-white/5 text-slate-300 flex items-center gap-2 hover:border-white/10 transition-colors">
                         <CheckCircle2 size={14} className="text-emerald-500" />
                         {item}
                         <button 
@@ -181,13 +190,13 @@ export function PolicyEngine() {
                             setPolicies(policies.map(p => p.id === policy.id ? updated : p));
                             savePolicy(updated);
                           }}
-                          className="ml-1 text-neutral-600 hover:text-red-400 transition-colors"
+                          className="ml-1 text-slate-600 hover:text-red-400 transition-colors"
                         >
                           ×
                         </button>
                       </span>
                     ))}
-                    <button className="px-4 py-1.5 rounded-full text-sm border border-dashed border-neutral-700 text-neutral-500 hover:border-blue-500 hover:text-blue-400 transition-all">
+                    <button className="px-4 py-1.5 rounded-full text-sm border border-dashed border-white/10 text-slate-500 hover:border-blue-500 hover:text-blue-400 transition-all">
                       + {t({ zh: '添加协议', en: 'Add Protocol' })}
                     </button>
                   </div>
@@ -200,16 +209,9 @@ export function PolicyEngine() {
                       value={policy.value}
                       onChange={(e) => updateValue(policy, parseInt(e.target.value))}
                       onBlur={() => handleValueBlur(policy)}
-                      className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2 text-blue-400 font-mono w-24 focus:outline-none focus:border-blue-500"
+                      className="bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-blue-400 font-mono w-24 focus:outline-none focus:border-blue-500"
                     />
-                    <span className="text-neutral-500 font-mono text-sm">Gwei</span>
-                  </div>
-                )}
-
-                {policy.type === 'auto_claim_airdrop' && (
-                  <div className="flex items-center gap-3 text-sm text-emerald-400 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10">
-                    <CheckCircle2 size={18} />
-                    {t({ zh: '自动执行已就绪，将实时监控链上空投机会', en: 'Auto-execution ready, monitoring on-chain airdrops' })}
+                    <span className="text-slate-500 font-mono text-sm">Gwei</span>
                   </div>
                 )}
               </div>
@@ -224,13 +226,23 @@ export function PolicyEngine() {
         </div>
         <div>
           <h4 className="text-amber-500 font-bold mb-1">{t({ zh: '安全建议', en: 'Security Tip' })}</h4>
-          <p className="text-sm text-neutral-400 leading-relaxed">
+          <p className="text-sm text-slate-400 leading-relaxed">
             {t({
               zh: '建议为新 Agent 设置较低的每日限额（如 $50），并在观察一段时间后再逐步调高。开启协议白名单可以有效防止恶意合约交互。',
               en: 'It is recommended to set a lower daily limit (e.g., $50) for new agents. Enabling protocol whitelists effectively prevents malicious contract interactions.',
             })}
           </p>
         </div>
+        <button 
+          onClick={() => {
+            if(confirm(t({zh: '确定要撤销所有当前活跃的授权会话吗？', en: 'Are you sure you want to revoke all active authorization sessions?'}))) {
+              success(t({zh: '已提交撤销请求', en: 'Revoke request submitted'}));
+            }
+          }}
+          className="ml-auto px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold transition-colors whitespace-nowrap"
+        >
+          {t({ zh: '撤销所有会话', en: 'Revoke All Sessions' })}
+        </button>
       </div>
     </div>
   );

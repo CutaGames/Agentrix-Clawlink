@@ -33,10 +33,6 @@ export default function CartPage() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const { t } = useLocalization()
 
-  const handleLoginClick = () => {
-    router.push('/auth/login')
-  }
-
   const handleQuantityChange = async (productId: string, newQuantity: number) => {
     if (newQuantity < 1) return
     await updateQuantity(productId, newQuantity)
@@ -142,7 +138,7 @@ export default function CartPage() {
         <meta name="description" content="查看和管理您的购物车" />
       </Head>
 
-      <Navigation onLoginClick={handleLoginClick} />
+      <Navigation />
 
       <main className="min-h-screen bg-slate-950 text-white">
         <div className="container mx-auto px-6 py-12">

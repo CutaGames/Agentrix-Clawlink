@@ -14,6 +14,7 @@ import {
   ThumbsUp,
   ThumbsDown
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 interface PendingProduct {
   id: string;
@@ -57,7 +58,7 @@ export default function ProductReviewPage() {
         ...(searchTerm && { search: searchTerm })
       });
       
-      const response = await fetch(`https://api.agentrix.top/api/admin/products?${params}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -83,7 +84,7 @@ export default function ProductReviewPage() {
     if (!token) return;
 
     try {
-      const response = await fetch(`https://api.agentrix.top/api/admin/products/${productId}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products/${productId}/status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -108,7 +109,7 @@ export default function ProductReviewPage() {
     if (!token) return;
 
     try {
-      const response = await fetch(`https://api.agentrix.top/api/admin/products/${productId}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products/${productId}/status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,

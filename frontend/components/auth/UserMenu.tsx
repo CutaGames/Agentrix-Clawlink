@@ -118,18 +118,18 @@ export function UserMenu() {
                 <div className="text-sm font-semibold text-white truncate">
                   {user.agentrixId && (
                     <div>
-                      <div className="text-xs text-slate-400 mb-1">AX ID</div>
-                      <div className="font-mono text-xs text-cyan-400">{user.agentrixId}</div>
+                      <div className="text-xs text-blue-400 font-semibold mb-1">AX ID</div>
+                      <div className="font-mono text-xs text-cyan-300 bg-slate-800/50 px-2 py-1 rounded">{user.agentrixId}</div>
                     </div>
                   )}
                 </div>
                 {user.walletAddress && (
-                  <div className="text-xs text-slate-400 mt-1 font-mono">
+                  <div className="text-xs text-slate-300 mt-1 font-mono">
                     {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}
                   </div>
                 )}
                 {user.email && (
-                  <div className="text-xs text-slate-400 mt-1">{user.email}</div>
+                  <div className="text-xs text-slate-300 mt-1">{user.email}</div>
                 )}
               </div>
             </div>

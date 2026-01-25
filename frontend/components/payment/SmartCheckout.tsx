@@ -29,6 +29,7 @@ import { useWeb3 } from '@/contexts/Web3Context';
 import { SessionManager } from './SessionManager';
 import { AgentrixLogo } from '../common/AgentrixLogo';
 import { TransakWhiteLabelModal } from './TransakWhiteLabelModal';
+import StripePayment from './StripePayment';
 import { ethers } from 'ethers';
 import QRCode from 'qrcode.react';
 
@@ -74,13 +75,13 @@ const TOKEN_CONFIG: Record<
   USDT: {
     address:
       (process.env.NEXT_PUBLIC_BSC_TESTNET_USDT_ADDRESS as `0x${string}`) ||
-      '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd',
+      '0xc23453b4842FDc4360A0a3518E2C0f51a2069386',
     fallbackDecimals: 18,
   },
   USDC: {
     address:
       (process.env.NEXT_PUBLIC_BSC_TESTNET_USDC_ADDRESS as `0x${string}`) ||
-      '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd', // BSC Testnet USDC often uses same address or similar
+      '0xc23453b4842FDc4360A0a3518E2C0f51a2069386', // BSC Testnet USDC often uses same address or similar
     fallbackDecimals: 18,
   },
 };
@@ -170,6 +171,9 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [sessionKeyMissing, setSessionKeyMissing] = useState(false);
   const [showProviderModal, setShowProviderModal] = useState(false);
+  const [showStripeModal, setShowStripeModal] = useState(false);
+  const [stripePaymentMethod, setStripePaymentMethod] = useState<string | null>(null); // 选中的 Stripe 支付方式
+  const [stripePaymentStage, setStripePaymentStage] = useState<'select' | 'confirm' | 'processing' | 'success'>('select');
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [selectedProviderOption, setSelectedProviderOption] = useState<ProviderOption | null>(null);
   const { activeSession, loadActiveSession, createSession, loading: sessionLoading } = useSessionManager();
@@ -203,15 +207,17 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       try {
         setStatus('loading');
         
+        // Always try to load session regardless of wallet connection
+        // Session is stored by userId (JWT), not wallet address
         const [profileResult, sessionResult, preflightResult] = await Promise.allSettled([
             userApi.getProfile().catch((e: any): any => {
                 console.warn('Failed to load user profile:', e);
                 return null;
             }),
-            isConnected ? loadActiveSession().catch((e: any): any => {
+            loadActiveSession().catch((e: any): any => {
                 console.warn('Failed to load active session:', e);
                 return null;
-            }) : Promise.resolve(null),
+            }),
             paymentApi.preflightCheck({
                 amount: order.amount.toString(),
                 currency: order.currency || 'USDC',
@@ -230,12 +236,48 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         let session = null;
         if (sessionResult.status === 'fulfilled' && sessionResult.value) {
             session = sessionResult.value;
-            setCurrentSession(session);
+            
+            // Check if local session key exists for this session
+            // Session data is in backend DB, but private key is in browser localStorage
+            // If user cleared browser data, the local key is gone
+            try {
+                const localSessionKeys = await SessionKeyManager.listSessionKeys();
+                const hasLocalKey = localSessionKeys.includes(session.signer);
+                
+                if (!hasLocalKey) {
+                    console.warn('⚠️ Session exists in backend but local session key is missing');
+                    console.warn('Session signer:', session.signer);
+                    console.warn('Local keys:', localSessionKeys);
+                    // Mark that session key is missing - user needs to re-create session
+                    setSessionKeyMissing(true);
+                    // Still keep the session to show in UI, will check again at payment time
+                    setCurrentSession(session);
+                } else {
+                    console.log('✅ Session found with valid local key');
+                    setCurrentSession(session);
+                    setSessionKeyMissing(false);
+                }
+            } catch (keyCheckError) {
+                console.warn('Failed to check local session keys:', keyCheckError);
+                // On error, still keep the session but mark key as potentially missing
+                setCurrentSession(session);
+                setSessionKeyMissing(true);
+            }
         }
         
         if (activeSession && !session) {
-          setCurrentSession(activeSession);
-          session = activeSession;
+          // Also check activeSession for local key
+          try {
+              const localSessionKeys = await SessionKeyManager.listSessionKeys();
+              const hasLocalKey = localSessionKeys.includes(activeSession.signer);
+              setSessionKeyMissing(!hasLocalKey);
+              setCurrentSession(activeSession);
+              session = activeSession;
+          } catch {
+              setCurrentSession(activeSession);
+              session = activeSession;
+              setSessionKeyMissing(true);
+          }
         }
 
         // Handle Preflight
@@ -487,13 +529,18 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const handleQuickPay = async () => {
     // 检查用户是否已登录 - QuickPay 需要用户身份
     if (!userProfile) {
-        setError('请先登录后再进行 QuickPay 支付。');
+        setError('请先登录后再进行 QuickPay 支付。点击右上角登录按钮。');
         setStatus('error');
         return;
     }
 
     const session = currentSession || activeSession;
-    if (!session) throw new Error('No active session found.');
+    if (!session) {
+      console.error('❌ QuickPay Error: No active session found');
+      console.log('Current session states:', { currentSession, activeSession });
+      setShowSessionManager(true);
+      throw new Error('未找到有效的 QuickPay Session，请先创建 Session 授权。');
+    }
     
     // 检查本地是否有 Session Key（私钥）
     // Session 数据存储在后端，但私钥存储在浏览器本地
@@ -501,12 +548,18 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     const sessionKeys = await SessionKeyManager.listSessionKeys();
     const hasLocalSessionKey = sessionKeys.includes(session.signer);
     
+    console.log('🔑 Session Key Check:', { 
+      sessionSigner: session.signer, 
+      localKeys: sessionKeys, 
+      hasKey: hasLocalSessionKey 
+    });
+    
     if (!hasLocalSessionKey) {
       console.warn('⚠️ Session Key 私钥在本地不存在，可能是浏览器数据被清除或换了浏览器');
       console.warn('Session signer:', session.signer);
       console.warn('本地存储的 Session Keys:', sessionKeys);
       setSessionKeyMissing(true);
-      throw new Error('Session 密钥已丢失（浏览器数据被清除或换了浏览器），请重新创建 QuickPay Session 或使用钱包支付');
+      throw new Error('Session 密钥已丢失（浏览器数据被清除或换了浏览器），请点击 QuickPay 重新创建 Session。');
     }
     
     let paymentAmount = order.amount;
@@ -637,7 +690,10 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     }
     setPaymentResult(result);
     setStatus('success');
-    if (onSuccess) onSuccess(result);
+    
+    // V7.1: Don't call onSuccess immediately, let user see the success screen 
+    // and click "Return to Merchant" to ensure they see the confirmation.
+    // if (onSuccess) onSuccess(result); 
   };
 
   const handleWalletPay = async () => {
@@ -733,7 +789,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
         setPaymentResult(result);
         setStatus('success');
-        if (onSuccess) onSuccess(result);
+        // V7.1: Don't call onSuccess immediately, let user see the success screen
+        // if (onSuccess) onSuccess(result);
     } catch (error: any) {
         console.error('Wallet payment failed:', error);
         setError(error.message || 'Payment failed');
@@ -792,6 +849,13 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   };
 
   const handleFiatChannelClick = (methodId: string, channelData?: any) => {
+    // 如果是 Stripe 支付，直接打开 Stripe 支付界面
+    if (methodId === 'stripe' || channelData?.provider === 'stripe') {
+      setShowStripeModal(true);
+      return;
+    }
+    
+    // 其他法币支付走 Transak 通道
     // Map methodId to ProviderOption
     const baseOption = preflightResult?.providerOptions?.[0] || {
         id: 'transak',
@@ -995,11 +1059,71 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   };
 
   const FiatSection = () => {
-    // 默认支付通道配置
-    const defaultChannels: Array<{
+    // Stripe 支持的支付方式配置（按本地化策略排序）
+    const currency = order.currency?.toUpperCase() || 'USD';
+    
+    // 基础支付方式
+    const baseStripePaymentMethods = [
+      { id: 'apple_pay', name: 'Apple Pay', description: 'No extra fee · Instant', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg', recommended: false },
+      { id: 'google_pay', name: 'Google Pay', description: 'Fast checkout · No extra fee', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f2/Google_Pay_Logo.svg', recommended: false },
+      { id: 'card', name: 'Credit / Debit Card', description: 'Visa · MasterCard · AmEx', icon: 'https://images.ctfassets.net/fzn2n1nzq965/HTTOloNPhisV9P4hlMPNA/cacf1bb88b9fc492dfad34378d844280/Stripe_icon_-_square.svg', recommended: false },
+    ];
+    
+    // 根据货币/地区添加本地支付方式
+    const localPaymentMethods: typeof baseStripePaymentMethods = [];
+    if (currency === 'CNY' || currency === 'USD') {
+      localPaymentMethods.push({ id: 'alipay', name: 'Alipay', description: 'May include FX fee', icon: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Alipay_logo.svg', recommended: currency === 'CNY' });
+    }
+    if (currency === 'CNY') {
+      localPaymentMethods.push({ id: 'wechat_pay', name: 'WeChat Pay', description: 'Popular in China', icon: 'https://upload.wikimedia.org/wikipedia/commons/a/a9/Wechat_pay_logo.svg', recommended: false });
+    }
+    if (currency === 'EUR') {
+      localPaymentMethods.push({ id: 'sepa_debit', name: 'SEPA Direct Debit', description: 'Bank transfer · EUR only', icon: 'https://stripe.com/img/v3/payments/payment-methods/pm-sepa.svg', recommended: false });
+      localPaymentMethods.push({ id: 'ideal', name: 'iDEAL', description: 'Popular in Netherlands', icon: 'https://stripe.com/img/v3/payments/payment-methods/pm-ideal.svg', recommended: false });
+    }
+    if (currency === 'GBP') {
+      localPaymentMethods.push({ id: 'bacs_debit', name: 'Bacs Direct Debit', description: 'UK bank transfer', icon: 'https://stripe.com/img/v3/payments/payment-methods/pm-bacs.svg', recommended: false });
+    }
+    
+    // 本地化排序策略 - 根据用户地区调整推荐
+    const getLocalizedPaymentMethods = () => {
+      const allMethods = [...baseStripePaymentMethods, ...localPaymentMethods];
+      
+      // 根据货币判断地区并标记推荐
+      if (currency === 'CNY') {
+        // 中国用户优先显示支付宝/微信
+        const alipay = allMethods.find(m => m.id === 'alipay');
+        const wechat = allMethods.find(m => m.id === 'wechat_pay');
+        if (alipay) alipay.recommended = true;
+        return [
+          ...allMethods.filter(m => m.id === 'alipay' || m.id === 'wechat_pay'),
+          ...allMethods.filter(m => m.id !== 'alipay' && m.id !== 'wechat_pay'),
+        ];
+      } else if (currency === 'USD') {
+        // 美国用户优先 Apple/Google Pay
+        const applePay = allMethods.find(m => m.id === 'apple_pay');
+        if (applePay) applePay.recommended = true;
+        return allMethods;
+      } else if (currency === 'EUR') {
+        // 欧洲用户可能更偏好 SEPA
+        return allMethods;
+      }
+      
+      // 默认：Apple Pay 推荐
+      const applePay = allMethods.find(m => m.id === 'apple_pay');
+      if (applePay) applePay.recommended = true;
+      return allMethods;
+    };
+    
+    const stripePaymentMethods = getLocalizedPaymentMethods();
+    const stripeFee = order.amount * 0.029 + 0.30;
+
+    // Transak 法币转加密通道配置
+    const transakChannels: Array<{
       id: string;
       name: string;
       icon: string;
+      provider?: string;
     }> = [
         { id: 'google_pay', name: 'Google Pay', icon: 'https://assets.transak.com/images/payment-methods/google_pay.svg' },
         { id: 'apple_pay', name: 'Apple Pay', icon: 'https://assets.transak.com/images/payment-methods/apple_pay.svg' },
@@ -1007,27 +1131,26 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     ];
 
     // 根据货币动态添加本地支付方式
-    const currency = order.currency?.toUpperCase();
     if (currency === 'EUR') {
-        defaultChannels.push({ id: 'sepa_bank_transfer', name: 'SEPA Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/sepa_bank_transfer.svg' });
+        transakChannels.push({ id: 'sepa_bank_transfer', name: 'SEPA Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/sepa_bank_transfer.svg' });
     } else if (currency === 'GBP') {
-        defaultChannels.push({ id: 'gbp_bank_transfer', name: 'Faster Payments', icon: 'https://assets.transak.com/images/payment-methods/gbp_bank_transfer.svg' });
+        transakChannels.push({ id: 'gbp_bank_transfer', name: 'Faster Payments', icon: 'https://assets.transak.com/images/payment-methods/gbp_bank_transfer.svg' });
     } else if (currency === 'USD') {
-        defaultChannels.push({ id: 'usa_bank_transfer', name: 'Fedwire / ACH', icon: 'https://assets.transak.com/images/payment-methods/usa_bank_transfer.svg' });
+        transakChannels.push({ id: 'usa_bank_transfer', name: 'Fedwire / ACH', icon: 'https://assets.transak.com/images/payment-methods/usa_bank_transfer.svg' });
     } else if (currency === 'CNY') {
-        defaultChannels.push({
+        transakChannels.push({
             id: 'cny_bank_transfer',
             name: '本地银行卡',
             icon: 'https://assets.transak.com/images/payment-methods/cny_bank_transfer.svg'
         });
-        defaultChannels.push({
+        transakChannels.push({
             id: 'alipay',
             name: '支付宝',
             icon: 'https://assets.transak.com/images/payment-methods/alipay.svg'
         });
     } else {
         // 其他货币默认添加本地银行转账
-        defaultChannels.push({ id: 'local_bank_transfer', name: 'Local Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/local_bank_transfer.svg' });
+        transakChannels.push({ id: 'local_bank_transfer', name: 'Local Bank Transfer', icon: 'https://assets.transak.com/images/payment-methods/local_bank_transfer.svg' });
     }
 
     // ID 映射：前端 channel ID -> 后端 providerOption ID
@@ -1043,8 +1166,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         'local_bank_transfer': ['local', 'local_bank_transfer'],
     };
 
-    // 合并 API 数据获取费用和限额
-    const channelsWithData = defaultChannels.map(channel => {
+    // 合并 API 数据获取费用和限额 (仅 Transak 通道)
+    const transakChannelsWithData = transakChannels.map(channel => {
         // 查找匹配的 API 选项（使用 ID 映射）
         const possibleIds = channelIdMapping[channel.id] || [channel.id];
         const apiOption = preflightResult?.providerOptions?.find(opt =>
@@ -1080,9 +1203,20 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     });
     
     const [iconErrors, setIconErrors] = React.useState<Set<string>>(new Set());
+    const [showTransakOptions, setShowTransakOptions] = React.useState(false);
+    const [showStripeOptions, setShowStripeOptions] = React.useState(true); // 默认展开 Stripe 选项
+    const [selectedStripeMethod, setSelectedStripeMethod] = React.useState<string | null>(null);
     
     const handleIconError = (channelId: string) => {
       setIconErrors(prev => new Set(prev).add(channelId));
+    };
+
+    // 处理 Stripe 支付方式选择
+    const handleStripeMethodSelect = (methodId: string) => {
+      setSelectedStripeMethod(methodId);
+      setStripePaymentMethod(methodId);
+      setStripePaymentStage('select');
+      setShowStripeModal(true);
     };
 
     return (
@@ -1094,48 +1228,139 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Fiat Payment</h3>
         </div>
 
-        <div className="space-y-3">
-            {channelsWithData.map(channel => (
+        <div className="space-y-4">
+            {/* Stripe Payment Methods - Expandable List */}
+            <div>
                 <button
-                    key={channel.id}
-                    onClick={() => handleFiatChannelClick(channel.id, channel)}
-                    disabled={!channel.available}
-                    className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all group ${
-                        channel.available
-                            ? 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30'
-                            : 'border-slate-100 bg-slate-50/50 opacity-60 cursor-not-allowed'
-                    }`}
+                    onClick={() => setShowStripeOptions(!showStripeOptions)}
+                    className="w-full flex items-center justify-between mb-2"
+                >
+                    <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">Pay via Stripe</div>
+                    <ChevronRight 
+                        size={14} 
+                        className={`text-slate-400 transition-transform ${showStripeOptions ? 'rotate-90' : ''}`} 
+                    />
+                </button>
+                
+                {showStripeOptions && (
+                    <div className="space-y-2 animate-fade-in">
+                        {stripePaymentMethods.map((method) => (
+                            <button
+                                key={method.id}
+                                onClick={() => handleStripeMethodSelect(method.id)}
+                                className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all group ${
+                                    selectedStripeMethod === method.id 
+                                        ? 'border-blue-500 bg-blue-50'
+                                        : 'border-slate-100 bg-white hover:border-blue-200 hover:bg-blue-50/30'
+                                }`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center p-2 border border-slate-100 shadow-sm">
+                                        {!iconErrors.has(method.id) ? (
+                                            <img 
+                                                src={method.icon} 
+                                                alt={method.name} 
+                                                className="w-full h-full object-contain" 
+                                                onError={() => handleIconError(method.id)}
+                                            />
+                                        ) : (
+                                            <CreditCard size={20} className="text-slate-400" />
+                                        )}
+                                    </div>
+                                    <div className="text-left">
+                                        <div className="font-semibold text-slate-900 flex items-center gap-2">
+                                            {method.name}
+                                            {method.recommended && (
+                                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase">Recommended</span>
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-slate-500">{method.description}</div>
+                                    </div>
+                                </div>
+                                <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                            </button>
+                        ))}
+                        
+                        {/* Stripe 费用信息 */}
+                        <div className="flex items-center justify-between text-xs text-slate-400 px-2 pt-2 border-t border-slate-100">
+                            <span>Processing fee: ~2.9% + $0.30</span>
+                            <span className="flex items-center gap-1">
+                                <ShieldCheck size={12} className="text-emerald-500" />
+                                Secured by Stripe
+                            </span>
+                        </div>
+                    </div>
+                )}
+            </div>
+            
+            {/* Transak Fiat-to-Crypto On-ramp */}
+            <div>
+                <button
+                    onClick={() => setShowTransakOptions(!showTransakOptions)}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-gray-50 hover:border-emerald-300 hover:bg-emerald-50/30 transition-all group"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center p-2 border border-slate-100">
-                            {!iconErrors.has(channel.id) ? (
-                                <img 
-                                    src={channel.icon} 
-                                    alt={channel.name} 
-                                    className="w-full h-full object-contain" 
-                                    onError={() => handleIconError(channel.id)}
-                                />
-                            ) : (
-                                <CreditCard size={20} className="text-slate-400" />
-                            )}
+                        <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center p-2 border border-slate-100 shadow-sm">
+                            <Globe size={24} className="text-emerald-500" />
                         </div>
                         <div className="text-left">
-                            <div className="font-semibold text-slate-900">{channel.name}</div>
-                            <div className="flex flex-col gap-0.5 text-xs text-slate-500">
-                                <div className="flex items-center gap-2">
-                                    <span>Min: {formatFiatSymbol(channel.currency)}{channel.minAmount}</span>
-                                    <span>•</span>
-                                    <span>Fee: {formatFiatSymbol(channel.currency)}{channel.fee?.toFixed(2)}</span>
-                                </div>
-                                <div className="text-[10px] text-slate-400">
-                                    Total: {formatFiatSymbol(channel.currency)}{channel.totalPrice.toFixed(2)} • {channel.estimatedTime}
-                                </div>
+                            <div className="font-semibold text-slate-900">Buy Crypto with Fiat</div>
+                            <div className="text-xs text-slate-500">Convert fiat to crypto, then pay</div>
+                            <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                                <span>Multiple payment methods</span>
+                                <span>•</span>
+                                <span>Global coverage</span>
                             </div>
                         </div>
                     </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                    <ChevronRight 
+                        size={18} 
+                        className={`text-slate-300 group-hover:text-emerald-500 transition-all ${showTransakOptions ? 'rotate-90' : ''}`} 
+                    />
                 </button>
-            ))}
+                
+                {/* Transak Payment Methods - Expandable */}
+                {showTransakOptions && (
+                    <div className="mt-2 ml-4 space-y-2 animate-fade-in">
+                        {transakChannelsWithData.map(channel => (
+                            <button
+                                key={channel.id}
+                                onClick={() => handleFiatChannelClick(channel.id, channel)}
+                                disabled={!channel.available}
+                                className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all group ${
+                                    channel.available
+                                        ? 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30'
+                                        : 'border-slate-100 bg-slate-50/50 opacity-60 cursor-not-allowed'
+                                }`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center p-1.5 border border-slate-100">
+                                        {!iconErrors.has(channel.id) ? (
+                                            <img 
+                                                src={channel.icon} 
+                                                alt={channel.name} 
+                                                className="w-full h-full object-contain" 
+                                                onError={() => handleIconError(channel.id)}
+                                            />
+                                        ) : (
+                                            <CreditCard size={16} className="text-slate-400" />
+                                        )}
+                                    </div>
+                                    <div className="text-left">
+                                        <div className="font-medium text-sm text-slate-900">{channel.name}</div>
+                                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                            <span>Min: {formatFiatSymbol(channel.currency)}{channel.minAmount}</span>
+                                            <span>•</span>
+                                            <span>Fee: {formatFiatSymbol(channel.currency)}{channel.fee?.toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <ChevronRight size={14} className="text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
       </div>
     );
@@ -1416,22 +1641,21 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col h-[85vh] md:h-auto md:min-h-[600px]">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+    <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-slate-950/80 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-300 overflow-y-auto">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-white/10 overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh] relative animate-in zoom-in-95 duration-300 my-2 sm:my-8">
+        {/* Header */}
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
         <AgentrixLogo size="sm" showText />
-        {onCancel && (
-            <button onClick={onCancel} className="text-slate-400 hover:text-slate-600">
-                <XIcon size={20} />
-            </button>
-        )}
+        <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full p-1 transition-colors">
+            <XIcon size={20} />
+        </button>
       </div>
 
       {/* Order Summary */}
-      <div className="px-6 py-6 bg-white">
+      <div className="px-4 sm:px-6 py-4 sm:py-6 bg-white">
         <div className="text-center">
             <div className="text-sm text-slate-500 mb-1">Total Amount</div>
-            <div className="text-4xl font-extrabold text-slate-900">
+            <div className="text-3xl sm:text-4xl font-extrabold text-slate-900">
                 {formatFiatAmount(order.amount, order.currency)}
             </div>
             <div className="text-xs text-slate-400 mt-2 bg-slate-50 inline-block px-3 py-1 rounded-full">
@@ -1440,8 +1664,8 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         </div>
       </div>
 
-      {/* Split Layout */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Split Layout - Scrollable */}
+      <div className="flex-1 overflow-y-auto min-h-0">
         {routeType === 'qrcode' ? (
           <QRCodeView />
         ) : (
@@ -1695,6 +1919,247 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           onError={(msg) => setError(msg)}
         />
 
+        {/* Stripe Payment Modal - Enhanced Multi-Method Selection */}
+        {showStripeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-semibold text-slate-900">Card Payment</h2>
+                  <button
+                    onClick={() => {
+                      setShowStripeModal(false);
+                      setStripePaymentStage('select');
+                      setStripePaymentMethod(null);
+                    }}
+                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    <XIcon size={24} />
+                  </button>
+                </div>
+                <div className="mt-2 text-center">
+                  <div className="text-sm text-slate-500">Total Amount</div>
+                  <div className="text-3xl font-bold text-slate-900">
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency || 'USD' }).format(order.amount)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Method Selection Stage */}
+              {stripePaymentStage === 'select' && (
+                <div className="p-6 space-y-3">
+                  {/* Apple Pay */}
+                  <button
+                    onClick={() => setStripePaymentMethod('apple_pay')}
+                    className={`w-full px-4 py-4 rounded-xl border-2 text-left transition-all ${
+                      stripePaymentMethod === 'apple_pay' 
+                        ? 'border-black bg-slate-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
+                          <svg viewBox="0 0 24 24" className="w-6 h-6 text-white" fill="currentColor">
+                            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <span className="font-medium text-slate-900">Apple Pay</span>
+                          <div className="text-xs text-slate-500">No extra fee · Instant</div>
+                        </div>
+                      </div>
+                      {stripePaymentMethod === 'apple_pay' && (
+                        <CheckCircle2 className="text-black" size={20} />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Google Pay */}
+                  <button
+                    onClick={() => setStripePaymentMethod('google_pay')}
+                    className={`w-full px-4 py-4 rounded-xl border-2 text-left transition-all ${
+                      stripePaymentMethod === 'google_pay' 
+                        ? 'border-black bg-slate-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center">
+                          <svg viewBox="0 0 24 24" className="w-6 h-6">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <span className="font-medium text-slate-900">Google Pay</span>
+                          <div className="text-xs text-slate-500">Fast checkout · No extra fee</div>
+                        </div>
+                      </div>
+                      {stripePaymentMethod === 'google_pay' && (
+                        <CheckCircle2 className="text-black" size={20} />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Credit/Debit Card */}
+                  <button
+                    onClick={() => setStripePaymentMethod('card')}
+                    className={`w-full px-4 py-4 rounded-xl border-2 text-left transition-all ${
+                      stripePaymentMethod === 'card' 
+                        ? 'border-black bg-slate-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                          <CreditCard className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <span className="font-medium text-slate-900">Credit / Debit Card</span>
+                          <div className="text-xs text-slate-500">Visa · MasterCard · AmEx</div>
+                        </div>
+                      </div>
+                      {stripePaymentMethod === 'card' && (
+                        <CheckCircle2 className="text-black" size={20} />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Alipay */}
+                  <button
+                    onClick={() => setStripePaymentMethod('alipay')}
+                    className={`w-full px-4 py-4 rounded-xl border-2 text-left transition-all ${
+                      stripePaymentMethod === 'alipay' 
+                        ? 'border-black bg-slate-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                          <span className="text-white font-bold text-sm">支</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-slate-900">Alipay</span>
+                          <div className="text-xs text-slate-500">May include FX fee</div>
+                        </div>
+                      </div>
+                      {stripePaymentMethod === 'alipay' && (
+                        <CheckCircle2 className="text-black" size={20} />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Card Input Form (only shown when card is selected) */}
+                  {stripePaymentMethod === 'card' && (
+                    <div className="mt-4 border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                      <input 
+                        type="text" 
+                        className="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                        placeholder="Card number" 
+                      />
+                      <div className="flex gap-3">
+                        <input 
+                          type="text" 
+                          className="w-1/2 border border-slate-300 rounded-lg px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                          placeholder="MM / YY" 
+                        />
+                        <input 
+                          type="text" 
+                          className="w-1/2 border border-slate-300 rounded-lg px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                          placeholder="CVC" 
+                        />
+                      </div>
+                      <input 
+                        type="text" 
+                        className="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                        placeholder="Cardholder name" 
+                      />
+                    </div>
+                  )}
+
+                  {/* Pay Button */}
+                  <button
+                    onClick={() => {
+                      if (stripePaymentMethod) {
+                        setStripePaymentStage('processing');
+                        // 模拟支付处理
+                        setTimeout(() => {
+                          setStripePaymentStage('success');
+                        }, 2000);
+                      }
+                    }}
+                    disabled={!stripePaymentMethod}
+                    className={`w-full py-4 rounded-xl font-medium text-lg transition-all ${
+                      stripePaymentMethod 
+                        ? 'bg-black text-white hover:bg-slate-800' 
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    Pay {new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency || 'USD' }).format(order.amount)}
+                  </button>
+
+                  {/* Security Note */}
+                  <div className="flex items-center justify-center gap-2 text-xs text-slate-400 pt-2">
+                    <ShieldCheck size={14} className="text-emerald-500" />
+                    <span>Your payment is secured with 256-bit encryption</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Processing Stage */}
+              {stripePaymentStage === 'processing' && (
+                <div className="p-12 text-center">
+                  <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+                  <div className="text-lg font-medium text-slate-900">Processing Payment...</div>
+                  <div className="text-sm text-slate-500 mt-2">Please wait while we confirm your payment</div>
+                </div>
+              )}
+
+              {/* Success Stage */}
+              {stripePaymentStage === 'success' && (
+                <div className="p-12 text-center">
+                  <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+                  </div>
+                  <div className="text-xl font-semibold text-emerald-600 mb-2">Payment Successful!</div>
+                  <div className="text-sm text-slate-500 mb-1">Instant receipt issued</div>
+                  <div className="text-sm text-slate-600">Merchant / Agent Rating: ⭐⭐⭐⭐☆ 4.6</div>
+                  <button
+                    onClick={() => {
+                      setShowStripeModal(false);
+                      setStripePaymentStage('select');
+                      setStripePaymentMethod(null);
+                      if (onSuccess) {
+                        onSuccess({
+                          paymentMethod: 'stripe',
+                          orderId: order.id,
+                          stripeMethod: stripePaymentMethod,
+                        });
+                      }
+                    }}
+                    className="mt-6 px-8 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+
+              {/* Powered by Stripe */}
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-400">
+                <CreditCard size={14} />
+                <span>Powered by Stripe</span>
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* Wallet Selector Modal */}
       {showWalletSelector && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -1742,6 +2207,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

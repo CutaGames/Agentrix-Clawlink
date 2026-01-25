@@ -2,7 +2,6 @@ import Head from 'next/head'
 import { useState } from 'react'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useRouter } from 'next/router'
 
@@ -10,7 +9,6 @@ type AgentType = 'personal' | 'merchant' | 'developer'
 type Step = 'template' | 'configure' | 'deploy' | 'run'
 
 export default function AgentBuilderDemoPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [selectedType, setSelectedType] = useState<AgentType>('personal')
   const [currentStep, setCurrentStep] = useState<Step>('template')
   const { t } = useLocalization()
@@ -141,7 +139,7 @@ devAgent.start()
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white min-h-screen">
         {/* Hero */}
         <section className="border-b border-white/10 bg-gradient-to-br from-purple-600/90 to-blue-600/90 py-20">
@@ -355,7 +353,7 @@ devAgent.start()
                 {t({ zh: '开始生成', en: 'Start Building' })}
               </button>
               <button
-                onClick={() => setShowLogin(true)}
+                onClick={() => router.push('/auth/login')}
                 className="border border-white/30 text-white font-semibold px-8 py-3 rounded-xl hover:bg-white/10 transition-colors"
               >
                 {t({ zh: '登录/注册', en: 'Login/Register' })}
@@ -365,7 +363,6 @@ devAgent.start()
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

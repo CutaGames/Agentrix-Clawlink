@@ -12,6 +12,7 @@ import {
   ArrowRightLeft,
   Wallet
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 export default function FundPathsPage() {
   const router = useRouter();
@@ -31,7 +32,7 @@ export default function FundPathsPage() {
   const fetchPaths = async (token: string) => {
     try {
       setLoading(true);
-      const response = await fetch('https://api.agentrix.top/api/admin/fund-paths', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/fund-paths`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch fund paths');

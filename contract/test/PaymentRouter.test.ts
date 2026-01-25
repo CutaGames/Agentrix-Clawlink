@@ -48,12 +48,36 @@ describe("PaymentRouter", function () {
       );
     });
 
-    it("应该成功路由钱包支付", async function () {
+    it("应该成功路由钱包支付（新接口）", async function () {
       const paymentId = ethers.id("test-payment");
+      const sessionId = ethers.id("test-session");
       const amount = ethers.parseEther("1");
 
       await expect(
         paymentRouter.connect(payer).routePayment(
+          paymentId,
+          recipient.address,
+          amount,
+          1, // WALLET
+          sessionId,  // sessionId
+          amount,     // merchantPrice
+          0,          // channelFee
+          { value: amount }
+        )
+      )
+        .to.emit(paymentRouter, "PaymentRouted")
+        .to.emit(paymentRouter, "PaymentCompleted");
+
+      const balance = await paymentRouter.balances(recipient.address);
+      expect(balance).to.equal(amount);
+    });
+
+    it("应该成功路由钱包支付（旧接口，向后兼容）", async function () {
+      const paymentId = ethers.id("test-payment-legacy");
+      const amount = ethers.parseEther("1");
+
+      await expect(
+        paymentRouter.connect(payer).routePaymentLegacy(
           paymentId,
           recipient.address,
           amount,
@@ -64,12 +88,13 @@ describe("PaymentRouter", function () {
         .to.emit(paymentRouter, "PaymentRouted")
         .to.emit(paymentRouter, "PaymentCompleted");
 
-      const balance = await ethers.provider.getBalance(recipient.address);
-      expect(balance).to.be.gt(0);
+      const balance = await paymentRouter.balances(recipient.address);
+      expect(balance).to.equal(amount);
     });
 
     it("应该拒绝无效的支付金额", async function () {
       const paymentId = ethers.id("test-payment");
+      const sessionId = ethers.id("test-session");
       const amount = ethers.parseEther("2000"); // 超过最大限额
 
       await expect(
@@ -78,6 +103,9 @@ describe("PaymentRouter", function () {
           recipient.address,
           amount,
           1,
+          sessionId,
+          amount,
+          0,
           { value: amount }
         )
       ).to.be.revertedWith("Amount out of range");

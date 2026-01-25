@@ -21,8 +21,10 @@ import {
   Target,
   Shield,
   FileSearch,
-  Package
+  Package,
+  Sparkles
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 // 完整的管理后台菜单项（中文）
 const menuItems = [
@@ -33,6 +35,7 @@ const menuItems = [
   { name: '推广者管理', path: '/admin/promoters', icon: Megaphone },
   { name: '商品管理', path: '/admin/products', icon: Package },
   { name: '商品审核', path: '/admin/product-review', icon: FileSearch },
+  { name: 'Skill生态审批', path: '/admin/skill-ecosystem', icon: Sparkles },
   { name: '资金路径', path: '/admin/fund-paths', icon: Wallet },
   { name: '工单管理', path: '/admin/tickets', icon: Ticket },
   { name: '营销管理', path: '/admin/marketing', icon: Target },
@@ -60,7 +63,7 @@ export default function AdminDashboard() {
   const fetchStats = async (token: string) => {
     try {
       setLoading(true);
-      const response = await fetch('https://api.agentrix.top/api/admin/stats', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

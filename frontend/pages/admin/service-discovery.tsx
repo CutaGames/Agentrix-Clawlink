@@ -30,7 +30,7 @@ export default function ServiceDiscoveryPage() {
     try {
       // 璋冪敤鍚庣 API (闇€瑕佺‘淇?productApi 涓湁 discover 鏂规硶锛屾垨鑰呯洿鎺?fetch)
       // 杩欓噷鍋囪 productApi 灏氭湭鏇存柊锛岀洿鎺ヤ娇鐢?fetch
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await fetch('/api/products/discover', {
           method: 'POST',
           headers: {

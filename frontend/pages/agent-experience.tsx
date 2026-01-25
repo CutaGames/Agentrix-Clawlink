@@ -2,7 +2,6 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
 import { Navigation } from '../components/ui/Navigation'
-import { LoginModal } from '../components/auth/LoginModal'
 import { Footer } from '../components/layout/Footer'
 
 const viewSteps = [
@@ -35,7 +34,6 @@ const panels = [
 ]
 
 export default function AgentExperience() {
-  const [showLogin, setShowLogin] = useState(false)
   const router = useRouter()
 
   return (
@@ -48,7 +46,7 @@ export default function AgentExperience() {
         />
       </Head>
 
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
 
       <main className="min-h-screen bg-slate-950 text-white">
         <section className="border-b border-white/10 relative overflow-hidden">
@@ -252,7 +250,6 @@ export default function AgentExperience() {
       </main>
 
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useToast } from '../../contexts/ToastContext'
 import { userAgentApi } from '../../lib/api/user-agent.api'
@@ -43,13 +44,15 @@ interface UserAgent {
 
 interface MyAgentsPanelProps {
   compact?: boolean // 紧凑模式，用于嵌入其他页面
+  onTabChange?: (mainTab: any, subTab?: string) => void
 }
 
 type TabType = 'list' | 'authorizations' | 'deploy'
 
-export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
+export function MyAgentsPanel({ compact = false, onTabChange }: MyAgentsPanelProps) {
   const { t } = useLocalization()
   const { success, error } = useToast()
+  const router = useRouter()
   
   const [activeTab, setActiveTab] = useState<TabType>('list')
   const [agents, setAgents] = useState<UserAgent[]>([])
@@ -101,6 +104,18 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
     }
   }
 
+  // 删除 Agent
+  const handleDeleteAgent = async (agentId: string) => {
+    if (!confirm(t({ zh: '确定要删除此 Agent 吗？此操作不可撤销。', en: 'Are you sure you want to delete this agent? This action cannot be undone.' }))) return
+    try {
+      await userAgentApi.deleteAgent(agentId)
+      success(t({ zh: 'Agent 已删除', en: 'Agent deleted' }))
+      loadAgents()
+    } catch (err: any) {
+      error(err.message || t({ zh: '删除失败', en: 'Delete failed' }))
+    }
+  }
+
   // 撤销授权
   const handleRevokeAuth = async (authId: string) => {
     if (!confirm(t({ zh: '确定要撤销此授权吗？', en: 'Are you sure to revoke this authorization?' }))) return
@@ -117,6 +132,23 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
     success(t({ zh: `${label}已复制`, en: `${label} copied` }))
+  }
+
+  const goCreateAuthorization = (agentId?: string) => {
+    if (onTabChange) {
+      onTabChange('security', 'sessions')
+      return
+    }
+    const target = agentId ? `/app/user/agent-authorizations/create?agentId=${agentId}` : '/app/user/agent-authorizations/create'
+    router.push(target)
+  }
+
+  const goManageAuthorizations = () => {
+    if (onTabChange) {
+      onTabChange('security', 'sessions')
+      return
+    }
+    router.push('/app/user/agent-authorizations')
   }
 
   // 获取部署信息
@@ -234,6 +266,13 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
                         {agent.status === 'active' ? <Pause size={16} /> : <Play size={16} />}
                       </button>
                       <button
+                        onClick={() => goCreateAuthorization(agent.id)}
+                        className="p-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                        title={t({ zh: '创建授权', en: 'Authorize' })}
+                      >
+                        <Key size={16} />
+                      </button>
+                      <button
                         onClick={() => {
                           setSelectedAgent(agent)
                           setActiveTab('deploy')
@@ -244,10 +283,27 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
                         <Share2 size={16} />
                       </button>
                       <button
+                        onClick={() => {
+                          // TODO: 实际发布逻辑
+                          success(t({ zh: '正在提交发布申请...', en: 'Submitting marketplace application...' }));
+                        }}
+                        className="p-2 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
+                        title={t({ zh: '发布到市场', en: 'Publish to Market' })}
+                      >
+                        <Globe size={16} />
+                      </button>
+                      <button
                         className="p-2 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 transition-colors"
                         title={t({ zh: '设置', en: 'Settings' })}
                       >
                         <Settings size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAgent(agent.id)}
+                        className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                        title={t({ zh: '删除', en: 'Delete' })}
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
@@ -260,14 +316,30 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
 
       {activeTab === 'authorizations' && (
         <div className="space-y-4">
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-4">
-            <h4 className="font-semibold text-blue-300 mb-2">{t({ zh: '什么是 Agent 授权？', en: 'What is Agent Authorization?' })}</h4>
-            <p className="text-sm text-slate-400">
-              {t({ 
-                zh: 'Agent 授权允许 AI Agent 在您设定的限额内自动执行支付。您可以随时调整限额或撤销授权。',
-                en: 'Agent authorization allows AI agents to execute payments within your set limits. You can adjust limits or revoke at any time.'
-              })}
-            </p>
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex-1">
+              <h4 className="font-semibold text-blue-300 mb-2">{t({ zh: '什么是 Agent 授权？', en: 'What is Agent Authorization?' })}</h4>
+              <p className="text-sm text-slate-400">
+                {t({ 
+                  zh: 'Agent 授权允许 AI Agent 在您设定的限额内自动执行支付。您可以随时调整限额或撤销授权。',
+                  en: 'Agent authorization allows AI agents to execute payments within your set limits. You can adjust limits or revoke at any time.'
+                })}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 min-w-[200px]">
+              <button
+                onClick={() => goCreateAuthorization()}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm"
+              >
+                {t({ zh: '创建授权', en: 'Create Authorization' })}
+              </button>
+              <button
+                onClick={goManageAuthorizations}
+                className="px-4 py-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 text-sm"
+              >
+                {t({ zh: '前往授权列表', en: 'Open Authorization List' })}
+              </button>
+            </div>
           </div>
 
           {authorizations.length === 0 ? (
@@ -304,6 +376,15 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
                         {t({ zh: '撤销', en: 'Revoke' })}
                       </button>
                     )}
+                    {!auth.isActive && (
+                      <button
+                        onClick={() => handleRevokeAuth(auth.id)}
+                        className="px-3 py-1 text-sm bg-slate-500/10 text-slate-400 hover:bg-slate-500/20 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Trash2 size={14} />
+                        {t({ zh: '删除', en: 'Delete' })}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -315,107 +396,105 @@ export function MyAgentsPanel({ compact = false }: MyAgentsPanelProps) {
       {activeTab === 'deploy' && (
         <div className="space-y-6">
           {/* Agent 选择器 */}
-          {agents.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium mb-2">{t({ zh: '选择 Agent', en: 'Select Agent' })}</label>
-              <select
-                value={selectedAgent?.id || ''}
-                onChange={(e) => {
-                  const agent = agents.find(a => a.id === e.target.value)
-                  setSelectedAgent(agent || null)
-                }}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
-              >
-                <option value="">{t({ zh: '请选择 Agent', en: 'Select an Agent' })}</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>{agent.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {selectedAgent ? (
-            <>
-              {/* 分享链接 */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Link2 size={18} className="text-blue-400" />
-                  <h4 className="font-semibold">{t({ zh: '分享链接', en: 'Share Link' })}</h4>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={getDeployInfo(selectedAgent).shareLink}
-                    readOnly
-                    className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                  />
-                  <button
-                    onClick={() => copyToClipboard(getDeployInfo(selectedAgent).shareLink, t({ zh: '链接', en: 'Link' }))}
-                    className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                  >
-                    <Copy size={16} />
-                  </button>
-                  <a
-                    href={getDeployInfo(selectedAgent).shareLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                  >
-                    <ExternalLink size={16} />
-                  </a>
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  {t({ zh: '分享此链接，其他人可以直接访问你的 Agent', en: 'Share this link for others to access your Agent' })}
-                </p>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-white">{t({ zh: '选择 Agent', en: 'Select Agent' })}</label>
+                <select
+                  value={selectedAgent?.id || ''}
+                  onChange={(e) => {
+                    const agent = agents.find(a => a.id === e.target.value)
+                    setSelectedAgent(agent || null)
+                  }}
+                  className="w-full bg-slate-800 border border-white/10 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500"
+                >
+                  <option value="" className="bg-slate-900">{t({ zh: '请选择 Agent', en: 'Select an Agent' })}</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id} className="bg-slate-900">{agent.name}</option>
+                  ))}
+                </select>
               </div>
 
-              {/* 嵌入代码 */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Code2 size={18} className="text-green-400" />
-                  <h4 className="font-semibold">{t({ zh: '嵌入代码', en: 'Embed Code' })}</h4>
+            {selectedAgent ? (
+              <>
+                {/* 分享链接 */}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Link2 size={18} className="text-blue-400" />
+                    <h4 className="font-semibold text-white">{t({ zh: '分享链接', en: 'Share Link' })}</h4>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={getDeployInfo(selectedAgent).shareLink}
+                      readOnly
+                      className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(getDeployInfo(selectedAgent).shareLink, t({ zh: '链接', en: 'Link' }))}
+                      className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <a
+                      href={getDeployInfo(selectedAgent).shareLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {t({ zh: '分享此链接，其他人可以直接访问你的 Agent', en: 'Share this link for others to access your Agent' })}
+                  </p>
                 </div>
-                <div className="relative">
-                  <pre className="bg-black/30 border border-white/10 rounded-lg p-3 text-xs overflow-x-auto">
-                    {getDeployInfo(selectedAgent).embedCode}
-                  </pre>
-                  <button
-                    onClick={() => copyToClipboard(getDeployInfo(selectedAgent).embedCode, t({ zh: '嵌入代码', en: 'Embed code' }))}
-                    className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/20 rounded transition-colors"
-                  >
-                    <Copy size={14} />
-                  </button>
-                </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  {t({ zh: '将此代码粘贴到你的网站 HTML 中即可嵌入 Agent', en: 'Paste this code into your website HTML to embed the Agent' })}
-                </p>
-              </div>
 
-              {/* API 调用 */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Terminal size={18} className="text-purple-400" />
-                  <h4 className="font-semibold">{t({ zh: 'API 调用', en: 'API Integration' })}</h4>
+                {/* 嵌入代码 */}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Code2 size={18} className="text-green-400" />
+                    <h4 className="font-semibold text-white">{t({ zh: '嵌入代码', en: 'Embed Code' })}</h4>
+                  </div>
+                  <div className="relative">
+                    <pre className="bg-black/30 border border-white/10 rounded-lg p-3 text-xs text-slate-300 overflow-x-auto">
+                      {getDeployInfo(selectedAgent).embedCode}
+                    </pre>
+                    <button
+                      onClick={() => copyToClipboard(getDeployInfo(selectedAgent).embedCode, t({ zh: '嵌入代码', en: 'Embed code' }))}
+                      className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {t({ zh: '将此代码粘贴到你的网站 HTML 中即可嵌入 Agent', en: 'Paste this code into your website HTML to embed the Agent' })}
+                  </p>
                 </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">API Endpoint</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={getDeployInfo(selectedAgent).apiEndpoint}
-                        readOnly
-                        className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <button
-                        onClick={() => copyToClipboard(getDeployInfo(selectedAgent).apiEndpoint, 'API Endpoint')}
-                        className="p-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                      >
-                        <Copy size={16} />
-                      </button>
+
+                {/* API 调用 */}
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Terminal size={18} className="text-purple-400" />
+                    <h4 className="font-semibold text-white">{t({ zh: 'API 调用', en: 'API Integration' })}</h4>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">API Endpoint</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={getDeployInfo(selectedAgent).apiEndpoint}
+                          readOnly
+                          className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200"
+                        />
+                        <button
+                          onClick={() => copyToClipboard(getDeployInfo(selectedAgent).apiEndpoint, 'API Endpoint')}
+                          className="p-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                        >
+                          <Copy size={16} />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
                 <p className="text-xs text-slate-500 mt-3">
                   {t({ zh: '通过 API Key 和 Webhook 将 Agent 集成到你的应用', en: 'Integrate Agent into your app via API Key and Webhook' })}
                 </p>

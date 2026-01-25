@@ -223,7 +223,7 @@ export default function AgentBuilderTestPage() {
       <Head>
         <title>{t({ zh: 'Agent Builder 测试中心', en: 'Agent Builder Test Center' })}</title>
       </Head>
-      <Navigation onLoginClick={() => {}} />
+      <Navigation />
       <main className="bg-gradient-to-b from-gray-50 to-white min-h-screen">
         <section className="container mx-auto px-6 py-12 lg:py-16">
           {/* 页面头部 */}
@@ -397,4 +397,3 @@ export default function AgentBuilderTestPage() {
     </>
   );
 }
-

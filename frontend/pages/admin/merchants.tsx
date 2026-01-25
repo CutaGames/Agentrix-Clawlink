@@ -14,15 +14,29 @@ import {
   DollarSign,
   Eye
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 interface Merchant {
   id: string;
-  name: string;
+  agentrixId?: string;
   email?: string;
-  status: string;
-  productsCount?: number;
-  totalRevenue?: number;
+  nickname?: string;
+  roles?: string[];
+  kycStatus?: string;
   createdAt: string;
+  merchantProfile?: {
+    businessName?: string;
+    status?: string;
+  };
+  stats?: {
+    productCount: number;
+    orderCount: number;
+    totalGMV: number;
+  };
+  mpcWallets?: Array<{
+    walletAddress: string;
+    chain: string;
+  }>;
 }
 
 export default function MerchantsPage() {
@@ -54,11 +68,15 @@ export default function MerchantsPage() {
         ...(searchTerm && { search: searchTerm })
       });
       
-      const response = await fetch(`https://api.agentrix.top/api/admin/merchants?${params}`, {
+      console.log('🔍 Fetching merchants from:', `${API_BASE_URL}/api/admin/merchants?${params}`);
+      
+      const response = await fetch(`${API_BASE_URL}/api/admin/merchants?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
+      
+      console.log('📡 Response status:', response.status);
       
       if (response.status === 401) {
         localStorage.removeItem('admin_token');
@@ -66,12 +84,18 @@ export default function MerchantsPage() {
         return;
       }
       
-      if (!response.ok) throw new Error('获取商户列表失败');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, errorText);
+        throw new Error(`获取商户列表失败 (${response.status}): ${errorText.slice(0, 100)}`);
+      }
       
       const data = await response.json();
-      setMerchants(data.merchants || data.items || []);
-      setTotal(data.total || data.merchants?.length || 0);
+      console.log('✅ Merchants data:', data);
+      setMerchants(data.data || data.merchants || data.items || []);
+      setTotal(data.total || 0);
     } catch (err: any) {
+      console.error('❌ Fetch error:', err);
       setError(err.message || '加载商户数据失败');
     } finally {
       setLoading(false);
@@ -147,9 +171,9 @@ export default function MerchantsPage() {
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
               <tr>
                 <th className="px-6 py-4 font-medium">商户</th>
-                <th className="px-6 py-4 font-medium">状态</th>
+                <th className="px-6 py-4 font-medium">认证状态</th>
                 <th className="px-6 py-4 font-medium">商品数</th>
-                <th className="px-6 py-4 font-medium">总收入</th>
+                <th className="px-6 py-4 font-medium">总GMV</th>
                 <th className="px-6 py-4 font-medium">加入时间</th>
                 <th className="px-6 py-4 font-medium text-right">操作</th>
               </tr>
@@ -177,32 +201,36 @@ export default function MerchantsPage() {
                           <Store className="w-5 h-5" />
                         </div>
                         <div>
-                          <div className="font-medium text-gray-900">{merchant.name || '未命名商户'}</div>
+                          <div className="font-medium text-gray-900">
+                            {merchant.merchantProfile?.businessName || merchant.nickname || '未命名商户'}
+                          </div>
                           <div className="text-xs text-gray-500">
-                            {merchant.email || `ID: ${merchant.id.slice(0, 8)}`}
+                            {merchant.agentrixId || merchant.email || `ID: ${merchant.id.slice(0, 8)}`}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 w-fit ${
-                        merchant.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-800'
+                        merchant.kycStatus === 'approved' ? 'bg-green-100 text-green-700' : 
+                        merchant.kycStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-800'
                       }`}>
-                        {merchant.status === 'active' ? (
-                          <><CheckCircle className="w-3 h-3" /> 活跃</>
-                        ) : merchant.status}
+                        {merchant.kycStatus === 'approved' ? (
+                          <><CheckCircle className="w-3 h-3" /> 已认证</>
+                        ) : merchant.kycStatus === 'pending' ? '待审核' : (merchant.kycStatus || '未认证')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1 text-gray-700">
                         <Package className="w-4 h-4 text-gray-400" />
-                        {merchant.productsCount || 0}
+                        {merchant.stats?.productCount || 0}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1 text-gray-700 font-medium">
                         <DollarSign className="w-4 h-4 text-green-600" />
-                        {(merchant.totalRevenue || 0).toLocaleString()}
+                        {(merchant.stats?.totalGMV || 0).toLocaleString()}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">

@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { usePayment } from '../../contexts/PaymentContext';
 import { useWorkbench } from '../../contexts/WorkbenchContext';
+import { useSessionManager } from '../../hooks/useSessionManager';
+import { executeDirectQuickPay } from '../../lib/direct-pay-service';
 import { agentApi } from '../../lib/api/agent.api';
 import { GlassCard } from '../ui/GlassCard';
 import { AIButton } from '../ui/AIButton';
@@ -11,7 +13,7 @@ import { VoiceInput } from './voice/VoiceInput';
 import { VoiceOutput } from './voice/VoiceOutput';
 import { Plus, Send, Search, Eye } from 'lucide-react';
 
-export type AgentMode = 'user' | 'merchant' | 'developer';
+export type AgentMode = 'user' | 'merchant' | 'developer' | 'shopping' | 'expert' | 'data';
 
 export interface ChatMessage {
   id: string;
@@ -30,6 +32,7 @@ interface UnifiedAgentChatProps {
   onModeChange?: (mode: AgentMode) => void;
   onCommand?: (command: string, data?: any) => any;
   standalone?: boolean;
+  compact?: boolean;
 }
 
 /**
@@ -42,17 +45,27 @@ export function UnifiedAgentChat({
   onModeChange,
   onCommand,
   standalone = false,
+  compact = false,
 }: UnifiedAgentChatProps) {
   const { user } = useUser();
   const { startPayment } = usePayment();
+  const { activeSession, loadActiveSession } = useSessionManager();
   const { viewMode, workspaceData, selection } = useWorkbench();
   const [mode, setMode] = useState<AgentMode>(initialMode);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [payingProductId, setPayingProductId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 初始化加载活跃 Session，用于闭环支付
+  useEffect(() => {
+    if (user) {
+      loadActiveSession().catch(err => console.warn('Failed to pre-load active session:', err));
+    }
+  }, [user]);
 
   // 监听外部触发消息事件
   useEffect(() => {
@@ -146,6 +159,30 @@ export function UnifiedAgentChat({
 • 支付集成
 • 订单管理
 • 商品管理
+
+请告诉我您需要什么帮助？`,
+      shopping: `👋 欢迎使用 **Agentrix 购物助手Agent**！
+
+我是您的智能购物专家。我可以帮您：
+• 搜索和比价
+• 订单跟踪
+• 优惠发现
+
+请告诉我您需要什么帮助？`,
+      expert: `👋 欢迎使用 **Agentrix 专家服务Agent**！
+
+我是您的专业顾问助手。我可以帮您：
+• 管理服务能力
+• 追踪履约记录
+• 结算专家收益
+
+请告诉我您需要什么帮助？`,
+      data: `👋 欢迎使用 **Agentrix 数据资产Agent**！
+
+我是您的数据价值管理助手。我可以帮您：
+• 监控数据资产
+• 管理数据授权
+• 分析收益构成
 
 请告诉我您需要什么帮助？`,
     };
@@ -618,6 +655,88 @@ export function UnifiedAgentChat({
                   message={message} 
                   onSendMessage={handleSend}
                   sessionId={sessionId}
+                  payingProductId={payingProductId}
+                  onBuyNow={async (product) => {
+                    const symbols: Record<string, string> = {
+                      USD: '$',
+                      USDT: '$',
+                      USDC: '$',
+                      CNY: '¥',
+                      EUR: '€',
+                    };
+                    const currency = (product as any).currency || product.metadata?.currency || 'USDC';
+                    const symbol = symbols[currency] || '¥';
+                    
+                    // V3.0: 闭环支付逻辑 - 检查是否满足直接 Zap 条件
+                    const isQuickPayEligible = user && activeSession && activeSession.isActive;
+                    
+                    if (isQuickPayEligible) {
+                      setPayingProductId(product.id);
+                      try {
+                        console.log('⚡ 触发闭环支付 (Closed-loop Zap):', product.name);
+                        const result = await executeDirectQuickPay(
+                          {
+                            id: `pay_${Date.now()}`,
+                            amount: product.price,
+                            currency: currency,
+                            description: `购买 ${product.name}`,
+                            merchantId: product.merchantId,
+                            metadata: {
+                              productId: product.id,
+                              agentId: 'Personal Agent',
+                            },
+                          },
+                          activeSession,
+                          user
+                        );
+                        
+                        console.log('✅ 闭环支付成功:', result);
+                        // 添加系统消息提示成功
+                        const successMsg: ChatMessage = {
+                          id: `msg_${Date.now()}`,
+                          role: 'assistant',
+                          content: `✅ **支付成功！**\n您已成功购买 **${product.name}**。\n交易哈希: \`${result.transactionHash || result.id}\`\n您可以前往“交易历史”查看详情。`,
+                          timestamp: new Date(),
+                        };
+                        setMessages(prev => [...prev, successMsg]);
+                      } catch (err: any) {
+                        console.error('❌ 闭环支付失败:', err);
+                        // 支付失败，降级到传统支付面板
+                        startPayment({
+                          id: `pay_${Date.now()}`,
+                          amount: `${symbol}${product.price}`,
+                          currency: currency,
+                          description: `购买 ${product.name}`,
+                          merchant: (product as any).merchantName || 'Agentrix Store',
+                          agent: 'Personal Agent',
+                          metadata: {
+                            productId: product.id,
+                            merchantId: product.merchantId,
+                            error: err.message, // 传递错误原因以便面板显示
+                          },
+                          createdAt: new Date().toISOString(),
+                        });
+                      } finally {
+                        setPayingProductId(null);
+                      }
+                      return;
+                    }
+
+                    // 如果不满足闭环支付条件，正常打开支付面板
+                    startPayment({
+                      id: `pay_${Date.now()}`,
+                      amount: `${symbol}${product.price}`,
+                      currency: currency,
+                      description: `购买 ${product.name}`,
+                      merchant: (product as any).merchantName || 'Agentrix Store',
+                      agent: 'Personal Agent',
+                      metadata: {
+                        productId: product.id,
+                        merchantId: product.merchantId,
+                      },
+                      createdAt: new Date().toISOString(),
+                    });
+                  }}
                   onCartUpdate={(updatedItems) => {
                     // 直接更新购物车消息的数据
                     console.log('🛒 更新购物车显示，商品数量:', updatedItems.length);

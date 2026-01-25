@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 export default function DevelopersPage() {
   const router = useRouter();
@@ -31,12 +32,12 @@ export default function DevelopersPage() {
   const fetchDevelopers = async (token: string) => {
     try {
       setLoading(true);
-      const response = await fetch('https://api.agentrix.top/api/admin/developers', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/developers`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch developers');
       const data = await response.json();
-      setDevelopers(data);
+      setDevelopers(data.data || data.developers || []);
     } catch (err: any) {
       setError(err.message);
     } finally {

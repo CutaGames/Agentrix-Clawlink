@@ -21,7 +21,7 @@ export default function PersonalAgentPage() {
 
   const checkWallet = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/mpc-wallet/my-wallet`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });

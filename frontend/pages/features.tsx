@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { Navigation } from '../components/ui/Navigation'
 import { Footer } from '../components/layout/Footer'
-import { LoginModal } from '../components/auth/LoginModal'
 import { useLocalization } from '../contexts/LocalizationContext'
 
 const agentCapabilities = [
@@ -31,8 +30,8 @@ const agentCapabilities = [
   },
   {
     icon: '💻',
-    title: { zh: '开发者 Agent 能力', en: 'Developer Agent Capabilities' },
-    description: { zh: '智能开发助手，生成 SDK、开发插件，访问 Marketplace API', en: 'Smart development assistant, generate SDK, develop plugins, access Marketplace API' },
+    title: { zh: '专业用户 Agent 能力', en: 'Professional User Agent Capabilities' },
+    description: { zh: '智能专业助手，生成 SDK、开发插件，访问 Marketplace API', en: 'Smart professional assistant, generate SDK, develop plugins, access Marketplace API' },
     features: [
       { zh: 'SDK 和 API 生成', en: 'SDK and API generation' },
       { zh: '插件开发工具', en: 'Plugin development tools' },
@@ -90,7 +89,6 @@ const ecosystemCapabilities = [
 ]
 
 export default function Features() {
-  const [showLogin, setShowLogin] = useState(false)
   const router = useRouter()
   const { t } = useLocalization()
 
@@ -107,7 +105,7 @@ export default function Features() {
         />
       </Head>
 
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
 
       <main className="min-h-screen bg-slate-950 text-white">
         {/* Hero 区域 */}
@@ -295,7 +293,6 @@ export default function Features() {
       </main>
 
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { API_BASE_URL } from '../../utils/api-config';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('https://api.agentrix.top/api/admin/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

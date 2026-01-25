@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency } from '../../contexts/CurrencyContext'
 
@@ -50,10 +50,10 @@ const verticalAdjustments: Record<ProductVertical, number> = {
 }
 
 export default function MultiCountryPricingPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [basePriceUSD, setBasePriceUSD] = useState(1200)
   const [vertical, setVertical] = useState<ProductVertical>('physical')
   const [targetMargin, setTargetMargin] = useState(18)
+  const router = useRouter()
 
   const { t } = useLocalization()
   const { convert, format } = useCurrency()
@@ -90,7 +90,7 @@ export default function MultiCountryPricingPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         <section className="border-b border-white/10 bg-gradient-to-r from-emerald-600/90 to-blue-600/90 py-16 text-white">
           <div className="container mx-auto px-6">
@@ -261,7 +261,7 @@ export default function MultiCountryPricingPage() {
                   </li>
                 </ul>
                 <button
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => router.push('/app/user')}
                   className="mt-6 w-full rounded-xl bg-emerald-500 py-3 text-white hover:bg-emerald-600"
                 >
                   {t({ zh: '导出定价 JSON', en: 'Export pricing JSON' })}
@@ -272,7 +272,6 @@ export default function MultiCountryPricingPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

@@ -1,18 +1,18 @@
 import Head from 'next/head'
 import { useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { SmartCheckout } from '../../components/payment/SmartCheckout'
 
 type PaymentMethod = 'qr' | 'link' | 'agent'
 
 export default function UserDemoPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('qr')
   const [showPaymentFlow, setShowPaymentFlow] = useState(false)
   const { t } = useLocalization()
+  const router = useRouter()
 
   const paymentMethods = [
     {
@@ -103,7 +103,7 @@ export default function UserDemoPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white min-h-screen">
         {/* Hero */}
         <section className="border-b border-white/10 bg-gradient-to-br from-emerald-600/90 to-blue-600/90 py-20">
@@ -301,7 +301,6 @@ export default function UserDemoPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

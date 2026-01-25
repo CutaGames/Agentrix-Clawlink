@@ -1,2 +1,866 @@
-<testsuites id="" name="" tests="0" failures="0" skipped="0" errors="0" time="0.17109200000000419">
+<testsuites id="" name="" tests="24" failures="24" skipped="0" errors="0" time="135.62493899999998">
+<testsuite name="workbench-restructuring.spec.ts" timestamp="2026-01-18T11:50:07.792Z" hostname="chromium" tests="24" failures="24" skipped="0" time="32.914" errors="0">
+<testcase name="统一资金账户 (UnifiedAccountPanel) › 应该正确显示账户列表和余额汇总" classname="workbench-restructuring.spec.ts" time="3.764">
+<failure message="workbench-restructuring.spec.ts:35:7 应该正确显示账户列表和余额汇总" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:35:7 › 统一资金账户 (UnifiedAccountPanel) › 应该正确显示账户列表和余额汇总 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="统一资金账户 (UnifiedAccountPanel) › 应该支持创建新账户" classname="workbench-restructuring.spec.ts" time="3.659">
+<failure message="workbench-restructuring.spec.ts:51:7 应该支持创建新账户" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:51:7 › 统一资金账户 (UnifiedAccountPanel) › 应该支持创建新账户 ─────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="统一资金账户 (UnifiedAccountPanel) › 应该正确显示最近交易记录" classname="workbench-restructuring.spec.ts" time="1.107">
+<failure message="workbench-restructuring.spec.ts:68:7 应该正确显示最近交易记录" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:68:7 › 统一资金账户 (UnifiedAccountPanel) › 应该正确显示最近交易记录 ──
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent 账户管理 (AgentAccountPanel) › 应该正确显示 Agent 列表" classname="workbench-restructuring.spec.ts" time="1.143">
+<failure message="workbench-restructuring.spec.ts:91:7 应该正确显示 Agent 列表" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:91:7 › Agent 账户管理 (AgentAccountPanel) › 应该正确显示 Agent 列表 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent 账户管理 (AgentAccountPanel) › 应该支持创建新 Agent" classname="workbench-restructuring.spec.ts" time="0.67">
+<failure message="workbench-restructuring.spec.ts:98:7 应该支持创建新 Agent" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:98:7 › Agent 账户管理 (AgentAccountPanel) › 应该支持创建新 Agent 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent 账户管理 (AgentAccountPanel) › 信用评分和支出限额应该正确显示" classname="workbench-restructuring.spec.ts" time="0.664">
+<failure message="workbench-restructuring.spec.ts:115:7 信用评分和支出限额应该正确显示" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:115:7 › Agent 账户管理 (AgentAccountPanel) › 信用评分和支出限额应该正确显示 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent 账户管理 (AgentAccountPanel) › 支出限额拦截应该正常工作" classname="workbench-restructuring.spec.ts" time="0.602">
+<failure message="workbench-restructuring.spec.ts:129:7 支出限额拦截应该正常工作" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:129:7 › Agent 账户管理 (AgentAccountPanel) › 支出限额拦截应该正常工作 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="KYC 认证中心 (KYCCenterPanel) › 应该正确显示当前 KYC 等级" classname="workbench-restructuring.spec.ts" time="0.672">
+<failure message="workbench-restructuring.spec.ts:157:7 应该正确显示当前 KYC 等级" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:157:7 › KYC 认证中心 (KYCCenterPanel) › 应该正确显示当前 KYC 等级 ─
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="KYC 认证中心 (KYCCenterPanel) › 应该显示等级权益对比表" classname="workbench-restructuring.spec.ts" time="2.289">
+<failure message="workbench-restructuring.spec.ts:167:7 应该显示等级权益对比表" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:167:7 › KYC 认证中心 (KYCCenterPanel) › 应该显示等级权益对比表 ─────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="KYC 认证中心 (KYCCenterPanel) › 升级认证流程应该可访问" classname="workbench-restructuring.spec.ts" time="2.288">
+<failure message="workbench-restructuring.spec.ts:174:7 升级认证流程应该可访问" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:174:7 › KYC 认证中心 (KYCCenterPanel) › 升级认证流程应该可访问 ─────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="开发者账户 (DeveloperAccountPanel) › 应该正确显示开发者账户信息" classname="workbench-restructuring.spec.ts" time="1.12">
+<failure message="workbench-restructuring.spec.ts:197:7 应该正确显示开发者账户信息" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:197:7 › 开发者账户 (DeveloperAccountPanel) › 应该正确显示开发者账户信息 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="开发者账户 (DeveloperAccountPanel) › API Key 管理应该正常工作" classname="workbench-restructuring.spec.ts" time="1.116">
+<failure message="workbench-restructuring.spec.ts:204:7 API Key 管理应该正常工作" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:204:7 › 开发者账户 (DeveloperAccountPanel) › API Key 管理应该正常工作 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="开发者账户 (DeveloperAccountPanel) › 使用统计应该正确显示" classname="workbench-restructuring.spec.ts" time="3.37">
+<failure message="workbench-restructuring.spec.ts:218:7 使用统计应该正确显示" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:218:7 › 开发者账户 (DeveloperAccountPanel) › 使用统计应该正确显示 ──
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="五类画像 UAT › [API 厂商] OpenAPI 导入链路" classname="workbench-restructuring.spec.ts" time="3.254">
+<failure message="workbench-restructuring.spec.ts:234:7 [API 厂商] OpenAPI 导入链路" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:234:7 › 五类画像 UAT › [API 厂商] OpenAPI 导入链路 ────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="五类画像 UAT › [商户] 商品同步链路" classname="workbench-restructuring.spec.ts" time="0.964">
+<failure message="workbench-restructuring.spec.ts:242:7 [商户] 商品同步链路" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:242:7 › 五类画像 UAT › [商户] 商品同步链路 ──────────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="五类画像 UAT › [个人用户] Agent 创建链路" classname="workbench-restructuring.spec.ts" time="1.07">
+<failure message="workbench-restructuring.spec.ts:250:7 [个人用户] Agent 创建链路" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:250:7 › 五类画像 UAT › [个人用户] Agent 创建链路 ────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="五类画像 UAT › [开发者] Skill 发布链路" classname="workbench-restructuring.spec.ts" time="0.672">
+<failure message="workbench-restructuring.spec.ts:258:7 [开发者] Skill 发布链路" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:258:7 › 五类画像 UAT › [开发者] Skill 发布链路 ─────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="导航系统测试 › L1 画像切换应该正常工作" classname="workbench-restructuring.spec.ts" time="0.707">
+<failure message="workbench-restructuring.spec.ts:275:7 L1 画像切换应该正常工作" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:275:7 › 导航系统测试 › L1 画像切换应该正常工作 ──────────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="导航系统测试 › L2 侧边栏导航应该正常工作" classname="workbench-restructuring.spec.ts" time="0.619">
+<failure message="workbench-restructuring.spec.ts:290:7 L2 侧边栏导航应该正常工作" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:290:7 › 导航系统测试 › L2 侧边栏导航应该正常工作 ─────────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="导航系统测试 › 移动端布局应该正确响应" classname="workbench-restructuring.spec.ts" time="0.635">
+<failure message="workbench-restructuring.spec.ts:304:7 移动端布局应该正确响应" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:304:7 › 导航系统测试 › 移动端布局应该正确响应 ────────────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="入驻流程 (OnboardingWizard) › 新用户应该看到入驻向导" classname="workbench-restructuring.spec.ts" time="0.623">
+<failure message="workbench-restructuring.spec.ts:323:7 新用户应该看到入驻向导" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:323:7 › 入驻流程 (OnboardingWizard) › 新用户应该看到入驻向导 ───────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding
+    Call log:
+      - navigating to "http://localhost:3000/onboarding", waiting until "load"
+
+
+      323 |   test('新用户应该看到入驻向导', async ({ page }) => {
+      324 |     // 使用新用户登录或模拟新用户状态
+    > 325 |     await page.goto(`${BASE_URL}/onboarding`);
+          |                ^
+      326 |     
+      327 |     // 验证入驻向导
+      328 |     await expect(page.locator('text=欢迎加入').or(page.locator('text=入驻向导'))).toBeVisible();
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:325:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="入驻流程 (OnboardingWizard) › 入驻流程应该支持步骤导航" classname="workbench-restructuring.spec.ts" time="0.639">
+<failure message="workbench-restructuring.spec.ts:336:7 入驻流程应该支持步骤导航" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:336:7 › 入驻流程 (OnboardingWizard) › 入驻流程应该支持步骤导航 ──────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding
+    Call log:
+      - navigating to "http://localhost:3000/onboarding", waiting until "load"
+
+
+      335 |
+      336 |   test('入驻流程应该支持步骤导航', async ({ page }) => {
+    > 337 |     await page.goto(`${BASE_URL}/onboarding`);
+          |                ^
+      338 |     
+      339 |     // 选择一个画像
+      340 |     await page.click('text=个人用户').catch(() => page.click('text=personal'));
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:337:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="性能标准测试 › 工作台首页加载时间应该 &lt; 1.5s" classname="workbench-restructuring.spec.ts" time="0.607">
+<failure message="workbench-restructuring.spec.ts:353:7 工作台首页加载时间应该 &lt; 1.5s" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:353:7 › 性能标准测试 › 工作台首页加载时间应该 < 1.5s ─────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:356:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+<testcase name="性能标准测试 › 画像切换响应时间应该 &lt; 300ms" classname="workbench-restructuring.spec.ts" time="0.66">
+<failure message="workbench-restructuring.spec.ts:367:7 画像切换响应时间应该 &lt; 300ms" type="FAILURE">
+<![CDATA[  [chromium] › workbench-restructuring.spec.ts:367:7 › 性能标准测试 › 画像切换响应时间应该 < 300ms ─────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+      - navigating to "http://localhost:3000/login", waiting until "load"
+
+
+      12 | // 辅助函数
+      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
+    > 14 |   await page.goto(`${BASE_URL}/login`);
+         |              ^
+      15 |   await page.fill('input[name="email"]', email);
+      16 |   await page.fill('input[name="password"]', password);
+      17 |   await page.click('button[type="submit"]');
+        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:368:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/video.webm]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
 </testsuites>

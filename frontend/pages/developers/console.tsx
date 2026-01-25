@@ -92,7 +92,7 @@ const DeveloperConsole = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
-        <title>Developer Console - Agentrix</title>
+        <title>Professional User Console - Agentrix</title>
       </Head>
 
       {/* Sidebar / Navigation */}
@@ -332,16 +332,16 @@ const DeveloperConsole = () => {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Developer Settings</h1>
-                    <p className="text-gray-500">Manage your developer profile and preferences.</p>
+                    <h1 className="text-2xl font-bold text-gray-900">Professional User Settings</h1>
+                    <p className="text-gray-500">Manage your professional profile and preferences.</p>
                   </div>
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
                   <Settings className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">Developer Settings</h3>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">Professional User Settings</h3>
                   <p className="text-gray-500 max-w-md mx-auto">
-                    Manage your developer profile and preferences.
+                    Manage your professional profile and preferences.
                   </p>
                 </div>
               </div>

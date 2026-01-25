@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="24" failures="0" errors="0" time="16.062">
+  <testsuite name="Account V2 API Tests" errors="0" failures="0" skipped="0" timestamp="2026-01-19T04:07:53" time="11.359" tests="24">
+    <testcase classname="Account V2 API Tests Account API GET /accounts/my - 获取我的账户列表" name="Account V2 API Tests Account API GET /accounts/my - 获取我的账户列表" time="0.033">
+    </testcase>
+    <testcase classname="Account V2 API Tests Account API POST /accounts - 创建新账户" name="Account V2 API Tests Account API POST /accounts - 创建新账户" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Account API GET /accounts/:id/balance - 获取账户余额" name="Account V2 API Tests Account API GET /accounts/:id/balance - 获取账户余额" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Account API GET /accounts/:id/transactions - 获取交易记录" name="Account V2 API Tests Account API GET /accounts/:id/transactions - 获取交易记录" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests Account API POST /accounts/transfer - 账户间转账（边界测试）" name="Account V2 API Tests Account API POST /accounts/transfer - 账户间转账（边界测试）" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests Agent Account API GET /agent-accounts - 获取 Agent 列表" name="Account V2 API Tests Agent Account API GET /agent-accounts - 获取 Agent 列表" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests Agent Account API POST /agent-accounts - 创建 Agent 账户" name="Account V2 API Tests Agent Account API POST /agent-accounts - 创建 Agent 账户" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Agent Account API GET /agent-accounts/:id/check-spending - 支出限额检查" name="Account V2 API Tests Agent Account API GET /agent-accounts/:id/check-spending - 支出限额检查" time="0.006">
+    </testcase>
+    <testcase classname="Account V2 API Tests Agent Account API 支出限额拦截测试 - 超额应被拒绝" name="Account V2 API Tests Agent Account API 支出限额拦截测试 - 超额应被拒绝" time="0.007">
+    </testcase>
+    <testcase classname="Account V2 API Tests Agent Account API POST /agent-accounts/:id/suspend - 暂停 Agent" name="Account V2 API Tests Agent Account API POST /agent-accounts/:id/suspend - 暂停 Agent" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests Agent Account API POST /agent-accounts/:id/resume - 恢复 Agent" name="Account V2 API Tests Agent Account API POST /agent-accounts/:id/resume - 恢复 Agent" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests KYC API GET /kyc/my - 获取我的 KYC 记录" name="Account V2 API Tests KYC API GET /kyc/my - 获取我的 KYC 记录" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests KYC API GET /kyc/my/active - 获取当前有效 KYC" name="Account V2 API Tests KYC API GET /kyc/my/active - 获取当前有效 KYC" time="0.002">
+    </testcase>
+    <testcase classname="Account V2 API Tests KYC API GET /kyc/level-benefits - 获取等级权益" name="Account V2 API Tests KYC API GET /kyc/level-benefits - 获取等级权益" time="0.158">
+    </testcase>
+    <testcase classname="Account V2 API Tests KYC API GET /kyc/check/:level - 检查 KYC 等级" name="Account V2 API Tests KYC API GET /kyc/check/:level - 检查 KYC 等级" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Developer Account API GET /developer-accounts/me - 获取我的开发者账户" name="Account V2 API Tests Developer Account API GET /developer-accounts/me - 获取我的开发者账户" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Developer Account API POST /developer-accounts - 创建开发者账户" name="Account V2 API Tests Developer Account API POST /developer-accounts - 创建开发者账户" time="0.004">
+    </testcase>
+    <testcase classname="Account V2 API Tests Developer Account API GET /developer-accounts/dashboard - 获取开发者仪表盘" name="Account V2 API Tests Developer Account API GET /developer-accounts/dashboard - 获取开发者仪表盘" time="0.004">
+    </testcase>
+    <testcase classname="Account V2 API Tests Security Tests 未授权访问应该被拒绝" name="Account V2 API Tests Security Tests 未授权访问应该被拒绝" time="0.011">
+    </testcase>
+    <testcase classname="Account V2 API Tests Security Tests 无效 Token 应该被拒绝" name="Account V2 API Tests Security Tests 无效 Token 应该被拒绝" time="0.018">
+    </testcase>
+    <testcase classname="Account V2 API Tests Security Tests 访问他人资源应该被拒绝" name="Account V2 API Tests Security Tests 访问他人资源应该被拒绝" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Edge Cases 空请求体应该正确处理" name="Account V2 API Tests Edge Cases 空请求体应该正确处理" time="0.004">
+    </testcase>
+    <testcase classname="Account V2 API Tests Edge Cases 无效金额应该被拒绝" name="Account V2 API Tests Edge Cases 无效金额应该被拒绝" time="0.003">
+    </testcase>
+    <testcase classname="Account V2 API Tests Edge Cases 超长字符串应该被截断或拒绝" name="Account V2 API Tests Edge Cases 超长字符串应该被截断或拒绝" time="0.003">
+    </testcase>
+  </testsuite>
+</testsuites>

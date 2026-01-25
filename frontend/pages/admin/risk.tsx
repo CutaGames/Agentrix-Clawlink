@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { API_BASE_URL } from '../../utils/api-config';
 
 interface RiskAssessment {
   id: string;
@@ -47,7 +48,7 @@ export default function AdminRisk() {
   const fetchStats = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('https://api.agentrix.top/api/admin/risk/statistics', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/risk/statistics`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -64,7 +65,7 @@ export default function AdminRisk() {
   const fetchAssessments = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('https://api.agentrix.top/api/admin/risk/assessments?limit=20', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/risk/assessments?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -83,7 +84,7 @@ export default function AdminRisk() {
   const fetchRiskOrders = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const response = await fetch('https://api.agentrix.top/api/admin/risk/orders?limit=20', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/risk/orders?limit=20`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

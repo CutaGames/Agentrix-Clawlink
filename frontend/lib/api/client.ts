@@ -84,6 +84,17 @@ class ApiClient {
     }
   }
 
+  /**
+   * 获取当前有效的 token
+   * 每次都从 localStorage 读取，确保使用最新的 token
+   */
+  private getToken(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('access_token');
+    }
+    return this.token;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -98,8 +109,10 @@ class ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    // 每次请求时重新获取 token，确保使用最新值
+    const currentToken = this.getToken();
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
     }
 
     // 开发环境添加详细日志
@@ -109,7 +122,8 @@ class ApiClient {
         url,
         baseURL: this.baseURL,
         endpoint,
-        hasToken: !!this.token,
+        hasToken: !!currentToken,
+        tokenPreview: currentToken ? `${currentToken.substring(0, 20)}...` : null,
       });
     }
 
@@ -267,7 +281,15 @@ class ApiClient {
       const searchParams = new URLSearchParams();
       Object.entries(options.params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          searchParams.append(key, String(value));
+          if (Array.isArray(value)) {
+            value.forEach(v => {
+              if (v !== undefined && v !== null) {
+                searchParams.append(key, String(v));
+              }
+            });
+          } else {
+            searchParams.append(key, String(value));
+          }
         }
       });
       const queryString = searchParams.toString();

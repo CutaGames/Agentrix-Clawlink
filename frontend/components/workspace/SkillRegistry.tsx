@@ -15,6 +15,7 @@ interface SkillRegistryProps {
 
 interface SkillFormData {
   name: string;
+  displayName: string;  // 新增：人类可读名称
   description: string;
   version: string;
   category: SkillCategory;
@@ -24,10 +25,26 @@ interface SkillFormData {
   executorEndpoint: string;
   executorMethod: 'GET' | 'POST' | 'PUT' | 'DELETE';
   internalHandler: string;
+  // 定价相关 - 优化版
+  pricingType: 'free' | 'per_call' | 'percentage';  // 新增 percentage 类型
+  pricePerCall: string;
+  platformFeeRate: string;  // 新增：平台服务费比例 (%)
+  minFee: string;           // 新增：最低收费
+  currency: string;
+  // 协议开关
+  ucpEnabled: boolean;
+  x402Enabled: boolean;
+  // 新增：文档与使用说明
+  useCases: string;         // 使用场景列表
+  callExample: string;      // 调用示例 JSON
+  // 新增：组合与标签
+  tags: string;             // 标签，逗号分隔
+  composableWith: string;   // 可组合的 Skill 列表
 }
 
 const defaultFormData: SkillFormData = {
   name: '',
+  displayName: '',
   description: '',
   version: '1.0.0',
   category: 'utility',
@@ -47,7 +64,22 @@ const defaultFormData: SkillFormData = {
   executorType: 'internal',
   executorEndpoint: '',
   executorMethod: 'POST',
-  internalHandler: 'echo'
+  internalHandler: 'echo',
+  // 定价默认值 - 优化版
+  pricingType: 'free',
+  pricePerCall: '0.01',
+  platformFeeRate: '0.3',
+  minFee: '0.01',
+  currency: 'USDT',
+  // 协议默认开启
+  ucpEnabled: true,
+  x402Enabled: true,
+  // 文档默认值
+  useCases: '',
+  callExample: '',
+  // 组合默认值
+  tags: '',
+  composableWith: '',
 };
 
 export const SkillRegistry: React.FC<SkillRegistryProps> = ({
@@ -99,35 +131,115 @@ export const SkillRegistry: React.FC<SkillRegistryProps> = ({
   // 构建创建 DTO
   const buildCreateDto = (): CreateSkillDto | null => {
     try {
-      const inputSchema = JSON.parse(formData.inputSchema);
-      const outputSchema = formData.outputSchema ? JSON.parse(formData.outputSchema) : undefined;
+      // 验证必填字段
+      if (!formData.name?.trim()) {
+        throw new Error('Skill 名称 (name) 不能为空');
+      }
+      if (!formData.description?.trim()) {
+        throw new Error('功能描述 (description) 不能为空');
+      }
+      
+      // 清理 JSON 字符串中的多余字符
+      const cleanJson = (str: string) => str?.trim() || '';
+      
+      let inputSchema: any;
+      let outputSchema: any;
+      
+      // 分别验证 inputSchema 和 outputSchema 以提供更精确的错误信息
+      try {
+        const inputSchemaStr = cleanJson(formData.inputSchema);
+        if (!inputSchemaStr) {
+          throw new Error('Input Schema 不能为空');
+        }
+        inputSchema = JSON.parse(inputSchemaStr);
+      } catch (e: any) {
+        throw new Error(`Input Schema JSON 格式错误: ${e.message}`);
+      }
+      
+      if (formData.outputSchema?.trim()) {
+        try {
+          outputSchema = JSON.parse(cleanJson(formData.outputSchema));
+        } catch (e: any) {
+          throw new Error(`Output Schema JSON 格式错误: ${e.message}`);
+        }
+      }
+
+      // 构建定价信息 - 优化版
+      const pricing: any = {
+        type: formData.pricingType || 'free',
+        currency: formData.currency || 'USDT',
+        minFee: parseFloat(formData.minFee) || 0.01,
+      };
+
+      if (formData.pricingType === 'per_call') {
+        pricing.pricePerCall = parseFloat(formData.pricePerCall) || 0.01;
+      } else if (formData.pricingType === 'percentage') {
+        pricing.platformFeeRate = parseFloat(formData.platformFeeRate) || 0.3;
+      }
+
+      // 构建文档信息
+      const documentation: any = {};
+      if (formData.useCases?.trim()) {
+        documentation.useCases = formData.useCases.split('\n').filter(s => s.trim());
+      }
+      if (formData.callExample?.trim()) {
+        try {
+          documentation.callExample = JSON.parse(cleanJson(formData.callExample));
+        } catch {
+          documentation.callExample = formData.callExample;
+        }
+      }
 
       return {
-        name: formData.name,
-        description: formData.description,
-        version: formData.version,
-        category: formData.category,
+        name: formData.name.trim(),
+        displayName: (formData.displayName?.trim() || formData.name.trim()),
+        description: formData.description.trim(),
+        version: formData.version?.trim() || '1.0.0',
+        category: formData.category || 'utility',
         inputSchema,
         outputSchema,
         executor: formData.executorType === 'http' 
           ? {
               type: 'http',
-              endpoint: formData.executorEndpoint,
-              method: formData.executorMethod
+              endpoint: formData.executorEndpoint?.trim() || '',
+              method: formData.executorMethod || 'POST'
             }
           : {
               type: 'internal',
-              internalHandler: formData.internalHandler
-            }
+              internalHandler: formData.internalHandler?.trim() || 'echo'
+            },
+        pricing,
+        ucpEnabled: formData.ucpEnabled ?? true,
+        x402Enabled: formData.x402Enabled ?? true,
+        tags: formData.tags ? formData.tags.split(',').map(s => s.trim()).filter(Boolean) : [],
+        metadata: {
+          documentation,
+          composableWith: formData.composableWith ? formData.composableWith.split(',').map(s => s.trim()).filter(Boolean) : [],
+        }
       };
     } catch (err: any) {
-      setError('JSON 格式错误: ' + err.message);
+      console.error('buildCreateDto error:', err);
+      setError(err.message || 'DTO 构建失败');
       return null;
     }
   };
 
   // 创建 Skill
   const createSkill = async () => {
+    // 验证必填字段
+    if (!formData.name?.trim()) {
+      setError('请填写 Skill 名称 (name)');
+      return;
+    }
+    if (!formData.description?.trim()) {
+      setError('请填写功能描述 (description)');
+      return;
+    }
+    if (!formData.inputSchema?.trim()) {
+      setError('请填写 Input Schema');
+      return;
+    }
+    
     const dto = buildCreateDto();
     if (!dto) return;
 
@@ -141,7 +253,8 @@ export const SkillRegistry: React.FC<SkillRegistryProps> = ({
       setValidation(null);
       onSkillCreated?.(response.data);
     } catch (err: any) {
-      setError(err.message || '创建 Skill 失败');
+      console.error('Skill creation error:', err);
+      setError(err.message || err.response?.data?.message || '创建 Skill 失败');
     } finally {
       setLoading(false);
     }
@@ -191,117 +304,353 @@ export const SkillRegistry: React.FC<SkillRegistryProps> = ({
       {/* Create Form */}
       {showCreateForm && (
         <div className="p-6 bg-slate-800/30 border-b border-white/5 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="grid grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Skill 名称</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all placeholder:text-slate-600"
-                placeholder="如: search_products"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">版本号</label>
-              <input
-                type="text"
-                value={formData.version}
-                onChange={e => setFormData(prev => ({ ...prev, version: e.target.value }))}
-                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">功能描述</label>
-            <textarea
-              value={formData.description}
-              onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all resize-none"
-              rows={2}
-              placeholder="详细描述此 Skill 的功能，帮助 AI 更好地理解调用时机..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">所属分类</label>
-              <select
-                value={formData.category}
-                onChange={e => setFormData(prev => ({ ...prev, category: e.target.value as SkillCategory }))}
-                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all appearance-none"
-              >
-                <option value="payment">Payment - 支付类</option>
-                <option value="commerce">Commerce - 电商类</option>
-                <option value="data">Data - 数据类</option>
-                <option value="utility">Utility - 工具类</option>
-                <option value="integration">Integration - 集成类</option>
-                <option value="custom">Custom - 自定义</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">执行器类型</label>
-              <select
-                value={formData.executorType}
-                onChange={e => setFormData(prev => ({ ...prev, executorType: e.target.value as 'http' | 'internal' }))}
-                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all appearance-none"
-              >
-                <option value="internal">Internal Handler - 内部逻辑</option>
-                <option value="http">HTTP Endpoint - 外部接口</option>
-              </select>
-            </div>
-          </div>
-
-          {formData.executorType === 'http' ? (
-            <div className="grid grid-cols-3 gap-6 mb-6">
-              <div className="col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Endpoint URL</label>
+          {/* 基础信息区 */}
+          <div className="mb-6 p-4 bg-slate-900/50 rounded-xl border border-white/5">
+            <h4 className="text-sm font-bold text-slate-400 mb-4 flex items-center gap-2">
+              <span>📋</span> 基础信息
+            </h4>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Skill 名称 (snake_case)</label>
                 <input
                   type="text"
-                  value={formData.executorEndpoint}
-                  onChange={e => setFormData(prev => ({ ...prev, executorEndpoint: e.target.value }))}
-                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl outline-none text-white focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://api.example.com/action"
+                  value={formData.name}
+                  onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all placeholder:text-slate-600"
+                  placeholder="如: commission_distribute"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Method</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">显示名称</label>
+                <input
+                  type="text"
+                  value={formData.displayName}
+                  onChange={e => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all placeholder:text-slate-600"
+                  placeholder="如: 佣金自动分配服务"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">版本号</label>
+                <input
+                  type="text"
+                  value={formData.version}
+                  onChange={e => setFormData(prev => ({ ...prev, version: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">功能描述</label>
+              <textarea
+                value={formData.description}
+                onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all resize-none"
+                rows={3}
+                placeholder="详细描述此 Skill 的功能，帮助 AI 和用户理解其用途和调用时机..."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">所属分类</label>
                 <select
-                  value={formData.executorMethod}
-                  onChange={e => setFormData(prev => ({ ...prev, executorMethod: e.target.value as any }))}
-                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl outline-none text-white focus:ring-2 focus:ring-blue-500 appearance-none"
+                  value={formData.category}
+                  onChange={e => setFormData(prev => ({ ...prev, category: e.target.value as SkillCategory }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all appearance-none"
                 >
-                  <option value="POST">POST</option>
-                  <option value="GET">GET</option>
-                  <option value="PUT">PUT</option>
+                  <option value="payment">Payment - 支付类</option>
+                  <option value="commerce">Commerce - 电商类</option>
+                  <option value="data">Data - 数据类</option>
+                  <option value="utility">Utility - 工具类</option>
+                  <option value="integration">Integration - 集成类</option>
+                  <option value="custom">Custom - 自定义</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">标签 (逗号分隔)</label>
+                <input
+                  type="text"
+                  value={formData.tags}
+                  onChange={e => setFormData(prev => ({ ...prev, tags: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all placeholder:text-slate-600"
+                  placeholder="如: payment, commission, agent"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 使用场景与示例区 */}
+          <div className="mb-6 p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
+            <h4 className="text-sm font-bold text-emerald-400 mb-4 flex items-center gap-2">
+              <span>📖</span> 使用说明 (帮助用户了解如何使用)
+            </h4>
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">使用场景 (每行一个)</label>
+              <textarea
+                value={formData.useCases}
+                onChange={e => setFormData(prev => ({ ...prev, useCases: e.target.value }))}
+                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-white transition-all resize-none"
+                rows={4}
+                placeholder={`电商订单完成后自动给商户、推广者、平台分佣\nAgent 之间协作完成任务后的收益分配\n联盟营销的推广返佣\n多级分销的层级分佣`}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">调用示例 (JSON)</label>
+              <textarea
+                value={formData.callExample}
+                onChange={e => setFormData(prev => ({ ...prev, callExample: e.target.value }))}
+                className="w-full px-4 py-3 bg-slate-950 border border-white/5 rounded-xl font-mono text-xs text-emerald-300 outline-none focus:ring-1 focus:ring-emerald-500/50 leading-relaxed"
+                rows={6}
+                placeholder={`{\n  "totalAmount": 100,\n  "recipients": [\n    {"address": "0x商户地址", "share": 7000, "role": "merchant"},\n    {"address": "0xAgent地址", "share": 2000, "role": "agent"}\n  ]\n}`}
+              />
+            </div>
+          </div>
+
+          {/* 执行器配置 */}
+          <div className="mb-6">
+            <div className="grid grid-cols-2 gap-6 mb-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">执行器类型</label>
+                <select
+                  value={formData.executorType}
+                  onChange={e => setFormData(prev => ({ ...prev, executorType: e.target.value as 'http' | 'internal' }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all appearance-none"
+                >
+                  <option value="internal">Internal Handler - 内部逻辑</option>
+                  <option value="http">HTTP Endpoint - 外部接口</option>
+                </select>
+              </div>
+              {formData.executorType === 'internal' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">内部处理器</label>
+                  <input
+                    type="text"
+                    value={formData.internalHandler}
+                    onChange={e => setFormData(prev => ({ ...prev, internalHandler: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl outline-none text-white focus:ring-2 focus:ring-blue-500"
+                    placeholder="如: commission_distribute"
+                  />
+                </div>
+              )}
+            </div>
+
+            {formData.executorType === 'http' && (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Endpoint URL</label>
+                  <input
+                    type="text"
+                    value={formData.executorEndpoint}
+                    onChange={e => setFormData(prev => ({ ...prev, executorEndpoint: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl outline-none text-white focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://api.example.com/action"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Method</label>
+                  <select
+                    value={formData.executorMethod}
+                    onChange={e => setFormData(prev => ({ ...prev, executorMethod: e.target.value as any }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl outline-none text-white focus:ring-2 focus:ring-blue-500 appearance-none"
+                  >
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                    <option value="PUT">PUT</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 定价模式 - 优化版 */}
+          <div className="mb-6 p-5 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+            <h4 className="text-sm font-bold text-blue-400 mb-4 flex items-center gap-2">
+              <span>💰</span> 定价模式
+            </h4>
+            <div className="grid grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">定价类型</label>
+                <select
+                  value={formData.pricingType}
+                  onChange={e => setFormData(prev => ({ ...prev, pricingType: e.target.value as any }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all appearance-none"
+                >
+                  <option value="free">免费 (Free)</option>
+                  <option value="per_call">固定价格 (Per Call)</option>
+                  <option value="percentage">按比例收费 (%)</option>
+                </select>
+              </div>
+
+              {formData.pricingType === 'per_call' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">单次价格</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.pricePerCall}
+                    onChange={e => setFormData(prev => ({ ...prev, pricePerCall: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all"
+                    placeholder="0.01"
+                  />
+                </div>
+              )}
+
+              {formData.pricingType === 'percentage' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">平台服务费 (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={formData.platformFeeRate}
+                    onChange={e => setFormData(prev => ({ ...prev, platformFeeRate: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all"
+                    placeholder="0.3"
+                  />
+                </div>
+              )}
+
+              {formData.pricingType !== 'free' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">最低收费</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.minFee}
+                    onChange={e => setFormData(prev => ({ ...prev, minFee: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all"
+                    placeholder="0.01"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">货币</label>
+                <select
+                  value={formData.currency}
+                  onChange={e => setFormData(prev => ({ ...prev, currency: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-white transition-all appearance-none"
+                >
+                  <option value="USDT">USDT</option>
+                  <option value="USDC">USDC</option>
+                  <option value="USD">USD</option>
                 </select>
               </div>
             </div>
-          ) : (
-            <div className="mb-6">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">内部处理器 (Handler)</label>
-              <select
-                value={formData.internalHandler}
-                onChange={e => setFormData(prev => ({ ...prev, internalHandler: e.target.value }))}
-                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl outline-none text-white focus:ring-2 focus:ring-blue-500 appearance-none"
-              >
-                <option value="echo">echo - 回显测试</option>
-                <option value="search_products">search_products - 搜索商品</option>
-                <option value="create_order">create_order - 创建订单</option>
-                <option value="get_balance">get_balance - 查询余额</option>
-              </select>
-            </div>
-          )}
 
-          <div className="mb-6">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Input Schema (JSON)</label>
-            <textarea
-              value={formData.inputSchema}
-              onChange={e => setFormData(prev => ({ ...prev, inputSchema: e.target.value }))}
-              className="w-full px-4 py-4 bg-slate-950 border border-white/5 rounded-xl font-mono text-xs text-blue-300 outline-none focus:ring-1 focus:ring-blue-500/50 leading-relaxed"
-              rows={8}
-            />
+            {formData.pricingType === 'percentage' && (
+              <p className="text-xs text-blue-400/80 mb-4 p-3 bg-blue-500/10 rounded-lg">
+                💡 按比例收费：每次调用按交易金额的 {formData.platformFeeRate}% 收取服务费，最低 {formData.minFee} {formData.currency}
+              </p>
+            )}
+
+            <div className="flex gap-4">
+              <label className="flex items-center gap-3 flex-1 p-3 bg-slate-900 border border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                <input
+                  type="checkbox"
+                  checked={formData.ucpEnabled}
+                  onChange={e => setFormData(prev => ({ ...prev, ucpEnabled: e.target.checked }))}
+                  className="w-5 h-5 rounded bg-slate-800 border-white/20 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="text-sm font-bold text-white">支持 UCP 协议</p>
+                  <p className="text-xs text-slate-500">启用统一结账协议</p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 flex-1 p-3 bg-slate-900 border border-white/10 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                <input
+                  type="checkbox"
+                  checked={formData.x402Enabled}
+                  onChange={e => setFormData(prev => ({ ...prev, x402Enabled: e.target.checked }))}
+                  className="w-5 h-5 rounded bg-slate-800 border-white/20 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="text-sm font-bold text-white">支持 X402 协议</p>
+                  <p className="text-xs text-slate-500">启用HTTP支付协议</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Schema 定义 */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Input Schema (JSON)</label>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ 
+                    ...prev, 
+                    inputSchema: JSON.stringify({
+                      type: 'object',
+                      properties: {
+                        query: { type: 'string', description: '查询参数' }
+                      },
+                      required: ['query']
+                    }, null, 2)
+                  }))}
+                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                >
+                  重置默认格式
+                </button>
+              </div>
+              <textarea
+                value={formData.inputSchema}
+                onChange={e => setFormData(prev => ({ ...prev, inputSchema: e.target.value }))}
+                className="w-full px-4 py-4 bg-slate-950 border border-white/5 rounded-xl font-mono text-xs text-blue-300 outline-none focus:ring-1 focus:ring-blue-500/50 leading-relaxed"
+                rows={12}
+              />
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Output Schema (JSON)</label>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ 
+                    ...prev, 
+                    outputSchema: JSON.stringify({
+                      type: 'object',
+                      properties: {
+                        result: { type: 'string', description: '返回结果' }
+                      }
+                    }, null, 2)
+                  }))}
+                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                >
+                  重置默认格式
+                </button>
+              </div>
+              <textarea
+                value={formData.outputSchema}
+                onChange={e => setFormData(prev => ({ ...prev, outputSchema: e.target.value }))}
+                className="w-full px-4 py-4 bg-slate-950 border border-white/5 rounded-xl font-mono text-xs text-green-300 outline-none focus:ring-1 focus:ring-green-500/50 leading-relaxed"
+                rows={12}
+              />
+            </div>
+          </div>
+
+          {/* 组合性配置 */}
+          <div className="mb-6 p-4 bg-purple-500/5 rounded-xl border border-purple-500/20">
+            <h4 className="text-sm font-bold text-purple-400 mb-3 flex items-center gap-2">
+              <span>🔗</span> Skill 组合 (可选)
+            </h4>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">可组合的 Skill (逗号分隔)</label>
+              <input
+                type="text"
+                value={formData.composableWith}
+                onChange={e => setFormData(prev => ({ ...prev, composableWith: e.target.value }))}
+                className="w-full px-4 py-3 bg-slate-900 border border-white/10 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-white transition-all placeholder:text-slate-600"
+                placeholder="如: agent_payment, workflow_trigger, notification_send"
+              />
+              <p className="text-xs text-slate-500 mt-2">声明此 Skill 可以与哪些 Skill 组合使用，便于被其他 Agent 发现和编排</p>
+            </div>
           </div>
 
           {/* Validation Result */}
@@ -410,6 +759,21 @@ export const SkillRegistry: React.FC<SkillRegistryProps> = ({
                     }`}>
                       {skill.status}
                     </span>
+                    {skill.pricing && skill.pricing.type !== 'free' && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400">
+                        {skill.pricing.type === 'per_call' 
+                          ? `$${skill.pricing.pricePerCall}/call`
+                          : skill.pricing.type === 'percentage'
+                            ? `${skill.pricing.platformFeeRate}% (min $${skill.pricing.minFee || 0.01})`
+                            : `${skill.pricing.commissionRate}% 分成`
+                        }
+                      </span>
+                    )}
+                    {skill.pricing?.type === 'free' && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/20 text-green-400">
+                        免费
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-slate-400 line-clamp-2 max-w-2xl leading-relaxed">{skill.description}</p>
                   <div className="flex gap-6 mt-4 text-[11px] font-medium text-slate-500">

@@ -2,7 +2,6 @@ import Head from 'next/head'
 import { Navigation } from '../components/ui/Navigation'
 import { Footer } from '../components/layout/Footer'
 import { useState } from 'react'
-import { LoginModal } from '../components/auth/LoginModal'
 import { useRouter } from 'next/router'
 import { useLocalization } from '../contexts/LocalizationContext'
 
@@ -129,8 +128,7 @@ const agentScenarios = [
   },
 ]
 
-export default function UseCases() {
-  const [showLogin, setShowLogin] = useState(false)
+export default function UseCasesPage() {
   const router = useRouter()
   const { t } = useLocalization()
 
@@ -146,7 +144,8 @@ export default function UseCases() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+
+      <Navigation />
 
       <main className="min-h-screen bg-slate-950 text-white">
         {/* Hero Section */}
@@ -264,7 +263,6 @@ export default function UseCases() {
       </main>
 
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

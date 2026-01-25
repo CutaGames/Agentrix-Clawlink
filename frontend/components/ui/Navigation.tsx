@@ -9,17 +9,17 @@ import { NotificationCenter } from '../notification/NotificationCenter'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { AgentrixLogo } from '../common/AgentrixLogo'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { Store, Briefcase, ChevronDown } from 'lucide-react'
 
 const mainNavItems = [
   { href: '/agent-enhanced', label: { zh: 'AX Agent', en: 'AX Agent' } },
   { href: '/ax-payment', label: { zh: 'AX 支付', en: 'AX Payment' } },
-  { href: '/marketplace', label: { zh: 'Marketplace', en: 'Marketplace' } },
+  { href: '/marketplace', label: { zh: '市场', en: 'Marketplace' }, highlight: true },
   { href: '/alliance', label: { zh: '联盟', en: 'Alliance' } },
-  { href: '/edge', label: { zh: 'Edge', en: 'Edge' } },
   { href: '/developers', label: { zh: '开发者', en: 'Developers' } },
 ]
 
-export function Navigation({ onLoginClick }: { onLoginClick: () => void }) {
+export function Navigation() {
   const router = useRouter()
   const { isAuthenticated } = useUser()
   const { t } = useLocalization()
@@ -41,19 +41,25 @@ export function Navigation({ onLoginClick }: { onLoginClick: () => void }) {
           {/* Desktop Menu */}
           <div className="hidden flex-1 items-center justify-center md:flex">
             <div className="ml-6 flex items-center space-x-8">
-              {mainNavItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`text-sm font-semibold tracking-wide transition-all hover:text-cyan-400 ${
-                    isActive(item.href)
-                      ? 'text-cyan-400'
-                      : 'text-slate-300'
-                  }`}
-                >
-                  {t(item.label)}
-                </Link>
-              ))}
+              {mainNavItems.map((item) => {
+                const isHighlight = 'highlight' in item && item.highlight;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`text-sm font-semibold tracking-wide transition-all hover:text-cyan-400 flex items-center gap-1.5 ${
+                      isActive(item.href)
+                        ? 'text-cyan-400'
+                        : isHighlight
+                          ? 'text-white bg-gradient-to-r from-blue-600/20 to-purple-600/20 px-3 py-1.5 rounded-full border border-blue-500/30'
+                          : 'text-slate-300'
+                    }`}
+                  >
+                    {isHighlight && <Store size={14} />}
+                    {t(item.label)}
+                  </Link>
+                );
+              })}
             </div>
           </div>
 
@@ -72,12 +78,12 @@ export function Navigation({ onLoginClick }: { onLoginClick: () => void }) {
             {isAuthenticated ? (
               <UserMenu />
             ) : (
-              <button
-                onClick={onLoginClick}
+              <Link
+                href="/auth/login"
                 className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-2 text-sm font-bold text-white transition-all hover:opacity-90 shadow-lg shadow-blue-600/20"
               >
                 {t({ zh: '登录', en: 'Sign in' })}
-              </button>
+              </Link>
             )}
           </div>
         </div>

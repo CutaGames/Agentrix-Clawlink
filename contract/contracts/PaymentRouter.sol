@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title PaymentRouter
  * @dev 支付路由合约，支持多种支付方式的路由选择
  */
-contract PaymentRouter is Ownable, ReentrancyGuard {
+contract PaymentRouter is Ownable, ReentrancyGuard, Pausable {
     // 支付方式枚举
     enum PaymentMethod {
         STRIPE,
@@ -81,7 +82,7 @@ contract PaymentRouter is Ownable, ReentrancyGuard {
         bytes32 sessionId,
         uint256 merchantPrice,
         uint256 channelFee
-    ) external payable nonReentrant {
+    ) external payable nonReentrant whenNotPaused {
         require(recipient != address(0), "Invalid recipient");
         require(amount > 0, "Amount must be greater than 0");
         require(
@@ -142,7 +143,7 @@ contract PaymentRouter is Ownable, ReentrancyGuard {
         address recipient,
         uint256 amount,
         PaymentMethod method
-    ) external payable nonReentrant {
+    ) external payable nonReentrant whenNotPaused {
         require(recipient != address(0), "Invalid recipient");
         require(amount > 0, "Amount must be greater than 0");
         require(
@@ -234,10 +235,11 @@ contract PaymentRouter is Ownable, ReentrancyGuard {
     /**
      * @dev 提取余额
      */
-    function withdraw(uint256 amount) external {
+    function withdraw(uint256 amount) external nonReentrant {
         require(balances[msg.sender] >= amount, "Insufficient balance");
         balances[msg.sender] -= amount;
-        payable(msg.sender).transfer(amount);
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Transfer failed");
     }
 
     /**
@@ -249,6 +251,32 @@ contract PaymentRouter is Ownable, ReentrancyGuard {
         returns (PaymentRecord memory)
     {
         return payments[paymentId];
+    }
+
+    // ============ 紧急控制函数 ============
+    
+    /**
+     * @dev 暂停合约
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    /**
+     * @dev 恢复合约
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    /**
+     * @dev 紧急提款 ETH
+     */
+    function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "Invalid recipient");
+        require(address(this).balance >= amount, "Insufficient balance");
+        (bool success, ) = payable(to).call{value: amount}("");
+        require(success, "Transfer failed");
     }
 
     receive() external payable {

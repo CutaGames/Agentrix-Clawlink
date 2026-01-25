@@ -1,7 +1,6 @@
 import Head from 'next/head'
 import { Navigation } from '../components/ui/Navigation'
 import { useState, useEffect } from 'react'
-import { LoginModal } from '../components/auth/LoginModal'
 import { useRouter } from 'next/router'
 import { paymentApi } from '../lib/api/payment.api'
 import { SmartCheckout } from '../components/payment/SmartCheckout'
@@ -54,7 +53,6 @@ function wait(ms: number) {
 /* --------------------------- Main App Component --------------------------- */
 export default function PaymentDemo() {
   const router = useRouter()
-  const [showLogin, setShowLogin] = useState(false)
   const [showCheckout, setShowCheckout] = useState(false)
   const [currentOrder, setCurrentOrder] = useState<any>(null)
   
@@ -273,7 +271,7 @@ export default function PaymentDemo() {
         <title>支付体验演示 - Agentrix</title>
         <meta name="description" content="体验 Agentrix 统一支付流程：QuickPay、智能路由、KYC、法币和加密货币支付" />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
 
       <div className="min-h-screen bg-slate-50 p-6 flex items-start justify-center">
         <div className="w-full max-w-3xl bg-white shadow-lg rounded-2xl p-6">
@@ -408,18 +406,97 @@ export default function PaymentDemo() {
             </div>
           </div>
 
-          {/* message */}
-          {message && (
-            <div className="mt-4 p-3 rounded bg-emerald-50 border border-emerald-100 text-emerald-800">
-              {message}
-            </div>
-          )}
+        </div>
+
+        {/* Page switcher */}
+        {page === 'home' && (
+          <HomePage
+            recommended={recommended}
+            routing={routing}
+            expanded={expanded}
+            setExpanded={setExpanded}
+            onPayNow={handlePayNow}
+            onOpenKYC={handleStartKYC}
+            onOpenQuick={() => setPage('quick')}
+            hasQuickPayAuth={hasQuickPayAuth}
+            kycStatus={kycStatus}
+            onSelectOther={(id: string) => {
+              if (id === 'fiat_standard' || id === 'fiat_optimal') setPage('fiat')
+              if (id === 'usdc') setPage('crypto')
+              if (id === 'apple' || id === 'card') setPage('fiat')
+            }}
+            processing={processing}
+            message={message}
+          />
+        )}
+
+        {page === 'kyc' && (
+          <KYCPage
+            onBack={() => setPage('home')}
+            onSubmit={async (form: { name: string; id: string; selfie: any; idPhoto: any }) => {
+              setKycStatus('pending')
+              const res = await mockApi.submitKYC(form)
+              if (res.ok) setKycStatus('verified')
+              else setKycStatus('failed')
+              pushCallback({
+                status: res.ok ? 'success' : 'failed',
+                method: 'kyc',
+                message: res.msg,
+              })
+              setPage('home')
+            }}
+            status={kycStatus}
+          />
+        )}
+
+        {page === 'quick' && (
+          <QuickPayPage
+            onBack={() => setPage('home')}
+            hasAuth={hasQuickPayAuth}
+            onEnable={() => handleEnableQuickPay()}
+          />
+        )}
+
+        {page === 'fiat' && (
+          <FiatPaymentPage
+            onBack={() => setPage('home')}
+            amountUSD={amountUSD}
+            kycStatus={kycStatus}
+            rateLock={rateLock}
+            onLockRate={async () => {
+              const lock = await mockApi.lockRate({ amountUSD })
+              if (lock.ok)
+                setRateLock({
+                  locked: true,
+                  sec: lock.expiresInSec,
+                  priceLocal: lock.lockedPriceLocal,
+                })
+            }}
+            onPay={(opts: { useOptimal?: boolean }) => handleFiatPay(opts)}
+            localSymbol={localSymbol}
+          />
+        )}
+
+        {page === 'crypto' && (
+          <CryptoPaymentPage
+            onBack={() => setPage('home')}
+            amountUSD={amountUSD}
+            onPay={(opts: { chain?: string; useQuickIfSmall?: boolean }) => handleCryptoPay(opts)}
+            hasQuickPayAuth={hasQuickPayAuth}
+          />
+        )}
+
+        {/* footer */}
+        <div className="mt-6 text-xs text-slate-600 flex items-center justify-between">
+          <div>
+            KYC 状态：<strong className="text-slate-900">{kycStatus}</strong>
+          </div>
+          <div>
+            QuickPay：<strong className="text-slate-900">{hasQuickPayAuth ? '已启用' : '未启用'}</strong>
+          </div>
         </div>
       </div>
 
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
-      
-      {/* V7.0 Smart Checkout Modal */}
       {showCheckout && currentOrder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="relative">
@@ -631,7 +708,7 @@ function KYCPage({ onBack, onSubmit, status }: any) {
   )
 }
 
-function QuickPayPage({ onBack, hasAuth, onEnable }: any) {
+function QuickPayPage({ onBack, hasAuth, onEnable, message }: any) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -656,9 +733,11 @@ function QuickPayPage({ onBack, hasAuth, onEnable }: any) {
           ) : (
             <div className="px-4 py-2 bg-green-50 border border-green-200 rounded text-green-700">已启用快速支付</div>
           )}
-          <button onClick={onBack} className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50">
-            取消
-          </button>
+          {message && (
+            <div className="mt-4 p-3 rounded bg-emerald-50 border border-emerald-100 text-emerald-800">
+              {message}
+            </div>
+          )}
         </div>
       </div>
     </div>

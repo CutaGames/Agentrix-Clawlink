@@ -25,7 +25,14 @@ export function WalletManagement() {
 
   const fetchWallet = async () => {
     try {
-      const token = localStorage.getItem('token');
+      // 支持多种 token 存储 key
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      if (!token) {
+        console.warn('No auth token found');
+        setLoading(false);
+        return;
+      }
+      
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/mpc-wallet/my-wallet`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -51,7 +58,14 @@ export function WalletManagement() {
 
     setIsGenerating(true);
     try {
-      const token = localStorage.getItem('token');
+      // 支持多种 token 存储 key
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      if (!token) {
+        showError(t({ zh: '请先登录', en: 'Please login first' }));
+        setIsGenerating(false);
+        return;
+      }
+      
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/mpc-wallet/create`, {
         method: 'POST',
         headers: {

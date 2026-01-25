@@ -24,6 +24,11 @@ export function PaymentProvider({ children }: { children: ReactNode }) {
     setSelectedMethod(null)
   }
 
+  // 绑定到 window 对象，方便在一些难以获取 Context 的地方使用
+  if (typeof window !== 'undefined') {
+    (window as any).startPayment = startPayment;
+  }
+
   const selectPaymentMethod = (method: PaymentMethod) => {
     setSelectedMethod(method)
   }

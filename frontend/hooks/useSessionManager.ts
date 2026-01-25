@@ -123,10 +123,10 @@ export function useSessionManager() {
       try {
         const contractInfo = await paymentApi.getContractAddress?.();
         erc8004Address = contractInfo?.erc8004ContractAddress || process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
-        tokenAddress = contractInfo?.usdcAddress || process.env.NEXT_PUBLIC_USDT_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd';
+        tokenAddress = contractInfo?.usdcAddress || process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xc23453b4842FDc4360A0a3518E2C0f51a2069386';
       } catch {
         erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
-        tokenAddress = process.env.NEXT_PUBLIC_USDT_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd';
+        tokenAddress = process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xc23453b4842FDc4360A0a3518E2C0f51a2069386';
       }
 
       // 4. 检查并授权USDT给ERC8004合约
@@ -164,8 +164,23 @@ export function useSessionManager() {
       // 5. 调用合约创建Session
       let onChainSessionId: string | null = null;
       const expiryTimestamp = Math.floor(Date.now() / 1000) + config.expiryDays * 86400;
-      const singleLimitUnits = ethers.parseUnits(safeSingleLimit.toFixed(6), 6);
-      const dailyLimitUnits = ethers.parseUnits(safeDailyLimit.toFixed(6), 6);
+      
+      // 获取代币 decimals
+      let tokenDecimals = 18;
+      try {
+        const tokenContractForDecimals = new ethers.Contract(
+          tokenAddress,
+          ['function decimals() view returns (uint8)'],
+          provider || undefined
+        );
+        tokenDecimals = await tokenContractForDecimals.decimals();
+        tokenDecimals = Number(tokenDecimals);
+      } catch (e) {
+        console.error('Error fetching decimals, defaulting to 18:', e);
+      }
+
+      const singleLimitUnits = ethers.parseUnits(safeSingleLimit.toFixed(Math.min(tokenDecimals, 6)), tokenDecimals);
+      const dailyLimitUnits = ethers.parseUnits(safeDailyLimit.toFixed(Math.min(tokenDecimals, 6)), tokenDecimals);
 
       if (signer) {
         const sessionManagerContract = new ethers.Contract(
@@ -207,7 +222,12 @@ export function useSessionManager() {
         agentId: config.agentId,
       });
 
-      await loadSessions();
+      // 立即加载sessions和active session
+      await Promise.all([
+        loadSessions(),
+        loadActiveSession(),
+      ]);
+      
       return session;
     } catch (err: any) {
       console.error('Failed to create session:', err);
@@ -235,7 +255,7 @@ export function useSessionManager() {
       if (typeof window !== 'undefined' && window.ethereum) {
         try {
           const erc8004Address = process.env.NEXT_PUBLIC_ERC8004_CONTRACT_ADDRESS || '0x3310a6e841877f28C755bFb5aF90e6734EF059fA';
-          const tokenAddress = process.env.NEXT_PUBLIC_USDT_ADDRESS || '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd';
+          const tokenAddress = process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xc23453b4842FDc4360A0a3518E2C0f51a2069386';
 
           const provider = new ethers.BrowserProvider(window.ethereum);
           const signer = await provider.getSigner();

@@ -32,4 +32,4 @@ fi
 echo "🚀 启动生产服务器..."
 echo "📍 服务器地址: http://localhost:3000"
 echo ""
-npx next start
+npx next start -H 0.0.0.0

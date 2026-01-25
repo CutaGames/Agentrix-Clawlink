@@ -29,14 +29,38 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('agentrix_user')
-    const savedRole = localStorage.getItem('agentrix_current_role') as UserRole
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser)
-      setUser(parsedUser)
-      setCurrentRole(savedRole || parsedUser.role || 'user')
+    const initUser = async () => {
+      const savedUser = localStorage.getItem('agentrix_user')
+      const savedRole = localStorage.getItem('agentrix_current_role') as UserRole
+      
+      if (savedUser) {
+        const parsedUser = JSON.parse(savedUser)
+        setUser(parsedUser)
+        setCurrentRole(savedRole || parsedUser.role || 'user')
+        
+        // 🔄 从后端重新获取用户信息以同步roles
+        try {
+          const { apiClient } = await import('../lib/api/client')
+          const response = await apiClient.get<{ user: any }>('/users/profile')
+          if (response && response.user && response.user.roles) {
+            const updatedUser: User = {
+              ...parsedUser,
+              roles: response.user.roles as UserRole[],
+              email: response.user.email || parsedUser.email,
+              nickname: response.user.nickname || parsedUser.nickname,
+            }
+            console.log('✅ Synced user roles from backend:', updatedUser.roles)
+            setUser(updatedUser)
+            localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
+          }
+        } catch (err) {
+          console.warn('Failed to sync user info from backend, using cached data:', err)
+        }
+      }
+      setIsLoading(false)
     }
-    setIsLoading(false)
+    
+    initUser()
   }, [])
 
   const login = (userData: Partial<User>) => {

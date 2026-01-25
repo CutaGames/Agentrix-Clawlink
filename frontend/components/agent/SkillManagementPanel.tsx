@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useToast } from '../../contexts/ToastContext'
+import { skillApi, type Skill as ApiSkill, type SkillListResponse } from '../../lib/api/skill.api'
 import Link from 'next/link'
 import {
   Puzzle,
@@ -32,9 +34,10 @@ import {
   Wallet,
   TrendingUp,
   Shield,
+  Sparkles,
 } from 'lucide-react'
 
-interface Skill {
+interface SkillView {
   id: string
   name: string
   description: string
@@ -63,7 +66,7 @@ const SKILL_CATEGORIES = [
 ]
 
 // 示例技能数据
-const SAMPLE_SKILLS: Skill[] = [
+const SAMPLE_SKILLS: SkillView[] = [
   {
     id: 'skill-payment-auto',
     name: 'Auto Payment',
@@ -151,20 +154,22 @@ const SAMPLE_SKILLS: Skill[] = [
 interface SkillManagementPanelProps {
   agentId?: string
   compact?: boolean
+  autoInstallSkillId?: string
 }
 
 type ViewMode = 'installed' | 'marketplace'
 
-export function SkillManagementPanel({ agentId, compact = false }: SkillManagementPanelProps) {
+export function SkillManagementPanel({ agentId, compact = false, autoInstallSkillId }: SkillManagementPanelProps) {
   const { t } = useLocalization()
   const { success, error } = useToast()
+  const router = useRouter()
   
   const [viewMode, setViewMode] = useState<ViewMode>('installed')
-  const [skills, setSkills] = useState<Skill[]>(SAMPLE_SKILLS)
+  const [skills, setSkills] = useState<SkillView[]>(SAMPLE_SKILLS)
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
-  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
+  const [selectedSkill, setSelectedSkill] = useState<SkillView | null>(null)
   const [showConfigModal, setShowConfigModal] = useState(false)
 
   const filteredSkills = skills.filter(skill => {
@@ -188,7 +193,7 @@ export function SkillManagementPanel({ agentId, compact = false }: SkillManageme
     }
   }
 
-  const handleInstallSkill = (skill: Skill) => {
+  const handleInstallSkill = async (skill: SkillView) => {
     if (skill.isPremium && skill.price) {
       // 付费技能需要购买
       if (!confirm(t({ 
@@ -196,22 +201,34 @@ export function SkillManagementPanel({ agentId, compact = false }: SkillManageme
         en: `Purchase ${skill.name} for $${skill.price}?` 
       }))) return
     }
-    setSkills(skills.map(s => 
-      s.id === skill.id ? { ...s, isInstalled: true, isEnabled: true } : s
-    ))
-    success(t({ zh: `${skill.name} 安装成功`, en: `${skill.name} installed` }))
+    
+    try {
+      await skillApi.installSkill(skill.id)
+      setSkills(skills.map(s => 
+        s.id === skill.id ? { ...s, isInstalled: true, isEnabled: true } : s
+      ))
+      success(t({ zh: `${skill.name} 安装成功`, en: `${skill.name} installed` }))
+    } catch (err: any) {
+      error(err?.message || t({ zh: '安装失败', en: 'Installation failed' }))
+    }
   }
 
-  const handleUninstallSkill = (skillId: string) => {
+  const handleUninstallSkill = async (skillId: string) => {
     const skill = skills.find(s => s.id === skillId)
     if (!confirm(t({ zh: `确定要卸载 ${skill?.name} 吗？`, en: `Uninstall ${skill?.name}?` }))) return
-    setSkills(skills.map(s => 
-      s.id === skillId ? { ...s, isInstalled: false, isEnabled: false } : s
-    ))
-    success(t({ zh: `${skill?.name} 已卸载`, en: `${skill?.name} uninstalled` }))
+    
+    try {
+      await skillApi.uninstallSkill(skillId)
+      setSkills(skills.map(s => 
+        s.id === skillId ? { ...s, isInstalled: false, isEnabled: false } : s
+      ))
+      success(t({ zh: `${skill?.name} 已卸载`, en: `${skill?.name} uninstalled` }))
+    } catch (err: any) {
+      error(err?.message || t({ zh: '卸载失败', en: 'Uninstallation failed' }))
+    }
   }
 
-  const handleConfigureSkill = (skill: Skill) => {
+  const handleConfigureSkill = (skill: SkillView) => {
     setSelectedSkill(skill)
     setShowConfigModal(true)
   }
@@ -229,8 +246,105 @@ export function SkillManagementPanel({ agentId, compact = false }: SkillManageme
   const installedCount = skills.filter(s => s.isInstalled).length
   const enabledCount = skills.filter(s => s.isInstalled && s.isEnabled).length
 
+  const mapApiSkill = (item: ApiSkill, installed: boolean): SkillView => ({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    category: item.category || 'utility',
+    icon: undefined,
+    version: item.version,
+    author: item.authorId || 'Unknown',
+    downloads: item.callCount || 0,
+    rating: item.rating || 0,
+    isEnabled: installed,
+    isInstalled: installed,
+    isPremium: item.pricing?.type === 'subscription' || item.pricing?.type === 'per_call',
+    price: item.pricing?.pricePerCall,
+    permissions: item.tags || [],
+    configSchema: item.inputSchema as any,
+    config: {},
+  })
+
+  const loadSkills = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [installedRes, marketplaceRes]: (SkillListResponse | null)[] = await Promise.all([
+        skillApi.getInstalledSkills({ page: 1, limit: 50 }).catch((): SkillListResponse | null => null),
+        skillApi.getMarketplaceSkills({ page: 1, limit: 50 }).catch((): SkillListResponse | null => null),
+      ])
+
+      const installedSkills = (installedRes?.items || []).map((s) => mapApiSkill(s, true))
+      const marketSkills = (marketplaceRes?.items || []).map((s) => mapApiSkill(s, false))
+
+      const merged = [...installedSkills]
+      marketSkills.forEach((m) => {
+        if (!merged.find((x) => x.id === m.id)) {
+          merged.push(m)
+        }
+      })
+      setSkills(merged.length > 0 ? merged : SAMPLE_SKILLS)
+    } catch (err: any) {
+      setSkills(SAMPLE_SKILLS)
+      error(err?.message || t({ zh: '技能加载失败，已回退示例数据', en: 'Failed to load skills, showing samples' }))
+    } finally {
+      setLoading(false)
+    }
+  }, [error, t])
+
+  useEffect(() => {
+    loadSkills()
+  }, [loadSkills])
+
+  // 处理自动安装：从 URL 参数传入的 skillId
+  useEffect(() => {
+    const skillIdFromUrl = router.query.skillId as string
+    const actionFromUrl = router.query.action as string
+    const targetSkillId = autoInstallSkillId || skillIdFromUrl
+
+    if (targetSkillId && actionFromUrl === 'install' && !loading && skills.length > 0) {
+      const skillToInstall = skills.find(s => s.id === targetSkillId)
+      if (skillToInstall && !skillToInstall.isInstalled) {
+        handleInstallSkill(skillToInstall)
+        // 清除 URL 参数
+        const { skillId, action, ...restQuery } = router.query
+        router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true })
+      }
+    }
+  }, [autoInstallSkillId, router.query.skillId, router.query.action, skills, loading])
+
   return (
     <div className={`${compact ? '' : 'space-y-6'}`}>
+      {/* Skill Lifecycle */}
+      {!compact && (
+        <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-white/5 rounded-2xl p-6 mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <Sparkles className="text-yellow-500" size={20} />
+            <h3 className="font-bold text-white uppercase tracking-wider text-sm">{t({ zh: '技能生命周期', en: 'Skill Lifecycle' })}</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            <div className="hidden md:block absolute top-4 left-[20%] right-[20%] h-0.5 border-t-2 border-dashed border-white/10 z-0" />
+            
+            <div className="relative z-10 space-y-3">
+              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-blue-500/20">1</div>
+              <h4 className="font-bold text-slate-200">{t({ zh: '定义与部署', en: 'Define & Deploy' })}</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">{t({ zh: '商户定义商品对应的 API 技能描述，并部署到 Agentrix 基础设施。', en: 'Merchant defines API skill descriptions and deploys to Agentrix infrastructure.' })}</p>
+            </div>
+
+            <div className="relative z-10 space-y-3">
+              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-indigo-500/20">2</div>
+              <h4 className="font-bold text-slate-200">{t({ zh: '审核与发布', en: 'Verify & Publish' })}</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">{t({ zh: '技能通过安全性审核后发布至市场，获取全球 Agent 可见性。', en: 'Skills verified for security and published to marketplace for global agent visibility.' })}</p>
+            </div>
+
+            <div className="relative z-10 space-y-3">
+              <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-lg shadow-purple-500/20">3</div>
+              <h4 className="font-bold text-slate-200">{t({ zh: '订阅与获利', en: 'Subscribe & Earn' })}</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">{t({ zh: '用户订阅技能授权给自己的 Agent，商户通过调用产生实际收益。', en: 'User subscribes and authorizes their agent; merchants earn from skill execution.' })}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 头部概览 */}
       {!compact && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

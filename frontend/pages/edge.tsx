@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { Navigation } from '../components/ui/Navigation'
 import { Footer } from '../components/layout/Footer'
-import { LoginModal } from '../components/auth/LoginModal'
 import { useLocalization } from '../contexts/LocalizationContext'
 
 // 五层架构可视化组件
@@ -49,7 +48,7 @@ function ArchitectureDiagram({ t }: { t: (obj: { zh: string; en: string }) => st
           Voice / Vision / Text
         </text>
         <text x="400" y="90" textAnchor="middle" fill="#cbd5e1" fontSize="10">
-          Consumer / Merchant / Developer Agent
+          Consumer / Merchant / Professional User Agent
         </text>
 
         {/* 第2层 - 智能体编排层 */}
@@ -110,8 +109,8 @@ const architectureLayers = [
     title: { zh: '用户触达层', en: 'User Interface Layer' },
     subtitle: { zh: 'Omni-Channel + Multimodal', en: 'Omni-Channel + Multimodal' },
     description: {
-      zh: 'Voice-Native（POS 语音指令）、Vision-Ready（客显屏/摄像头）、Text/Mobile/Web/IM。支持 Consumer Agent、Merchant Copilot、Developer Studio 三类智能体。',
-      en: 'Voice-Native (POS voice commands), Vision-Ready (display/camera), Text/Mobile/Web/IM. Supports Consumer Agent, Merchant Copilot, Developer Studio.',
+      zh: 'Voice-Native（POS 语音指令）、Vision-Ready（客显屏/摄像头）、Text/Mobile/Web/IM。支持 Consumer Agent、Merchant Copilot、Professional User Studio 三类智能体。',
+      en: 'Voice-Native (POS voice commands), Vision-Ready (display/camera), Text/Mobile/Web/IM. Supports Consumer Agent, Merchant Copilot, Professional User Studio.',
     },
     features: [
       { zh: '语音交互 < 500ms', en: 'Voice interaction < 500ms' },
@@ -322,7 +321,6 @@ const comparisonData = [
 ]
 
 export default function EdgePage() {
-  const [showLogin, setShowLogin] = useState(false)
   const router = useRouter()
   const { t } = useLocalization()
 
@@ -332,7 +330,7 @@ export default function EdgePage() {
         <title>Agentrix Edge - AI 驱动的 POS 智能助手</title>
         <meta name="description" content="Agentrix Edge：基于 Qwen3 0.6B 端侧模型的 POS AI Agent，支持语音收银、智能推荐、离线处理。" />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         {/* Hero */}
         <section className="border-b border-white/10 bg-gradient-to-br from-blue-600/90 via-indigo-600/90 to-purple-600/90 text-white py-20">
@@ -626,7 +624,7 @@ export default function EdgePage() {
                 {t({ zh: '查看技术文档', en: 'View Documentation' })}
               </button>
               <button
-                onClick={() => setShowLogin(true)}
+                onClick={() => router.push('/auth/login')}
                 className="bg-white/10 border border-white/40 text-white px-8 py-3 rounded-lg font-semibold hover:bg-white/20 transition-all"
               >
                 {t({ zh: '联系商务', en: 'Contact Sales' })}
@@ -636,7 +634,6 @@ export default function EdgePage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

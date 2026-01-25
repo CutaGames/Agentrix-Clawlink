@@ -408,7 +408,7 @@ export function MerchantModule({ onCommand, initialTab }: MerchantModuleProps) {
   const loadConnections = useCallback(async () => {
     try {
       const res = await fetch('/api/ecommerce/connections', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
       })
       const data = await res.json()
       setConnections(data || [])

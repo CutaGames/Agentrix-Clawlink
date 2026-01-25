@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 
 const benefits = [
@@ -39,8 +39,8 @@ const flows = [
 ]
 
 export default function AllianceFeaturePage() {
-  const [showLogin, setShowLogin] = useState(false)
   const { t } = useLocalization()
+  const router = useRouter()
 
   return (
     <>
@@ -54,7 +54,7 @@ export default function AllianceFeaturePage() {
               })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         <section className="border-b border-white/10 bg-gradient-to-r from-slate-800/90 to-slate-700/90 py-16 text-white">
           <div className="container mx-auto px-6">
@@ -144,7 +144,7 @@ export default function AllianceFeaturePage() {
               })}
             </p>
             <button
-              onClick={() => setShowLogin(true)}
+              onClick={() => router.push('/auth/register')}
               className="mt-6 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100 transition-colors"
             >
               {t({ zh: '预约接入', en: 'Request access' })}
@@ -153,7 +153,6 @@ export default function AllianceFeaturePage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

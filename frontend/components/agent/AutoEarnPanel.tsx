@@ -1,4 +1,5 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
+import { Globe } from 'lucide-react'
 import { useAgentMode } from '../../contexts/AgentModeContext'
 import { autoEarnApi, AutoEarnTask, AutoEarnStats } from '../../lib/api/auto-earn.api'
 import { useToast } from '../../contexts/ToastContext'
@@ -17,11 +18,7 @@ export function AutoEarnPanel() {
   )
   const [activeTab, setActiveTab] = useState<'basic' | 'arbitrage' | 'launchpad' | 'strategies'>('basic')
 
-  useEffect(() => {
-    loadData()
-  }, [currentAgentId])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
       const [tasksData, statsData] = await Promise.all([
@@ -35,7 +32,11 @@ export function AutoEarnPanel() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentAgentId, error])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleExecuteTask = async (taskId: string) => {
     try {
@@ -71,6 +72,25 @@ export function AutoEarnPanel() {
 
   return (
     <div className="space-y-8">
+      {/* Mainnet Banner */}
+      <div className="bg-blue-600/10 border border-blue-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
+            <Globe size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              Auto-Earn Mainnet Early Access
+              <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full uppercase tracking-tighter italic">Coming Soon</span>
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">目前部分高阶策略处于沙盒模拟阶段，正式主网版本预计于近期开放。您的模拟收益将映射至主网积分计划。</p>
+          </div>
+        </div>
+        <button className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/20">
+          获取早期访问资格
+        </button>
+      </div>
+
       <div className="grid md:grid-cols-4 gap-4">
         <SummaryCard label="累计收益" value={summary.totalYield} accent="text-emerald-500" />
         <SummaryCard label="完成任务" value={`${summary.tasksCompleted} 个`} />

@@ -21,7 +21,7 @@ export default function AuditBrowser() {
         : '/api/merchant/audit-proofs';
       const res = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }
       });
       const data = await res.json();

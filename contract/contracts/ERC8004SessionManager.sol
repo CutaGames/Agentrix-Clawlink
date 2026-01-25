@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -12,7 +13,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  * @dev ERC-8004 标准实现：Session Key 管理合约
  * 支持 Agent 自动化支付、高频小额支付场景
  */
-contract ERC8004SessionManager is Ownable, ReentrancyGuard {
+contract ERC8004SessionManager is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     struct Session {
@@ -151,7 +152,20 @@ contract ERC8004SessionManager is Ownable, ReentrancyGuard {
         uint256 amount,
         bytes32 paymentId,
         bytes calldata signature
-    ) external onlyRelayer validSession(sessionId) nonReentrant {
+    ) external onlyRelayer validSession(sessionId) nonReentrant whenNotPaused {
+        _executeWithSession(sessionId, to, amount, paymentId, signature);
+    }
+
+    /**
+     * @dev 内部执行支付逻辑
+     */
+    function _executeWithSession(
+        bytes32 sessionId,
+        address to,
+        uint256 amount,
+        bytes32 paymentId,
+        bytes calldata signature
+    ) internal {
         Session storage session = sessions[sessionId];
 
         // 检查每日限额重置
@@ -235,7 +249,7 @@ contract ERC8004SessionManager is Ownable, ReentrancyGuard {
         uint256[] calldata amounts,
         bytes32[] calldata paymentIds,
         bytes[] calldata signatures
-    ) external onlyRelayer nonReentrant {
+    ) external onlyRelayer nonReentrant whenNotPaused {
         require(
             sessionIds.length == recipients.length &&
             recipients.length == amounts.length &&
@@ -246,8 +260,15 @@ contract ERC8004SessionManager is Ownable, ReentrancyGuard {
         require(sessionIds.length > 0 && sessionIds.length <= 50, "Invalid batch size");
 
         for (uint256 i = 0; i < sessionIds.length; i++) {
-            this.executeWithSession(
-                sessionIds[i],
+            // 首先验证 Session 有效性
+            bytes32 sid = sessionIds[i];
+            Session storage session = sessions[sid];
+            require(session.owner != address(0), "Session not found");
+            require(session.isActive, "Session not active");
+            require(block.timestamp <= session.expiry, "Session expired");
+
+            _executeWithSession(
+                sid,
                 recipients[i],
                 amounts[i],
                 paymentIds[i],
@@ -350,6 +371,30 @@ contract ERC8004SessionManager is Ownable, ReentrancyGuard {
         require(v == 27 || v == 28, "Invalid signature");
 
         return ecrecover(messageHash, v, r, s);
+    }
+
+    // ============ 紧急控制函数 ============
+
+    /**
+     * @dev 暂停合约
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @dev 恢复合约
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    /**
+     * @dev 紧急提款
+     */
+    function emergencyWithdraw(address token, address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "Invalid recipient");
+        IERC20(token).safeTransfer(to, amount);
     }
 }
 

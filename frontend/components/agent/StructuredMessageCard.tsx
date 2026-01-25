@@ -219,6 +219,25 @@ export function StructuredMessageCard({ type, data, onAction }: StructuredMessag
                   >
                     加入购物车
                   </button>
+                  <button
+                    onClick={() => {
+                      startPayment({
+                        id: `payment_${Date.now()}`,
+                        amount: product.price.toString(),
+                        currency: product.currency || 'CNY',
+                        description: product.name,
+                        merchant: product.merchantId,
+                        metadata: {
+                          productId: product.id,
+                        },
+                        createdAt: new Date().toISOString(),
+                      } as any);
+                      onAction?.('buy_now', product);
+                    }}
+                    className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    立即购买
+                  </button>
                 </div>
               </div>
             </div>

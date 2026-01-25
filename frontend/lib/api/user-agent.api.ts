@@ -189,4 +189,25 @@ export const userAgentApi = {
   getStats: async (agentId: string): Promise<any> => {
     return apiClient.get(`/user-agent/${agentId}/stats`);
   },
+
+  /**
+   * 订阅/购买 Agent
+   */
+  subscribe: async (agentId: string): Promise<any> => {
+    return apiClient.post(`/user-agent/subscribe/${agentId}`, {});
+  },
+
+  /**
+   * 删除 Agent
+   */
+  deleteAgent: async (agentId: string): Promise<any> => {
+    return apiClient.delete(`/user-agent/${agentId}`);
+  },
+
+  /**
+   * 取消订阅
+   */
+  cancelSubscription: async (subscriptionId: string): Promise<any> => {
+    return apiClient.delete(`/user-agent/subscriptions/${subscriptionId}`);
+  },
 };

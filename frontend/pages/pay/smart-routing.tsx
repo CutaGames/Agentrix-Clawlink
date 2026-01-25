@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency, type SupportedCurrency } from '../../contexts/CurrencyContext'
 
@@ -74,13 +74,13 @@ const routingChannels: RoutingChannel[] = [
 ]
 
 export default function SmartRoutingPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [amount, setAmount] = useState(500)
   const [currency, setCurrency] = useState<SupportedCurrency>('USD')
   const [userCountry, setUserCountry] = useState('CN')
   const [kycLevel, setKycLevel] = useState<KycLevel>('basic')
   const [quickPayEnabled, setQuickPayEnabled] = useState(true)
   const [walletConnected, setWalletConnected] = useState(false)
+  const router = useRouter()
 
   const { t } = useLocalization()
   const { convert, format, availableCurrencies } = useCurrency()
@@ -140,7 +140,7 @@ export default function SmartRoutingPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         <section className="border-b border-white/10 bg-gradient-to-r from-indigo-600/90 to-blue-600/90 py-16 text-white">
           <div className="container mx-auto px-6">
@@ -388,7 +388,7 @@ export default function SmartRoutingPage() {
                   })}
                 </p>
                 <button
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => router.push('/developers')}
                   className="mt-6 w-full rounded-xl bg-indigo-500 py-3 text-white hover:bg-indigo-600"
                 >
                   {t({ zh: '申请 API Key', en: 'Request API key' })}
@@ -399,7 +399,6 @@ export default function SmartRoutingPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

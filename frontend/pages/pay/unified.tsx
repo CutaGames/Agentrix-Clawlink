@@ -1,9 +1,9 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency, type SupportedCurrency } from '../../contexts/CurrencyContext'
 
@@ -94,7 +94,6 @@ const stepConfig = [
 ]
 
 export default function UnifiedPaymentDemo() {
-  const [showLogin, setShowLogin] = useState(false)
   const [productType, setProductType] = useState<ProductType>('physical')
   const [productName, setProductName] = useState('AI 智能音箱套装')
   const [productPrice, setProductPrice] = useState(1299)
@@ -105,6 +104,7 @@ export default function UnifiedPaymentDemo() {
   const [kycLevel, setKycLevel] = useState<KycLevel>('basic')
   const [selectedChannel, setSelectedChannel] = useState('stripe')
   const [activeStep, setActiveStep] = useState(0)
+  const router = useRouter()
 
   const { t } = useLocalization()
   const { format, convert, availableCurrencies } = useCurrency()
@@ -468,8 +468,8 @@ export default function UnifiedPaymentDemo() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
-      <main className="bg-slate-950 text-white">
+      <Navigation />
+      <main className="bg-slate-950 text-white min-h-screen">
         <section className="border-b border-white/10 bg-gradient-to-r from-cyan-600/30 to-blue-700/40 py-16">
           <div className="container mx-auto px-6">
             <div className="max-w-4xl space-y-5">
@@ -593,7 +593,7 @@ export default function UnifiedPaymentDemo() {
                     {t({ zh: '体验 V7.0 支付流程', en: 'Try V7.0 Payment Flow' })}
                   </button>
                   <button
-                    onClick={() => setShowLogin(true)}
+                    onClick={() => router.push('/developers')}
                     className="w-full rounded-2xl bg-white/90 py-3 text-center text-sm font-semibold text-cyan-700 hover:bg-white mt-2"
                   >
                     {t({ zh: '接入真实 API', en: 'Connect real API' })}
@@ -605,7 +605,6 @@ export default function UnifiedPaymentDemo() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

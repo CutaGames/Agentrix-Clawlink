@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import { useUser } from '../../../contexts/UserContext'
 import { useLocalization } from '../../../contexts/LocalizationContext'
 import { useWeb3 } from '../../../contexts/Web3Context'
@@ -17,7 +18,6 @@ import { AgentInsightsPanel } from '../AgentInsightsPanel'
 import { MyAgentsPanel } from '../MyAgentsPanel'
 import { PromotionPanel } from '../PromotionPanel'
 import { SkillManagementPanel } from '../SkillManagementPanel'
-import { LoginModal } from '../../auth/LoginModal'
 import { useToast } from '../../../contexts/ToastContext'
 import { 
   User as UserIcon, 
@@ -58,6 +58,7 @@ interface UserModuleProps {
  */
 export function UserModule({ onCommand, initialTab }: UserModuleProps) {
   const { t } = useLocalization()
+  const router = useRouter()
   const { user, updateUser } = useUser()
   const { connectedWallets } = useWeb3()
   const toast = useToast()
@@ -70,9 +71,6 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
   const [profileNickname, setProfileNickname] = useState(user?.nickname || '')
   const [profileBio, setProfileBio] = useState(user?.bio || '')
   const [isSavingProfile, setIsSavingProfile] = useState(false)
-
-  // 钱包管理状态
-  const [showWalletModal, setShowWalletModal] = useState(false)
 
   // 当 initialTab 改变时更新 activeTab
   useEffect(() => {
@@ -571,7 +569,7 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{t({ zh: '钱包管理', en: 'Wallet Management' })}</h3>
               <button 
-                onClick={() => setShowWalletModal(true)}
+                onClick={() => router.push('/auth/login?mode=wallet&bind=true')}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
               >
                 {t({ zh: '添加钱包', en: 'Add Wallet' })}
@@ -1150,16 +1148,6 @@ export function UserModule({ onCommand, initialTab }: UserModuleProps) {
           </div>
         </div>
       )}
-      {showWalletModal && (
-        <LoginModal
-          onClose={() => setShowWalletModal(false)}
-          onWalletSuccess={async () => {
-            setShowWalletModal(false)
-            await loadWallets()
-          }}
-        />
-      )}
     </div>
   )
 }
-

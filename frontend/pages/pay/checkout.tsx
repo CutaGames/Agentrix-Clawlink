@@ -7,26 +7,131 @@ import { orderApi } from '../../lib/api/order.api'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
 import { useUser } from '../../contexts/UserContext'
-import { LoginModal } from '../../components/auth/LoginModal'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
+// 从 Skill 数据转换为 Product 格式
+interface SkillData {
+  id: string;
+  name: string;
+  displayName?: string;
+  description: string;
+  productId?: string; // 关联的 Product ID（用于订单创建）
+  pricing?: {
+    type: string;
+    pricePerCall?: number;
+    oneTimePrice?: number;
+    subscriptionPrice?: number;
+    currency?: string;
+  };
+  authorId?: string; // UUID of the author (User)
+  authorInfo?: {
+    id: string;
+    name: string;
+  };
+  imageUrl?: string;
+  metadata?: Record<string, any>;
+}
+
+// 系统默认商户ID - 用于没有作者的 Skill
+// 注意：这应该是数据库中存在的系统用户UUID
+const SYSTEM_MERCHANT_ID = process.env.NEXT_PUBLIC_SYSTEM_MERCHANT_ID || null;
+
+// 后端 AssetType 枚举有效值
+const VALID_ASSET_TYPES = ['physical', 'service', 'virtual', 'nft_rwa', 'dev_tool', 'subscription', 'other', 'aggregated_web2', 'aggregated_web3'];
+
+// 映射 assetType 到后端有效值
+function mapAssetType(type?: string): string {
+  if (!type) return 'virtual';
+  const lowerType = type.toLowerCase();
+  // 如果是有效值，直接返回
+  if (VALID_ASSET_TYPES.includes(lowerType)) return lowerType;
+  // 映射常见的别名
+  if (lowerType === 'digital') return 'virtual';
+  if (lowerType === 'software' || lowerType === 'app') return 'virtual';
+  if (lowerType === 'api' || lowerType === 'tool') return 'dev_tool';
+  // 默认返回 virtual
+  return 'virtual';
+}
+
+function skillToProduct(skill: SkillData): ProductInfo {
+  const pricing = skill.pricing;
+  let price = 0;
+  let currency = 'USD';
+  
+  if (pricing) {
+    currency = pricing.currency || 'USD';
+    if (pricing.oneTimePrice) {
+      price = pricing.oneTimePrice;
+    } else if (pricing.pricePerCall) {
+      price = pricing.pricePerCall;
+    } else if (pricing.subscriptionPrice) {
+      price = pricing.subscriptionPrice;
+    }
+  }
+  
+  // 优先使用 authorId (UUID)，其次检查 authorInfo.id 是否是有效 UUID
+  // 如果都没有，使用系统商户ID 或 skill 自身的 ID（作为 fallback）
+  const isValidUUID = (str?: string) => {
+    if (!str) return false;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
+  
+  let merchantId = skill.authorId; // 优先使用 authorId (正确的 UUID 字段)
+  if (!isValidUUID(merchantId)) {
+    merchantId = skill.authorInfo?.id;
+  }
+  if (!isValidUUID(merchantId)) {
+    merchantId = SYSTEM_MERCHANT_ID || skill.id; // Fallback to skill's own ID
+  }
+  
+  // 使用 productId（如果存在），否则使用 skill.id
+  // 订单创建需要 productId 存在于 products 表中
+  const productId = skill.productId || skill.id;
+  
+  return {
+    id: productId,
+    name: skill.displayName || skill.name,
+    description: skill.description,
+    price: price,
+    stock: 999, // Skills have unlimited stock
+    category: 'skill',
+    merchantId: merchantId!,
+    commissionRate: 0, // Default commission rate for skills
+    status: 'active', // Skills are active by default
+    metadata: {
+      currency: currency,
+      image: skill.imageUrl,
+      assetType: 'virtual', // 使用后端 AssetType 枚举中的有效值
+      productType: 'skill',
+      ...skill.metadata,
+    },
+  };
+}
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { productId } = router.query
+  const { productId, skillId } = router.query
   const { isAuthenticated } = useUser()
   const [product, setProduct] = useState<ProductInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [showCheckout, setShowCheckout] = useState(false)
-  const [showLogin, setShowLogin] = useState(false)
   const [order, setOrder] = useState<any>(null)
   const [orderError, setOrderError] = useState<string | null>(null)
 
   useEffect(() => {
+    // 确保 router 已准备好再读取 query 参数
+    if (!router.isReady) return;
+    
     if (productId && typeof productId === 'string') {
       loadProduct(productId)
+    } else if (skillId && typeof skillId === 'string') {
+      loadSkill(skillId)
     } else {
       setLoading(false)
     }
-  }, [productId])
+  }, [router.isReady, productId, skillId])
 
   const loadProduct = async (id: string) => {
     try {
@@ -34,9 +139,22 @@ export default function CheckoutPage() {
       const data = await productApi.getProduct(id)
       setProduct(data)
       setLoading(false)
-      // 不自动创建订单，让用户点击按钮后再创建
     } catch (error) {
       console.error('加载商品失败:', error)
+      setLoading(false)
+    }
+  }
+
+  const loadSkill = async (id: string) => {
+    try {
+      setLoading(true)
+      const res = await fetch(`${API_BASE}/api/unified-marketplace/skills/${id}`)
+      if (!res.ok) throw new Error('Skill not found')
+      const skillData: SkillData = await res.json()
+      setProduct(skillToProduct(skillData))
+      setLoading(false)
+    } catch (error) {
+      console.error('加载 Skill 失败:', error)
       setLoading(false)
     }
   }
@@ -46,7 +164,7 @@ export default function CheckoutPage() {
     
     // 检查用户是否已登录
     if (!isAuthenticated) {
-      setShowLogin(true);
+      router.push(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
       return;
     }
     
@@ -63,7 +181,7 @@ export default function CheckoutPage() {
     } catch (error: any) {
       // 检查是否是未授权错误
       if (error.message?.includes('401') || error.message?.includes('请先登录') || error.message?.includes('Unauthorized')) {
-        setShowLogin(true);
+        router.push(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
         setOrderError('请先登录后再进行支付');
       } else {
         setOrderError(error.message || '创建订单失败');
@@ -102,7 +220,7 @@ export default function CheckoutPage() {
         amount: amount, // 确保是数字类型
         currency: productData.metadata?.currency || 'CNY',
         metadata: {
-          assetType: productData.metadata?.assetType || 'physical',
+          assetType: mapAssetType(productData.metadata?.assetType),
           productType: productData.metadata?.productType,
           paymentMethod: productData.metadata?.paymentMethod,
         },
@@ -135,23 +253,10 @@ export default function CheckoutPage() {
     router.back()
   }
 
-  const handleLoginClick = () => {
-    setShowLogin(true)
-  }
-  
-  const handleLoginSuccess = () => {
-    setShowLogin(false)
-    setOrderError(null)
-    // 登录成功后自动重新尝试支付
-    if (product) {
-      handleStartPayment()
-    }
-  }
-
   if (loading) {
     return (
       <>
-        <Navigation onLoginClick={handleLoginClick} />
+        <Navigation />
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           <div className="text-center">
             <div className="text-4xl mb-4 animate-spin">⏳</div>
@@ -166,7 +271,7 @@ export default function CheckoutPage() {
   if (!product) {
     return (
       <>
-        <Navigation onLoginClick={handleLoginClick} />
+        <Navigation />
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           <div className="text-center">
             <div className="text-4xl mb-4">❌</div>
@@ -191,7 +296,7 @@ export default function CheckoutPage() {
         <meta name="description" content={`支付 ${product.name}`} />
       </Head>
 
-      <Navigation onLoginClick={handleLoginClick} />
+      <Navigation />
 
       <main className="min-h-screen bg-slate-950 text-white">
         {/* 商品信息卡片 */}
@@ -306,17 +411,6 @@ export default function CheckoutPage() {
       </main>
 
       <Footer />
-      
-      {/* 登录弹窗 */}
-      {showLogin && (
-        <LoginModal
-          onClose={() => {
-            setShowLogin(false)
-            handleLoginSuccess()
-          }}
-        />
-      )}
     </>
   )
 }
-

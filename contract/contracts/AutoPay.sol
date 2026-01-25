@@ -1,14 +1,38 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+/**
+ * @title ICommission
+ * @dev Commission 合约接口（用于 AutoPay 分账）
+ */
+interface ICommission {
+    function autoPaySplit(bytes32 orderId, uint256 amount, address payer) external;
+}
 
 /**
  * @title AutoPay
  * @dev 自动支付合约，管理用户对Agent的自动支付授权
+ * @notice 支持 ERC20 代币的自动支付授权和执行
+ * @notice V5.0: 集成 Commission 合约进行分账
  */
-contract AutoPay is Ownable, ReentrancyGuard {
+contract AutoPay is Ownable, ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
+    
+    // 支付代币
+    IERC20 public paymentToken;
+    
+    // V5.0: Commission 合约地址
+    ICommission public commissionContract;
+    
+    // V5.0: 是否启用分账模式
+    bool public splitModeEnabled;
+    
     // 授权结构
     struct Grant {
         address user;
@@ -118,7 +142,9 @@ contract AutoPay is Ownable, ReentrancyGuard {
         address user,
         address recipient,
         uint256 amount
-    ) external nonReentrant {
+    ) external nonReentrant whenNotPaused {
+        require(address(paymentToken) != address(0), "Payment token not set");
+        
         Grant storage grant = grants[user][msg.sender];
         require(grant.isActive, "Grant not active");
         require(block.timestamp <= grant.expiresAt, "Grant expired");
@@ -150,12 +176,15 @@ contract AutoPay is Ownable, ReentrancyGuard {
             executed: true
         });
 
-        // 执行转账
-        // 注意：这里需要用户预先授权合约使用其资金
-        // 实际实现应该使用ERC20 approve + transferFrom 或 ETH的委托支付
-        // 这里简化处理，假设资金已存入合约
-        require(address(this).balance >= amount, "Insufficient contract balance");
-        payable(recipient).transfer(amount);
+        // V5.0: 根据模式选择直接转账或通过 Commission 分账
+        if (splitModeEnabled && address(commissionContract) != address(0)) {
+            // 分账模式：用户需要 approve Commission 合约
+            // Commission 合约会从用户钱包转账并进行分账
+            commissionContract.autoPaySplit(paymentId, amount, user);
+        } else {
+            // 直接转账模式：用户需要 approve 本合约
+            paymentToken.safeTransferFrom(user, recipient, amount);
+        }
 
         emit AutoPaymentExecuted(paymentId, user, msg.sender, recipient, amount);
     }
@@ -183,6 +212,58 @@ contract AutoPay is Ownable, ReentrancyGuard {
         returns (AutoPayment memory)
     {
         return autoPayments[paymentId];
+    }
+    
+    // ============ 管理函数 ============
+    
+    /**
+     * @dev 设置支付代币
+     * @param _token 代币地址
+     */
+    function setPaymentToken(address _token) external onlyOwner {
+        require(_token != address(0), "Invalid token address");
+        paymentToken = IERC20(_token);
+    }
+    
+    /**
+     * @dev 暂停合约
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    /**
+     * @dev 恢复合约
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    /**
+     * @dev 紧急提款
+     */
+    function emergencyWithdraw(address token, address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "Invalid recipient");
+        IERC20(token).safeTransfer(to, amount);
+    }
+    
+    // ============ V5.0: Commission 集成 ============
+    
+    /**
+     * @dev V5.0: 设置 Commission 合约地址
+     * @param _commission Commission 合约地址
+     */
+    function setCommissionContract(address _commission) external onlyOwner {
+        require(_commission != address(0), "Invalid commission address");
+        commissionContract = ICommission(_commission);
+    }
+    
+    /**
+     * @dev V5.0: 启用/禁用分账模式
+     * @param _enabled 是否启用
+     */
+    function setSplitModeEnabled(bool _enabled) external onlyOwner {
+        splitModeEnabled = _enabled;
     }
 }
 

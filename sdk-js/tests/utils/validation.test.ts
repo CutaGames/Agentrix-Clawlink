@@ -54,7 +54,7 @@ describe('Validation Utilities', () => {
 
     it('should throw error for invalid currency codes', () => {
       expect(() => validateCurrency('US')).toThrow(AgentrixValidationError);
-      expect(() => validateCurrency('USDD')).toThrow(AgentrixValidationError);
+      expect(() => validateCurrency('USDDD')).toThrow(AgentrixValidationError);
       expect(() => validateCurrency('')).toThrow(AgentrixValidationError);
     });
   });

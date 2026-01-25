@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { X, ShoppingCart, Plus, Minus, Zap } from 'lucide-react';
 import { ProductInfo } from '../../lib/api/product.api';
 
 interface ProductDetailModalProps {
@@ -134,19 +134,63 @@ export function ProductDetailModal({
                 </div>
               </div>
 
-              {/* 加入购物车按钮 */}
-              <button
-                onClick={handleAddToCart}
-                disabled={isAdding || product.stock <= 0}
-                className={`w-full py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
-                  isAdding || product.stock <= 0
-                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                }`}
-              >
-                <ShoppingCart size={20} />
-                {isAdding ? '添加中...' : product.stock <= 0 ? '缺货' : '加入购物车'}
-              </button>
+              {/* 操作按钮 */}
+              <div className="flex flex-col gap-3">
+                {/* 立即购买按钮 */}
+                <button
+                  onClick={() => {
+                    const symbols: Record<string, string> = {
+                      USD: '$',
+                      USDT: '$',
+                      USDC: '$',
+                      CNY: '¥',
+                      EUR: '€',
+                    };
+                    const currency = (product as any).currency || product.metadata?.currency || 'USDC';
+                    const symbol = symbols[currency] || '¥';
+                    
+                    const { usePayment } = require('../../contexts/PaymentContext');
+                    // 注意：这里可能需要从父组件传进来或者使用 window 对象回退
+                    if (typeof window !== 'undefined' && (window as any).startPayment) {
+                      (window as any).startPayment({
+                        id: `pay_${Date.now()}`,
+                        amount: `${symbol}${product.price * quantity}`,
+                        currency: currency,
+                        description: `购买 ${product.name} (x${quantity})`,
+                        agent: 'Personal Agent',
+                        metadata: {
+                          productId: product.id,
+                          merchantId: product.merchantId,
+                        },
+                        createdAt: new Date().toISOString(),
+                      });
+                    }
+                  }}
+                  disabled={isAdding || product.stock <= 0}
+                  className={`w-full py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                    isAdding || product.stock <= 0
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  <Zap size={20} />
+                  一键快速购买
+                </button>
+
+                {/* 加入购物车按钮 */}
+                <button
+                  onClick={handleAddToCart}
+                  disabled={isAdding || product.stock <= 0}
+                  className={`w-full py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                    isAdding || product.stock <= 0
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                      : 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30'
+                  }`}
+                >
+                  <ShoppingCart size={20} />
+                  {isAdding ? '添加中...' : product.stock <= 0 ? '缺货' : '加入购物车'}
+                </button>
+              </div>
 
               {!sessionId && (
                 <p className="text-xs text-yellow-400 text-center">

@@ -9,6 +9,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { useLocalization } from '../../../contexts/LocalizationContext';
 import { useWeb3 } from '../../../contexts/Web3Context';
 import { agentAuthorizationApi, AgentAuthorization } from '../../../lib/api/agent-authorization.api';
+import { mpcWalletApi, MPCWallet } from '../../../lib/api/mpc-wallet.api';
 import {
   Zap,
   Gift,
@@ -60,7 +61,8 @@ interface Strategy {
   invested: number;
 }
 
-interface MPCWallet {
+// Wallet display data (different from MPCWallet API type)
+interface WalletDisplay {
   id: string;
   name: string;
   address: string;
@@ -89,7 +91,7 @@ export default function AgentHubPage() {
   // 数据状态
   const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [wallets, setWallets] = useState<MPCWallet[]>([]);
+  const [wallets, setWallets] = useState<WalletDisplay[]>([]);
   const [earningsStats, setEarningsStats] = useState<EarningsStats | null>(null);
   const [showBalances, setShowBalances] = useState(true);
   
@@ -270,9 +272,64 @@ export default function AgentHubPage() {
     showToast?.('success', '策略状态已更新');
   };
 
-  const handleCreateWallet = () => {
-    showToast?.('info', 'MPC钱包创建功能即将上线');
+  const [mpcWallet, setMpcWallet] = useState<MPCWallet | null>(null);
+  const [creatingWallet, setCreatingWallet] = useState(false);
+
+  const handleCreateWallet = async () => {
+    // Check if wallet already exists
+    try {
+      const existingWallet = await mpcWalletApi.getMyWallet();
+      if (existingWallet) {
+        setMpcWallet(existingWallet);
+        showToast?.('info', `您已有MPC钱包: ${existingWallet.walletAddress.slice(0, 8)}...${existingWallet.walletAddress.slice(-6)}`);
+        return;
+      }
+    } catch (e) {
+      // No wallet exists, proceed to create
+    }
+
+    // Prompt for password
+    const password = window.prompt('请设置钱包密码（用于加密私钥分片）:');
+    if (!password || password.length < 6) {
+      showToast?.('error', '密码至少需要6个字符');
+      return;
+    }
+
+    try {
+      setCreatingWallet(true);
+      showToast?.('info', '正在创建MPC钱包...');
+      
+      const result = await mpcWalletApi.createWallet({ password });
+      
+      // Store shards securely - user should backup encryptedShardA and encryptedShardC
+      localStorage.setItem('mpc_shard_a', result.encryptedShardA);
+      localStorage.setItem('mpc_shard_c', result.encryptedShardC);
+      
+      showToast?.('success', `MPC钱包创建成功: ${result.walletAddress.slice(0, 8)}...${result.walletAddress.slice(-6)}`);
+      
+      // Reload wallet info
+      const wallet = await mpcWalletApi.getMyWallet();
+      setMpcWallet(wallet);
+    } catch (error: any) {
+      console.error('Failed to create MPC wallet:', error);
+      showToast?.('error', error.message || 'MPC钱包创建失败');
+    } finally {
+      setCreatingWallet(false);
+    }
   };
+
+  // Load MPC wallet on mount
+  useEffect(() => {
+    const loadMpcWallet = async () => {
+      try {
+        const wallet = await mpcWalletApi.getMyWallet();
+        setMpcWallet(wallet);
+      } catch (e) {
+        // User doesn't have MPC wallet yet
+      }
+    };
+    loadMpcWallet();
+  }, []);
 
   // 概览标签页
   const OverviewTab = () => (

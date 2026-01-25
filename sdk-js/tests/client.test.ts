@@ -18,10 +18,27 @@ describe('AgentrixClient', () => {
     retries: 3,
   };
 
+  let mockedInstance: any;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedInstance = {
+      interceptors: {
+        request: { use: jest.fn() },
+        response: { use: jest.fn() },
+      },
+      defaults: {
+        headers: {
+          common: {},
+          Authorization: '',
+        },
+        baseURL: '',
+      },
+      get: jest.fn(),
+      post: jest.fn(),
+    };
+    (mockedAxios.create as jest.Mock).mockReturnValue(mockedInstance);
     client = new AgentrixClient(config);
-    (mockedAxios.create as jest.Mock).mockReturnValue(mockedAxios);
   });
 
   describe('constructor', () => {
@@ -40,11 +57,11 @@ describe('AgentrixClient', () => {
   describe('get', () => {
     it('should make GET request', async () => {
       const mockData = { id: '123', name: 'test' };
-      (mockedAxios.get as jest.Mock).mockResolvedValue({ data: mockData });
+      mockedInstance.get.mockResolvedValue(mockData);
 
       const result = await client.get('/test');
 
-      expect(mockedAxios.get).toHaveBeenCalledWith('/test', undefined);
+      expect(mockedInstance.get).toHaveBeenCalledWith('/test', undefined);
       expect(result).toEqual(mockData);
     });
   });
@@ -53,11 +70,11 @@ describe('AgentrixClient', () => {
     it('should make POST request', async () => {
       const mockData = { id: '123' };
       const requestData = { name: 'test' };
-      (mockedAxios.post as jest.Mock).mockResolvedValue({ data: mockData });
+      mockedInstance.post.mockResolvedValue(mockData);
 
       const result = await client.post('/test', requestData);
 
-      expect(mockedAxios.post).toHaveBeenCalledWith('/test', requestData, undefined);
+      expect(mockedInstance.post).toHaveBeenCalledWith('/test', requestData, undefined);
       expect(result).toEqual(mockData);
     });
   });
@@ -67,7 +84,7 @@ describe('AgentrixClient', () => {
       const newApiKey = 'new-api-key';
       client.setApiKey(newApiKey);
 
-      expect(mockedAxios.defaults.headers['Authorization']).toBe(`Bearer ${newApiKey}`);
+      expect(mockedInstance.defaults.headers['Authorization']).toBe(`Bearer ${newApiKey}`);
     });
   });
 
@@ -76,7 +93,7 @@ describe('AgentrixClient', () => {
       const newBaseURL = 'https://api.example.com';
       client.setBaseURL(newBaseURL);
 
-      expect(mockedAxios.defaults.baseURL).toBe(newBaseURL);
+      expect(mockedInstance.defaults.baseURL).toBe(newBaseURL);
     });
   });
 });

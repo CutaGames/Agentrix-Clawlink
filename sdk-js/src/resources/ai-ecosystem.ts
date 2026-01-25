@@ -9,6 +9,7 @@ import { AutoEarnResource } from './auto-earn';
 import { MPCWalletResource } from './mpc-wallet';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 // ========== MCP (Model Context Protocol) 工具定义 ==========
 
@@ -622,7 +623,7 @@ export class AIEcosystemIntegration {
 
     const tools = this.getMCPTools();
 
-    server.setRequestHandler('tools/list', async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: tools
     }));
 

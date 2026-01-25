@@ -1,11 +1,12 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useUser } from '../../../contexts/UserContext'
 import { useAgentMode } from '../../../contexts/AgentModeContext'
-import { UserModule } from './UserModule'
-import { MerchantModule } from './MerchantModule'
-import { DeveloperModule } from './DeveloperModule'
+import { UserModuleV2 } from './UserModuleV2'
+import { MerchantModuleV2 } from './MerchantModuleV2'
+import { DeveloperModuleV2 } from './DeveloperModuleV2'
 import { CommandHandler } from './CommandHandler'
 import { RoleSwitcher } from './RoleSwitcher'
+import { PersonaSwitcher, type UserPersona } from './PersonaSwitcher'
 import { AgentChatEnhanced } from '../AgentChatEnhanced'
 import { useLocalization } from '../../../contexts/LocalizationContext'
 import { MessageSquare, User, Store, Code, ShoppingBag, Zap, Layout, FileText, Link2 } from 'lucide-react'
@@ -37,7 +38,7 @@ interface UnifiedWorkspaceProps {
 
 /**
  * 统一工作台组件
- * 集成用户、商户、开发者所有后台功能
+ * 集成用户、商户、专业用户所有后台功能
  * 支持对话式操作和角色切换
  */
 export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
@@ -47,6 +48,7 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
   const cart = useCart()
   const [currentView, setCurrentView] = useState<WorkspaceView>('chat')
   const [commandHistory, setCommandHistory] = useState<Array<{ command: string; result: any }>>([])
+  const [currentPersona, setCurrentPersona] = useState<UserPersona>('personal')
 
 
   // 检测用户角色
@@ -58,11 +60,33 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
     })
   }, [user, isAuthenticated])
 
-  const userRoles = {
+  const userRoles = useMemo(() => ({
     isUser: !!user,
     isMerchant: !!user?.roles?.includes('merchant' as any),
     isDeveloper: !!user?.roles?.includes('developer' as any),
-  }
+  }), [user])
+
+  // 处理画像切换
+  const handlePersonaChange = useCallback((persona: UserPersona) => {
+    setCurrentPersona(persona)
+    // 同步模式和视图
+    switch (persona) {
+      case 'merchant':
+      case 'expert':
+        setMode('merchant')
+        setCurrentView('merchant')
+        break
+      case 'developer':
+      case 'api_provider':
+      case 'data_provider':
+        setMode('developer')
+        setCurrentView('developer')
+        break
+      default:
+        setMode('personal')
+        setCurrentView('user')
+    }
+  }, [setMode])
 
 
   // 处理对话命令
@@ -98,20 +122,41 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
     }
   }, [setMode, userRoles])
 
-  return (
-    <div className="flex h-full bg-slate-950 text-white">
-      {/* 左侧：角色切换和快捷功能 */}
-      <div className="w-72 border-r border-white/5">
-        <RoleSwitcher
-          currentMode={mode}
-          userRoles={userRoles}
-          onRoleSwitch={handleRoleSwitch}
-          onViewChange={setCurrentView}
-        />
-      </div>
+  // 强化视图切换逻辑
+  const handleViewChange = useCallback((view: WorkspaceView) => {
+    setCurrentView(view)
+    
+    // 自动同步模式
+    if (['merchant'].includes(view)) {
+      setMode('merchant')
+    } else if (['developer', 'connectors', 'code'].includes(view)) {
+      setMode('developer')
+    } else if (['user', 'orders', 'receipts', 'cart'].includes(view)) {
+      setMode('personal')
+    }
+  }, [setMode])
 
-      {/* 中间：主工作区 */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-slate-950">
+  return (
+    <div className="flex flex-col h-full bg-slate-950 text-white">
+      {/* L1: 画像切换栏 - 新增 */}
+      <PersonaSwitcher
+        currentPersona={currentPersona}
+        onPersonaChange={handlePersonaChange}
+      />
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* 左侧：角色切换和快捷功能 */}
+        <div className="w-72 border-r border-white/5">
+          <RoleSwitcher
+            currentMode={mode}
+            userRoles={userRoles}
+            onRoleSwitch={handleRoleSwitch}
+            onViewChange={handleViewChange}
+          />
+        </div>
+
+        {/* 中间：主工作区 */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-slate-950">
         {/* 顶部导航 */}
         <div className="border-b border-white/5 bg-slate-900/30 backdrop-blur-md px-8 py-5">
           <div className="flex items-center justify-between">
@@ -130,9 +175,9 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
               <div>
                 <h2 className="text-lg font-bold tracking-tight">
                   {currentView === 'chat' && t({ zh: '对话工作台', en: 'Conversation Workspace' })}
-                  {currentView === 'user' && t({ zh: '用户中心', en: 'User Center' })}
-                  {currentView === 'merchant' && t({ zh: '商户后台', en: 'Merchant Backend' })}
-                  {currentView === 'developer' && t({ zh: '开发者工具', en: 'Developer Tools' })}
+                  {currentView === 'user' && t({ zh: '个人中心', en: 'Personal Center' })}
+                  {currentView === 'merchant' && t({ zh: '商户控制台', en: 'Merchant Console' })}
+                  {currentView === 'developer' && t({ zh: '资产发布与管理', en: 'Asset Publishing & Management' })}
                   {currentView === 'marketplace' && t({ zh: '商品市场', en: 'Marketplace' })}
                   {currentView === 'autoEarn' && t({ zh: 'Auto-Earn', en: 'Auto-Earn' })}
                   {currentView === 'orders' && t({ zh: '订单中心', en: 'Order Center' })}
@@ -141,7 +186,7 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
                 </h2>
 
                 <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-                  {mode === 'personal' ? 'Personal Mode' : mode === 'merchant' ? 'Merchant Mode' : 'Developer Mode'} • Active
+                  {mode === 'personal' ? 'Personal Mode' : mode === 'merchant' ? 'Merchant Mode' : 'Professional Mode'} • Active
                 </p>
               </div>
             </div>
@@ -180,18 +225,18 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
           )}
 
           {(currentView === 'user' || currentView === 'orders') && userRoles.isUser && (
-            <UserModule 
-              onCommand={handleCommand} 
-              initialTab={currentView === 'orders' ? 'orders' : undefined} 
+            <UserModuleV2 
+              forcedMainTab={currentView === 'orders' ? 'shopping' : 'dashboard'}
+              forcedSubTab={currentView === 'orders' ? 'orders' : 'overview'}
             />
           )}
 
           {currentView === 'merchant' && (
-            <MerchantModule onCommand={handleCommand} />
+            <MerchantModuleV2 />
           )}
 
           {currentView === 'developer' && (
-            <DeveloperModule onCommand={handleCommand} />
+            <DeveloperModuleV2 />
           )}
 
           {currentView === 'marketplace' && (
@@ -340,6 +385,7 @@ export function UnifiedWorkspace({ onAction }: UnifiedWorkspaceProps) {
       {mode === 'merchant' && currentView === 'merchant' && <TaskPanel type="merchant" />}
       {mode === 'developer' && currentView === 'developer' && <TaskPanel type="developer" />}
       {mode === 'personal' && currentView === 'user' && <TaskPanel type="personal" />}
+      </div>
     </div>
 
   )

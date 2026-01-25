@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 
 type PromotionType = 'basic' | 'pro' | 'master'
@@ -33,10 +33,10 @@ const promotionConfigs: Record<
 }
 
 export default function AllianceDemoPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [promotionType, setPromotionType] = useState<PromotionType>('basic')
   const [merchantCount, setMerchantCount] = useState(5)
   const [monthlyGMV, setMonthlyGMV] = useState(50000)
+  const router = useRouter()
 
   const { t } = useLocalization()
 
@@ -55,7 +55,7 @@ export default function AllianceDemoPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         <section className="border-b border-white/10 bg-gradient-to-r from-orange-600/90 to-pink-600/90 py-16 text-white">
           <div className="container mx-auto px-6">
@@ -169,7 +169,7 @@ export default function AllianceDemoPage() {
                   <li>{t({ zh: '商户入驻后，自动获得 0.5% 永久分成', en: 'Get 0.5% permanent share automatically after merchant onboarding' })}</li>
                 </ol>
                 <button
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => router.push('/auth/register')}
                   className="mt-6 w-full rounded-xl bg-orange-500 py-3 text-white hover:bg-orange-600"
                 >
                   {t({ zh: '成为推广 Agent', en: 'Become Promotion Agent' })}
@@ -180,7 +180,6 @@ export default function AllianceDemoPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

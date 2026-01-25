@@ -1,18 +1,18 @@
 import Head from 'next/head'
 import { useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 
 type IntegrationStep = 'sdk' | 'config' | 'scenarios' | 'results'
 type PaymentScenario = 'qr' | 'button' | 'agent'
 
 export default function MerchantDemoPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [activeStep, setActiveStep] = useState<IntegrationStep>('sdk')
   const [selectedScenario, setSelectedScenario] = useState<PaymentScenario>('qr')
   const { t } = useLocalization()
+  const router = useRouter()
 
   const integrationSteps = [
     {
@@ -127,7 +127,7 @@ agent.showPaymentCard(payment)`,
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white min-h-screen">
         {/* Hero */}
         <section className="border-b border-white/10 bg-gradient-to-br from-blue-600/90 to-purple-600/90 py-20">
@@ -293,7 +293,7 @@ agent.showPaymentCard(payment)`,
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <button
-                onClick={() => setShowLogin(true)}
+                onClick={() => router.push('/auth/register')}
                 className="bg-white text-slate-900 font-semibold px-8 py-3 rounded-xl hover:bg-slate-100 transition-colors"
               >
                 {t({ zh: '注册商户账号', en: 'Register Merchant Account' })}
@@ -309,7 +309,6 @@ agent.showPaymentCard(payment)`,
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

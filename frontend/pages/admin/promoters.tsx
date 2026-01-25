@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { API_BASE_URL } from '../../utils/api-config';
 
 interface Promoter {
   id: string;
@@ -29,7 +30,7 @@ export default function AdminPromoters() {
   const fetchPromoters = async () => {
     try {
       const token = localStorage.getItem('admin_token');
-      const url = new URL('https://api.agentrix.top/api/admin/promoters');
+      const url = new URL(`${API_BASE_URL}/api/admin/promoters`);
       url.searchParams.set('page', page.toString());
       url.searchParams.set('limit', '20');
       if (search) {

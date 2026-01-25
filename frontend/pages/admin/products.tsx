@@ -16,6 +16,7 @@ import {
   Trash2,
   DollarSign
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 interface Product {
   id: string;
@@ -60,7 +61,7 @@ export default function ProductsPage() {
         ...(searchTerm && { search: searchTerm })
       });
       
-      const response = await fetch(`https://api.agentrix.top/api/admin/products?${params}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -72,8 +73,8 @@ export default function ProductsPage() {
       
       if (!response.ok) throw new Error('Failed to fetch products');
       const data = await response.json();
-      setProducts(data.products || data.items || []);
-      setTotal(data.total || data.products?.length || 0);
+      setProducts(data.data || data.products || data.items || []);
+      setTotal(data.total || 0);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -94,7 +95,7 @@ export default function ProductsPage() {
     if (!token) return;
 
     try {
-      const response = await fetch(`https://api.agentrix.top/api/admin/products/${productId}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products/${productId}/status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -118,7 +119,7 @@ export default function ProductsPage() {
     if (!token) return;
 
     try {
-      const response = await fetch(`https://api.agentrix.top/api/admin/products/${productId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/products/${productId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

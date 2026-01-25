@@ -7,14 +7,12 @@ import { AgentTemplateLibrary } from '../components/agent/builder/AgentTemplateL
 import { AgentGenerator } from '../components/agent/builder/AgentGenerator';
 import { AgentTemplate } from '../lib/api/agent-template.api';
 import { useUser } from '../contexts/UserContext';
-import { LoginModal } from '../components/auth/LoginModal';
 import { useLocalization } from '../contexts/LocalizationContext';
 
 export default function AgentBuilderPage() {
   const { isAuthenticated } = useUser();
   const { t } = useLocalization();
   const router = useRouter();
-  const [showLogin, setShowLogin] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
 
   return (
@@ -29,7 +27,7 @@ export default function AgentBuilderPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-gradient-to-b from-gray-50 to-white">
         <section className="container mx-auto px-6 py-12 lg:py-16">
           <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-8 lg:p-12 mb-10">
@@ -100,7 +98,7 @@ export default function AgentBuilderPage() {
                 <div className="mb-4 p-4 rounded-2xl border border-yellow-200 bg-yellow-50 text-sm text-yellow-800 flex items-center justify-between">
                   <span>{t({ zh: '请先登录，即可保存模板并生成 Agent。', en: 'Please login to save template and generate Agent.' })}</span>
                   <button
-                    onClick={() => setShowLogin(true)}
+                    onClick={() => router.push('/auth/login')}
                     className="px-3 py-1 rounded-full bg-yellow-600 text-white text-xs font-semibold"
                   >
                     {t({ zh: '登录/注册', en: 'Login/Register' })}
@@ -166,23 +164,23 @@ export default function AgentBuilderPage() {
                 </p>
               </div>
 
-              {/* 插件市场 */}
+              {/* Skill 市场 */}
               <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 hover:shadow-xl transition-shadow">
-                <div className="text-4xl mb-4">🔌</div>
+                <div className="text-4xl mb-4">⚡</div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {t({ zh: '插件市场', en: 'Plugin Marketplace' })}
+                  {t({ zh: 'Skill 市场', en: 'Skill Market' })}
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
                   {t({
-                    zh: '浏览和安装插件，扩展Agent功能，支持免费和付费插件。',
-                    en: 'Browse and install plugins to extend Agent capabilities, support free and paid plugins.',
+                    zh: '浏览和集成 Skill，扩展 Agent 能力，支持支付、数据、工具等多种类型。',
+                    en: 'Browse and integrate Skills to extend Agent capabilities, supporting payment, data, tools and more.',
                   })}
                 </p>
                 <button
-                  onClick={() => router.push('/plugins')}
+                  onClick={() => router.push('/unified-marketplace')}
                   className="text-xs text-blue-600 font-semibold hover:text-blue-700 transition-colors"
                 >
-                  {t({ zh: '访问插件市场 →', en: 'Visit Plugin Marketplace →' })}
+                  {t({ zh: '访问 Skill 市场 →', en: 'Visit Skill Market →' })}
                 </button>
               </div>
 
@@ -205,53 +203,53 @@ export default function AgentBuilderPage() {
             </div>
           </section>
 
-          {/* 插件市场入口 */}
+          {/* Skill 市场入口 */}
           <section className="mb-16">
-            <div className="bg-gradient-to-r from-emerald-500/10 to-indigo-500/10 rounded-3xl border border-emerald-500/20 p-8 lg:p-12">
+            <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl border border-blue-500/20 p-8 lg:p-12">
               <div className="grid lg:grid-cols-2 gap-8 items-center">
                 <div>
-                  <div className="text-5xl mb-4">🔌</div>
+                  <div className="text-5xl mb-4">⚡</div>
                   <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                    {t({ zh: '插件市场', en: 'Plugin Marketplace' })}
+                    {t({ zh: 'Skill 市场', en: 'Skill Market' })}
                   </h3>
                   <p className="text-lg text-gray-600 mb-6">
                     {t({
-                      zh: '浏览和安装插件，扩展你的Agent功能。50+ 插件可用，支持支付、分析、营销、集成等多种类型。',
-                      en: 'Browse and install plugins to extend your Agent capabilities. 50+ plugins available, supporting payment, analytics, marketing, integration and more types.',
+                      zh: '浏览和集成 Skill，赋能你的 Agent。支持支付、商品、数据、工具等多种类型，覆盖 L0-L4 全层级能力。',
+                      en: 'Browse and integrate Skills to empower your Agent. Supporting payment, commerce, data, tools and more, covering L0-L4 full-layer capabilities.',
                     })}
                   </p>
                   <div className="flex flex-wrap gap-3 mb-6">
-                    <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-700 text-sm font-medium">
-                      {t({ zh: '50+ 插件', en: '50+ Plugins' })}
-                    </span>
-                    <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-700 text-sm font-medium">
-                      {t({ zh: '免费和付费', en: 'Free & Paid' })}
-                    </span>
                     <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-700 text-sm font-medium">
-                      {t({ zh: '一键安装', en: 'One-click Install' })}
+                      {t({ zh: 'L0-L4 全层级', en: 'L0-L4 Full Layer' })}
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-700 text-sm font-medium">
+                      {t({ zh: '多平台支持', en: 'Multi-platform' })}
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-700 text-sm font-medium">
+                      {t({ zh: '即插即用', en: 'Plug & Play' })}
                     </span>
                   </div>
                   <button
-                    onClick={() => router.push('/plugins')}
-                    className="bg-gradient-to-r from-emerald-500 to-indigo-500 text-white font-semibold px-8 py-4 rounded-xl hover:opacity-90 transition-all shadow-lg"
+                    onClick={() => router.push('/unified-marketplace')}
+                    className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-semibold px-8 py-4 rounded-xl hover:opacity-90 transition-all shadow-lg"
                   >
-                    {t({ zh: '访问插件市场', en: 'Visit Plugin Marketplace' })}
+                    {t({ zh: '访问 Skill 市场', en: 'Visit Skill Market' })}
                   </button>
                 </div>
                 <div className="bg-white/60 rounded-2xl p-6 border border-white/20">
                   <p className="text-sm font-semibold text-gray-700 mb-4">
-                    {t({ zh: '热门插件类型', en: 'Popular Plugin Types' })}
+                    {t({ zh: 'Skill 层级介绍', en: 'Skill Layers' })}
                   </p>
                   <div className="space-y-3">
                     {[
-                      { zh: '支付插件', en: 'Payment Plugins' },
-                      { zh: '数据分析插件', en: 'Analytics Plugins' },
-                      { zh: '营销插件', en: 'Marketing Plugins' },
-                      { zh: '集成插件', en: 'Integration Plugins' },
-                    ].map((type, idx) => (
+                      { zh: 'L0 基础层 - 支付、身份、存储', en: 'L0 Foundation - Payment, Identity, Storage' },
+                      { zh: 'L1 能力层 - 商品、服务、数据', en: 'L1 Capability - Commerce, Service, Data' },
+                      { zh: 'L2 编排层 - 工作流、自动化', en: 'L2 Orchestration - Workflow, Automation' },
+                      { zh: 'L3 智能层 - AI 推理、决策', en: 'L3 Intelligence - AI Reasoning, Decision' },
+                    ].map((layer, idx) => (
                       <div key={idx} className="flex items-center gap-3 text-sm text-gray-600">
-                        <span className="text-emerald-500">▹</span>
-                        <span>{t(type)}</span>
+                        <span className="text-blue-500">▹</span>
+                        <span>{t(layer)}</span>
                       </div>
                     ))}
                   </div>
@@ -262,7 +260,6 @@ export default function AgentBuilderPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   );
 }

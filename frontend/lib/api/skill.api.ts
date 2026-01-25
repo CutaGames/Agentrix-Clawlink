@@ -8,7 +8,7 @@ import { apiClient } from './client';
 
 export type SkillCategory = 'payment' | 'commerce' | 'data' | 'utility' | 'integration' | 'custom';
 export type SkillStatus = 'draft' | 'published' | 'deprecated';
-export type SkillPricingType = 'free' | 'per_call' | 'subscription';
+export type SkillPricingType = 'free' | 'per_call' | 'subscription' | 'revenue_share' | 'percentage';
 export type AIPlatform = 'openai' | 'claude' | 'gemini' | 'grok' | 'qwen';
 
 export interface SkillInputSchema {
@@ -31,11 +31,13 @@ export interface SkillOutputSchema {
 }
 
 export interface SkillExecutor {
-  type: 'http' | 'internal';
+  type: 'http' | 'internal' | 'mcp' | 'contract';
   endpoint?: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers?: Record<string, string>;
   internalHandler?: string;
+  mcpServer?: string;
+  contractAddress?: string;
 }
 
 export interface SkillPricing {
@@ -43,6 +45,9 @@ export interface SkillPricing {
   pricePerCall?: number;
   currency?: string;
   freeQuota?: number;
+  commissionRate?: number; // V2.0: 分佣比例 (0-100)
+  platformFeeRate?: number;
+  minFee?: number;
 }
 
 export interface SkillPlatformSchemas {
@@ -53,9 +58,13 @@ export interface SkillPlatformSchemas {
   qwen?: any;
 }
 
+// V2.0: 价值类型分类
+export type SkillValueType = 'action' | 'deliverable' | 'decision' | 'data';
+
 export interface Skill {
   id: string;
   name: string;
+  displayName?: string;
   description: string;
   version: string;
   category: SkillCategory;
@@ -70,12 +79,20 @@ export interface Skill {
   callCount: number;
   rating: number;
   metadata?: Record<string, any>;
+  // V2.0: 协议支持
+  ucpEnabled?: boolean;
+  x402Enabled?: boolean;
+  // V2.0: 价值类型
+  valueType?: SkillValueType;
+  // V2.0: 层级
+  layer?: 'infra' | 'resource' | 'logic' | 'composite';
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateSkillDto {
   name: string;
+  displayName?: string;
   description: string;
   version?: string;
   category?: SkillCategory;
@@ -85,10 +102,16 @@ export interface CreateSkillDto {
   pricing?: SkillPricing;
   tags?: string[];
   metadata?: Record<string, any>;
+  // V2.0: 协议支持
+  ucpEnabled?: boolean;
+  x402Enabled?: boolean;
+  // V2.0: 价值类型
+  valueType?: SkillValueType;
 }
 
 export interface UpdateSkillDto {
   name?: string;
+  displayName?: string;
   description?: string;
   version?: string;
   category?: SkillCategory;
@@ -256,5 +279,54 @@ export const skillApi = {
     
     const queryString = queryParams.toString();
     return apiClient.get(`/skills/marketplace?${queryString}`);
+  },
+
+  /**
+   * 从 OpenAPI 导入
+   */
+  importOpenApi: async (url: string, config?: any): Promise<any> => {
+    return apiClient.post('/skills/import-openapi', { url, config });
+  },
+
+  // ========== 用户技能安装管理 ==========
+
+  /**
+   * 获取用户已安装的技能
+   */
+  getInstalledSkills: async (params?: { page?: number; limit?: number }): Promise<SkillListResponse & { items: (Skill & { isEnabled: boolean; config?: Record<string, any>; installedAt: string })[] }> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    
+    const queryString = queryParams.toString();
+    return apiClient.get(`/skills/installed${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /**
+   * 安装技能
+   */
+  installSkill: async (skillId: string, config?: Record<string, any>): Promise<{ success: boolean; data: any }> => {
+    return apiClient.post(`/skills/${skillId}/install`, { config });
+  },
+
+  /**
+   * 卸载技能
+   */
+  uninstallSkill: async (skillId: string): Promise<void> => {
+    return apiClient.delete(`/skills/${skillId}/install`);
+  },
+
+  /**
+   * 更新已安装技能的配置或启用状态
+   */
+  updateInstalledSkill: async (skillId: string, update: { isEnabled?: boolean; config?: Record<string, any> }): Promise<{ success: boolean; data: any }> => {
+    return apiClient.patch(`/skills/${skillId}/install`, update);
+  },
+
+  /**
+   * 检查技能是否已安装
+   */
+  isSkillInstalled: async (skillId: string): Promise<{ installed: boolean }> => {
+    return apiClient.get(`/skills/${skillId}/installed`);
   },
 };

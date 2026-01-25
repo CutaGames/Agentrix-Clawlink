@@ -659,4 +659,210 @@ export const paymentApi = {
     }
     return result;
   },
+
+  // ========================================
+  // Stripe 支付相关 API
+  // ========================================
+
+  /**
+   * 创建 Stripe PaymentIntent
+   */
+  createStripePaymentIntent: async (params: {
+    amount: number;
+    currency: string;
+    orderId?: string;
+    merchantId?: string;
+    agentId?: string;
+    description?: string;
+    skillLayerType?: 'INFRA' | 'RESOURCE' | 'LOGIC' | 'COMPOSITE';
+    metadata?: Record<string, any>;
+  }): Promise<{
+    clientSecret: string;
+    paymentIntentId: string;
+    amount: number;
+    currency: string;
+    status: string;
+  }> => {
+    const result = await apiClient.post<{
+      clientSecret: string;
+      paymentIntentId: string;
+      amount: number;
+      currency: string;
+      status: string;
+    }>('/payments/stripe/create-intent', params);
+    if (result === null) {
+      throw new Error('无法创建 Stripe 支付意图，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 获取 Stripe 支付状态
+   */
+  getStripePaymentStatus: async (paymentIntentId: string): Promise<{
+    status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled';
+    amount?: number;
+    currency?: string;
+    metadata?: Record<string, any>;
+  }> => {
+    const result = await apiClient.get<{
+      status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled';
+      amount?: number;
+      currency?: string;
+      metadata?: Record<string, any>;
+    }>(`/payments/stripe/status/${paymentIntentId}`);
+    if (result === null) {
+      throw new Error('无法获取 Stripe 支付状态，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 取消 Stripe 支付
+   */
+  cancelStripePayment: async (paymentIntentId: string): Promise<boolean> => {
+    const result = await apiClient.post<{ success: boolean }>(
+      `/payments/stripe/cancel/${paymentIntentId}`,
+      {}
+    );
+    return result?.success ?? false;
+  },
+
+  /**
+   * 创建 Stripe 退款
+   */
+  createStripeRefund: async (params: {
+    paymentIntentId: string;
+    amount?: number;
+    reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer';
+  }): Promise<{
+    refundId: string;
+    amount: number;
+    status: string;
+  }> => {
+    const result = await apiClient.post<{
+      refundId: string;
+      amount: number;
+      status: string;
+    }>('/payments/stripe/refund', params);
+    if (result === null) {
+      throw new Error('无法创建退款，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 计算 Stripe 手续费
+   */
+  calculateStripeFee: async (amount: number, isInternational?: boolean): Promise<{
+    fee: number;
+    feeRate: number;
+    netAmount: number;
+  }> => {
+    const params = new URLSearchParams({
+      amount: amount.toString(),
+      ...(isInternational !== undefined && { isInternational: isInternational.toString() }),
+    });
+    const result = await apiClient.get<{
+      fee: number;
+      feeRate: number;
+      netAmount: number;
+    }>(`/payments/stripe/calculate-fee?${params}`);
+    if (result === null) {
+      throw new Error('无法计算手续费，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 获取 Stripe vs Transak 路由建议
+   */
+  getStripeOrTransakRecommendation: async (params: {
+    amount: number;
+    fromCurrency: string;
+    toCurrency: string;
+    merchantPaymentConfig: 'fiat_only' | 'crypto_only' | 'both';
+    isCrossBorder?: boolean;
+    preferCrypto?: boolean;
+  }): Promise<{
+    provider: 'stripe' | 'transak';
+    reason: string;
+    estimatedFee: number;
+    feeBreakdown: {
+      providerFee: number;
+      networkFee?: number;
+      platformFee: number;
+    };
+  }> => {
+    const result = await apiClient.post<{
+      provider: 'stripe' | 'transak';
+      reason: string;
+      estimatedFee: number;
+      feeBreakdown: {
+        providerFee: number;
+        networkFee?: number;
+        platformFee: number;
+      };
+    }>('/payments/routing/stripe-or-transak', params);
+    if (result === null) {
+      throw new Error('无法获取支付路由建议，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 获取多通道报价比较
+   */
+  getMultiChannelQuotes: async (params: {
+    amount: number;
+    fromCurrency: string;
+    toCurrency?: string;
+    merchantPaymentConfig: 'fiat_only' | 'crypto_only' | 'both';
+  }): Promise<{
+    stripe?: {
+      available: boolean;
+      fee: number;
+      netAmount: number;
+      estimatedTime: string;
+    };
+    transak?: {
+      available: boolean;
+      fee: number;
+      cryptoAmount?: number;
+      estimatedTime: string;
+    };
+    wallet?: {
+      available: boolean;
+      fee: number;
+      estimatedTime: string;
+    };
+    recommendation: 'stripe' | 'transak' | 'wallet';
+    reason: string;
+  }> => {
+    const result = await apiClient.post<{
+      stripe?: {
+        available: boolean;
+        fee: number;
+        netAmount: number;
+        estimatedTime: string;
+      };
+      transak?: {
+        available: boolean;
+        fee: number;
+        cryptoAmount?: number;
+        estimatedTime: string;
+      };
+      wallet?: {
+        available: boolean;
+        fee: number;
+        estimatedTime: string;
+      };
+      recommendation: 'stripe' | 'transak' | 'wallet';
+      reason: string;
+    }>('/payments/routing/multi-channel-quotes', params);
+    if (result === null) {
+      throw new Error('无法获取多通道报价，请稍后重试');
+    }
+    return result;
+  },
 };

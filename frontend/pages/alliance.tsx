@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { Navigation } from '../components/ui/Navigation'
 import { Footer } from '../components/layout/Footer'
-import { LoginModal } from '../components/auth/LoginModal'
 
 const personas = [
   {
@@ -47,7 +46,6 @@ const joinSteps = [
 ]
 
 export default function AlliancePage() {
-  const [showLogin, setShowLogin] = useState(false)
   const router = useRouter()
 
   return (
@@ -56,7 +54,7 @@ export default function AlliancePage() {
         <title>Agentrix 联盟 - 通过 Agent 参与，获得永久收益</title>
         <meta name="description" content="通过 Agent 参与 Agentrix 联盟，推广商户、推荐 Agent、推广 Marketplace 和插件，获得永久分佣收益。" />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-950 text-white">
         {/* Hero */}
         <section className="border-b border-white/10 bg-gradient-to-br from-blue-600/90 via-indigo-600/90 to-purple-600/90 text-white py-20">
@@ -193,7 +191,6 @@ export default function AlliancePage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

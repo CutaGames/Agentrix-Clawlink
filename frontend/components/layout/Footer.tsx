@@ -19,7 +19,7 @@ export function Footer() {
             </p>
             <div className="flex space-x-4">
               <a
-                href="https://twitter.com/agentrix"
+                href="https://x.com/agentrixnetwork"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-400 hover:text-white transition-colors"
@@ -30,7 +30,7 @@ export function Footer() {
                 </svg>
               </a>
               <a
-                href="https://t.me/agentrix"
+                href="https://t.me/AgentrixNetwork"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-400 hover:text-white transition-colors"
@@ -41,7 +41,7 @@ export function Footer() {
                 </svg>
               </a>
               <a
-                href="https://discord.gg/agentrix"
+                href="https://discord.com/invite/vtuwyRGxaa"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-400 hover:text-white transition-colors"
@@ -83,11 +83,11 @@ export function Footer() {
 
           {/* 开发者资源 */}
           <div>
-            <h4 className="text-white font-semibold mb-4">{t({ zh: '开发者', en: 'Developer' })}</h4>
+            <h4 className="text-white font-semibold mb-4">{t({ zh: '专业用户', en: 'Professional User' })}</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  {t({ zh: '快速开始', en: 'Quick Start' })}
+                  {t({ zh: '专业管理后台', en: 'Professional Console' })}
                 </Link>
               </li>
               <li>

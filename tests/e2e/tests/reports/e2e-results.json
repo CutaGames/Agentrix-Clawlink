@@ -1,7 +1,7 @@
 {
   "config": {
-    "configFile": "/mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website/tests/e2e/playwright.config.ts",
-    "rootDir": "/mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website/tests/e2e/tests/e2e",
+    "configFile": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/playwright.config.ts",
+    "rootDir": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e",
     "forbidOnly": false,
     "fullyParallel": true,
     "globalSetup": null,
@@ -10,7 +10,9 @@
     "grep": {},
     "grepInvert": null,
     "maxFailures": 0,
-    "metadata": {},
+    "metadata": {
+      "actualWorkers": 2
+    },
     "preserveOutput": "always",
     "reporter": [
       [
@@ -39,13 +41,15 @@
     "quiet": false,
     "projects": [
       {
-        "outputDir": "/mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website/test-results",
+        "outputDir": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results",
         "repeatEach": 1,
         "retries": 0,
-        "metadata": {},
+        "metadata": {
+          "actualWorkers": 2
+        },
         "id": "chromium",
         "name": "chromium",
-        "testDir": "/mnt/d/wsl/Ubuntu-24.04/Code/Paymind/agentrix-website/tests/e2e/tests/e2e",
+        "testDir": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e",
         "testIgnore": [],
         "testMatch": [
           "**/*.@(spec|test).?(c|m)[jt]s?(x)"
@@ -58,28 +62,1746 @@
     "updateSourceMethod": "patch",
     "version": "1.56.1",
     "workers": 2,
-    "webServer": {
-      "command": "cd agentrixfrontend && npm run dev",
-      "url": "http://localhost:3000",
-      "reuseExistingServer": true,
-      "timeout": 120000,
-      "stdout": "ignore",
-      "stderr": "pipe"
-    }
+    "webServer": null
   },
-  "suites": [],
-  "errors": [
+  "suites": [
     {
-      "message": "Error: No tests found",
-      "stack": "Error: No tests found"
+      "title": "workbench-restructuring.spec.ts",
+      "file": "workbench-restructuring.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "统一资金账户 (UnifiedAccountPanel)",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 30,
+          "column": 6,
+          "specs": [
+            {
+              "title": "应该正确显示账户列表和余额汇总",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 3764,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:15.815Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-f99a516efebe10098dfc",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 35,
+              "column": 7
+            },
+            {
+              "title": "应该支持创建新账户",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 3659,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:15.815Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-9826fb64ecdc7e392987",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 51,
+              "column": 7
+            },
+            {
+              "title": "应该正确显示最近交易记录",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1107,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:33.260Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-764338754615eb62903c",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 68,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "Agent 账户管理 (AgentAccountPanel)",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 86,
+          "column": 6,
+          "specs": [
+            {
+              "title": "应该正确显示 Agent 列表",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 1143,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:33.258Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-a739170ea7933e386a1f",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 91,
+              "column": 7
+            },
+            {
+              "title": "应该支持创建新 Agent",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 670,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:43.161Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-2b8f8b60c433b59efb72",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 98,
+              "column": 7
+            },
+            {
+              "title": "信用评分和支出限额应该正确显示",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 664,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:43.159Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-8b702adc584be8ed0670",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 115,
+              "column": 7
+            },
+            {
+              "title": "支出限额拦截应该正常工作",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 602,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:51.784Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-6a454f75b87b79bb0e38",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 129,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "KYC 认证中心 (KYCCenterPanel)",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 152,
+          "column": 6,
+          "specs": [
+            {
+              "title": "应该正确显示当前 KYC 等级",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 672,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:50:51.783Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-20e8570128dc6c45a741",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 157,
+              "column": 7
+            },
+            {
+              "title": "应该显示等级权益对比表",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 2289,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:03.812Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-1073de5bd4df01228dd0",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 167,
+              "column": 7
+            },
+            {
+              "title": "升级认证流程应该可访问",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 2288,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:03.797Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-fb0d4c41d32968764d73",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 174,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "开发者账户 (DeveloperAccountPanel)",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 191,
+          "column": 6,
+          "specs": [
+            {
+              "title": "应该正确显示开发者账户信息",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1120,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:16.129Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-a7fdfdacd4478cc03e59",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 197,
+              "column": 7
+            },
+            {
+              "title": "API Key 管理应该正常工作",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 1116,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:16.125Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-9f61b0dc395b6509127e",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 204,
+              "column": 7
+            },
+            {
+              "title": "使用统计应该正确显示",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 13,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 3370,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:31.766Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-7752c938b8738b8fbcb3",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 218,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "五类画像 UAT",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 229,
+          "column": 6,
+          "specs": [
+            {
+              "title": "[API 厂商] OpenAPI 导入链路",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 12,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 3254,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:31.762Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-52d89f6a2ec64eb65427",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 234,
+              "column": 7
+            },
+            {
+              "title": "[商户] 商品同步链路",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 14,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 964,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:44.768Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-bc4e7a15d61344911390",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 242,
+              "column": 7
+            },
+            {
+              "title": "[个人用户] Agent 创建链路",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 15,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 1070,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:44.761Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-97ee81288d8bec161982",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 250,
+              "column": 7
+            },
+            {
+              "title": "[开发者] Skill 发布链路",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 16,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 672,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:54.565Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-8ebba2ca2822f967e1de",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 258,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "导航系统测试",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 270,
+          "column": 6,
+          "specs": [
+            {
+              "title": "L1 画像切换应该正常工作",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 17,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 707,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:51:54.552Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-756c36258bc7f359be3c",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 275,
+              "column": 7
+            },
+            {
+              "title": "L2 侧边栏导航应该正常工作",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 18,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 619,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:52:04.302Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-29f2541b92abb63f7ff3",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 290,
+              "column": 7
+            },
+            {
+              "title": "移动端布局应该正确响应",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 19,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 635,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:52:04.309Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-27f8adf33afe4a5f94f6",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 304,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "入驻流程 (OnboardingWizard)",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 322,
+          "column": 6,
+          "specs": [
+            {
+              "title": "新用户应该看到入驻向导",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 20,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 623,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/onboarding\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/onboarding\", waiting until \"load\"\u001b[22m\n\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:325:16",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 16,
+                          "line": 325
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 323 |\u001b[39m   test(\u001b[32m'新用户应该看到入驻向导'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\n \u001b[90m 324 |\u001b[39m     \u001b[90m// 使用新用户登录或模拟新用户状态\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 325 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/onboarding`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 326 |\u001b[39m     \n \u001b[90m 327 |\u001b[39m     \u001b[90m// 验证入驻向导\u001b[39m\n \u001b[90m 328 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'text=欢迎加入'\u001b[39m)\u001b[33m.\u001b[39mor(page\u001b[33m.\u001b[39mlocator(\u001b[32m'text=入驻向导'\u001b[39m)))\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 16,
+                            "line": 325
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/onboarding\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 323 |\u001b[39m   test(\u001b[32m'新用户应该看到入驻向导'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\n \u001b[90m 324 |\u001b[39m     \u001b[90m// 使用新用户登录或模拟新用户状态\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 325 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/onboarding`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 326 |\u001b[39m     \n \u001b[90m 327 |\u001b[39m     \u001b[90m// 验证入驻向导\u001b[39m\n \u001b[90m 328 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'text=欢迎加入'\u001b[39m)\u001b[33m.\u001b[39mor(page\u001b[33m.\u001b[39mlocator(\u001b[32m'text=入驻向导'\u001b[39m)))\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:325:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:52:13.174Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 16,
+                        "line": 325
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-5072c16c62dbb96250f4",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 323,
+              "column": 7
+            },
+            {
+              "title": "入驻流程应该支持步骤导航",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 21,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 639,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/onboarding\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/onboarding\", waiting until \"load\"\u001b[22m\n\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:337:16",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 16,
+                          "line": 337
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 335 |\u001b[39m\n \u001b[90m 336 |\u001b[39m   test(\u001b[32m'入驻流程应该支持步骤导航'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 337 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/onboarding`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 338 |\u001b[39m     \n \u001b[90m 339 |\u001b[39m     \u001b[90m// 选择一个画像\u001b[39m\n \u001b[90m 340 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'text=个人用户'\u001b[39m)\u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m(() \u001b[33m=>\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'text=personal'\u001b[39m))\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 16,
+                            "line": 337
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/onboarding\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 335 |\u001b[39m\n \u001b[90m 336 |\u001b[39m   test(\u001b[32m'入驻流程应该支持步骤导航'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 337 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/onboarding`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 338 |\u001b[39m     \n \u001b[90m 339 |\u001b[39m     \u001b[90m// 选择一个画像\u001b[39m\n \u001b[90m 340 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'text=个人用户'\u001b[39m)\u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m(() \u001b[33m=>\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'text=personal'\u001b[39m))\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:337:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:52:13.177Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 16,
+                        "line": 337
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-83b996a0abb48e71c258",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 336,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "性能标准测试",
+          "file": "workbench-restructuring.spec.ts",
+          "line": 352,
+          "column": 6,
+          "specs": [
+            {
+              "title": "工作台首页加载时间应该 < 1.5s",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 22,
+                      "parallelIndex": 1,
+                      "status": "failed",
+                      "duration": 607,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:356:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:356:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:52:22.168Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-6485d00eaa443032af61",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 353,
+              "column": 7
+            },
+            {
+              "title": "画像切换响应时间应该 < 300ms",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 23,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 660,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\n    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:368:11",
+                        "location": {
+                          "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                          "column": 14,
+                          "line": 14
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                            "column": 14,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login\nCall log:\n\u001b[2m  - navigating to \"http://localhost:3000/login\", waiting until \"load\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 12 |\u001b[39m \u001b[90m// 辅助函数\u001b[39m\n \u001b[90m 13 |\u001b[39m \u001b[36masync\u001b[39m \u001b[36mfunction\u001b[39m login(page\u001b[33m:\u001b[39m \u001b[33mPage\u001b[39m\u001b[33m,\u001b[39m email \u001b[33m=\u001b[39m \u001b[32m'test@agentrix.io'\u001b[39m\u001b[33m,\u001b[39m password \u001b[33m=\u001b[39m \u001b[32m'test123'\u001b[39m) {\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 14 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgoto(\u001b[32m`${BASE_URL}/login`\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m              \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 15 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m email)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[name=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m password)\u001b[33m;\u001b[39m\n \u001b[90m 17 |\u001b[39m   \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button[type=\"submit\"]'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)\u001b[22m\n\u001b[2m    at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:368:11\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-18T11:52:22.183Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/video.webm"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts",
+                        "column": 14,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "99ce0d3b4792d73e7f1b-f5cff78f89474063cb32",
+              "file": "workbench-restructuring.spec.ts",
+              "line": 367,
+              "column": 7
+            }
+          ]
+        }
+      ]
     }
   ],
+  "errors": [],
   "stats": {
-    "startTime": "2025-11-14T04:15:49.203Z",
-    "duration": 171.0920000000042,
+    "startTime": "2026-01-18T11:50:07.734Z",
+    "duration": 135624.93899999998,
     "expected": 0,
     "skipped": 0,
-    "unexpected": 0,
+    "unexpected": 24,
     "flaky": 0
   }
 }

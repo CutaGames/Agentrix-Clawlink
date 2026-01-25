@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface CodeExample {
   language: 'typescript' | 'javascript' | 'python';
@@ -16,7 +16,7 @@ export function CodeGenerator({ prompt }: CodeGeneratorProps) {
   const [codeExamples, setCodeExamples] = useState<CodeExample[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const generateCode = async (userPrompt: string) => {
+  const generateCode = useCallback(async (userPrompt: string) => {
     setLoading(true);
     // 模拟AI生成代码（实际应该调用后端API）
     setTimeout(() => {
@@ -24,7 +24,7 @@ export function CodeGenerator({ prompt }: CodeGeneratorProps) {
       setCodeExamples(examples);
       setLoading(false);
     }, 1500);
-  };
+  }, [selectedLanguage]);
 
   const generateCodeExamples = (prompt: string, language: 'typescript' | 'javascript' | 'python'): CodeExample[] => {
     const lowerPrompt = prompt.toLowerCase();
@@ -238,7 +238,7 @@ agentrix = Agentrix(api_key=os.getenv('AGENTRIX_API_KEY'))`,
     if (prompt) {
       generateCode(prompt);
     }
-  }, [prompt, selectedLanguage]);
+  }, [prompt, generateCode]);
 
   return (
     <div className="space-y-4">

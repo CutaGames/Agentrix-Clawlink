@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
-import { LoginModal } from '../../components/auth/LoginModal'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency } from '../../contexts/CurrencyContext'
 
@@ -71,9 +71,9 @@ const typeLabels: Record<AssetType, { zh: string; en: string }> = {
 }
 
 export default function AggregationDemoPage() {
-  const [showLogin, setShowLogin] = useState(false)
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all')
   const [sourceFilter, setSourceFilter] = useState<SourceType | 'all'>('all')
+  const router = useRouter()
 
   const { t } = useLocalization()
   const { format } = useCurrency()
@@ -98,7 +98,7 @@ export default function AggregationDemoPage() {
           })}
         />
       </Head>
-      <Navigation onLoginClick={() => setShowLogin(true)} />
+      <Navigation />
       <main className="bg-slate-50">
         <section className="bg-gradient-to-r from-fuchsia-600 to-blue-600 py-16 text-white">
           <div className="container mx-auto px-6">
@@ -263,7 +263,7 @@ export default function AggregationDemoPage() {
                   })}
                 </p>
                 <button
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => router.push('/auth/login')}
                   className="mt-6 w-full rounded-xl bg-fuchsia-600 py-3 text-white hover:bg-fuchsia-700"
                 >
                   {t({ zh: '提交资产', en: 'Submit assets' })}
@@ -274,7 +274,6 @@ export default function AggregationDemoPage() {
         </section>
       </main>
       <Footer />
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   )
 }

@@ -13,7 +13,9 @@ interface StructuredResponseCardProps {
   message: ChatMessage;
   onCartUpdate?: (items: CartItem[]) => void;
   onSendMessage?: (message: string) => void;
+  onBuyNow?: (product: ProductInfo) => void;
   sessionId?: string;
+  payingProductId?: string | null;
   onCartChanged?: (cartItems?: CartItem[]) => void; // 购物车更新后的回调，如果购物车消息不存在则创建
 }
 
@@ -25,7 +27,9 @@ export function StructuredResponseCard({
   message, 
   onCartUpdate, 
   onSendMessage,
+  onBuyNow,
   sessionId,
+  payingProductId,
   onCartChanged,
 }: StructuredResponseCardProps) {
   const { user } = useUser();
@@ -693,6 +697,14 @@ export function StructuredResponseCard({
         <MultiAssetProductList
           products={multiAssetProducts}
           onAddToCart={(productId, quantity) => handleAddToCart(productId, quantity || 1)}
+          onBuyNow={(product) => {
+            if (onBuyNow) {
+              onBuyNow(product as unknown as ProductInfo);
+            } else if (onSendMessage) {
+              // 回退方案：通过对话触发
+              onSendMessage(`结算商品 ${product.name}`);
+            }
+          }}
           onViewProduct={(product) => handleViewProduct({
             id: product.id,
             name: product.name,
@@ -706,6 +718,7 @@ export function StructuredResponseCard({
             metadata: product.metadata,
           })}
           isAddingToCart={isAddingToCart}
+          payingProductId={payingProductId}
           maxDisplay={5}
           layout="list"
           showTotal={true}

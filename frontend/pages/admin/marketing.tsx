@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Calendar
 } from 'lucide-react';
+import { API_BASE_URL } from '../../utils/api-config';
 
 export default function MarketingPage() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function MarketingPage() {
   const fetchMarketingData = async (token: string) => {
     try {
       setLoading(true);
-      const response = await fetch('https://api.agentrix.top/api/admin/marketing', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/marketing`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch marketing data');

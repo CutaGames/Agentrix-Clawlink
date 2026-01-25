@@ -101,10 +101,6 @@ export default function TestScenarios() {
     router.push(`/pay/checkout?productId=${product.id}`)
   }
 
-  const handleLoginClick = () => {
-    router.push('/auth/login')
-  }
-
   return (
     <>
       <Head>
@@ -115,7 +111,7 @@ export default function TestScenarios() {
         />
       </Head>
 
-      <Navigation onLoginClick={handleLoginClick} />
+      <Navigation />
 
       <main className="min-h-screen bg-slate-950 text-white">
         {/* Hero Section */}
@@ -346,4 +342,3 @@ export default function TestScenarios() {
     </>
   )
 }
-

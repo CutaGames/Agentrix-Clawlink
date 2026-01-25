@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run build:esm",
-    "build:esm": "tsc --module esnext --outDir dist/esm && mv dist/esm dist/index.esm.js",
+    "build:esm": "tsc --module esnext --target esnext --outDir dist/esm && cp dist/esm/index.js dist/index.esm.js",
     "dev": "tsc --watch",
     "test": "jest",
     "test:watch": "jest --watch",
