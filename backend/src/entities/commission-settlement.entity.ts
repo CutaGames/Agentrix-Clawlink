@@ -15,7 +15,7 @@ export enum SettlementStatus {
   FAILED = 'failed',
 }
 
-@Entity('commission_settlements')
+@Entity('commission_settlements_v4')
 export class CommissionSettlement {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -26,11 +26,9 @@ export class CommissionSettlement {
   @Column({ nullable: true })
   payeeId: string;
 
-  @Column({
-    type: 'enum',
+  @Column({ type: 'enum',
     enum: PayeeType,
-    nullable: true,
-  })
+    nullable: true })
   payeeType: PayeeType;
 
   @Column('decimal', { precision: 15, scale: 6, nullable: true })
@@ -51,7 +49,7 @@ export class CommissionSettlement {
   @Column({ length: 10, default: 'USDT' })
   currency: string;
 
-  @Column({ type: 'date', nullable: true })
+  @Column({ type: 'date', nullable: true, name: 'settlement_date' })
   settlementDate: Date;
 
   @Column({

@@ -19,6 +19,7 @@ import {
 import { AgentService } from './agent.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
+import { UnifiedAuthGuard } from '../auth/guards/unified-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { CartService } from '../cart/cart.service';
 import { AgentTemplateService } from './agent-template.service';
@@ -33,6 +34,8 @@ import { TemplateReviewService, CreateReviewDto } from './template-review.servic
 import { AgentRegistryService } from './agent-registry.service';
 import { AuthorizationService } from './authorization.service';
 import { AgentCheckoutService, AgentExecutePaymentDto } from './agent-checkout.service';
+import { AgentExecutePaymentService, AgentExecutePaymentRequest } from './agent-execute-payment.service';
+import { PolicyEvaluatorService } from './policy-evaluator.service';
 
 @ApiTags('agent')
 @Controller('agent')
@@ -46,6 +49,8 @@ export class AgentController {
     private readonly agentRegistryService: AgentRegistryService,
     private readonly authorizationService: AuthorizationService,
     private readonly agentCheckoutService: AgentCheckoutService,
+    private readonly agentExecutePaymentService: AgentExecutePaymentService,
+    private readonly policyEvaluatorService: PolicyEvaluatorService,
   ) {}
 
   @Get('health')
@@ -59,6 +64,59 @@ export class AgentController {
       service: 'agent',
       version: '1.0 (Agentrix Payment V1.0)',
     };
+  }
+
+  @Get('sessions')
+  @ApiOperation({ summary: '获取用户会话列表' })
+  @ApiResponse({ status: 200, description: '返回会话列表' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getSessions(@Request() req: any) {
+    return this.agentService.getUserSessions(req.user?.id);
+  }
+
+  @Get('sessions/:sessionId')
+  @ApiOperation({ summary: '获取会话详情和历史消息' })
+  @ApiResponse({ status: 200, description: '返回会话详情和消息历史' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getSession(
+    @Request() req: any,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.agentService.getSessionDetails(req.user?.id, sessionId);
+  }
+
+  @Get('my-agents')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取当前用户生成的Agent列表' })
+  async getMyAgents(@Request() req: any) {
+    return this.agentTemplateService.listUserAgents(req.user.id);
+  }
+
+  @Get('templates')
+  @Public()
+  @ApiOperation({ summary: '获取Agent模板列表' })
+  async getTemplates(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('tag') tag?: string,
+    @Query('visibility') visibility?: AgentTemplateVisibility,
+  ) {
+    const normalizedVisibility = visibility && Object.values(AgentTemplateVisibility).includes(visibility)
+      ? visibility
+      : undefined;
+    return this.agentTemplateService.listTemplates(
+      {
+        search,
+        category,
+        tag,
+        visibility: normalizedVisibility,
+      },
+      req.user?.id,
+    );
   }
 
   @Post('register')
@@ -78,10 +136,59 @@ export class AgentController {
   }
 
   @Post('execute-payment')
-  @UseGuards(ApiKeyGuard)
-  @ApiOperation({ summary: 'Agent执行支付 (Agent Checkout)' })
+  @UseGuards(UnifiedAuthGuard)
+  @ApiOperation({ summary: 'Agent执行支付 (Agent Checkout) - Legacy' })
   async executePayment(@Body() body: AgentExecutePaymentDto) {
     return this.agentCheckoutService.executePayment(body);
+  }
+
+  /**
+   * V1 API: Agent 执行支付（增强版）
+   * 完整实现 PRD 中定义的策略评估和支付执行逻辑
+   */
+  @Post('v1/execute-payment')
+  @UseGuards(UnifiedAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ 
+    summary: 'Agent 执行支付 (V1 增强版)',
+    description: '完整实现策略评估、自动执行或降级用户确认、审计证据记录'
+  })
+  @ApiResponse({ status: 200, description: '支付执行结果' })
+  @ApiResponse({ status: 400, description: '请求参数错误' })
+  @ApiResponse({ status: 401, description: '未授权' })
+  async executePaymentV1(
+    @Body() body: AgentExecutePaymentRequest,
+    @Request() req: any,
+  ) {
+    // 确保 userId 来自认证上下文（安全）
+    const userId = req.user?.id || body.userId;
+    if (!userId) {
+      return {
+        status: 'failed',
+        payIntentId: '',
+        reason: '未提供用户身份',
+        errorCode: 'USER_ID_REQUIRED',
+      };
+    }
+    
+    return this.agentExecutePaymentService.executePayment({
+      ...body,
+      userId,
+    });
+  }
+
+  /**
+   * 获取用户的策略评估摘要（剩余额度等）
+   */
+  @Get('policy-summary')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取策略评估摘要（剩余额度等）' })
+  async getPolicySummary(
+    @Request() req: any,
+    @Query('agentId') agentId?: string,
+  ) {
+    return this.policyEvaluatorService.getQuickEvaluation(req.user.id, agentId);
   }
 
   @Post('chat')
@@ -143,197 +250,6 @@ export class AgentController {
     }
   }
 
-  @Get('sessions')
-  @ApiOperation({ summary: '获取用户会话列表' })
-  @ApiResponse({ status: 200, description: '返回会话列表' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async getSessions(@Request() req: any) {
-    return this.agentService.getUserSessions(req.user?.id);
-  }
-
-  @Get('sessions/:sessionId')
-  @ApiOperation({ summary: '获取会话详情和历史消息' })
-  @ApiResponse({ status: 200, description: '返回会话详情和消息历史' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async getSession(
-    @Request() req: any,
-    @Param('sessionId') sessionId: string,
-  ) {
-    return this.agentService.getSessionDetails(req.user?.id, sessionId);
-  }
-
-  @Post('recommendations')
-  @ApiOperation({ summary: '获取情景感知推荐（V3.0）' })
-  @ApiResponse({ status: 200, description: '返回推荐结果' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async getRecommendations(
-    @Request() req: any,
-    @Body() body: { sessionId?: string; query?: string; entities?: any },
-  ) {
-    return this.agentService.getContextualRecommendations(
-      req.user?.id,
-      body.sessionId,
-      body.query,
-      body.entities,
-    );
-  }
-
-  @Post('search-products')
-  @ApiOperation({ summary: '商品搜索/比价（V3.0：多平台聚合、自动比价）' })
-  @ApiResponse({ status: 200, description: '返回商品搜索结果和比价信息' })
-  @Public()
-  async searchProducts(
-    @Body() body: {
-      query: string;
-      filters?: {
-        priceMin?: number;
-        priceMax?: number;
-        category?: string;
-        currency?: string;
-        inStock?: boolean;
-      };
-    },
-  ) {
-    return this.agentService.searchAndCompareProducts(body.query, body.filters);
-  }
-
-  @Post('search-services')
-  @ApiOperation({ summary: '服务推荐（V3.0：虚拟服务、咨询服务、技术服务）' })
-  @ApiResponse({ status: 200, description: '返回服务列表' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async searchServices(
-    @Body() body: {
-      query: string;
-      filters?: {
-        type?: 'virtual_service' | 'consultation' | 'technical_service' | 'subscription';
-        priceMax?: number;
-      };
-    },
-  ) {
-    return this.agentService.searchServices(body.query, body.filters);
-  }
-
-  @Post('search-onchain-assets')
-  @ApiOperation({ summary: '链上资产识别（V3.0：NFT、Token、链游资产）' })
-  @ApiResponse({ status: 200, description: '返回链上资产列表' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async searchOnChainAssets(
-    @Body() body: {
-      query: string;
-      filters?: {
-        type?: 'nft' | 'token' | 'game_item';
-        chain?: 'solana' | 'ethereum' | 'bsc' | 'polygon';
-      };
-    },
-  ) {
-    return this.agentService.searchOnChainAssets(body.query, body.filters);
-  }
-
-  @Post('create-order')
-  @ApiOperation({ summary: '自动下单（V3.0：全流程自动化）' })
-  @ApiResponse({ status: 200, description: '返回订单和支付意图' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async createOrder(
-    @Request() req: any,
-    @Body() body: {
-      productId: string;
-      quantity?: number;
-      metadata?: any;
-    },
-  ) {
-    return this.agentService.createOrderAutomatically(
-      req.user?.id,
-      body.productId,
-      body.quantity || 1,
-      body.metadata,
-    );
-  }
-
-  @Get('orders')
-  @ApiOperation({ summary: '订单查询/物流跟踪（V3.0）' })
-  @ApiResponse({ status: 200, description: '返回订单列表和物流信息' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async queryOrders(
-    @Request() req: any,
-    @Query('orderId') orderId?: string,
-  ) {
-    return this.agentService.queryOrderAndLogistics(req.user?.id, orderId);
-  }
-
-  @Post('refund')
-  @ApiOperation({ summary: '处理退款/售后（V3.0）' })
-  @ApiResponse({ status: 200, description: '返回退款结果和订单信息' })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async processRefund(
-    @Request() req: any,
-    @Body() body: {
-      orderId: string;
-      reason?: string;
-    },
-  ) {
-    return this.agentService.processRefund(req.user?.id, body.orderId, body.reason);
-  }
-
-  @Post('generate-code')
-  @ApiOperation({ summary: '生成API/SDK代码示例（基础版）' })
-  @ApiResponse({ status: 200, description: '返回代码示例' })
-  async generateCode(
-    @Body() body: { prompt: string; language: 'typescript' | 'javascript' | 'python' },
-  ) {
-    return this.agentService.generateCodeExample(body.prompt, body.language);
-  }
-
-  @Post('generate-enhanced-code')
-  @ApiOperation({ summary: '增强代码生成（V3.0：支持更多场景）' })
-  @ApiResponse({ status: 200, description: '返回增强代码示例' })
-  async generateEnhancedCode(
-    @Body() body: { prompt: string; language: 'typescript' | 'javascript' | 'python' },
-  ) {
-    return this.agentService.generateEnhancedCode(body.prompt, body.language);
-  }
-
-  @Get('faq')
-  @ApiOperation({ summary: '获取FAQ答案' })
-  @ApiResponse({ status: 200, description: '返回FAQ答案' })
-  async getFaq(@Query('question') question: string) {
-    return this.agentService.getFaqAnswer(question);
-  }
-
-  @Get('guide')
-  @ApiOperation({ summary: '获取操作引导' })
-  @ApiResponse({ status: 200, description: '返回引导信息' })
-  async getGuide(@Query('type') type: 'register' | 'login' | 'api' | 'payment') {
-    return this.agentService.getGuide(type);
-  }
-
-  // ========== 购物车操作（支持sessionId，未登录用户可用） ==========
-  @Get('cart')
-  @Public()
-  @ApiOperation({ summary: '获取购物车（支持sessionId）' })
-  @ApiResponse({ status: 200, description: '返回购物车及商品详情' })
-  async getCart(
-    @Request() req: any,
-    @Query('sessionId') sessionId?: string,
-  ) {
-    const userId = req.user?.id;
-    const cartIdentifier = userId || sessionId;
-    const isSessionId = !userId;
-    
-    if (!cartIdentifier) {
-      throw new Error('需要提供userId或sessionId');
-    }
-    
-    return this.cartService.getCartWithProducts(cartIdentifier, isSessionId);
-  }
-
   @Post('cart/items')
   @Public()
   @ApiOperation({ summary: '添加商品到购物车（支持sessionId）' })
@@ -393,30 +309,6 @@ export class AgentController {
     return this.cartService.removeFromCart(cartIdentifier, productId, isSessionId);
   }
 
-  @Get('templates')
-  @Public()
-  @ApiOperation({ summary: '获取Agent模板列表' })
-  async getTemplates(
-    @Request() req: any,
-    @Query('search') search?: string,
-    @Query('category') category?: string,
-    @Query('tag') tag?: string,
-    @Query('visibility') visibility?: AgentTemplateVisibility,
-  ) {
-    const normalizedVisibility = visibility && Object.values(AgentTemplateVisibility).includes(visibility)
-      ? visibility
-      : undefined;
-    return this.agentTemplateService.listTemplates(
-      {
-        search,
-        category,
-        tag,
-        visibility: normalizedVisibility,
-      },
-      req.user?.id,
-    );
-  }
-
   @Get('templates/mine')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -466,14 +358,6 @@ export class AgentController {
       ...body,
       templateId,
     });
-  }
-
-  @Get('my-agents')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: '获取当前用户生成的Agent列表' })
-  async getMyAgents(@Request() req: any) {
-    return this.agentTemplateService.listUserAgents(req.user.id);
   }
 
   @Get('templates/:templateId/subscription')
@@ -543,6 +427,94 @@ export class AgentController {
   @ApiOperation({ summary: '删除评论' })
   async deleteTemplateReview(@Request() req: any, @Param('reviewId') reviewId: string) {
     return this.templateReviewService.deleteReview(reviewId, req.user.id);
+  }
+
+  // ========== Agent V3.0 工具性接口 (由 api/agent.api.ts 调用) ==========
+
+  @Post('search-products')
+  @Public()
+  @ApiOperation({ summary: '商品搜索/比价' })
+  async searchProducts(
+    @Request() req: any,
+    @Body() body: { query: string; filters?: any },
+  ) {
+    return this.agentService.searchAgentrixProducts(body.query, body.filters, req.user?.id);
+  }
+
+  @Post('search-services')
+  @Public()
+  @ApiOperation({ summary: '服务推荐' })
+  async searchServices(
+    @Request() req: any,
+    @Body() body: { query: string; filters?: any },
+  ) {
+    return this.agentService.searchAgentrixServices(body.query, body.filters, req.user?.id);
+  }
+
+  @Post('search-onchain-assets')
+  @Public()
+  @ApiOperation({ summary: '链上资产识别' })
+  async searchOnChainAssets(
+    @Request() req: any,
+    @Body() body: { query: string; filters?: any },
+  ) {
+    return this.agentService.searchOnChainAssets(body.query, body.filters, req.user?.id);
+  }
+
+  @Post('create-order')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '自动下单' })
+  async createOrder(@Request() req: any, @Body() body: any) {
+    return this.agentService.createOrderAutomatically(req.user.id, body.productId, body.quantity, body.metadata);
+  }
+
+  @Get('orders')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '订单查询/物流跟踪' })
+  async queryOrders(@Request() req: any, @Query('orderId') orderId?: string) {
+    return this.agentService.queryOrderAndLogistics(req.user.id, orderId);
+  }
+
+  @Post('refund')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '处理退款/售后' })
+  async processRefund(@Request() req: any, @Body() body: { orderId: string; reason?: string }) {
+    return this.agentService.processRefund(req.user.id, body.orderId, body.reason);
+  }
+
+  @Post('generate-code')
+  @Post('generate-enhanced-code')
+  @Public()
+  @ApiOperation({ summary: '生成代码示例' })
+  async generateCode(@Body() body: { prompt: string; language: 'typescript' | 'javascript' | 'python' }) {
+    return this.agentService.generateCodeExample(body.prompt, body.language);
+  }
+
+  @Get('faq')
+  @Public()
+  @ApiOperation({ summary: '获取FAQ答案' })
+  async getFaq(@Query('question') question: string) {
+    return this.agentService.getFaqAnswer(question);
+  }
+
+  @Get('guide')
+  @Public()
+  @ApiOperation({ summary: '获取操作引导' })
+  async getGuide(@Query('type') type: string) {
+    return this.agentService.getGuide(type);
+  }
+
+  @Post('recommendations')
+  @Public()
+  @ApiOperation({ summary: '获取情景感知推荐' })
+  async getRecommendations(
+    @Request() req: any,
+    @Body() body: { sessionId?: string; query?: string; entities?: any },
+  ) {
+    return this.agentService.getAgentRecommendations(body.sessionId, body.query, body.entities, req.user?.id);
   }
 }
 

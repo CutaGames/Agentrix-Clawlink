@@ -43,7 +43,7 @@ export class SupportTicket {
   ticketNumber: string;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   @Column({ nullable: true })
@@ -76,7 +76,7 @@ export class SupportTicket {
   description: string;
 
   @ManyToOne(() => AdminUser, { nullable: true })
-  @JoinColumn({ name: 'assignedToId' })
+  @JoinColumn()
   assignedTo: AdminUser;
 
   @Column({ nullable: true })
@@ -114,14 +114,14 @@ export class SupportTicketReply {
   ticketId: string;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   @Column({ nullable: true })
   userId: string;
 
   @ManyToOne(() => AdminUser, { nullable: true })
-  @JoinColumn({ name: 'adminUserId' })
+  @JoinColumn()
   adminUser: AdminUser;
 
   @Column({ nullable: true })

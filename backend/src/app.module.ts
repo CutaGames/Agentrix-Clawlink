@@ -55,7 +55,27 @@ import { GroqIntegrationModule } from './modules/ai-integration/groq/groq-integr
 import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-integration.module';
 import { CartModule } from './modules/cart/cart.module';
 import { SkillModule } from './modules/skill/skill.module';
+import { ProtocolModule } from './modules/protocol/protocol.module';
 import { McpModule } from './modules/mcp/mcp.module';
+import { UCPModule } from './modules/ucp/ucp.module';
+import { X402DiscoveryModule } from './modules/x402/x402-discovery.module';
+// V2.0: 统一 Marketplace 模块
+import { UnifiedMarketplaceModule } from './modules/unified-marketplace/unified-marketplace.module';
+// 账户体系优化模块
+import { AgentAccountModule } from './modules/agent-account/agent-account.module';
+import { AccountModule } from './modules/account/account.module';
+import { KYCModule } from './modules/kyc/kyc.module';
+import { DeveloperAccountModule } from './modules/developer-account/developer-account.module';
+// 工作空间模块
+import { WorkspaceModule } from './modules/workspace/workspace.module';
+// 总部控制台模块
+import { HqModule } from './modules/hq/hq.module';
+// 专家档案模块
+import { ExpertProfileModule } from './modules/expert-profile/expert-profile.module';
+// 数据集模块
+import { DatasetModule } from './modules/dataset/dataset.module';
+// 通用模块（守卫、装饰器等）
+import { CommonModule } from './modules/common/common.module';
 
 @Module({
   imports: [
@@ -70,10 +90,10 @@ import { McpModule } from './modules/mcp/mcp.module';
     ScheduleModule.forRoot(),
     AuthModule,
     WalletModule,
+    CommissionModule,
     PaymentModule,
     AutoPayModule,
     ProductModule,
-    CommissionModule,
     OrderModule,
     ContractModule,
     UserModule,
@@ -119,6 +139,25 @@ import { McpModule } from './modules/mcp/mcp.module';
     CartModule,
     SkillModule,
     McpModule,
+    UCPModule,
+    X402DiscoveryModule,
+    // V2.0: 统一 Marketplace
+    UnifiedMarketplaceModule,
+    // 账户体系优化
+    AgentAccountModule,
+    AccountModule,
+    KYCModule,
+    DeveloperAccountModule,
+    // 工作空间
+    WorkspaceModule,
+    // 总部控制台 (已分离到 main-hq.ts 单独启动)
+    // HqModule,
+    // 专家档案
+    ExpertProfileModule,
+    // 数据集
+    DatasetModule,
+    // 通用模块
+    CommonModule,
   ],
   controllers: [AppController],
   providers: [AppService],

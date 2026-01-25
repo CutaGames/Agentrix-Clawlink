@@ -337,6 +337,8 @@ export class ClaudeIntegrationService {
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）
       enableModelRouting?: boolean; // 是否启用模型路由（默认启用）
+      additionalTools?: any[]; //HQ 专属工具箱支持
+      onToolCall?: (name: string, args: any) => Promise<any>;
     },
   ): Promise<any> {
     if (!this.anthropic) {
@@ -352,7 +354,22 @@ export class ClaudeIntegrationService {
 
     try {
       // 获取 Function Schemas
-      const tools = await this.getFunctionSchemas();
+      let tools = await this.getFunctionSchemas();
+      
+      // 合并 HQ 专属工具箱
+      if (options?.additionalTools) {
+        // Claude 需要 input_schema 格式，HQ tools 可能是 OpenAI 格式
+        const hqTools = options.additionalTools.map(t => {
+          if (t.input_schema) return t;
+          return {
+            name: t.name,
+            description: t.description,
+            input_schema: t.parameters
+          };
+        });
+        tools = [...tools, ...hqTools];
+      }
+
       const hasFunctionCalling = tools.length > 0;
 
       // 智能模型路由：根据任务复杂度选择模型
@@ -427,11 +444,22 @@ export class ClaudeIntegrationService {
             const parameters = toolUse.input || {};
 
             try {
-              const result = await this.executeFunctionCall(
-                functionName,
-                parameters,
-                options?.context || {},
-              );
+              let result: any;
+              
+              // 优先检查外部定义的 onToolCall (如 HQ 总部工具)
+              if (options?.onToolCall) {
+                result = await options.onToolCall(functionName, parameters);
+              }
+
+              // 如果外部未处理或未定义，则尝试执行系统内定义的电商能力
+              if (result === undefined) {
+                result = await this.executeFunctionCall(
+                  functionName,
+                  parameters,
+                  options?.context || {},
+                );
+              }
+
               return {
                 type: 'tool_result',
                 tool_use_id: toolUse.id,

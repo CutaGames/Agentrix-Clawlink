@@ -27,6 +27,9 @@ export enum ProductType {
   FT = 'ft',
   GAME_ASSET = 'game_asset',
   RWA = 'rwa',
+  // X402 原生技能类型
+  X402_SKILL = 'x402_skill',       // 按次付费的功能性技能
+  X402_METERED = 'x402_metered',   // 按量/按时长计费的资源
 }
 
 @Entity('products')
@@ -95,8 +98,30 @@ export class Product {
   @Column({ type: 'varchar', length: 255, nullable: true })
   externalId: string;
 
+  @Column({ type: 'text', nullable: true })
+  reviewNote: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastSyncAt: Date;
+
   @Column({ type: 'jsonb', nullable: true })
   metadata: any;
+
+  // V2.1: UCP 兼容性标记
+  @Column({ default: true })
+  ucpEnabled: boolean;
+
+  // V2.1: UCP 结账端点
+  @Column({ nullable: true })
+  ucpCheckoutEndpoint: string;
+
+  // V2.1: X402 兼容性标记
+  @Column({ default: false })
+  x402Enabled: boolean;
+
+  // V2.1: X402 服务端点
+  @Column({ nullable: true })
+  x402ServiceEndpoint: string;
 
   @CreateDateColumn()
   createdAt: Date;

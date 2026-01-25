@@ -16,7 +16,7 @@ export class WebhookConfig {
   id: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn()
   user: User;
 
   @Column({ name: 'user_id' })

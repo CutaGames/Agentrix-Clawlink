@@ -1,11 +1,29 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, Between } from 'typeorm';
-import { User, KYCLevel } from '../../../entities/user.entity';
+import { User, KYCLevel, UserRole } from '../../../entities/user.entity';
 import { Order } from '../../../entities/order.entity';
 import { Payment } from '../../../entities/payment.entity';
 import { WalletConnection } from '../../../entities/wallet-connection.entity';
 import { QueryUsersDto, QueryTransactionsDto } from '../dto/user-management.dto';
+
+/**
+ * 将 roles 字段统一转换为数组
+ * 兼容处理数据库中存储为字符串格式的历史数据
+ */
+function ensureRolesArray(roles: any): UserRole[] {
+  if (typeof roles === 'string') {
+    return roles
+      .replace(/[{}]/g, '')
+      .split(',')
+      .map((r: string) => r.trim())
+      .filter((r: string) => r) as UserRole[];
+  }
+  if (Array.isArray(roles)) {
+    return roles;
+  }
+  return [UserRole.USER];
+}
 
 @Injectable()
 export class UserManagementService {
@@ -39,21 +57,21 @@ export class UserManagementService {
     }
 
     if (query.kycLevel) {
-      queryBuilder.andWhere('user.kycLevel = :kycLevel', { kycLevel: query.kycLevel });
+      queryBuilder.andWhere('user.kyc_level = :kycLevel', { kycLevel: query.kycLevel });
     }
 
     if (query.kycStatus) {
-      queryBuilder.andWhere('user.kycStatus = :kycStatus', { kycStatus: query.kycStatus });
+      queryBuilder.andWhere('user.kyc_status = :kycStatus', { kycStatus: query.kycStatus });
     }
 
     if (query.startDate && query.endDate) {
-      queryBuilder.andWhere('user.createdAt BETWEEN :startDate AND :endDate', {
+      queryBuilder.andWhere('user.created_at BETWEEN :startDate AND :endDate', {
         startDate: query.startDate,
         endDate: query.endDate,
       });
     }
 
-    queryBuilder.skip(skip).take(limit).orderBy('user.createdAt', 'DESC');
+    queryBuilder.skip(skip).take(limit).orderBy('user.created_at', 'DESC');
 
     const [users, total] = await queryBuilder.getManyAndCount();
 
@@ -266,8 +284,11 @@ export class UserManagementService {
       throw new NotFoundException('用户不存在');
     }
 
+    // 使用辅助函数确保 roles 是数组
+    const rolesArray = ensureRolesArray(user.roles);
+    
     // 检查角色是否已存在
-    if (user.roles && user.roles.includes(role as any)) {
+    if (rolesArray.includes(role as UserRole)) {
       return {
         success: true,
         message: '用户已拥有该角色',
@@ -276,8 +297,8 @@ export class UserManagementService {
     }
 
     // 添加新角色
-    const updatedRoles = user.roles ? [...user.roles, role] : [role];
-    user.roles = updatedRoles as any;
+    rolesArray.push(role as UserRole);
+    user.roles = rolesArray;
 
     await this.userRepository.save(user);
 
@@ -298,8 +319,11 @@ export class UserManagementService {
       throw new NotFoundException('用户不存在');
     }
 
+    // 使用辅助函数确保 roles 是数组
+    const rolesArray = ensureRolesArray(user.roles);
+    
     // 检查角色是否存在
-    if (!user.roles || !user.roles.includes(role as any)) {
+    if (!rolesArray.includes(role as UserRole)) {
       return {
         success: true,
         message: '用户没有该角色',
@@ -308,12 +332,12 @@ export class UserManagementService {
     }
 
     // 移除角色（保留user角色）
-    const updatedRoles = user.roles.filter((r: any) => r !== role);
+    const updatedRoles = rolesArray.filter((r: UserRole) => r !== role);
     // 确保至少保留user角色
     if (updatedRoles.length === 0) {
-      updatedRoles.push('user' as any);
+      updatedRoles.push(UserRole.USER);
     }
-    user.roles = updatedRoles as any;
+    user.roles = updatedRoles;
 
     await this.userRepository.save(user);
 

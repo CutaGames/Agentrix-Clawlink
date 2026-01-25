@@ -26,32 +26,29 @@ export class FundPath {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'payment_id' })
+  @Column()
   paymentId: string;
 
-  @Column({ name: 'order_id', nullable: true })
+  @Column({ nullable: true })
   orderId: string;
 
-  @Column({ name: 'transaction_hash', nullable: true })
+  @Column({ nullable: true })
   transactionHash: string;
 
-  @Column({
-    type: 'enum',
-    enum: FundPathType,
-    name: 'path_type',
-  })
+  @Column({ type: 'enum',
+    enum: FundPathType })
   pathType: FundPathType;
 
-  @Column({ name: 'from_address', nullable: true })
+  @Column({ nullable: true })
   fromAddress: string;
 
-  @Column({ name: 'from_label', nullable: true })
+  @Column({ nullable: true })
   fromLabel: string;
 
-  @Column({ name: 'to_address', nullable: true })
+  @Column({ nullable: true })
   toAddress: string;
 
-  @Column({ name: 'to_label', nullable: true })
+  @Column({ nullable: true })
   toLabel: string;
 
   @Column('numeric', { precision: 20, scale: 6 })
@@ -66,12 +63,12 @@ export class FundPath {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @Column({ name: 'is_x402', default: false })
+  @Column({ default: false })
   isX402: boolean;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 }

@@ -61,10 +61,10 @@ export class AgentTemplate {
   @Column({ type: 'jsonb', nullable: true })
   metadata?: Record<string, any>;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
 

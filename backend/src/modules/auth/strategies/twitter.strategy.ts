@@ -6,18 +6,24 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class TwitterStrategy extends PassportStrategy(Strategy, 'twitter') {
   constructor(private configService: ConfigService) {
-    const consumerKey = configService.get<string>('TWITTER_CONSUMER_KEY');
-    const apiBaseUrl = configService.get<string>('API_BASE_URL') || 'http://localhost:3001';
+    // 支持多种环境变量命名方式
+    const consumerKey = configService.get<string>('TWITTER_CONSUMER_KEY') 
+      || configService.get<string>('TWITTER_API_KEY');
+    const consumerSecret = configService.get<string>('TWITTER_CONSUMER_SECRET') 
+      || configService.get<string>('TWITTER_APIKEY_SECRET');
+    const apiBaseUrl = configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
     const callbackURL = configService.get<string>('TWITTER_CALLBACK_URL') || `${apiBaseUrl}/auth/twitter/callback`;
 
     console.log(`Twitter OAuth initialized with callbackURL: ${callbackURL}`);
     if (!consumerKey || consumerKey === 'placeholder-consumer-key') {
-      console.error('❌ Twitter OAuth is NOT configured correctly. TWITTER_CONSUMER_KEY is missing or placeholder.');
+      console.error('❌ Twitter OAuth is NOT configured correctly. TWITTER_API_KEY or TWITTER_CONSUMER_KEY is missing.');
+    } else {
+      console.log('✅ Twitter OAuth configured with API Key:', consumerKey.substring(0, 8) + '...');
     }
 
     super({
       consumerKey: consumerKey || 'placeholder-consumer-key',
-      consumerSecret: configService.get<string>('TWITTER_CONSUMER_SECRET') || 'placeholder-consumer-secret',
+      consumerSecret: consumerSecret || 'placeholder-consumer-secret',
       callbackURL: callbackURL,
       includeEmail: true,
     });

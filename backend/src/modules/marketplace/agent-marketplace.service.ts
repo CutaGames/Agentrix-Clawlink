@@ -40,7 +40,7 @@ export class AgentMarketplaceService {
     const qb = this.userAgentRepository
       .createQueryBuilder('agent')
       .where('agent.status = :status', { status: UserAgentStatus.ACTIVE })
-      .andWhere('agent.isPublished = :isPublished', { isPublished: true });
+      .andWhere('agent.is_published = :isPublished', { isPublished: true });
 
     if (options.keyword) {
       qb.andWhere(
@@ -52,19 +52,19 @@ export class AgentMarketplaceService {
     // 排序
     switch (options.sortBy) {
       case 'popularity':
-        qb.orderBy('agent.createdAt', 'DESC');
+        qb.orderBy('agent.created_at', 'DESC');
         break;
       case 'rating':
         // TODO: 按评分排序（需要关联评分表）
-        qb.orderBy('agent.createdAt', 'DESC');
+        qb.orderBy('agent.created_at', 'DESC');
         break;
       case 'revenue':
         // TODO: 按收益排序（需要关联收益表）
-        qb.orderBy('agent.createdAt', 'DESC');
+        qb.orderBy('agent.created_at', 'DESC');
         break;
       case 'recent':
       default:
-        qb.orderBy('agent.updatedAt', 'DESC');
+        qb.orderBy('agent.updated_at', 'DESC');
         break;
     }
 

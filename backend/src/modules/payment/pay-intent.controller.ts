@@ -30,7 +30,7 @@ export class PayIntentController {
   @ApiOperation({ summary: '创建PayIntent（支持JWT或API Key）' })
   @ApiResponse({ status: 201, description: '返回创建的PayIntent' })
   @ApiHeader({ name: 'x-api-key', description: 'API Key (agx_test_... or agx_live_...)', required: false })
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
   async createPayIntent(
     @Request() req: any,
     @Body() dto: CreatePayIntentDto,

@@ -6,6 +6,7 @@ import { Product, ProductStatus } from '../../entities/product.entity';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
 import { SearchService } from '../search/search.service';
 import { CapabilityRegistryService } from '../ai-capability/services/capability-registry.service';
+import { ProductSkillConverterService } from '../skill/product-skill-converter.service';
 
 @Injectable()
 export class ProductService {
@@ -16,6 +17,8 @@ export class ProductService {
     private searchService: SearchService,
     @Inject(forwardRef(() => CapabilityRegistryService))
     private capabilityRegistry: CapabilityRegistryService,
+    @Inject(forwardRef(() => ProductSkillConverterService))
+    private productSkillConverter: ProductSkillConverterService,
     private configService: ConfigService,
   ) {}
 
@@ -47,7 +50,7 @@ export class ProductService {
         
         // 添加基础条件
         if (where.merchantId) {
-          qb.andWhere('product.merchantId = :merchantId', { merchantId: where.merchantId });
+          qb.andWhere('product.merchant_id = :merchantId', { merchantId: where.merchantId });
         }
         if (where.status) {
           qb.andWhere('product.status = :status', { status: where.status });
@@ -58,7 +61,7 @@ export class ProductService {
         
         // X402 JSONB 条件
         qb.andWhere(`(product.metadata->>'x402Enabled' = 'true' OR product.metadata->'x402Params' IS NOT NULL)`);
-        qb.orderBy('product.createdAt', 'DESC');
+        qb.orderBy('product.created_at', 'DESC');
         
         return qb.getMany();
       } else if (type === 'digital') {
@@ -66,7 +69,7 @@ export class ProductService {
         const qb = this.productRepository.createQueryBuilder('product');
         
         if (where.merchantId) {
-          qb.andWhere('product.merchantId = :merchantId', { merchantId: where.merchantId });
+          qb.andWhere('product.merchant_id = :merchantId', { merchantId: where.merchantId });
         }
         if (where.status) {
           qb.andWhere('product.status = :status', { status: where.status });
@@ -75,8 +78,8 @@ export class ProductService {
           qb.andWhere('product.name LIKE :name', { name: `%${search}%` });
         }
         
-        qb.andWhere('product.productType IN (:...types)', { types: ['ft', 'nft', 'game_asset'] });
-        qb.orderBy('product.createdAt', 'DESC');
+        qb.andWhere('product.product_type IN (:...types)', { types: ['ft', 'nft', 'game_asset'] });
+        qb.orderBy('product.created_at', 'DESC');
         
         return qb.getMany();
       } else {
@@ -109,11 +112,12 @@ export class ProductService {
     };
 
     // 处理价格信息（统一标准格式优先）
-    if (dto.price && typeof dto.price === 'object' && 'amount' in dto.price) {
-      productData.price = dto.price.amount;
+    const priceInfo = dto.price_standard || dto.price;
+    if (priceInfo && typeof priceInfo === 'object' && 'amount' in priceInfo) {
+      productData.price = priceInfo.amount;
       // 将货币信息存储到 metadata
       if (!productData.metadata) productData.metadata = {};
-      productData.metadata.currency = dto.price.currency || 'CNY';
+      productData.metadata.currency = priceInfo.currency || 'CNY';
     } else if (dto.price_legacy !== undefined) {
       // 向后兼容旧格式
       productData.price = dto.price_legacy;
@@ -123,7 +127,7 @@ export class ProductService {
       // 直接数字格式
       productData.price = dto.price;
       if (!productData.metadata) productData.metadata = {};
-      productData.metadata.currency = 'CNY';
+      productData.metadata.currency = (dto as any).currency || 'CNY';
     }
 
     // 处理库存信息（统一标准格式优先）
@@ -143,6 +147,12 @@ export class ProductService {
     // 处理分润率
     if (dto.commissionRate !== undefined) {
       productData.commissionRate = dto.commissionRate;
+    }
+
+    // 处理图片 (扁平化支持)
+    if ((dto as any).image) {
+      if (!productData.metadata) productData.metadata = {};
+      productData.metadata.image = (dto as any).image;
     }
 
     // 处理统一元数据
@@ -189,6 +199,19 @@ export class ProductService {
     } catch (error) {
       // 索引失败不影响商品创建
       console.error('商品索引失败:', error);
+    }
+
+    // 🔥 自动将商品转换为Skill，使其可以在marketplace中显示
+    try {
+      await this.productSkillConverter.convertProductToSkill(savedProduct.id, {
+        autoSync: true,
+        useLLMDescription: false,
+        autoPublish: true,
+      });
+      console.log(`✅ Product ${savedProduct.id} auto-converted to Skill`);
+    } catch (error) {
+      // 转换失败不影响商品创建
+      console.error('商品转Skill失败:', error);
     }
 
     // 自动注册 AI 能力（生成 Function Schema）
@@ -381,9 +404,12 @@ export class ProductService {
     // X402 V2 服务发现端点列表
     // 这些是已知的支持 X402 协议的服务
     const x402ServiceUrls = [
+      // Agentrix 自身服务
+      'https://api.agentrix.io/.well-known/x402',
       // Coinbase X402 示例服务
       'https://raw.githubusercontent.com/coinbase/x402/master/examples/weather-service/x402.json',
-      // 可以添加更多已知的 X402 服务端点
+      // 更多 X402 服务端点
+      'https://x402.dev/.well-known/x402',
     ];
 
     // 尝试从每个端点获取服务信息

@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Product } from '../../entities/product.entity';
+import { User } from '../../entities/user.entity';
 import { StrategyGraph } from '../trading/entities/strategy-graph.entity';
 import { ProductModule } from '../product/product.module';
 import { OrderModule } from '../order/order.module';
@@ -10,6 +11,7 @@ import { AutoEarnModule } from '../auto-earn/auto-earn.module';
 import { AgentAuthorizationModule } from '../agent-authorization/agent-authorization.module';
 import { TradingModule } from '../trading/trading.module';
 import { LiquidityModule } from '../liquidity/liquidity.module';
+import { MPCWalletModule } from '../mpc-wallet/mpc-wallet.module';
 
 // Adapters
 import { OpenAIAdapter } from './adapters/openai.adapter';
@@ -35,13 +37,15 @@ import { AgentAuthExecutor } from './executors/agent-auth.executor';
 import { AtomicSettlementExecutor } from './executors/atomic-settlement.executor';
 import { BestExecutionExecutor } from './executors/best-execution.executor';
 import { IntentStrategyExecutor } from './executors/intent-strategy.executor';
+import { OnrampExecutor } from './executors/onramp.executor';
+import { WalletOnboardingExecutor } from './executors/wallet-onboarding.executor';
 
 // Controller
 import { AiCapabilityController } from './ai-capability.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Product, StrategyGraph]),
+    TypeOrmModule.forFeature([Product, User, StrategyGraph]),
     forwardRef(() => ProductModule),
     forwardRef(() => OrderModule),
     forwardRef(() => PaymentModule),
@@ -50,6 +54,7 @@ import { AiCapabilityController } from './ai-capability.controller';
     forwardRef(() => AgentAuthorizationModule),
     forwardRef(() => TradingModule),
     forwardRef(() => LiquidityModule),
+    forwardRef(() => MPCWalletModule),
   ],
   controllers: [AiCapabilityController],
   providers: [
@@ -76,6 +81,9 @@ import { AiCapabilityController } from './ai-capability.controller';
     AtomicSettlementExecutor,
     BestExecutionExecutor,
     IntentStrategyExecutor,
+    // X402 基础设施技能执行器
+    OnrampExecutor,
+    WalletOnboardingExecutor,
   ],
   exports: [
     CapabilityRegistryService,

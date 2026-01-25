@@ -19,7 +19,7 @@ export class ProductCountryPrice {
   id: string;
 
   @ManyToOne(() => Product, (product) => product.countryPrices, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'productId' })
+  @JoinColumn()
   product: Product;
 
   @Column()

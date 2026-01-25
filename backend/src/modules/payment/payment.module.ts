@@ -1,15 +1,23 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PaymentController } from './payment.controller';
 import { ProviderWebhookController } from './provider-webhook.controller';
 import { StripeWebhookController } from './stripe-webhook.controller';
+import { StripePaymentController } from './stripe-payment.controller';
+import { StripeConnectController } from './stripe-connect.controller';
 import { CryptoPaymentController } from './crypto-payment.controller';
 import { PayIntentController } from './pay-intent.controller';
 import { QuickPayGrantController } from './quick-pay-grant.controller';
 import { RefundController } from './refund.controller';
+import { QrPaymentController } from './qr-payment.controller';
+import { AmlScanController } from './aml-scan.controller';
 import { PaymentService } from './payment.service';
 import { StripeService } from './stripe.service';
 import { StripeWebhookService } from './stripe-webhook.service';
+import { StripeProviderService } from './stripe-provider.service';
+import { StripeSettlementSchedulerService } from './stripe-settlement-scheduler.service';
+import { StripeConnectService } from './stripe-connect.service';
 import { X402Service } from './x402.service';
 import { SmartRouterService } from './smart-router.service';
 import { FiatToCryptoService } from './fiat-to-crypto.service';
@@ -18,12 +26,15 @@ import { RefundService } from './refund.service';
 import { X402AuthorizationService } from './x402-authorization.service';
 import { AgentPaymentService } from './agent-payment.service';
 import { CryptoPaymentService } from './crypto-payment.service';
+import { QrPaymentService } from './qr-payment.service';
+import { AmlScanService } from './aml-scan.service';
 import { Payment } from '../../entities/payment.entity';
 import { User } from '../../entities/user.entity';
 import { AutoPayGrant } from '../../entities/auto-pay-grant.entity';
 import { PayIntent } from '../../entities/pay-intent.entity';
 import { QuickPayGrant } from '../../entities/quick-pay-grant.entity';
 import { Order } from '../../entities/order.entity';
+import { StripeSettlement } from '../../entities/stripe-settlement.entity';
 import { CommissionModule } from '../commission/commission.module';
 import { UserModule } from '../user/user.module';
 import { AuthModule } from '../auth/auth.module';
@@ -35,6 +46,7 @@ import { PaymentAggregatorService } from './payment-aggregator.service';
 import { EscrowSchedulerService } from './escrow-scheduler.service';
 import { WithdrawalController } from './withdrawal.controller';
 import { WithdrawalService } from './withdrawal.service';
+import { AuditProofService } from '../commission/audit-proof.service';
 import { Withdrawal } from '../../entities/withdrawal.entity';
 import { ExchangeRateService } from './exchange-rate.service';
 import { ProviderIntegrationService } from './provider-integration.service';
@@ -60,15 +72,17 @@ import { WalletConnection } from '../../entities/wallet-connection.entity';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { OffRampCommissionService } from './off-ramp-commission.service';
 import { OnRampCommissionService } from './on-ramp-commission.service';
+import { BuyerFeeService } from './buyer-fee.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, User, AutoPayGrant, PayIntent, QuickPayGrant, Order, Withdrawal, RiskAssessment, WalletConnection, AgentSession]),
+    TypeOrmModule.forFeature([Payment, User, AutoPayGrant, PayIntent, QuickPayGrant, Order, Withdrawal, RiskAssessment, WalletConnection, AgentSession, StripeSettlement]),
+    ScheduleModule.forRoot(),
     forwardRef(() => CommissionModule),
     forwardRef(() => UserModule),
     forwardRef(() => ReferralModule),
     forwardRef(() => RelayerModule),
-    UserAgentModule,
+    forwardRef(() => UserAgentModule),
     PricingModule,
     TaxModule,
     WebhookModule,
@@ -79,6 +93,8 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     PaymentController,
     ProviderWebhookController,
     StripeWebhookController,
+    StripePaymentController,
+    StripeConnectController,
     CryptoPaymentController,
     PayIntentController,
     QuickPayGrantController,
@@ -86,11 +102,16 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     WithdrawalController,
     PreflightCheckController,
     TransakWebhookController,
+    QrPaymentController,
+    AmlScanController,
   ],
   providers: [
     PaymentService,
     StripeService,
     StripeWebhookService,
+    StripeProviderService,
+    StripeSettlementSchedulerService,
+    StripeConnectService,
     X402Service,
     SmartRouterService,
     FiatToCryptoService,
@@ -99,6 +120,8 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     X402AuthorizationService,
     AgentPaymentService,
     CryptoPaymentService,
+    QrPaymentService,
+    AmlScanService,
     PayIntentService,
     QuickPayGrantService,
     PayIntentSchedulerService,
@@ -118,6 +141,7 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     ProviderManagerService,
     OffRampCommissionService,
     OnRampCommissionService,
+    BuyerFeeService,
   ],
   exports: [
     PaymentService,
@@ -135,6 +159,17 @@ import { OnRampCommissionService } from './on-ramp-commission.service';
     CryptoRailService,
     ProviderManagerService,
     OffRampCommissionService,
+    TransakProviderService,
+    AgentPaymentService,
+    X402AuthorizationService,
+    QrPaymentService,
+    AmlScanService,
+    BuyerFeeService,
+    StripeService,
+    StripeProviderService,
+    StripeWebhookService,
+    StripeSettlementSchedulerService,
+    StripeConnectService,
   ],
 })
 export class PaymentModule {}

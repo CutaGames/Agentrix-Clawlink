@@ -47,7 +47,7 @@ export class ApiKey {
   /**
    * Key 前缀（用于识别，如 agx_xxx...）
    */
-  @Column({ name: 'key_prefix', length: 20 })
+  @Column({ length: 20 })
   keyPrefix: string;
 
   /**
@@ -60,10 +60,10 @@ export class ApiKey {
    * 关联用户
    */
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn()
   user: User;
 
-  @Column({ name: 'user_id' })
+  @Column()
   userId: string;
 
   /**
@@ -89,19 +89,19 @@ export class ApiKey {
   /**
    * 过期时间（null 表示永不过期）
    */
-  @Column({ name: 'expires_at', type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   expiresAt: Date | null;
 
   /**
    * 最后使用时间
    */
-  @Column({ name: 'last_used_at', type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   lastUsedAt: Date | null;
 
   /**
    * 使用次数
    */
-  @Column({ name: 'usage_count', default: 0 })
+  @Column({ default: 0 })
   usageCount: number;
 
   /**
@@ -119,7 +119,7 @@ export class ApiKey {
   /**
    * 速率限制（每分钟请求数）
    */
-  @Column({ name: 'rate_limit', default: 60 })
+  @Column({ default: 60 })
   rateLimit: number;
 
   /**
@@ -128,9 +128,9 @@ export class ApiKey {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any> | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }

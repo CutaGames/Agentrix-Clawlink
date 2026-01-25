@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -17,6 +17,7 @@ import { WalletConnection } from '../../entities/wallet-connection.entity';
 import { SocialAccount } from '../../entities/social-account.entity';
 import { AdminUser } from '../../entities/admin-user.entity';
 import { ApiKeyModule } from '../api-key/api-key.module';
+import { AccountModule } from '../account/account.module';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { UnifiedAuthGuard } from './guards/unified-auth.guard';
 import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
@@ -26,6 +27,7 @@ import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
     TypeOrmModule.forFeature([User, WalletConnection, SocialAccount, AdminUser]),
     PassportModule,
     ApiKeyModule,
+    forwardRef(() => AccountModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

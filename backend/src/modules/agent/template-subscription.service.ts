@@ -49,7 +49,7 @@ export class TemplateSubscriptionService {
     // 检查用户是否已购买
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      relations: ['subscriptions'], // 假设 User 有 subscriptions 关系
+      // relations: ['subscriptions'], // User 实体目前没有 subscriptions 关系，移除以防止报错
     });
 
     if (!user) {

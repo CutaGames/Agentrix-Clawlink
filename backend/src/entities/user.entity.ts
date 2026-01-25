@@ -6,8 +6,10 @@ import {
   UpdateDateColumn,
   OneToMany,
   OneToOne,
+  Index,
 } from 'typeorm';
 import { SocialAccount } from './social-account.entity';
+import { WorkspaceMember } from './workspace.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -22,20 +24,53 @@ export enum KYCLevel {
   VERIFIED = 'verified',
 }
 
+/**
+ * 用户账户状态
+ */
+export enum UserStatus {
+  ACTIVE = 'active',           // 正常
+  PENDING = 'pending',         // 待验证
+  SUSPENDED = 'suspended',     // 临时冻结
+  FROZEN = 'frozen',           // 风控冻结
+  CLOSED = 'closed',           // 主动注销
+  BANNED = 'banned',           // 永久封禁
+}
+
 @Entity('users')
+@Index(['status'])
+@Index(['email'])
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'paymindId', unique: true })
+  @Column({ name: 'paymind_id', unique: true })
   agentrixId: string;
 
-  @Column({
-    type: 'jsonb',
+  @Column({ type: 'text',
+    array: true,
     nullable: false,
-    default: [UserRole.USER],
-  })
+    default: [UserRole.USER] })
   roles: UserRole[];
+
+  /**
+   * 用户账户状态
+   */
+  @Column({ type: 'enum',
+    enum: UserStatus,
+    default: UserStatus.ACTIVE })
+  status: UserStatus;
+
+  /**
+   * 状态变更原因
+   */
+  @Column({ nullable: true, length: 500 })
+  statusReason?: string;
+
+  /**
+   * 状态变更时间
+   */
+  @Column({ nullable: true })
+  statusUpdatedAt?: Date;
 
   @Column({ nullable: true })
   email: string;
@@ -52,17 +87,13 @@ export class User {
   @Column({ nullable: true, unique: true })
   twitterId: string;
 
-  @Column({
-    type: 'enum',
+  @Column({ type: 'enum',
     enum: KYCLevel,
-    default: KYCLevel.NONE,
-  })
+    default: KYCLevel.NONE })
   kycLevel: KYCLevel;
 
-  @Column({
-    type: 'varchar',
-    default: 'none',
-  })
+  @Column({ type: 'varchar',
+    default: 'none' })
   kycStatus: string;
 
   @Column({ nullable: true })
@@ -91,8 +122,27 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  /**
+   * 最后活跃时间
+   */
+  @Column({ nullable: true })
+  lastActiveAt?: Date;
+
+  /**
+   * 默认资金账户 ID
+   * 关联到 Account 实体
+   */
+  @Column({ nullable: true })
+  defaultAccountId?: string;
+
   @OneToMany(() => SocialAccount, (account) => account.user)
   socialAccounts: SocialAccount[];
+
+  /**
+   * 工作空间成员关系
+   */
+  @OneToMany(() => WorkspaceMember, (member) => member.user)
+  workspaceMemberships: WorkspaceMember[];
 
   @OneToOne('MerchantProfile', 'user')
   merchantProfile: any; // Use any to avoid circular dependency import issues or import it properly

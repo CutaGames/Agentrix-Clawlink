@@ -40,13 +40,26 @@ export interface FinancialProfile {
 export const SYSTEM_REBATE_POOL_ID = 'system_rebate_pool';
 export const PROMOTER_SHARE_OF_BASE = 0.2;
 
+// V5.0: Agent 分佣比例 (执行:推荐 = 7:3)
+export const EXECUTOR_SHARE_OF_POOL = 0.7;
+export const REFERRER_SHARE_OF_POOL = 0.3;
+
+// V5.0: 扫描商品用户额外费用
+export const SCANNED_UCP_FEE_RATE = 0.01;    // 1%
+export const SCANNED_X402_FEE_RATE = 0.01;   // 1%
+export const SCANNED_FT_FEE_RATE = 0.003;    // 0.3%
+export const SCANNED_NFT_FEE_RATE = 0.003;   // 0.3%
+
+// V5.0: X402 通道费 (可配置，默认0%，后续可调整为0.3%)
+export const X402_CHANNEL_FEE_RATE_DEFAULT = 0;
+
 export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
   [AssetType.PHYSICAL]: {
     rates: {
       assetType: AssetType.PHYSICAL,
       label: '实物商品',
       baseRate: 0.005, // 0.5% 平台费
-      poolRate: 0.022, // 2.2% 激励池 (V4.0 标准)
+      poolRate: 0.025, // 2.5% 激励池 (V4.1)
     },
     settlement: {
       trigger: 'logistics_confirmation',
@@ -63,7 +76,7 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
       assetType: AssetType.SERVICE,
       label: '服务类',
       baseRate: 0.01, // 1.0% 平台费
-      poolRate: 0.037, // 3.7% 激励池 (V4.0 标准)
+      poolRate: 0.04, // 4.0% 激励池 (V4.1)
     },
     settlement: {
       trigger: 'service_completed',
@@ -78,7 +91,7 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
       assetType: AssetType.VIRTUAL,
       label: '虚拟资产 / 数字商品',
       baseRate: 0.005, // 0.5% 平台费
-      poolRate: 0.022, // 2.2% 激励池 (V4.0 标准)
+      poolRate: 0.025, // 2.5% 激励池 (V4.1)
       minPoolRate: 0.02,
       maxPoolRate: 0.04,
       dynamic: 'virtual_band',
@@ -95,7 +108,7 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
       assetType: AssetType.NFT_RWA,
       label: 'NFT / RWA',
       baseRate: 0.005, // 0.5% 平台费
-      poolRate: 0.017, // 1.7% 激励池 (V4.0 标准)
+      poolRate: 0.02, // 2.0% 激励池 (V4.1)
     },
     settlement: {
       trigger: 'tx_success',
@@ -107,14 +120,9 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
   [AssetType.DEV_TOOL]: {
     rates: {
       assetType: AssetType.DEV_TOOL,
-      label: '开发者工具',
-      baseRate: 0.05,
-      poolRate: 0.95,
-      developerSplit: {
-        developer: 0.8,
-        agent: 0.15,
-        paymind: 0.05,
-      },
+      label: '开发者工具 / 插件技能 (COMPOSITE)',
+      baseRate: 0.03, // 3.0% 平台费 (V5.0)
+      poolRate: 0.07, // 7.0% 激励池 (V5.0)
     },
     settlement: {
       trigger: 'payment_success',
@@ -152,6 +160,34 @@ export const FINANCIAL_PROFILES: Record<AssetType, FinancialProfile> = {
       triggerDescription: 'Swap 手续费确认',
       lockupDays: 1,
       payoutDescription: '即时或 T + 1 天释放',
+    },
+  },
+  [AssetType.SUBSCRIPTION]: {
+    rates: {
+      assetType: AssetType.SUBSCRIPTION,
+      label: '订阅服务',
+      baseRate: 0.005,
+      poolRate: 0.025,
+    },
+    settlement: {
+      trigger: 'periodic_renewal',
+      triggerDescription: '订阅成功或续费成功',
+      lockupDays: 3,
+      payoutDescription: 'T + 3 天 00:00',
+    },
+  },
+  [AssetType.OTHER]: {
+    rates: {
+      assetType: AssetType.OTHER,
+      label: '其他',
+      baseRate: 0.005,
+      poolRate: 0.025,
+    },
+    settlement: {
+      trigger: 'manual_confirmation',
+      triggerDescription: '人工确认或超时确权',
+      lockupDays: 1,
+      payoutDescription: 'T + 1 天 00:00',
     },
   },
 };

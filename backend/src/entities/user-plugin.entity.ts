@@ -21,7 +21,7 @@ export class UserPlugin {
   userId: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   @Index()
@@ -29,7 +29,7 @@ export class UserPlugin {
   pluginId: string;
 
   @ManyToOne(() => Plugin)
-  @JoinColumn({ name: 'pluginId' })
+  @JoinColumn()
   plugin: Plugin;
 
   @Column({ length: 50 })
@@ -41,10 +41,10 @@ export class UserPlugin {
   @Column({ type: 'jsonb', nullable: true })
   config?: Record<string, any>;
 
-  @CreateDateColumn({ name: 'installed_at' })
+  @CreateDateColumn()
   installedAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
 

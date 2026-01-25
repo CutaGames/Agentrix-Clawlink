@@ -49,7 +49,7 @@ export class AdminUser {
   lastLoginIp: string;
 
   @ManyToOne(() => AdminRole, { nullable: true })
-  @JoinColumn({ name: 'roleId' })
+  @JoinColumn()
   role: AdminRole;
 
   @Column({ nullable: true })

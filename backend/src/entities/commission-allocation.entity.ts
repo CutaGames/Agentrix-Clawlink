@@ -15,7 +15,7 @@ export class CommissionAllocation {
   @Column({ name: 'settlement_id' })
   settlementId: string;
 
-  @Column({ name: 'agent_wallet' })
+  @Column()
   agentWallet: string;
 
   @Column()
@@ -28,6 +28,6 @@ export class CommissionAllocation {
   status: string;
 
   @ManyToOne(() => CommissionSettlement, (settlement) => settlement.allocations)
-  @JoinColumn({ name: 'settlement_id' })
+  @JoinColumn()
   settlement: CommissionSettlement;
 }

@@ -61,6 +61,9 @@ export class AuditLog {
   @Column({ nullable: true })
   userId: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  workspaceId: string;
+
   @Column({
     type: 'enum',
     enum: AuditAction,

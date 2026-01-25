@@ -24,27 +24,27 @@ export class ProductSyncMapping {
   /**
    * 关联的电商连接
    */
-  @Column({ name: 'connection_id' })
+  @Column()
   connectionId: string;
 
   @ManyToOne(() => EcommerceConnection, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'connection_id' })
+  @JoinColumn()
   connection: EcommerceConnection;
 
   /**
    * Agentrix商品ID
    */
-  @Column({ name: 'product_id' })
+  @Column()
   productId: string;
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'product_id' })
+  @JoinColumn()
   product: Product;
 
   /**
    * 外部平台商品ID
    */
-  @Column({ name: 'external_product_id' })
+  @Column()
   externalProductId: string;
 
   /**
@@ -59,7 +59,7 @@ export class ProductSyncMapping {
   /**
    * 外部商品数据快照
    */
-  @Column({ type: 'jsonb', name: 'external_data', nullable: true })
+  @Column({ type: 'jsonb',  nullable: true })
   externalData: {
     title: string;
     price: number;
@@ -79,21 +79,21 @@ export class ProductSyncMapping {
   /**
    * 同步方向
    */
-  @Column({ name: 'sync_direction', default: 'import' })
+  @Column({ default: 'import' })
   syncDirection: 'import' | 'export';
 
   /**
    * 最后同步时间
    */
-  @Column({ name: 'last_synced_at', type: 'timestamp' })
+  @Column({ type: 'timestamp' })
   lastSyncedAt: Date;
 
   /**
    * 同步版本号（用于检测变更）
    */
-  @Column({ name: 'sync_version', default: 1 })
+  @Column({ default: 1 })
   syncVersion: number;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 }

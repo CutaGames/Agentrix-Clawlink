@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Req, Res, Logger, UseGuards, Param } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { McpService } from './mcp.service';
+import { McpAuthContextService } from './mcp-auth-context.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { Public } from '../auth/decorators/public.decorator';
@@ -10,7 +11,10 @@ import { Public } from '../auth/decorators/public.decorator';
 export class McpController {
   private readonly logger = new Logger(McpController.name);
 
-  constructor(private readonly mcpService: McpService) {}
+  constructor(
+    private readonly mcpService: McpService,
+    private readonly mcpAuthContextService: McpAuthContextService,
+  ) {}
 
   /**
    * MCP SSE 端点
@@ -160,7 +164,7 @@ export class McpController {
           break;
 
         case 'tools/call':
-          // 调用工具
+          // 调用工具（带认证上下文）
           if (!params?.name) {
             return res.status(400).json({
               jsonrpc: '2.0',
@@ -168,7 +172,39 @@ export class McpController {
               id
             });
           }
-          result = await this.mcpService.callTool(params.name, params.arguments || {});
+          
+          // 提取认证上下文
+          const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+          
+          // 验证工具权限
+          if (!this.mcpAuthContextService.validateToolPermission(authContext, params.name)) {
+            this.logger.warn(`Tool permission denied: ${params.name}, auth=${authContext.authMethod}`);
+            return res.status(403).json({
+              jsonrpc: '2.0',
+              error: { 
+                code: -32600, 
+                message: `Permission denied for tool: ${params.name}. Authentication required.`,
+                data: {
+                  authRequired: true,
+                  authUrl: '/api/auth/mcp/authorize',
+                }
+              },
+              id
+            });
+          }
+          
+          // 创建安全的工具调用上下文
+          const secureContext = this.mcpAuthContextService.createSecureToolContext(
+            authContext, 
+            params.arguments || {}
+          );
+          
+          // 调用工具（传递安全上下文）
+          result = await this.mcpService.callToolWithContext(
+            params.name, 
+            params.arguments || {},
+            secureContext
+          );
           break;
 
         case 'resources/list':
@@ -226,7 +262,84 @@ export class McpController {
    * 用于不支持 MCP 的平台通过 REST 调用
    */
   @Post('tool/:name')
-  async callTool(@Param('name') name: string, @Body() args: any) {
-    return this.mcpService.callTool(name, args);
+  async callTool(
+    @Param('name') name: string, 
+    @Body() args: any,
+    @Req() req: Request,
+  ) {
+    // 提取认证上下文
+    const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+    
+    // 验证工具权限
+    if (!this.mcpAuthContextService.validateToolPermission(authContext, name)) {
+      return {
+        isError: true,
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            error: 'PERMISSION_DENIED',
+            message: `Permission denied for tool: ${name}. Authentication required.`,
+            authRequired: true,
+            authUrl: '/api/auth/mcp/authorize',
+          })
+        }],
+      };
+    }
+    
+    // 创建安全上下文并调用
+    const secureContext = this.mcpAuthContextService.createSecureToolContext(authContext, args);
+    return this.mcpService.callToolWithContext(name, args, secureContext);
+  }
+
+  // ============ 意图支付前端 API ============
+
+  /**
+   * 解析自然语言支付意图
+   * 前端输入框提交意图后调用
+   */
+  @Post('intent-parse')
+  async parseIntent(@Body() body: { intent: string }, @Req() req: Request) {
+    const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+    const secureContext = this.mcpAuthContextService.createSecureToolContext(authContext, body);
+    
+    return this.mcpService.callToolWithContext('agent_payment', { intent: body.intent }, secureContext);
+  }
+
+  /**
+   * 确认意图支付
+   */
+  @Post('intent-confirm')
+  async confirmIntent(@Body() body: { confirmationId: string }, @Req() req: Request) {
+    const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+    const secureContext = this.mcpAuthContextService.createSecureToolContext(authContext, body);
+    
+    return this.mcpService.callToolWithContext('agent_payment_confirm', body, secureContext);
+  }
+
+  /**
+   * 拒绝/取消意图支付
+   */
+  @Post('intent-reject')
+  async rejectIntent(@Body() body: { confirmationId: string; reason?: string }, @Req() req: Request) {
+    const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+    const secureContext = this.mcpAuthContextService.createSecureToolContext(authContext, body);
+    
+    return this.mcpService.callToolWithContext('agent_payment_reject', body, secureContext);
+  }
+
+  /**
+   * 提交 Audit Proof
+   * 用于任务完成后提交证明触发分账
+   */
+  @Post('audit-proof')
+  async submitAuditProof(
+    @Body() body: { taskId: string; orderId: string; resultHash: string; proofData?: any },
+    @Req() req: Request,
+  ) {
+    const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+    const secureContext = this.mcpAuthContextService.createSecureToolContext(authContext, body);
+    
+    return this.mcpService.callToolWithContext('submit_audit_proof', body, secureContext);
   }
 }
+

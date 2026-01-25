@@ -27,24 +27,24 @@ export class TaxService {
     const today = new Date();
     const query = this.taxRateRepository
       .createQueryBuilder('tax_rate')
-      .where('tax_rate.countryCode = :countryCode', { countryCode })
-      .andWhere('tax_rate.effectiveDate <= :today', { today })
+      .where('tax_rate.country_code = :countryCode', { countryCode })
+      .andWhere('tax_rate.effective_date <= :today', { today })
       .andWhere(
-        '(tax_rate.endDate IS NULL OR tax_rate.endDate >= :today)',
+        '(tax_rate.end_date IS NULL OR tax_rate.end_date >= :today)',
         { today },
       );
 
     if (regionCode) {
-      query.andWhere('tax_rate.regionCode = :regionCode', { regionCode });
+      query.andWhere('tax_rate.region_code = :regionCode', { regionCode });
     } else {
-      query.andWhere('tax_rate.regionCode IS NULL');
+      query.andWhere('tax_rate.region_code IS NULL');
     }
 
     if (taxType) {
-      query.andWhere('tax_rate.taxType = :taxType', { taxType });
+      query.andWhere('tax_rate.tax_type = :taxType', { taxType });
     }
 
-    return query.orderBy('tax_rate.effectiveDate', 'DESC').getOne();
+    return query.orderBy('tax_rate.effective_date', 'DESC').getOne();
   }
 
   /**

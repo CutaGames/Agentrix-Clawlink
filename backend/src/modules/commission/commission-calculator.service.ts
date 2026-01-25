@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { Payment } from '../../entities/payment.entity';
 import { Commission, PayeeType, AgentType } from '../../entities/commission.entity';
@@ -8,6 +9,8 @@ import { Order, AssetType, OrderStatus } from '../../entities/order.entity';
 import {
   FINANCIAL_PROFILES,
   PROMOTER_SHARE_OF_BASE,
+  EXECUTOR_SHARE_OF_POOL,
+  REFERRER_SHARE_OF_POOL,
   SYSTEM_REBATE_POOL_ID,
   getSettlementConfig,
   resolveRates,
@@ -49,6 +52,7 @@ export class CommissionCalculatorService {
     private productRepository: Repository<Product>,
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+    private configService: ConfigService,
   ) {}
 
   /**
@@ -60,30 +64,57 @@ export class CommissionCalculatorService {
   getCommissionRates(
     productType: ProductType | string,
   ): { totalRate: number; agentRate: number; paymindRate: number } {
-    if (productType === ProductType.PHYSICAL || productType === 'physical') {
+    const type = productType.toString().toLowerCase();
+
+    if (type === 'physical' || type === 'physical_product') {
+      const rates = resolveRates(AssetType.PHYSICAL);
       return {
-        totalRate: 0.03,
-        agentRate: 0.022, // 2.2%
-        paymindRate: 0.005, // 0.5%
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
       };
-    } else if (productType === ProductType.SERVICE || productType === 'service') {
+    } else if (type === 'service') {
+      const rates = resolveRates(AssetType.SERVICE);
       return {
-        totalRate: 0.05,
-        agentRate: 0.037, // 3.7%
-        paymindRate: 0.01, // 1.0%
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
       };
-    } else if (productType === ProductType.NFT || productType === 'nft' || productType === 'nft_rwa') {
+    } else if (type === 'nft' || type === 'nft_rwa') {
+      const rates = resolveRates(AssetType.NFT_RWA);
       return {
-        totalRate: 0.025,
-        agentRate: 0.017, // 1.7%
-        paymindRate: 0.005, // 0.5%
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
+      };
+    } else if (type === 'dev_tool' || type === 'x402_skill') {
+      const rates = resolveRates(AssetType.DEV_TOOL);
+      return {
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
+      };
+    } else if (type === 'subscription' || type === 'membership') {
+      const rates = resolveRates(AssetType.SUBSCRIPTION);
+      return {
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
+      };
+    } else if (type === 'other') {
+      const rates = resolveRates(AssetType.OTHER);
+      return {
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
       };
     } else {
       // 默认虚拟资产/数字商品
+      const rates = resolveRates(AssetType.VIRTUAL);
       return {
-        totalRate: 0.03,
-        agentRate: 0.022, // 2.2%
-        paymindRate: 0.005, // 0.5%
+        totalRate: rates.baseRate + rates.poolRate,
+        agentRate: rates.poolRate,
+        paymindRate: rates.baseRate,
       };
     }
   }
@@ -238,7 +269,8 @@ export class CommissionCalculatorService {
 
     // X402 V2 通道费处理（从平台费中扣除）
     const isX402 = payment.metadata?.isX402 || payment.metadata?.paymentMethod === 'x402';
-    const x402ChannelFeeRate = 0.003; // 0.3% 固定费率
+    // 通道费率默认为 0.3%，支持通过环境变量 X402_CHANNEL_FEE_RATE 配置
+    const x402ChannelFeeRate = parseFloat(this.configService.get('X402_CHANNEL_FEE_RATE', '0.003'));
     let x402ChannelFee = 0;
 
     let order: Order | null = null;
@@ -381,23 +413,27 @@ export class CommissionCalculatorService {
         merchantAmount = 0;
       }
     } else {
-      // 简化为单层 Agent：优先给推荐人，没有推荐人则给执行 Agent
-      if (refAgentId) {
-        referrerPayout = commissionPool;
-        executorPayout = 0;
+      // V5.0: Agent 分佣 (执行:推荐 = 7:3)，缺席方佣金进 Treasury
+      if (refAgentId && execAgentId) {
+        // 双 Agent: 执行 70%, 推荐 30%
+        executorPayout = this.roundCurrency(commissionPool * EXECUTOR_SHARE_OF_POOL);
+        referrerPayout = this.roundCurrency(commissionPool * REFERRER_SHARE_OF_POOL);
       } else if (execAgentId) {
-        executorPayout = commissionPool;
-        referrerPayout = 0;
+        // 仅执行 Agent: 执行 70%, 推荐缺席 30% 进 Treasury
+        executorPayout = this.roundCurrency(commissionPool * EXECUTOR_SHARE_OF_POOL);
+        rebatePayout = this.roundCurrency(commissionPool * REFERRER_SHARE_OF_POOL);
+      } else if (refAgentId) {
+        // 仅推荐 Agent: 推荐 30%, 执行缺席 70% 进 Treasury
+        referrerPayout = this.roundCurrency(commissionPool * REFERRER_SHARE_OF_POOL);
+        rebatePayout = this.roundCurrency(commissionPool * EXECUTOR_SHARE_OF_POOL);
       } else {
-        // 如果都没有，进入平台基金池
-        paymindFinalRevenue = this.roundCurrency(
-          paymindFinalRevenue + commissionPool,
-        );
-        commissionPool = 0;
+        // 无 Agent: 全部进 Treasury
+        rebatePayout = commissionPool;
       }
 
+      // 执行 Agent 无钱包时，其份额进 Treasury
       if (executorPayout > 0 && !executorHasWallet) {
-        rebatePayout = executorPayout;
+        rebatePayout = this.roundCurrency(rebatePayout + executorPayout);
         executorPayout = 0;
       }
     }

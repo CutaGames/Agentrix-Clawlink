@@ -14,11 +14,11 @@ export class ConversationHistory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'merchant_id' })
   @Index()
   merchantId: string;
 
-  @Column()
+  @Column({ name: 'customer_id' })
   @Index()
   customerId: string;
 

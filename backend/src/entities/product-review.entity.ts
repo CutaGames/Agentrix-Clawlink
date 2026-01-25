@@ -43,21 +43,21 @@ export class ProductReview {
   /**
    * 关联的商品ID
    */
-  @Column({ name: 'product_id' })
+  @Column()
   productId: string;
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'product_id' })
+  @JoinColumn()
   product: Product;
 
   /**
    * 商户ID
    */
-  @Column({ name: 'merchant_id' })
+  @Column()
   merchantId: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'merchant_id' })
+  @JoinColumn()
   merchant: User;
 
   /**
@@ -97,11 +97,11 @@ export class ProductReview {
   /**
    * 审核人ID
    */
-  @Column({ name: 'reviewer_id', nullable: true })
+  @Column({ nullable: true })
   reviewerId: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'reviewer_id' })
+  @JoinColumn()
   reviewer: User;
 
   /**
@@ -140,15 +140,15 @@ export class ProductReview {
   /**
    * 审核提交时间
    */
-  @CreateDateColumn({ name: 'submitted_at' })
+  @CreateDateColumn()
   submittedAt: Date;
 
   /**
    * 审核完成时间
    */
-  @Column({ name: 'reviewed_at', type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   reviewedAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }

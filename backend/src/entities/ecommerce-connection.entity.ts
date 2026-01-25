@@ -44,11 +44,11 @@ export class EcommerceConnection {
   /**
    * 商户ID
    */
-  @Column({ name: 'merchant_id' })
+  @Column()
   merchantId: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'merchant_id' })
+  @JoinColumn()
   merchant: User;
 
   /**
@@ -63,19 +63,19 @@ export class EcommerceConnection {
   /**
    * 店铺名称
    */
-  @Column({ name: 'store_name' })
+  @Column()
   storeName: string;
 
   /**
    * 店铺URL
    */
-  @Column({ name: 'store_url', nullable: true })
+  @Column({ nullable: true })
   storeUrl: string;
 
   /**
    * 连接凭证（加密存储）
    */
-  @Column({ type: 'jsonb', name: 'credentials' })
+  @Column({ type: 'jsonb' })
   credentials: {
     accessToken?: string;
     refreshToken?: string;
@@ -117,7 +117,7 @@ export class EcommerceConnection {
   /**
    * 最后同步时间
    */
-  @Column({ name: 'last_sync_at', type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   lastSyncAt: Date;
 
   /**
@@ -140,12 +140,12 @@ export class EcommerceConnection {
   /**
    * 是否激活
    */
-  @Column({ name: 'is_active', default: true })
+  @Column({ default: true })
   isActive: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }

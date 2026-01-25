@@ -4,6 +4,24 @@ import { Repository } from 'typeorm';
 import { User, UserRole } from '../../entities/user.entity';
 import { MerchantProfile } from '../../entities/merchant-profile.entity';
 
+/**
+ * 将 roles 字段统一转换为数组
+ * 兼容处理数据库中存储为字符串格式的历史数据，如 "{user,merchant}"
+ */
+function ensureRolesArray(roles: any): UserRole[] {
+  if (typeof roles === 'string') {
+    return roles
+      .replace(/[{}]/g, '')
+      .split(',')
+      .map((r: string) => r.trim())
+      .filter((r: string) => r) as UserRole[];
+  }
+  if (Array.isArray(roles)) {
+    return roles;
+  }
+  return [UserRole.USER];
+}
+
 export interface UpdateMerchantProfileDto {
   businessName?: string;
   businessLicense?: string;
@@ -37,7 +55,8 @@ export class MerchantProfileService {
       where: { id: userId },
     });
     
-    if (!user || !user.roles.includes(UserRole.MERCHANT)) {
+    const rolesArray = user ? ensureRolesArray(user.roles) : [];
+    if (!user || !rolesArray.includes(UserRole.MERCHANT)) {
       throw new NotFoundException('用户不是商户');
     }
     

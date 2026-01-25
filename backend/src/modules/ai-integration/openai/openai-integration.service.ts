@@ -64,13 +64,26 @@ export class OpenAIIntegrationService {
       this.logger.warn('OPENAI_API_KEY not configured, OpenAI integration will be disabled');
       this.openai = null;
     } else {
-      const config: { apiKey: string; baseURL?: string } = { apiKey };
+      const config: { apiKey: string; baseURL?: string; httpAgent?: any } = { apiKey };
       if (this.baseURL) {
         config.baseURL = this.baseURL.trim();
         this.logger.log(`OpenAI integration initialized with custom baseURL: ${config.baseURL}`);
       } else {
         this.logger.log('OpenAI integration initialized (using default OpenAI API)');
       }
+
+      // Check and configure proxy
+      const proxyUrl = this.configService.get<string>('HTTPS_PROXY') || this.configService.get<string>('HTTP_PROXY');
+      if (proxyUrl) {
+        this.logger.log(`OpenAI configuring with proxy: ${proxyUrl}`);
+        try {
+          const { HttpsProxyAgent } = require('https-proxy-agent');
+          config.httpAgent = new HttpsProxyAgent(proxyUrl);
+        } catch (e) {
+          this.logger.warn('https-proxy-agent not found, OpenAI proxy configuration skipped');
+        }
+      }
+
       this.openai = new OpenAI(config);
     }
   }
@@ -610,6 +623,8 @@ export class OpenAIIntegrationService {
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）
       userBaseURL?: string; // 用户提供的 baseURL（可选，如果不提供则使用系统配置的）
+      additionalTools?: any[]; // 额外的工具定义 (OpenAI 格式: { type: 'function', function: { ... } })
+      onToolCall?: (functionName: string, parameters: any) => Promise<any>; // 自定义工具执行回调
     },
   ): Promise<any> {
     // 如果用户提供了 API Key，使用用户的；否则使用系统配置的
@@ -634,8 +649,11 @@ export class OpenAIIntegrationService {
     }
 
     try {
-      // 获取 Function Schemas
-      const tools = await this.getFunctionSchemas();
+      // 获取基础 Function Schemas 并合并额外的工具
+      const baseTools = await this.getFunctionSchemas();
+      const tools = options?.additionalTools 
+        ? [...baseTools, ...options.additionalTools]
+        : baseTools;
 
       // 调用 OpenAI API
       // 注意：新版本 OpenAI API 使用 tools，旧版本使用 functions
@@ -685,11 +703,28 @@ export class OpenAIIntegrationService {
             }
 
             try {
-              const result = await this.executeFunctionCall(
-                functionName,
-                parameters,
-                options?.context || {},
-              );
+              let result: any;
+              
+              // 优先尝试外部自定义回调
+              if (options?.onToolCall) {
+                try {
+                  const customResult = await options.onToolCall(functionName, parameters);
+                  if (customResult !== undefined) {
+                    result = customResult;
+                  }
+                } catch (e) {
+                   this.logger.warn(`Custom tool execution failed for ${functionName}, falling back to default executor.`);
+                }
+              }
+
+              if (result === undefined) {
+                result = await this.executeFunctionCall(
+                  functionName,
+                  parameters,
+                  options?.context || {},
+                );
+              }
+              
               return {
                 role: 'tool' as const,
                 tool_call_id: toolCall.id,

@@ -60,7 +60,7 @@ export class AdminLog {
   id: string;
 
   @ManyToOne(() => AdminUser, { nullable: true })
-  @JoinColumn({ name: 'adminUserId' })
+  @JoinColumn()
   adminUser: AdminUser;
 
   @Column({ nullable: true })

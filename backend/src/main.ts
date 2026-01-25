@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
@@ -8,15 +9,55 @@ import { AppModule } from './app.module';
 import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
 
 async function bootstrap() {
-  try {
-    await fixEnumTypesBeforeSync();
-  } catch (error: any) {
-    console.warn('⚠️  枚举类型修复失败（可能表不存在，将在 synchronize 时创建）:', error.message);
-  }
+  console.log('🚀 Starting Agentrix Backend...');
+  console.log('📝 Node version:', process.version);
+  console.log('📁 CWD:', process.cwd());
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    rawBody: true,
-  });
+  // 配置全局代理（针对 Node.js fetch/undici）
+  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy || 
+                     process.env.HTTP_PROXY || process.env.http_proxy;
+  
+  if (httpsProxy) {
+    try {
+      console.log(`🌐 Detected proxy: ${httpsProxy}. Setting up global agent.`);
+      const proxyAgent = new ProxyAgent(httpsProxy);
+      setGlobalDispatcher(proxyAgent);
+    } catch (proxyError: any) {
+      console.error(`⚠️ Failed to set global proxy: ${proxyError.message}`);
+    }
+  }
+  
+  // 跳过枚举类型修复以加快启动
+  // try {
+  //   await fixEnumTypesBeforeSync();
+  // } catch (error: any) {
+  //   console.warn('⚠️  枚举类型修复失败（可能表不存在，将在 synchronize 时创建）:', error.message);
+  // }
+
+  console.log('🔧 Creating NestJS application...');
+  let app: NestExpressApplication;
+  
+  try {
+    app = await NestFactory.create<NestExpressApplication>(AppModule, {
+      rawBody: true,
+      abortOnError: false, // 不因错误中止启动
+      logger: ['error', 'warn', 'log', 'debug'], // 启用所有日志级别
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to create NestJS application:', error.message);
+    console.error('Stack:', error.stack);
+    
+    // 如果是数据库连接错误，打印详细信息
+    if (error.message?.includes('database') || error.message?.includes('connect')) {
+      console.error('\n🔍 Database connection failed. Please check:');
+      console.error('  1. PostgreSQL is running: sudo service postgresql status');
+      console.error('  2. Database exists: PGPASSWORD=agentrix_secure_2024 psql -U agentrix -h localhost -l');
+      console.error('  3. Credentials in .env or environment variables');
+      console.error('  4. Database: paymind, User: agentrix, Password: agentrix_secure_2024\n');
+    }
+    
+    process.exit(1);
+  }
 
   // Trust proxy for secure cookies behind Nginx
   app.set('trust proxy', 1);
@@ -103,10 +144,19 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   const host = process.env.HOST || '0.0.0.0';
-  await app.listen(port, host);
-  console.log(`🚀 Agentrix Backend is running on: http://${host}:${port}`);
-  console.log(`📚 API Documentation: http://${host}:${port}/api/docs`);
+  
+  try {
+    await app.listen(port, host);
+    console.log(`🚀 Agentrix Backend is running on: http://${host}:${port}`);
+    console.log(`📚 API Documentation: http://${host}:${port}/api/docs`);
+  } catch (error: any) {
+    console.error('❌ Failed to start server:', error.message);
+    process.exit(1);
+  }
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('❌ Bootstrap failed:', error);
+  process.exit(1);
+});
 

@@ -26,23 +26,23 @@ export class AgentSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'session_id', length: 66, unique: true, nullable: true })
+  @Column({ length: 66, unique: true, nullable: true })
   sessionId?: string; // bytes32 hex string (用于支付 Session)
 
-  @Column({ name: 'user_id', nullable: true })
+  @Column({ nullable: true })
   userId: string | null;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'user_id' })
+  @JoinColumn()
   user: User | null;
 
-  @Column({ name: 'agent_id', nullable: true })
+  @Column({ nullable: true })
   agentId?: string;
 
-  @Column({ name: 'signer_address', length: 42, nullable: true })
+  @Column({ length: 42, nullable: true })
   signerAddress?: string; // Session Key 地址（用于支付 Session）
 
-  @Column({ name: 'owner_address', length: 42, nullable: true })
+  @Column({ length: 42, nullable: true })
   ownerAddress?: string; // 主钱包地址（用于支付 Session）
 
   @Column('decimal', { name: 'single_limit', precision: 18, scale: 6, nullable: true })

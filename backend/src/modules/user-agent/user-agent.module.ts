@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserAgentController } from './user-agent.controller';
 import { UserAgentService } from './user-agent.service';
@@ -24,7 +24,7 @@ import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integra
     TypeOrmModule.forFeature([UserAgent, User, Payment, Order, Budget, Policy]),
     ComplianceModule,
     NotificationModule,
-    GeminiIntegrationModule,
+    forwardRef(() => GeminiIntegrationModule),
   ],
   controllers: [UserAgentController],
   providers: [

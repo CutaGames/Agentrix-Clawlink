@@ -21,7 +21,7 @@ export class TemplateReview {
   templateId: string;
 
   @ManyToOne(() => AgentTemplate)
-  @JoinColumn({ name: 'templateId' })
+  @JoinColumn()
   template: AgentTemplate;
 
   @Index()
@@ -29,7 +29,7 @@ export class TemplateReview {
   userId: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   @Column({ type: 'int' })
@@ -41,10 +41,10 @@ export class TemplateReview {
   @Column({ default: false })
   isVerified: boolean; // 是否已验证购买/使用
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
 

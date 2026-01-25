@@ -53,10 +53,10 @@ export class ModelRouterService {
     // 从环境变量读取配置，提供默认值
     this.frontendGeminiSimple =
       this.configService.get<string>('FRONTEND_GEMINI_SIMPLE_MODEL') ||
-      'gemini-2.5-flash-preview';
+      'gemini-1.5-flash';
     this.frontendGeminiComplex =
       this.configService.get<string>('FRONTEND_GEMINI_COMPLEX_MODEL') ||
-      'gemini-2.5-pro-exp';
+      'gemini-1.5-flash';
 
     this.backendClaudeSimple =
       this.configService.get<string>('BACKEND_CLAUDE_SIMPLE_MODEL') ||

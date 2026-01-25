@@ -3,7 +3,7 @@ import { TaxService } from './tax.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('tax')
-@Controller('api/v2/tax')
+@Controller('v2/tax')
 export class TaxController {
   constructor(private readonly taxService: TaxService) {}
 

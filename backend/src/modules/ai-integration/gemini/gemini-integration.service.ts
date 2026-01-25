@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Product } from '../../../entities/product.entity';
 import { Order } from '../../../entities/order.entity';
+import { Skill, SkillStatus, SkillValueType } from '../../../entities/skill.entity';
 import { CapabilityRegistryService } from '../../ai-capability/services/capability-registry.service';
 import { CapabilityExecutorService } from '../../ai-capability/services/capability-executor.service';
 import { SearchService } from '../../search/search.service';
@@ -13,6 +14,8 @@ import { OrderService } from '../../order/order.service';
 import { CartService } from '../../cart/cart.service';
 import { LogisticsService } from '../../logistics/logistics.service';
 import { PayIntentService } from '../../payment/pay-intent.service';
+import { SkillConverterService } from '../../skill/skill-converter.service';
+import { SkillExecutorService } from '../../skill/skill-executor.service';
 import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
 import { ModelRouterService, ModelType } from '../model-router/model-router.service';
@@ -35,6 +38,7 @@ export class GeminiIntegrationService {
   private readonly logger = new Logger(GeminiIntegrationService.name);
   private readonly genAI: GoogleGenerativeAI | null;
   private readonly defaultModel: string; // 可通过环境变量 GEMINI_MODEL 配置，默认为 gemini-3-pro
+  private requestOptions: any = { apiVersion: 'v1' };
 
   constructor(
     private readonly configService: ConfigService,
@@ -42,6 +46,10 @@ export class GeminiIntegrationService {
     private productRepository: Repository<Product>,
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+    @InjectRepository(Skill)
+    private skillRepository: Repository<Skill>,
+    private skillConverter: SkillConverterService,
+    private skillExecutor: SkillExecutorService,
     private capabilityRegistry: CapabilityRegistryService,
     private capabilityExecutor: CapabilityExecutorService,
     private searchService: SearchService,
@@ -56,16 +64,43 @@ export class GeminiIntegrationService {
     private payIntentService: PayIntentService,
     private modelRouter: ModelRouterService,
   ) {
-    // 从环境变量读取模型名称，默认为 gemini-3-pro（向后兼容）
-    this.defaultModel = this.configService.get<string>('GEMINI_MODEL') || 'gemini-3-pro';
-    
+    // 从环境变量读取模型名称，默认为 gemini-1.5-flash (更稳定，兼容性更广)
+    this.defaultModel = this.configService.get<string>('GEMINI_MODEL') || 'gemini-1.5-flash';
+
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       this.logger.warn('GEMINI_API_KEY not configured, Gemini integration will be disabled');
       this.genAI = null;
     } else {
+      // 检查并配置代理
+      const proxyUrl = this.configService.get<string>('HTTPS_PROXY') || this.configService.get<string>('HTTP_PROXY');
+      
+      if (proxyUrl) {
+        this.logger.log(`Gemini configuring with proxy: ${proxyUrl}`);
+        try {
+          // 在 Node v18+ (用户为 v22) 中，使用 undici 的 ProxyAgent 是最稳定的选择
+          const { ProxyAgent, fetch: undiciFetch } = require('undici');
+          const dispatcher = new ProxyAgent({ uri: proxyUrl });
+          
+          this.requestOptions.fetch = (url: string, init: any) => {
+            return undiciFetch(url, {
+              ...init,
+              dispatcher,
+              // 保持 SDK 标识
+              headers: {
+                ...init.headers,
+                'x-goog-api-client': 'genai-js/0.24.1',
+              }
+            });
+          };
+        } catch (e) {
+          this.logger.warn('Failed to configure Gemini proxy with undici:', e.message);
+        }
+      }
+
+      // 强制使用 Stable 版本 v1 以避免 v1beta 的模型 404 问题
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.logger.log(`Gemini integration initialized with model router enabled`);
+      this.logger.log(`Gemini integration initialized (Default Model: ${this.defaultModel})`);
     }
   }
 
@@ -96,6 +131,38 @@ export class GeminiIntegrationService {
           parameters: schema.parameters,
         };
       }
+    });
+
+    // V2.0: 获取用户自定义 Skill 并根据 valueType 设置优先级
+    const customSkills = await this.skillRepository.find({
+      where: { status: SkillStatus.PUBLISHED },
+    });
+
+    const customFunctions = customSkills.map((skill) => {
+      // V2.0: ACTION 类型的 Skill 标记为 high_priority
+      const isHighPriority = skill.valueType === SkillValueType.ACTION || skill.aiPriority === 'high';
+      
+      return {
+        name: skill.name.replace(/[^a-zA-Z0-9_]/g, '_'),
+        description: isHighPriority 
+          ? `[HIGH PRIORITY] ${skill.description}` 
+          : skill.description,
+        parameters: skill.inputSchema || { type: 'object', properties: {}, required: [] },
+        // V2.0: 元数据，用于排序和优先级控制
+        _metadata: {
+          skillId: skill.id,
+          priority: isHighPriority ? 'high' : (skill.aiPriority || 'normal'),
+          valueType: skill.valueType,
+          layer: skill.layer,
+        },
+      };
+    });
+
+    // V2.0: 按优先级排序（high_priority 的 Skill 排在前面）
+    customFunctions.sort((a, b) => {
+      if (a._metadata.priority === 'high' && b._metadata.priority !== 'high') return -1;
+      if (a._metadata.priority !== 'high' && b._metadata.priority === 'high') return 1;
+      return 0;
     });
 
     // 3. 添加基础功能（向后兼容）
@@ -197,9 +264,23 @@ export class GeminiIntegrationService {
           required: [],
         },
       },
+      {
+        name: 'create_agentrix_mpc_wallet',
+        description: '为用户创建一个安全且受保护的 MPC 托管钱包。',
+        parameters: {
+          type: 'object',
+          properties: {
+            chain: { type: 'string', enum: ['ethereum', 'solana', 'bsc'], description: '首选区块链网络（可选）' },
+          },
+        },
+      },
     ];
 
-    return [...geminiFunctions, ...basicFunctions];
+    // V2.0: 返回顺序：高优先级自定义 Skill > 系统功能 > 基础功能
+    // 移除 _metadata 字段（仅用于排序）
+    const cleanedCustomFunctions = customFunctions.map(({ _metadata, ...fn }) => fn);
+    
+    return [...cleanedCustomFunctions, ...geminiFunctions, ...basicFunctions];
   }
 
   /**
@@ -293,7 +374,36 @@ export class GeminiIntegrationService {
             },
           );
 
+        case 'create_agentrix_mpc_wallet':
+          return await this.capabilityExecutor.execute(
+            'WalletOnboardingExecutor',
+            {
+              capabilityId: 'wallet_onboarding',
+              chain: parameters.chain,
+            },
+            {
+              userId: context.userId,
+              sessionId: context.sessionId,
+            },
+          );
+
         default:
+          // 查找是否是自定义 Skill
+          const skills = await this.skillRepository.find({
+            where: { status: SkillStatus.PUBLISHED },
+          });
+          
+          const customSkill = skills.find(s => s.name.replace(/[^a-zA-Z0-9_]/g, '_') === functionName);
+          
+          if (customSkill) {
+            this.logger.log(`执行自定义 Skill: ${customSkill.name} (${customSkill.id})`);
+            const executionResult = await this.skillExecutor.execute(customSkill.id, parameters, {
+              userId: context.userId,
+              sessionId: context.sessionId,
+            });
+            return executionResult.success ? executionResult.data : executionResult;
+          }
+
           throw new Error(`未知的 Function: ${functionName}`);
       }
     } catch (error: any) {
@@ -565,6 +675,8 @@ export class GeminiIntegrationService {
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）
       enableModelRouting?: boolean; // 是否启用模型路由（默认启用）
+      additionalTools?: any[]; // 额外的工具定义
+      onToolCall?: (functionName: string, parameters: any) => Promise<any>; // 自定义工具执行回调
     },
   ): Promise<any> {
     // 如果用户提供了 API Key，使用用户的；否则使用系统配置的
@@ -579,7 +691,11 @@ export class GeminiIntegrationService {
 
     try {
       // 获取 Function Schemas
-      const functions = await this.getFunctionSchemas();
+      const baseFunctions = await this.getFunctionSchemas();
+      const functions = options?.additionalTools 
+        ? [...options.additionalTools, ...baseFunctions]
+        : baseFunctions;
+        
       const hasFunctionCalling = functions.length > 0;
 
       // 智能模型路由：根据任务复杂度选择模型
@@ -609,104 +725,110 @@ export class GeminiIntegrationService {
         this.logger.log(`使用指定模型: ${selectedModel}`);
       }
 
-      // 获取模型
-      const model = genAI.getGenerativeModel({
-        model: selectedModel,
-        tools: hasFunctionCalling ? [{ functionDeclarations: functions }] : undefined,
-        generationConfig: {
-          temperature: options?.temperature || 0.7,
-          maxOutputTokens: options?.maxTokens || 2048,
-        },
-      });
-
-      // 转换消息格式（Gemini 使用 parts 格式）
-      // 提取 system 消息，将其内容添加到第一条 user 消息的开头（不传递 systemInstruction）
-      const filteredMessages = messages.filter((msg) => msg.role !== 'system');
-      const systemMessages = messages.filter((msg) => msg.role === 'system');
-      const systemPrompt = systemMessages.map((msg) => msg.content).join('\n');
-
-      // 如果有 system prompt，将其添加到第一条 user 消息的开头
-      let processedMessages = [...filteredMessages];
-      if (systemPrompt && systemPrompt.trim().length > 0 && processedMessages.length > 0) {
-        const firstMessage = processedMessages[0];
-        if (firstMessage.role === 'user') {
-          processedMessages[0] = {
-            ...firstMessage,
-            content: `${systemPrompt}\n\n${firstMessage.content}`,
+      // --- FAILOVER 机制：如果首选模型失败，尝试备选模型 ---
+      // V7.3 紧急修正：Google 已在 v1beta 下架部分模型别名，强制使用稳定版本 v1
+      const fallbackModels = [
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+      ];
+      const uniqueFallbackModels = [...new Set([selectedModel, ...fallbackModels])].filter(m => !m.includes('latest'));
+      
+      let lastError: any;
+      
+      for (const modelName of uniqueFallbackModels) {
+        try {
+          if (modelName !== selectedModel) {
+            this.logger.log(`尝试备选 Gemini 模型: ${modelName}`);
+          }
+          
+          this.logger.log(`Gemini Call: model=${modelName}`);
+          
+          const modelOptions = {
+            model: modelName,
+            generationConfig: {
+              temperature: options?.temperature || 0.7,
+              maxOutputTokens: options?.maxTokens || 2048,
+            }
           };
-        }
-      }
 
-      const history = processedMessages.slice(0, -1).map((msg) => ({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content }],
-      }));
+          const model = hasFunctionCalling 
+            ? genAI.getGenerativeModel({ ...modelOptions, tools: [{ functionDeclarations: functions }] }, this.requestOptions)
+            : genAI.getGenerativeModel(modelOptions, this.requestOptions);
 
-      // 不传递 systemInstruction，而是将 system message 内容添加到第一条 user message
-      const chat = model.startChat({
-        history,
-      });
+          // 转换消息格式（Gemini 使用 parts 格式）
+          const filteredMessages = messages.filter((msg) => msg.role !== 'system');
+          const systemMessages = messages.filter((msg) => msg.role === 'system');
+          const systemPrompt = systemMessages.map((msg) => msg.content).join('\n');
 
-      // 发送最后一条消息
-      const lastMessage = filteredMessages[filteredMessages.length - 1];
-      const result = await chat.sendMessage(lastMessage.content);
-
-      const response = result.response;
-      const text = response.text();
-
-      // 检查是否有 Function Call
-      const functionCalls = response.functionCalls();
-      if (functionCalls && functionCalls.length > 0) {
-        // 处理 Function Calls
-        const functionResults = await Promise.all(
-          functionCalls.map(async (call: any) => {
-            const functionName = call.name;
-            const parameters = call.args || {};
-
-            try {
-              const result = await this.executeFunctionCall(
-                functionName,
-                parameters,
-                options?.context || {},
-              );
-              return {
-                functionResponse: {
-                  name: functionName,
-                  response: result,
-                },
-              };
-            } catch (error: any) {
-              this.logger.error(`Function 执行失败: ${functionName}`, error);
-              return {
-                functionResponse: {
-                  name: functionName,
-                  response: {
-                    success: false,
-                    error: error.message,
-                  },
-                },
+          let processedMessages = [...filteredMessages];
+          if (systemPrompt && systemPrompt.trim().length > 0 && processedMessages.length > 0) {
+            const firstMessage = processedMessages[0];
+            if (firstMessage.role === 'user') {
+              processedMessages[0] = {
+                ...firstMessage,
+                content: `${systemPrompt}\n\n${firstMessage.content}`,
               };
             }
-          }),
-        );
+          }
 
-        // 发送 Function 结果并获取最终响应
-        const finalResult = await chat.sendMessage(functionResults);
-        return {
-          text: await finalResult.response.text(),
-          functionCalls: functionCalls.map((call: any) => ({
-            name: call.name,
-            args: call.args,
-          })),
-        };
+          const history = processedMessages.slice(0, -1).map((msg) => ({
+            role: msg.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: msg.content }],
+          }));
+
+          const chat = model.startChat({ history });
+          const lastMessage = filteredMessages[filteredMessages.length - 1];
+          const result = await chat.sendMessage(lastMessage.content);
+          const response = result.response;
+          const text = response.text();
+
+          // 检查是否有 Function Call
+          const functionCalls = response.functionCalls();
+          if (functionCalls && functionCalls.length > 0) {
+            const functionResults = await Promise.all(
+              functionCalls.map(async (call: any) => {
+                const functionName = call.name;
+                const parameters = call.args || {};
+                try {
+                  if (options?.onToolCall) {
+                    try {
+                      const customResult = await options.onToolCall(functionName, parameters);
+                      if (customResult !== undefined) {
+                        return { functionResponse: { name: functionName, response: customResult } };
+                      }
+                    } catch (e) {
+                       this.logger.warn(`Custom tool execution failed for ${functionName}`);
+                    }
+                  }
+                  const result = await this.executeFunctionCall(functionName, parameters, options?.context || {});
+                  return { functionResponse: { name: functionName, response: result } };
+                } catch (error: any) {
+                  return { functionResponse: { name: functionName, response: { success: false, error: error.message } } };
+                }
+              }),
+            );
+
+            const finalResult = await chat.sendMessage(functionResults);
+            return {
+              text: await finalResult.response.text(),
+              model: modelName,
+              functionCalls: functionCalls.map((call: any) => ({ name: call.name, args: call.args })),
+            };
+          }
+
+          return { text, model: modelName, functionCalls: null };
+        } catch (err: any) {
+          lastError = err;
+          this.logger.warn(`Gemini 模型 ${modelName} 调用失败: ${err.message}`);
+          if (err.message?.includes('404') || err.message?.includes('not found') || err.message?.includes('not supported') || err.message?.includes('fetch failed')) {
+            continue;
+          }
+          throw err;
+        }
       }
-
-      return {
-        text,
-        functionCalls: null,
-      };
+      throw lastError || new Error('所有 Gemini 备选模型均不可用');
     } catch (error: any) {
-      this.logger.error(`Gemini API调用失败: ${error.message}`, error.stack);
+      this.logger.error(`Gemini API故障: ${error.message}`);
       throw error;
     }
   }

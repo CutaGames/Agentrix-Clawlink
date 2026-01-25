@@ -111,8 +111,8 @@ export class SessionService {
         
         // 增加重试逻辑，处理 RPC 同步延迟
         let onChainSession = null;
-        const maxRetries = 5;
-        const initialDelay = 2000; // 2秒
+        const maxRetries = 10; // 增加到 10 次
+        const initialDelay = 3000; // 增加到 3秒
         let delay = initialDelay;
         
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -121,11 +121,11 @@ export class SessionService {
             this.logger.log(`链上查询结果 (尝试 ${attempt}/${maxRetries}): ${JSON.stringify({
               signer: onChainSession?.signer,
               owner: onChainSession?.owner,
-              isZeroAddress: onChainSession?.signer === ZeroAddress,
+              isZeroAddress: onChainSession?.signer === (ZeroAddress || '0x0000000000000000000000000000000000000000'),
             })}`);
             
             // 如果找到有效的 Session，退出重试循环
-            if (onChainSession && onChainSession.signer !== ZeroAddress) {
+            if (onChainSession && onChainSession.signer && onChainSession.signer !== (ZeroAddress || '0x0000000000000000000000000000000000000000')) {
               break;
             }
           } catch (error: any) {
@@ -136,13 +136,13 @@ export class SessionService {
           if (attempt < maxRetries) {
             this.logger.log(`等待 ${delay}ms 后重试...`);
             await new Promise(resolve => setTimeout(resolve, delay));
-            delay *= 1.5; // 指数退避：2s, 3s, 4.5s, 6.75s, 10.125s
+            delay += 1000; // 线性递增：3s, 4s, 5s...
           }
         }
 
-        if (!onChainSession || onChainSession.signer === ZeroAddress) {
+        if (!onChainSession || !onChainSession.signer || onChainSession.signer === (ZeroAddress || '0x0000000000000000000000000000000000000000')) {
           this.logger.error(`Session 未找到 (已重试 ${maxRetries} 次): sessionId=${sessionId}, contract=${this.sessionManagerContract.target}`);
-          throw new BadRequestException('Session not found on-chain. Please wait a few seconds and try again.');
+          throw new BadRequestException('Session not found on-chain yet. The transaction is successful but RPC is slow. Please wait a few more seconds and refresh.');
         }
 
         if (
@@ -155,8 +155,11 @@ export class SessionService {
           throw new BadRequestException('Session signer mismatch');
         }
 
-        normalizedSingleLimit = Number(formatUnits(onChainSession.singleLimit, 6));
-        normalizedDailyLimit = Number(formatUnits(onChainSession.dailyLimit, 6));
+        // 默认使用 18 decimals 解析金额 (USDT/USDC on BSC Testnet)，除非它是 6
+        // 尝试自动探测可能会变慢，这里我们根据环境动态调整
+        const decimals = await this.getTokenDecimals();
+        normalizedSingleLimit = Number(formatUnits(onChainSession.singleLimit, decimals));
+        normalizedDailyLimit = Number(formatUnits(onChainSession.dailyLimit, decimals));
         expiryDate = new Date(Number(onChainSession.expiry) * 1000);
       } else if (!sessionId) {
         // 没有链上Session（开发模式）：生成 sessionId
@@ -191,17 +194,42 @@ export class SessionService {
       this.logger.log(`Session created: ${sessionId} for user ${userId}`);
 
       return {
+        id: savedSession.id,
         sessionId: savedSession.sessionId!,
         signer: savedSession.signerAddress!,
-        owner: savedSession.ownerAddress!, // Add owner address for payer identification
-        singleLimit: (savedSession.singleLimit || 0).toString(),
-        dailyLimit: (savedSession.dailyLimit || 0).toString(),
+        owner: savedSession.ownerAddress!,
+        singleLimit: savedSession.singleLimit || 0,
+        dailyLimit: savedSession.dailyLimit || 0,
+        usedToday: savedSession.usedToday || 0,
         expiry: savedSession.expiry!,
+        isActive: savedSession.status === SessionStatus.ACTIVE,
+        agentId: savedSession.agentId,
+        status: savedSession.status,
         createdAt: savedSession.createdAt,
       };
     } catch (error) {
       this.logger.error(`Failed to create session: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * 获取代币 Decimals
+   */
+  private async getTokenDecimals(): Promise<number> {
+    try {
+      // 如果配置了环境变量，使用它
+      const configDecimals = this.configService.get<string>('USDC_DECIMALS');
+      if (configDecimals) return parseInt(configDecimals, 10);
+
+      // 探测代币。在 BSC Testnet 上默认为 18
+      const network = await this.provider.getNetwork();
+      const chainId = Number(network.chainId);
+      if (chainId === 97) return 18;
+      
+      return 6; // 默认 USDC 使用 6
+    } catch {
+      return 18;
     }
   }
 
@@ -223,13 +251,14 @@ export class SessionService {
         id: session.id,
         sessionId: session.sessionId!,
         signer: session.signerAddress!,
-        owner: session.ownerAddress!, // Add owner address for payer identification
+        owner: session.ownerAddress!,
         singleLimit: Number(session.singleLimit || 0),
         dailyLimit: Number(session.dailyLimit || 0),
         usedToday: Number(session.usedToday || 0),
         expiry: session.expiry!,
         isActive: session.status === SessionStatus.ACTIVE,
         agentId: session.agentId,
+        status: session.status,
         createdAt: session.createdAt,
       }));
   }

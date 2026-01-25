@@ -190,6 +190,10 @@ export class AgentService {
     intent: string;
     entities: Record<string, any>;
   } {
+    // Guard against undefined/null message
+    if (!message || typeof message !== 'string') {
+      return { intent: 'general', entities: {} };
+    }
     const lowerMessage = message.toLowerCase();
     const entities: Record<string, any> = {};
 
@@ -362,6 +366,18 @@ export class AgentService {
     entities?: Record<string, any>;
   }> {
     const startTime = Date.now();
+
+    // Input validation - ensure message is a non-empty string
+    if (!message || typeof message !== 'string') {
+      return {
+        response: '请输入有效的消息内容。',
+        type: 'guide',
+        data: null,
+        sessionId,
+        intent: 'invalid_input',
+        entities: {},
+      };
+    }
 
     try {
       // 获取或创建会话（支持未登录用户）
@@ -906,6 +922,7 @@ export class AgentService {
       type?: 'nft' | 'token' | 'game_item';
       chain?: 'solana' | 'ethereum' | 'bsc' | 'polygon';
     },
+    userId?: string,
   ): Promise<OnChainAsset[]> {
     try {
       // 搜索链上资产类商品（category包含'onchain'或'nft'）
@@ -1205,7 +1222,7 @@ export class AgentService {
   /**
    * 获取操作引导
    */
-  async getGuide(type: 'register' | 'login' | 'api' | 'payment'): Promise<{
+  async getGuide(type: string): Promise<{
     title: string;
     steps: string[];
   }> {
@@ -1530,6 +1547,52 @@ const paymind = new PayMind({
 paymind = PayMind(api_key=os.getenv('PAYMIND_API_KEY'))`,
     };
     return codes[lang] || codes.typescript;
+  }
+
+  /**
+   * 搜索商品（API暴露）
+   */
+  async searchAgentrixProducts(query: string, filters?: any, userId?: string) {
+    const p0Response = await this.p0IntegrationService.handleP0Request(
+      'product_search',
+      { query, ...filters },
+      userId,
+    );
+    return p0Response.data;
+  }
+
+  /**
+   * 搜索服务（API暴露）
+   */
+  async searchAgentrixServices(query: string, filters?: any, userId?: string) {
+    const p0Response = await this.p0IntegrationService.handleP0Request(
+      'search_services',
+      { query, ...filters },
+      userId,
+    );
+    return p0Response.data?.services || [];
+  }
+
+  /**
+   * 获取推荐（API暴露）
+   */
+  async getAgentRecommendations(sessionId?: string, query?: string, entities?: any, userId?: string) {
+    const recommendations = await this.recommendationService.getContextualRecommendations(
+      { userId, sessionId, currentQuery: query, entities },
+    );
+
+    return {
+      products: recommendations.products.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        currency: p.currency || 'CNY',
+        score: p.score || 0.95,
+        reason: p.reason || '基于您的搜索偏好推荐',
+        source: 'Agentrix AI Recommendation',
+      }))
+    };
   }
 }
 

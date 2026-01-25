@@ -5,6 +5,7 @@ import { AgentWorkflow } from '../../../entities/agent-workflow.entity';
 import { MemoryService } from './services/memory.service';
 import { WorkflowEngine } from './services/workflow-engine.service';
 import { SkillsRegistry } from './services/skills-registry.service';
+import { PlannerService } from './services/planner.service';
 import { AgentRuntime } from './agent-runtime.service';
 import { ProductSearchSkill } from './skills/product-search.skill';
 import { AddToCartSkill } from './skills/add-to-cart.skill';
@@ -36,6 +37,7 @@ import { ecommerceWorkflow } from './workflows/ecommerce.workflow';
     MemoryService,
     WorkflowEngine,
     SkillsRegistry,
+    PlannerService,
     ProductSearchSkill,
     AddToCartSkill,
     ViewCartSkill,
@@ -50,6 +52,7 @@ import { ecommerceWorkflow } from './workflows/ecommerce.workflow';
     MemoryService,
     WorkflowEngine,
     SkillsRegistry,
+    PlannerService,
     AgentRuntime,
   ],
 })

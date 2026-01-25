@@ -99,6 +99,31 @@ export class UserAgentController {
     return { success: true, message: 'Budget alerts checked' };
   }
 
+  @Get('health')
+  @ApiOperation({ summary: 'User Agent服务健康检查' })
+  @ApiResponse({ status: 200, description: '服务健康状态' })
+  async health() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'user-agent',
+    };
+  }
+
+  @Get('transactions/classified')
+  @ApiOperation({ summary: '获取已分类的交易记录' })
+  @ApiResponse({ status: 200, description: '返回已分类的交易列表' })
+  async getClassifiedTransactions(@Request() req: any) {
+    return this.transactionClassificationService.getClassifiedTransactions(req.user?.id);
+  }
+
+  @Get('transactions/category-statistics')
+  @ApiOperation({ summary: '获取交易分类统计' })
+  @ApiResponse({ status: 200, description: '返回分类统计' })
+  async getCategoryStatistics(@Request() req: any) {
+    return this.transactionClassificationService.getCategoryStatistics(req.user?.id);
+  }
+
   @Get('transactions/:paymentId/classify')
   @ApiOperation({ summary: '分类特定交易' })
   @ApiResponse({ status: 200, description: '返回分类结果' })
@@ -107,13 +132,6 @@ export class UserAgentController {
     @Param('paymentId') paymentId: string,
   ) {
     return this.transactionClassificationService.classifyTransaction(paymentId);
-  }
-
-  @Get('transactions/category-statistics')
-  @ApiOperation({ summary: '获取交易分类统计' })
-  @ApiResponse({ status: 200, description: '返回分类统计' })
-  async getCategoryStatistics(@Request() req: any) {
-    return this.transactionClassificationService.getCategoryStatistics(req.user?.id);
   }
 
   @Get(':agentId')
@@ -205,11 +223,32 @@ export class UserAgentController {
     return this.userAgentService.getAgentStats(req.user?.id, agentId);
   }
 
-  @Get('transactions/classified')
-  @ApiOperation({ summary: '获取已分类的交易记录' })
-  @ApiResponse({ status: 200, description: '返回已分类的交易列表' })
-  async getClassifiedTransactions(@Request() req: any) {
-    return this.transactionClassificationService.getClassifiedTransactions(req.user?.id);
+  @Post('subscribe/:agentId')
+  @ApiOperation({ summary: '订阅/购买 Agent' })
+  @ApiResponse({ status: 201, description: '订阅成功' })
+  async subscribe(@Request() req: any, @Param('agentId') agentId: string) {
+    return this.userAgentService.subscribeAgent(req.user?.id, agentId);
+  }
+
+  @Post(':agentId/publish')
+  @ApiOperation({ summary: '发布Agent到市场' })
+  @ApiResponse({ status: 200, description: 'Agent已发布到市场' })
+  async publishAgent(@Request() req: any, @Param('agentId') agentId: string) {
+    return this.userAgentService.publishToMarketplace(req.user?.id, agentId);
+  }
+
+  @Post(':agentId/unpublish')
+  @ApiOperation({ summary: '从市场下架Agent' })
+  @ApiResponse({ status: 200, description: 'Agent已从市场下架' })
+  async unpublishAgent(@Request() req: any, @Param('agentId') agentId: string) {
+    return this.userAgentService.unpublishFromMarketplace(req.user?.id, agentId);
+  }
+
+  @Get('marketplace/my-listings')
+  @ApiOperation({ summary: '获取我发布的Agent列表' })
+  @ApiResponse({ status: 200, description: '返回已发布的Agent列表' })
+  async getMyPublishedAgents(@Request() req: any) {
+    return this.userAgentService.getMyPublishedAgents(req.user?.id);
   }
 }
 

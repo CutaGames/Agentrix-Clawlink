@@ -117,12 +117,44 @@ export class CreateProductDto {
   @IsEnum(ProductType)
   productType: ProductType;
 
-  // 统一标准格式（优先）
+  // --- 向后兼容 & 扁平化支持 ---
+
+  @ApiProperty({ description: '价格（扁平化支持）', required: false })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  price?: any; // 这里使用 any 是因为下面还有一个 price?: PriceDto，我们需要保持兼容性或者是改名
+
+  @ApiProperty({ description: '库存（扁平化支持）', required: false })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  stock?: number;
+
+  @ApiProperty({ description: '图片URL（扁平化支持）', required: false })
+  @IsString()
+  @IsOptional()
+  image?: string;
+
+  @ApiProperty({ description: '分润率（%）', required: false })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  commissionRate?: number;
+
+  @ApiProperty({ description: '货币代码 (ISO 4217)', default: 'USD', required: false })
+  @IsString()
+  @IsOptional()
+  currency?: string;
+
+  // --- 统一标准格式（优先） ---
+
   @ApiProperty({ description: '价格信息（统一标准）', required: false })
   @ValidateNested()
   @Type(() => PriceDto)
   @IsOptional()
-  price?: PriceDto;
+  price_standard?: PriceDto;
 
   @ApiProperty({ description: '库存信息（统一标准）', required: false })
   @ValidateNested()
@@ -157,19 +189,6 @@ export class CreateProductDto {
   @Min(0)
   @IsOptional()
   price_legacy?: number;
-
-  @ApiProperty({ description: '库存（旧格式，向后兼容）', required: false })
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  stock?: number;
-
-  @ApiProperty({ description: '分润率（%）', required: false })
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  @IsOptional()
-  commissionRate?: number;
 }
 
 export class UpdateProductDto {

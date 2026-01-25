@@ -44,7 +44,7 @@ export class MerchantManagementService {
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.merchantProfile', 'profile')
-      .where(':role = ANY(user.roles)', { role: 'merchant' });
+      .where("user.roles @> '\"merchant\"'::jsonb");
 
     if (query.search) {
       queryBuilder.andWhere(
@@ -111,7 +111,7 @@ export class MerchantManagementService {
     const merchant = await this.userRepository
       .createQueryBuilder('user')
       .where('user.id = :id', { id })
-      .andWhere(':role = ANY(user.roles)', { role: 'merchant' })
+      .andWhere("user.roles @> '[\"merchant\"]'::jsonb")
       .getOne();
 
     if (!merchant) {
@@ -274,16 +274,16 @@ export class MerchantManagementService {
     const [totalMerchants, activeMerchants, verifiedMerchants] = await Promise.all([
       this.userRepository
         .createQueryBuilder('user')
-        .where(':role = ANY(user.roles)', { role: 'merchant' })
+        .where("user.roles @> '[\"merchant\"]'::jsonb")
         .getCount(),
       this.userRepository
         .createQueryBuilder('user')
-        .where(':role = ANY(user.roles)', { role: 'merchant' })
+        .where("user.roles @> '[\"merchant\"]'::jsonb")
         .andWhere('user.kycStatus = :status', { status: 'approved' })
         .getCount(),
       this.userRepository
         .createQueryBuilder('user')
-        .where(':role = ANY(user.roles)', { role: 'merchant' })
+        .where("user.roles @> '[\"merchant\"]'::jsonb")
         .andWhere('user.kycLevel = :level', { level: 'verified' })
         .getCount(),
     ]);

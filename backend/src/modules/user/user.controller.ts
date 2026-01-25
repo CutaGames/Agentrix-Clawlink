@@ -8,12 +8,14 @@ import {
   UseInterceptors,
   UploadedFile,
   Body,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UserService } from './user.service';
-import { UpdateUserDto, UploadAvatarDto } from './dto/user.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
+import { UpdateUserDto, UploadAvatarDto, UpdatePayoutSettingsDto } from './dto/user.dto';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 
 @ApiTags('用户')
 @Controller('users')
@@ -60,6 +62,27 @@ export class UserController {
   @ApiResponse({ status: 201, description: '注册成功' })
   async registerRole(@Request() req, @Body() body: { role: string; [key: string]: any }) {
     return this.userService.registerRole(req.user.id, body.role, body);
+  }
+
+  // ==================== 佣金结算设置 ====================
+
+  @Get('me/payout-settings')
+  @ApiOperation({ summary: '获取用户佣金结算设置' })
+  @ApiResponse({ status: 200, description: '返回结算设置' })
+  async getPayoutSettings(@Request() req) {
+    return this.userService.getPayoutSettings(req.user.id);
+  }
+
+  @Put('me/payout-settings')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '更新用户佣金结算设置' })
+  @ApiBody({ type: UpdatePayoutSettingsDto })
+  @ApiResponse({ status: 200, description: '设置更新成功' })
+  async updatePayoutSettings(
+    @Request() req,
+    @Body() dto: UpdatePayoutSettingsDto,
+  ) {
+    return this.userService.updatePayoutSettings(req.user.id, dto);
   }
 }
 

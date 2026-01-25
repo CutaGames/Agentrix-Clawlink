@@ -130,3 +130,187 @@ export class CreateProviderPaymentSessionDto {
   metadata?: Record<string, any>;
 }
 
+/**
+ * Stripe 支付创建 DTO (公开端点，userId 可选)
+ */
+export class CreateStripePaymentPublicDto {
+  @ApiProperty({ description: '支付金额' })
+  @IsNumber()
+  @IsNotEmpty()
+  amount: number;
+
+  @ApiProperty({ description: '货币类型', default: 'USD' })
+  @IsString()
+  @IsOptional()
+  currency?: string = 'USD';
+
+  @ApiProperty({ description: '用户ID (可选)', required: false })
+  @IsString()
+  @IsOptional()
+  userId?: string;
+
+  @ApiProperty({ description: '订单ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  orderId?: string;
+
+  @ApiProperty({ description: '商户ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  merchantId?: string;
+
+  @ApiProperty({ description: 'Agent ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  agentId?: string;
+
+  @ApiProperty({ description: '支付描述', required: false })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiProperty({ 
+    description: '技能层类型（用于分佣计算）', 
+    enum: ['INFRA', 'RESOURCE', 'LOGIC', 'COMPOSITE'],
+    required: false 
+  })
+  @IsString()
+  @IsOptional()
+  skillLayerType?: 'INFRA' | 'RESOURCE' | 'LOGIC' | 'COMPOSITE';
+
+  @ApiProperty({ description: '自定义分佣率（0-1）', required: false })
+  @IsNumber()
+  @IsOptional()
+  commissionRate?: number;
+
+  @ApiProperty({ description: 'Stripe Customer ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  customerId?: string;
+
+  @ApiProperty({ description: '额外元数据', required: false })
+  @IsOptional()
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Stripe 支付创建 DTO (需要认证)
+ */
+export class CreateStripePaymentDto {
+  @ApiProperty({ description: '支付金额' })
+  @IsNumber()
+  @IsNotEmpty()
+  amount: number;
+
+  @ApiProperty({ description: '货币类型', default: 'USD' })
+  @IsString()
+  @IsOptional()
+  currency: string = 'USD';
+
+  @ApiProperty({ description: '用户ID' })
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
+  @ApiProperty({ description: '订单ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  orderId?: string;
+
+  @ApiProperty({ description: '商户ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  merchantId?: string;
+
+  @ApiProperty({ description: 'Agent ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  agentId?: string;
+
+  @ApiProperty({ description: '支付描述', required: false })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiProperty({ 
+    description: '技能层类型（用于分佣计算）', 
+    enum: ['INFRA', 'RESOURCE', 'LOGIC', 'COMPOSITE'],
+    required: false 
+  })
+  @IsString()
+  @IsOptional()
+  skillLayerType?: 'INFRA' | 'RESOURCE' | 'LOGIC' | 'COMPOSITE';
+
+  @ApiProperty({ description: '自定义分佣率（0-1）', required: false })
+  @IsNumber()
+  @IsOptional()
+  commissionRate?: number;
+
+  @ApiProperty({ description: 'Stripe Customer ID（可选）', required: false })
+  @IsString()
+  @IsOptional()
+  customerId?: string;
+
+  @ApiProperty({ description: '额外元数据', required: false })
+  @IsOptional()
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Stripe 退款 DTO
+ */
+export class CreateStripeRefundDto {
+  @ApiProperty({ description: 'Stripe PaymentIntent ID' })
+  @IsString()
+  @IsNotEmpty()
+  paymentIntentId: string;
+
+  @ApiProperty({ description: '退款金额（可选，不提供则全额退款）', required: false })
+  @IsNumber()
+  @IsOptional()
+  amount?: number;
+
+  @ApiProperty({ 
+    description: '退款原因', 
+    enum: ['duplicate', 'fraudulent', 'requested_by_customer'],
+    required: false 
+  })
+  @IsString()
+  @IsOptional()
+  reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer';
+}
+
+/**
+ * Stripe Customer 创建/获取 DTO
+ */
+export class StripeCustomerDto {
+  @ApiProperty({ description: '用户ID' })
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
+  @ApiProperty({ description: '用户邮箱', required: false })
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @ApiProperty({ description: '用户名称', required: false })
+  @IsString()
+  @IsOptional()
+  name?: string;
+}
+
+/**
+ * Stripe 费率计算请求 DTO
+ */
+export class CalculateStripeFeeDto {
+  @ApiProperty({ description: '支付金额' })
+  @IsNumber()
+  @IsNotEmpty()
+  amount: number;
+
+  @ApiProperty({ description: '是否为国际卡支付', default: false })
+  @IsOptional()
+  isInternational?: boolean;
+}
+

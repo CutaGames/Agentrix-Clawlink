@@ -125,18 +125,18 @@ export class StatisticsService {
         .where('commission.payeeType = :payeeType', { payeeType: PayeeType.AGENT })
 
       if (start) {
-        commissionQB.andWhere('commission.createdAt >= :startDate', { startDate: start })
+        commissionQB.andWhere('commission.created_at >= :startDate', { startDate: start })
       }
 
       if (end) {
-        commissionQB.andWhere('commission.createdAt <= :endDate', { endDate: end })
+        commissionQB.andWhere('commission.created_at <= :endDate', { endDate: end })
       }
 
       const totalRevenue = await this.sumCommission(commissionQB)
 
       const todayStart = this.startOfDay(new Date())
       const todayRevenue = await this.sumCommission(
-        commissionQB.clone().andWhere('commission.createdAt >= :todayStart', { todayStart }),
+        commissionQB.clone().andWhere('commission.created_at >= :todayStart', { todayStart }),
       )
 
       const pending = await this.sumCommission(

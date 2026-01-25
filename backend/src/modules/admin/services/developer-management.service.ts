@@ -23,7 +23,7 @@ export class DeveloperManagementService {
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
-      .where(':role = ANY(user.roles)', { role: 'agent' });
+      .where("user.roles @> '[\"agent\"]'::jsonb");
 
     if (query.search) {
       queryBuilder.andWhere(
@@ -73,7 +73,7 @@ export class DeveloperManagementService {
     const developer = await this.userRepository
       .createQueryBuilder('user')
       .where('user.id = :id', { id })
-      .andWhere(':role = ANY(user.roles)', { role: 'agent' })
+      .andWhere("user.roles @> '[\"agent\"]'::jsonb")
       .getOne();
 
     if (!developer) {

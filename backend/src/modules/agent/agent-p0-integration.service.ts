@@ -27,6 +27,10 @@ import { Order, OrderStatus } from '../../entities/order.entity';
 import { Product } from '../../entities/product.entity';
 import { UserService } from '../user/user.service';
 import { LogisticsService } from '../logistics/logistics.service';
+import { MPCWalletService } from '../mpc-wallet/mpc-wallet.service';
+import { FiatToCryptoService } from '../payment/fiat-to-crypto.service';
+import { X402AuthorizationService } from '../payment/x402-authorization.service';
+import { UnifiedMarketplaceService } from '../unified-marketplace/unified-marketplace.service';
 
 /**
  * Agent P0功能集成服务
@@ -81,6 +85,14 @@ export class AgentP0IntegrationService {
     private userService: UserService,
     @Inject(forwardRef(() => LogisticsService))
     private logisticsService: LogisticsService,
+    @Inject(forwardRef(() => MPCWalletService))
+    private mpcWalletService: MPCWalletService,
+    @Inject(forwardRef(() => FiatToCryptoService))
+    private fiatToCryptoService: FiatToCryptoService,
+    @Inject(forwardRef(() => X402AuthorizationService))
+    private x402AuthorizationService: X402AuthorizationService,
+    @Inject(forwardRef(() => UnifiedMarketplaceService))
+    private unifiedMarketplaceService: UnifiedMarketplaceService,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Order)
@@ -179,6 +191,20 @@ export class AgentP0IntegrationService {
         case '钱包管理':
           return await this.handleWalletManagement(userId, params);
 
+        case 'create_mpc_wallet':
+        case '创建MPC钱包':
+        case '生成钱包':
+          return await this.handleCreateMPCWallet(userId, params);
+
+        case 'transfer_crypto':
+        case '转账':
+          return await this.handleTransfer(userId, params);
+
+        case 'onramp_fiat':
+        case '充值':
+        case '买币':
+          return await this.handleOnramp(userId, params);
+
         // 自动购买
         case 'auto_purchase':
         case '自动购买':
@@ -208,6 +234,12 @@ export class AgentP0IntegrationService {
         case 'api_assistant':
         case 'api助手':
           return await this.handleAPIAssistant(params);
+
+        // 技能搜索
+        case 'skill_search':
+        case '技能搜索':
+        case '能力搜索':
+          return await this.handleSkillSearch(params);
 
         // 商品搜索（语义检索）
         case 'product_search':
@@ -738,6 +770,9 @@ export class AgentP0IntegrationService {
     // 钱包管理相关
     if (lowerMessage.includes('钱包') || lowerMessage.includes('wallet') ||
         lowerMessage.includes('资产') || lowerMessage.includes('asset')) {
+      if (lowerMessage.includes('创建') || lowerMessage.includes('生成') || lowerMessage.includes('create')) {
+        return { intent: 'create_mpc_wallet', params: { action: 'create' } };
+      }
       if (lowerMessage.includes('查看') || lowerMessage.includes('查询') || lowerMessage.includes('list')) {
         return { intent: 'wallet_management', params: { action: 'list' } };
       }
@@ -745,6 +780,34 @@ export class AgentP0IntegrationService {
         return { intent: 'wallet_management', params: { action: 'switch' } };
       }
       return { intent: 'wallet_management', params: { action: 'overview' } };
+    }
+
+    // 转账功能
+    if (lowerMessage.includes('转账') || lowerMessage.includes('打款') || lowerMessage.includes('transfer') || lowerMessage.includes('send')) {
+      const amountMatch = message.match(/(\d+(?:\.\d+)?)/);
+      const currencyMatch = message.match(/(usdc|usdt|eth|sol|bnb)/i);
+      const addressMatch = message.match(/(0x[a-fA-F0-9]{40})/);
+      return {
+        intent: 'transfer_crypto',
+        params: {
+          amount: amountMatch ? amountMatch[1] : null,
+          currency: currencyMatch ? currencyMatch[1].toUpperCase() : 'USDC',
+          toAddress: addressMatch ? addressMatch[1] : null,
+        },
+      };
+    }
+
+    // 充值/法币买币
+    if (lowerMessage.includes('充值') || lowerMessage.includes('充值') || lowerMessage.includes('买币') || lowerMessage.includes('onramp') || lowerMessage.includes('fiat')) {
+      const amountMatch = message.match(/(\d+(?:\.\d+)?)/);
+      const currencyMatch = message.match(/(usd|eur|cny|jpy)/i);
+      return {
+        intent: 'onramp_fiat',
+        params: {
+          amount: amountMatch ? amountMatch[1] : null,
+          currency: currencyMatch ? currencyMatch[1].toUpperCase() : 'USD',
+        },
+      };
     }
 
     // 自动购买/订阅优化
@@ -929,6 +992,39 @@ export class AgentP0IntegrationService {
           message, // 传递完整消息，用于识别"最佳性价比的那个"等
         },
       };
+    }
+
+    // @ 提及技能名称（如 @search_news, @Commission Distribute）
+    const atMentionMatch = message.match(/@(\S+(?:\s+\S+)?)/);
+    if (atMentionMatch) {
+      const mentionedSkill = atMentionMatch[1].trim();
+      this.logger.log(`检测到 @ 提及技能: ${mentionedSkill}`);
+      return {
+        intent: 'skill_search',
+        params: {
+          query: mentionedSkill,
+        },
+      };
+    }
+
+    // 技能搜索（需要在商品搜索之前检查）
+    if (lowerMessage.includes('skill') || lowerMessage.includes('技能') ||
+        lowerMessage.includes('能力') || lowerMessage.includes('mcp') ||
+        lowerMessage.includes('api能力') || lowerMessage.includes('agent技能')) {
+      // 提取技能名称
+      const queryMatch = message.match(/(?:搜索|查找|找|search|find)\s*(.+?)(?:技能|skill|能力|$)/i) ||
+                         message.match(/(?:技能|skill|能力)\s*(.+)/i) ||
+                         message.match(/(.+?)(?:\s+skill|\s+技能)/i);
+      const query = queryMatch ? queryMatch[1].trim() : 
+                    message.replace(/搜索|查找|找|search|find|技能|skill|能力|mcp|api|agent/gi, '').trim();
+      if (query && query.length > 0) {
+        return {
+          intent: 'skill_search',
+          params: {
+            query,
+          },
+        };
+      }
     }
 
     // 用户功能：搜索商品（增强识别，包括游戏道具、"我要买XXX"等）
@@ -2583,6 +2679,79 @@ export class AgentP0IntegrationService {
     };
   }
 
+  /**
+   * 处理技能搜索请求
+   */
+  private async handleSkillSearch(params: any) {
+    const { query } = params;
+    
+    if (!query || query.trim().length === 0) {
+      return {
+        response: '🔍 技能搜索\n\n请输入您要搜索的技能名称，例如：\n• commission distribute skill\n• payment skill\n• product search\n\n💡 提示：您可以搜索支付、分账、物流等各类技能。',
+        type: 'skill_search',
+        data: { action: 'prompt_query' },
+      };
+    }
+
+    try {
+      // 调用统一市场服务搜索技能
+      const searchResult = await this.unifiedMarketplaceService.search({
+        query: query.trim(),
+        limit: 10,
+        sortBy: 'callCount',
+        sortOrder: 'DESC',
+      });
+
+      if (searchResult.items.length === 0) {
+        return {
+          response: `🔍 未找到包含 "${query}" 的技能。\n\n💡 建议：\n• 尝试使用不同的关键词\n• 使用英文关键词可能会有更好的结果\n• 查看技能市场浏览所有可用技能`,
+          type: 'skill_search',
+          data: {
+            query,
+            skills: [],
+            total: 0,
+          },
+        };
+      }
+
+      // 格式化技能列表
+      const skillList = searchResult.items.map((skill, index) => {
+        const pricing = skill.pricing as any;
+        const price = pricing?.pricePerCall !== undefined ? `$${pricing.pricePerCall}` : '免费';
+        const ratingValue = skill.rating != null ? Number(skill.rating) : null;
+        const ratingStr = ratingValue != null && !isNaN(ratingValue) ? ratingValue.toFixed(1) : 'N/A';
+        return `${index + 1}. **${skill.displayName || skill.name}**\n   📝 ${skill.description?.substring(0, 80) || '无描述'}...\n   💰 ${price}/次 | 📊 ${skill.callCount || 0}次调用 | ⭐ ${ratingStr}`;
+      }).join('\n\n');
+
+      return {
+        response: `🎯 找到 ${searchResult.total} 个与 "${query}" 相关的技能：\n\n${skillList}\n\n💡 提示：\n• 点击技能名称查看详情\n• 在技能市场可以安装和管理技能`,
+        type: 'skill_search',
+        data: {
+          query,
+          skills: searchResult.items.map(skill => ({
+            id: skill.id,
+            name: skill.name,
+            displayName: skill.displayName,
+            description: skill.description,
+            category: skill.category,
+            layer: skill.layer,
+            pricing: skill.pricing,
+            callCount: skill.callCount,
+            rating: skill.rating,
+          })),
+          total: searchResult.total,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`技能搜索失败: ${error.message}`, error.stack);
+      return {
+        response: `⚠️ 搜索技能时发生错误：${error.message}\n\n请稍后重试或联系客服。`,
+        type: 'skill_search',
+        data: { query, error: error.message },
+      };
+    }
+  }
+
   // ========== 开发者Agent额外功能 ==========
 
   private async handleSandbox(params: any) {
@@ -2749,6 +2918,98 @@ const response = await fetch('https://api.paymind.com/v1/payments', {
         type: codeType,
         code,
       },
+    };
+  }
+
+  // ========== 基础设施作为技能 (Service as Skill) ==========
+
+  private async handleCreateMPCWallet(userId: string | undefined, params: any) {
+    if (!userId) {
+      return { response: '创建 MPC 钱包需要登录。请先登录。' };
+    }
+
+    try {
+      // 在实际生产中，密码应该由前端安全引导
+      const defaultPassword = 'agentrix_secure_pwd_2025'; 
+      const wallet = await this.mpcWalletService.generateMPCWallet(userId, defaultPassword);
+
+      return {
+        response: `👛 MPC 钱包创建成功！\n\n• 地址：${wallet.walletAddress}\n• 网络：BSC (Testnet)\n\n💡 提示：您的钱包已采用 Shamir 分片技术。分片 B 已由 Agentrix 安全存储，分片 A 和 C 将在界面上提供给您备份。`,
+        data: {
+          walletAddress: wallet.walletAddress,
+          chain: 'BSC',
+          type: 'MPC',
+        },
+        type: 'wallet_management',
+      };
+    } catch (error: any) {
+      if (error.message.includes('already has')) {
+        const wallet = await this.mpcWalletService.getMPCWallet(userId);
+        return {
+          response: `👛 您已经拥有活跃的 MPC 钱包。\n\n• 地址：${wallet.walletAddress}\n• 网络：${wallet.chain}`,
+          data: { walletAddress: wallet.walletAddress, chain: wallet.chain },
+          type: 'wallet_management',
+        };
+      }
+      return { response: `创建钱包失败：${error.message}` };
+    }
+  }
+
+  private async handleTransfer(userId: string | undefined, params: any) {
+    if (!userId) {
+      return { response: '转账功能需要登录才能使用。' };
+    }
+
+    const { amount, currency = 'USDC', toAddress } = params;
+
+    if (!amount || !toAddress) {
+      return {
+        response: '⚠️ 转账信息不完整。\n\n请提供金额和目标地址。例如："转账 10 USDC 给 0x123..."',
+        type: 'transfer_crypto',
+      };
+    }
+
+    try {
+      // 检查是否有 X402 授权，如果有，可以模拟"闭环支付"测试
+      const auth = await this.x402AuthorizationService.checkAuthorization(userId);
+      
+      if (auth && auth.isActive && parseFloat(amount) <= auth.singleLimit) {
+        // 模拟执行闭环支付
+        // 在真实场景中，这里会调用 PayMindRelayerService.processQuickPay
+        return {
+          response: `💸 【闭环支付已执行】\n\n检测到您已开启 X402 自动授权，无需签名即可完成操作。\n\n• 金额：${amount} ${currency}\n• 接收方：${toAddress.substring(0, 10)}...\n• 状态：交易已提交 (Mock)\n\n✅ 交易哈希：0x${Math.random().toString(16).substring(2, 66)}`,
+          data: { amount, currency, toAddress, status: 'success', x402: true },
+          type: 'transfer_crypto',
+        };
+      }
+
+      return {
+        response: `💸 请确认您的转账意图：\n\n• 金额：${amount} ${currency}\n• 接收方：${toAddress}\n\n💡 提示：由于未开启 X402 自动授权，本次转账需要您在钱包中签署消息。`,
+        data: { amount, currency, toAddress, status: 'pending_signature' },
+        type: 'transfer_crypto',
+      };
+    } catch (error: any) {
+      return { response: `发起转账失败：${error.message}` };
+    }
+  }
+
+  private async handleOnramp(userId: string | undefined, params: any) {
+    const { amount, currency = 'USD' } = params;
+
+    if (!amount) {
+      return {
+        response: '请输入您想充值的金额。例如："充值 $100"',
+        type: 'onramp_fiat',
+      };
+    }
+
+    // 生成入金链接（Transak 逻辑）
+    const transakUrl = `https://global.transak.com/?apiKey=demo&fiatAmount=${amount}&fiatCurrency=${currency.toUpperCase()}&cryptoCurrencyCode=USDC&network=bsc`;
+
+    return {
+      response: `🛒 已为您生成充值通道（Transak）：\n\n• 您将支付：${amount} ${currency}\n• 您将收到：~${amount} USDC (BSC)\n\n💡 点击下方链接使用信用卡或银行转账完成购买：\n${transakUrl}`,
+      data: { amount, currency, url: transakUrl },
+      type: 'onramp_fiat',
     };
   }
 

@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 
 config();
 
@@ -13,6 +14,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_DATABASE || 'paymind', // 实际数据库名是 paymind
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+  namingStrategy: new SnakeNamingStrategy(),
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
 });

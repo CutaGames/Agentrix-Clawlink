@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { User, UserRole } from '../../entities/user.entity';
 import { MerchantProfile } from '../../entities/merchant-profile.entity';
 import { ReferralService } from '../referral/referral.service';
+import { DeveloperAccountService } from '../developer-account/developer-account.service';
+import { DeveloperType } from '../../entities/developer-account.entity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
@@ -11,6 +13,25 @@ import * as crypto from 'crypto';
 
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
+
+/**
+ * 将 roles 字段统一转换为数组
+ * 兼容处理数据库中存储为字符串格式的历史数据，如 "{user,merchant}"
+ */
+function ensureRolesArray(roles: any): UserRole[] {
+  if (typeof roles === 'string') {
+    // 处理 PostgreSQL 数组字符串格式: "{user,merchant}"
+    return roles
+      .replace(/[{}]/g, '')
+      .split(',')
+      .map((r: string) => r.trim())
+      .filter((r: string) => r) as UserRole[];
+  }
+  if (Array.isArray(roles)) {
+    return roles;
+  }
+  return [UserRole.USER];
+}
 
 @Injectable()
 export class UserService {
@@ -24,6 +45,8 @@ export class UserService {
     private merchantProfileRepository: Repository<MerchantProfile>,
     @Inject(forwardRef(() => ReferralService))
     private referralService: ReferralService,
+    @Inject(forwardRef(() => DeveloperAccountService))
+    private developerAccountService: DeveloperAccountService,
   ) {
     // 确保上传目录存在
     if (!fs.existsSync(this.uploadDir)) {
@@ -41,7 +64,13 @@ export class UserService {
       throw new NotFoundException('用户不存在');
     }
 
-    return user;
+    // 确保 roles 是数组格式
+    const rolesArray = ensureRolesArray(user.roles);
+    
+    return {
+      ...user,
+      roles: rolesArray,
+    };
   }
 
   async updateProfile(userId: string, dto: any) {
@@ -159,14 +188,17 @@ export class UserService {
       throw new NotFoundException('用户不存在');
     }
 
+    // 使用辅助函数确保 roles 是数组（兼容历史数据）
+    const rolesArray = ensureRolesArray(user.roles);
+    
     // 检查角色是否已存在
-    if (user.roles && user.roles.includes(role)) {
+    if (rolesArray.includes(role)) {
       return user; // 角色已存在，直接返回
     }
 
     // 添加新角色
-    const updatedRoles = user.roles ? [...user.roles, role] : [role];
-    user.roles = updatedRoles as UserRole[];
+    rolesArray.push(role);
+    user.roles = rolesArray;
 
     await this.userRepository.save(user);
 
@@ -184,10 +216,13 @@ export class UserService {
       throw new NotFoundException('用户不存在');
     }
 
-    // 1. 添加角色
+    // 1. 添加角色 - 使用辅助函数处理历史数据兼容
     const userRole = role as UserRole;
-    if (!user.roles.includes(userRole)) {
-      user.roles.push(userRole);
+    const rolesArray = ensureRolesArray(user.roles);
+    
+    if (!rolesArray.includes(userRole)) {
+      rolesArray.push(userRole);
+      user.roles = rolesArray;
       await this.userRepository.save(user);
     }
 
@@ -221,17 +256,146 @@ export class UserService {
       }
     }
 
+    // 3. 如果是开发者，创建开发者账户
+    if (role === 'developer') {
+      try {
+        // 检查是否已有开发者账户
+        const existingAccount = await this.developerAccountService.findByUserId(userId);
+        if (!existingAccount) {
+          // 创建新的开发者账户
+          await this.developerAccountService.create(userId, {
+            name: data.displayName || data.name || user.nickname || '开发者',
+            type: data.developerType || DeveloperType.INDIVIDUAL,
+            contactEmail: data.contactEmail || user.email,
+            website: data.website,
+            description: data.description,
+          });
+          this.logger.log(`为用户 ${userId} 创建开发者账户成功`);
+        }
+      } catch (err) {
+        this.logger.warn(`创建开发者账户失败: ${err.message}`);
+        // 开发者账户创建失败不影响角色注册
+      }
+    }
+
     return {
       success: true,
       message: '角色注册成功',
       user: {
         id: user.id,
         agentrixId: user.agentrixId,
-        roles: user.roles,
+        roles: ensureRolesArray(user.roles), // 确保返回数组格式
         email: user.email,
         nickname: user.nickname,
       },
     };
+  }
+
+  // ==================== 佣金结算设置 ====================
+
+  /**
+   * 获取用户佣金结算设置
+   */
+  async getPayoutSettings(userId: string) {
+    const user = await this.userRepository.findOne({ 
+      where: { id: userId },
+      select: ['id', 'metadata'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const payoutSettings = user.metadata?.payoutSettings || {
+      preferredMethod: 'none',
+      minPayoutThreshold: 10,
+      autoPayoutEnabled: true,
+    };
+
+    return {
+      success: true,
+      data: payoutSettings,
+    };
+  }
+
+  /**
+   * 更新用户佣金结算设置
+   */
+  async updatePayoutSettings(userId: string, dto: any) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 初始化 metadata
+    if (!user.metadata) {
+      user.metadata = {};
+    }
+
+    // 初始化 payoutSettings
+    if (!user.metadata.payoutSettings) {
+      user.metadata.payoutSettings = {
+        preferredMethod: 'none',
+        minPayoutThreshold: 10,
+        autoPayoutEnabled: true,
+      };
+    }
+
+    // 更新设置
+    if (dto.preferredMethod !== undefined) {
+      user.metadata.payoutSettings.preferredMethod = dto.preferredMethod;
+    }
+    if (dto.cryptoWalletAddress !== undefined) {
+      user.metadata.payoutSettings.cryptoWalletAddress = dto.cryptoWalletAddress;
+    }
+    if (dto.cryptoWalletChain !== undefined) {
+      user.metadata.payoutSettings.cryptoWalletChain = dto.cryptoWalletChain;
+    }
+    if (dto.minPayoutThreshold !== undefined) {
+      user.metadata.payoutSettings.minPayoutThreshold = dto.minPayoutThreshold;
+    }
+    if (dto.autoPayoutEnabled !== undefined) {
+      user.metadata.payoutSettings.autoPayoutEnabled = dto.autoPayoutEnabled;
+    }
+
+    // 保存
+    await this.userRepository.save(user);
+
+    this.logger.log(`用户 ${userId} 更新佣金结算设置: ${JSON.stringify(dto)}`);
+
+    return {
+      success: true,
+      message: '设置已更新',
+      data: user.metadata.payoutSettings,
+    };
+  }
+
+  /**
+   * 根据 ID 查找用户
+   */
+  async findById(userId: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { id: userId } });
+  }
+
+  /**
+   * 更新用户的 Stripe Connect 账户 ID
+   */
+  async updateStripeConnectAccountId(userId: string, stripeConnectAccountId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 初始化 metadata
+    if (!user.metadata) {
+      user.metadata = {};
+    }
+    
+    user.metadata.stripeConnectAccountId = stripeConnectAccountId;
+    await this.userRepository.save(user);
+    
+    this.logger.log(`用户 ${userId} 绑定 Stripe Connect 账户: ${stripeConnectAccountId}`);
   }
 }
 

@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../auth/decorators/public.decorator';
-import { ApiKeyGuard } from '../../api-key/guards/api-key.guard';
+import { UnifiedAuthGuard } from '../../auth/guards/unified-auth.guard';
 import { SearchService } from '../../search/search.service';
 import { ProductService } from '../../product/product.service';
 import { OrderService } from '../../order/order.service';
@@ -30,8 +30,8 @@ import { OrderStatus } from '../../../entities/order.entity';
  */
 @ApiTags('Marketplace (GPTs)')
 @Controller('marketplace')
-@Public() // 允许 GPTs 访问，但需要通过 API Key 认证
-@UseGuards(ApiKeyGuard)
+@Public() // 允许 GPTs 访问，但通过 UnifiedAuthGuard 支持 API Key 或 JWT
+@UseGuards(UnifiedAuthGuard)
 export class MarketplaceGPTsController {
   private readonly logger = new Logger(MarketplaceGPTsController.name);
 

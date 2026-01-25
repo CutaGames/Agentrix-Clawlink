@@ -24,8 +24,11 @@ import { AgentP0IntegrationService } from './agent-p0-integration.service';
 import { AgentRegistryService } from './agent-registry.service';
 import { AuthorizationService } from './authorization.service';
 import { AgentCheckoutService } from './agent-checkout.service';
+import { AgentExecutePaymentService } from './agent-execute-payment.service';
+import { PolicyEvaluatorService } from './policy-evaluator.service';
 import { TemplateSubscriptionService } from './template-subscription.service';
 import { EasService } from './eas.service';
+import { Policy } from '../../entities/policy.entity';
 import { AuditAnchoringService } from './audit-anchoring.service';
 import { TemplateReviewService } from './template-review.service';
 import { TemplateReview } from '../../entities/template-review.entity';
@@ -42,6 +45,11 @@ import { AgentRuntimeIntegrationService } from './agent-runtime-integration.serv
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integration.module';
 import { AgentTemplateSeederService } from '../../database/seeds/agent-template-seeder.service';
+import { MPCWalletModule } from '../mpc-wallet/mpc-wallet.module';
+import { AuthModule } from '../auth/auth.module';
+import { WebhookModule } from '../webhook/webhook.module';
+import { UnifiedMarketplaceModule } from '../unified-marketplace/unified-marketplace.module';
+import { AutoPayModule } from '../auto-pay/auto-pay.module';
 
 @Module({
   imports: [
@@ -59,6 +67,7 @@ import { AgentTemplateSeederService } from '../../database/seeds/agent-template-
       AgentRegistry,
       Authorization,
       AuditProof,
+      Policy,
     ]),
     forwardRef(() => ProductModule),
     forwardRef(() => OrderModule),
@@ -72,10 +81,15 @@ import { AgentTemplateSeederService } from '../../database/seeds/agent-template-
     forwardRef(() => AnalyticsModule),
     forwardRef(() => CartModule),
     forwardRef(() => UserModule),
+    MPCWalletModule,
     ApiKeyModule,
+    AuthModule,
+    WebhookModule,
     DeploymentModule,
     RuntimeModule,
     forwardRef(() => GeminiIntegrationModule),
+    forwardRef(() => UnifiedMarketplaceModule),
+    forwardRef(() => AutoPayModule),
   ],
   controllers: [AgentController],
   providers: [
@@ -86,6 +100,8 @@ import { AgentTemplateSeederService } from '../../database/seeds/agent-template-
     AgentRegistryService,
     AuthorizationService,
     AgentCheckoutService,
+    AgentExecutePaymentService,
+    PolicyEvaluatorService,
     TemplateSubscriptionService,
     TemplateReviewService,
     EasService,
@@ -99,6 +115,8 @@ import { AgentTemplateSeederService } from '../../database/seeds/agent-template-
     AgentRegistryService,
     AuthorizationService,
     AgentCheckoutService,
+    AgentExecutePaymentService,
+    PolicyEvaluatorService,
     TemplateSubscriptionService,
     TemplateReviewService,
     EasService,

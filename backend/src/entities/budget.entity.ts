@@ -27,7 +27,7 @@ export class Budget {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('uuid')
+  @Column({ type: 'uuid' })
   userId: string;
 
   @Column({ length: 100, nullable: true })
@@ -45,10 +45,10 @@ export class Budget {
   })
   period: BudgetPeriod;
 
-  @Column('date')
+  @Column({ type: 'date' })
   startDate: Date;
 
-  @Column('date')
+  @Column({ type: 'date' })
   endDate: Date;
 
   @Column('decimal', { precision: 18, scale: 2, default: 0 })

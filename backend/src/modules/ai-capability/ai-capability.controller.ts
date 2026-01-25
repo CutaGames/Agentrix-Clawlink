@@ -4,7 +4,7 @@ import { CapabilityExecutorService } from './services/capability-executor.servic
 import { PlatformRegistryService } from './services/platform-registry.service';
 import { AIPlatform, ExecutionContext, SystemCapability } from './interfaces/capability.interface';
 
-@Controller('api/ai-capability')
+@Controller('ai-capability')
 export class AiCapabilityController {
   constructor(
     private capabilityRegistry: CapabilityRegistryService,

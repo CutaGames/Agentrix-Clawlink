@@ -172,7 +172,7 @@ export const multiAssetProductsSeed = async (dataSource: DataSource) => {
       category: '治理代币',
       image: 'https://images.unsplash.com/photo-1621761191319-c6fb62004040?w=400',
       metadata: {
-        tokenAddress: '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd',
+        tokenAddress: '0xc23453b4842FDc4360A0a3518E2C0f51a2069386',
         chainId: 97,
         chainName: 'BSC Testnet',
         standard: 'ERC-20',

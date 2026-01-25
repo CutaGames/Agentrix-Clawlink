@@ -27,7 +27,7 @@ export class CouponUsage {
   @Column('decimal', { precision: 10, scale: 2 })
   discountAmount: number;  // 折扣金额
 
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column('decimal', { name: 'original_amount', precision: 10, scale: 2 })
   originalAmount: number;  // 原始金额
 
   @Column('decimal', { precision: 10, scale: 2 })

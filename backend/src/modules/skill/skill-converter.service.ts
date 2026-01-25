@@ -9,15 +9,21 @@ export class SkillConverterService {
   convertToOpenAI(skill: Skill) {
     const { name, description, inputSchema } = skill;
     
+    if (!name) {
+      throw new Error('Skill name is required for conversion');
+    }
+    
+    const schema = inputSchema || { properties: {}, required: [] };
+    
     return {
       type: 'function',
       function: {
         name: name.replace(/[^a-zA-Z0-9_]/g, '_'),
-        description,
+        description: description || '',
         parameters: {
           type: 'object',
-          properties: inputSchema.properties,
-          required: inputSchema.required || [],
+          properties: schema.properties || {},
+          required: schema.required || [],
         },
       },
     };
@@ -29,13 +35,19 @@ export class SkillConverterService {
   convertToClaude(skill: Skill) {
     const { name, description, inputSchema } = skill;
     
+    if (!name) {
+      throw new Error('Skill name is required for conversion');
+    }
+    
+    const schema = inputSchema || { properties: {}, required: [] };
+    
     return {
       name: name.replace(/[^a-zA-Z0-9_]/g, '_'),
-      description,
+      description: description || '',
       inputSchema: {
         type: 'object',
-        properties: inputSchema.properties,
-        required: inputSchema.required || [],
+        properties: schema.properties || {},
+        required: schema.required || [],
       },
     };
   }
@@ -46,13 +58,19 @@ export class SkillConverterService {
   convertToGemini(skill: Skill) {
     const { name, description, inputSchema } = skill;
     
+    if (!name) {
+      throw new Error('Skill name is required for conversion');
+    }
+    
+    const schema = inputSchema || { properties: {}, required: [] };
+    
     return {
       name: name.replace(/[^a-zA-Z0-9_]/g, '_'),
-      description,
+      description: description || '',
       parameters: {
         type: 'OBJECT',
-        properties: inputSchema.properties,
-        required: inputSchema.required || [],
+        properties: schema.properties || {},
+        required: schema.required || [],
       },
     };
   }
@@ -62,20 +80,27 @@ export class SkillConverterService {
    */
   convertToOpenAPI(skill: Skill) {
     const { name, description, inputSchema, executor } = skill;
+    
+    if (!name) {
+      throw new Error('Skill name is required for conversion');
+    }
+    
     const safeName = name.replace(/[^a-zA-Z0-9_]/g, '_');
+    const schema = inputSchema || { properties: {}, required: [] };
+    const exec = executor || { endpoint: '/execute', method: 'POST' };
     
     return {
       openapi: '3.0.0',
       info: {
         title: `${name} API`,
         version: skill.version || '1.0.0',
-        description,
+        description: description || '',
       },
       paths: {
-        [executor.endpoint || '/execute']: {
-          [executor.method?.toLowerCase() || 'post']: {
+        [exec.endpoint || '/execute']: {
+          [exec.method?.toLowerCase() || 'post']: {
             operationId: safeName,
-            summary: description,
+            summary: description || '',
             responses: {
               '200': {
                 description: 'Successful response',
@@ -88,30 +113,34 @@ export class SkillConverterService {
                 },
               },
             },
-            ...(executor.method === 'GET' ? {
-              parameters: Object.entries(inputSchema.properties).map(([key, val]) => ({
-                name: key,
-                in: 'query',
-                description: val.description,
-                required: inputSchema.required?.includes(key),
-                schema: { type: val.type }
-              }))
+            ...(exec.method === 'GET' ? {
+              parameters: Object.entries(schema.properties || {}).map(([key, val]) => {
+                const prop = val as { description?: string; type?: string } | undefined;
+                return {
+                  name: key,
+                  in: 'query',
+                  description: prop?.description || '',
+                  required: schema.required?.includes(key),
+                  schema: { type: prop?.type || 'string' }
+                };
+              })
             } : {
               requestBody: {
+                required: true,
                 content: {
                   'application/json': {
                     schema: {
                       type: 'object',
-                      properties: inputSchema.properties,
-                      required: inputSchema.required
-                    }
-                  }
-                }
-              }
-            })
-          }
-        }
-      }
+                      properties: schema.properties || {},
+                      required: schema.required || [],
+                    },
+                  },
+                },
+              },
+            }),
+          },
+        },
+      },
     };
   }
 }

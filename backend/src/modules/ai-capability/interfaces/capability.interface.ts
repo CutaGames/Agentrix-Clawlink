@@ -116,7 +116,7 @@ export interface SystemCapability {
   id: string;
   name: string;
   description: string;
-  category: 'ecommerce' | 'payment' | 'order' | 'logistics' | 'merchant' | 'developer' | 'airdrop' | 'autoearn' | 'agent_management' | 'trading' | 'other';
+  category: 'ecommerce' | 'payment' | 'wallet' | 'order' | 'logistics' | 'merchant' | 'developer' | 'airdrop' | 'autoearn' | 'agent_management' | 'trading' | 'other';
   executor: string;
   parameters: {
     type: 'object';

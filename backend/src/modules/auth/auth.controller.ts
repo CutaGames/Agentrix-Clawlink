@@ -141,6 +141,14 @@ export class AuthController {
       redirectUrl.searchParams.set('userId', loginResult.user.id);
       redirectUrl.searchParams.set('email', loginResult.user.email || '');
       redirectUrl.searchParams.set('agentrixId', loginResult.user.agentrixId);
+      
+      // 检查用户是否有钱包绑定，如果没有则需要创建 MPC 钱包
+      const hasWallet = (loginResult.user as any).walletAddress;
+      if (!hasWallet) {
+        redirectUrl.searchParams.set('needMPCWallet', 'true');
+        redirectUrl.searchParams.set('socialType', type);
+        redirectUrl.searchParams.set('socialId', socialId);
+      }
 
       res.redirect(redirectUrl.toString());
     } catch (error) {

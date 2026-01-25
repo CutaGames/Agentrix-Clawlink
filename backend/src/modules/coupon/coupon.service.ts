@@ -274,19 +274,19 @@ export class CouponService {
 
     const query = this.couponRepository
       .createQueryBuilder('coupon')
-      .where('coupon.merchantId = :merchantId', { merchantId })
+      .where('coupon.merchant_id = :merchantId', { merchantId })
       .andWhere('coupon.status = :status', { status: CouponStatus.ACTIVE })
-      .andWhere('(coupon.validFrom IS NULL OR coupon.validFrom <= :now)', { now })
-      .andWhere('(coupon.validUntil IS NULL OR coupon.validUntil >= :now)', { now })
-      .andWhere('(coupon.usageLimit = 0 OR coupon.usedCount < coupon.usageLimit)')
-      .andWhere('(coupon.minPurchaseAmount IS NULL OR coupon.minPurchaseAmount <= :orderAmount)', {
+      .andWhere('(coupon.valid_from IS NULL OR coupon.valid_from <= :now)', { now })
+      .andWhere('(coupon.valid_until IS NULL OR coupon.valid_until >= :now)', { now })
+      .andWhere('(coupon.usage_limit = 0 OR coupon.used_count < coupon.usage_limit)')
+      .andWhere('(coupon.min_purchase_amount IS NULL OR coupon.min_purchase_amount <= :orderAmount)', {
         orderAmount,
       });
 
     // 如果指定了商品，检查适用商品
     if (productIds && productIds.length > 0) {
       query.andWhere(
-        '(coupon.applicableProducts IS NULL OR coupon.applicableProducts = :emptyArray OR coupon.applicableProducts && :productIds)',
+        '(coupon.applicable_products IS NULL OR coupon.applicable_products = :emptyArray OR coupon.applicable_products && :productIds)',
         {
           emptyArray: [],
           productIds,
@@ -297,7 +297,7 @@ export class CouponService {
     // 如果指定了分类，检查适用分类
     if (categoryIds && categoryIds.length > 0) {
       query.andWhere(
-        '(coupon.applicableCategories IS NULL OR coupon.applicableCategories = :emptyArray OR coupon.applicableCategories && :categoryIds)',
+        '(coupon.applicable_categories IS NULL OR coupon.applicable_categories = :emptyArray OR coupon.applicable_categories && :categoryIds)',
         {
           emptyArray: [],
           categoryIds,

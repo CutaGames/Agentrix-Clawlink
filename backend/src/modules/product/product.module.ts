@@ -5,6 +5,7 @@ import { ProductService } from './product.service';
 import { Product } from '../../entities/product.entity';
 import { SearchModule } from '../search/search.module';
 import { AiCapabilityModule } from '../ai-capability/ai-capability.module';
+import { SkillModule } from '../skill/skill.module';
 import { ProductBatchImportController } from './product-batch-import.controller';
 import { ProductBatchImportService } from './product-batch-import.service';
 import { EcommerceSyncController } from './ecommerce-sync.controller';
@@ -21,6 +22,7 @@ import { ProductSyncMapping } from '../../entities/product-sync-mapping.entity';
     ]),
     forwardRef(() => SearchModule),
     forwardRef(() => AiCapabilityModule),
+    forwardRef(() => SkillModule), // 🔥 添加SkillModule以访问ProductSkillConverterService
   ],
   controllers: [
     ProductController,

@@ -33,6 +33,8 @@ export enum AssetType {
   VIRTUAL = 'virtual',
   NFT_RWA = 'nft_rwa',
   DEV_TOOL = 'dev_tool',
+  SUBSCRIPTION = 'subscription',
+  OTHER = 'other',
   AGGREGATED_WEB2 = 'aggregated_web2',
   AGGREGATED_WEB3 = 'aggregated_web3',
 }
@@ -54,10 +56,10 @@ export class Order {
   @Column()
   merchantId: string;
 
-  @ManyToOne(() => Product)
+  @ManyToOne(() => Product, { nullable: true })
   product: Product;
 
-  @Column()
+  @Column({ nullable: true })
   productId: string;
 
   @Column('decimal', { precision: 15, scale: 2 })
@@ -143,6 +145,20 @@ export class Order {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: any;
+
+  // UCP (Unified Checkout Protocol) 支持
+  @Column({ default: false })
+  ucpEnabled: boolean;
+
+  @Column({ nullable: true })
+  ucpSessionId: string;
+
+  // X402 (HTTP Payment Protocol) 支持
+  @Column({ default: false })
+  x402Enabled: boolean;
+
+  @Column({ nullable: true })
+  x402PaymentId: string;
 
   @CreateDateColumn()
   createdAt: Date;

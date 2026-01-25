@@ -352,8 +352,8 @@ export class CapabilityRegistryService {
     // 电商流程
     this.registerSystemCapability({
       id: 'search_products',
-      name: 'search_paymind_products',
-      description: '搜索 PayMind Marketplace 中的商品',
+      name: 'search_agentrix_products',
+      description: '搜索 Agentrix Marketplace 中的商品',
       category: 'ecommerce',
       executor: 'executor_search',
       parameters: {
@@ -371,7 +371,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'add_to_cart',
-      name: 'add_to_paymind_cart',
+      name: 'add_to_agentrix_cart',
       description: '将商品加入购物车',
       category: 'ecommerce',
       executor: 'executor_cart',
@@ -388,7 +388,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'checkout_cart',
-      name: 'checkout_paymind_cart',
+      name: 'checkout_agentrix_cart',
       description: '结算购物车',
       category: 'ecommerce',
       executor: 'executor_checkout',
@@ -401,7 +401,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'view_cart',
-      name: 'view_paymind_cart',
+      name: 'view_agentrix_cart',
       description: '查看购物车',
       category: 'ecommerce',
       executor: 'executor_cart',
@@ -414,7 +414,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'track_logistics',
-      name: 'track_paymind_logistics',
+      name: 'track_agentrix_logistics',
       description: '查询订单物流信息',
       category: 'logistics',
       executor: 'executor_logistics',
@@ -430,7 +430,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'compare_prices',
-      name: 'compare_paymind_prices',
+      name: 'compare_agentrix_prices',
       description: '比较商品价格，显示最低价、最高价、平均价格和最佳性价比',
       category: 'ecommerce',
       executor: 'executor_price_comparison',
@@ -445,7 +445,7 @@ export class CapabilityRegistryService {
 
     this.registerSystemCapability({
       id: 'pay_order',
-      name: 'pay_paymind_order',
+      name: 'pay_agentrix_order',
       description: '支付订单，为待支付订单创建支付链接',
       category: 'ecommerce',
       executor: 'executor_payment',
@@ -456,6 +456,23 @@ export class CapabilityRegistryService {
         },
       },
       enabled: true,
+    });
+
+    // Wallet 基础能力
+    this.registerSystemCapability({
+      id: 'create_wallet',
+      name: 'create_agentrix_mpc_wallet',
+      description: '为用户创建一个安全且受保护的 MPC 托管钱包。该钱包支持主流区块链（如 Ethereum, Solana, BSC），用户无需记住私钥。',
+      category: 'wallet',
+      executor: 'WalletOnboardingExecutor',
+      parameters: {
+        type: 'object',
+        properties: {
+          chain: { type: 'string', enum: ['ethereum', 'solana', 'bsc'], description: '首选区块链网络（可选）' },
+        },
+      },
+      enabled: true,
+      externalExposed: true,
     });
 
     // ========== 个人Agent能力 ==========

@@ -31,7 +31,7 @@ export class NFT {
   collectionId: string;
 
   @ManyToOne(() => NFTCollection, (collection) => collection.nfts)
-  @JoinColumn({ name: 'collectionId' })
+  @JoinColumn()
   collection: NFTCollection;
 
   @Column({ nullable: true })
@@ -87,7 +87,7 @@ export class NFT {
   userId: string;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   // 销售历史

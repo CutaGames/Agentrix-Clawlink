@@ -70,7 +70,7 @@ export class Token {
   userId: string;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   // 代币分配配置

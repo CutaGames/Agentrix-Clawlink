@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
@@ -22,12 +23,13 @@ export enum ChainType {
 }
 
 @Entity('wallet_connections')
-@Index('IDX_wallet_connections_address', ['walletAddress'], { unique: true })
+@Index('IDX_wallet_connections_wallet_address', ['walletAddress'], { unique: true })
 export class WalletConnection {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @ManyToOne(() => User)
+  @JoinColumn()
   user: User;
 
   @Column()

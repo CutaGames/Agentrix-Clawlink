@@ -33,6 +33,8 @@ import { ExchangeRateService } from './exchange-rate.service';
 import { ConfigService } from '@nestjs/config';
 import { ProviderManagerService } from './provider-manager.service';
 
+import { UnifiedAuthGuard } from '../auth/guards/unified-auth.guard';
+
 @ApiTags('payments')
 @ApiBearerAuth()
 @Controller('payments')
@@ -54,7 +56,7 @@ export class PaymentController {
   @Post('create-intent')
   @ApiOperation({ summary: '创建支付意图（Stripe）' })
   @ApiResponse({ status: 201, description: '支付意图创建成功' })
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
   async createPaymentIntent(@Request() req, @Body() dto: CreatePaymentIntentDto) {
     return this.paymentService.createPaymentIntent(req.user?.id, dto);
   }
@@ -62,7 +64,7 @@ export class PaymentController {
   @Post('process')
   @ApiOperation({ summary: '处理支付' })
   @ApiResponse({ status: 201, description: '支付处理成功' })
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
   async processPayment(@Request() req, @Body() dto: ProcessPaymentDto) {
     return this.paymentService.processPayment(req.user?.id, dto);
   }
@@ -70,7 +72,7 @@ export class PaymentController {
   @Get('routing')
   @ApiOperation({ summary: '获取支付路由建议' })
   @ApiResponse({ status: 200, description: '返回路由建议' })
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(UnifiedAuthGuard)
   async getPaymentRouting(
     @Request() req,
     @Query('amount') amount: number,
@@ -315,6 +317,45 @@ export class PaymentController {
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
     });
+  }
+
+  @Get('history')
+  @ApiOperation({ summary: '获取支付历史记录（兼容V2前端）' })
+  @ApiResponse({ status: 200, description: '返回支付历史记录' })
+  @UseGuards(JwtAuthGuard)
+  async getPaymentHistory(
+    @Request() req,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+  ) {
+    const offset = (page - 1) * limit;
+    const result = await this.paymentService.getUserPayments(req.user.id, {
+      status,
+      limit,
+      offset,
+    });
+
+    return {
+      items: result.data.map(p => ({
+        id: p.id,
+        orderId: p.metadata?.orderId || '',
+        amount: p.amount.toString(),
+        currency: p.currency,
+        method: p.paymentMethod,
+        type: p.paymentMethod === 'stripe' ? 'fiat' : 'crypto',
+        status: p.status,
+        transactionHash: p.transactionHash,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        metadata: p.metadata
+      })),
+      total: result.total,
+      page: Number(page),
+      limit: Number(limit),
+      hasMore: result.total > offset + result.data.length,
+    };
   }
 
   @Get(':paymentId')

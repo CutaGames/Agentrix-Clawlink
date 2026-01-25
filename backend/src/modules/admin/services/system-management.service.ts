@@ -43,10 +43,10 @@ export class SystemManagementService {
     }
 
     if (query.roleId) {
-      queryBuilder.andWhere('admin.roleId = :roleId', { roleId: query.roleId });
+      queryBuilder.andWhere('admin.role_id = :roleId', { roleId: query.roleId });
     }
 
-    queryBuilder.skip(skip).take(limit).orderBy('admin.createdAt', 'DESC');
+    queryBuilder.skip(skip).take(limit).orderBy('admin.created_at', 'DESC');
 
     const [users, total] = await queryBuilder.getManyAndCount();
 
@@ -342,17 +342,17 @@ export class SystemManagementService {
     }
 
     if (query.resourceType) {
-      queryBuilder.andWhere('log.resourceType = :resourceType', { resourceType: query.resourceType });
+      queryBuilder.andWhere('log.resource_type = :resourceType', { resourceType: query.resourceType });
     }
 
     if (query.startDate && query.endDate) {
-      queryBuilder.andWhere('log.createdAt BETWEEN :startDate AND :endDate', {
+      queryBuilder.andWhere('log.created_at BETWEEN :startDate AND :endDate', {
         startDate: query.startDate,
         endDate: query.endDate,
       });
     }
 
-    queryBuilder.skip(skip).take(limit).orderBy('log.createdAt', 'DESC');
+    queryBuilder.skip(skip).take(limit).orderBy('log.created_at', 'DESC');
 
     const [logs, total] = await queryBuilder.getManyAndCount();
 

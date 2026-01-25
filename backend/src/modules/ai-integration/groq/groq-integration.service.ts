@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Groq from 'groq-sdk';
+import OpenAI from 'openai'; // 使用 OpenAI SDK 以兼容各种中转 API
 import { CapabilityExecutorService } from '../../ai-capability/services/capability-executor.service';
 import { CapabilityRegistryService } from '../../ai-capability/services/capability-registry.service';
 import { GroqAdapter } from '../../ai-capability/adapters/groq.adapter';
@@ -22,8 +22,9 @@ import { Repository } from 'typeorm';
 @Injectable()
 export class GroqIntegrationService {
   private readonly logger = new Logger(GroqIntegrationService.name);
-  private readonly groq: Groq;
-  private readonly defaultModel = 'llama-3-groq-70b-tool-use'; // 支持Function Calling的模型
+  private readonly groq: OpenAI | null;
+  private readonly defaultModel = 'llama-3-groq-70b-tool-use'; 
+  private readonly baseURL: string | undefined;
 
   constructor(
     private readonly configService: ConfigService,
@@ -34,13 +35,22 @@ export class GroqIntegrationService {
     private readonly productRepository: Repository<Product>,
   ) {
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
+    this.baseURL = this.configService.get<string>('GROQ_BASE_URL');
+
     if (!apiKey) {
       this.logger.warn('GROQ_API_KEY not configured, Groq integration will be disabled');
+      this.groq = null;
     } else {
-      this.groq = new Groq({
-        apiKey,
-      });
-      this.logger.log('Groq integration initialized');
+      const config: { apiKey: string; baseURL?: string } = { apiKey };
+      if (this.baseURL) {
+        config.baseURL = this.baseURL.trim();
+        this.logger.log(`Groq integration initialized via OpenAI SDK with custom baseURL: ${config.baseURL}`);
+      } else {
+        // 如果没有 baseURL，默认使用 Groq 官方的 OpenAI 兼容端点
+        config.baseURL = 'https://api.groq.com/openai/v1';
+        this.logger.log('Groq integration initialized (using default Groq API via OpenAI SDK)');
+      }
+      this.groq = new OpenAI(config);
     }
   }
 
@@ -332,6 +342,9 @@ export class GroqIntegrationService {
       model?: string;
       temperature?: number;
       maxTokens?: number;
+      context?: { userId?: string; sessionId?: string };
+      additionalTools?: any[];
+      onToolCall?: (functionName: string, parameters: any) => Promise<any>;
     },
   ): Promise<any> {
     if (!this.groq) {
@@ -340,19 +353,77 @@ export class GroqIntegrationService {
 
     try {
       // 获取Function Schemas
-      const functions = await this.getFunctionSchemas();
+      const baseTools = await this.getFunctionSchemas();
+      const tools = options?.additionalTools 
+        ? [...baseTools, ...options.additionalTools]
+        : baseTools;
 
       // 调用Groq API
       const response = await this.groq.chat.completions.create({
         model: options?.model || this.defaultModel,
         messages: messages as any,
-        tools: functions.length > 0 ? functions : undefined,
-        tool_choice: functions.length > 0 ? 'auto' : undefined,
+        tools: tools.length > 0 ? tools : undefined,
+        tool_choice: tools.length > 0 ? 'auto' : undefined,
         temperature: options?.temperature || 0.7,
         max_tokens: options?.maxTokens || 1024,
       });
 
-      return response;
+      const message = response.choices[0].message;
+      const toolCalls = message.tool_calls;
+
+      if (toolCalls && toolCalls.length > 0) {
+        const toolResults = await Promise.all(
+          toolCalls.map(async (toolCall: any) => {
+            const functionName = toolCall.function.name;
+            let parameters = {};
+            try {
+              parameters = JSON.parse(toolCall.function.arguments);
+            } catch (e) {}
+
+            let result: any;
+            if (options?.onToolCall) {
+              result = await options.onToolCall(functionName, parameters);
+            }
+
+            if (result === undefined) {
+              // 默认执行逻辑
+              if (functionName.startsWith('paymind_')) {
+                result = await this.handleProductFunction(functionName, parameters, options?.context || {});
+              } else {
+                result = { success: false, error: 'UNKNOWN_FUNCTION', message: `未知的工具: ${functionName}` };
+              }
+            }
+
+            return {
+              role: 'tool' as const,
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result),
+            };
+          })
+        );
+
+        // 继续对话
+        const allMessages = [...messages, message, ...toolResults];
+        const secondResponse = await this.groq.chat.completions.create({
+          model: options?.model || this.defaultModel,
+          messages: allMessages as any,
+          tools: tools.length > 0 ? tools : undefined,
+        });
+
+        return {
+          text: secondResponse.choices[0].message.content || '',
+          functionCalls: toolCalls.map((tc: any) => ({
+            id: tc.id,
+            name: tc.function.name,
+            arguments: tc.function.arguments
+          }))
+        };
+      }
+
+      return {
+        text: message.content || '',
+        functionCalls: null
+      };
     } catch (error: any) {
       this.logger.error(`Groq API调用失败: ${error.message}`, error.stack);
       throw error;

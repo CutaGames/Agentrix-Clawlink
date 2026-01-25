@@ -26,7 +26,7 @@ export class SocialAccount {
   id: string;
 
   @ManyToOne(() => User, (user) => user.socialAccounts, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn()
   user: User;
 
   @Column()

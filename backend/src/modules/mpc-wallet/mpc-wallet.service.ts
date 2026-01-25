@@ -96,6 +96,89 @@ export class MPCWalletService {
   }
 
   /**
+   * 获取用户 MPC 钱包（通过 userId）
+   */
+  async getMPCWalletByUserId(userId: string): Promise<MPCWallet> {
+    const wallet = await this.mpcWalletRepository.findOne({
+      where: [
+        { merchantId: userId, isActive: true },
+        { userId: userId, isActive: true },
+      ],
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('MPC wallet not found');
+    }
+
+    return wallet;
+  }
+
+  /**
+   * 检查用户是否有 MPC 钱包
+   */
+  async userHasMPCWallet(userId: string): Promise<boolean> {
+    const wallet = await this.mpcWalletRepository.findOne({
+      where: [
+        { merchantId: userId, isActive: true },
+        { userId: userId, isActive: true },
+      ],
+    });
+    return !!wallet;
+  }
+
+  /**
+   * 为社交登录用户生成 MPC 钱包
+   */
+  async generateMPCWalletForUser(
+    userId: string,
+    derivedPassword: string,
+    chain: string = 'BSC',
+  ): Promise<{
+    walletAddress: string;
+    encryptedShardA: string;
+    encryptedShardC: string;
+  }> {
+    try {
+      // 检查是否已有钱包
+      const existingWallet = await this.mpcWalletRepository.findOne({
+        where: [
+          { merchantId: userId, isActive: true },
+          { userId: userId, isActive: true },
+        ],
+      });
+
+      if (existingWallet) {
+        // 如果已有钱包，返回钱包信息但不返回分片
+        return {
+          walletAddress: existingWallet.walletAddress,
+          encryptedShardA: '', // 已创建的钱包不返回分片
+          encryptedShardC: '',
+        };
+      }
+
+      // 生成新钱包
+      const result = await this.generateMPCWallet(userId, derivedPassword);
+      
+      // 更新钱包的 ownerId 字段
+      await this.mpcWalletRepository.update(
+        { merchantId: userId, isActive: true },
+        { chain },
+      );
+
+      this.logger.log(`MPC wallet created for social user ${userId}: ${result.walletAddress}`);
+
+      return {
+        walletAddress: result.walletAddress,
+        encryptedShardA: result.encryptedShardA,
+        encryptedShardC: result.encryptedShardC,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to generate MPC wallet for user: ${error.message}`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 获取分片 B（需要商户授权）
    */
   async getShardB(merchantId: string, authorizationToken: string): Promise<string> {

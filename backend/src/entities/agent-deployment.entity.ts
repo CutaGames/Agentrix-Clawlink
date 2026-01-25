@@ -33,7 +33,7 @@ export class AgentDeployment {
   agentId: string;
 
   @ManyToOne(() => UserAgent)
-  @JoinColumn({ name: 'agentId' })
+  @JoinColumn()
   agent: UserAgent;
 
   @Column({
@@ -74,10 +74,10 @@ export class AgentDeployment {
     errors?: string[];
   };
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
 

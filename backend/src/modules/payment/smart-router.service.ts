@@ -478,5 +478,245 @@ export class SmartRouterService {
       channel.available = available;
     }
   }
+
+  /**
+   * 智能路由：Stripe vs Transak 选择
+   * 
+   * 选择逻辑：
+   * 1. 商户配置 fiat_only → 优先 Stripe
+   * 2. 商户配置 crypto_only → 只能用 Transak（法币转加密货币）
+   * 3. 目标是加密货币 → Transak
+   * 4. 目标是法币 → Stripe
+   * 5. 跨境支付 → 优先数字货币通道
+   * 6. 小额支付（<$50）→ 考虑 Stripe 固定费用影响
+   */
+  selectStripeOrTransak(params: {
+    amount: number;
+    fromCurrency: string;
+    toCurrency: string;
+    merchantPaymentConfig: 'fiat_only' | 'crypto_only' | 'both';
+    isCrossBorder?: boolean;
+    preferCrypto?: boolean;
+  }): {
+    provider: 'stripe' | 'transak';
+    reason: string;
+    estimatedFee: number;
+    feeBreakdown: {
+      providerFee: number;
+      networkFee?: number;
+      platformFee: number;
+    };
+  } {
+    const { amount, fromCurrency, toCurrency, merchantPaymentConfig, isCrossBorder, preferCrypto } = params;
+    
+    const cryptoCurrencies = ['USDC', 'USDT', 'ETH', 'BTC', 'BNB', 'SOL'];
+    const isToCrypto = cryptoCurrencies.includes(toCurrency.toUpperCase());
+    const isFromCrypto = cryptoCurrencies.includes(fromCurrency.toUpperCase());
+
+    // 计算 Stripe 费用（2.9% + $0.30）
+    const stripeFee = amount * 0.029 + 0.30;
+    const stripePlatformFee = amount * 0.01; // 平台额外抽成 1%
+
+    // 计算 Transak 费用（约 3.5-5%）
+    const transakFee = amount * 0.04; // 平均 4%
+    const transakNetworkFee = 0.5; // 预估网络费用
+    const transakPlatformFee = amount * 0.01; // 平台额外抽成 1%
+
+    // 1. 商户只收法币 → Stripe
+    if (merchantPaymentConfig === 'fiat_only' && !isToCrypto) {
+      return {
+        provider: 'stripe',
+        reason: '商户只接受法币，使用 Stripe 直接支付',
+        estimatedFee: stripeFee + stripePlatformFee,
+        feeBreakdown: {
+          providerFee: stripeFee,
+          platformFee: stripePlatformFee,
+        },
+      };
+    }
+
+    // 2. 商户只收加密货币 → Transak
+    if (merchantPaymentConfig === 'crypto_only') {
+      return {
+        provider: 'transak',
+        reason: '商户只接受加密货币，使用 Transak 将法币转换为加密货币',
+        estimatedFee: transakFee + transakNetworkFee + transakPlatformFee,
+        feeBreakdown: {
+          providerFee: transakFee,
+          networkFee: transakNetworkFee,
+          platformFee: transakPlatformFee,
+        },
+      };
+    }
+
+    // 3. 目标是加密货币 → Transak
+    if (isToCrypto && !isFromCrypto) {
+      return {
+        provider: 'transak',
+        reason: '支付目标是加密货币，使用 Transak 进行法币转加密货币',
+        estimatedFee: transakFee + transakNetworkFee + transakPlatformFee,
+        feeBreakdown: {
+          providerFee: transakFee,
+          networkFee: transakNetworkFee,
+          platformFee: transakPlatformFee,
+        },
+      };
+    }
+
+    // 4. 跨境支付场景 → 倾向加密货币
+    if (isCrossBorder) {
+      // 跨境场景下，数字货币通常更便宜
+      const stripeInternationalFee = stripeFee + (amount * 0.01); // 国际卡额外 1%
+      
+      if (transakFee + transakNetworkFee < stripeInternationalFee) {
+        return {
+          provider: 'transak',
+          reason: '跨境支付场景，使用 Transak 的数字货币通道成本更低',
+          estimatedFee: transakFee + transakNetworkFee + transakPlatformFee,
+          feeBreakdown: {
+            providerFee: transakFee,
+            networkFee: transakNetworkFee,
+            platformFee: transakPlatformFee,
+          },
+        };
+      }
+    }
+
+    // 5. 小额支付（<$50）→ 考虑固定费用影响
+    if (amount < 50) {
+      // Stripe 的 $0.30 固定费用在小额支付中占比较高
+      const stripeEffectiveRate = (stripeFee / amount) * 100;
+      const transakEffectiveRate = ((transakFee + transakNetworkFee) / amount) * 100;
+
+      if (stripeEffectiveRate > 5 && transakEffectiveRate < stripeEffectiveRate) {
+        return {
+          provider: 'transak',
+          reason: `小额支付（$${amount}），Transak 有效费率更低`,
+          estimatedFee: transakFee + transakNetworkFee + transakPlatformFee,
+          feeBreakdown: {
+            providerFee: transakFee,
+            networkFee: transakNetworkFee,
+            platformFee: transakPlatformFee,
+          },
+        };
+      }
+    }
+
+    // 6. 用户偏好加密货币支付
+    if (preferCrypto) {
+      return {
+        provider: 'transak',
+        reason: '用户偏好加密货币支付',
+        estimatedFee: transakFee + transakNetworkFee + transakPlatformFee,
+        feeBreakdown: {
+          providerFee: transakFee,
+          networkFee: transakNetworkFee,
+          platformFee: transakPlatformFee,
+        },
+      };
+    }
+
+    // 默认：使用 Stripe（法币直接支付，更快、更简单）
+    return {
+      provider: 'stripe',
+      reason: '法币直接支付，Stripe 提供即时确认和良好的欺诈保护',
+      estimatedFee: stripeFee + stripePlatformFee,
+      feeBreakdown: {
+        providerFee: stripeFee,
+        platformFee: stripePlatformFee,
+      },
+    };
+  }
+
+  /**
+   * 获取多通道报价比较
+   */
+  async getMultiChannelQuotes(params: {
+    amount: number;
+    fromCurrency: string;
+    toCurrency?: string;
+    merchantPaymentConfig: 'fiat_only' | 'crypto_only' | 'both';
+  }): Promise<{
+    stripe?: {
+      available: boolean;
+      fee: number;
+      netAmount: number;
+      estimatedTime: string;
+    };
+    transak?: {
+      available: boolean;
+      fee: number;
+      cryptoAmount?: number;
+      estimatedTime: string;
+    };
+    wallet?: {
+      available: boolean;
+      fee: number;
+      estimatedTime: string;
+    };
+    recommendation: 'stripe' | 'transak' | 'wallet';
+    reason: string;
+  }> {
+    const { amount, fromCurrency, toCurrency, merchantPaymentConfig } = params;
+    
+    const cryptoCurrencies = ['USDC', 'USDT', 'ETH', 'BTC'];
+    const isFiatCurrency = !cryptoCurrencies.includes(fromCurrency.toUpperCase());
+    const targetIsCrypto = toCurrency && cryptoCurrencies.includes(toCurrency.toUpperCase());
+
+    // Stripe 报价
+    const stripeAvailable = isFiatCurrency && merchantPaymentConfig !== 'crypto_only';
+    const stripeFee = amount * 0.029 + 0.30;
+    const stripeNetAmount = amount - stripeFee;
+
+    // Transak 报价
+    const transakAvailable = isFiatCurrency && (targetIsCrypto || merchantPaymentConfig === 'crypto_only');
+    const transakFee = amount * 0.04;
+    const transakCryptoAmount = (amount - transakFee) / 1; // 假设 1:1 汇率
+
+    // Wallet 报价（直接加密货币支付）
+    const walletAvailable = !isFiatCurrency || merchantPaymentConfig !== 'fiat_only';
+    const walletFee = amount * 0.001; // Gas 费用
+
+    // 选择推荐通道
+    let recommendation: 'stripe' | 'transak' | 'wallet' = 'stripe';
+    let reason = '';
+
+    if (merchantPaymentConfig === 'fiat_only') {
+      recommendation = 'stripe';
+      reason = '商户只接受法币，推荐使用 Stripe';
+    } else if (merchantPaymentConfig === 'crypto_only') {
+      recommendation = walletAvailable && !isFiatCurrency ? 'wallet' : 'transak';
+      reason = '商户只接受加密货币，' + 
+        (recommendation === 'wallet' ? '推荐使用钱包直接支付' : '推荐使用 Transak 转换');
+    } else if (targetIsCrypto) {
+      recommendation = 'transak';
+      reason = '目标是加密货币，推荐使用 Transak';
+    } else if (stripeAvailable && stripeFee < transakFee) {
+      recommendation = 'stripe';
+      reason = 'Stripe 费用更低，推荐使用';
+    }
+
+    return {
+      stripe: stripeAvailable ? {
+        available: true,
+        fee: Math.round(stripeFee * 100) / 100,
+        netAmount: Math.round(stripeNetAmount * 100) / 100,
+        estimatedTime: '即时',
+      } : { available: false, fee: 0, netAmount: 0, estimatedTime: 'N/A' },
+      transak: transakAvailable ? {
+        available: true,
+        fee: Math.round(transakFee * 100) / 100,
+        cryptoAmount: Math.round(transakCryptoAmount * 100) / 100,
+        estimatedTime: '3-5 分钟',
+      } : { available: false, fee: 0, cryptoAmount: 0, estimatedTime: 'N/A' },
+      wallet: walletAvailable ? {
+        available: true,
+        fee: Math.round(walletFee * 100) / 100,
+        estimatedTime: '1-2 分钟',
+      } : { available: false, fee: 0, estimatedTime: 'N/A' },
+      recommendation,
+      reason,
+    };
+  }
 }
 

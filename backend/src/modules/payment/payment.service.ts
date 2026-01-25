@@ -652,6 +652,11 @@ export class PaymentService {
       } else if (dto.paymentMethod === PaymentMethod.MULTISIG) {
         // 多签支付处理
         savedPayment.status = PaymentStatus.PENDING;
+      } else if (dto.metadata?.isSandbox) {
+        // Sandbox 支付处理：模拟支付成功并记录，确保在交易历史中显示
+        savedPayment.status = PaymentStatus.COMPLETED;
+        savedPayment.transactionHash = `sandbox_tx_${Date.now()}`;
+        this.logger.log(`Sandbox payment completed: ${savedPayment.id}, amount: ${savedPayment.amount} ${savedPayment.currency}`);
       }
 
       // 计算分成（根据订单类型，使用新的佣金规则）

@@ -245,6 +245,28 @@ export class PayIntentService {
         if (payIntent.amount === 66.66) {
           throw new Error('Sandbox simulated failure (Amount 66.66)');
         }
+
+        // V3.0: 即使是沙盒模式也创建一个 Payment 记录，以便出现在交易历史中
+        const payment = await this.paymentService.processPayment(userId, {
+          amount: payIntent.amount,
+          currency: payIntent.currency,
+          paymentMethod: (payIntent.paymentMethod?.type || 'wallet') as any,
+          description: `[Sandbox] ${payIntent.description || `PayIntent: ${payIntentId}`}`,
+          merchantId: payIntent.merchantId,
+          agentId: payIntent.agentId,
+          metadata: {
+            payIntentId: payIntent.id,
+            orderId: payIntent.orderId,
+            txHash: transactionHash,
+            isSandbox: true,
+            ...payIntent.metadata,
+            ...metadata,
+          },
+        });
+        
+        // 更新支付状态为完成（模拟完成）
+        await this.paymentService.updatePaymentStatus(payment.id, 'completed' as any);
+        paymentId = payment.id;
       } else {
         // 生产模式：创建实际支付
         const payment = await this.paymentService.processPayment(userId, {

@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException, UnauthorizedException, NotFoundException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,16 +7,38 @@ import * as ethers from 'ethers';
 import { User, UserRole } from '../../entities/user.entity';
 import { WalletConnection, WalletType, ChainType } from '../../entities/wallet-connection.entity';
 import { RegisterDto, WalletLoginDto } from './dto/auth.dto';
+import { AccountService } from '../account/account.service';
+import { AccountOwnerType } from '../../entities/account.entity';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(WalletConnection)
     private walletRepository: Repository<WalletConnection>,
     private jwtService: JwtService,
+    @Inject(forwardRef(() => AccountService))
+    private accountService: AccountService,
   ) {}
+
+  /**
+   * 为用户自动创建默认资金账户（如果不存在）
+   */
+  private async ensureUserDefaultAccount(userId: string, userName?: string): Promise<void> {
+    try {
+      const accounts = await this.accountService.findByOwner(userId, AccountOwnerType.USER);
+      if (accounts.length === 0) {
+        await this.accountService.createUserDefaultAccount(userId, userName);
+        this.logger.log(`Created default account for user ${userId}`);
+      }
+    } catch (error) {
+      // 如果创建失败，仅记录日志，不阻断登录流程
+      this.logger.warn(`Failed to create default account for user ${userId}: ${error.message}`);
+    }
+  }
 
   async register(dto: RegisterDto) {
     // 检查用户是否已存在
@@ -43,6 +65,9 @@ export class AuthService {
     });
 
     const savedUser = await this.userRepository.save(user);
+
+    // 自动创建默认资金账户
+    await this.ensureUserDefaultAccount(savedUser.id, dto.email);
 
     // 生成JWT token
     const payload = { email: savedUser.email, sub: savedUser.id };
@@ -76,7 +101,16 @@ export class AuthService {
   }
 
   async login(user: any) {
+    // 确保用户有默认资金账户
+    await this.ensureUserDefaultAccount(user.id, user.email || user.nickname);
+
     const payload = { email: user.email, sub: user.id };
+    
+    // 获取默认钱包
+    const defaultWallet = await this.walletRepository.findOne({
+      where: { userId: user.id, isDefault: true }
+    });
+
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -84,6 +118,7 @@ export class AuthService {
         agentrixId: user.agentrixId,
         email: user.email,
         roles: user.roles,
+        walletAddress: defaultWallet?.walletAddress || null,
       },
     };
   }
@@ -215,26 +250,13 @@ export class AuthService {
 
     // 3. 查找该钱包地址是否已存在（不区分链，因为同一个地址在不同链上应该对应同一个用户）
     // 注意：这里查找所有链的钱包连接，因为同一个地址在不同链上应该对应同一个 Agentrix ID
-    // 使用查询构建器明确指定用户字段，避免加载可能不存在的 googleId 列
-    const walletResult = await this.walletRepository
-      .createQueryBuilder('wallet')
-      .leftJoin('wallet.user', 'user')
-      .addSelect([
-        'user.id',
-        'user.agentrixId',
-        'user.email',
-        'user.roles',
-        'user.avatarUrl',
-        'user.nickname',
-        'user.createdAt',
-        'user.updatedAt',
-      ])
-      .where('LOWER(wallet.walletAddress) = LOWER(:walletAddress)', {
-        walletAddress: walletAddress,
-      })
-      .getOne();
-    
-    const existingWallet = walletResult as any;
+    // 使用 relations 而不是 leftJoin 来避免 TypeORM 列名问题
+    const existingWallet = await this.walletRepository.findOne({
+      where: {
+        walletAddress: normalizedAddress,
+      },
+      relations: ['user'],
+    });
 
     let user: User;
     let walletConnection: WalletConnection;
@@ -263,6 +285,9 @@ export class AuthService {
       });
       user = await this.userRepository.save(user);
 
+      // 自动为新用户创建默认资金账户
+      await this.ensureUserDefaultAccount(user.id, walletAddress.slice(0, 10));
+
       // 创建钱包连接
       walletConnection = this.walletRepository.create({
         userId: user.id,
@@ -274,6 +299,9 @@ export class AuthService {
       });
       walletConnection = await this.walletRepository.save(walletConnection);
     }
+
+    // 确保已有用户也有默认账户（用于已有用户登录场景）
+    await this.ensureUserDefaultAccount(user.id);
 
     const defaultWalletCount = await this.walletRepository.count({
       where: { userId: user.id, isDefault: true },
@@ -339,10 +367,11 @@ export class AuthService {
       throw new UnauthorizedException('签名验证失败，请重新签名');
     }
 
-    const existingWallet = await this.walletRepository
-      .createQueryBuilder('wallet')
-      .where('LOWER(wallet.walletAddress) = LOWER(:walletAddress)', { walletAddress })
-      .getOne();
+    const existingWallet = await this.walletRepository.findOne({
+      where: {
+        walletAddress: normalizedAddress,
+      },
+    });
 
     if (existingWallet && existingWallet.userId !== userId) {
       throw new ConflictException('该钱包地址已绑定其他账号');

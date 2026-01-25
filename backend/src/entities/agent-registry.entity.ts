@@ -30,10 +30,10 @@ export class AgentRegistry {
   description: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'owner_id' })
+  @JoinColumn()
   owner: User;
 
-  @Column({ name: 'owner_id' })
+  @Column()
   ownerId: string;
 
   @Column({ nullable: true })

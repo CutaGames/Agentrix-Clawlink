@@ -46,7 +46,7 @@ export class MarketplaceService {
     }
 
     qb.orderBy('asset.featured', 'DESC')
-      .addOrderBy('asset.liquidityUsd', 'DESC', 'NULLS LAST')
+      .addOrderBy('asset.liquidity_usd', 'DESC', 'NULLS LAST')
       .skip((page - 1) * pageSize)
       .take(pageSize);
 
@@ -95,15 +95,15 @@ export class MarketplaceService {
     }
 
     if (filters?.priceMin) {
-      qb.andWhere('CAST(asset.priceUsd AS DECIMAL) >= :priceMin', { priceMin: filters.priceMin });
+      qb.andWhere('CAST(asset.price_usd AS DECIMAL) >= :priceMin', { priceMin: filters.priceMin });
     }
 
     if (filters?.priceMax) {
-      qb.andWhere('CAST(asset.priceUsd AS DECIMAL) <= :priceMax', { priceMax: filters.priceMax });
+      qb.andWhere('CAST(asset.price_usd AS DECIMAL) <= :priceMax', { priceMax: filters.priceMax });
     }
 
-    qb.orderBy('asset.liquidityUsd', 'DESC', 'NULLS LAST')
-      .addOrderBy('asset.volume24hUsd', 'DESC', 'NULLS LAST')
+    qb.orderBy('asset.liquidity_usd', 'DESC', 'NULLS LAST')
+      .addOrderBy('asset.volume24h_usd', 'DESC', 'NULLS LAST')
       .limit(50);
 
     return qb.getMany();
@@ -120,8 +120,8 @@ export class MarketplaceService {
       .createQueryBuilder('asset')
       .where('asset.status = :status', { status: MarketplaceAssetStatus.ACTIVE })
       .orderBy('asset.featured', 'DESC')
-      .addOrderBy('asset.liquidityUsd', 'DESC', 'NULLS LAST')
-      .addOrderBy('asset.volume24hUsd', 'DESC', 'NULLS LAST')
+      .addOrderBy('asset.liquidity_usd', 'DESC', 'NULLS LAST')
+      .addOrderBy('asset.volume24h_usd', 'DESC', 'NULLS LAST')
       .limit(limit);
 
     return qb.getMany();

@@ -13,13 +13,28 @@ import {
  */
 @Entity('mpc_wallets')
 @Index(['merchantId'])
+@Index(['workspaceId'])
+@Index(['userId'])
 @Index(['walletAddress'])
 export class MPCWallet {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', length: 255 })
-  merchantId: string; // 商户ID
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  merchantId: string; // 商户ID (Legacy)
+
+  @Column({ type: 'uuid', nullable: true })
+  workspaceId: string; // 工作空间ID
+
+  @Column({ type: 'uuid', nullable: true })
+  userId: string; // 用户ID
+
+  @Column({
+    type: 'enum',
+    enum: ['execution', 'settlement', 'dev', 'test'],
+    default: 'execution',
+  })
+  purpose: string; // 钱包用途
 
   @Column({ type: 'varchar', length: 255, unique: true })
   walletAddress: string; // MPC 钱包地址

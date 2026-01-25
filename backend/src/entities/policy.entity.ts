@@ -17,12 +17,16 @@ export enum PolicyType {
 
 @Entity('policies')
 @Index(['userId'])
+@Index(['workspaceId'])
 export class Policy {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', nullable: true })
   userId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  workspaceId: string;
 
   @Column({
     type: 'enum',
@@ -42,9 +46,9 @@ export class Policy {
   @Column({ default: true })
   enabled: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
