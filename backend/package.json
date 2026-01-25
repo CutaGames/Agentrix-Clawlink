@@ -6,7 +6,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "bash build.sh || (rm -rf dist && npx tsc -p tsconfig.json && npm run build:verify)",
+    "build": "sh build.sh || (rm -rf dist && npx tsc -p tsconfig.json && npm run build:verify)",
     "build:nest": "nest build",
     "build:tsc": "rm -rf dist && npx tsc -p tsconfig.json",
     "build:verify": "test -f dist/main.js || (echo '❌ Build failed: dist/main.js not found' && exit 1)",
@@ -55,6 +55,7 @@
     "@langchain/google-genai": "^2.1.11",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@nestjs/axios": "^4.0.1",
+    "axios": "^1.6.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/core": "^10.0.0",
