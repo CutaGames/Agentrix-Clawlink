@@ -5,7 +5,7 @@
 # Stage 1: Build
 FROM node:20-alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache python3 make g++ git bash linux-headers
+RUN apk add --no-cache eudev-dev python3 make g++ git bash linux-headers
 COPY package.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
@@ -14,8 +14,8 @@ RUN npm run build
 # Stage 2: Production
 FROM node:20-alpine AS production
 WORKDIR /app
-RUN apk add --no-cache python3 make g++ git bash linux-headers
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache eudev-dev python3 make g++ git bash linux-headers
+RUN apk add --no-cache eudev-dev dumb-init
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

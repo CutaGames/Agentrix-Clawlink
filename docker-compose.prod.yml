@@ -2,8 +2,6 @@
 # Agentrix - AWS Production Docker Compose
 # ===========================================
 
-version: '3.8'
-
 services:
   # -------------------------------------------
   # PostgreSQL 数据库 (作为 RDS 的备选/初始方案)
