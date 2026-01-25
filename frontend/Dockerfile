@@ -7,6 +7,7 @@
 FROM node:20-alpine AS deps
 
 WORKDIR /app
+RUN apk add --no-cache git
 
 # Copy package files
 COPY package.json ./
@@ -18,6 +19,7 @@ RUN npm install --legacy-peer-deps
 FROM node:20-alpine AS builder
 
 WORKDIR /app
+RUN apk add --no-cache git
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -43,6 +45,7 @@ RUN npm run build
 FROM node:20-alpine AS production
 
 WORKDIR /app
+RUN apk add --no-cache git
 
 # Install production dependencies only
 RUN apk add --no-cache dumb-init
