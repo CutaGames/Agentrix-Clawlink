@@ -12,7 +12,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
 
 # Install all dependencies (including devDependencies for build)
 RUN npm install --legacy-peer-deps

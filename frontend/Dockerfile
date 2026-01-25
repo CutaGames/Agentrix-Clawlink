@@ -9,7 +9,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
 
 # Install dependencies
 RUN npm install --legacy-peer-deps
