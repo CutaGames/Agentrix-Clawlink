@@ -17,7 +17,6 @@ WORKDIR /app
 RUN apk add --no-cache eudev-dev python3 make g++ git bash linux-headers
 RUN apk add --no-cache eudev-dev dumb-init
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
