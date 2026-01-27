@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -27,6 +28,7 @@ export class HqService {
   constructor(
     @InjectRepository(AgentAccount)
     private agentRepo: Repository<AgentAccount>,
+    private configService: ConfigService,
     private openaiService: OpenAIIntegrationService,
     private claudeService: ClaudeIntegrationService,
     private bedrockService: BedrockIntegrationService,
@@ -288,78 +290,115 @@ export class HqService {
 
     // 5. 调用大模型 (根据指令分配最优模型)
     try {
-      // 模型映射策略 (Agentrix "智能分级混合模型引擎")
-      // 架构师和程序员使用AWS Bedrock Claude 4.5，Growth/BD使用Gemini 1.5 Flash（免费）
-      let targetModel = 'gemini-1.5-flash'; 
-      let provider: 'gemini' | 'bedrock' | 'openai' = 'gemini';
+      // 模型映射策略 V2 (Agentrix "智能分级混合模型引擎")
+      // 云创AWS Bedrock 1500美金额度分配:
+      // - 架构师(CEO): Claude Opus 4 (最强推理)
+      // - 程序员(Coder): Claude Sonnet 4.5 (代码专家)
+      // - 增长商务: Gemini Flash 1.5 (免费额度)
+      // - 备用降级: Claude Haiku (高性价比)
+      
+      let targetModel = 'gemini-1.5-flash-002'; 
+      let provider: 'gemini' | 'bedrock' | 'openai' | 'deepseek' | 'groq' = 'gemini';
 
-      // 1. 系统架构师 (System Architect) - 使用 AWS Bedrock Claude Opus 4.5 (最强推理，比Opus 3更聪明更便宜)
-      if (agentId === 'ARCHITECT-01' || agentId === 'AGENT-ARCHITECT-001') {
-        targetModel = 'us.anthropic.claude-opus-4-20250514-v1:0'; 
+      // 1. CEO/系统架构师 - 使用 Claude Opus 4 (最强推理和规划能力)
+      if (agentId === 'ceo' || agentId === 'CEO' || agentId === 'architect' || 
+          agentId === 'ARCHITECT-01' || agentId === 'AGENT-ARCHITECT-001') {
+        targetModel = 'anthropic.claude-opus-4-20250514-v1:0'; 
         provider = 'bedrock';
+        this.logger.log('🎯 架构师模式：使用 Claude Opus 4 (AWS Bedrock)');
       } 
-      // 2. 开发者/代码专家 (Coder) - 使用 AWS Bedrock Claude Sonnet 4.5 (代码优化)
-      else if (agentId === 'CODER-01' || agentId === 'AGENT-CODER-001' || agentId.includes('DEV')) {
-        targetModel = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
+      // 2. 开发者/代码专家 - 使用 Claude Sonnet 4.5 (代码优化专家)
+      else if (agentId === 'coder' || agentId === 'CODER' || agentId === 'developer' ||
+               agentId === 'CODER-01' || agentId === 'AGENT-CODER-001' || 
+               agentId.toLowerCase().includes('dev') || agentId.toLowerCase().includes('code')) {
+        targetModel = 'anthropic.claude-sonnet-4-20250514-v1:0';
         provider = 'bedrock';
+        this.logger.log('💻 程序员模式：使用 Claude Sonnet 4.5 (AWS Bedrock)');
       } 
-      // 3. 增长与商务 (Growth & Business) - 使用 Gemini 1.5 Flash (免费API)，用完降级至 Bedrock Haiku
-      else if (agentId === 'GROWTH-MATRIX-01' || agentId === 'AGENT-GROWTH-001' || agentId.includes('GROWTH') || agentId.includes('BUSINESS') || agentId.includes('BD') || agentId === 'AGENT-BD-001') {
-        targetModel = 'gemini-1.5-flash';
+      // 3. 增长/商务/运营 - 使用 Gemini Flash 1.5 (免费额度)
+      else if (agentId.toLowerCase().includes('growth') || agentId.toLowerCase().includes('bd') ||
+               agentId.toLowerCase().includes('sales') || agentId.toLowerCase().includes('marketing')) {
+        targetModel = 'gemini-1.5-flash-002';
         provider = 'gemini';
-      }
-      // 4. 其他默认使用 Gemini 1.5 Flash
+        this.logger.log('📈 增长模式：使用 Gemini Flash 1.5 (免费)');
+      } 
+      // 4. 其他默认使用 Gemini Flash (免费额度节约成本)
       else {
-        targetModel = 'gemini-1.5-flash';
+        targetModel = 'gemini-1.5-flash-002';
         provider = 'gemini';
+        this.logger.log('🌟 默认模式：使用 Gemini Flash 1.5 (免费)');
       }
 
-      this.logger.log(`Agent ${agentId} 正在连接专属引擎: ${targetModel} (Provider: ${provider})`);
+      this.logger.log(`Agent ${agentId} 正在连接针对性引擎: ${targetModel} (Provider: ${provider})`);
 
       let response: any;
-      
-      if (provider === 'bedrock') {
-        try {
-          response = await this.bedrockService.chatWithFunctions(fullMessages, {
-            model: targetModel,
+      const executeAiCall = async (p: string, m: string) => {
+        if (p === 'bedrock') {
+          return await this.bedrockService.chatWithFunctions(fullMessages, { model: m, tools: hqTools });
+        } else if (p === 'groq') {
+          return await this.groqService.chatWithFunctions(fullMessages as any, { model: m, additionalTools: hqTools });
+        } else if (p === 'gemini') {
+          return await this.geminiService.chatWithFunctions(fullMessages as any, { model: m, additionalTools: hqTools });
+        } else if (p === 'deepseek' || p === 'openai') {
+          return await this.openaiService.chatWithFunctions(fullMessages as any, { 
+            model: m === 'deepseek-chat' ? m : 'gpt-4o',
+            userApiKey: p === 'deepseek' ? this.configService.get('deepseek_API_KEY') : undefined,
+            userBaseURL: p === 'deepseek' ? 'https://api.deepseek.com/v1' : undefined,
+            additionalTools: hqTools 
           });
-        } catch (be: any) {
-          this.logger.warn(`AWS Bedrock ${targetModel} 连接异常 (${be.message})，尝试降级至 OpenAI...`);
+        }
+        return await this.groqService.chatWithFunctions(fullMessages as any, { model: 'llama-3.3-70b-versatile', additionalTools: hqTools });
+      };
+
+      try {
+        response = await executeAiCall(provider, targetModel);
+      } catch (e: any) {
+        this.logger.warn(`${provider} 引擎首选失败 (${e.message})，尝试降级方案...`);
+        try {
+          // 降级策略1：尝试 Claude Haiku (AWS Bedrock 高性价比)
+          if (provider !== 'bedrock') {
+            response = await executeAiCall('bedrock', 'anthropic.claude-3-5-haiku-20241022-v1:0');
+            this.logger.log('✅ 降级成功：Claude Haiku (AWS Bedrock)');
+          } else {
+            // 如果已经在使用Bedrock但失败，尝试Gemini
+            response = await executeAiCall('gemini', 'gemini-1.5-flash-002');
+            this.logger.log('✅ 降级成功：Gemini Flash 1.5');
+          }
+        } catch (e2: any) {
+          // 最后的兜底：Groq（开源模型）
+          this.logger.warn('所有主力引擎失败，使用 Groq 开源模型兜底...');
           try {
-            response = await this.openaiService.chatWithFunctions(fullMessages as any);
-          } catch (oe: any) {
-            throw new Error(`Bedrock Error: ${be.message}`);
+            response = await executeAiCall('groq', 'llama-3.3-70b-versatile');
+            this.logger.log('✅ 降级成功：Groq Llama 3.3');
+          } catch (e3: any) {
+            this.logger.error('所有模型均失效');
+            throw e3;
           }
         }
-      }
-      else if (provider === 'gemini') {
-        try {
-          response = await this.geminiService.chatWithFunctions(fullMessages as any, {
-            model: targetModel,
-          });
-        } catch (ge: any) {
-          this.logger.warn(`Gemini 连接异常 (${ge.message})，尝试 AWS Bedrock Haiku 备选...`);
-          try {
-            response = await this.bedrockService.chatWithFunctions(fullMessages, {
-              model: 'anthropic.claude-3-5-haiku-20241022-v1:0'
-            });
-          } catch (be: any) {
-            this.logger.warn(`Bedrock 故障/未配置，触发最终降级至 OpenAI...`);
-            try {
-              response = await this.openaiService.chatWithFunctions(fullMessages as any);
-            } catch (oe: any) {
-              // 最终抛出第一个最重要的错误（通常是 Gemini 的错误）
-              throw new Error(`Gemini Error: ${ge.message}`);
-            }
-          }
-        }
-      }
-      else {
-        // 默认使用 Gemini
-        response = await this.geminiService.chatWithFunctions(fullMessages as any);
       }
 
-      // 提取最新的代码变更和终端输出以便前端 IDE 展示
+      // 6. 执行工具调用循环 (如果有)
+      if (response.functionCalls && response.functionCalls.length > 0) {
+        for (const toolCall of response.functionCalls) {
+          const name = toolCall.function.name;
+          const args = JSON.parse(toolCall.function.arguments);
+          const result = await this.handleHqToolCall(name, args);
+          
+          toolLogs.push({
+            name,
+            args,
+            result: typeof result === 'string' ? result : JSON.stringify(result)
+          });
+        }
+
+        // 工具执行完后，通常需要把结果喂回模型获取最终回复，但为了简化，我们先直接返回工具执行后的状态
+        // 并在内容中加入工具执行摘要
+        if (toolLogs.length > 0) {
+          response.text += `\n\n[工具执行摘要]：已完成 ${toolLogs.length} 项操作。`;
+        }
+      }
+
+      // 7. 提取最新的代码变更和终端输出以便前端 IDE 展示
       let lastCodeChange = '';
       let lastPath = '';
       let terminalOutput = '';
