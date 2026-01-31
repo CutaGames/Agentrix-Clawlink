@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { IProvider, ProviderQuote } from './provider-abstract.service';
 import { MockProviderService } from './mock-provider.service';
 import { TransakProviderService } from './transak-provider.service';
-import { OSLProviderService } from './osl-provider.service';
+// import { OSLProviderService } from './osl-provider.service'; // 已注销 - 不再使用OSL支付
 
 interface ProviderHealth {
   providerId: string;
@@ -30,7 +30,7 @@ export class ProviderManagerService implements OnModuleInit {
   constructor(
     private mockProvider: MockProviderService,
     private transakProvider?: TransakProviderService,
-    private oslProvider?: OSLProviderService,
+    // private oslProvider?: OSLProviderService, // 已注销
   ) {
     // 注册 Mock Provider（用于测试）
     this.registerProvider(mockProvider);
@@ -45,15 +45,15 @@ export class ProviderManagerService implements OnModuleInit {
       }
     }
 
-    // 注册 OSL Pay Provider（如果已配置）
-    if (oslProvider) {
-      try {
-        this.registerProvider(oslProvider);
-        this.logger.log('OSL Pay Provider registered successfully');
-      } catch (error) {
-        this.logger.warn('OSL Pay Provider not available (credentials not configured)');
-      }
-    }
+    // 注册 OSL Pay Provider（如果已配置）- 已注销
+    // if (oslProvider) {
+    //   try {
+    //     this.registerProvider(oslProvider);
+    //     this.logger.log('OSL Pay Provider registered successfully');
+    //   } catch (error) {
+    //     this.logger.warn('OSL Pay Provider not available (credentials not configured)');
+    //   }
+    // }
   }
 
   /**

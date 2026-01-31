@@ -594,4 +594,52 @@ export class AccountService {
       isDefault: true,
     });
   }
+
+  /**
+   * 获取账户交易历史
+   */
+  async getTransactions(
+    id: string,
+    options?: { limit?: number; offset?: number; type?: string },
+  ): Promise<{ transactions: any[]; total: number }> {
+    const account = await this.findById(id);
+    
+    // 从 metadata.transactions 获取交易历史
+    const allTransactions = account.metadata?.transactions || [];
+    
+    // 按类型筛选
+    let filtered = allTransactions;
+    if (options?.type) {
+      filtered = allTransactions.filter((tx: any) => tx.type === options.type);
+    }
+    
+    // 按时间倒序排序
+    filtered.sort((a: any, b: any) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // 分页
+    const offset = options?.offset || 0;
+    const limit = options?.limit || 20;
+    const paginated = filtered.slice(offset, offset + limit);
+    
+    // 转换为前端期望的格式
+    const transactions = paginated.map((tx: any, index: number) => ({
+      id: `tx-${account.id}-${index}-${Date.now()}`,
+      accountId: account.id,
+      type: tx.type,
+      amount: String(tx.amount),
+      currency: tx.currency || account.currency,
+      status: 'completed',
+      txHash: tx.reference || null,
+      memo: tx.description || null,
+      metadata: tx.metadata || {},
+      createdAt: tx.timestamp,
+    }));
+    
+    return {
+      transactions,
+      total: filtered.length,
+    };
+  }
 }

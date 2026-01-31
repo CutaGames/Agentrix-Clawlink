@@ -465,7 +465,7 @@ export class ProductService {
    * 获取默认的 X402 示例商品
    */
   private getDefaultX402Products(): any[] {
-    const paymentAddress = this.configService.get<string>('X402_PAYMENT_ADDRESS') || '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC';
+    const paymentAddress = this.configService.get<string>('X402_PAYMENT_ADDRESS') || '0xdf8e26fab0553ec755073f1c923c14942ad0d816';
     
     return [
       {

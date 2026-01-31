@@ -1,0 +1,111 @@
+# ===========================================
+# Agentrix - AWS Production Docker Compose
+# ===========================================
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: agentrix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-agentrix}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agentrix_password}
+      POSTGRES_DB: ${DB_DATABASE:-paymind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agentrix-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: agentrix-redis
+    restart: unless-stopped
+    networks:
+      - agentrix-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentrix-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USERNAME: ${DB_USERNAME:-agentrix}
+      DB_PASSWORD: ${DB_PASSWORD:-agentrix_password}
+      DB_DATABASE: ${DB_DATABASE:-paymind}
+      DB_SSL: ${DB_SSL:-false}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: "https://agentrix.top,https://www.agentrix.top,https://hq.agentrix.top"
+      FRONTEND_URL: "https://www.agentrix.top"
+    expose:
+      - "3001"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/knowledge:/app/knowledge
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - agentrix-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.agentrix.top/api
+        NEXT_PUBLIC_APP_URL: https://www.agentrix.top
+    container_name: agentrix-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks:
+      - agentrix-network
+
+  hq-console:
+    build:
+      context: ./hq-console
+      dockerfile: Dockerfile
+    container_name: agentrix-hq
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks:
+      - agentrix-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: agentrix-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8080:8080"
+      - "443:443"
+    volumes:
+      - ./nginx/production.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - hq-console
+      - backend
+    networks:
+      - agentrix-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  agentrix-network:
+    driver: bridge

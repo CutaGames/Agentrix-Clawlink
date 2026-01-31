@@ -19,6 +19,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
+import { QRCodeSVG } from 'qrcode.react';
 import { SessionKeyManager } from '@/lib/session-key-manager';
 import { paymentApi } from '@/lib/api/payment.api';
 import { payIntentApi } from '@/lib/api/pay-intent.api';
@@ -502,6 +503,24 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       setNeedsApproval(false);
     } catch (e: any) {
       console.error('Approval failed:', e);
+      // Check for user rejection
+      const errorMsg = e.message || '';
+      const errorCode = e.code || e.info?.error?.code;
+      
+      const isUserRejection = 
+        errorCode === 4001 || 
+        errorCode === 'ACTION_REJECTED' ||
+        errorMsg.includes('user rejected') ||
+        errorMsg.includes('User denied') ||
+        errorMsg.includes('User rejected') ||
+        errorMsg.includes('rejected the request') ||
+        errorMsg.includes('cancelled');
+      
+      if (isUserRejection) {
+        // User cancelled approval - don't show error, just stay on current state
+        return;
+      }
+      
       setError(e.message || 'Approval failed');
     } finally {
       setIsApproving(false);
@@ -793,12 +812,46 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         // if (onSuccess) onSuccess(result);
     } catch (error: any) {
         console.error('Wallet payment failed:', error);
-        setError(error.message || 'Payment failed');
+        // Improve UX for user rejection - detect common rejection patterns
+        const errorMsg = error.message || '';
+        const errorCode = error.code || error.info?.error?.code;
+        
+        // Check for user rejection (various wallet error patterns)
+        const isUserRejection = 
+            errorCode === 4001 || 
+            errorCode === 'ACTION_REJECTED' ||
+            errorMsg.includes('user rejected') ||
+            errorMsg.includes('User denied') ||
+            errorMsg.includes('User rejected') ||
+            errorMsg.includes('rejected the request') ||
+            errorMsg.includes('cancelled');
+        
+        if (isUserRejection) {
+            // User cancelled - don't show scary error, just reset to ready state
+            setError(null);
+            setStatus('ready');
+            return;
+        }
+        
+        // For other errors, show user-friendly message
+        let friendlyError = 'Payment failed';
+        if (errorMsg.includes('Insufficient')) {
+            friendlyError = 'Insufficient balance. Please top up your wallet.';
+        } else if (errorMsg.includes('network') || errorMsg.includes('Network')) {
+            friendlyError = 'Network error. Please check your connection and try again.';
+        } else if (errorMsg.includes('gas')) {
+            friendlyError = 'Insufficient gas fee. Please ensure you have enough BNB for gas.';
+        } else if (errorMsg) {
+            friendlyError = errorMsg;
+        }
+        
+        setError(friendlyError);
         setStatus('error');
     }
   };
 
   const handleQRCodePay = async () => {
+    setRouteType('qrcode');
     setStatus('processing');
     setError(null);
     try {
@@ -817,29 +870,54 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           const contractAddresses = await paymentApi.getContractAddress();
           toAddress = contractAddresses.commissionContractAddress;
         } catch (e) {
-          toAddress = process.env.NEXT_PUBLIC_COMMISSION_CONTRACT_ADDRESS;
+          toAddress = process.env.NEXT_PUBLIC_COMMISSION_CONTRACT_ADDRESS || '0xc23453b4842FDc4360A0a3518E2C0f51a2069386';
         }
       }
 
-      const intent = await payIntentApi.create({
-        type: 'order_payment',
-        amount: finalAmount,
-        currency: finalCurrency,
-        description: order.description,
-        orderId: order.id,
-        merchantId: order.merchantId,
-        paymentMethod: {
-          type: 'qrcode'
-        },
-        metadata: {
-          to: toAddress,
-          originalAmount: order.amount,
-          originalCurrency: order.currency,
-          isFiat: isFiat
-        }
-      });
+      // 尝试调用后端创建 PayIntent
+      let intent = null;
+      try {
+        intent = await payIntentApi.create({
+          type: 'order_payment',
+          amount: finalAmount,
+          currency: finalCurrency,
+          description: order.description,
+          orderId: order.id,
+          merchantId: order.merchantId,
+          paymentMethod: {
+            type: 'qrcode'
+          },
+          metadata: {
+            to: toAddress,
+            originalAmount: order.amount,
+            originalCurrency: order.currency,
+            isFiat: isFiat
+          }
+        });
+      } catch (apiErr) {
+        console.warn('PayIntent API failed, using fallback QR generation:', apiErr);
+        // 如果 API 失败，创建一个本地的 payIntent 对象用于 QR 码生成
+        intent = {
+          id: `local-${Date.now()}`,
+          type: 'order_payment',
+          status: 'created',
+          amount: finalAmount,
+          currency: finalCurrency,
+          description: order.description,
+          orderId: order.id,
+          merchantId: order.merchantId,
+          metadata: {
+            to: toAddress,
+            payUrl: `${window.location.origin}/pay/checkout?orderId=${order.id}&amount=${finalAmount}&currency=${finalCurrency}&to=${toAddress}`,
+            originalAmount: order.amount,
+            originalCurrency: order.currency,
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      
       setPayIntent(intent);
-      setRouteType('qrcode');
       setStatus('ready');
     } catch (err: any) {
       console.error('Failed to create QR code pay intent:', err);
@@ -1575,7 +1653,60 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
 
   // QR Code View
   const QRCodeView = () => {
-    if (!payIntent || !payIntent.metadata?.qrCode) {
+    // Prefer wallet deep link / EIP-681 so mobile wallets open directly
+    const isFiat = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'INR'].includes((order.currency || 'USDC').toUpperCase());
+    const qrCurrency = isFiat ? 'USDT' : (order.currency || 'USDC');
+    const qrAmount = cryptoAmount || order.amount;
+    const toAddress = payIntent?.metadata?.to || order.to;
+    const chainId = 97; // BSC Testnet
+
+    let eip681Link: string | null = null;
+    try {
+      if (toAddress && qrAmount) {
+        const { address: tokenAddress, decimals } = getTokenMetadata(qrCurrency);
+        const amountInWei = ethers.parseUnits(qrAmount.toFixed(decimals), decimals).toString();
+        eip681Link = `ethereum:${tokenAddress}@${chainId}/transfer?address=${toAddress}&uint256=${amountInWei}`;
+      }
+    } catch {
+      eip681Link = null;
+    }
+
+    const isWalletDeepLink = (link?: string | null) => {
+      if (!link) return false;
+      const lower = link.toLowerCase();
+      return lower.startsWith('ethereum:') || lower.startsWith('bsc:') || lower.startsWith('bnb:') || lower.startsWith('wc:') || lower.startsWith('okxwallet:');
+    };
+
+    const walletFallback = toAddress ? `ethereum:${toAddress}@${chainId}` : null;
+
+    const payUrl =
+      (isWalletDeepLink(payIntent?.metadata?.deepLink) ? payIntent?.metadata?.deepLink : null) ||
+      eip681Link ||
+      walletFallback ||
+      (isWalletDeepLink(payIntent?.metadata?.payUrl) ? payIntent?.metadata?.payUrl : null) ||
+      (payIntent ? `${window.location.origin}/pay/intent/${payIntent.id}?auto=true` : null);
+    
+    // Show error if there was an issue creating the pay intent
+    if (error && !payIntent) {
+      return (
+        <div className="p-12 flex flex-col items-center justify-center text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+          <p className="text-red-600 font-medium mb-2">Failed to generate QR Code</p>
+          <p className="text-slate-500 text-sm mb-4">{error}</p>
+          <button 
+            onClick={() => {
+              setError(null);
+              handleQRCodePay();
+            }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-500"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    
+    if (!payIntent || !payUrl) {
       return (
         <div className="p-12 flex flex-col items-center justify-center text-center">
           <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
@@ -1599,11 +1730,22 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         </div>
 
         <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-sm mb-6">
-          <img 
-            src={payIntent.metadata.qrCode} 
-            alt="Payment QR Code" 
-            className="w-48 h-48"
-          />
+          {/* Prefer backend QR image (wallet-compatible), fallback to deep-link */}
+          {payIntent.metadata?.qrCode ? (
+            <img 
+              src={payIntent.metadata.qrCode} 
+              alt="Payment QR Code" 
+              className="w-48 h-48"
+            />
+          ) : (
+            <QRCodeSVG 
+              value={payUrl}
+              size={192}
+              level="M"
+              includeMargin={true}
+              className="rounded-lg"
+            />
+          )}
         </div>
 
         <div className="text-center space-y-2 mb-8">

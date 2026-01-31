@@ -53,7 +53,7 @@ import { ProviderIntegrationService } from './provider-integration.service';
 import { ProviderPaymentFlowService } from './provider-payment-flow.service';
 import { MockProviderService } from './mock-provider.service';
 import { TransakProviderService } from './transak-provider.service';
-import { OSLProviderService } from './osl-provider.service';
+// import { OSLProviderService } from './osl-provider.service'; // 已注销 - 不再使用OSL支付
 import { TransakWebhookController } from './transak-webhook.controller';
 import { ProviderManagerService } from './provider-manager.service';
 import { ReferralModule } from '../referral/referral.module';
@@ -137,7 +137,7 @@ import { BuyerFeeService } from './buyer-fee.service';
     CryptoRailService,
     MockProviderService,
     TransakProviderService,
-    OSLProviderService,
+    // OSLProviderService, // 已注销
     ProviderManagerService,
     OffRampCommissionService,
     OnRampCommissionService,
@@ -170,6 +170,7 @@ import { BuyerFeeService } from './buyer-fee.service';
     StripeWebhookService,
     StripeSettlementSchedulerService,
     StripeConnectService,
+    TypeOrmModule,
   ],
 })
 export class PaymentModule {}

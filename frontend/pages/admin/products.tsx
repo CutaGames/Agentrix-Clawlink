@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { 
@@ -42,16 +42,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      router.replace('/admin/login');
-      return;
-    }
-    fetchProducts(token);
-  }, [router, page, statusFilter]);
-
-  const fetchProducts = async (token: string) => {
+  const fetchProducts = useCallback(async (token: string) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -80,7 +71,16 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, statusFilter, searchTerm, router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/admin/login');
+      return;
+    }
+    fetchProducts(token);
+  }, [router, page, statusFilter, fetchProducts]);
 
   const handleSearch = () => {
     const token = localStorage.getItem('admin_token');

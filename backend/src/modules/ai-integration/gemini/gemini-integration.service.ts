@@ -38,7 +38,7 @@ export class GeminiIntegrationService {
   private readonly logger = new Logger(GeminiIntegrationService.name);
   private readonly genAI: GoogleGenerativeAI | null;
   private readonly defaultModel: string; // 可通过环境变量 GEMINI_MODEL 配置，默认为 gemini-3-pro
-  private requestOptions: any = { apiVersion: 'v1' };
+  private requestOptions: any = { apiVersion: 'v1beta' };
 
   constructor(
     private readonly configService: ConfigService,
@@ -726,12 +726,16 @@ export class GeminiIntegrationService {
       }
 
       // --- FAILOVER 机制：如果首选模型失败，尝试备选模型 ---
-      // V7.3 紧急修正：Google 已在 v1beta 下架部分模型别名，强制使用稳定版本 v1
+      // 策略：Flash 家族内优先级排序 (2.0 -> 1.5)，避开 Pro 模型以节省额度
       const fallbackModels = [
+        'gemini-2.0-flash-exp',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash-002',
         'gemini-1.5-flash',
-        'gemini-1.5-pro',
       ];
-      const uniqueFallbackModels = [...new Set([selectedModel, ...fallbackModels])].filter(m => !m.includes('latest'));
+      // 过滤掉所有 pro 模型，确保使用 Flash 家族
+      const uniqueFallbackModels = [...new Set([selectedModel, ...fallbackModels])]
+        .filter(m => !m.includes('pro') && !m.includes('latest'));
       
       let lastError: any;
       
@@ -820,7 +824,9 @@ export class GeminiIntegrationService {
         } catch (err: any) {
           lastError = err;
           this.logger.warn(`Gemini 模型 ${modelName} 调用失败: ${err.message}`);
-          if (err.message?.includes('404') || err.message?.includes('not found') || err.message?.includes('not supported') || err.message?.includes('fetch failed')) {
+          // 如果不是最后一个模型，则尝试下一个
+          if (modelName !== uniqueFallbackModels[uniqueFallbackModels.length - 1]) {
+            this.logger.log(`尝试切换到下一个备选模型...`);
             continue;
           }
           throw err;

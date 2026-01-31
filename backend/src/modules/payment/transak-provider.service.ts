@@ -184,12 +184,19 @@ export class TransakProviderService implements IProvider {
 
       this.logger.debug(`Transak: Requesting quote from ${this.baseUrl}/api/v2/currencies/price with params: ${JSON.stringify(params)}`);
 
+      // 创建专用的 axios 实例，绕过全局代理配置
+      const httpsAgent = new (await import('https')).Agent({
+        rejectUnauthorized: true,
+      });
+
       const response = await axios.get(`${this.baseUrl}/api/v2/currencies/price`, {
         params,
         headers: {
           'apiKey': this.apiKey,
         },
         timeout: 10000,
+        httpsAgent,
+        proxy: false, // 禁用代理，避免 HTTP/HTTPS 混淆
       });
 
       const data = response.data?.response || response.data;

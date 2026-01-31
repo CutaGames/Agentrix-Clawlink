@@ -8,7 +8,7 @@ import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
 import { useUser } from '../../contexts/UserContext'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // 从 Skill 数据转换为 Product 格式
 interface SkillData {
@@ -148,7 +148,8 @@ export default function CheckoutPage() {
   const loadSkill = async (id: string) => {
     try {
       setLoading(true)
-      const res = await fetch(`${API_BASE}/api/unified-marketplace/skills/${id}`)
+      // API路径：直接使用 /api 前缀，Next.js rewrites 会代理到后端
+      const res = await fetch(`/api/unified-marketplace/skills/${id}`)
       if (!res.ok) throw new Error('Skill not found')
       const skillData: SkillData = await res.json()
       setProduct(skillToProduct(skillData))

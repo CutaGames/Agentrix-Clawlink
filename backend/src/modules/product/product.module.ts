@@ -34,7 +34,7 @@ import { ProductSyncMapping } from '../../entities/product-sync-mapping.entity';
     ProductBatchImportService,
     EcommerceSyncService,
   ],
-  exports: [ProductService],
+  exports: [ProductService, TypeOrmModule],
 })
 export class ProductModule {}
 

@@ -179,15 +179,66 @@ export class SkillEcosystemV21776570400000 implements MigrationInterface {
       )
     `);
 
-    // 11. 创建索引
-    await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS "idx_skill_analytics_skill_time" ON "skill_analytics"("skillId", "createdAt");
-      CREATE INDEX IF NOT EXISTS "idx_skill_analytics_caller_time" ON "skill_analytics"("callerId", "createdAt");
-      CREATE INDEX IF NOT EXISTS "idx_skill_analytics_platform_time" ON "skill_analytics"("platform", "createdAt");
-      CREATE INDEX IF NOT EXISTS "idx_skills_layer" ON "skills"("layer");
-      CREATE INDEX IF NOT EXISTS "idx_skills_source" ON "skills"("source");
-      CREATE INDEX IF NOT EXISTS "idx_skills_resource_type" ON "skills"("resourceType");
-    `);
+    // 11. 创建索引（兼容 snake_case 列名）
+    const getColumnName = async (tableName: string, candidates: string[]) => {
+      const columns = await queryRunner.query(
+        `
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+          AND table_name = $1
+          AND column_name = ANY($2)
+          ORDER BY column_name
+          LIMIT 1
+        `,
+        [tableName, candidates]
+      );
+
+      return columns[0]?.column_name as string | undefined;
+    };
+
+    const skillAnalyticsSkillId = await getColumnName('skill_analytics', ['skillId', 'skill_id']);
+    const skillAnalyticsCallerId = await getColumnName('skill_analytics', ['callerId', 'caller_id']);
+    const skillAnalyticsCreatedAt = await getColumnName('skill_analytics', ['createdAt', 'created_at']);
+    const skillsLayer = await getColumnName('skills', ['layer']);
+    const skillsSource = await getColumnName('skills', ['source']);
+    const skillsResourceType = await getColumnName('skills', ['resourceType', 'resource_type']);
+
+    if (skillAnalyticsSkillId && skillAnalyticsCreatedAt) {
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_skill_analytics_skill_time" ON "skill_analytics"("${skillAnalyticsSkillId}", "${skillAnalyticsCreatedAt}");
+      `);
+    }
+
+    if (skillAnalyticsCallerId && skillAnalyticsCreatedAt) {
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_skill_analytics_caller_time" ON "skill_analytics"("${skillAnalyticsCallerId}", "${skillAnalyticsCreatedAt}");
+      `);
+    }
+
+    if (skillAnalyticsCreatedAt) {
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_skill_analytics_platform_time" ON "skill_analytics"("platform", "${skillAnalyticsCreatedAt}");
+      `);
+    }
+
+    if (skillsLayer) {
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_skills_layer" ON "skills"("${skillsLayer}");
+      `);
+    }
+
+    if (skillsSource) {
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_skills_source" ON "skills"("${skillsSource}");
+      `);
+    }
+
+    if (skillsResourceType) {
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_skills_resource_type" ON "skills"("${skillsResourceType}");
+      `);
+    }
 
     // 12. 为现有 Skill 设置默认的 layer 值
     await queryRunner.query(`

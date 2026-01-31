@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { 
@@ -39,16 +39,7 @@ export default function ProductReviewPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      router.replace('/admin/login');
-      return;
-    }
-    fetchProducts(token);
-  }, [router, page]);
-
-  const fetchProducts = async (token: string) => {
+  const fetchProducts = useCallback(async (token: string) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
@@ -77,7 +68,16 @@ export default function ProductReviewPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchTerm, router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/admin/login');
+      return;
+    }
+    fetchProducts(token);
+  }, [router, page, fetchProducts]);
 
   const handleApprove = async (productId: string) => {
     const token = localStorage.getItem('admin_token');

@@ -1,0 +1,131 @@
+# ===========================================
+# Agentrix - AWS Production Docker Compose
+# ===========================================
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: agentrix-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-agentrix}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agentrix_password}
+      POSTGRES_DB: ${DB_DATABASE:-paymind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agentrix-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: agentrix-redis
+    restart: unless-stopped
+    networks:
+      - agentrix-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentrix-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_SYNC: "true" # Temporarily enable sync to fix schema
+    expose:
+      - "3001"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - backend_uploads:/app/uploads
+      - ./backend/knowledge:/app/knowledge # Mount knowledge files
+    networks:
+      - agentrix-network
+
+  # Standalone HQ Pilot Backend (Port 3005)
+  hq-pilot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentrix-hq-pilot
+    restart: unless-stopped
+    command: ["node", "dist/main-hq.js"]
+    env_file: .env # Inherit all AI keys from .env
+    environment:
+      NODE_ENV: production
+      HQ_PORT: 3005
+      DB_SYNC: "true" # Temporarily enable sync to fix schema
+    expose:
+      - "3005"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - .:/app/workspace
+      - ./backend/knowledge:/app/knowledge # Share knowledge files
+    networks:
+      - agentrix-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_APP_URL: /
+    container_name: agentrix-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks:
+      - agentrix-network
+
+  hq-console:
+    build:
+      context: ./hq-console
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_APP_URL: /
+        NEXT_PUBLIC_HQ_URL: ""
+    container_name: agentrix-hq
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - hq-pilot
+    networks:
+      - agentrix-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: agentrix-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8080:8080"
+      - "443:443"
+    volumes:
+      - ./nginx/production.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - hq-console
+      - backend
+      - hq-pilot
+    networks:
+      - agentrix-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_uploads:
+
+networks:
+  agentrix-network:

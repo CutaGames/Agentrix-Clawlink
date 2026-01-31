@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { 
@@ -30,11 +30,7 @@ export default function MerchantDashboard() {
     days: 7
   });
 
-  useEffect(() => {
-    fetchData();
-  }, [filter]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [statsData, txData] = await Promise.all([
@@ -52,7 +48,11 @@ export default function MerchantDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleExportCSV = () => {
     if (transactions.length === 0) return;

@@ -26,12 +26,18 @@ import {
   Clock,
   Shield,
   CheckCircle,
+  Database,
+  UserCheck,
+  BarChart3,
+  FileText,
+  Plus
 } from 'lucide-react';
 
 // 四层架构的用户友好标签
 export type ItemLayer = 'infra' | 'resource' | 'logic' | 'composite';
 export type ItemValueType = 'action' | 'deliverable' | 'decision' | 'data';
 export type ItemSource = 'internal' | 'external_ucp' | 'partner' | 'mcp_registry';
+export type ItemPersona = 'api_provider' | 'data_provider' | 'expert' | 'merchant' | 'developer';
 
 export interface MarketplaceItemProps {
   id: string;
@@ -40,6 +46,7 @@ export interface MarketplaceItemProps {
   description?: string;
   layer?: ItemLayer;
   valueType?: ItemValueType;
+  persona?: ItemPersona;
   source?: ItemSource;
   rating?: number;
   callCount?: number;
@@ -57,6 +64,7 @@ export interface MarketplaceItemProps {
   imageUrl?: string;
   tags?: string[];
   slaGuarantee?: boolean;
+  performanceMetric?: string; // e.g., "99.9% Uptime" or "24h delivery"
   // 交互
   onClick?: () => void;
   onTryIt?: () => void;
@@ -107,6 +115,7 @@ export const MarketplaceItemCard: React.FC<MarketplaceItemProps> = ({
   description,
   layer = 'resource',
   valueType,
+  persona,
   source,
   rating = 0,
   callCount = 0,
@@ -124,6 +133,7 @@ export const MarketplaceItemCard: React.FC<MarketplaceItemProps> = ({
   onClick,
   onTryIt,
   onAddToCart,
+  performanceMetric,
   variant = 'default',
 }) => {
   const layerInfo = layerConfig[layer];
@@ -237,130 +247,210 @@ export const MarketplaceItemCard: React.FC<MarketplaceItemProps> = ({
     );
   }
 
-  // Default 变体
+  // Default 变体 (基于 Persona 自适应渲染)
   return (
     <div
       onClick={onClick}
-      className="bg-white rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all overflow-hidden cursor-pointer group"
+      className={`bg-white rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all overflow-hidden cursor-pointer group flex flex-col h-full ${
+        persona === 'api_provider' ? 'border-l-4 border-l-blue-500' : 
+        persona === 'merchant' ? 'border-l-4 border-l-emerald-500' :
+        persona === 'data_provider' ? 'border-l-4 border-l-amber-500' :
+        persona === 'expert' ? 'border-l-4 border-l-purple-500' : ''
+      }`}
     >
-      {/* 图片区域 */}
-      {hasImage && (
-        <div className="relative h-40 bg-slate-100 overflow-hidden">
+      {/* 图片/头部区域 */}
+      <div className="relative h-40 bg-slate-50 overflow-hidden flex-shrink-0">
+        {hasImage ? (
           <img 
             src={imageUrl} 
             alt={displayName || name} 
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
-          {/* 协议图标 (右上角) */}
-          <div className="absolute top-2 right-2 flex gap-1">
-            {supportsInstant && (
-              <span className="w-7 h-7 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm" title="瞬时调用">
-                <Zap className="w-4 h-4 text-amber-500" />
-              </span>
-            )}
-            {supportsDelivery && (
-              <span className="w-7 h-7 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm" title="物流履约">
-                <Package className="w-4 h-4 text-blue-500" />
-              </span>
-            )}
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-slate-50">
+            {persona === 'api_provider' && <Zap className="w-12 h-12 text-blue-200" />}
+            {persona === 'data_provider' && <Database className="w-12 h-12 text-amber-200" />}
+            {persona === 'expert' && <UserCheck className="w-12 h-12 text-purple-200" />}
+            {persona === 'developer' && <Wrench className="w-12 h-12 text-indigo-200" />}
+            {!persona && layerInfo.icon}
           </div>
-          {/* 价格标签 */}
-          {isPaid && (
-            <div className="absolute bottom-2 right-2 bg-slate-900/80 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg text-sm font-semibold">
+        )}
+        
+        {/* 协议图标 (右上角) */}
+        <div className="absolute top-2 right-2 flex gap-1">
+          {supportsInstant && (
+            <span className="w-6 h-6 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm border border-amber-100" title="⚡️ 瞬时结算 (X402)">
+              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            </span>
+          )}
+          {supportsDelivery && (
+            <span className="w-6 h-6 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm border border-blue-100" title="📦 物流履约 (UCP)">
+              <Package className="w-3.5 h-3.5 text-blue-500" />
+            </span>
+          )}
+        </div>
+
+        {/* 状态/性能标记 (左上角) */}
+        {slaGuarantee && (
+          <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-slate-900/80 backdrop-blur-sm text-[9px] font-bold text-white rounded-md uppercase tracking-wider flex items-center gap-1 shadow-sm">
+            <Shield className="w-2.5 h-2.5 text-emerald-400" />
+            Verified
+          </div>
+        )}
+        
+        {/* 价格标签 */}
+        <div className="absolute bottom-2 right-2">
+          {isPaid ? (
+            <div className="bg-slate-900/90 backdrop-blur-sm text-white px-2 py-0.5 rounded-md text-xs font-bold shadow-lg">
               ${price}
             </div>
-          )}
-          {pricingType === 'free' && (
-            <div className="absolute bottom-2 right-2 bg-emerald-500/90 backdrop-blur-sm text-white px-2.5 py-1 rounded-lg text-sm font-bold">
+          ) : (
+            <div className="bg-emerald-500/90 backdrop-blur-sm text-white px-2 py-0.5 rounded-md text-xs font-bold shadow-lg">
               Free
             </div>
           )}
         </div>
-      )}
+      </div>
 
       {/* 内容区域 */}
-      <div className="p-4">
-        {/* 分类标签 */}
-        <div className="flex items-center gap-2 mb-2">
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border ${layerInfo.color}`}>
-            {layerInfo.icon}
-            {layerInfo.labelZh}
-          </span>
-          {valueInfo && (
-            <span className="text-sm" title={valueInfo.labelZh}>{valueInfo.emoji}</span>
-          )}
-          {slaGuarantee && (
-            <span className="flex items-center gap-0.5 text-xs text-emerald-600">
-              <CheckCircle className="w-3 h-3" />
-              SLA
+      <div className="p-3 flex-1 flex flex-col">
+        {/* 分类与价值类型 */}
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1">
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter border ${layerInfo.color}`}>
+              {layerInfo.labelZh}
+            </span>
+            {valueInfo && (
+              <span className="text-xs" title={valueInfo.labelZh}>{valueInfo.emoji}</span>
+            )}
+          </div>
+          {performanceMetric && (
+            <span className="text-[9px] font-medium text-slate-400 flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" />
+              {performanceMetric}
             </span>
           )}
         </div>
 
         {/* 标题 */}
-        <h3 className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1 mb-1">
+        <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors text-sm line-clamp-1 mb-1">
           {displayName || name}
         </h3>
-        <p className="text-sm text-slate-500 line-clamp-2 mb-3 min-h-[40px]">{description}</p>
+        
+        {/* 针对不同画像的描述区域差异化 */}
+        <div className="flex-1">
+          <p className="text-xs text-slate-500 line-clamp-2 mb-2 min-h-[32px] leading-relaxed">
+            {description}
+          </p>
 
-        {/* 统计信息 */}
-        <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              {rating.toFixed(1)}
-            </span>
-            <span className="flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5" />
-              {callCount.toLocaleString()}
-            </span>
-          </div>
-          {/* 开发者分成 */}
-          {commissionRate && (
-            <span className="flex items-center gap-1 text-emerald-600 font-medium">
-              <Percent className="w-3.5 h-3.5" />
-              {commissionRate}% 收益
-            </span>
+          {/* 实时数据采样 (针对 Data Provider) */}
+          {persona === 'data_provider' && (
+            <div className="mb-2 p-1.5 bg-slate-50 rounded-md border border-slate-100">
+              <div className="flex items-center justify-between text-[9px] text-slate-400 mb-0.5 font-mono">
+                <span>SAMPLE_DATA</span>
+                <BarChart3 className="w-2.5 h-2.5" />
+              </div>
+              <div className="text-[9px] text-slate-600 font-mono truncate">
+                &#123; &quot;id&quot;: &quot;tx_982&quot;, &quot;val&quot;: 0.45 &#125;
+              </div>
+            </div>
+          )}
+
+          {/* 技术参数 (针对 API Provider / Developer) */}
+          {(persona === 'api_provider' || persona === 'developer') && (
+            <div className="grid grid-cols-2 gap-1.5 mb-2">
+              <div className="px-1.5 py-0.5 bg-blue-50 rounded border border-blue-100 text-[9px] text-blue-700 flex items-center justify-between">
+                <span>{persona === 'developer' ? 'Verson' : 'Latency'}</span>
+                <span className="font-bold">{persona === 'developer' ? 'v1.2.0' : '~45ms'}</span>
+              </div>
+              <div className="px-1.5 py-0.5 bg-emerald-50 rounded border border-emerald-100 text-[9px] text-emerald-700 flex items-center justify-between">
+                <span>{persona === 'developer' ? 'License' : 'Reliability'}</span>
+                <span className="font-bold">{persona === 'developer' ? 'MIT' : '99.9%'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 专家详情 (针对 Expert) */}
+          {persona === 'expert' && (
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex -space-x-1">
+                {[1,2,3].map(i => (
+                  <div key={i} className="w-4 h-4 rounded-full bg-slate-200 border border-white" />
+                ))}
+              </div>
+              <span className="text-[9px] text-slate-400 font-medium">12位同行已调用</span>
+            </div>
           )}
         </div>
 
-        {/* 作者信息 */}
-        {authorName && (
-          <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
-            {authorAvatar ? (
-              <img src={authorAvatar} alt={authorName} className="w-5 h-5 rounded-full" />
-            ) : (
-              <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-500">
-                {authorName.charAt(0)}
-              </div>
-            )}
-            <span className="text-xs text-slate-500">by {authorName}</span>
+        {/* 底部统计与分成 */}
+        <div className="flex items-center justify-between text-[9px] text-slate-400 pt-2 border-t border-slate-50">
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center gap-0.5">
+              <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+              {rating.toFixed(1)}
+            </span>
+            <span className="flex items-center gap-0.5">
+              <TrendingUp className="w-2.5 h-2.5" />
+              {callCount.toLocaleString()}
+            </span>
           </div>
-        )}
+          
+          {commissionRate && (
+            <div className="px-1 py-0.5 bg-emerald-50 text-emerald-600 rounded flex items-center gap-0.5 font-bold">
+              <Percent className="w-2 h-2" />
+              {commissionRate}%
+            </div>
+          )}
+        </div>
 
-        {/* 操作按钮 */}
-        {!hasImage && (
-          <div className="flex gap-2 mt-3">
-            {onTryIt && (
+        {/* 操作区 */}
+        <div className="flex gap-2 mt-3 pt-3 border-t border-slate-50">
+          {persona === 'expert' ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onTryIt?.(); }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors shadow-md shadow-purple-100"
+            >
+              <Workflow className="w-3 h-3" />
+              执行逻辑
+            </button>
+          ) : persona === 'merchant' ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddToCart?.(); }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-100"
+            >
+              <ShoppingCart className="w-3 h-3" />
+              立即购入
+            </button>
+          ) : persona === 'developer' ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onTryIt?.(); }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-100"
+            >
+              <Wrench className="w-3 h-3" />
+              开发对接
+            </button>
+          ) : (
+            <>
               <button
-                onClick={(e) => { e.stopPropagation(); onTryIt(); }}
-                className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onTryIt?.(); }}
+                className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-100 rounded-lg hover:bg-blue-100 transition-colors"
               >
-                <Play className="w-4 h-4" />
+                <Play className="w-3 h-3" />
                 试用
               </button>
-            )}
-            {onAddToCart && isPaid && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onAddToCart(); }}
-                className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                购买
-              </button>
-            )}
-          </div>
-        )}
+              {isPaid && onAddToCart && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onAddToCart?.(); }}
+                  className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-md shadow-blue-100"
+                >
+                  <Plus className="w-3 h-3" />
+                  订阅
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

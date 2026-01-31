@@ -576,20 +576,39 @@ export const MerchantModuleV2: React.FC<MerchantModuleV2Props> = ({ activeL1, ac
           <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6">
             <h3 className="text-white font-bold mb-4 flex items-center gap-2">
               <Zap size={18} className="text-amber-400" />
-              {t({ zh: '开发者 SDK', en: 'Developer SDK' })}
+              {t({ zh: '商家增长引导', en: 'Merchant Growth' })}
             </h3>
             <p className="text-sm text-slate-400 mb-4">
               {t({ 
-                zh: '使用我们的 SDK 快速集成支付与技能调用功能。', 
-                en: 'Use our SDK to quickly integrate payments and skill calls.' 
+                zh: '更快上新与同步，让商品进入 AI 市场。', 
+                en: 'Accelerate listing and sync to enter AI marketplace.' 
               })}
             </p>
-            <div className="space-y-2">
-              <CopyableCommand command="npm install @agentrix/sdk" />
-              <CopyableCommand command="curl -X POST https://api.agentrix.top/api/v1/pay" />
+            <div className="space-y-3">
+              <button
+                onClick={() => onCommand?.('navigate', { l1: 'products', l2: 'batch-import' })}
+                className="w-full flex items-center justify-between px-4 py-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/20 rounded-xl text-blue-200 text-sm font-semibold"
+              >
+                <span>{t({ zh: '批量上传商品（CSV）', en: 'Bulk Upload (CSV)' })}</span>
+                <ArrowRight size={16} />
+              </button>
+              <button
+                onClick={() => onCommand?.('navigate', { l1: 'products', l2: 'ecommerce-sync' })}
+                className="w-full flex items-center justify-between px-4 py-3 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 rounded-xl text-emerald-200 text-sm font-semibold"
+              >
+                <span>{t({ zh: '一键同步其他店铺', en: 'Sync Existing Store' })}</span>
+                <ArrowRight size={16} />
+              </button>
+              <button
+                onClick={() => onCommand?.('navigate', { l1: 'products', l2: 'add-new' })}
+                className="w-full flex items-center justify-between px-4 py-3 bg-slate-700/40 hover:bg-slate-700/60 border border-white/10 rounded-xl text-slate-200 text-sm font-semibold"
+              >
+                <span>{t({ zh: '创建首个商品', en: 'Create First Product' })}</span>
+                <ArrowRight size={16} />
+              </button>
             </div>
-            <p className="text-xs text-slate-500 mt-3">
-              {t({ zh: '注：SDK 包即将发布至 npm，目前可通过 API 直接集成', en: 'Note: SDK package coming soon to npm. Use API for direct integration.' })}
+            <p className="text-xs text-slate-500 mt-4">
+              {t({ zh: '建议：先同步存量商品，再用 AI 自动生成技能描述。', en: 'Tip: sync existing catalog first, then let AI auto-generate skills.' })}
             </p>
           </div>
         </div>

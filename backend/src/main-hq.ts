@@ -6,9 +6,9 @@ import { HqStandaloneModule } from './modules/hq/hq.standalone.module';
 async function bootstrap() {
   console.log('🛸 Starting Agentrix HQ Pilot (Standalone Control Center)...');
   
-  // 配置全局代理
-  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy || 
-                     process.env.HTTP_PROXY || process.env.http_proxy;
+  // 配置全局代理 (仅在显式要求时启用，暂时禁用以排除 Gemini 连接问题)
+  const httpsProxy = process.env.ENABLE_HQ_PROXY === 'true' ? (process.env.HTTPS_PROXY || process.env.https_proxy || 
+                     process.env.HTTP_PROXY || process.env.http_proxy) : null;
   
   if (httpsProxy) {
     try {

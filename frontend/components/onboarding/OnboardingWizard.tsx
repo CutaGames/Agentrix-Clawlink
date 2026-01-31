@@ -504,6 +504,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
         case 'configure-pricing':
           return <ApiProviderPricingStep {...stepProps} />;
         case 'publish':
+        case 'publish-skill':
           return <ApiProviderPublishStep {...stepProps} />;
         case 'complete':
           return <CompleteStep {...stepProps} onFinish={handleFinish} />;
@@ -517,36 +518,54 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       switch (session.currentStep) {
         case 'welcome':
           return <WelcomeStep {...stepProps} />;
-        case 'verify-ownership':
+        case 'verify-identity':
           return <GenericFormStep {...stepProps} 
-            title="验证数据所有权" 
-            description="请提供数据来源和所有权证明"
+            title="验证数据所有权与合规" 
+            description="请提供数据来源与合法性证明，并完成合规声明"
             fields={[
-              { name: 'datasetName', label: '数据集名称', type: 'text', required: true },
+              { name: 'orgName', label: '机构名称', type: 'text', required: true, placeholder: '如：Agentrix Data Lab' },
+              { name: 'dataSteward', label: '数据负责人', type: 'text', required: true },
               { name: 'dataSource', label: '数据来源', type: 'text', required: true },
-              { name: 'ownershipProof', label: '所有权证明', type: 'url' },
+              { name: 'ownershipProof', label: '所有权/授权证明链接', type: 'url', required: true, helper: '可提供授权书、合同或公开许可链接' },
+              { name: 'complianceContact', label: '合规联系人邮箱', type: 'email', required: true },
+              { name: 'sanctionsCheck', label: '我确认数据不包含受制裁或违规来源', type: 'checkbox', required: true },
+              { name: 'privacyConsent', label: '我已确保数据满足隐私与数据保护要求（如脱敏）', type: 'checkbox', required: true },
             ]}
           />;
         case 'upload-dataset':
           return <GenericFormStep {...stepProps} 
-            title="上传数据集" 
-            description="上传或接入您的数据集"
+            title="上传或接入数据集" 
+            description="提供数据接入方式与更新频率"
             fields={[
-              { name: 'datasetUrl', label: '数据集地址', type: 'url', required: true },
-              { name: 'apiKey', label: 'API Key (如需)', type: 'password' },
-              { name: 'format', label: '数据格式', type: 'text' },
+              { name: 'datasetName', label: '数据集名称', type: 'text', required: true },
+              { name: 'datasetUrl', label: '数据集地址/接口', type: 'url', required: true },
+              { name: 'format', label: '数据格式', type: 'select', required: true, options: [
+                { label: 'CSV', value: 'csv' },
+                { label: 'JSON', value: 'json' },
+                { label: 'Parquet', value: 'parquet' },
+                { label: 'API', value: 'api' },
+                { label: '其他', value: 'other' },
+              ] },
+              { name: 'updateFrequency', label: '更新频率', type: 'text', placeholder: '如：每日/每周/实时' },
+              { name: 'accessKey', label: '访问凭证（如需）', type: 'password' },
             ]}
           />;
         case 'configure-privacy':
           return <GenericFormStep {...stepProps} 
-            title="配置隐私保护" 
-            description="设置数据访问权限和隐私级别"
+            title="配置隐私与访问控制" 
+            description="设置隐私级别与数据保护策略"
             fields={[
-              { name: 'privacyLevel', label: '隐私级别', type: 'text', required: true },
-              { name: 'accessControl', label: '访问控制策略', type: 'text' },
+              { name: 'privacyLevel', label: '隐私级别', type: 'select', required: true, options: [
+                { label: '公开', value: 'public' },
+                { label: '受控访问', value: 'controlled' },
+                { label: '严格限制', value: 'restricted' },
+              ] },
+              { name: 'anonymization', label: '脱敏/匿名化说明', type: 'textarea', required: true, placeholder: '说明脱敏/匿名化方法' },
+              { name: 'retention', label: '数据保留期限', type: 'text', placeholder: '如：90 天/1 年' },
+              { name: 'legalBasis', label: '合法性依据', type: 'text', placeholder: '如：用户授权/公开许可/合同' },
             ]}
           />;
-        case 'set-pricing':
+        case 'set-x402-pricing':
           return <ApiProviderPricingStep {...stepProps} />;
         case 'complete':
           return <CompleteStep {...stepProps} onFinish={handleFinish} />;
@@ -560,35 +579,42 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       switch (session.currentStep) {
         case 'welcome':
           return <WelcomeStep {...stepProps} />;
-        case 'verify-credentials':
+        case 'verify-identity':
           return <GenericFormStep {...stepProps} 
-            title="验证专业资质" 
-            description="请提供您的专业背景和资质证明"
+            title="验证专业资质与身份" 
+            description="提交资质与合规声明，保障服务可信"
             fields={[
+              { name: 'fullName', label: '姓名/机构名称', type: 'text', required: true },
               { name: 'expertise', label: '专业领域', type: 'text', required: true },
               { name: 'yearsOfExperience', label: '从业年限', type: 'number', required: true },
-              { name: 'credentials', label: '资质证书', type: 'url' },
+              { name: 'credentials', label: '资质证书链接', type: 'url', required: true },
+              { name: 'affiliation', label: '机构/协会', type: 'text' },
+              { name: 'ethicsConsent', label: '我承诺遵守行业伦理与合规要求', type: 'checkbox', required: true },
+              { name: 'privacyConsent', label: '我承诺严格保护用户隐私与数据安全', type: 'checkbox', required: true },
             ]}
           />;
-        case 'create-profile':
+        case 'create-capability-card':
           return <GenericFormStep {...stepProps} 
             title="创建能力卡片" 
-            description="展示您的专业技能和服务范围"
+            description="展示服务内容、范围与交付方式"
             fields={[
               { name: 'title', label: '服务标题', type: 'text', required: true },
-              { name: 'description', label: '服务描述', type: 'text', required: true },
+              { name: 'description', label: '服务描述', type: 'textarea', required: true, placeholder: '请描述您的服务内容与边界' },
               { name: 'specialties', label: '专长领域', type: 'text' },
+              { name: 'deliverables', label: '交付物说明', type: 'textarea' },
             ]}
           />;
         case 'set-pricing':
           return <ApiProviderPricingStep {...stepProps} />;
         case 'configure-sla':
           return <GenericFormStep {...stepProps} 
-            title="配置 SLA 承诺" 
-            description="设置服务水平协议和响应时间"
+            title="配置 SLA 与风控" 
+            description="设置响应时间、服务范围与争议处理"
             fields={[
               { name: 'responseTime', label: '响应时间 (小时)', type: 'number', required: true },
-              { name: 'availability', label: '可用时间段', type: 'text' },
+              { name: 'availability', label: '可用时间段', type: 'text', placeholder: '如：工作日 9:00-18:00' },
+              { name: 'disputePolicy', label: '争议处理与退款政策', type: 'textarea', required: true },
+              { name: 'slaConsent', label: '我同意遵守平台服务标准与风控规则', type: 'checkbox', required: true },
             ]}
           />;
         case 'complete':
@@ -598,7 +624,149 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       }
     }
 
-    // Merchant 和 Developer 使用通用步骤
+    // Merchant 画像步骤
+    if (session.persona === 'merchant') {
+      switch (session.currentStep) {
+        case 'welcome':
+          return <WelcomeStep {...stepProps} />;
+        case 'verify-identity':
+          return <GenericFormStep {...stepProps}
+            title="商户身份与合规核验"
+            description="用于支付与结算合规，请提供真实信息"
+            fields={[
+              { name: 'companyName', label: '商户/公司名称', type: 'text', required: true },
+              { name: 'registrationNumber', label: '营业执照/注册号', type: 'text', required: true },
+              { name: 'legalRepresentative', label: '法定代表人', type: 'text', required: true },
+              { name: 'businessAddress', label: '经营地址', type: 'textarea', required: true },
+              { name: 'country', label: '所在国家/地区', type: 'select', required: true, options: [
+                { label: '中国', value: 'CN' },
+                { label: '新加坡', value: 'SG' },
+                { label: '美国', value: 'US' },
+                { label: '其他', value: 'OTHER' },
+              ] },
+              { name: 'website', label: '官方网站', type: 'url' },
+              { name: 'contactEmail', label: '联系邮箱', type: 'email', required: true },
+              { name: 'contactPhone', label: '联系电话', type: 'tel' },
+              { name: 'amlConsent', label: '我已阅读并遵守反洗钱与制裁合规要求', type: 'checkbox', required: true },
+              { name: 'termsConsent', label: '我同意平台服务协议与风控条款', type: 'checkbox', required: true },
+            ]}
+          />;
+        case 'sync-store':
+          return <GenericFormStep {...stepProps}
+            title="同步商品目录"
+            description="连接您的店铺或上传商品清单"
+            fields={[
+              { name: 'storeName', label: '店铺名称', type: 'text', required: true },
+              { name: 'platform', label: '平台类型', type: 'select', required: true, options: [
+                { label: 'Shopify', value: 'shopify' },
+                { label: 'WooCommerce', value: 'woocommerce' },
+                { label: 'Amazon', value: 'amazon' },
+                { label: '其他', value: 'other' },
+              ] },
+              { name: 'storeUrl', label: '店铺地址', type: 'url', required: true },
+              { name: 'productCount', label: '预计商品数量', type: 'number' },
+              { name: 'syncNote', label: '同步说明', type: 'textarea' },
+            ]}
+          />;
+        case 'configure-ucp':
+          return <GenericFormStep {...stepProps}
+            title="配置 UCP 协议与结算"
+            description="设置收款地址与退款政策"
+            fields={[
+              { name: 'settlementAddress', label: '结算钱包地址', type: 'text', required: true },
+              { name: 'payoutCurrency', label: '结算币种', type: 'select', required: true, options: [
+                { label: 'USDT', value: 'USDT' },
+                { label: 'USDC', value: 'USDC' },
+                { label: 'USD', value: 'USD' },
+              ] },
+              { name: 'refundPolicy', label: '退款/取消政策', type: 'textarea', required: true },
+              { name: 'deliverySla', label: '履约 SLA', type: 'text', placeholder: '如：48 小时内发货' },
+              { name: 'ucpConsent', label: '我同意 UCP 协议与自动结算条款', type: 'checkbox', required: true },
+            ]}
+          />;
+        case 'test-order':
+          return <GenericFormStep {...stepProps}
+            title="测试下单流程"
+            description="完成测试单以验证商品与支付链路"
+            fields={[
+              { name: 'testContact', label: '测试联系人', type: 'text', required: true },
+              { name: 'testScenario', label: '测试场景描述', type: 'textarea', required: true },
+              { name: 'chargebackConsent', label: '我已了解并接受拒付/纠纷处理规则', type: 'checkbox', required: true },
+            ]}
+          />;
+        case 'complete':
+          return <CompleteStep {...stepProps} onFinish={handleFinish} />;
+        default:
+          return <GenericStep {...stepProps} stepId={session.currentStep} />;
+      }
+    }
+
+    // Developer 画像步骤
+    if (session.persona === 'developer') {
+      switch (session.currentStep) {
+        case 'welcome':
+          return <WelcomeStep {...stepProps} />;
+        case 'create-developer-account':
+          return <GenericFormStep {...stepProps}
+            title="创建开发者账户"
+            description="用于访问 API 与结算，请填写真实信息"
+            fields={[
+              { name: 'developerName', label: '开发者名称', type: 'text', required: true },
+              { name: 'organization', label: '组织/公司（可选）', type: 'text' },
+              { name: 'region', label: '所在国家/地区', type: 'select', required: true, options: [
+                { label: '中国', value: 'CN' },
+                { label: '新加坡', value: 'SG' },
+                { label: '美国', value: 'US' },
+                { label: '其他', value: 'OTHER' },
+              ] },
+              { name: 'securityEmail', label: '安全邮箱', type: 'email', required: true },
+              { name: 'twoFactor', label: '我已启用或承诺启用 2FA', type: 'checkbox', required: true },
+              { name: 'termsConsent', label: '我同意平台开发者协议与合规要求', type: 'checkbox', required: true },
+            ]}
+          />;
+        case 'create-skill':
+          return <GenericFormStep {...stepProps}
+            title="创建 Skill"
+            description="完善能力信息与数据处理说明"
+            fields={[
+              { name: 'skillName', label: 'Skill 名称', type: 'text', required: true },
+              { name: 'inputSpec', label: '输入规范链接', type: 'url', required: true },
+              { name: 'outputSpec', label: '输出规范链接', type: 'url' },
+              { name: 'riskLevel', label: '风险级别', type: 'select', required: true, options: [
+                { label: '低', value: 'low' },
+                { label: '中', value: 'medium' },
+                { label: '高', value: 'high' },
+              ] },
+              { name: 'dataHandling', label: '数据处理说明', type: 'textarea', required: true },
+            ]}
+          />;
+        case 'test-skill':
+          return <GenericFormStep {...stepProps}
+            title="测试与验证"
+            description="提供测试信息与监控联系"
+            fields={[
+              { name: 'testEndpoint', label: '测试端点', type: 'url', required: true },
+              { name: 'testCases', label: '测试用例说明', type: 'textarea', required: true },
+              { name: 'monitoringContact', label: '运维联系人邮箱', type: 'email', required: true },
+            ]}
+          />;
+        case 'publish-skill':
+          return <GenericFormStep {...stepProps}
+            title="发布确认"
+            description="确认合规与内容授权后发布"
+            fields={[
+              { name: 'contentRights', label: '我确认拥有相关内容/数据的发布权利', type: 'checkbox', required: true },
+              { name: 'securityPolicy', label: '我已阅读并遵守安全与风控要求', type: 'checkbox', required: true },
+            ]}
+          />;
+        case 'complete':
+          return <CompleteStep {...stepProps} onFinish={handleFinish} />;
+        default:
+          return <GenericStep {...stepProps} stepId={session.currentStep} />;
+      }
+    }
+
+    // 其他画像使用通用步骤
     switch (session.currentStep) {
       case 'welcome':
         return <WelcomeStep {...stepProps} />;

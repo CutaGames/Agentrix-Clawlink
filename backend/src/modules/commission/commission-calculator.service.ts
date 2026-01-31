@@ -495,7 +495,7 @@ export class CommissionCalculatorService {
     if (rebatePayout > 0) {
       await createCommissionRecord({
         payeeId: SYSTEM_REBATE_POOL_ID,
-        payeeType: PayeeType.PAYMIND,
+        payeeType: PayeeType.AGENTRIX,
         amount: rebatePayout,
         breakdown: { type: 'rebate_pool' },
       });
@@ -506,7 +506,7 @@ export class CommissionCalculatorService {
     if (isX402 && x402ChannelFee > 0) {
       await createCommissionRecord({
         payeeId: 'x402_channel',
-        payeeType: PayeeType.PAYMIND,
+        payeeType: PayeeType.AGENTRIX,
         amount: x402ChannelFee,
         breakdown: { 
           type: 'x402_channel_fee', 
@@ -519,8 +519,8 @@ export class CommissionCalculatorService {
 
     if (paymindFinalRevenue > 0) {
       await createCommissionRecord({
-        payeeId: 'paymind',
-        payeeType: PayeeType.PAYMIND,
+        payeeId: 'agentrix',
+        payeeType: PayeeType.AGENTRIX,
         amount: paymindFinalRevenue,
         breakdown: { 
           type: 'platform', 

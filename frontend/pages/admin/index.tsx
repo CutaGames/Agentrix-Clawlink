@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { 
@@ -50,17 +50,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      router.replace('/admin/login');
-      return;
-    }
-
-    fetchStats(token);
-  }, [router]);
-
-  const fetchStats = async (token: string) => {
+  const fetchStats = useCallback(async (token: string) => {
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE_URL}/api/admin/stats`, {
@@ -84,7 +74,17 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/admin/login');
+      return;
+    }
+
+    fetchStats(token);
+  }, [router, fetchStats]);
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');

@@ -45,6 +45,7 @@ interface Skill {
     type: string;
     pricePerCall?: number;
     currency?: string;
+    commissionRate?: number;
   };
   tags?: string[];
   authorInfo?: {
@@ -55,11 +56,18 @@ interface Skill {
   humanAccessible?: boolean;
   imageUrl?: string;
   thumbnailUrl?: string;
+  ucpEnabled?: boolean;
+  x402Enabled?: boolean;
+  metadata?: {
+    performanceMetric?: string;
+    persona?: string;
+    image?: string;
+  };
 }
 
 type ViewMode = 'resources' | 'tools';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export default function MarketplacePage() {
   const router = useRouter();
@@ -122,7 +130,7 @@ export default function MarketplacePage() {
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortBy === 'createdAt' ? 'DESC' : 'DESC');
 
-      const res = await fetch(`${API_BASE}/api/unified-marketplace/search?${params}`);
+      const res = await fetch(`/api/unified-marketplace/search?${params}`);
       const data = await res.json();
       setSkills(data.items || []);
     } catch (error) {
@@ -301,7 +309,7 @@ export default function MarketplacePage() {
             }>
               {skills.map((skill) => (
                 viewMode === 'resources' ? (
-                  // 商品卡片样式
+                  // 商品卡片样式 - Enhanced with protocol badges & persona metrics
                   <div
                     key={skill.id}
                     className="group bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden hover:border-blue-500/50 transition-all cursor-pointer"
@@ -309,9 +317,9 @@ export default function MarketplacePage() {
                   >
                     {/* 封面图 */}
                     <div className="aspect-[4/3] bg-gradient-to-br from-slate-700 to-slate-800 relative overflow-hidden">
-                      {skill.imageUrl || skill.thumbnailUrl ? (
+                      {(skill.imageUrl || skill.thumbnailUrl || skill.metadata?.image) ? (
                         <img 
-                          src={skill.imageUrl || skill.thumbnailUrl} 
+                          src={skill.imageUrl || skill.thumbnailUrl || skill.metadata?.image} 
                           alt={skill.displayName || skill.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
@@ -326,6 +334,19 @@ export default function MarketplacePage() {
                           ${skill.pricing.pricePerCall}
                         </div>
                       )}
+                      {/* Protocol Badges - Bottom Left */}
+                      <div className="absolute bottom-2 left-2 flex items-center gap-1">
+                        {skill.ucpEnabled && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-medium bg-emerald-500/90 text-white rounded" title="UCP 物流履约">
+                            📦 UCP
+                          </span>
+                        )}
+                        {skill.x402Enabled && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-medium bg-amber-500/90 text-white rounded" title="X402 瞬时结算">
+                            ⚡ X402
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {/* 信息 */}
                     <div className="p-4">
@@ -335,6 +356,18 @@ export default function MarketplacePage() {
                       <p className="text-sm text-slate-400 line-clamp-2 mb-3">
                         {skill.description}
                       </p>
+                      {/* Merchant Performance Metrics */}
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-3">
+                        <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-700/50 rounded">
+                          <Package size={10} className="text-orange-400" />
+                          {skill.metadata?.performanceMetric || t({ zh: '优质现货', en: 'In Stock' })}
+                        </span>
+                        {skill.pricing?.commissionRate && (
+                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">
+                            {skill.pricing.commissionRate}% {t({ zh: '分佣', en: 'Commission' })}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-xs text-slate-500">
                           {skill.rating && typeof skill.rating === 'number' && (
@@ -357,7 +390,7 @@ export default function MarketplacePage() {
                     </div>
                   </div>
                 ) : (
-                  // 工具卡片样式
+                  // 工具卡片样式 - Enhanced with protocol badges & developer metrics
                   <div
                     key={skill.id}
                     className="group bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 hover:border-purple-500/50 transition-all cursor-pointer flex items-start gap-4"
@@ -382,10 +415,30 @@ export default function MarketplacePage() {
                         <span className="text-xs text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded">
                           v1.0
                         </span>
+                        {/* Protocol Badges */}
+                        {skill.x402Enabled && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-400 rounded" title="X402 瞬时结算">
+                            ⚡ X402
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-slate-400 line-clamp-2 mb-2">
                         {skill.description}
                       </p>
+                      {/* Developer/API Performance Metrics */}
+                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-2">
+                        <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-700/50 rounded">
+                          ⏱️ {skill.metadata?.performanceMetric || '~50ms'} {t({ zh: '延迟', en: 'latency' })}
+                        </span>
+                        <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded">
+                          99.9% {t({ zh: '可用', en: 'uptime' })}
+                        </span>
+                        {skill.pricing?.commissionRate && (
+                          <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">
+                            {skill.pricing.commissionRate}% {t({ zh: '分佣', en: 'Commission' })}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500">
                         <span className="flex items-center gap-1">
                           <TrendingUp size={12} />

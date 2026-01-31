@@ -428,7 +428,7 @@ export const ApiProviderPublishStep: React.FC<StepProps> = ({ session, onNext, o
 };
 
 // 其他画像的简化步骤 (可以后续扩展)
-export const GenericFormStep: React.FC<StepProps & { title: string; description: string; fields: { name: string; label: string; type: string; required?: boolean }[] }> = ({ 
+export const GenericFormStep: React.FC<StepProps & { title: string; description: string; fields: { name: string; label: string; type: string; required?: boolean; options?: { label: string; value: string }[]; placeholder?: string; helper?: string }[] }> = ({ 
   title, 
   description, 
   fields, 
@@ -439,6 +439,16 @@ export const GenericFormStep: React.FC<StepProps & { title: string; description:
   isLoading 
 }) => {
   const [formData, setFormData] = useState<Record<string, any>>({});
+
+  const isFieldValid = (field: { name: string; type: string; required?: boolean }) => {
+    if (!field.required) return true;
+    const value = formData[field.name];
+    if (field.type === 'checkbox') return value === true;
+    if (field.type === 'number') return value !== undefined && value !== '' && !Number.isNaN(Number(value));
+    return value !== undefined && String(value).trim().length > 0;
+  };
+
+  const isFormValid = fields.every(isFieldValid);
 
   const handleSubmit = () => {
     onNext(formData);
@@ -455,12 +465,47 @@ export const GenericFormStep: React.FC<StepProps & { title: string; description:
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {field.label} {field.required && '*'}
             </label>
-            <input
-              type={field.type}
-              value={formData[field.name] || ''}
-              onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            {field.type === 'textarea' ? (
+              <textarea
+                value={formData[field.name] || ''}
+                onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={4}
+                placeholder={field.placeholder}
+              />
+            ) : field.type === 'checkbox' ? (
+              <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={formData[field.name] || false}
+                  onChange={(e) => setFormData({ ...formData, [field.name]: e.target.checked })}
+                  className="mt-1 text-blue-600"
+                />
+                <span>{field.label}</span>
+              </label>
+            ) : field.type === 'select' ? (
+              <select
+                value={formData[field.name] || ''}
+                onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">请选择</option>
+                {field.options?.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type={field.type}
+                value={formData[field.name] || ''}
+                onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder={field.placeholder}
+              />
+            )}
+            {field.helper && field.type !== 'checkbox' && (
+              <p className="text-xs text-gray-500 mt-1">{field.helper}</p>
+            )}
           </div>
         ))}
       </div>
@@ -485,7 +530,7 @@ export const GenericFormStep: React.FC<StepProps & { title: string; description:
           )}
           <button
             onClick={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || !isFormValid}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (

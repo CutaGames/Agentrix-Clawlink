@@ -1,0 +1,9 @@
+{
+  "agentId": "AGENT-CODER-001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好，请简单介绍一下你的能力"
+    }
+  ]
+}

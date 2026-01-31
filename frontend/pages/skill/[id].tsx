@@ -74,7 +74,7 @@ interface Skill {
   updatedAt?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export default function SkillDetailPage() {
   const router = useRouter();
@@ -101,7 +101,7 @@ export default function SkillDetailPage() {
   const loadSkill = async (skillId: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/unified-marketplace/skills/${skillId}`);
+      const res = await fetch(`/api/unified-marketplace/skills/${skillId}`);
       if (!res.ok) {
         throw new Error('Skill not found');
       }
@@ -132,7 +132,7 @@ export default function SkillDetailPage() {
     setInstalling(true);
     try {
       // 调用安装 API
-      const res = await fetch(`${API_BASE}/api/skills/${id}/install`, {
+      const res = await fetch(`/api/skills/${id}/install`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

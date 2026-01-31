@@ -10,10 +10,13 @@ import {
   Search, 
   Grid3x3, 
   List,
-  AlertCircle 
+  AlertCircle,
+  Trash2,
+  PowerOff
 } from 'lucide-react';
 import { PortfolioSummary } from './PortfolioSummary';
 import { SkillAssetCard, SkillAsset, SkillStatus, PricingType, SkillType } from './SkillAssetCard';
+import { useToast } from '@/contexts/ToastContext';
 
 interface MySkillsPanelProps {
   onPublishNew?: () => void;
@@ -22,9 +25,14 @@ interface MySkillsPanelProps {
 
 export function MySkillsPanel({ onPublishNew, onEditSkill }: MySkillsPanelProps) {
   const { t } = useLocalization();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [skills, setSkills] = useState<SkillAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Modal states
+  const [detailModalSkillId, setDetailModalSkillId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   
   // Filters
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
@@ -51,47 +59,53 @@ export function MySkillsPanel({ onPublishNew, onEditSkill }: MySkillsPanelProps)
     setError(null);
     try {
       const response: any = await apiClient.get('/skills/my');
-      if (response?.data) {
-        const skillsData = response.data.items || response.data.skills || response.data || [];
-        
-        // Map to SkillAsset format
-        const mappedSkills: SkillAsset[] = skillsData.map((skill: any) => ({
-          id: skill.id,
-          name: skill.name || skill.skillName,
-          description: skill.description || skill.skillDescription,
-          type: (skill.type || 'other') as SkillType,
-          status: (skill.status || 'draft') as SkillStatus,
-          pricingType: mapPricingType(skill.pricingType || skill.pricing?.type),
-          price: skill.price || skill.pricing?.pricePerCall || skill.pricing?.price,
-          currency: skill.currency || 'USD',
-          calls7d: skill.callCount7d || Math.floor(Math.random() * 1000), // Mock data
-          revenue7d: skill.revenue7d || Math.random() * 500,
-          agentCount7d: skill.agentCount7d || Math.floor(Math.random() * 50),
-          platforms: skill.platforms || ['UCP', 'MCP', 'ACP', 'X402'],
-          coverImage: skill.coverImage || skill.imageUrl,
-          createdAt: skill.createdAt,
-          updatedAt: skill.updatedAt,
-        }));
-        
-        setSkills(mappedSkills);
-        
-        // Calculate portfolio stats
-        const activeSkills = mappedSkills.filter(s => s.status === 'active');
-        const calls30d = mappedSkills.reduce((sum, s) => sum + (s.calls7d || 0) * 4, 0); // Estimate 30d from 7d
-        const revenue30d = mappedSkills.reduce((sum, s) => sum + (s.revenue7d || 0) * 4, 0);
-        const uniqueAgents = new Set(mappedSkills.flatMap(s => s.agentCount7d || 0)).size;
-        
-        setPortfolioStats({
-          totalSkills: mappedSkills.length,
-          activeSkills: activeSkills.length,
-          calls30d,
-          callsTrend: 12.5, // Mock trend data
-          revenue30d,
-          revenueTrend: 8.3,
-          agentsCoverage: Math.max(...mappedSkills.map(s => s.agentCount7d || 0)) || 0,
-          platformsCoverage: 4,
-        });
+      console.log('🔍 My Skills API response:', response);
+      
+      // 后端返回格式: { success: true, items: [...], total, page, limit }
+      // apiClient.get 直接返回后端响应，不会再包装在 data 里
+      const skillsData = response?.items || response?.data?.items || response?.skills || [];
+      
+      if (skillsData.length === 0) {
+        console.log('⚠️ No skills found for current user');
       }
+        
+      // Map to SkillAsset format
+      const mappedSkills: SkillAsset[] = skillsData.map((skill: any) => ({
+        id: skill.id,
+        name: skill.name || skill.skillName,
+        description: skill.description || skill.skillDescription,
+        type: (skill.type || 'other') as SkillType,
+        status: (skill.status || 'draft') as SkillStatus,
+        pricingType: mapPricingType(skill.pricingType || skill.pricing?.type),
+        price: skill.price || skill.pricing?.pricePerCall || skill.pricing?.price,
+        currency: skill.currency || 'USD',
+        calls7d: skill.callCount7d || Math.floor(Math.random() * 1000), // Mock data
+        revenue7d: skill.revenue7d || Math.random() * 500,
+        agentCount7d: skill.agentCount7d || Math.floor(Math.random() * 50),
+        platforms: skill.platforms || ['UCP', 'MCP', 'ACP', 'X402'],
+        coverImage: skill.coverImage || skill.imageUrl,
+        createdAt: skill.createdAt,
+        updatedAt: skill.updatedAt,
+      }));
+      
+      setSkills(mappedSkills);
+      
+      // Calculate portfolio stats
+      const activeSkills = mappedSkills.filter(s => s.status === 'active');
+      const calls30d = mappedSkills.reduce((sum, s) => sum + (s.calls7d || 0) * 4, 0); // Estimate 30d from 7d
+      const revenue30d = mappedSkills.reduce((sum, s) => sum + (s.revenue7d || 0) * 4, 0);
+      const uniqueAgents = new Set(mappedSkills.flatMap(s => s.agentCount7d || 0)).size;
+      
+      setPortfolioStats({
+        totalSkills: mappedSkills.length,
+        activeSkills: activeSkills.length,
+        calls30d,
+        callsTrend: 12.5, // Mock trend data
+        revenue30d,
+        revenueTrend: 8.3,
+        agentsCoverage: Math.max(...mappedSkills.map(s => s.agentCount7d || 0)) || 0,
+        platformsCoverage: 4,
+      });
     } catch (err: any) {
       console.error('Failed to fetch my skills:', err);
       setError(err?.message || t({ zh: '加载失败', en: 'Failed to load' }));
@@ -125,22 +139,55 @@ export function MySkillsPanel({ onPublishNew, onEditSkill }: MySkillsPanelProps)
   });
 
   const handleViewDetails = (skillId: string) => {
-    // TODO: Open detail drawer
-    console.log('View details:', skillId);
+    setDetailModalSkillId(skillId);
+    // Navigate to skill detail page
+    window.open(`/skill/${skillId}`, '_blank');
   };
 
   const handleEdit = (skillId: string) => {
-    onEditSkill?.(skillId);
+    if (onEditSkill) {
+      onEditSkill(skillId);
+    } else {
+      // Navigate to edit page
+      window.location.href = `/workbench/skills/${skillId}/edit`;
+    }
   };
 
   const handlePromote = (skillId: string) => {
-    // TODO: Open promotion panel
-    console.log('Promote skill:', skillId);
+    const skill = skills.find(s => s.id === skillId);
+    if (skill) {
+      // Copy promotion link to clipboard
+      const promotionLink = `${window.location.origin}/skill/${skillId}?ref=owner`;
+      navigator.clipboard.writeText(promotionLink).then(() => {
+        toastSuccess(t({ zh: '推广链接已复制到剪贴板', en: 'Promotion link copied to clipboard' }));
+      });
+    }
+  };
+
+  const handleSuspend = async (skillId: string) => {
+    try {
+      await apiClient.patch(`/skills/${skillId}/status`, { status: 'suspended' });
+      toastSuccess(t({ zh: '技能已下架', en: 'Skill suspended' }));
+      fetchMySkills();
+    } catch (err) {
+      toastError(t({ zh: '操作失败', en: 'Operation failed' }));
+    }
+  };
+
+  const handleDelete = async (skillId: string) => {
+    try {
+      await apiClient.delete(`/skills/${skillId}`);
+      toastSuccess(t({ zh: '技能已删除', en: 'Skill deleted' }));
+      setConfirmDeleteId(null);
+      fetchMySkills();
+    } catch (err) {
+      toastError(t({ zh: '删除失败', en: 'Delete failed' }));
+    }
   };
 
   const handleMoreActions = (skillId: string) => {
-    // TODO: Show more actions menu
-    console.log('More actions:', skillId);
+    // Toggle a dropdown menu for more actions
+    setConfirmDeleteId(confirmDeleteId === skillId ? null : skillId);
   };
 
   return (
@@ -269,15 +316,41 @@ export function MySkillsPanel({ onPublishNew, onEditSkill }: MySkillsPanelProps)
       ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredSkills.map(skill => (
-            <SkillAssetCard
-              key={skill.id}
-              skill={skill}
-              viewMode="card"
-              onViewDetails={handleViewDetails}
-              onEdit={handleEdit}
-              onPromote={handlePromote}
-              onMoreActions={handleMoreActions}
-            />
+            <div key={skill.id} className="relative">
+              <SkillAssetCard
+                skill={skill}
+                viewMode="card"
+                onViewDetails={handleViewDetails}
+                onEdit={handleEdit}
+                onPromote={handlePromote}
+                onMoreActions={handleMoreActions}
+              />
+              {/* Action Menu Overlay */}
+              {confirmDeleteId === skill.id && (
+                <div className="absolute top-2 right-2 z-10 bg-slate-800 border border-slate-700 rounded-lg shadow-xl p-2 space-y-1">
+                  <button
+                    onClick={() => handleSuspend(skill.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-yellow-400 hover:bg-yellow-500/10 rounded"
+                  >
+                    <PowerOff className="w-4 h-4" />
+                    {t({ zh: '下架', en: 'Suspend' })}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(skill.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {t({ zh: '删除', en: 'Delete' })}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="w-full px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 rounded"
+                  >
+                    {t({ zh: '取消', en: 'Cancel' })}
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       ) : (

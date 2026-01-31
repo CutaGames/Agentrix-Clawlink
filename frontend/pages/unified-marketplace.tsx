@@ -97,7 +97,7 @@ interface TrendingSkill {
   revenueGenerated: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // 执行结果弹窗
 interface ExecuteResult {

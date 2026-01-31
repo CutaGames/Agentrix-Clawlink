@@ -314,7 +314,7 @@ export class AttributionCommissionService {
         orderId: order.id,
         paymentId: order.paymentId || order.id,
         payeeId: 'x402_channel', // 或具体的渠道 ID
-        payeeType: PayeeType.PAYMIND,
+        payeeType: PayeeType.AGENTRIX,
         channelFee: distribution.channelFee,
         amount: distribution.channelFee,
         currency: order.currency,

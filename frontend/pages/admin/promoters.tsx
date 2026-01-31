@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { API_BASE_URL } from '../../utils/api-config';
@@ -23,11 +23,7 @@ export default function AdminPromoters() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    fetchPromoters();
-  }, [page, search]);
-
-  const fetchPromoters = async () => {
+  const fetchPromoters = useCallback(async () => {
     try {
       const token = localStorage.getItem('admin_token');
       const url = new URL(`${API_BASE_URL}/api/admin/promoters`);
@@ -52,7 +48,11 @@ export default function AdminPromoters() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search]);
+
+  useEffect(() => {
+    fetchPromoters();
+  }, [fetchPromoters]);
 
   return (
     <>

@@ -52,6 +52,7 @@ import { PaymentModule } from '../payment/payment.module';
     CommissionStrategyV4Service,
     AttributionCommissionService,
     AuditProofService,
+    TypeOrmModule,
   ],
 })
 export class CommissionModule {}

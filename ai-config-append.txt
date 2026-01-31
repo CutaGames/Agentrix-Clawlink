@@ -1,0 +1,24 @@
+# ========================================
+# AI 引擎分层配置 (AWS Bedrock标准模型ID)
+# 2026-01-27 修正版
+# ========================================
+
+# 架构师 (CEO/CTO): AWS Bedrock Claude Opus 4.5
+AI_ENGINE_ARCHITECT=bedrock
+AWS_MODEL_ARCHITECT=us.anthropic.claude-opus-4-20250514-v1:0
+
+# 开发者 (Coder): AWS Bedrock Claude Sonnet 4.5
+AI_ENGINE_CODER=bedrock
+AWS_MODEL_CODER=us.anthropic.claude-sonnet-4-20250514-v1:0
+
+# 增长/商务: Gemini Flash 1.5 (免费)
+AI_ENGINE_GROWTH=gemini
+GEMINI_MODEL_GROWTH=gemini-1.5-flash
+
+# Backup: AWS Bedrock Claude Haiku 4.5
+AI_ENGINE_BACKUP=bedrock
+AWS_MODEL_BACKUP=us.anthropic.claude-3-5-haiku-20241022-v1:0
+
+# 默认引擎
+DEFAULT_AI_ENGINE=bedrock
+DEFAULT_AI_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0

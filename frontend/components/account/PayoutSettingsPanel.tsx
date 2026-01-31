@@ -59,7 +59,7 @@ export const PayoutSettingsPanel: React.FC = () => {
       setLoading(true);
       const response = await fetch('/api/user/payout-settings', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || localStorage.getItem('token')}`,
         },
       });
       
@@ -88,7 +88,7 @@ export const PayoutSettingsPanel: React.FC = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || localStorage.getItem('token')}`,
         },
         body: JSON.stringify(newSettings),
       });

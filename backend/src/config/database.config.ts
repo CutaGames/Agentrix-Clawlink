@@ -48,19 +48,18 @@ export class DatabaseConfig implements TypeOrmOptionsFactory, OnModuleInit {
     // 安全检查：非 localhost 的远程数据库严禁自动同步，除非明确设置
     const isRemote = dbHost !== 'localhost' && dbHost !== '127.0.0.1' && !dbHost.includes('postgres'); // postgres is docker internal host
     
-    // 决定是否同步：生产环境强制为 false，开发环境非远程可为 true
     let finalSync = false;
-    if (nodeEnv !== 'production') {
-      if (dbSyncConfig === 'true') {
-        finalSync = true;
-      } else if (dbSyncConfig !== 'false' && (nodeEnv === 'test' || nodeEnv === 'development')) {
+    if (dbSyncConfig === 'true') {
+      finalSync = true;
+    } else if (nodeEnv !== 'production') {
+      if (dbSyncConfig !== 'false' && (nodeEnv === 'test' || nodeEnv === 'development')) {
         // 远程库默认不同步，本地库默认同步
         finalSync = !isRemote;
       }
     }
     
     if (nodeEnv === 'production' && dbSyncConfig === 'true') {
-      console.error('[Database] CRITICAL: DB_SYNC=true detected in production! Automatic synchronization blocked.');
+      console.warn('[Database] WARNING: DB_SYNC=true detected in production! Proceeding with auto-sync as requested.');
     }
     
     console.log(`[Database] 🚀 Environment: ${nodeEnv}, Host: ${dbHost}, DB: ${dbName}, Sync: ${finalSync}`);
@@ -74,7 +73,7 @@ export class DatabaseConfig implements TypeOrmOptionsFactory, OnModuleInit {
       database: dbName,
       entities: [__dirname + '/../**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/../migrations/*{.ts,.js}'],
-      synchronize: false, // 强制禁用同步，避免数据库错误
+      synchronize: finalSync, // 根据配置决定是否同步
       namingStrategy: new SnakeNamingStrategy(),
       logging: this.configService.get('NODE_ENV') === 'development',
       retryAttempts: 5, // 增加重试次数

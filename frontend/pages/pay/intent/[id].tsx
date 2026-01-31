@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { 
@@ -58,29 +58,8 @@ const PayIntentPage = () => {
   const [success, setSuccess] = useState(false);
   const [autoTriggered, setAutoTriggered] = useState(false);
 
-  useEffect(() => {
-    if (id) {
-      fetchPayIntent();
-    }
-  }, [id]);
-
-  // 自动触发逻辑
-  useEffect(() => {
-    if (auto === 'true' && payIntent && !loading && !processing && !success && !autoTriggered) {
-      if (isConnected) {
-        console.log('Auto-triggering payment for connected wallet:', address);
-        setAutoTriggered(true);
-        handleConfirm();
-      } else if (window.ethereum) {
-        // 如果在钱包浏览器中但未连接，尝试自动连接
-        console.log('Attempting auto-connect in wallet browser...');
-        // 默认尝试连接 metamask (EVM 兼容钱包)
-        connect('metamask').catch(err => console.error('Auto-connect failed:', err));
-      }
-    }
-  }, [auto, payIntent, loading, isConnected, autoTriggered]);
-
-  const fetchPayIntent = async () => {
+  const fetchPayIntent = useCallback(async () => {
+    if (!id) return;
     try {
       setLoading(true);
       const data = await payIntentApi.get(id as string);
@@ -96,7 +75,27 @@ const PayIntentPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchPayIntent();
+  }, [fetchPayIntent]);
+
+  // 自动触发逻辑
+  useEffect(() => {
+    if (auto === 'true' && payIntent && !loading && !processing && !success && !autoTriggered) {
+      if (isConnected) {
+        console.log('Auto-triggering payment for connected wallet:', address);
+        setAutoTriggered(true);
+        handleConfirm();
+      } else if (window.ethereum) {
+        // 如果在钱包浏览器中但未连接，尝试自动连接
+        console.log('Attempting auto-connect in wallet browser...');
+        // 默认尝试连接 metamask (EVM 兼容钱包)
+        connect('metamask').catch(err => console.error('Auto-connect failed:', err));
+      }
+    }
+  }, [auto, payIntent, loading, isConnected, autoTriggered, address, connect, processing, success]);
 
   const handleConfirm = async () => {
     if (!payIntent) return;

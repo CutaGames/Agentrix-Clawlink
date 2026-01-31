@@ -142,6 +142,27 @@ export class AccountController {
     };
   }
 
+  @Get(':id/transactions')
+  @ApiOperation({ summary: '获取账户交易历史' })
+  @ApiParam({ name: 'id', description: '账户 ID' })
+  @ApiResponse({ status: 200, description: '返回交易历史' })
+  async getTransactions(
+    @Param('id') id: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('type') type?: string,
+  ) {
+    const result = await this.accountService.getTransactions(id, {
+      limit: limit ? Number(limit) : 20,
+      offset: offset ? Number(offset) : 0,
+      type,
+    });
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
   @Post(':id/deposit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '充值' })

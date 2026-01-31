@@ -50,6 +50,14 @@ export async function fixEnumTypesBeforeSync(): Promise<void> {
         `);
       }
 
+      // 修复旧数据：将 paymind 替换为 agentrix
+      await queryRunner.query(`
+        UPDATE "commissions" SET "payeeType" = 'agentrix' WHERE "payeeType" = 'paymind'
+      `);
+      await queryRunner.query(`
+        UPDATE "commission_settlements" SET "payeeType" = 'agentrix' WHERE "payeeType" = 'paymind'
+      `);
+
       await queryRunner.query(`
         DROP TYPE IF EXISTS "public"."commissions_payeetype_enum_old" CASCADE
       `);
@@ -79,6 +87,27 @@ export async function fixEnumTypesBeforeSync(): Promise<void> {
       `);
 
       console.log('✅ 枚举类型已修复');
+    }
+
+    // 检查并添加 pay_intents.attribution 列
+    const payIntentsColumns = await queryRunner.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'pay_intents' 
+      AND column_name = 'attribution'
+    `);
+
+    if (payIntentsColumns.length === 0) {
+      console.log('🔧 添加 pay_intents.attribution 列...');
+      try {
+        await queryRunner.query(`
+          ALTER TABLE "pay_intents" 
+          ADD COLUMN IF NOT EXISTS "attribution" jsonb
+        `);
+        console.log('✅ pay_intents.attribution 列已添加');
+      } catch (e: any) {
+        console.log('⚠️  添加 attribution 列失败（可能表不存在）:', e.message);
+      }
     }
 
     await queryRunner.release();

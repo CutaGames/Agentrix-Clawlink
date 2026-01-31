@@ -47,7 +47,7 @@ interface ImportStats {
   byPlatform: Record<string, number>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // Helper to get auth token from localStorage
 const getAuthToken = () => {

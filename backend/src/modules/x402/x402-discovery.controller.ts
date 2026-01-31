@@ -70,7 +70,7 @@ export class X402DiscoveryController {
     this.logger.log('X402 Service Discovery requested');
 
     const baseUrl = this.configService.get('API_BASE_URL', 'https://api.agentrix.io');
-    const paymentAddress = this.configService.get('X402_PAYMENT_ADDRESS', '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC');
+    const paymentAddress = this.configService.get('X402_PAYMENT_ADDRESS', '0xdf8e26fab0553ec755073f1c923c14942ad0d816');
 
     // 获取所有启用X402的已发布Skill
     const x402Skills = await this.skillRepository.find({
@@ -126,7 +126,7 @@ export class X402DiscoveryController {
   @ApiResponse({ status: 200, description: 'X402 service info' })
   async getX402ServiceById(skillId: string): Promise<X402ServiceInfo | null> {
     const baseUrl = this.configService.get('API_BASE_URL', 'https://api.agentrix.io');
-    const paymentAddress = this.configService.get('X402_PAYMENT_ADDRESS', '0x742d35Cc6634C0532925a3b844Bc9e7595f82bBC');
+    const paymentAddress = this.configService.get('X402_PAYMENT_ADDRESS', '0xdf8e26fab0553ec755073f1c923c14942ad0d816');
 
     const skill = await this.skillRepository.findOne({
       where: {

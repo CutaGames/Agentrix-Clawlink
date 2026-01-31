@@ -1,0 +1,9 @@
+{
+  "agentId": "ceo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好，请介绍一下 Agentrix 平台"
+    }
+  ]
+}

@@ -94,7 +94,7 @@ export class PayIntentService {
       merchantId: dto.merchantId,
       agentId: dto.agentId,
       paymentMethod: dto.paymentMethod,
-      status: PayIntentStatus.REQUIRES_PAYMENT_METHOD,
+      status: PayIntentStatus.CREATED, // Use CREATED as it exists in DB enum
       mode: dto.mode || 'production',
       authorization: {
         authorized: false,

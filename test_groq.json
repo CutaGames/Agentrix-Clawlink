@@ -1,0 +1,9 @@
+{
+  "agentId": "test-groq",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好"
+    }
+  ]
+}

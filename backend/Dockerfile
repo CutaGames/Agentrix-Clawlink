@@ -43,18 +43,14 @@ RUN npm install --legacy-peer-deps
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
 
-# Create uploads directory
-RUN mkdir -p uploads && chown nestjs:nodejs uploads
+# Create uploads and knowledge directories
+RUN mkdir -p uploads knowledge && chown nestjs:nodejs uploads knowledge
 
 # Switch to non-root user
 USER nestjs
 
 # Expose port
 EXPOSE 3001
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]

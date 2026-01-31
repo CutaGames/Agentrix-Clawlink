@@ -226,7 +226,7 @@ export const DeveloperModuleV2: React.FC<DeveloperModuleV2Props> = ({ activeL1, 
 
       {/* 入驻入口卡片 - 突出显示 */}
       <div 
-        onClick={() => setShowOnboarding(true)}
+        onClick={() => onCommand?.('navigate', { l1: 'publish', l2: 'marketplace' })}
         className="bg-gradient-to-r from-purple-500/20 via-amber-500/20 to-orange-500/20 border border-purple-500/30 rounded-2xl p-6 cursor-pointer hover:scale-[1.01] transition-all duration-300 relative group"
       >
         <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />

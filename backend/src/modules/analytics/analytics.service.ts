@@ -148,7 +148,7 @@ export class AnalyticsService {
     try {
       const commissionQB = this.commissionRepository
         .createQueryBuilder('commission')
-        .where('commission.payeeType = :payeeType', { payeeType: PayeeType.PAYMIND })
+        .where('commission.payeeType = :payeeType', { payeeType: PayeeType.AGENTRIX })
 
       const totalCommission = await this.sumColumn(commissionQB, 'commission.amount')
       if (totalCommission > 0) {

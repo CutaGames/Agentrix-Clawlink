@@ -27,13 +27,24 @@ export class BedrockIntegrationService {
       return 'Bedrock token missing';
     }
 
+    // 处理模型 ID 映射和兼容性
+    let finalModelId = modelId;
+    if (finalModelId.includes('opus')) {
+      finalModelId = 'anthropic.claude-3-opus-20240229-v1:0';
+    } else if (finalModelId.includes('sonnet')) {
+      finalModelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+    } else if (finalModelId.includes('haiku')) {
+      finalModelId = 'anthropic.claude-3-5-haiku-20241022-v1:0';
+    }
+
     const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
+    const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
     
-    this.logger.log(`Calling Bedrock: ${modelId} (Proxy: ${this.proxy ? 'YES' : 'NO'})`);
+    this.logger.log(`Calling Bedrock: ${finalModelId} (Region: ${region}, Proxy: ${this.proxy ? 'YES' : 'NO'})`);
     
     try {
       const response = await axios.post(
-        `https://bedrock-runtime.us-east-1.amazonaws.com/model/${modelId}/invoke`,
+        `https://bedrock-runtime.${region}.amazonaws.com/model/${finalModelId}/invoke`,
         {
           anthropic_version: "bedrock-2023-05-31",
           max_tokens: 2000,
@@ -45,12 +56,13 @@ export class BedrockIntegrationService {
             'Content-Type': 'application/json'
           },
           httpsAgent,
-          proxy: false
+          proxy: false,
+          timeout: 30000
         }
       );
       return response.data.content[0].text;
     } catch (e: any) {
-      this.logger.error(`Bedrock call failed: ${e.message}`);
+      this.logger.error(`Bedrock invokeModel failed: ${e.message}`);
       if (e.response) {
         this.logger.error(`Response status: ${e.response.status}`);
         this.logger.error(`Response data: ${JSON.stringify(e.response.data)}`);
@@ -79,10 +91,22 @@ export class BedrockIntegrationService {
       throw new Error('AWS_BEARER_TOKEN_BEDROCK is not configured');
     }
 
-    const modelId = options.model || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
-    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
+    // 默认使用 3.5 Sonnet
+    let modelId = options.model || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
     
-    this.logger.log(`Bedrock chatWithFunctions: ${modelId}`);
+    // 映射模型 ID
+    if (modelId.includes('opus')) {
+      modelId = 'anthropic.claude-3-opus-20240229-v1:0';
+    } else if (modelId.includes('sonnet')) {
+      modelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+    } else if (modelId.includes('haiku')) {
+      modelId = 'anthropic.claude-3-5-haiku-20241022-v1:0';
+    }
+
+    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
+    const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    
+    this.logger.log(`Bedrock chatWithFunctions: ${modelId} (Region: ${region})`);
 
     try {
       // 构造 Claude 格式的消息
@@ -93,28 +117,63 @@ export class BedrockIntegrationService {
 
       const systemMessage = messages.find(m => m.role === 'system');
 
+      // 准备 Body
+      const body: any = {
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: 4000,
+        messages: claudeMessages,
+      };
+
+      if (systemMessage) {
+        body.system = systemMessage.content;
+      }
+
+      // 如果有工具定义，添加工具 (Bedrock Anthropic Tool Use 格式)
+      if (options.tools && options.tools.length > 0) {
+        body.tools = options.tools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.parameters
+        }));
+      }
+
       const response = await axios.post(
-        `https://bedrock-runtime.us-east-1.amazonaws.com/model/${modelId}/invoke`,
-        {
-          anthropic_version: "bedrock-2023-05-31",
-          max_tokens: 4000,
-          messages: claudeMessages,
-          system: systemMessage?.content || undefined,
-        },
+        `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`,
+        body,
         {
           headers: {
             'Authorization': `Bearer ${this.token}`,
             'Content-Type': 'application/json'
           },
           httpsAgent,
-          proxy: false
+          proxy: false,
+          timeout: 60000
         }
       );
 
-      const content = response.data.content[0];
+      const content = response.data.content;
+      let text = '';
+      const toolCalls: any[] = [];
+
+      for (const item of content) {
+        if (item.type === 'text') {
+          text += item.text;
+        } else if (item.type === 'tool_use') {
+          toolCalls.push({
+            id: item.id,
+            type: 'function',
+            function: {
+              name: item.name,
+              arguments: JSON.stringify(item.input)
+            }
+          });
+        }
+      }
+
       return {
-        text: content.text || '',
-        functionCalls: null
+        text,
+        functionCalls: toolCalls.length > 0 ? toolCalls : null,
+        model: modelId
       };
     } catch (e: any) {
       this.logger.error(`Bedrock chatWithFunctions failed: ${e.message}`);

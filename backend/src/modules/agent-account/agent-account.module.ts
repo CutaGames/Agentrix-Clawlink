@@ -18,6 +18,6 @@ import { AgentAccountController } from './agent-account.controller';
   imports: [TypeOrmModule.forFeature([AgentAccount, Account])],
   controllers: [AgentAccountController],
   providers: [AgentAccountService],
-  exports: [AgentAccountService],
+  exports: [AgentAccountService, TypeOrmModule],
 })
 export class AgentAccountModule {}

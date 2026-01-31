@@ -40,7 +40,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 // Helper to get auth token from localStorage
 const getAuthToken = () => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('token');
+  return localStorage.getItem('access_token') || localStorage.getItem('token');
 };
 
 export const StripeConnectPanel: React.FC = () => {
@@ -122,9 +122,13 @@ export const StripeConnectPanel: React.FC = () => {
 
   const handleDashboard = async () => {
     try {
+      const token = getAuthToken();
       const response = await fetch(`${API_BASE}/api/payments/connect/dashboard-link`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
       });
 
       if (!response.ok) {

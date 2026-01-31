@@ -138,36 +138,16 @@ export function UserMenu() {
           {/* 菜单项 */}
           <div className="py-1">
             <Link
-              href="/app/user"
+              href="/workbench"
               onClick={() => setIsOpen(false)}
               className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
             >
               <div className="flex items-center space-x-2">
-                <span>👤</span>
-                <span>个人中心</span>
-              </div>
-            </Link>
-            <Link
-              href="/app/user/profile"
-              onClick={() => setIsOpen(false)}
-              className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-            >
-              <div className="flex items-center space-x-2">
-                <span>⚙️</span>
-                <span>账户设置</span>
+                <span>🧭</span>
+                <span>工作台</span>
               </div>
             </Link>
             <div className="border-t border-white/10 my-1"></div>
-            <Link
-              href={user.roles?.includes('merchant') ? "/app/merchant" : "/app/register/merchant"}
-              onClick={() => setIsOpen(false)}
-              className="block px-4 py-2 text-sm text-slate-300 hover:bg-white/5"
-            >
-              <div className="flex items-center space-x-2">
-                <span>🏪</span>
-                <span>{user.roles?.includes('merchant') ? "商家后台" : "注册成为商家"}</span>
-              </div>
-            </Link>
             <button
               onClick={handleLogout}
               className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-400/10"

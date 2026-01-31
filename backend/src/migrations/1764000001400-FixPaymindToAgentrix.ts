@@ -12,22 +12,52 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
       return;
     }
     
+    const getPayeeColumnName = async (tableName: string) => {
+      const columns = await queryRunner.query(
+        `
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_name = $1 AND column_name IN ('payeeType', 'payee_type')
+          ORDER BY column_name
+          LIMIT 1
+        `,
+        [tableName]
+      );
+
+      return columns[0]?.column_name as string | undefined;
+    };
+
+    const commissionsPayeeColumn = await getPayeeColumnName('commissions');
+    if (!commissionsPayeeColumn) {
+      console.warn('⚠️  commissions 表未找到 payee 字段，跳过 FixPaymindToAgentrix 迁移');
+      return;
+    }
+
     // Step 1: 检查是否存在 'paymind' 值的数据（使用 text 转换避免 enum 检查）
     const commissionsWithPaymind = await queryRunner.query(`
       SELECT COUNT(*) as count 
       FROM commissions 
-      WHERE "payeeType"::text = 'paymind'
+      WHERE "${commissionsPayeeColumn}"::text = 'paymind'
     `);
 
     // 检查 commission_settlements 表是否存在
-    const settlementsTableExists = await queryRunner.hasTable('commission_settlements');
+    let settlementsTableExists = await queryRunner.hasTable('commission_settlements');
     let settlementsWithPaymind = [{ count: '0' }];
+    let settlementsPayeeColumn: string | undefined;
     
     if (settlementsTableExists) {
+      settlementsPayeeColumn = await getPayeeColumnName('commission_settlements');
+      if (!settlementsPayeeColumn) {
+        console.warn('⚠️  commission_settlements 表未找到 payee 字段，跳过相关查询');
+        settlementsTableExists = false;
+      }
+    }
+
+    if (settlementsTableExists && settlementsPayeeColumn) {
       settlementsWithPaymind = await queryRunner.query(`
         SELECT COUNT(*) as count 
         FROM commission_settlements 
-        WHERE "payeeType"::text = 'paymind'
+        WHERE "${settlementsPayeeColumn}"::text = 'paymind'
       `);
     } else {
       console.warn('⚠️  commission_settlements 表不存在，跳过相关查询');
@@ -45,14 +75,14 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
       // 临时转换为 text
       await queryRunner.query(`
         ALTER TABLE "commissions" 
-        ALTER COLUMN "payeeType" TYPE text
+        ALTER COLUMN "${commissionsPayeeColumn}" TYPE text
       `);
       
       // 更新数据
       await queryRunner.query(`
         UPDATE commissions 
-        SET "payeeType" = 'agentrix'
-        WHERE "payeeType" = 'paymind'
+        SET "${commissionsPayeeColumn}" = 'agentrix'
+        WHERE "${commissionsPayeeColumn}" = 'paymind'
       `);
       
       console.log(`Updated ${commissionsCount} commissions from 'paymind' to 'agentrix'`);
@@ -63,14 +93,14 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
       // 临时转换为 text
       await queryRunner.query(`
         ALTER TABLE "commission_settlements" 
-        ALTER COLUMN "payeeType" TYPE text
+        ALTER COLUMN "${settlementsPayeeColumn}" TYPE text
       `);
       
       // 更新数据
       await queryRunner.query(`
         UPDATE commission_settlements 
-        SET "payeeType" = 'agentrix'
-        WHERE "payeeType" = 'paymind'
+        SET "${settlementsPayeeColumn}" = 'agentrix'
+        WHERE "${settlementsPayeeColumn}" = 'paymind'
       `);
       
       console.log(`Updated ${settlementsCount} settlements from 'paymind' to 'agentrix'`);
@@ -103,13 +133,13 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
       const commissionsColumn = await queryRunner.query(`
         SELECT data_type 
         FROM information_schema.columns 
-        WHERE table_name = 'commissions' AND column_name = 'payeeType'
+        WHERE table_name = 'commissions' AND column_name = '${commissionsPayeeColumn}'
       `);
       
       if (commissionsColumn[0]?.data_type !== 'text') {
         await queryRunner.query(`
           ALTER TABLE "commissions" 
-          ALTER COLUMN "payeeType" TYPE text
+          ALTER COLUMN "${commissionsPayeeColumn}" TYPE text
         `);
       }
       
@@ -118,13 +148,13 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
         const settlementsColumn = await queryRunner.query(`
           SELECT data_type 
           FROM information_schema.columns 
-          WHERE table_name = 'commission_settlements' AND column_name = 'payeeType'
+          WHERE table_name = 'commission_settlements' AND column_name = '${settlementsPayeeColumn}'
         `);
         
         if (settlementsColumn[0]?.data_type !== 'text') {
           await queryRunner.query(`
             ALTER TABLE "commission_settlements" 
-            ALTER COLUMN "payeeType" TYPE text
+            ALTER COLUMN "${settlementsPayeeColumn}" TYPE text
           `);
         }
       }
@@ -142,16 +172,16 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
       // 恢复列类型
       await queryRunner.query(`
         ALTER TABLE "commissions" 
-        ALTER COLUMN "payeeType" TYPE "public"."commissions_payeetype_enum" 
-        USING "payeeType"::"public"."commissions_payeetype_enum"
+        ALTER COLUMN "${commissionsPayeeColumn}" TYPE "public"."commissions_payeetype_enum" 
+        USING "${commissionsPayeeColumn}"::"public"."commissions_payeetype_enum"
       `);
 
       // 检查 commission_settlements 表是否存在（使用已声明的变量）
       if (settlementsTableExists) {
         await queryRunner.query(`
           ALTER TABLE "commission_settlements" 
-          ALTER COLUMN "payeeType" TYPE "public"."commissions_payeetype_enum" 
-          USING "payeeType"::"public"."commissions_payeetype_enum"
+          ALTER COLUMN "${settlementsPayeeColumn}" TYPE "public"."commissions_payeetype_enum" 
+          USING "${settlementsPayeeColumn}"::"public"."commissions_payeetype_enum"
         `);
       }
     } else if (!hasAgentrix) {
@@ -164,14 +194,14 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
       const commissionsColumn = await queryRunner.query(`
         SELECT data_type 
         FROM information_schema.columns 
-        WHERE table_name = 'commissions' AND column_name = 'payeeType'
+        WHERE table_name = 'commissions' AND column_name = '${commissionsPayeeColumn}'
       `);
       
       if (commissionsColumn[0]?.data_type === 'text') {
         await queryRunner.query(`
           ALTER TABLE "commissions" 
-          ALTER COLUMN "payeeType" TYPE "public"."commissions_payeetype_enum" 
-          USING "payeeType"::"public"."commissions_payeetype_enum"
+          ALTER COLUMN "${commissionsPayeeColumn}" TYPE "public"."commissions_payeetype_enum" 
+          USING "${commissionsPayeeColumn}"::"public"."commissions_payeetype_enum"
         `);
       }
       
@@ -180,14 +210,14 @@ export class FixPaymindToAgentrix1764000001400 implements MigrationInterface {
         const settlementsColumn = await queryRunner.query(`
           SELECT data_type 
           FROM information_schema.columns 
-          WHERE table_name = 'commission_settlements' AND column_name = 'payeeType'
+          WHERE table_name = 'commission_settlements' AND column_name = '${settlementsPayeeColumn}'
         `);
         
         if (settlementsColumn[0]?.data_type === 'text') {
           await queryRunner.query(`
             ALTER TABLE "commission_settlements" 
-            ALTER COLUMN "payeeType" TYPE "public"."commissions_payeetype_enum" 
-            USING "payeeType"::"public"."commissions_payeetype_enum"
+            ALTER COLUMN "${settlementsPayeeColumn}" TYPE "public"."commissions_payeetype_enum" 
+            USING "${settlementsPayeeColumn}"::"public"."commissions_payeetype_enum"
           `);
         }
       }
