@@ -17,6 +17,7 @@ import { GuestCheckoutService } from './guest-checkout.service';
 import { AgentWalletService } from './agent-wallet.service';
 import { PaymentMethod } from '../../entities/payment.entity';
 import { getUCPMCPTools } from '../ucp/mcp/ucp-mcp.tools';
+import { commerceMcpTools } from '../commerce/commerce-mcp.tools';
 import { UCPService } from '../ucp/ucp.service';
 
 @Injectable()
@@ -624,7 +625,10 @@ export class McpService implements OnModuleInit {
     const ucpTools = getUCPMCPTools();
     this.logger.log(`Loaded ${ucpTools.length} UCP MCP tools`);
 
-    return [...staticTools, ...dynamicTools, ...productSkills, ...ucpTools];
+    // Commerce MCP Tools - Unified Commerce Skill
+    this.logger.log(`Loaded ${commerceMcpTools.length} Commerce MCP tools`);
+
+    return [...staticTools, ...dynamicTools, ...productSkills, ...ucpTools, ...commerceMcpTools];
   }
 
   /**

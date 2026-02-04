@@ -50,7 +50,9 @@ import {
   Key,
   Webhook,
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  PiggyBank,
+  Receipt
 } from 'lucide-react';
 import { L1Tab } from '../../layout/L1TopNav';
 import { L2SubItem } from '../../layout/L2LeftSidebar';
@@ -70,6 +72,7 @@ import { EcommerceSyncPanel } from './merchant/EcommerceSyncPanel';
 import { ProductListPanel } from './merchant/ProductListPanel';
 import { UnifiedPublishingPanel } from './UnifiedPublishingPanel';
 import { StripeConnectPanel } from './merchant/StripeConnectPanel';
+import { SplitPlansPanel, BudgetPoolsPanel } from './commerce';
 
 interface MerchantModuleV2Props {
   activeL1?: Extract<L1Tab, 'dashboard' | 'products' | 'orders' | 'finance' | 'analytics' | 'settings'>;
@@ -1071,6 +1074,20 @@ export const MerchantModuleV2: React.FC<MerchantModuleV2Props> = ({ activeL1, ac
                 <History className="w-12 h-12 mx-auto mb-4 opacity-20" />
                 {t({ zh: '暂无交易记录', en: 'No transactions found' })}
               </div>
+            </div>
+          </div>
+        );
+      case 'commission-plans':
+        return <SplitPlansPanel />;
+      case 'budget-pools':
+        return <BudgetPoolsPanel />;
+      case 'settlements':
+        return (
+          <div className="space-y-4">
+            {sectionTitle(t({ zh: '分账结算', en: 'Settlements' }), t({ zh: '查看分账明细与结算状态', en: 'Review split details and settlement status' }))}
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-12 text-center text-slate-500">
+              <Receipt className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              {t({ zh: '暂无结算记录', en: 'No settlements found' })}
             </div>
           </div>
         );

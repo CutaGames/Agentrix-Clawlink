@@ -42,7 +42,7 @@ export default function KnowledgeBasePage() {
       setRagFiles(ragRes.data.files || ragRes.data || []);
     } catch (e) {
       console.error('Failed to fetch knowledge base:', e);
-      setError('Failed to connect to HQ Backend. Make sure the backend is running on port 3005.');
+      setError('Failed to connect to HQ Backend. Check NEXT_PUBLIC_HQ_API_URL (or NEXT_PUBLIC_HQ_URL) in your env config.');
       setContent('# Agentrix Knowledge Base\n\nThis is the central knowledge repository for HQ Agents.\n\n## Getting Started\n\nAdd your company documentation, policies, and guidelines here.');
       setOriginalContent(content);
     } finally {

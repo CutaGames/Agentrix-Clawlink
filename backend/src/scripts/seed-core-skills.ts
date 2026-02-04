@@ -1,6 +1,7 @@
 import { AppDataSource } from '../config/data-source';
-import { Skill, SkillCategory, SkillLayer, SkillSource, SkillStatus, SkillPricingType, SkillResourceType } from '../entities/skill.entity';
+import { Skill, SkillCategory, SkillLayer, SkillSource, SkillStatus, SkillPricingType, SkillResourceType, SkillValueType } from '../entities/skill.entity';
 import { User, UserRole } from '../entities/user.entity';
+import { SkillConverterService } from '../modules/skill/skill-converter.service';
 
 async function seedCoreSkills() {
   try {
@@ -20,6 +21,8 @@ async function seedCoreSkills() {
       user.roles = [UserRole.USER, UserRole.AGENT];
       systemUser = await userRepo.save(user);
     }
+
+    const skillConverter = new SkillConverterService();
 
     const coreSkills = [
       {
@@ -149,15 +152,78 @@ async function seedCoreSkills() {
           required: ['amount']
         },
         executor: { type: 'internal', internalHandler: 'quickpay_execute' }
+      },
+      {
+        name: 'commerce',
+        displayName: 'Unified Commerce',
+        description: 'Unified commerce skill: pay, split, budget pool, settlements. Supports multi-party revenue sharing, milestone-based payouts, and on-chain settlements.',
+        category: SkillCategory.COMMERCE,
+        layer: SkillLayer.COMPOSITE,
+        valueType: SkillValueType.ACTION,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              description: 'The commerce action to perform',
+              enum: [
+                'create_split_plan',
+                'get_split_plan',
+                'update_split_plan',
+                'activate_split_plan',
+                'archive_split_plan',
+                'list_split_plans',
+                'preview_allocation',
+                'create_budget_pool',
+                'get_budget_pool',
+                'fund_budget_pool',
+                'activate_budget_pool',
+                'cancel_budget_pool',
+                'list_budget_pools',
+                'create_milestone',
+                'get_milestone',
+                'start_milestone',
+                'submit_milestone',
+                'approve_milestone',
+                'reject_milestone',
+                'release_milestone_funds',
+                'calculate_fees',
+                'get_fee_structure'
+              ]
+            },
+            mode: {
+              type: 'string',
+              enum: ['PAY_ONLY', 'SPLIT_ONLY', 'PAY_AND_SPLIT'],
+              description: 'Commerce operation mode'
+            },
+            params: {
+              type: 'object',
+              description: 'Action-specific parameters'
+            }
+          },
+          required: ['action']
+        },
+        executor: { type: 'mcp', mcpServer: 'agentrix-mcp-server', internalHandler: 'commerce' },
+        pricing: { type: SkillPricingType.FREE },
+        tags: ['commerce', 'split', 'budget', 'milestone', 'ucp', 'x402'],
+        ucpEnabled: true,
+        x402Enabled: true
       }
     ];
 
     for (const data of coreSkills) {
+      const conversionSkill = { ...data } as unknown as Skill;
+      const platformSchemas = {
+        openai: skillConverter.convertToOpenAI(conversionSkill),
+        claude: skillConverter.convertToClaude(conversionSkill),
+        gemini: skillConverter.convertToGemini(conversionSkill),
+      };
       const existing = await skillRepo.findOne({ where: { name: data.name } });
       if (existing) {
         console.log(`Skill ${data.name} already exists, updating...`);
         Object.assign(existing, {
           ...data,
+          platformSchemas,
           authorId: systemUser.id,
           authorInfo: {
             id: systemUser.id,
@@ -169,6 +235,7 @@ async function seedCoreSkills() {
       } else {
         const skill = skillRepo.create({
           ...data,
+          platformSchemas,
           source: SkillSource.NATIVE,
           status: SkillStatus.PUBLISHED,
           authorId: systemUser.id,

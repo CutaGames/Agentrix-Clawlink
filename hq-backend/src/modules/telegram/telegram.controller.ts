@@ -26,8 +26,7 @@ export class TelegramController {
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   async handleWebhook(@Body() update: any) {
-    // Webhook 模式下接收更新
-    // 目前使用轮询模式，此接口预留
+    await this.botService.handleWebhookUpdate(update);
     return { ok: true };
   }
 

@@ -44,7 +44,8 @@ import {
   DollarSign,
   ArrowRight,
   X,
-  Store
+  Store,
+  PiggyBank
 } from 'lucide-react';
 import { L1Tab } from '../../layout/L1TopNav';
 import { L2SubItem } from '../../layout/L2LeftSidebar';
@@ -64,6 +65,7 @@ import { UnifiedPublishingPanel } from './UnifiedPublishingPanel';
 import OnboardingWizard from '../../onboarding/OnboardingWizard';
 import { OnboardingSession } from '../../../lib/api/onboarding.api';
 import { MySkillsPanel as MySkillsPanelV2 } from './MySkillsPanelV2'; // 使用新版本资产经营台
+import { SplitPlansPanel, BudgetPoolsPanel } from './commerce';
 
 interface DeveloperModuleV2Props {
   activeL1?: Extract<L1Tab, 'dashboard' | 'build' | 'publish' | 'revenue' | 'docs' | 'settings'>;
@@ -770,6 +772,10 @@ export const DeveloperModuleV2: React.FC<DeveloperModuleV2Props> = ({ activeL1, 
             </div>
           </div>
         );
+      case 'commission-plans':
+        return <SplitPlansPanel />;
+      case 'budget-pools':
+        return <BudgetPoolsPanel />;
       case 'withdrawals':
         return (
           <div className="space-y-6">

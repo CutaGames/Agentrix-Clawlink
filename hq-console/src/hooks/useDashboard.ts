@@ -48,8 +48,8 @@ export function useDashboardStats() {
 
   useEffect(() => {
     fetchStats();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchStats, 30000);
+    // Refresh every 10 minutes
+    const interval = setInterval(fetchStats, 600000);
     return () => clearInterval(interval);
   }, [fetchStats]);
 
@@ -81,8 +81,8 @@ export function useAlerts(limit = 10) {
 
   useEffect(() => {
     fetchAlerts();
-    // Refresh every 60 seconds for alerts (reduced from 10s to avoid flicker)
-    const interval = setInterval(fetchAlerts, 60000);
+    // Refresh every 10 minutes for alerts
+    const interval = setInterval(fetchAlerts, 600000);
     return () => clearInterval(interval);
   }, [fetchAlerts]);
 

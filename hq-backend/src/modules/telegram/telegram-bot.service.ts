@@ -70,6 +70,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private lastUpdateId = 0;
   private sessions = new Map<number, UserSession>();
   private authorizedUsers: number[] = [];
+  private botEnabled = true;
+  private botMode: 'polling' | 'webhook' | 'disabled' = 'polling';
 
   constructor(
     private configService: ConfigService,
@@ -81,6 +83,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   ) {
     this.botToken = this.configService.get('TELEGRAM_BOT_TOKEN', '');
     this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;
+    this.botEnabled = this.configService.get('TELEGRAM_BOT_ENABLED', 'true') !== 'false';
+    this.botMode = (this.configService.get('TELEGRAM_BOT_MODE', 'polling') as
+      | 'polling'
+      | 'webhook'
+      | 'disabled');
     
     // 授权用户列表（逗号分隔的 Telegram user IDs）
     const authUsers = this.configService.get('TELEGRAM_AUTHORIZED_USERS', '');
@@ -88,6 +95,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
+    if (!this.botEnabled || this.botMode === 'disabled') {
+      this.logger.warn('Telegram bot disabled by configuration');
+      return;
+    }
+
     if (!this.botToken) {
       this.logger.warn('Telegram bot token not configured, bot disabled');
       return;
@@ -96,7 +108,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     try {
       const me = await this.callApi('getMe');
       this.logger.log(`Telegram bot started: @${me.username}`);
-      this.startPolling();
+      if (this.botMode === 'polling') {
+        this.startPolling();
+      } else {
+        this.logger.log('Telegram bot running in webhook mode (polling disabled)');
+      }
       
       // 监听系统事件，推送到 Telegram
       this.setupEventListeners();
@@ -167,9 +183,22 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           await this.handleUpdate(update);
         }
       } catch (error) {
-        this.logger.error(`Polling error: ${error.message}`);
+        const message = error?.message || 'Unknown error';
+        if (message.includes('terminated by other getUpdates request')) {
+          this.logger.warn('Polling conflict detected. Another bot instance may be running. Disabling polling to avoid conflicts.');
+          if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+          }
+          return;
+        }
+        this.logger.error(`Polling error: ${message}`);
       }
     }, 1000);
+  }
+
+  async handleWebhookUpdate(update: TelegramUpdate): Promise<void> {
+    await this.handleUpdate(update);
   }
 
   /**

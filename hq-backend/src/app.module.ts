@@ -28,6 +28,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
 import { CLIModule } from './modules/cli/cli.module';
+import { SocialModule } from './modules/social/social.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -65,6 +66,9 @@ import { AppService } from './app.service';
     // 通信模块
     TelegramModule,
     WebSocketModule,
+
+    // 社交媒体管理
+    SocialModule,
 
     // IDE/CLI 接口
     CLIModule,

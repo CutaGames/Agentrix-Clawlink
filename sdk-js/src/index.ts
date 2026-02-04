@@ -9,6 +9,7 @@ import { AgentResource } from './resources/agents';
 import { MerchantResource } from './resources/merchants';
 import { SubscriptionResource } from './resources/subscriptions';
 import { CommissionResource } from './resources/commissions';
+import { CommerceResource } from './resources/commerce';
 import { TipResource } from './resources/tips';
 import { GamingResource } from './resources/gaming';
 import { MarketplaceResource } from './resources/marketplace';
@@ -43,6 +44,7 @@ export class Agentrix {
   public merchants: MerchantResource;
   public subscriptions: SubscriptionResource;
   public commissions: CommissionResource;
+  public commerce: CommerceResource; // Unified commerce skill
   public tips: TipResource;
   public gaming: GamingResource;
   public marketplace: MarketplaceResource;
@@ -84,6 +86,7 @@ export class Agentrix {
     this.merchants = new MerchantResource(this.client);
     this.subscriptions = new SubscriptionResource(this.client);
     this.commissions = new CommissionResource(this.client);
+    this.commerce = new CommerceResource(this.client);
     this.tips = new TipResource(this.client);
     this.gaming = new GamingResource(this.client);
     this.marketplace = new MarketplaceResource(this.client);

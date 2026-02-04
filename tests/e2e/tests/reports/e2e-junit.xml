@@ -1,864 +1,1623 @@
-<testsuites id="" name="" tests="24" failures="24" skipped="0" errors="0" time="135.62493899999998">
-<testsuite name="workbench-restructuring.spec.ts" timestamp="2026-01-18T11:50:07.792Z" hostname="chromium" tests="24" failures="24" skipped="0" time="32.914" errors="0">
-<testcase name="统一资金账户 (UnifiedAccountPanel) › 应该正确显示账户列表和余额汇总" classname="workbench-restructuring.spec.ts" time="3.764">
-<failure message="workbench-restructuring.spec.ts:35:7 应该正确显示账户列表和余额汇总" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:35:7 › 统一资金账户 (UnifiedAccountPanel) › 应该正确显示账户列表和余额汇总 
+<testsuites id="" name="" tests="37" failures="36" skipped="0" errors="0" time="1068.208034">
+<testsuite name="auth.spec.ts" timestamp="2026-02-01T22:25:32.820Z" hostname="chromium" tests="3" failures="3" skipped="0" time="362.37" errors="0">
+<testcase name="认证流程测试 › 用户登录流程" classname="auth.spec.ts" time="120.99">
+<failure message="auth.spec.ts:8:7 用户登录流程" type="FAILURE">
+<![CDATA[  [chromium] › auth.spec.ts:8:7 › 认证流程测试 › 用户登录流程 ──────────────────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Test timeout of 120000ms exceeded.
+
+    Error: page.click: Test timeout of 120000ms exceeded.
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - waiting for locator('text=登录')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11
+       8 |   test('用户登录流程', async ({ page }) => {
+       9 |     // 点击登录按钮
+    > 10 |     await page.click('text=登录')
+         |                ^
+      11 |     
+      12 |     // 等待登录模态框出现
+      13 |     await page.waitForSelector('[data-testid="login-modal"]', { timeout: 5000 })
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/auth.spec.ts:10:16
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/test-failed-1.png
+    ../../test-results/auth-认证流程测试-用户登录流程-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/video.webm
+    ../../test-results/auth-认证流程测试-用户登录流程-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/auth-认证流程测试-用户登录流程-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-用户登录流程-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-06bc4-ccountPanel-应该正确显示账户列表和余额汇总-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-用户登录流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-用户登录流程-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="统一资金账户 (UnifiedAccountPanel) › 应该支持创建新账户" classname="workbench-restructuring.spec.ts" time="3.659">
-<failure message="workbench-restructuring.spec.ts:51:7 应该支持创建新账户" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:51:7 › 统一资金账户 (UnifiedAccountPanel) › 应该支持创建新账户 ─────
+<testcase name="认证流程测试 › 用户注册流程" classname="auth.spec.ts" time="120.997">
+<failure message="auth.spec.ts:26:7 用户注册流程" type="FAILURE">
+<![CDATA[  [chromium] › auth.spec.ts:26:7 › 认证流程测试 › 用户注册流程 ─────────────────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Test timeout of 120000ms exceeded.
+
+    Error: page.click: Test timeout of 120000ms exceeded.
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - waiting for locator('text=注册')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11
+      26 |   test('用户注册流程', async ({ page }) => {
+      27 |     // 点击注册按钮
+    > 28 |     await page.click('text=注册')
+         |                ^
+      29 |     
+      30 |     // 等待注册表单出现
+      31 |     await page.waitForSelector('form', { timeout: 5000 })
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/auth.spec.ts:28:16
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/test-failed-1.png
+    ../../test-results/auth-认证流程测试-用户注册流程-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/video.webm
+    ../../test-results/auth-认证流程测试-用户注册流程-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/auth-认证流程测试-用户注册流程-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-用户注册流程-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一资金账户-UnifiedAccountPanel-应该支持创建新账户-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-用户注册流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-用户注册流程-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="统一资金账户 (UnifiedAccountPanel) › 应该正确显示最近交易记录" classname="workbench-restructuring.spec.ts" time="1.107">
-<failure message="workbench-restructuring.spec.ts:68:7 应该正确显示最近交易记录" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:68:7 › 统一资金账户 (UnifiedAccountPanel) › 应该正确显示最近交易记录 ──
+<testcase name="认证流程测试 › 钱包连接流程" classname="auth.spec.ts" time="120.383">
+<failure message="auth.spec.ts:45:7 钱包连接流程" type="FAILURE">
+<![CDATA[  [chromium] › auth.spec.ts:45:7 › 认证流程测试 › 钱包连接流程 ─────────────────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Test timeout of 120000ms exceeded.
+
+    Error: page.click: Test timeout of 120000ms exceeded.
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - waiting for locator('text=MetaMask')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:32:11
+      51 |     
+      52 |     // 选择钱包类型（MetaMask）
+    > 53 |     await page.click('text=MetaMask')
+         |                ^
+      54 |     
+      55 |     // 验证钱包连接提示
+      56 |     await expect(page.locator('text=钱包已连接')).toBeVisible({ timeout: 10000 })
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/auth.spec.ts:53:16
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/test-failed-1.png
+    ../../test-results/auth-认证流程测试-钱包连接流程-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/video.webm
+    ../../test-results/auth-认证流程测试-钱包连接流程-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/auth-认证流程测试-钱包连接流程-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-钱包连接流程-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-统一-de301-edAccountPanel-应该正确显示最近交易记录-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-钱包连接流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/auth-认证流程测试-钱包连接流程-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="Agent 账户管理 (AgentAccountPanel) › 应该正确显示 Agent 列表" classname="workbench-restructuring.spec.ts" time="1.143">
-<failure message="workbench-restructuring.spec.ts:91:7 应该正确显示 Agent 列表" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:91:7 › Agent 账户管理 (AgentAccountPanel) › 应该正确显示 Agent 列表 
+</testsuite>
+<testsuite name="commerce-hints.spec.ts" timestamp="2026-02-01T22:25:32.820Z" hostname="chromium" tests="1" failures="0" skipped="0" time="22.729" errors="0">
+<testcase name="Commerce Skill Hints Banner › shows conversion hints in commission plans" classname="commerce-hints.spec.ts" time="22.729">
+</testcase>
+</testsuite>
+<testsuite name="new-features.spec.ts" timestamp="2026-02-01T22:25:32.820Z" hostname="chromium" tests="26" failures="26" skipped="0" time="215.24" errors="0">
+<testcase name="26个新功能页面测试 › 商户端 - 支付统计与分析" classname="new-features.spec.ts" time="16.91">
+<failure message="new-features.spec.ts:10:7 商户端 - 支付统计与分析" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:10:7 › 26个新功能页面测试 › 商户端 - 支付统计与分析 ──────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("支付统计与分析")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("支付统计与分析")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+      10 |   test('商户端 - 支付统计与分析', async ({ page }) => {
+      11 |     await page.goto('/app/merchant/analytics')
+    > 12 |     await expect(page.locator('h1:has-text("支付统计与分析")')).toBeVisible()
+         |                                                          ^
+      13 |     await expect(page.locator('text=今日收入')).toBeVisible()
+      14 |   })
+      15 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:12:58
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---支付统计与分析-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---支付统计与分析-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---支付统计与分析-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---支付统计与分析-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-bad9f-ccountPanel-应该正确显示-Agent-列表-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---支付统计与分析-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---支付统计与分析-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="Agent 账户管理 (AgentAccountPanel) › 应该支持创建新 Agent" classname="workbench-restructuring.spec.ts" time="0.67">
-<failure message="workbench-restructuring.spec.ts:98:7 应该支持创建新 Agent" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:98:7 › Agent 账户管理 (AgentAccountPanel) › 应该支持创建新 Agent 
+<testcase name="26个新功能页面测试 › 商户端 - 收入报表" classname="new-features.spec.ts" time="9.844">
+<failure message="new-features.spec.ts:16:7 商户端 - 收入报表" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:16:7 › 26个新功能页面测试 › 商户端 - 收入报表 ─────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("收入报表")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("收入报表")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+      16 |   test('商户端 - 收入报表', async ({ page }) => {
+      17 |     await page.goto('/app/merchant/reports')
+    > 18 |     await expect(page.locator('h1:has-text("收入报表")')).toBeVisible()
+         |                                                       ^
+      19 |     await expect(page.locator('button:has-text("生成报表")')).toBeVisible()
+      20 |   })
+      21 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:18:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---收入报表-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---收入报表-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---收入报表-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---收入报表-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-39c4c-tAccountPanel-应该支持创建新-Agent-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---收入报表-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---收入报表-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="Agent 账户管理 (AgentAccountPanel) › 信用评分和支出限额应该正确显示" classname="workbench-restructuring.spec.ts" time="0.664">
-<failure message="workbench-restructuring.spec.ts:115:7 信用评分和支出限额应该正确显示" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:115:7 › Agent 账户管理 (AgentAccountPanel) › 信用评分和支出限额应该正确显示 
+<testcase name="26个新功能页面测试 › 商户端 - 客户管理" classname="new-features.spec.ts" time="8.274">
+<failure message="new-features.spec.ts:22:7 商户端 - 客户管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:22:7 › 26个新功能页面测试 › 商户端 - 客户管理 ─────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("客户管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("客户管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+      22 |   test('商户端 - 客户管理', async ({ page }) => {
+      23 |     await page.goto('/app/merchant/customers')
+    > 24 |     await expect(page.locator('h1:has-text("客户管理")')).toBeVisible()
+         |                                                       ^
+      25 |     await expect(page.locator('input[placeholder*="搜索"]')).toBeVisible()
+      26 |   })
+      27 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:24:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---客户管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---客户管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---客户管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---客户管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-d4249-ccountPanel-信用评分和支出限额应该正确显示-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---客户管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---客户管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="Agent 账户管理 (AgentAccountPanel) › 支出限额拦截应该正常工作" classname="workbench-restructuring.spec.ts" time="0.602">
-<failure message="workbench-restructuring.spec.ts:129:7 支出限额拦截应该正常工作" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:129:7 › Agent 账户管理 (AgentAccountPanel) › 支出限额拦截应该正常工作 
+<testcase name="26个新功能页面测试 › 商户端 - 退款管理" classname="new-features.spec.ts" time="8.533">
+<failure message="new-features.spec.ts:28:7 商户端 - 退款管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:28:7 › 26个新功能页面测试 › 商户端 - 退款管理 ─────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("退款管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("退款管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:88:11
+      28 |   test('商户端 - 退款管理', async ({ page }) => {
+      29 |     await page.goto('/app/merchant/refunds')
+    > 30 |     await expect(page.locator('h1:has-text("退款管理")')).toBeVisible()
+         |                                                       ^
+      31 |   })
+      32 |
+      33 |   test('商户端 - 支付渠道配置', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:30:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---退款管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---退款管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---退款管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---退款管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-Ag-941ab-ntAccountPanel-支出限额拦截应该正常工作-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---退款管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---退款管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="KYC 认证中心 (KYCCenterPanel) › 应该正确显示当前 KYC 等级" classname="workbench-restructuring.spec.ts" time="0.672">
-<failure message="workbench-restructuring.spec.ts:157:7 应该正确显示当前 KYC 等级" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:157:7 › KYC 认证中心 (KYCCenterPanel) › 应该正确显示当前 KYC 等级 ─
+<testcase name="26个新功能页面测试 › 商户端 - 支付渠道配置" classname="new-features.spec.ts" time="7.524">
+<failure message="new-features.spec.ts:33:7 商户端 - 支付渠道配置" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:33:7 › 26个新功能页面测试 › 商户端 - 支付渠道配置 ───────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("支付渠道配置")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("支付渠道配置")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11
+      33 |   test('商户端 - 支付渠道配置', async ({ page }) => {
+      34 |     await page.goto('/app/merchant/payment-settings')
+    > 35 |     await expect(page.locator('h1:has-text("支付渠道配置")')).toBeVisible()
+         |                                                         ^
+      36 |   })
+      37 |
+      38 |   test('商户端 - Webhook配置', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:35:57
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---支付渠道配置-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---支付渠道配置-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---支付渠道配置-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---支付渠道配置-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-KY-574b8-CenterPanel-应该正确显示当前-KYC-等级-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---支付渠道配置-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---支付渠道配置-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="KYC 认证中心 (KYCCenterPanel) › 应该显示等级权益对比表" classname="workbench-restructuring.spec.ts" time="2.289">
-<failure message="workbench-restructuring.spec.ts:167:7 应该显示等级权益对比表" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:167:7 › KYC 认证中心 (KYCCenterPanel) › 应该显示等级权益对比表 ─────
+<testcase name="26个新功能页面测试 › 商户端 - Webhook配置" classname="new-features.spec.ts" time="7.353">
+<failure message="new-features.spec.ts:38:7 商户端 - Webhook配置" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:38:7 › 26个新功能页面测试 › 商户端 - Webhook配置 ────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("Webhook配置")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("Webhook配置")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11
+      38 |   test('商户端 - Webhook配置', async ({ page }) => {
+      39 |     await page.goto('/app/merchant/webhooks')
+    > 40 |     await expect(page.locator('h1:has-text("Webhook配置")')).toBeVisible()
+         |                                                            ^
+      41 |     await expect(page.locator('button:has-text("添加Webhook")')).toBeVisible()
+      42 |   })
+      43 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:40:60
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---Webhook配置-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---Webhook配置-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---Webhook配置-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---Webhook配置-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-应该显示等级权益对比表-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---Webhook配置-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---Webhook配置-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="KYC 认证中心 (KYCCenterPanel) › 升级认证流程应该可访问" classname="workbench-restructuring.spec.ts" time="2.288">
-<failure message="workbench-restructuring.spec.ts:174:7 升级认证流程应该可访问" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:174:7 › KYC 认证中心 (KYCCenterPanel) › 升级认证流程应该可访问 ─────
+<testcase name="26个新功能页面测试 › 商户端 - API密钥管理" classname="new-features.spec.ts" time="7.533">
+<failure message="new-features.spec.ts:44:7 商户端 - API密钥管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:44:7 › 26个新功能页面测试 › 商户端 - API密钥管理 ──────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("API密钥管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("API密钥管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:154:11
+      44 |   test('商户端 - API密钥管理', async ({ page }) => {
+      45 |     await page.goto('/app/merchant/api-keys')
+    > 46 |     await expect(page.locator('h1:has-text("API密钥管理")')).toBeVisible()
+         |                                                          ^
+      47 |   })
+      48 |
+      49 |   test('商户端 - 商品分析', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:46:58
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---API密钥管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---API密钥管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---API密钥管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---API密钥管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-KYC-认证中心-KYCCenterPanel-升级认证流程应该可访问-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---API密钥管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---API密钥管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="开发者账户 (DeveloperAccountPanel) › 应该正确显示开发者账户信息" classname="workbench-restructuring.spec.ts" time="1.12">
-<failure message="workbench-restructuring.spec.ts:197:7 应该正确显示开发者账户信息" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:197:7 › 开发者账户 (DeveloperAccountPanel) › 应该正确显示开发者账户信息 
+<testcase name="26个新功能页面测试 › 商户端 - 商品分析" classname="new-features.spec.ts" time="7.955">
+<failure message="new-features.spec.ts:49:7 商户端 - 商品分析" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:49:7 › 26个新功能页面测试 › 商户端 - 商品分析 ─────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("商品分析")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("商品分析")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11
+      49 |   test('商户端 - 商品分析', async ({ page }) => {
+      50 |     await page.goto('/app/merchant/product-analytics')
+    > 51 |     await expect(page.locator('h1:has-text("商品分析")')).toBeVisible()
+         |                                                       ^
+      52 |   })
+      53 | })
+      54 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:51:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/test-failed-1.png
+    ../../test-results/new-features-26个新功能页面测试-商户端---商品分析-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/video.webm
+    ../../test-results/new-features-26个新功能页面测试-商户端---商品分析-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-26个新功能页面测试-商户端---商品分析-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---商品分析-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-eea00-rAccountPanel-应该正确显示开发者账户信息-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---商品分析-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-26个新功能页面测试-商户端---商品分析-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="开发者账户 (DeveloperAccountPanel) › API Key 管理应该正常工作" classname="workbench-restructuring.spec.ts" time="1.116">
-<failure message="workbench-restructuring.spec.ts:204:7 API Key 管理应该正常工作" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:204:7 › 开发者账户 (DeveloperAccountPanel) › API Key 管理应该正常工作 
+<testcase name="用户端功能测试 › 用户端 - 钱包管理" classname="new-features.spec.ts" time="7.749">
+<failure message="new-features.spec.ts:60:7 用户端 - 钱包管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:60:7 › 用户端功能测试 › 用户端 - 钱包管理 ────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("钱包管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("钱包管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11
+      60 |   test('用户端 - 钱包管理', async ({ page }) => {
+      61 |     await page.goto('/app/user/wallets')
+    > 62 |     await expect(page.locator('h1:has-text("钱包管理")')).toBeVisible()
+         |                                                       ^
+      63 |   })
+      64 |
+      65 |   test('用户端 - 支付方式管理', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:62:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---钱包管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---钱包管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---钱包管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---钱包管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-ea588-countPanel-API-Key-管理应该正常工作-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---钱包管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---钱包管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="开发者账户 (DeveloperAccountPanel) › 使用统计应该正确显示" classname="workbench-restructuring.spec.ts" time="3.37">
-<failure message="workbench-restructuring.spec.ts:218:7 使用统计应该正确显示" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:218:7 › 开发者账户 (DeveloperAccountPanel) › 使用统计应该正确显示 ──
+<testcase name="用户端功能测试 › 用户端 - 支付方式管理" classname="new-features.spec.ts" time="7.634">
+<failure message="new-features.spec.ts:65:7 用户端 - 支付方式管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:65:7 › 用户端功能测试 › 用户端 - 支付方式管理 ──────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("支付方式管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("支付方式管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:193:11
+      65 |   test('用户端 - 支付方式管理', async ({ page }) => {
+      66 |     await page.goto('/app/user/payment-methods')
+    > 67 |     await expect(page.locator('h1:has-text("支付方式管理")')).toBeVisible()
+         |                                                         ^
+      68 |   })
+      69 |
+      70 |   test('用户端 - 订阅管理', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:67:57
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---支付方式管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---支付方式管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---支付方式管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---支付方式管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-开发-43560-operAccountPanel-使用统计应该正确显示-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---支付方式管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---支付方式管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="五类画像 UAT › [API 厂商] OpenAPI 导入链路" classname="workbench-restructuring.spec.ts" time="3.254">
-<failure message="workbench-restructuring.spec.ts:234:7 [API 厂商] OpenAPI 导入链路" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:234:7 › 五类画像 UAT › [API 厂商] OpenAPI 导入链路 ────────────
+<testcase name="用户端功能测试 › 用户端 - 订阅管理" classname="new-features.spec.ts" time="7.48">
+<failure message="new-features.spec.ts:70:7 用户端 - 订阅管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:70:7 › 用户端功能测试 › 用户端 - 订阅管理 ────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("订阅管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("订阅管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+      70 |   test('用户端 - 订阅管理', async ({ page }) => {
+      71 |     await page.goto('/app/user/subscriptions')
+    > 72 |     await expect(page.locator('h1:has-text("订阅管理")')).toBeVisible()
+         |                                                       ^
+      73 |   })
+      74 |
+      75 |   test('用户端 - 授权管理', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:72:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---订阅管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---订阅管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---订阅管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---订阅管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-API-厂商-OpenAPI-导入链路-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---订阅管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---订阅管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="五类画像 UAT › [商户] 商品同步链路" classname="workbench-restructuring.spec.ts" time="0.964">
-<failure message="workbench-restructuring.spec.ts:242:7 [商户] 商品同步链路" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:242:7 › 五类画像 UAT › [商户] 商品同步链路 ──────────────────────
+<testcase name="用户端功能测试 › 用户端 - 授权管理" classname="new-features.spec.ts" time="7.992">
+<failure message="new-features.spec.ts:75:7 用户端 - 授权管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:75:7 › 用户端功能测试 › 用户端 - 授权管理 ────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("授权管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("授权管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+      75 |   test('用户端 - 授权管理', async ({ page }) => {
+      76 |     await page.goto('/app/user/authorizations')
+    > 77 |     await expect(page.locator('h1:has-text("授权管理")')).toBeVisible()
+         |                                                       ^
+      78 |   })
+      79 |
+      80 |   test('用户端 - 安全设置', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:77:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---授权管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---授权管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---授权管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---授权管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-商户-商品同步链路-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---授权管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---授权管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="五类画像 UAT › [个人用户] Agent 创建链路" classname="workbench-restructuring.spec.ts" time="1.07">
-<failure message="workbench-restructuring.spec.ts:250:7 [个人用户] Agent 创建链路" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:250:7 › 五类画像 UAT › [个人用户] Agent 创建链路 ────────────────
+<testcase name="用户端功能测试 › 用户端 - 安全设置" classname="new-features.spec.ts" time="7.316">
+<failure message="new-features.spec.ts:80:7 用户端 - 安全设置" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:80:7 › 用户端功能测试 › 用户端 - 安全设置 ────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("安全设置")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("安全设置")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+      80 |   test('用户端 - 安全设置', async ({ page }) => {
+      81 |     await page.goto('/app/user/security')
+    > 82 |     await expect(page.locator('h1:has-text("安全设置")')).toBeVisible()
+         |                                                       ^
+      83 |   })
+      84 |
+      85 |   test('用户端 - 通知设置', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:82:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---安全设置-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---安全设置-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---安全设置-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---安全设置-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-个人用户-Agent-创建链路-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---安全设置-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---安全设置-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="五类画像 UAT › [开发者] Skill 发布链路" classname="workbench-restructuring.spec.ts" time="0.672">
-<failure message="workbench-restructuring.spec.ts:258:7 [开发者] Skill 发布链路" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:258:7 › 五类画像 UAT › [开发者] Skill 发布链路 ─────────────────
+<testcase name="用户端功能测试 › 用户端 - 通知设置" classname="new-features.spec.ts" time="7.355">
+<failure message="new-features.spec.ts:85:7 用户端 - 通知设置" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:85:7 › 用户端功能测试 › 用户端 - 通知设置 ────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("通知设置")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("通知设置")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:231:11
+      85 |   test('用户端 - 通知设置', async ({ page }) => {
+      86 |     await page.goto('/app/user/notifications')
+    > 87 |     await expect(page.locator('h1:has-text("通知设置")')).toBeVisible()
+         |                                                       ^
+      88 |   })
+      89 |
+      90 |   test('用户端 - 交易详情', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:87:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---通知设置-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---通知设置-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---通知设置-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---通知设置-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-五类画像-UAT-开发者-Skill-发布链路-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---通知设置-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---通知设置-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="导航系统测试 › L1 画像切换应该正常工作" classname="workbench-restructuring.spec.ts" time="0.707">
-<failure message="workbench-restructuring.spec.ts:275:7 L1 画像切换应该正常工作" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:275:7 › 导航系统测试 › L1 画像切换应该正常工作 ──────────────────────
+<testcase name="用户端功能测试 › 用户端 - 交易详情" classname="new-features.spec.ts" time="8.235">
+<failure message="new-features.spec.ts:90:7 用户端 - 交易详情" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:90:7 › 用户端功能测试 › 用户端 - 交易详情 ────────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("交易详情")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("交易详情")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11
+      90 |   test('用户端 - 交易详情', async ({ page }) => {
+      91 |     await page.goto('/app/user/transaction-detail?id=test')
+    > 92 |     await expect(page.locator('h1:has-text("交易详情")')).toBeVisible()
+         |                                                       ^
+      93 |   })
+      94 |
+      95 |   test('用户端 - 收藏与心愿单', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:92:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---交易详情-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---交易详情-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---交易详情-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---交易详情-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L1-画像切换应该正常工作-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---交易详情-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---交易详情-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="导航系统测试 › L2 侧边栏导航应该正常工作" classname="workbench-restructuring.spec.ts" time="0.619">
-<failure message="workbench-restructuring.spec.ts:290:7 L2 侧边栏导航应该正常工作" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:290:7 › 导航系统测试 › L2 侧边栏导航应该正常工作 ─────────────────────
+<testcase name="用户端功能测试 › 用户端 - 收藏与心愿单" classname="new-features.spec.ts" time="8.185">
+<failure message="new-features.spec.ts:95:7 用户端 - 收藏与心愿单" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:95:7 › 用户端功能测试 › 用户端 - 收藏与心愿单 ──────────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("收藏与心愿单")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("收藏与心愿单")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11
+       95 |   test('用户端 - 收藏与心愿单', async ({ page }) => {
+       96 |     await page.goto('/app/user/wishlist')
+    >  97 |     await expect(page.locator('h1:has-text("收藏与心愿单")')).toBeVisible()
+          |                                                         ^
+       98 |   })
+       99 | })
+      100 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:97:57
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/test-failed-1.png
+    ../../test-results/new-features-用户端功能测试-用户端---收藏与心愿单-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/video.webm
+    ../../test-results/new-features-用户端功能测试-用户端---收藏与心愿单-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-用户端功能测试-用户端---收藏与心愿单-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---收藏与心愿单-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-L2-侧边栏导航应该正常工作-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---收藏与心愿单-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-用户端功能测试-用户端---收藏与心愿单-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="导航系统测试 › 移动端布局应该正确响应" classname="workbench-restructuring.spec.ts" time="0.635">
-<failure message="workbench-restructuring.spec.ts:304:7 移动端布局应该正确响应" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:304:7 › 导航系统测试 › 移动端布局应该正确响应 ────────────────────────
+<testcase name="Agent端功能测试 › Agent端 - 配置管理" classname="new-features.spec.ts" time="8.58">
+<failure message="new-features.spec.ts:106:7 Agent端 - 配置管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:106:7 › Agent端功能测试 › Agent端 - 配置管理 ─────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("Agent配置管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("Agent配置管理")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:272:11
+      106 |   test('Agent端 - 配置管理', async ({ page }) => {
+      107 |     await page.goto('/app/agent/settings')
+    > 108 |     await expect(page.locator('h1:has-text("Agent配置管理")')).toBeVisible()
+          |                                                            ^
+      109 |   })
+      110 |
+      111 |   test('Agent端 - 收入统计', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:108:60
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/test-failed-1.png
+    ../../test-results/new-features-Agent端功能测试-Agent端---配置管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/video.webm
+    ../../test-results/new-features-Agent端功能测试-Agent端---配置管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---配置管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---配置管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-导航系统测试-移动端布局应该正确响应-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---配置管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---配置管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="入驻流程 (OnboardingWizard) › 新用户应该看到入驻向导" classname="workbench-restructuring.spec.ts" time="0.623">
-<failure message="workbench-restructuring.spec.ts:323:7 新用户应该看到入驻向导" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:323:7 › 入驻流程 (OnboardingWizard) › 新用户应该看到入驻向导 ───────
+<testcase name="Agent端功能测试 › Agent端 - 收入统计" classname="new-features.spec.ts" time="8.397">
+<failure message="new-features.spec.ts:111:7 Agent端 - 收入统计" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:111:7 › Agent端功能测试 › Agent端 - 收入统计 ─────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("收入统计")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/onboarding", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("收入统计")')
 
 
-      323 |   test('新用户应该看到入驻向导', async ({ page }) => {
-      324 |     // 使用新用户登录或模拟新用户状态
-    > 325 |     await page.goto(`${BASE_URL}/onboarding`);
-          |                ^
-      326 |     
-      327 |     // 验证入驻向导
-      328 |     await expect(page.locator('text=欢迎加入').or(page.locator('text=入驻向导'))).toBeVisible();
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:325:16
+      111 |   test('Agent端 - 收入统计', async ({ page }) => {
+      112 |     await page.goto('/app/agent/revenue')
+    > 113 |     await expect(page.locator('h1:has-text("收入统计")')).toBeVisible()
+          |                                                       ^
+      114 |   })
+      115 |
+      116 |   test('Agent端 - 佣金管理', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:113:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/test-failed-1.png
+    ../../test-results/new-features-Agent端功能测试-Agent端---收入统计-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/video.webm
+    ../../test-results/new-features-Agent端功能测试-Agent端---收入统计-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---收入统计-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---收入统计-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-新用户应该看到入驻向导-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---收入统计-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---收入统计-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="入驻流程 (OnboardingWizard) › 入驻流程应该支持步骤导航" classname="workbench-restructuring.spec.ts" time="0.639">
-<failure message="workbench-restructuring.spec.ts:336:7 入驻流程应该支持步骤导航" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:336:7 › 入驻流程 (OnboardingWizard) › 入驻流程应该支持步骤导航 ──────
+<testcase name="Agent端功能测试 › Agent端 - 佣金管理" classname="new-features.spec.ts" time="8.103">
+<failure message="new-features.spec.ts:116:7 Agent端 - 佣金管理" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:116:7 › Agent端功能测试 › Agent端 - 佣金管理 ─────────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/onboarding
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("佣金管理")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/onboarding", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("佣金管理")')
 
 
-      335 |
-      336 |   test('入驻流程应该支持步骤导航', async ({ page }) => {
-    > 337 |     await page.goto(`${BASE_URL}/onboarding`);
-          |                ^
-      338 |     
-      339 |     // 选择一个画像
-      340 |     await page.click('text=个人用户').catch(() => page.click('text=personal'));
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:337:16
+      116 |   test('Agent端 - 佣金管理', async ({ page }) => {
+      117 |     await page.goto('/app/agent/commission-management')
+    > 118 |     await expect(page.locator('h1:has-text("佣金管理")')).toBeVisible()
+          |                                                       ^
+      119 |   })
+      120 |
+      121 |   test('Agent端 - 商品推荐统计', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:118:55
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/test-failed-1.png
+    ../../test-results/new-features-Agent端功能测试-Agent端---佣金管理-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/video.webm
+    ../../test-results/new-features-Agent端功能测试-Agent端---佣金管理-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---佣金管理-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---佣金管理-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-入驻流程-OnboardingWizard-入驻流程应该支持步骤导航-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---佣金管理-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---佣金管理-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="性能标准测试 › 工作台首页加载时间应该 &lt; 1.5s" classname="workbench-restructuring.spec.ts" time="0.607">
-<failure message="workbench-restructuring.spec.ts:353:7 工作台首页加载时间应该 &lt; 1.5s" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:353:7 › 性能标准测试 › 工作台首页加载时间应该 < 1.5s ─────────────────
+<testcase name="Agent端功能测试 › Agent端 - 商品推荐统计" classname="new-features.spec.ts" time="7.362">
+<failure message="new-features.spec.ts:121:7 Agent端 - 商品推荐统计" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:121:7 › Agent端功能测试 › Agent端 - 商品推荐统计 ───────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("商品推荐统计")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("商品推荐统计")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:356:11
+      121 |   test('Agent端 - 商品推荐统计', async ({ page }) => {
+      122 |     await page.goto('/app/agent/recommendations')
+    > 123 |     await expect(page.locator('h1:has-text("商品推荐统计")')).toBeVisible()
+          |                                                         ^
+      124 |   })
+      125 |
+      126 |   test('Agent端 - API调用统计', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:123:57
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/test-failed-1.png
+    ../../test-results/new-features-Agent端功能测试-Agent端---商品推荐统计-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/video.webm
+    ../../test-results/new-features-Agent端功能测试-Agent端---商品推荐统计-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---商品推荐统计-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---商品推荐统计-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-工作台首页加载时间应该-1-5s-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---商品推荐统计-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---商品推荐统计-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>
-<testcase name="性能标准测试 › 画像切换响应时间应该 &lt; 300ms" classname="workbench-restructuring.spec.ts" time="0.66">
-<failure message="workbench-restructuring.spec.ts:367:7 画像切换响应时间应该 &lt; 300ms" type="FAILURE">
-<![CDATA[  [chromium] › workbench-restructuring.spec.ts:367:7 › 性能标准测试 › 画像切换响应时间应该 < 300ms ─────────────────
+<testcase name="Agent端功能测试 › Agent端 - API调用统计" classname="new-features.spec.ts" time="7.744">
+<failure message="new-features.spec.ts:126:7 Agent端 - API调用统计" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:126:7 › Agent端功能测试 › Agent端 - API调用统计 ──────────────────────────
 
-    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("API调用统计")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
     Call log:
-      - navigating to "http://localhost:3000/login", waiting until "load"
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("API调用统计")')
 
 
-      12 | // 辅助函数
-      13 | async function login(page: Page, email = 'test@agentrix.io', password = 'test123') {
-    > 14 |   await page.goto(`${BASE_URL}/login`);
-         |              ^
-      15 |   await page.fill('input[name="email"]', email);
-      16 |   await page.fill('input[name="password"]', password);
-      17 |   await page.click('button[type="submit"]');
-        at login (/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:14:14)
-        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-restructuring.spec.ts:368:11
+      126 |   test('Agent端 - API调用统计', async ({ page }) => {
+      127 |     await page.goto('/app/agent/api-stats')
+    > 128 |     await expect(page.locator('h1:has-text("API调用统计")')).toBeVisible()
+          |                                                          ^
+      129 |   })
+      130 |
+      131 |   test('Agent端 - 错误日志', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:128:58
 
     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/test-failed-1.png
+    ../../test-results/new-features-Agent端功能测试-Agent端---API调用统计-chromium/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
-    ../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/video.webm
+    ../../test-results/new-features-Agent端功能测试-Agent端---API调用统计-chromium/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---API调用统计-chromium/error-context.md
 ]]>
 </failure>
 <system-out>
 <![CDATA[
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/test-failed-1.png]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---API调用统计-chromium/test-failed-1.png]]
 
-[[ATTACHMENT|../../../../test-results/workbench-restructuring-性能标准测试-画像切换响应时间应该-300ms-chromium/video.webm]]
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---API调用统计-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---API调用统计-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent端功能测试 › Agent端 - 错误日志" classname="new-features.spec.ts" time="7.641">
+<failure message="new-features.spec.ts:131:7 Agent端 - 错误日志" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:131:7 › Agent端功能测试 › Agent端 - 错误日志 ─────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("错误日志")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("错误日志")')
+
+
+      131 |   test('Agent端 - 错误日志', async ({ page }) => {
+      132 |     await page.goto('/app/agent/error-logs')
+    > 133 |     await expect(page.locator('h1:has-text("错误日志")')).toBeVisible()
+          |                                                       ^
+      134 |   })
+      135 |
+      136 |   test('Agent端 - 测试环境', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:133:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---错误日志-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---错误日志-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---错误日志-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---错误日志-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---错误日志-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---错误日志-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent端功能测试 › Agent端 - 测试环境" classname="new-features.spec.ts" time="8.283">
+<failure message="new-features.spec.ts:136:7 Agent端 - 测试环境" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:136:7 › Agent端功能测试 › Agent端 - 测试环境 ─────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("测试环境")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("测试环境")')
+
+
+      136 |   test('Agent端 - 测试环境', async ({ page }) => {
+      137 |     await page.goto('/app/agent/sandbox')
+    > 138 |     await expect(page.locator('h1:has-text("测试环境")')).toBeVisible()
+          |                                                       ^
+      139 |   })
+      140 |
+      141 |   test('Agent端 - 性能监控', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:138:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---测试环境-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---测试环境-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---测试环境-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---测试环境-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---测试环境-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---测试环境-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent端功能测试 › Agent端 - 性能监控" classname="new-features.spec.ts" time="7.769">
+<failure message="new-features.spec.ts:141:7 Agent端 - 性能监控" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:141:7 › Agent端功能测试 › Agent端 - 性能监控 ─────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("性能监控")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("性能监控")')
+
+
+      141 |   test('Agent端 - 性能监控', async ({ page }) => {
+      142 |     await page.goto('/app/agent/performance')
+    > 143 |     await expect(page.locator('h1:has-text("性能监控")')).toBeVisible()
+          |                                                       ^
+      144 |   })
+      145 |
+      146 |   test('Agent端 - 用户分析', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:143:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---性能监控-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---性能监控-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---性能监控-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---性能监控-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---性能监控-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---性能监控-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent端功能测试 › Agent端 - 用户分析" classname="new-features.spec.ts" time="7.626">
+<failure message="new-features.spec.ts:146:7 Agent端 - 用户分析" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:146:7 › Agent端功能测试 › Agent端 - 用户分析 ─────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("用户分析")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("用户分析")')
+
+
+      146 |   test('Agent端 - 用户分析', async ({ page }) => {
+      147 |     await page.goto('/app/agent/user-analytics')
+    > 148 |     await expect(page.locator('h1:has-text("用户分析")')).toBeVisible()
+          |                                                       ^
+      149 |   })
+      150 |
+      151 |   test('Agent端 - 集成文档', async ({ page }) => {
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:148:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---用户分析-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---用户分析-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---用户分析-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---用户分析-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---用户分析-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---用户分析-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agent端功能测试 › Agent端 - 集成文档" classname="new-features.spec.ts" time="7.863">
+<failure message="new-features.spec.ts:151:7 Agent端 - 集成文档" type="FAILURE">
+<![CDATA[  [chromium] › new-features.spec.ts:151:7 › Agent端功能测试 › Agent端 - 集成文档 ─────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('h1:has-text("集成文档")')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('h1:has-text("集成文档")')
+
+
+      151 |   test('Agent端 - 集成文档', async ({ page }) => {
+      152 |     await page.goto('/app/agent/docs')
+    > 153 |     await expect(page.locator('h1:has-text("集成文档")')).toBeVisible()
+          |                                                       ^
+      154 |   })
+      155 | })
+      156 |
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/new-features.spec.ts:153:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---集成文档-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/new-features-Agent端功能测试-Agent端---集成文档-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/new-features-Agent端功能测试-Agent端---集成文档-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---集成文档-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---集成文档-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/new-features-Agent端功能测试-Agent端---集成文档-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+<testsuite name="payment.spec.ts" timestamp="2026-02-01T22:25:32.820Z" hostname="chromium" tests="4" failures="4" skipped="0" time="517.193" errors="0">
+<testcase name="支付流程测试 › Stripe支付流程" classname="payment.spec.ts" time="127.001">
+<failure message="payment.spec.ts:9:7 Stripe支付流程" type="FAILURE">
+<![CDATA[  [chromium] › payment.spec.ts:9:7 › 支付流程测试 › Stripe支付流程 ───────────────────────────────────────────
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.fill: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for locator('input[type="number"]')
+
+
+      12 |     
+      13 |     // 填写支付金额
+    > 14 |     await page.fill('input[type="number"]', '100')
+         |                ^
+      15 |     
+      16 |     // 选择Stripe支付方式
+      17 |     await page.click('text=Credit/Debit Card')
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/payment.spec.ts:14:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-Stripe支付流程-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-Stripe支付流程-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/payment-支付流程测试-Stripe支付流程-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-Stripe支付流程-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-Stripe支付流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-Stripe支付流程-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="支付流程测试 › 加密货币支付流程" classname="payment.spec.ts" time="134.409">
+<failure message="payment.spec.ts:34:7 加密货币支付流程" type="FAILURE">
+<![CDATA[  [chromium] › payment.spec.ts:34:7 › 支付流程测试 › 加密货币支付流程 ────────────────────────────────────────────
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.fill: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for locator('input[type="number"]')
+
+
+      37 |     
+      38 |     // 填写支付金额
+    > 39 |     await page.fill('input[type="number"]', '50')
+         |                ^
+      40 |     
+      41 |     // 选择加密货币支付
+      42 |     await page.click('text=Digital Currency')
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/payment.spec.ts:39:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-加密货币支付流程-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-加密货币支付流程-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/payment-支付流程测试-加密货币支付流程-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-加密货币支付流程-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-加密货币支付流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-加密货币支付流程-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="支付流程测试 › X402协议支付流程" classname="payment.spec.ts" time="125.813">
+<failure message="payment.spec.ts:54:7 X402协议支付流程" type="FAILURE">
+<![CDATA[  [chromium] › payment.spec.ts:54:7 › 支付流程测试 › X402协议支付流程 ──────────────────────────────────────────
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.click: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for locator('button:has-text("创建授权")')
+
+
+      61 |     if (!hasAuth) {
+      62 |       // 创建授权
+    > 63 |       await page.click('button:has-text("创建授权")')
+         |                  ^
+      64 |       await page.waitForSelector('text=授权成功', { timeout: 10000 })
+      65 |     }
+      66 |     
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/payment.spec.ts:63:18
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-X402协议支付流程-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-X402协议支付流程-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/payment-支付流程测试-X402协议支付流程-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-X402协议支付流程-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-X402协议支付流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-X402协议支付流程-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="支付流程测试 › 跨境支付流程" classname="payment.spec.ts" time="129.97">
+<failure message="payment.spec.ts:75:7 跨境支付流程" type="FAILURE">
+<![CDATA[  [chromium] › payment.spec.ts:75:7 › 支付流程测试 › 跨境支付流程 ──────────────────────────────────────────────
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.fill: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="amount"]')
+
+
+      78 |     
+      79 |     // 填写支付信息
+    > 80 |     await page.fill('input[name="amount"]', '200')
+         |                ^
+      81 |     await page.selectOption('select[name="fromCurrency"]', 'CNY')
+      82 |     await page.selectOption('select[name="toCurrency"]', 'USD')
+      83 |     
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/payment.spec.ts:80:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-跨境支付流程-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/payment-支付流程测试-跨境支付流程-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/payment-支付流程测试-跨境支付流程-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-跨境支付流程-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-跨境支付流程-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/payment-支付流程测试-跨境支付流程-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+<testsuite name="workbench-paths.spec.ts" timestamp="2026-02-01T22:25:32.820Z" hostname="chromium" tests="3" failures="3" skipped="0" time="251.424" errors="0">
+<testcase name="Agentrix Workbench Path Verification › User Path: Checklist transitions" classname="workbench-paths.spec.ts" time="121.053">
+<failure message="workbench-paths.spec.ts:12:7 User Path: Checklist transitions" type="FAILURE">
+<![CDATA[  [chromium] › workbench-paths.spec.ts:12:7 › Agentrix Workbench Path Verification › User Path: Checklist transitions 
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.click: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for locator('text=User Center')
+
+
+      14 |     // Click on User Center in RoleSwitcher
+      15 |     await page.click('text=Personal');
+    > 16 |     await page.click('text=User Center');
+         |                ^
+      17 |
+      18 |     // 2. Verify Checklist is visible
+      19 |     await expect(page.locator('text=Authorize Agent for Purchases')).toBeVisible();
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-paths.spec.ts:16:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-paths-Agentrix-W-f5ef5--Path-Checklist-transitions-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-paths-Agentrix-W-f5ef5--Path-Checklist-transitions-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/workbench-paths-Agentrix-W-f5ef5--Path-Checklist-transitions-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-f5ef5--Path-Checklist-transitions-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-f5ef5--Path-Checklist-transitions-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-f5ef5--Path-Checklist-transitions-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agentrix Workbench Path Verification › Merchant Path: Registration and Checklist" classname="workbench-paths.spec.ts" time="10.055">
+<failure message="workbench-paths.spec.ts:31:7 Merchant Path: Registration and Checklist" type="FAILURE">
+<![CDATA[  [chromium] › workbench-paths.spec.ts:31:7 › Agentrix Workbench Path Verification › Merchant Path: Registration and Checklist 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('text=Enable Merchant Access')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('text=Enable Merchant Access')
+
+
+      36 |     const isRegistered = await page.locator('text=Merchant Backend').isVisible();
+      37 |     if (!isRegistered) {
+    > 38 |       await expect(page.locator('text=Enable Merchant Access')).toBeVisible();
+         |                                                                 ^
+      39 |       // Mock registration is handled by the backend/frontend logic we just fixed
+      40 |     } else {
+      41 |       // 3. Verify Checklist
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-paths.spec.ts:38:65
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-paths-Agentrix-W-1b435--Registration-and-Checklist-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-paths-Agentrix-W-1b435--Registration-and-Checklist-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/workbench-paths-Agentrix-W-1b435--Registration-and-Checklist-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-1b435--Registration-and-Checklist-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-1b435--Registration-and-Checklist-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-1b435--Registration-and-Checklist-chromium/error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Agentrix Workbench Path Verification › Developer Path: Registration and Checklist" classname="workbench-paths.spec.ts" time="120.316">
+<failure message="workbench-paths.spec.ts:53:7 Developer Path: Registration and Checklist" type="FAILURE">
+<![CDATA[  [chromium] › workbench-paths.spec.ts:53:7 › Agentrix Workbench Path Verification › Developer Path: Registration and Checklist 
+
+    Test timeout of 120000ms exceeded.
+
+    Error: page.click: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for locator('text=Developer')
+
+
+      53 |   test('Developer Path: Registration and Checklist', async ({ page }) => {
+      54 |     // 1. Switch to Developer mode
+    > 55 |     await page.click('text=Developer');
+         |                ^
+      56 |     
+      57 |     // 2. If not registered, verify registration screen
+      58 |     const isRegistered = await page.locator('text=Developer Tools').isVisible();
+        at /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/workbench-paths.spec.ts:55:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../test-results/workbench-paths-Agentrix-W-2d732--Registration-and-Checklist-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ../../test-results/workbench-paths-Agentrix-W-2d732--Registration-and-Checklist-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../test-results/workbench-paths-Agentrix-W-2d732--Registration-and-Checklist-chromium/error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-2d732--Registration-and-Checklist-chromium/test-failed-1.png]]
+
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-2d732--Registration-and-Checklist-chromium/video.webm]]
+
+[[ATTACHMENT|../../../../test-results/workbench-paths-Agentrix-W-2d732--Registration-and-Checklist-chromium/error-context.md]]
 ]]>
 </system-out>
 </testcase>

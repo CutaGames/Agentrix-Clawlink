@@ -12,12 +12,14 @@ import { Workspace } from './entities/workspace.entity';
 import { WorkspaceFile } from './entities/workspace-file.entity';
 import { HqAIModule } from '../ai/hq-ai.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { MemoryModule } from '../memory/memory.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Workspace, WorkspaceFile]),
     HqAIModule,
     KnowledgeModule,
+    MemoryModule,
   ],
   controllers: [WorkspaceController],
   providers: [WorkspaceService],

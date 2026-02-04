@@ -29,6 +29,10 @@ async function bootstrap() {
       allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
     });
 
+    // 增加请求体大小限制 (支持大型 RAG 上下文)
+    app.useBodyParser('json', { limit: '50mb' });
+    app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
+
     // API 前缀
     app.setGlobalPrefix('api');
 

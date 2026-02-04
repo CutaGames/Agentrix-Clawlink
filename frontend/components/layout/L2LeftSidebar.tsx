@@ -150,6 +150,9 @@ const merchantL2Config: Record<string, SubNavItem[]> = {
     { id: 'overview', label: { zh: '财务概览', en: 'Overview' }, icon: TrendingUp },
     { id: 'stripe-connect', label: { zh: 'Stripe Connect', en: 'Stripe Connect' }, icon: CreditCard },
     { id: 'transactions', label: { zh: '交易记录', en: 'Transactions' }, icon: Receipt },
+    { id: 'commission-plans', label: { zh: '分佣规则', en: 'Commission Plans' }, icon: Share2 },
+    { id: 'budget-pools', label: { zh: '预算池', en: 'Budget Pools' }, icon: PiggyBank },
+    { id: 'settlements', label: { zh: '分账结算', en: 'Settlements' }, icon: Receipt },
     { id: 'withdrawals', label: { zh: '提现', en: 'Withdrawals' }, icon: ArrowDownToLine },
     { id: 'invoices', label: { zh: '发票管理', en: 'Invoices' }, icon: FileText },
   ],
@@ -187,6 +190,8 @@ const developerL2Config: Record<string, SubNavItem[]> = {
   revenue: [
     { id: 'earnings', label: { zh: '收益统计', en: 'Earnings' }, icon: DollarSign },
     { id: 'transactions', label: { zh: '交易记录', en: 'Transactions' }, icon: Receipt },
+    { id: 'commission-plans', label: { zh: '分润配置', en: 'Commission Plans' }, icon: Share2 },
+    { id: 'budget-pools', label: { zh: '预算池', en: 'Budget Pools' }, icon: PiggyBank },
     { id: 'withdrawals', label: { zh: '提现', en: 'Withdrawals' }, icon: ArrowDownToLine },
     { id: 'pricing', label: { zh: '定价策略', en: 'Pricing' }, icon: PiggyBank },
   ],

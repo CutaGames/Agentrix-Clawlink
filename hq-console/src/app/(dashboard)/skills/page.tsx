@@ -56,7 +56,7 @@ export default function SkillsPage() {
   const [testResult, setTestResult] = useState('');
   const [testing, setTesting] = useState(false);
 
-  const API_BASE = process.env.NEXT_PUBLIC_HQ_API_URL || 'http://localhost:3005/api';
+  const API_BASE = process.env.NEXT_PUBLIC_HQ_API_URL || 'http://57.182.89.146:8080/api';
 
   useEffect(() => {
     fetchSkills();

@@ -1,0 +1,167 @@
+{
+  "entries": [
+    {
+      "id": "kb-1770002559342-i5p6u25to",
+      "title": "Payment V1 Architecture Design",
+      "category": "architecture",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/AGENTRIX_PAYMENT_V1_ARCH_DESIGN.md",
+      "summary": "# Agentrix 支付 V1.0 架构设计方案 (Agentrix Payment V1.0 Architecture)\r \r **版本**: V1.1  \r **状态**: 已确认 (Confirmed)  \r **最后更新**: 2026-01-21  \r **核心目标**: 构建 AI Agent 时代的\"支付+审计\"基础设施，解决 Agent 身份可验证、支付动作可归因、全过程不可篡改且隐私友好的核心痛点。\r \r > **V1.1 更新**: 新增 Stripe 法币直结通道，支持 Google Pay / Apple Pay / 信用卡直接法币支付\r \r ---\r \r ## 1. 总体架构：混合审计模型 (Hybrid Audit Model)\r \r 我们采用 **\"ERC8004 (执行层) + EAS (证明层) + 透明日志 (审计层)\"** 的混合架构，平衡 Web3 的去中心化信任与 Web2 的高性能执行。\r \r ### 1.1 三层架构定义\r \r | 层次 | 技术选型 | 核心作用 | 交付物 |\r | :--- | :--- | :--- | :---",
+      "addedAt": "2026-02-02T03:22:39.453Z",
+      "size": 6534
+    },
+    {
+      "id": "kb-1770002559859-gq2oicg8j",
+      "title": "MCP Technical Design",
+      "category": "architecture",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/AGENTRIX_MCP_TECH_DESIGN.md",
+      "summary": "# Agentrix MCP 多生态集成 - 技术设计文档 (TDD)\r \r **版本**: 1.0.0  \r **日期**: 2025-12-27  \r **状态**: Draft\r \r ---\r \r ## 1. 系统架构概览\r \r Agentrix MCP 集成旨在通过统一的 Model Context Protocol (MCP) 协议，将 Agentrix 的核心交易和 Agent 能力暴露给主流 AI 生态。\r \r ### 1.1 整体架构图\r \r ```mermaid\r graph TD\r     subgraph \"AI Ecosystems\"\r         ChatGPT[ChatGPT Apps]\r         Claude[Claude Desktop]\r         Gemini[Gemini Extensions]\r         Grok[Grok Tools]\r     end\r \r     subgraph \"Agentrix Backend (NestJS)\"\r         MCP_Server[MCP Server Module]",
+      "addedAt": "2026-02-02T03:22:39.859Z",
+      "size": 5432
+    },
+    {
+      "id": "kb-1770002559962-f3lrbofwq",
+      "title": "UI Refactor Plan",
+      "category": "architecture",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/AGENTRIX_UI_REFACTOR_PLAN.md",
+      "summary": "# 🎯 Agentrix 工作台 UI 重构实施方案\r \r ## 📊 当前状态分析\r \r ### 现有 UserModule 标签页\r ```\r 当前实现：\r ├─ 控制面板 (Dashboard/Checklist)\r ├─ Agent 中心\r ├─ 技能中心\r ├─ 支付账单\r ├─ 资产管理 (Wallets)\r ├─ 订单跟踪\r ├─ 空投发现\r ├─ 自动赚币 (Auto-Earn)\r ├─ 安全策略\r └─ 个人资料\r ```\r \r ### 目标 UI 设计 (V2.0)\r ```\r 个人 Agent 工作台\r ├─ 🏠 控制台 (Dashboard)\r │   └─ 概览：收益、活跃 Agent、授权状态、快捷入口\r │\r ├─ 🤖 Agent 中心\r │   ├─ 我的 Agent (管理、部署、分享)\r │   └─ Agent 市场 (发现与安装)\r │\r ├─ 🧰 技能中心 (Skill Center) ⭐ 核心重构\r │   ├─ 技能市场 (浏览所有原子能力：支付、DeFi、电商等)\r │   ├─ 已安装技能 (配置与管理)\r │   └─ 开发者",
+      "addedAt": "2026-02-02T03:22:39.962Z",
+      "size": 6558
+    },
+    {
+      "id": "kb-1770002560014-bn6zt5x56",
+      "title": "Workbench PRD V3",
+      "category": "product",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/AGENTRIX_WORKBENCH_PRD_V3.md",
+      "summary": "# Agentrix 工作台产品需求文档 (PRD) V3.0\r \r **日期**: 2026-01-05  \r **状态**: 草案 (功能对齐版)  \r **版本**: 3.0\r \r ---\r \r ## 1. 核心愿景\r Agentrix 工作台是 AI Agent 生态系统的核心枢纽，旨在打通 AI Agent、商户和开发者之间的商业闭环。V3.0 的核心目标是在保持 2025.12.29 版本功能完整性的基础上，完成 UI 架构的现代化重构，确保“功能即服务，界面即任务”。\r \r ## 2. 角色与核心任务\r - **个人用户 (User)**: 侧重于“任务达成”（赚钱、购物、支付、资产管理）。\r - **商户 (Merchant)**: 侧重于“商业化”（商品技能化、订单管理、结算）。\r - **开发者 (Developer)**: 侧重于“构建与分发”（技能开发、多平台打包、沙盒测试）。\r \r ## 3. 功能清单与完成情况对比 (2025.12.29 vs 当前)\r \r ### 3.1 用户端 (User Module)\r | 功能模块 | 12.29 功能状态 | 当",
+      "addedAt": "2026-02-02T03:22:40.014Z",
+      "size": 4063
+    },
+    {
+      "id": "kb-1770002560030-0nrg6jxgt",
+      "title": "MCP Ecosystem PRD",
+      "category": "product",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/AGENTRIX_MCP_ECOSYSTEM_PRD.md",
+      "summary": "# Agentrix MCP 多生态集成 - 产品需求文档 (PRD)\r \r **版本**: 1.0.0  \r **日期**: 2025-12-27  \r **状态**: Draft\r \r ---\r \r ## 1. 背景与目标\r \r ### 1.1 背景\r \r OpenAI 于 2025 年推出的 \"Apps in ChatGPT\" 基于 MCP (Model Context Protocol) 协议，允许用户在任何对话中通过 `@App名称` 直接调用第三方服务。这比传统的 GPTs Custom Actions 更加强大和便捷：\r \r - **即时调用**: 用户无需离开当前对话，直接 @ 即可调用\r - **上下文感知**: AI 可以根据对话上下文智能决定何时调用\r - **多 App 协作**: 单次对话可以调用多个 App 协同完成任务\r \r Anthropic (Claude) 作为 MCP 协议的发起者，已在 Claude Desktop 中深度集成 MCP 支持。\r \r ### 1.2 目标\r \r **核心目标**: 让 Agentrix 成为主流 AI 生态中的支付",
+      "addedAt": "2026-02-02T03:22:40.030Z",
+      "size": 9450
+    },
+    {
+      "id": "kb-1770002560229-5ms8bb79n",
+      "title": "AI Platform Integration Guide",
+      "category": "integration",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/AI-Platform-Integration-Guide.md",
+      "summary": "# Agentrix AI 平台集成指南\r \r 本文档详细说明如何将 Agentrix 的 MCP (Model Context Protocol) 工具集成到各大 AI 平台中，包括 ChatGPT、Claude、Gemini 和 Grok。\r \r ## 目录\r \r 1. [支持的平台](#支持的平台)\r 2. [ChatGPT 集成](#chatgpt-集成)\r 3. [Claude 集成](#claude-集成)\r 4. [Gemini 集成](#gemini-集成)\r 5. [Grok 集成](#grok-集成)\r 6. [REST API 桥接](#rest-api-桥接)\r 7. [可用工具列表](#可用工具列表)\r 8. [故障排除](#故障排除)\r \r ---\r \r ## 支持的平台\r \r | 平台 | 接入方式 | 状态 | 备注 |\r |------|---------|------|------|\r | ChatGPT | MCP SSE + OAuth | ✅ Ready | GPTs Actions |\r | Claude | MCP SSE | ✅ Read",
+      "addedAt": "2026-02-02T03:22:40.229Z",
+      "size": 11708
+    },
+    {
+      "id": "kb-1770002560323-t9eddpp7y",
+      "title": "Agent SDK Integration Guide",
+      "category": "integration",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/Agent-SDK-AI-Ecosystem-Integration-Guide.md",
+      "summary": "# Agentrix Agent SDK - AI生态系统集成指南\r \r 本文档介绍如何将Agentrix Agent核心功能模块集成到主流AI生态系统（GPTs、Claude MCP、Gemini等）。\r \r ## 📦 新增SDK模块概览\r \r SDK v2.3.0新增了以下Agent核心功能模块：\r \r ### 1. Agent授权管理 (`agentAuthorization`)\r - ERC8004 Session Key授权\r - MPC钱包授权\r - API Key授权\r - 策略权限配置\r \r ### 2. 空投发现与领取 (`airdrop`)\r - 自动扫描空投机会\r - 资格检查\r - 一键领取/批量领取\r - 空投历史追踪\r \r ### 3. 自动收益 (`autoEarn`)\r - **任务系统**: 空投任务、策略任务、推荐任务\r - **策略引擎**: DCA、网格交易、套利、Copy Trading\r - **套利模块**: 机会扫描、自动执行\r - **Launchpad**: 项目发现、参与投资\r \r ### 4. MPC钱包 (`mpcWallet",
+      "addedAt": "2026-02-02T03:22:40.323Z",
+      "size": 12431
+    },
+    {
+      "id": "kb-1770002560364-1axfdvesy",
+      "title": "ChatGPT GPTs Configuration Guide",
+      "category": "integration",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/ChatGPT-GPTs配置指南.md",
+      "summary": "# ChatGPT Custom GPTs 配置指南\r \r 本指南帮助你在 ChatGPT 中创建一个能够访问 Agentrix Marketplace 的 Custom GPT。\r \r ## 📋 前提条件\r \r - ChatGPT Plus 或 Team 订阅\r - Agentrix API Key（可选，用于完整购买功能）\r \r ---\r \r ## 🚀 快速配置步骤\r \r ### 第一步：创建 Custom GPT\r \r 1. 访问 [ChatGPT](https://chat.openai.com)\r 2. 点击左下角的 **Explore GPTs**\r 3. 点击右上角的 **Create**\r 4. 选择 **Configure** 标签页\r \r ### 第二步：基础配置\r \r **Name（名称）:**\r ```\r Agentrix 智能购物助手\r ```\r \r **Description（描述）:**\r ```\r 我可以帮你在 Agentrix Marketplace 搜索和购买各种商品，包括实物商品、服务、NFT、游戏资产等。\r ```\r \r **Instruct",
+      "addedAt": "2026-02-02T03:22:40.364Z",
+      "size": 8290
+    },
+    {
+      "id": "kb-1770002560405-elub6qd2q",
+      "title": "Copilot Development Instructions",
+      "category": "development",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/.github/copilot-instructions.md",
+      "summary": "**Purpose**: Brief, actionable guidance for AI coding agents working in this repo.\r \r **Big Picture**:\r - **Monorepo-like layout**: top-level contains multiple subprojects: `frontend` (Next.js), `backend` (NestJS), `sdk-js` (typedoc + SDK), `contract`, and `tests`.\r - **Service boundaries**: frontend (port 3000) communicates with backend API (port 3001). SDK docs served on 3002 by `start-all.sh`.\r - **Why this structure**: separation between UI (`frontend`), API (`backend`) and SDK/docs (`sdk-js",
+      "addedAt": "2026-02-02T03:22:40.405Z",
+      "size": 4896
+    },
+    {
+      "id": "kb-1770002560429-wf9hbtgte",
+      "title": "Backend Main Entry",
+      "category": "code",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/backend/src/main.ts",
+      "summary": "import { NestFactory } from '@nestjs/core';\r import { ValidationPipe } from '@nestjs/common';\r import { ProxyAgent, setGlobalDispatcher } from 'undici';\r import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';\r import { NestExpressApplication } from '@nestjs/platform-express';\r import { join } from 'path';\r import * as session from 'express-session';\r import { AppModule } from './app.module';\r import { fixEnumTypesBeforeSync } from './config/database-pre-sync';\r \r async function bootst",
+      "addedAt": "2026-02-02T03:22:40.429Z",
+      "size": 6262
+    },
+    {
+      "id": "kb-1770002560443-ug6llbt8h",
+      "title": "Backend App Module",
+      "category": "code",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/backend/src/app.module.ts",
+      "summary": "import { Module } from '@nestjs/common';\r import { ConfigModule } from '@nestjs/config';\r import { TypeOrmModule } from '@nestjs/typeorm';\r import { ScheduleModule } from '@nestjs/schedule';\r import { AppController } from './app.controller';\r import { AppService } from './app.service';\r import { DatabaseConfig } from './config/database.config';\r import { AuthModule } from './modules/auth/auth.module';\r import { WalletModule } from './modules/wallet/wallet.module';\r import { PaymentModule } from",
+      "addedAt": "2026-02-02T03:22:40.443Z",
+      "size": 7109
+    },
+    {
+      "id": "kb-1770002560460-uksg1by8i",
+      "title": "Backend Package Config",
+      "category": "config",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/backend/package.json",
+      "summary": "{   \"name\": \"agentrix-backend\",   \"version\": \"7.0.0\",   \"description\": \"Agentrix V7.0 Backend API - Unified Payment Protocol\",   \"author\": \"Agentrix Team\",   \"private\": true,   \"license\": \"MIT\",   \"scripts\": {     \"build\": \"sh build.sh || (rm -rf dist && npx tsc -p tsconfig.json && npm run build:verify)\",     \"build:nest\": \"nest build\",     \"build:tsc\": \"rm -rf dist && npx tsc -p tsconfig.json\",     \"build:verify\": \"test -f dist/main.js || (echo '❌ Build failed: dist/main.js not found' && exit 1",
+      "addedAt": "2026-02-02T03:22:40.460Z",
+      "size": 6340
+    },
+    {
+      "id": "kb-1770002560478-3zx2zroly",
+      "title": "Frontend Package Config",
+      "category": "config",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/frontend/package.json",
+      "summary": "{   \"name\": \"agentrixfrontend\",   \"version\": \"2.2.0\",   \"private\": true,   \"scripts\": {     \"dev\": \"next dev -p 3000 -H 0.0.0.0\",     \"build\": \"next build\",     \"start\": \"bash start-production.sh\",     \"lint\": \"next lint\"   },   \"dependencies\": {     \"@solana/wallet-adapter-base\": \"^0.9.27\",     \"@solana/wallet-adapter-react\": \"^0.15.39\",     \"@solana/wallet-adapter-react-ui\": \"^0.9.39\",     \"@solana/wallet-adapter-wallets\": \"^0.19.37\",     \"@solana/web3.js\": \"^1.98.4\",     \"@stripe/react-stripe",
+      "addedAt": "2026-02-02T03:22:40.478Z",
+      "size": 1328
+    },
+    {
+      "id": "kb-1770002560499-hxv3tnd7f",
+      "title": "HQ Console API Client",
+      "category": "code",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/hq-console/src/lib/api.ts",
+      "summary": "import axios from 'axios';\r \r // HQ Backend API URL with /api prefix\r const HQ_API_URL = process.env.NEXT_PUBLIC_HQ_URL || 'http://localhost:3005/api';\r \r export const api = axios.create({\r   baseURL: HQ_API_URL,\r   timeout: 30000,\r   headers: {\r     'Content-Type': 'application/json',\r   },\r });\r \r // Dashboard Stats\r export interface DashboardStats {\r   revenue24h: number;\r   revenueChange: number;\r   activeAgents: number;\r   totalAgents: number;\r   activeMerchants: number;\r   newMerchants24h:",
+      "addedAt": "2026-02-02T03:22:40.499Z",
+      "size": 9714
+    },
+    {
+      "id": "kb-1770002560517-zl9il1nst",
+      "title": "HQ Console Local Tools",
+      "category": "code",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/hq-console/src/lib/tools.ts",
+      "summary": "/**\r  * Local Tools Client - Provides access to local file system, terminal, and network\r  * These tools run on the local machine through the HQ Console API routes\r  */\r \r import axios from 'axios';\r \r const toolsApi = axios.create({\r   baseURL: '/api/tools',\r   timeout: 60000,\r });\r \r const knowledgeApi = axios.create({\r   baseURL: '/api/knowledge',\r   timeout: 30000,\r });\r \r // ============================================\r // File Operations\r // ============================================",
+      "addedAt": "2026-02-02T03:22:40.517Z",
+      "size": 12857
+    },
+    {
+      "id": "kb-1770002560533-vq4od020z",
+      "title": "HQ Console Agents Hook",
+      "category": "code",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/hq-console/src/hooks/useAgents.ts",
+      "summary": "\"use client\";\r \r import { useState, useEffect, useCallback, useRef } from 'react';\r import { AgentStatus, getAgentStatuses, sendAgentCommand, chatWithAgent } from '@/lib/api';\r import { parseToolCalls, executeToolCall, ToolCall } from '@/lib/tools';\r \r // Storage key prefix for chat history\r const CHAT_STORAGE_PREFIX = 'hq_chat_history_';\r \r // Helper to get chat history from localStorage\r function getChatHistory(agentId: string): Array<{ role: string; content: string; timestamp?: string }> {",
+      "addedAt": "2026-02-02T03:22:40.533Z",
+      "size": 9434
+    },
+    {
+      "id": "kb-1770002560540-k71dg3kzq",
+      "title": "HQ Console Package Config",
+      "category": "config",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/hq-console/package.json",
+      "summary": "{\r   \"name\": \"agentrix-hq-console\",\r   \"version\": \"1.0.0\",\r   \"private\": true,\r   \"scripts\": {\r     \"dev\": \"next dev -p 4000\",\r     \"build\": \"next build\",\r     \"start\": \"next start -p 4000\",\r     \"lint\": \"next lint\",\r     \"ceo:cli\": \"ts-node src/cli.ts\"\r   },\r   \"dependencies\": {\r     \"@radix-ui/react-icons\": \"^1.3.2\",\r     \"@radix-ui/react-select\": \"^2.2.6\",\r     \"@radix-ui/react-slot\": \"^1.2.4\",\r     \"@tanstack/react-table\": \"^8.11.0\",\r     \"@types/node\": \"^20.3.1\",\r     \"@types/react\": \"^18.2",
+      "addedAt": "2026-02-02T03:22:40.540Z",
+      "size": 1203
+    },
+    {
+      "id": "kb-1770002560547-30jh5ji7s",
+      "title": "Start All Services Script",
+      "category": "scripts",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/start-all.sh",
+      "summary": "#!/bin/bash # Agentrix All-in-One Startup Script  # Kill existing processes on ports 3000, 3001, 3002 echo \"🧹 Cleaning up existing processes...\" fuser -k 3000/tcp 2>/dev/null fuser -k 3001/tcp 2>/dev/null fuser -k 3002/tcp 2>/dev/null  # Get the script directory ROOT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"  echo \"🚀 Starting Backend (Port 3001)...\" cd \"$ROOT_DIR/backend\" npm run start:dev > \"$ROOT_DIR/logs/backend.log\" 2>&1 & BACKEND_PID=$!  echo \"🚀 Starting Frontend (Port 3000)...\" cd \"$ROOT_DIR",
+      "addedAt": "2026-02-02T03:22:40.547Z",
+      "size": 1101
+    }
+  ],
+  "lastUpdated": "2026-02-02T03:22:40.550Z"
+}

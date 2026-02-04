@@ -10,14 +10,20 @@
 # 目录
 
 1. [产品概述](#1-产品概述)
-2. [费率结构](#2-费率结构)
-3. [用户画像与场景](#3-用户画像与场景)
-4. [合约改动方案](#4-合约改动方案)
-5. [后端改动方案](#5-后端改动方案)
-6. [前端融合方案](#6-前端融合方案)
-7. [SDK 设计](#7-sdk-设计)
-8. [Skill 生成与注册](#8-skill-生成与注册)
-9. [实施路线图](#9-实施路线图)
+2. [统一费率体系](#2-统一费率体系)
+3. [与现有系统的关系](#3-与现有系统的关系)
+4. [数据模型 (Schema)](#4-数据模型-schema)
+5. [MCP Tool 定义](#5-mcp-tool-定义)
+6. [工作流示例](#6-工作流示例)
+7. [与现有代码的集成方案](#7-与现有代码的集成方案)
+8. [实施路线图](#8-实施路线图)
+9. [附录](#9-附录)
+10. [合约改动方案](#10-合约改动方案)
+11. [后端改动方案](#11-后端改动方案)
+12. [前端融合方案](#12-前端融合方案)
+13. [SDK 设计](#13-sdk-设计)
+14. [Skill 生成与注册](#14-skill-生成与注册)
+15. [分批执行计划](#15-分批执行计划)
 
 ---
 
@@ -40,9 +46,133 @@
 
 ---
 
-## 2. 与现有系统的关系
+## 2. 统一费率体系
 
-### 2.1 复用的核心模块
+### 2.1 设计决策
+
+**核心原则：Commerce Skill 作为唯一分佣引擎，商品类型降级为默认模板选择器**
+
+| 决策项 | 选择 | 理由 |
+|--------|------|------|
+| 费率体系 | 统一到 Commerce Skill | 避免两套体系并存导致的用户困惑和代码冗余 |
+| 商品类型 | 作为默认 SplitPlan 模板 | 向后兼容现有商户，无需迁移 |
+| 自定义能力 | 用户可覆盖默认模板 | 满足高级用户灵活需求 |
+| V5 分佣代码 | 标记 deprecated，仅维护 | 渐进式迁移，降低风险 |
+| 合约费率 | **可动态调整** | 通过 `setLayerRates()` 等函数配置 |
+
+### 2.2 统一费率公式
+
+**核心原则：纯 Crypto 免费，按功能叠加收费**
+
+```
+总费用 = Onramp费 + Offramp费 + 分佣费
+
+费率规则：
+  - 纯 Crypto 钱包支付：0%（用户自付 gas）
+  - Onramp（法币入金）：+0.1%
+  - Offramp（法币出金）：+0.1%
+  - 分佣（通过智能合约）：0.3%，最低 0.1 USDC
+```
+
+#### 费率计算示例
+
+| 场景 | 费率计算 | 总费率 |
+|------|---------|-------|
+| 钱包直接转账，无分佣 | 0 | **0%** |
+| 钱包支付 + 分佣 | 0.3% | **0.3%** |
+| Onramp 购买，无分佣 | 0.1% | **0.1%** |
+| Onramp 购买 + 分佣 | 0.1% + 0.3% | **0.4%** |
+| Onramp + Offramp（充提） | 0.1% + 0.1% | **0.2%** |
+| Onramp + 分佣 + Offramp | 0.1% + 0.3% + 0.1% | **0.5%** |
+
+#### 最低收费规则
+
+| 费用类型 | 最低收费 | 说明 |
+|---------|---------|------|
+| 分佣费 | 0.1 USDC | 防止微交易刷量 |
+| Onramp 费 | 无最低 | 按比例收取 |
+| Offramp 费 | 无最低 | 按比例收取 |
+
+### 2.3 合约费率配置能力
+
+现有 `Commission.sol` 合约支持动态费率配置：
+
+| 函数 | 用途 | 最大值 |
+|------|------|-------|
+| `setX402ChannelFeeRate(rate)` | X402 通道费 | 3% |
+| `setScannedFeeRate(source, rate)` | 扫描商品费率 | 2% |
+| `setLayerRates(layer, platformFee, poolRate)` | 分层费率 | 平台5%，池10% |
+
+**固定比例（代码写死）**：
+- `EXECUTOR_SHARE = 7000` (70%) - 执行 Agent
+- `REFERRER_SHARE = 3000` (30%) - 推荐 Agent
+- `PROMOTER_SHARE_OF_PLATFORM = 2000` (平台费的20%) - 推广 Agent
+
+> ⚠️ V2 合约将支持这些比例的动态配置
+
+### 2.4 商品类型 → 默认 SplitPlan 模板
+
+商品类型不再决定费率，而是决定**默认的分佣比例模板**：
+
+| 商品类型 | 模板名称 | 默认分佣规则 | 可覆盖 |
+|---------|---------|-------------|--------|
+| `physical` | 实物商品模板 | executor 70%, referrer 30% | ✅ |
+| `service` | 服务模板 | executor 80%, referrer 20% | ✅ |
+| `virtual` | 虚拟商品模板 | executor 70%, referrer 30% | ✅ |
+| `nft` | NFT模板 | creator 85%, platform 15% (royalty) | ✅ |
+| `skill` | 技能模板 | developer 70%, referrer 30% | ✅ |
+| `agent_task` | Agent任务模板 | 按 SplitPlan 执行（必须自定义） | 必填 |
+
+### 2.5 SplitPlan 优先级
+
+```
+用户自定义 SplitPlan > 商品类型默认模板 > 系统全局默认
+```
+
+**逻辑伪代码**：
+```typescript
+function resolveSplitPlan(order: CommerceOrder): SplitPlan {
+  // 1. 用户指定了自定义计划
+  if (order.allocationPlanId) {
+    return getSplitPlan(order.allocationPlanId);
+  }
+  
+  // 2. 使用商品类型默认模板
+  const template = getDefaultTemplate(order.productType);
+  
+  // 3. 应用临时覆盖（如果有）
+  if (order.allocationOverrides) {
+    return mergeOverrides(template, order.allocationOverrides);
+  }
+  
+  return template;
+}
+```
+
+### 2.6 迁移策略
+
+```
+Phase 1: Commerce Skill 上线，新交易走新体系
+Phase 2: 现有商品自动映射到对应模板（零代码迁移）
+Phase 3: V5 代码标记 @deprecated，仅 bugfix
+Phase 4: 合约升级，V1 冻结，V2 接管新交易
+```
+
+### 2.7 与 V5 分佣体系对比
+
+| 维度 | Commission V5 (旧) | Commerce Skill (新) |
+|------|-------------------|---------------------|
+| 分类依据 | 商品类型决定费率 | 功能叠加决定费率 |
+| 费率灵活性 | 固定预设 | 按需叠加 |
+| 分佣规则 | 平台定义 | 用户可自定义 |
+| 参与方层级 | 固定 3 角色 | 支持 N 级 |
+| 向后兼容 | - | 商品类型 → 模板自动映射 |
+
+---
+
+## 3. 与现有系统的关系
+
+### 3.1 复用的核心模块
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -65,7 +195,7 @@
 └─────────────────┘
 ```
 
-### 2.2 现有代码入口（复用）
+### 3.2 现有代码入口（复用）
 
 | 能力 | 现有服务 | 文件路径 |
 |------|---------|---------|
@@ -80,9 +210,9 @@
 
 ---
 
-## 3. 数据模型 (Schema)
+## 4. 数据模型 (Schema)
 
-### 3.1 核心实体
+### 4.1 核心实体
 
 ```typescript
 // ============ Order（业务订单）============
@@ -331,9 +461,9 @@ interface CommerceLedgerEntry {
 
 ---
 
-## 4. MCP Tool 定义
+## 5. MCP Tool 定义
 
-### 4.1 统一入口
+### 5.1 统一入口
 
 所有操作通过 `commerce` 这一个 MCP Tool 暴露，使用 `action` 参数区分操作类型。
 
@@ -407,7 +537,7 @@ const commerceTool = {
 };
 ```
 
-### 4.2 核心 Action 参数详解
+### 5.2 核心 Action 参数详解
 
 #### 4.2.1 createOrder
 
@@ -604,9 +734,9 @@ interface ReleaseBudgetParams {
 
 ---
 
-## 5. 工作流示例
+## 6. 工作流示例
 
-### 5.1 PAY_ONLY 模式：简单购买
+### 6.1 PAY_ONLY 模式：简单购买
 
 ```
 用户 → createOrder(mode=PAY_ONLY) → createPaymentIntent → [客户端完成支付] → Webhook → Order.paid
@@ -640,7 +770,7 @@ const intent = await commerce({
 // 4. Webhook 自动更新订单状态
 ```
 
-### 5.2 PAY_AND_SPLIT 模式：Marketplace 购买
+### 6.2 PAY_AND_SPLIT 模式：Marketplace 购买
 
 ```
 用户 → createOrder(带参与方) → createPaymentIntent → [支付] → Webhook → 自动分账 → 各方 Settlement 入库
@@ -685,7 +815,7 @@ const preview = await commerce({
 // 3. 创建支付并完成...
 ```
 
-### 5.3 多 Agent 协作 + 预算池
+### 6.3 多 Agent 协作 + 预算池
 
 ```
 项目方 → createBudgetPool → fundBudgetPool → [创建多个 Milestone] → [Agent 完成任务]
@@ -757,7 +887,7 @@ await commerce({
 // - 入账本
 ```
 
-### 5.4 SPLIT_ONLY 模式：外部订单分佣
+### 6.4 SPLIT_ONLY 模式：外部订单分佣
 
 ```
 外部系统订单完成 → createOrder(externalOrderId, SPLIT_ONLY) → applyAllocation → Settlement
@@ -795,9 +925,9 @@ const settlements = await commerce({
 
 ---
 
-## 6. 与现有代码的集成方案
+## 7. 与现有代码的集成方案
 
-### 6.1 新增文件结构
+### 7.1 新增文件结构
 
 ```
 backend/src/modules/commerce/
@@ -823,7 +953,7 @@ backend/src/modules/commerce/
     └── commerce-ledger.service.ts     # 封装 LedgerService
 ```
 
-### 6.2 关键服务封装
+### 7.2 关键服务封装
 
 ```typescript
 // commerce.service.ts
@@ -884,7 +1014,7 @@ export class CommerceService {
 
 ---
 
-## 7. 实施路线图
+## 8. 实施路线图
 
 ### Phase 1: 核心能力（2周）
 - [ ] 定义 Entity Schema 并生成 Migration
@@ -916,9 +1046,9 @@ export class CommerceService {
 
 ---
 
-## 8. 附录
+## 9. 附录
 
-### 8.1 与 V4.0 分账协议的对应关系
+### 9.1 与 V4.0 分账协议的对应关系
 
 | V4.0 概念 | Commerce Skill 对应 |
 |-----------|---------------------|
@@ -931,7 +1061,7 @@ export class CommerceService {
 | `SplitResult` | `Settlement` 记录集合 |
 | `FundPath` | `LedgerEntry` |
 
-### 8.2 幂等与冲正策略
+### 9.2 幂等与冲正策略
 
 | 场景 | 幂等键生成规则 | 冲正策略 |
 |------|--------------|---------|
@@ -941,7 +1071,7 @@ export class CommerceService {
 | 结算打款 | `settlement:{settlementId}` | 生成反向 Settlement |
 | 里程碑释放 | `release:{milestoneId}` | 生成反向 LedgerEntry |
 
-### 8.3 错误码定义
+### 9.3 错误码定义
 
 | 错误码 | 含义 |
 |--------|------|
@@ -952,3 +1082,223 @@ export class CommerceService {
 | `COMMERCE_PAYMENT_FAILED` | 支付失败 |
 | `COMMERCE_ALLOCATION_LOCKED` | 分配计划已锁定（已有支付） |
 | `COMMERCE_IDEMPOTENCY_CONFLICT` | 幂等键冲突 |
+
+---
+
+## 10. 合约改动方案
+
+### 10.1 目标
+- 支持 **多级分佣**（N 级）
+- 支持 **用户自定义分佣比例、分佣层级**
+- 支持 **预算池/里程碑分配**
+- 保持与现有 `Commission.sol` 向后兼容
+
+### 10.2 合约改造策略
+**方案：新增 V2 合约 + 保留 V1**
+- 保留现有 `Commission.sol` 与 `ArnFeeSplitter.sol`
+- 新增 `CommissionV2.sol` + `BudgetPool.sol` + `Milestone.sol`
+- 新合约接受 **动态分佣计划（SplitPlan）**
+- 旧合约继续支持固定 7:3 和平台费逻辑
+
+### 10.3 CommissionV2 关键结构
+```solidity
+struct SplitRule {
+  address recipient;
+  uint16 shareBps; // 0-10000
+  bytes32 role;    // executor/referrer/l1/l2/custom
+  bool active;
+}
+
+struct SplitPlan {
+  bytes32 planId;
+  address owner;
+  SplitRule[] rules;     // 支持 N 级
+  bool active;
+}
+
+// 费率配置（独立于 SplitPlan）
+struct FeeConfig {
+  uint16 onrampFeeBps;   // 法币入金费率，默认 10 (0.1%)
+  uint16 offrampFeeBps;  // 法币出金费率，默认 10 (0.1%)
+  uint16 splitFeeBps;    // 分佣费率，默认 30 (0.3%)
+  uint256 minSplitFee;   // 最低分佣费，默认 0.1 USDC (100000)
+}
+```
+
+### 10.4 新费率规则（合约实现）
+```solidity
+function calculateFees(
+  uint256 amount,
+  bool usesOnramp,
+  bool usesOfframp,
+  bool usesSplit
+) public view returns (uint256 totalFee) {
+  // 纯 Crypto 钱包支付：0 费用
+  if (!usesOnramp && !usesOfframp && !usesSplit) {
+    return 0;
+  }
+  
+  // 按功能叠加
+  if (usesOnramp) totalFee += amount * feeConfig.onrampFeeBps / 10000;
+  if (usesOfframp) totalFee += amount * feeConfig.offrampFeeBps / 10000;
+  if (usesSplit) {
+    uint256 splitFee = amount * feeConfig.splitFeeBps / 10000;
+    totalFee += splitFee < feeConfig.minSplitFee ? feeConfig.minSplitFee : splitFee;
+  }
+}
+```
+
+### 10.5 BudgetPool + Milestone 合约
+- `BudgetPool.sol`：资金托管、分阶段释放、预算预留
+- `Milestone.sol`：里程碑验收、条件释放（hash/audit/人工）
+- 支持 **释放到 SplitPlan** 或直接收款人
+
+### 10.6 兼容性要求
+- V1：继续支持 `quickPaySplit()` / `walletSplit()` / `providerFiatToCryptoSplit()`
+- V2：新增 `executeSplit(orderId, planId, amount)`
+- 事件统一输出，后端可做双协议监听
+
+---
+
+## 11. 后端改动方案
+
+### 11.1 Commerce 模块（核心编排）
+新增 `backend/src/modules/commerce`：
+- `CommerceService`：统一入口，编排支付/分佣/预算池
+- `SplitPlanService`：管理分佣计划
+- `BudgetPoolService`：预算池管理
+- `MilestoneService`：里程碑管理
+- `SettlementService`：结算与冲正
+
+### 11.2 分佣与预算 API
+- `POST /commerce/split-plans` 创建分佣计划
+- `POST /commerce/split-plans/:id/preview` 预览分配
+- `POST /commerce/budget-pools` 创建预算池
+- `POST /commerce/budget-pools/:id/reserve` 预留预算
+- `POST /commerce/milestones/:id/release` 释放预算
+
+### 11.3 合约监听与对账
+- 监听 `Commission`/`CommissionV2` 事件
+- 统一写入 `Ledger` 与 `Settlement`
+- 支持 **退款/拒付冲正**
+
+---
+
+## 12. 前端融合方案
+
+### 12.1 融入工作台（Workbench）
+**原则：能融入就融入，不做独立后台**
+
+#### 商家模式（Merchant）
+位置：`财务中心 (finance)`
+- **分佣规则**（`commission-plans`）
+- **预算池**（`budget-pools`）
+- **分账结算**（`settlements`）
+
+#### 开发者模式（Developer）
+位置：`收益中心 (revenue)`
+- **分润配置**（`commission-plans`）
+- **预算池**（`budget-pools`）
+
+### 12.2 现有组件融合点
+- `MerchantModuleV2`：新增 finance 子页
+- `DeveloperModuleV2`：新增 revenue 子页
+- 复用现有卡片/表格样式，不新增独立路由
+
+---
+
+## 13. SDK 设计
+
+### 13.1 JS SDK（优先）
+```ts
+agentrix.commerce.createSplitPlan({ ... })
+agentrix.commerce.previewSplit({ ... })
+agentrix.commerce.createBudgetPool({ ... })
+agentrix.commerce.reserveBudget({ ... })
+agentrix.commerce.releaseBudget({ ... })
+```
+
+### 13.2 SDK 必须能力
+- 支付 + 分佣一体化调用
+- 预算池 + 里程碑 API
+- Webhook 验签工具
+
+---
+
+## 14. Skill 生成与注册
+
+### 14.1 Skill 生成流程
+1. 商家/开发者在工作台配置 **分佣计划** 与 **定价**
+2. 系统生成 `commerce_skill.json`
+3. 自动注册到 MCP Tool Registry
+
+### 14.2 Skill Manifest 样例
+```json
+{
+  "name": "commerce",
+  "version": "1.0.0",
+  "pricing": {
+    "baseFeeBps": 10,
+    "splitFeeBps": 20
+  },
+  "capabilities": ["pay", "split", "budget_pool"]
+}
+```
+
+---
+
+## 15. 分批执行计划
+
+### Batch 1 ✅ 已完成
+- [x] PRD 更新（本次完成）
+- [x] 工作台新增分佣/预算池入口（前端占位视图）
+- [x] Commerce 模块最小骨架（后端目录结构 + 占位 service）
+
+### Batch 2 ✅ 已完成
+- [x] `SplitPlanService` + API + DB Schema
+- [x] `BudgetPoolService` + API + DB Schema
+- [x] Workbench 前端接入真实数据 (SplitPlansPanel, BudgetPoolsPanel)
+
+### Batch 3 ✅ 已完成
+- [x] `CommissionV2.sol` - 统一分润结算合约
+- [x] `BudgetPool.sol` - 预算池与里程碑管理合约
+- [x] 合约事件监听与 Settlement 联动（事件定义完成）
+
+### Batch 4 ✅ 已完成
+- [x] SDK 扩展（`sdk-js/src/resources/commerce.ts`）
+- [x] MCP Tool 注册（`commerce-mcp.tools.ts` 5个工具）
+- [x] 集成到 MCP Service（`mcp.service.ts`）
+
+---
+
+## 16. 开发产物清单
+
+### 后端文件
+| 文件 | 说明 |
+|------|------|
+| `backend/src/entities/split-plan.entity.ts` | SplitPlan 实体 |
+| `backend/src/entities/budget-pool.entity.ts` | BudgetPool 实体 |
+| `backend/src/entities/milestone.entity.ts` | Milestone 实体 |
+| `backend/src/modules/commerce/dto/*.ts` | DTOs |
+| `backend/src/modules/commerce/split-plan.service.ts` | 分润方案服务 |
+| `backend/src/modules/commerce/budget-pool.service.ts` | 预算池服务 |
+| `backend/src/modules/commerce/commerce.controller.ts` | REST API |
+| `backend/src/modules/commerce/commerce-mcp.tools.ts` | MCP 工具定义 |
+
+### 前端文件
+| 文件 | 说明 |
+|------|------|
+| `frontend/lib/api/commerce.api.ts` | API 客户端 |
+| `frontend/components/agent/workspace/commerce/SplitPlansPanel.tsx` | 分润方案面板 |
+| `frontend/components/agent/workspace/commerce/BudgetPoolsPanel.tsx` | 预算池面板 |
+
+### 智能合约
+| 文件 | 说明 |
+|------|------|
+| `contract/contracts/CommissionV2.sol` | 统一分润合约 |
+| `contract/contracts/BudgetPool.sol` | 预算池合约 |
+
+### SDK
+| 文件 | 说明 |
+|------|------|
+| `sdk-js/src/resources/commerce.ts` | Commerce Resource |

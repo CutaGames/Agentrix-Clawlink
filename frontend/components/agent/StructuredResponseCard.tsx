@@ -2,12 +2,25 @@ import { ChatMessage } from './UnifiedAgentChat';
 import { SelectableCart, CartItem } from './SelectableCart';
 import { ProductDetailModal } from './ProductDetailModal';
 import { MultiAssetProductCard, MultiAssetProductList, MultiAssetProduct } from './MultiAssetProductCard';
-import { useState } from 'react';
-import { ShoppingCart, Eye } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ShoppingCart, Eye, Loader2, CheckCircle, XCircle, ExternalLink, Copy, Clock } from 'lucide-react';
 import { cartApi } from '../../lib/api/cart.api';
 import { orderApi } from '../../lib/api/order.api';
 import { ProductInfo } from '../../lib/api/product.api';
+import { commerceApi } from '../../lib/api/commerce.api';
+import { payIntentApi } from '../../lib/api/pay-intent.api';
 import { useUser } from '../../contexts/UserContext';
+
+// Commerce 上下文类型
+export interface CommerceContextType {
+  lastPoolId?: string;
+  lastSplitPlanId?: string;
+  lastMilestoneId?: string;
+  lastOrderId?: string;
+  lastPublishId?: string;
+  recentRecipients?: string[];
+  defaultCurrency?: string;
+}
 
 interface StructuredResponseCardProps {
   message: ChatMessage;
@@ -17,6 +30,8 @@ interface StructuredResponseCardProps {
   sessionId?: string;
   payingProductId?: string | null;
   onCartChanged?: (cartItems?: CartItem[]) => void; // 购物车更新后的回调，如果购物车消息不存在则创建
+  commerceContext?: CommerceContextType; // Commerce 上下文延续
+  onCommerceContextUpdate?: (key: keyof CommerceContextType, value: any) => void;
 }
 
 /**
@@ -31,6 +46,8 @@ export function StructuredResponseCard({
   sessionId,
   payingProductId,
   onCartChanged,
+  commerceContext,
+  onCommerceContextUpdate,
 }: StructuredResponseCardProps) {
   const { user } = useUser();
   const { type, data } = message.metadata || {};
@@ -39,6 +56,459 @@ export function StructuredResponseCard({
   const [isAddingToCart, setIsAddingToCart] = useState<string | null>(null);
   const [cancellingOrders, setCancellingOrders] = useState<Set<string>>(new Set());
   const [cartUpdateStatus, setCartUpdateStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [openCommerceForm, setOpenCommerceForm] = useState<string | null>(null);
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  // 执行状态
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<{
+    success: boolean;
+    type: string;
+    data?: any;
+    error?: string;
+    message?: string;
+    link?: string;
+    id?: string;
+    canRevoke?: boolean;
+    revokeDeadline?: number;
+  } | null>(null);
+  const [revokeCountdown, setRevokeCountdown] = useState<number | null>(null);
+  const [commerceForm, setCommerceForm] = useState({
+    amount: '',
+    currency: 'USDC',
+    counterparty: '',
+    exchangeType: 'onramp',
+    fiatAmount: '',
+    fiatCurrency: 'USD',
+    cryptoCurrency: 'USDC',
+    offrampsTo: '',
+    platformShare: '5',
+    merchantShare: '85',
+    agentShare: '10',
+    planName: 'Demo Split Plan',
+    budgetAmount: '',
+    budgetDeadline: '',
+    qualityScore: '80',
+    poolId: '',
+    milestoneTitle: '',
+    milestonePercent: '30',
+    collaborationNote: '',
+    paymentType: 'ONRAMP',
+    publishType: 'task',
+    publishTitle: '',
+    publishBudget: '',
+    publishPrice: '',
+    // 可选字段
+    orderDescription: '',
+    callbackUrl: '',
+    targetAddress: '',
+  });
+
+  useEffect(() => {
+    if (type === 'commerce_categories' && data?.openCategory) {
+      setOpenCommerceForm(data.openCategory);
+    }
+  }, [type, data]);
+
+  // 从上下文自动填充表单字段
+  useEffect(() => {
+    if (commerceContext) {
+      if (commerceContext.lastPoolId && !commerceForm.poolId) {
+        setCommerceForm(prev => ({ ...prev, poolId: commerceContext.lastPoolId || '' }));
+      }
+      if (commerceContext.defaultCurrency && commerceForm.currency === 'USDC') {
+        setCommerceForm(prev => ({ ...prev, currency: commerceContext.defaultCurrency || 'USDC' }));
+      }
+    }
+  }, [commerceContext]);
+
+  // 表单实时校验
+  const validateField = (key: string, value: string): string => {
+    switch (key) {
+      case 'amount':
+      case 'fiatAmount':
+      case 'budgetAmount':
+      case 'publishBudget':
+      case 'publishPrice':
+        if (value && isNaN(Number(value))) return '请输入有效数字';
+        if (value && Number(value) <= 0) return '金额必须大于0';
+        break;
+      case 'platformShare':
+      case 'merchantShare':
+      case 'agentShare':
+      case 'milestonePercent':
+        if (value && (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 100)) {
+          return '请输入0-100的数字';
+        }
+        break;
+      case 'budgetDeadline':
+        if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '格式：YYYY-MM-DD';
+        break;
+    }
+    return '';
+  };
+
+  const updateCommerceForm = (key: keyof typeof commerceForm, value: string) => {
+    setCommerceForm(prev => ({ ...prev, [key]: value }));
+    // 实时校验
+    const error = validateField(key, value);
+    setFormErrors(prev => ({ ...prev, [key]: error }));
+  };
+
+  // 校验分账比例总和
+  const validateSplitRatios = (): boolean => {
+    const total = Number(commerceForm.platformShare || 0) + 
+                  Number(commerceForm.merchantShare || 0) + 
+                  Number(commerceForm.agentShare || 0);
+    if (Math.abs(total - 100) > 0.01) {
+      setFormErrors(prev => ({ ...prev, splitTotal: `分账比例总和应为100%，当前：${total}%` }));
+      return false;
+    }
+    setFormErrors(prev => ({ ...prev, splitTotal: '' }));
+    return true;
+  };
+
+  // 30秒撤回倒计时
+  useEffect(() => {
+    if (revokeCountdown !== null && revokeCountdown > 0) {
+      const timer = setTimeout(() => setRevokeCountdown(revokeCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (revokeCountdown === 0) {
+      setRevokeCountdown(null);
+      // 倒计时结束，执行确认
+      if (executionResult?.canRevoke) {
+        setExecutionResult(prev => prev ? { ...prev, canRevoke: false, message: '已确认执行，无法撤回' } : null);
+      }
+    }
+  }, [revokeCountdown, executionResult]);
+
+  // 撤回操作
+  const handleRevoke = useCallback(async () => {
+    if (!executionResult?.id) return;
+    try {
+      setIsExecuting(true);
+      // 根据类型调用不同的取消API
+      if (executionResult.type === 'payment') {
+        await payIntentApi.cancel(executionResult.id);
+      } else if (executionResult.type === 'budget') {
+        await commerceApi.cancelBudgetPool(executionResult.id);
+      }
+      setExecutionResult({
+        success: true,
+        type: 'revoked',
+        message: '✅ 已成功撤回操作',
+      });
+      setRevokeCountdown(null);
+    } catch (error: any) {
+      setExecutionResult(prev => prev ? { 
+        ...prev, 
+        error: `撤回失败: ${error.message}`,
+        canRevoke: false 
+      } : null);
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [executionResult]);
+
+  // 复制到剪贴板
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    // 可以添加toast提示
+  };
+
+  // 真实执行Commerce操作
+  const handleCommerceSubmit = async (categoryId: string) => {
+    // 表单校验
+    if (categoryId === 'split' && !validateSplitRatios()) {
+      return;
+    }
+
+    setIsExecuting(true);
+    setExecutionResult(null);
+
+    try {
+      let result: any;
+      let resultType = categoryId;
+
+      switch (categoryId) {
+        case 'payment': {
+          // 创建支付意图
+          const amount = Number(commerceForm.amount) || 100;
+          const payIntent = await payIntentApi.create({
+            type: 'service_payment',
+            amount,
+            currency: commerceForm.currency,
+            description: commerceForm.orderDescription || `支付给 ${commerceForm.counterparty || '商家'}`,
+            metadata: {
+              counterparty: commerceForm.counterparty,
+              returnUrl: commerceForm.callbackUrl || window.location.href,
+            },
+          });
+          
+          result = payIntent;
+          setExecutionResult({
+            success: true,
+            type: 'payment',
+            id: payIntent.id,
+            data: payIntent,
+            message: `✅ 已创建支付意图 ${amount} ${commerceForm.currency}`,
+            link: payIntent.metadata?.payUrl || `/pay/intent/${payIntent.id}`,
+            canRevoke: true,
+            revokeDeadline: 30,
+          });
+          setRevokeCountdown(30);
+          
+          // 更新上下文
+          onCommerceContextUpdate?.('lastOrderId', payIntent.id);
+          break;
+        }
+
+        case 'exchange': {
+          // 调用commerce execute进行兑换预览
+          const exchangeParams = commerceForm.exchangeType === 'offramp' 
+            ? {
+                action: 'previewAllocation',
+                amount: Number(commerceForm.fiatAmount) || 100,
+                currency: commerceForm.cryptoCurrency,
+                usesOfframp: true,
+              }
+            : {
+                action: 'previewAllocation',
+                amount: Number(commerceForm.fiatAmount) || 100,
+                currency: commerceForm.fiatCurrency,
+                usesOnramp: true,
+              };
+          
+          result = await commerceApi.previewAllocation({
+            amount: exchangeParams.amount,
+            currency: exchangeParams.currency,
+            usesOnramp: exchangeParams.usesOnramp,
+            usesOfframp: exchangeParams.usesOfframp,
+          });
+          
+          setExecutionResult({
+            success: true,
+            type: 'exchange',
+            data: result,
+            message: commerceForm.exchangeType === 'offramp' 
+              ? `💱 ${commerceForm.fiatAmount} ${commerceForm.cryptoCurrency} 提现预览`
+              : `💱 ${commerceForm.fiatAmount} ${commerceForm.fiatCurrency} → ${commerceForm.cryptoCurrency} 兑换预览`,
+          });
+          break;
+        }
+
+        case 'split': {
+          // 创建分账方案
+          const splitPlan = await commerceApi.createSplitPlan({
+            name: commerceForm.planName || '分账方案',
+            productType: 'service',
+            rules: [
+              { recipient: 'platform', shareBps: Number(commerceForm.platformShare) * 100, role: 'executor', source: 'platform', active: true },
+              { recipient: 'merchant', shareBps: Number(commerceForm.merchantShare) * 100, role: 'executor', source: 'merchant', active: true },
+              { recipient: 'agent', shareBps: Number(commerceForm.agentShare) * 100, role: 'executor', source: 'pool', active: true },
+            ],
+          });
+          
+          result = splitPlan;
+          setExecutionResult({
+            success: true,
+            type: 'split',
+            id: splitPlan.id,
+            data: splitPlan,
+            message: `✅ 分账方案「${splitPlan.name}」创建成功`,
+          });
+          
+          onCommerceContextUpdate?.('lastSplitPlanId', splitPlan.id);
+          break;
+        }
+
+        case 'budget': {
+          // 创建预算池
+          const budgetPool = await commerceApi.createBudgetPool({
+            name: `预算池-${Date.now()}`,
+            totalBudget: Number(commerceForm.budgetAmount) || 5000,
+            currency: 'USDC',
+            expiresAt: commerceForm.budgetDeadline || undefined,
+            metadata: {
+              qualityScore: Number(commerceForm.qualityScore),
+            },
+          });
+          
+          result = budgetPool;
+          setExecutionResult({
+            success: true,
+            type: 'budget',
+            id: budgetPool.id,
+            data: budgetPool,
+            message: `✅ 预算池创建成功，ID: ${budgetPool.id}`,
+            canRevoke: true,
+            revokeDeadline: 30,
+          });
+          setRevokeCountdown(30);
+          
+          onCommerceContextUpdate?.('lastPoolId', budgetPool.id);
+          break;
+        }
+
+        case 'milestone': {
+          // 创建里程碑
+          if (!commerceForm.poolId) {
+            throw new Error('请先填写预算池ID');
+          }
+          
+          const milestone = await commerceApi.createMilestone({
+            name: commerceForm.milestoneTitle || '阶段交付',
+            budgetPoolId: commerceForm.poolId,
+            reservedAmount: Number(commerceForm.milestonePercent) * 50, // 假设基于预算池的百分比
+            approvalType: 'manual',
+          });
+          
+          result = milestone;
+          setExecutionResult({
+            success: true,
+            type: 'milestone',
+            id: milestone.id,
+            data: milestone,
+            message: `✅ 里程碑「${milestone.name}」创建成功`,
+          });
+          
+          onCommerceContextUpdate?.('lastMilestoneId', milestone.id);
+          break;
+        }
+
+        case 'collaboration': {
+          // 发放协作酬劳 - 释放里程碑
+          if (!commerceForm.poolId) {
+            throw new Error('请先填写预算池ID');
+          }
+          
+          // 获取预算池的里程碑列表
+          const milestones = await commerceApi.getMilestones(commerceForm.poolId);
+          const pendingMilestone = milestones.find(m => m.status === 'pending_review' || m.status === 'approved');
+          
+          if (pendingMilestone) {
+            result = await commerceApi.releaseMilestone(pendingMilestone.id);
+            setExecutionResult({
+              success: true,
+              type: 'collaboration',
+              id: result.id,
+              data: result,
+              message: `✅ 里程碑「${result.name}」酬劳已发放`,
+            });
+          } else {
+            setExecutionResult({
+              success: false,
+              type: 'collaboration',
+              error: '没有可发放的里程碑，请先审批通过里程碑',
+            });
+          }
+          break;
+        }
+
+        case 'fees': {
+          // 费用预览
+          result = await commerceApi.previewAllocation({
+            amount: Number(commerceForm.amount) || 1000,
+            currency: 'USDC',
+            usesOnramp: commerceForm.paymentType === 'ONRAMP',
+            usesOfframp: commerceForm.paymentType === 'OFFRAMP',
+            usesSplit: true,
+          });
+          
+          setExecutionResult({
+            success: true,
+            type: 'fees',
+            data: result,
+            message: `📊 费用预览：总费用 ${result.fees?.totalFees || 0} ${result.currency}`,
+          });
+          break;
+        }
+
+        case 'rates': {
+          // 获取费率结构
+          result = await commerceApi.getDefaultTemplate('service');
+          setExecutionResult({
+            success: true,
+            type: 'rates',
+            data: result,
+            message: '📋 已获取平台费率结构',
+          });
+          break;
+        }
+
+        case 'publish':
+        case 'publish_task':
+        case 'publish_product':
+        case 'publish_skill': {
+          // 发布到marketplace - 创建预算池作为任务载体
+          const publishType = commerceForm.publishType;
+          let publishResult: any;
+          
+          if (publishType === 'task' || categoryId === 'publish_task') {
+            // 发布协作任务 = 创建预算池
+            publishResult = await commerceApi.createBudgetPool({
+              name: commerceForm.publishTitle || '协作任务',
+              description: `协作任务: ${commerceForm.publishTitle}`,
+              totalBudget: Number(commerceForm.publishBudget) || 5000,
+              currency: 'USDC',
+              metadata: {
+                type: 'task',
+                status: 'published',
+              },
+            });
+            
+            setExecutionResult({
+              success: true,
+              type: 'publish',
+              id: publishResult.id,
+              data: publishResult,
+              message: `🚀 协作任务「${commerceForm.publishTitle}」已发布`,
+              link: `/marketplace?type=task&id=${publishResult.id}`,
+            });
+            
+            onCommerceContextUpdate?.('lastPublishId', publishResult.id);
+            onCommerceContextUpdate?.('lastPoolId', publishResult.id);
+          } else {
+            // 商品/Skill发布 - 通过消息通知Agent处理
+            const prompt = publishType === 'product' 
+              ? `发布商品「${commerceForm.publishTitle || '新商品'}」，价格 ${commerceForm.publishPrice || '99'} USDC`
+              : `发布 Skill「${commerceForm.publishTitle || '新技能'}」，价格 ${commerceForm.publishPrice || '0.01'} USDC/次`;
+            
+            if (onSendMessage) {
+              onSendMessage(prompt);
+            }
+            
+            setExecutionResult({
+              success: true,
+              type: 'publish',
+              message: `🚀 正在处理${publishType === 'product' ? '商品' : 'Skill'}发布请求...`,
+            });
+          }
+          break;
+        }
+
+        default:
+          throw new Error(`未知的操作类型: ${categoryId}`);
+      }
+
+      // 成功后关闭表单
+      setTimeout(() => {
+        if (!executionResult?.canRevoke) {
+          setOpenCommerceForm(null);
+        }
+      }, 2000);
+
+    } catch (error: any) {
+      console.error('Commerce执行失败:', error);
+      setExecutionResult({
+        success: false,
+        type: categoryId,
+        error: error.message || '操作失败，请稍后重试',
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
 
   // 处理加入购物车
   const handleAddToCart = async (productId: string, quantity: number = 1) => {
@@ -159,6 +629,643 @@ export function StructuredResponseCard({
 
   if (!data || type === 'error') {
     return null;
+  }
+
+  if (type === 'skills_list') {
+    const skills = Array.isArray(data.skills) ? data.skills : [];
+    const searchLabel = data.search ? `（搜索：${data.search}）` : '';
+    const visibleSkills = skills.slice(0, 12);
+
+    return (
+      <div className="mt-3 pt-3 border-t border-neutral-700/50">
+        <div className="bg-slate-900/70 border border-slate-800/60 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-200">可用技能列表{searchLabel}</div>
+              <div className="text-xs text-slate-500">共 {data.total ?? skills.length} 个技能</div>
+            </div>
+            {skills.length > visibleSkills.length && (
+              <div className="text-xs text-slate-500">仅展示前 {visibleSkills.length} 个</div>
+            )}
+          </div>
+
+          <div className="grid gap-3">
+            {visibleSkills.map((skill: any) => (
+              <div key={skill.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-800/60 bg-slate-900/50 p-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-100">{skill.displayName || skill.name}</div>
+                  <div className="text-xs text-slate-500 mt-1 line-clamp-2">{skill.description}</div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{skill.category}</span>
+                    {skill.ucpEnabled && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">UCP</span>
+                    )}
+                    {skill.x402Enabled && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">X402</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => onSendMessage?.(`@${skill.name}`)}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 text-white hover:bg-indigo-500"
+                  >
+                    使用
+                  </button>
+                  <button
+                    onClick={() => onSendMessage?.(`查看技能 ${skill.name}`)}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  >
+                    详情
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === 'commerce_categories') {
+    const categories = Array.isArray(data.categories) ? data.categories : [];
+    const isThreeTier = data.layout === 'three-tier';
+    const openSubCategory = data.openSubCategory;
+    
+    // 三层结构渲染
+    if (isThreeTier) {
+      return (
+        <div className="mt-3 pt-3 border-t border-neutral-700/50">
+          <div className="bg-gradient-to-br from-indigo-900/40 to-slate-900/60 border border-slate-800/60 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold text-slate-200">Commerce 能力中心</div>
+              <div className="flex gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">UCP</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">X402</span>
+              </div>
+            </div>
+            
+            {/* 第一层：4 个场景入口 */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {categories.map((category: any) => (
+                <div key={category.id} className={`rounded-lg border ${openCommerceForm === category.id ? 'border-indigo-500/50 bg-indigo-900/20' : 'border-slate-800/60 bg-slate-900/60'} p-3 flex flex-col gap-2 transition-all`}>
+                  {/* 场景标题 */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{category.icon}</span>
+                      <div>
+                        <div className="text-sm font-medium text-slate-100">{category.title}</div>
+                        <div className="text-xs text-slate-500">{category.description}</div>
+                      </div>
+                    </div>
+                    {category.protocol && (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${category.protocol === 'X402' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                        {category.protocol}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* 展开/收起按钮 */}
+                  <button
+                    onClick={() => setOpenCommerceForm(prev => (prev === category.id ? null : category.id))}
+                    className="w-fit px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  >
+                    {openCommerceForm === category.id ? '收起' : '展开子功能'}
+                  </button>
+                  
+                  {/* 第二层：子功能列表 */}
+                  {openCommerceForm === category.id && category.subCategories && (
+                    <div className="mt-2 space-y-2 border-t border-slate-800/50 pt-2">
+                      {category.subCategories.map((sub: any) => (
+                        <div key={sub.id} className={`rounded-md p-2 ${openSubCategory === sub.id ? 'bg-indigo-600/20 border border-indigo-500/30' : 'bg-slate-800/50 hover:bg-slate-800'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-slate-200">{sub.title}</span>
+                            <button
+                              onClick={() => onSendMessage?.(sub.example)}
+                              className="px-2 py-1 text-[10px] rounded bg-indigo-600/80 text-white hover:bg-indigo-500"
+                            >
+                              快捷触发
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {/* 第三层：表单输入区（根据父分类ID显示对应表单） */}
+                      <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-2 text-xs">
+                        {/* 执行状态反馈区 */}
+                        {isExecuting && (
+                          <div className="flex items-center gap-2 p-2 rounded-lg bg-indigo-600/20 border border-indigo-500/30">
+                            <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                            <span className="text-indigo-300">正在执行操作...</span>
+                          </div>
+                        )}
+                        
+                        {executionResult && !isExecuting && (
+                          <div className={`p-3 rounded-lg border ${executionResult.success ? 'bg-green-900/20 border-green-500/30' : 'bg-red-900/20 border-red-500/30'}`}>
+                            <div className="flex items-start gap-2">
+                              {executionResult.success ? (
+                                <CheckCircle className="w-4 h-4 text-green-400 mt-0.5" />
+                              ) : (
+                                <XCircle className="w-4 h-4 text-red-400 mt-0.5" />
+                              )}
+                              <div className="flex-1">
+                                <div className={`text-sm font-medium ${executionResult.success ? 'text-green-300' : 'text-red-300'}`}>
+                                  {executionResult.message || executionResult.error}
+                                </div>
+                                
+                                {/* 结果详情 */}
+                                {executionResult.data && (
+                                  <div className="mt-2 text-xs text-slate-400 space-y-1">
+                                    {executionResult.id && (
+                                      <div className="flex items-center gap-1">
+                                        <span>ID:</span>
+                                        <code className="bg-slate-800 px-1 rounded">{executionResult.id}</code>
+                                        <button onClick={() => copyToClipboard(executionResult.id!)} className="text-indigo-400 hover:text-indigo-300">
+                                          <Copy className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    )}
+                                    
+                                    {/* 费用预览详情 */}
+                                    {executionResult.type === 'fees' && executionResult.data.fees && (
+                                      <div className="mt-2 p-2 bg-slate-800/50 rounded">
+                                        <div>总费用: {executionResult.data.fees.totalFees} {executionResult.data.currency}</div>
+                                        <div>On-ramp 费: {executionResult.data.fees.onrampFee}</div>
+                                        <div>Off-ramp 费: {executionResult.data.fees.offrampFee}</div>
+                                        <div>分账费: {executionResult.data.fees.splitFee}</div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* 分配预览 */}
+                                    {executionResult.type === 'exchange' && executionResult.data.allocations && (
+                                      <div className="mt-2 p-2 bg-slate-800/50 rounded">
+                                        <div className="font-medium mb-1">分配预览:</div>
+                                        {executionResult.data.allocations.map((alloc: any, idx: number) => (
+                                          <div key={idx}>{alloc.role}: {alloc.amount} ({alloc.percentage}%)</div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* 操作链接 */}
+                                {executionResult.link && (
+                                  <a href={executionResult.link} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300">
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span>查看详情</span>
+                                  </a>
+                                )}
+                                
+                                {/* 30秒撤回 */}
+                                {executionResult.canRevoke && revokeCountdown !== null && (
+                                  <div className="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2 text-yellow-300">
+                                        <Clock className="w-4 h-4" />
+                                        <span>{revokeCountdown}s 内可撤回</span>
+                                      </div>
+                                      <button
+                                        onClick={handleRevoke}
+                                        disabled={isExecuting}
+                                        className="px-2 py-1 text-xs rounded bg-yellow-600 hover:bg-yellow-500 text-white"
+                                      >
+                                        撤回操作
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {category.id === 'pay' && (
+                          <>
+                            <div className="text-slate-400 font-medium mb-2">💰 收付款表单</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <input value={commerceForm.amount} onChange={(e) => updateCommerceForm('amount', e.target.value)} placeholder="金额 *" className={`bg-slate-950/70 border ${formErrors.amount ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                {formErrors.amount && <span className="text-[10px] text-red-400">{formErrors.amount}</span>}
+                              </div>
+                              <input value={commerceForm.currency} onChange={(e) => updateCommerceForm('currency', e.target.value)} placeholder="币种" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                            </div>
+                            <input value={commerceForm.counterparty} onChange={(e) => updateCommerceForm('counterparty', e.target.value)} placeholder="收款方" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                            
+                            {/* 可选字段折叠 */}
+                            <button type="button" onClick={() => setShowOptionalFields(prev => !prev)} className="text-[10px] text-indigo-400 hover:text-indigo-300">
+                              {showOptionalFields ? '▼ 收起可选字段' : '▶ 展开可选字段'}
+                            </button>
+                            {showOptionalFields && (
+                              <div className="space-y-2 pl-2 border-l-2 border-slate-700">
+                                <input value={commerceForm.orderDescription} onChange={(e) => updateCommerceForm('orderDescription', e.target.value)} placeholder="订单描述（可选）" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                <input value={commerceForm.callbackUrl} onChange={(e) => updateCommerceForm('callbackUrl', e.target.value)} placeholder="回调URL（可选）" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                              </div>
+                            )}
+                            
+                            <button onClick={() => handleCommerceSubmit('payment')} disabled={!!formErrors.amount || isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${formErrors.amount || isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                              {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '创建支付意图'}
+                            </button>
+                          </>
+                        )}
+                        
+                        {category.id === 'exchange' && (
+                          <>
+                            <div className="text-slate-400 font-medium mb-2">💱 资金兑换表单</div>
+                            <select value={commerceForm.exchangeType} onChange={(e) => updateCommerceForm('exchangeType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
+                              <option value="onramp">法币入金（On-ramp）</option>
+                              <option value="offramp">加密资产出金（Off-ramp）</option>
+                            </select>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input value={commerceForm.fiatAmount} onChange={(e) => updateCommerceForm('fiatAmount', e.target.value)} placeholder="金额" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                              <input value={commerceForm.fiatCurrency} onChange={(e) => updateCommerceForm('fiatCurrency', e.target.value)} placeholder="法币/币种" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                            </div>
+                            <button onClick={() => handleCommerceSubmit('exchange')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                              {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '查看兑换预览'}
+                            </button>
+                          </>
+                        )}
+                        
+                        {category.id === 'collab' && (
+                          <>
+                            <div className="text-slate-400 font-medium mb-2">👥 协作分账表单</div>
+                            <select value={commerceForm.publishType} onChange={(e) => updateCommerceForm('publishType', e.target.value as any)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
+                              <option value="split">创建分账方案</option>
+                              <option value="budget">管理预算池</option>
+                              <option value="milestone">里程碑</option>
+                              <option value="fees">费用计算</option>
+                            </select>
+                            {commerceForm.publishType === 'split' && (
+                              <>
+                                <input value={commerceForm.planName} onChange={(e) => updateCommerceForm('planName', e.target.value)} placeholder="方案名称 *" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <input value={commerceForm.platformShare} onChange={(e) => { updateCommerceForm('platformShare', e.target.value); validateSplitRatios(); }} placeholder="平台%" className={`bg-slate-950/70 border ${formErrors.platformShare ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                    {formErrors.platformShare && <span className="text-[10px] text-red-400">{formErrors.platformShare}</span>}
+                                  </div>
+                                  <div>
+                                    <input value={commerceForm.merchantShare} onChange={(e) => { updateCommerceForm('merchantShare', e.target.value); validateSplitRatios(); }} placeholder="商家%" className={`bg-slate-950/70 border ${formErrors.merchantShare ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                    {formErrors.merchantShare && <span className="text-[10px] text-red-400">{formErrors.merchantShare}</span>}
+                                  </div>
+                                  <div>
+                                    <input value={commerceForm.agentShare} onChange={(e) => { updateCommerceForm('agentShare', e.target.value); validateSplitRatios(); }} placeholder="代理%" className={`bg-slate-950/70 border ${formErrors.agentShare ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                    {formErrors.agentShare && <span className="text-[10px] text-red-400">{formErrors.agentShare}</span>}
+                                  </div>
+                                </div>
+                                {formErrors.splitTotal && <span className="text-[10px] text-red-400">{formErrors.splitTotal}</span>}
+                                <div className="text-[10px] text-slate-500">当前总和：{Number(commerceForm.platformShare || 0) + Number(commerceForm.merchantShare || 0) + Number(commerceForm.agentShare || 0)}%</div>
+                                <button onClick={() => { if (validateSplitRatios()) handleCommerceSubmit('split'); }} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                                  {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '创建分账方案'}
+                                </button>
+                              </>
+                            )}
+                            {commerceForm.publishType === 'budget' && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <input value={commerceForm.budgetAmount} onChange={(e) => updateCommerceForm('budgetAmount', e.target.value)} placeholder="预算(USDC) *" className={`bg-slate-950/70 border ${formErrors.budgetAmount ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                    {formErrors.budgetAmount && <span className="text-[10px] text-red-400">{formErrors.budgetAmount}</span>}
+                                  </div>
+                                  <input value={commerceForm.qualityScore} onChange={(e) => updateCommerceForm('qualityScore', e.target.value)} placeholder="质量门槛" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                                </div>
+                                <div>
+                                  <input value={commerceForm.budgetDeadline} onChange={(e) => updateCommerceForm('budgetDeadline', e.target.value)} placeholder="截止日期(YYYY-MM-DD)" className={`bg-slate-950/70 border ${formErrors.budgetDeadline ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500`} />
+                                  {formErrors.budgetDeadline && <span className="text-[10px] text-red-400">{formErrors.budgetDeadline}</span>}
+                                </div>
+                                <button onClick={() => handleCommerceSubmit('budget')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                                  {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '创建预算池'}
+                                </button>
+                              </>
+                            )}
+                            {commerceForm.publishType === 'milestone' && (
+                              <>
+                                <input value={commerceForm.poolId} onChange={(e) => updateCommerceForm('poolId', e.target.value)} placeholder="预算池ID *" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <input value={commerceForm.milestoneTitle} onChange={(e) => updateCommerceForm('milestoneTitle', e.target.value)} placeholder="里程碑标题 *" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                                  <div>
+                                    <input value={commerceForm.milestonePercent} onChange={(e) => updateCommerceForm('milestonePercent', e.target.value)} placeholder="占比% *" className={`bg-slate-950/70 border ${formErrors.milestonePercent ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                    {formErrors.milestonePercent && <span className="text-[10px] text-red-400">{formErrors.milestonePercent}</span>}
+                                  </div>
+                                </div>
+                                <button onClick={() => handleCommerceSubmit('milestone')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                                  {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '创建里程碑'}
+                                </button>
+                              </>
+                            )}
+                            {commerceForm.publishType === 'fees' && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <input value={commerceForm.amount} onChange={(e) => updateCommerceForm('amount', e.target.value)} placeholder="金额 *" className={`bg-slate-950/70 border ${formErrors.amount ? 'border-red-500' : 'border-slate-800'} rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-full`} />
+                                    {formErrors.amount && <span className="text-[10px] text-red-400">{formErrors.amount}</span>}
+                                  </div>
+                                  <input value={commerceForm.paymentType} onChange={(e) => updateCommerceForm('paymentType', e.target.value)} placeholder="支付方式" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                                </div>
+                                <button onClick={() => handleCommerceSubmit('fees')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                                  {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '计算费用'}
+                                </button>
+                              </>
+                            )}
+                          </>
+                        )}
+                        
+                        {category.id === 'publish' && (
+                          <>
+                            <div className="text-slate-400 font-medium mb-2">🚀 发布表单</div>
+                            <select value={commerceForm.publishType} onChange={(e) => updateCommerceForm('publishType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
+                              <option value="task">发布协作任务</option>
+                              <option value="product">发布商品</option>
+                              <option value="skill">发布 Skill</option>
+                            </select>
+                            <input value={commerceForm.publishTitle} onChange={(e) => updateCommerceForm('publishTitle', e.target.value)} placeholder="标题" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                            {commerceForm.publishType === 'task' ? (
+                              <input value={commerceForm.publishBudget} onChange={(e) => updateCommerceForm('publishBudget', e.target.value)} placeholder="预算(USDC)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                            ) : (
+                              <input value={commerceForm.publishPrice} onChange={(e) => updateCommerceForm('publishPrice', e.target.value)} placeholder="价格(USDC)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                            )}
+                            <button onClick={() => handleCommerceSubmit('publish')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                              {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '🚀 发布'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // 旧版扁平结构兼容渲染
+    return (
+      <div className="mt-3 pt-3 border-t border-neutral-700/50">
+        <div className="bg-gradient-to-br from-indigo-900/40 to-slate-900/60 border border-slate-800/60 rounded-xl p-4">
+          <div className="text-sm font-semibold text-slate-200 mb-3">commerce 能力分类</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {categories.map((category: any) => (
+              <div key={category.id} className="rounded-lg border border-slate-800/60 bg-slate-900/60 p-3 flex flex-col gap-2">
+                <div className="text-sm font-medium text-slate-100">{category.title}</div>
+                <div className="text-xs text-slate-500">{category.description}</div>
+                {category.example && (
+                  <button
+                    onClick={() => onSendMessage?.(category.example)}
+                    className="mt-1 w-fit px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 text-white hover:bg-indigo-500"
+                  >
+                    示例触发
+                  </button>
+                )}
+                <button
+                  onClick={() => setOpenCommerceForm(prev => (prev === category.id ? null : category.id))}
+                  className="w-fit px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                >
+                  {openCommerceForm === category.id ? '收起表单' : '打开表单'}
+                </button>
+                {openCommerceForm === category.id && (
+                  <div className="mt-2 space-y-2 text-xs text-slate-300">
+                    {category.id === 'payment' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={commerceForm.amount}
+                            onChange={(e) => updateCommerceForm('amount', e.target.value)}
+                            placeholder="金额"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          <input
+                            value={commerceForm.currency}
+                            onChange={(e) => updateCommerceForm('currency', e.target.value)}
+                            placeholder="币种"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                        </div>
+                        <input
+                          value={commerceForm.counterparty}
+                          onChange={(e) => updateCommerceForm('counterparty', e.target.value)}
+                          placeholder="收款方"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                      </>
+                    )}
+
+                    {category.id === 'exchange' && (
+                      <>
+                        <select
+                          value={commerceForm.exchangeType}
+                          onChange={(e) => updateCommerceForm('exchangeType', e.target.value)}
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
+                        >
+                          <option value="onramp">法币入金（On-ramp）</option>
+                          <option value="offramp">加密资产出金（Off-ramp）</option>
+                        </select>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={commerceForm.fiatAmount}
+                            onChange={(e) => updateCommerceForm('fiatAmount', e.target.value)}
+                            placeholder="金额"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          {commerceForm.exchangeType === 'offramp' ? (
+                            <input
+                              value={commerceForm.cryptoCurrency}
+                              onChange={(e) => updateCommerceForm('cryptoCurrency', e.target.value)}
+                              placeholder="币种"
+                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                            />
+                          ) : (
+                            <input
+                              value={commerceForm.fiatCurrency}
+                              onChange={(e) => updateCommerceForm('fiatCurrency', e.target.value)}
+                              placeholder="法币"
+                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                            />
+                          )}
+                        </div>
+                        {commerceForm.exchangeType === 'offramp' ? (
+                          <input
+                            value={commerceForm.offrampsTo}
+                            onChange={(e) => updateCommerceForm('offrampsTo', e.target.value)}
+                            placeholder="到账方式/地址"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                          />
+                        ) : (
+                          <input
+                            value={commerceForm.cryptoCurrency}
+                            onChange={(e) => updateCommerceForm('cryptoCurrency', e.target.value)}
+                            placeholder="目标加密币种"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                          />
+                        )}
+                      </>
+                    )}
+
+                    {category.id === 'split' && (
+                      <>
+                        <input
+                          value={commerceForm.planName}
+                          onChange={(e) => updateCommerceForm('planName', e.target.value)}
+                          placeholder="方案名称"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            value={commerceForm.platformShare}
+                            onChange={(e) => updateCommerceForm('platformShare', e.target.value)}
+                            placeholder="平台%"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          <input
+                            value={commerceForm.merchantShare}
+                            onChange={(e) => updateCommerceForm('merchantShare', e.target.value)}
+                            placeholder="商家%"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          <input
+                            value={commerceForm.agentShare}
+                            onChange={(e) => updateCommerceForm('agentShare', e.target.value)}
+                            placeholder="代理%"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {category.id === 'budget' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={commerceForm.budgetAmount}
+                            onChange={(e) => updateCommerceForm('budgetAmount', e.target.value)}
+                            placeholder="预算(USDC)"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          <input
+                            value={commerceForm.qualityScore}
+                            onChange={(e) => updateCommerceForm('qualityScore', e.target.value)}
+                            placeholder="质量门槛"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                        </div>
+                        <input
+                          value={commerceForm.budgetDeadline}
+                          onChange={(e) => updateCommerceForm('budgetDeadline', e.target.value)}
+                          placeholder="截止日期(YYYY-MM-DD)"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                      </>
+                    )}
+
+                    {category.id === 'milestone' && (
+                      <>
+                        <input
+                          value={commerceForm.poolId}
+                          onChange={(e) => updateCommerceForm('poolId', e.target.value)}
+                          placeholder="预算池ID"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={commerceForm.milestoneTitle}
+                            onChange={(e) => updateCommerceForm('milestoneTitle', e.target.value)}
+                            placeholder="里程碑标题"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          <input
+                            value={commerceForm.milestonePercent}
+                            onChange={(e) => updateCommerceForm('milestonePercent', e.target.value)}
+                            placeholder="占比%"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {category.id === 'collaboration' && (
+                      <>
+                        <input
+                          value={commerceForm.poolId}
+                          onChange={(e) => updateCommerceForm('poolId', e.target.value)}
+                          placeholder="预算池ID"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                        <input
+                          value={commerceForm.collaborationNote}
+                          onChange={(e) => updateCommerceForm('collaborationNote', e.target.value)}
+                          placeholder="发放说明"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                      </>
+                    )}
+
+                    {category.id === 'fees' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={commerceForm.amount}
+                            onChange={(e) => updateCommerceForm('amount', e.target.value)}
+                            placeholder="金额"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                          <input
+                            value={commerceForm.paymentType}
+                            onChange={(e) => updateCommerceForm('paymentType', e.target.value)}
+                            placeholder="支付方式"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {category.id === 'publish' && (
+                      <>
+                        <select
+                          value={commerceForm.publishType}
+                          onChange={(e) => updateCommerceForm('publishType', e.target.value)}
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
+                        >
+                          <option value="task">发布任务</option>
+                          <option value="product">发布商品</option>
+                          <option value="skill">发布Skill</option>
+                        </select>
+                        <input
+                          value={commerceForm.publishTitle}
+                          onChange={(e) => updateCommerceForm('publishTitle', e.target.value)}
+                          placeholder="标题"
+                          className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                        />
+                        {commerceForm.publishType === 'task' ? (
+                          <input
+                            value={commerceForm.publishBudget}
+                            onChange={(e) => updateCommerceForm('publishBudget', e.target.value)}
+                            placeholder="预算(USDC)"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                          />
+                        ) : (
+                          <input
+                            value={commerceForm.publishPrice}
+                            onChange={(e) => updateCommerceForm('publishPrice', e.target.value)}
+                            placeholder="价格(USDC)"
+                            className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
+                          />
+                        )}
+                      </>
+                    )}
+
+                    <button
+                      onClick={() => handleCommerceSubmit(category.id)}
+                      className="mt-2 w-fit px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 text-white hover:bg-indigo-500"
+                    >
+                      生成并发送
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // 购物车展示（支持商品点选和选择性支付）

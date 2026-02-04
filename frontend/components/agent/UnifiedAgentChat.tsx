@@ -5,6 +5,7 @@ import { useWorkbench } from '../../contexts/WorkbenchContext';
 import { useSessionManager } from '../../hooks/useSessionManager';
 import { executeDirectQuickPay } from '../../lib/direct-pay-service';
 import { agentApi } from '../../lib/api/agent.api';
+import { skillApi } from '../../lib/api/skill.api';
 import { GlassCard } from '../ui/GlassCard';
 import { AIButton } from '../ui/AIButton';
 import { StructuredResponseCard } from './StructuredResponseCard';
@@ -59,6 +60,22 @@ export function UnifiedAgentChat({
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Commerce 上下文延续 - 记住当前会话创建的资源 ID
+  const [commerceContext, setCommerceContext] = useState<{
+    lastPoolId?: string;
+    lastSplitPlanId?: string;
+    lastMilestoneId?: string;
+    lastOrderId?: string;
+    lastPublishId?: string;
+    recentRecipients?: string[];
+    defaultCurrency?: string;
+  }>({});
+
+  // 更新 commerce 上下文
+  const updateCommerceContext = (key: keyof typeof commerceContext, value: any) => {
+    setCommerceContext(prev => ({ ...prev, [key]: value }));
+  };
 
   // 初始化加载活跃 Session，用于闭环支付
   useEffect(() => {
@@ -248,6 +265,222 @@ export function UnifiedAgentChat({
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+
+    const normalized = messageText.trim();
+    const skillsCommandMatch = normalized.match(/^\/skills?(?:\s+(.+))?$/i);
+    const commerceCommandMatch = normalized.match(/^\/(commerce|skill\s+commerce)$/i);
+    const commerceMentionMatch = normalized.match(/^@commerce\b/i) || normalized.match(/^@agentrix\s+commerce\b/i);
+
+    if (skillsCommandMatch || commerceCommandMatch || commerceMentionMatch) {
+      try {
+        if (skillsCommandMatch) {
+          const rawSearch = skillsCommandMatch[1]?.trim();
+          const search = rawSearch && rawSearch.startsWith('/') ? rawSearch.slice(1) : rawSearch;
+          const response = await skillApi.getMarketplaceSkills({ search, limit: 50 });
+          const skills = response.items || [];
+          const assistantMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: skills.length
+              ? `已为你展示可用技能${search ? `（搜索：${search}）` : ''}。`
+              : `暂未找到技能${search ? `（搜索：${search}）` : ''}。`,
+            timestamp: new Date(),
+            metadata: {
+              type: 'skills_list',
+              data: {
+                skills,
+                total: response.total,
+                search,
+              },
+            },
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        } else {
+          // 三层结构：4 个场景入口
+          const assistantMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: '请选择一个场景入口，或点击子功能快捷触发。支持 UCP 能力发现与 X402 自动支付。',
+            timestamp: new Date(),
+            metadata: {
+              type: 'commerce_categories',
+              data: {
+                layout: 'three-tier', // 标记为三层结构
+                categories: [
+                  {
+                    id: 'pay',
+                    icon: '💰',
+                    title: '收付款',
+                    description: '支付、收款、生成链接',
+                    protocol: 'X402',
+                    subCategories: [
+                      { id: 'payment', title: '发起支付', example: '我要付款 100 USDC' },
+                      { id: 'receive', title: '生成收款链接', example: '生成收款链接 50 USDC' },
+                      { id: 'query', title: '查询订单状态', example: '查询订单 order_xxx' },
+                    ],
+                  },
+                  {
+                    id: 'exchange',
+                    icon: '💱',
+                    title: '资金兑换',
+                    description: 'On-ramp / Off-ramp',
+                    protocol: 'UCP',
+                    subCategories: [
+                      { id: 'onramp', title: '法币 → 加密货币', example: '用 100 USD 兑换 USDC' },
+                      { id: 'offramp', title: '加密货币 → 法币', example: '把 100 USDC 提现' },
+                      { id: 'rate', title: '汇率查询', example: '查询 USDC 汇率' },
+                    ],
+                  },
+                  {
+                    id: 'collab',
+                    icon: '👥',
+                    title: '协作分账',
+                    description: '分佣、预算池、里程碑、酬劳',
+                    protocol: 'UCP',
+                    subCategories: [
+                      { id: 'split', title: '创建分账方案', example: '创建分账方案' },
+                      { id: 'budget', title: '管理预算池', example: '建一个任务预算池' },
+                      { id: 'milestone', title: '里程碑管理', example: '给预算池加里程碑' },
+                      { id: 'collaboration', title: '发放协作酬劳', example: '按里程碑放款' },
+                      { id: 'fees', title: '费用计算/预览', example: '算手续费' },
+                      { id: 'rates', title: '查看费率结构', example: '费率结构是什么' },
+                    ],
+                  },
+                  {
+                    id: 'publish',
+                    icon: '🚀',
+                    title: '发布',
+                    description: '任务/商品/Skill 发布到 Marketplace',
+                    protocol: 'UCP',
+                    subCategories: [
+                      { id: 'publish_task', title: '发布协作任务', example: '发布一个协作任务到 marketplace' },
+                      { id: 'publish_product', title: '发布商品', example: '发布商品到 marketplace' },
+                      { id: 'publish_skill', title: '发布 Skill', example: '发布 skill 到 marketplace' },
+                      { id: 'sync_external', title: '同步到外部平台', example: '同步到外部任务平台' },
+                    ],
+                  },
+                ],
+              },
+            },
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+      } catch (error: any) {
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `❌ 获取技能列表失败：${error.message || '请稍后重试'}`,
+          timestamp: new Date(),
+          metadata: {
+            type: 'error',
+            error: error.message,
+          },
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // 三层结构意图映射：子功能 ID → 父分类 ID
+    const commerceIntentMap: Array<{ id: string; parentId: string; keywords: RegExp }> = [
+      // 收付款场景
+      { id: 'payment', parentId: 'pay', keywords: /(付款|支付|结算)/i },
+      { id: 'receive', parentId: 'pay', keywords: /(收款|收款链接)/i },
+      { id: 'query', parentId: 'pay', keywords: /(查询订单|订单状态)/i },
+      // 资金兑换场景
+      { id: 'onramp', parentId: 'exchange', keywords: /(兑换|换币|入金|on-?ramp)/i },
+      { id: 'offramp', parentId: 'exchange', keywords: /(提现|出金|off-?ramp)/i },
+      { id: 'rate', parentId: 'exchange', keywords: /(汇率)/i },
+      // 协作分账场景
+      { id: 'split', parentId: 'collab', keywords: /(分账|分佣|分成)/i },
+      { id: 'budget', parentId: 'collab', keywords: /(预算池|预算)/i },
+      { id: 'milestone', parentId: 'collab', keywords: /(里程碑|阶段交付)/i },
+      { id: 'collaboration', parentId: 'collab', keywords: /(协作酬劳|协作报酬|酬劳|报酬)/i },
+      { id: 'fees', parentId: 'collab', keywords: /(手续费|费用计算|费率计算|预览分账)/i },
+      { id: 'rates', parentId: 'collab', keywords: /(费率结构|平台费率)/i },
+      // 发布场景
+      { id: 'publish_task', parentId: 'publish', keywords: /(发布任务|发布协作任务)/i },
+      { id: 'publish_product', parentId: 'publish', keywords: /(发布商品)/i },
+      { id: 'publish_skill', parentId: 'publish', keywords: /(发布skill|发布技能)/i },
+      { id: 'sync_external', parentId: 'publish', keywords: /(同步到外部|marketplace)/i },
+    ];
+
+    const matchedCommerceIntent = commerceIntentMap.find(item => item.keywords.test(normalized));
+    if (matchedCommerceIntent) {
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '已识别为 commerce 请求，请从分类卡片继续。支持 UCP/X402 协议。',
+        timestamp: new Date(),
+        metadata: {
+          type: 'commerce_categories',
+          data: {
+            layout: 'three-tier',
+            openCategory: matchedCommerceIntent.parentId, // 打开父分类
+            openSubCategory: matchedCommerceIntent.id, // 高亮子分类
+            categories: [
+              {
+                id: 'pay',
+                icon: '💰',
+                title: '收付款',
+                description: '支付、收款、生成链接',
+                protocol: 'X402',
+                subCategories: [
+                  { id: 'payment', title: '发起支付', example: '我要付款 100 USDC' },
+                  { id: 'receive', title: '生成收款链接', example: '生成收款链接 50 USDC' },
+                  { id: 'query', title: '查询订单状态', example: '查询订单 order_xxx' },
+                ],
+              },
+              {
+                id: 'exchange',
+                icon: '💱',
+                title: '资金兑换',
+                description: 'On-ramp / Off-ramp',
+                protocol: 'UCP',
+                subCategories: [
+                  { id: 'onramp', title: '法币 → 加密货币', example: '用 100 USD 兑换 USDC' },
+                  { id: 'offramp', title: '加密货币 → 法币', example: '把 100 USDC 提现' },
+                  { id: 'rate', title: '汇率查询', example: '查询 USDC 汇率' },
+                ],
+              },
+              {
+                id: 'collab',
+                icon: '👥',
+                title: '协作分账',
+                description: '分佣、预算池、里程碑、酬劳',
+                protocol: 'UCP',
+                subCategories: [
+                  { id: 'split', title: '创建分账方案', example: '创建分账方案' },
+                  { id: 'budget', title: '管理预算池', example: '建一个任务预算池' },
+                  { id: 'milestone', title: '里程碑管理', example: '给预算池加里程碑' },
+                  { id: 'collaboration', title: '发放协作酬劳', example: '按里程碑放款' },
+                  { id: 'fees', title: '费用计算/预览', example: '算手续费' },
+                  { id: 'rates', title: '查看费率结构', example: '费率结构是什么' },
+                ],
+              },
+              {
+                id: 'publish',
+                icon: '🚀',
+                title: '发布',
+                description: '任务/商品/Skill 发布到 Marketplace',
+                protocol: 'UCP',
+                subCategories: [
+                  { id: 'publish_task', title: '发布协作任务', example: '发布一个协作任务到 marketplace' },
+                  { id: 'publish_product', title: '发布商品', example: '发布商品到 marketplace' },
+                  { id: 'publish_skill', title: '发布 Skill', example: '发布 skill 到 marketplace' },
+                  { id: 'sync_external', title: '同步到外部平台', example: '同步到外部任务平台' },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       console.log('📤 发送消息:', {
@@ -958,7 +1191,11 @@ export function UnifiedAgentChat({
         <div className="relative group">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
           <div className="relative flex items-end gap-2 bg-[#161b22] p-2 rounded-xl border border-slate-800 shadow-2xl">
-            <button className="p-3 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg transition-colors">
+            <button
+              onClick={() => handleSend('/skills')}
+              title="Skills"
+              className="p-3 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg transition-colors"
+            >
               <Plus size={20} />
             </button>
             <div className="flex items-center gap-2 flex-1">

@@ -319,22 +319,74 @@ export class WorkspaceService {
       context += knowledgeContext;
     }
 
+    // 工具调用系统提示词
+    const toolsPrompt = `
+## 工具调用能力
+
+你有以下工具可以使用来执行文件/命令操作。当你需要读写文件时，**必须**使用工具，不要假装执行。
+
+### 可用工具
+
+#### 1. read_file - 读取文件内容
+<tool_call>
+<name>read_file</name>
+<params>{"filePath": "/path/to/file.txt", "startLine": 1, "endLine": 100}</params>
+</tool_call>
+
+#### 2. write_file - 创建或覆写文件
+<tool_call>
+<name>write_file</name>
+<params>{"filePath": "/path/to/file.txt", "content": "文件内容"}</params>
+</tool_call>
+
+#### 3. edit_file - 编辑文件（查找并替换）
+<tool_call>
+<name>edit_file</name>
+<params>{"filePath": "/path/to/file.txt", "oldString": "旧内容", "newString": "新内容"}</params>
+</tool_call>
+
+#### 4. list_dir - 列出目录内容
+<tool_call>
+<name>list_dir</name>
+<params>{"path": "/path/to/directory"}</params>
+</tool_call>
+
+#### 5. run_command - 执行终端命令（需要授权）
+<tool_call>
+<name>run_command</name>
+<params>{"command": "ls -la", "cwd": "/path"}</params>
+<requires_permission>true</requires_permission>
+<reason>需要执行命令的原因</reason>
+</tool_call>
+
+### 重要规则
+1. 工作目录: ${workspace.rootPath}
+2. 路径格式: 使用绝对路径或相对于工作目录的路径
+3. 直接输出: 当需要使用工具时，直接输出 <tool_call>...</tool_call>，不要放在代码块中
+4. 真实执行: 工具会真正执行，结果会返回给你继续处理
+5. 不要假装: 需要读写文件时，必须调用工具
+`;
+
     // 构建系统提示
     const systemPrompts: Record<string, string> = {
       'ARCHITECT-01': `你是 Agentrix 的首席架构师，负责系统架构设计和技术决策。
 当前工作区: ${workspace.name} (${workspace.rootPath})
 请基于以下上下文回答用户问题，提供架构建议。
 
-${context}`,
+${context}
+
+${toolsPrompt}`,
       'CODER-01': `你是 Agentrix 的资深开发者，精通 TypeScript/NestJS/Next.js。
 当前工作区: ${workspace.name} (${workspace.rootPath})
 请基于以下上下文回答用户问题，提供代码实现建议。
-如果需要修改代码，请明确指出需要修改的位置和内容。
+如果需要修改代码，请使用工具直接修改文件。
 
-${context}`,
+${context}
+
+${toolsPrompt}`,
     };
 
-    const systemPrompt = systemPrompts[agentCode] || `你是 Agentrix 的 AI 助手。\n${context}`;
+    const systemPrompt = systemPrompts[agentCode] || `你是 Agentrix 的 AI 助手。\n${context}\n${toolsPrompt}`;
 
     // 调用 AI
     const messages: ChatMessage[] = [
@@ -343,8 +395,19 @@ ${context}`,
     ];
 
     try {
+      // 存储用户消息到 Memory（与 HQ Core 共享记忆）
+      const memoryContext = { agentId: agentCode, sessionId: `workspace-${workspaceId}` };
+      if (this.memoryService) {
+        await this.memoryService.storeConversation(memoryContext, 'user', message);
+      }
+
       const result = await this.aiService.chatForAgent(agentCode, messages);
       
+      // 存储助手响应到 Memory
+      if (this.memoryService) {
+        await this.memoryService.storeConversation(memoryContext, 'assistant', result.content);
+      }
+
       return {
         agentCode,
         response: result.content,

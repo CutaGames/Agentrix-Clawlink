@@ -31,7 +31,12 @@ export class KnowledgeService implements OnModuleInit {
 
   // Agentrix 项目重要文档列表
   private readonly importantDocuments = [
+    // 汇总与战略
+    { path: 'AGENTRIX_COMMERCE_MOBILE_CONSOLIDATED_DOC.md', category: DocumentCategory.GUIDE, title: '商业化与移动端战略汇总 (2026.02)' },
+
     // PRD 文档
+    { path: 'AGENTRIX_MOBILE_APP_PRD.md', category: DocumentCategory.PRD, title: 'Agentrix 移动端 App PRD' },
+    { path: 'AGENTRIX_COMMERCE_SKILL_PRD.md', category: DocumentCategory.PRD, title: 'Agentrix Commerce Skill PRD' },
     { path: 'AGENTRIX_MCP_ECOSYSTEM_PRD.md', category: DocumentCategory.PRD, title: 'Agentrix MCP 生态 PRD' },
     { path: 'AGENTRIX_WORKBENCH_PRD_V3.md', category: DocumentCategory.PRD, title: 'Agentrix Workbench PRD V3' },
     { path: 'AGENTRIX_PAYMENT_V1_PRD.md', category: DocumentCategory.PRD, title: 'Agentrix 支付系统 PRD V1' },
@@ -76,7 +81,9 @@ export class KnowledgeService implements OnModuleInit {
     { path: 'DEPLOYMENT_GUIDE.md', category: DocumentCategory.DEPLOYMENT, title: '部署指南' },
     { path: 'PRODUCTION_READINESS.md', category: DocumentCategory.DEPLOYMENT, title: '生产就绪检查' },
     
-    // 测试文档
+    // 测试与验证
+    { path: 'COMMERCE_SKILL_TEST_REPORT.md', category: DocumentCategory.TESTING, title: 'Commerce Skill 测试报告' },
+    { path: 'COMMERCE_SKILL_GAP_ANALYSIS.md', category: DocumentCategory.TESTING, title: 'Commerce Skill 差距分析' },
     { path: 'TESTING_GUIDE.md', category: DocumentCategory.TESTING, title: '测试指南' },
     { path: 'TESTING_ARCHITECTURE.md', category: DocumentCategory.TESTING, title: '测试架构' },
     
@@ -99,7 +106,7 @@ export class KnowledgeService implements OnModuleInit {
     
     // 检查是否已有文档
     const existingCount = await this.documentRepo.count();
-    if (existingCount > 0) {
+    if (existingCount >= this.importantDocuments.length) {
       this.logger.log(`✅ Knowledge base already has ${existingCount} documents`);
       return;
     }
@@ -157,7 +164,6 @@ export class KnowledgeService implements OnModuleInit {
     if (!fs.existsSync(fullPath)) {
       throw new NotFoundException(`File not found: ${filePath}`);
     }
-
     const content = fs.readFileSync(fullPath, 'utf-8');
     const wordCount = content.split(/\s+/).length;
     const fileName = path.basename(filePath);
@@ -184,6 +190,48 @@ export class KnowledgeService implements OnModuleInit {
       title: title || fileName.replace('.md', ''),
       content,
       filePath,
+      category: category || DocumentCategory.OTHER,
+      tags: tags || [],
+      wordCount,
+      status: DocumentStatus.ACTIVE,
+    });
+
+    return this.documentRepo.save(doc);
+  }
+
+  /**
+   * 直接导入内容（用于前端上传的 RAG 文件）
+   */
+  async importRawDocument(dto: {
+    name: string;
+    content: string;
+    filePath?: string;
+    title?: string;
+    category?: DocumentCategory;
+    tags?: string[];
+  }): Promise<KnowledgeDocument> {
+    const { name, content, filePath, title, category, tags } = dto;
+    const resolvedPath = filePath || `/rag/${name}`;
+    const wordCount = content.split(/\s+/).length;
+
+    const existing = await this.documentRepo.findOne({
+      where: { filePath: resolvedPath },
+    });
+
+    if (existing) {
+      existing.content = content;
+      existing.wordCount = wordCount;
+      existing.updatedAt = new Date();
+      if (title) existing.title = title;
+      if (category) existing.category = category;
+      if (tags) existing.tags = tags;
+      return this.documentRepo.save(existing);
+    }
+
+    const doc = this.documentRepo.create({
+      title: title || name.replace('.md', ''),
+      content,
+      filePath: resolvedPath,
       category: category || DocumentCategory.OTHER,
       tags: tags || [],
       wordCount,
@@ -303,6 +351,12 @@ export class KnowledgeService implements OnModuleInit {
     await this.documentRepo.save(doc);
   }
 
+  async removeByFilePath(filePath: string): Promise<boolean> {
+    const doc = await this.documentRepo.findOne({ where: { filePath } });
+    if (!doc) return false;
+    await this.documentRepo.remove(doc);
+    return true;
+  }
   /**
    * 为 Agent 获取相关上下文
    */

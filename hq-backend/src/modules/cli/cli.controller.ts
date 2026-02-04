@@ -28,6 +28,8 @@ interface CLIChatRequest {
   message: string;
   projectId?: string;
   context?: string;
+  provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+  model?: string;
 }
 
 interface CLITaskRequest {
@@ -148,6 +150,8 @@ export class CLIController {
       agentId: body.agentId,
       projectId: body.projectId,
       messages,
+      provider: body.provider,
+      model: body.model,
     });
 
     return {

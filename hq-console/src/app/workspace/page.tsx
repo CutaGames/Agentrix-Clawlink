@@ -1,14 +1,24 @@
 /**
  * Workspace IDE Page
  * 
- * IDE 工作区页面 - 文件浏览器、编辑器、Agent 聊天
+ * IDE 工作区页面 - 文件浏览器、编辑器、Agent 聊天、实时状态面板
  */
 
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { WorkspaceLayout, FileExplorer, CodeEditor, AgentChat, WorkspaceSelector } from '@/components/workspace';
+import { 
+  WorkspaceLayout, 
+  FileExplorer, 
+  CodeEditor, 
+  AgentChat, 
+  WorkspaceSelector,
+  WorkspaceStatusPanel,
+  useWorkspaceStatus,
+} from '@/components/workspace';
+import { AgentActivity, useAgentActivity, Activity } from '@/components/workspace/AgentActivity';
 import { hqApi } from '@/lib/api';
+import { ToolExecutionCallback } from '@/components/workspace/AgentChat';
 
 interface Workspace {
   id: string;
@@ -33,6 +43,35 @@ export default function WorkspacePage() {
   const [activeFile, setActiveFile] = useState<OpenFile | null>(null);
   const [selectedCode, setSelectedCode] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  
+  // 使用工作区状态 Hook
+  const workspaceStatus = useWorkspaceStatus();
+  const agentActivity = useAgentActivity();
+  
+  // 工具执行回调
+  const toolCallbacks: ToolExecutionCallback = {
+    onFileChange: (change) => {
+      workspaceStatus.addFileChange(change);
+    },
+    onTerminalOutput: (output) => {
+      workspaceStatus.addTerminalOutput(output);
+    },
+    onActivityChange: (activity) => {
+      if (activity.status === 'running') {
+        if (activity.type === 'thinking') {
+          agentActivity.startThinking();
+        }
+        agentActivity.addActivity(activity.type as any, activity.description);
+      } else {
+        agentActivity.stopThinking();
+        // 找到最后一个 running 状态的活动并完成它
+        const lastRunning = agentActivity.activities.find(a => a.status === 'running');
+        if (lastRunning) {
+          agentActivity.completeActivity(lastRunning.id, activity.status === 'completed');
+        }
+      }
+    },
+  };
 
   // 加载工作区列表
   useEffect(() => {
@@ -165,18 +204,44 @@ export default function WorkspacePage() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 左侧: 文件浏览器 */}
-        <div className="w-64 bg-gray-900 border-r border-gray-700 overflow-auto">
-          {currentWorkspace ? (
-            <FileExplorer
-              workspaceId={currentWorkspace.id}
-              onFileSelect={handleOpenFile}
-            />
-          ) : (
-            <div className="p-4 text-gray-500 text-sm">
-              Select or create a workspace
+        {/* 左侧: 文件浏览器 + Agent 状态面板 */}
+        <div className="w-72 bg-gray-900 border-r border-gray-700 flex flex-col">
+          {/* 文件浏览器 */}
+          <div className="flex-1 overflow-auto border-b border-gray-700">
+            {currentWorkspace ? (
+              <FileExplorer
+                workspaceId={currentWorkspace.id}
+                onFileSelect={handleOpenFile}
+              />
+            ) : (
+              <div className="p-4 text-gray-500 text-sm">
+                Select or create a workspace
+              </div>
+            )}
+          </div>
+          
+          {/* Agent 活动状态 */}
+          {(agentActivity.isThinking || agentActivity.activities.length > 0) && (
+            <div className="p-3 border-b border-gray-700">
+              <div className="text-xs text-gray-500 uppercase font-medium mb-2">Agent 状态</div>
+              <AgentActivity 
+                activities={agentActivity.activities}
+                isThinking={agentActivity.isThinking}
+                thinkingDuration={agentActivity.thinkingDuration}
+              />
             </div>
           )}
+          
+          {/* 文件/终端状态面板 */}
+          <div className="h-64 flex-shrink-0">
+            <WorkspaceStatusPanel
+              fileChanges={workspaceStatus.fileChanges}
+              terminalOutputs={workspaceStatus.terminalOutputs}
+              onFileClick={handleOpenFile}
+              onClearFiles={workspaceStatus.clearFileChanges}
+              onClearTerminal={workspaceStatus.clearTerminalOutputs}
+            />
+          </div>
         </div>
 
         {/* 中间: 代码编辑器 */}
@@ -235,6 +300,8 @@ export default function WorkspacePage() {
               workspaceId={currentWorkspace.id}
               currentFile={activeFile?.path}
               selectedCode={selectedCode}
+              onOpenFile={handleOpenFile}
+              callbacks={toolCallbacks}
             />
           )}
         </div>

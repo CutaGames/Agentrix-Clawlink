@@ -13,6 +13,7 @@ export default function StaffPage() {
   const { agents } = useAgents();
 
   const selectedAgent = agents.find(a => a.id === selectedAgentId);
+  const selectedAgentCode = selectedAgent?.code || selectedAgentId;
 
   return (
     <main className="flex min-h-screen flex-col p-6 md:p-8">
@@ -48,14 +49,14 @@ export default function StaffPage() {
         {/* Column 2: Command Console (40%) */}
         <Card className="col-span-5 bg-slate-900 border-slate-800 flex flex-col overflow-hidden">
           <CommandConsole
-            agentId={selectedAgentId}
+            agentId={selectedAgentCode}
             agentName={selectedAgent?.name}
           />
         </Card>
 
         {/* Column 3: Artifact Canvas (40%) */}
         <div className="col-span-4">
-          <ArtifactCanvas agentId={selectedAgentId} />
+          <ArtifactCanvas agentId={selectedAgentCode} />
         </div>
 
       </div>

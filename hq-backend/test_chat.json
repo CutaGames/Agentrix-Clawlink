@@ -1,0 +1,9 @@
+{
+  "agentId": "ARCHITECT-01",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Generate a short greeting"
+    }
+  ]
+}

@@ -34,7 +34,7 @@ export class HqDatabaseConfig implements TypeOrmOptionsFactory {
         __dirname + '/../entities/*.entity{.ts,.js}',
         __dirname + '/../modules/**/entities/*.entity{.ts,.js}',
       ],
-      synchronize: nodeEnv === 'development', // 开发环境自动同步
+      synchronize: this.configService.get('DB_SYNC') === 'true' || nodeEnv === 'development', // 允许通过环境变量强制同步
       logging: nodeEnv === 'development' ? ['error', 'warn'] : ['error'],
       namingStrategy: new SnakeNamingStrategy(),
       extra: {

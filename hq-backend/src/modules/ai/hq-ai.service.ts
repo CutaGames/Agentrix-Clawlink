@@ -71,19 +71,48 @@ export class HqAIService {
   private bedrockToken: string | null = null;
   private bedrockRegion: string = 'us-east-1';
   private proxyAgent: HttpsProxyAgent<string> | null = null;
+  private relayUrl: string | null = null;
   
   private readonly defaultProvider: AIProvider;
   private readonly embeddingModel: string;
 
+  private inferProviderFromModel(model?: string): AIProvider | null {
+    if (!model) return null;
+    const normalized = model.toLowerCase();
+
+    if (normalized.includes('gemini')) return 'gemini';
+    if (normalized.includes('deepseek')) return 'deepseek';
+    if (normalized.includes('gpt') || normalized.includes('openai')) return 'openai';
+    if (normalized.includes('claude') || normalized.includes('anthropic') || normalized.includes('bedrock')) {
+      if (normalized.includes('opus')) return 'bedrock-opus';
+      if (normalized.includes('sonnet')) return 'bedrock-sonnet';
+      if (normalized.includes('haiku')) return 'bedrock-haiku';
+      return 'bedrock-sonnet';
+    }
+
+    return null;
+  }
+
   // Agent 到 AI 模型的映射表
   // 注意：Claude 4 需要使用 cross-region inference profile ID
-  // 统一使用 AWS Bedrock，避免 Gemini 网络问题
+  // 规则：ARCH/CODER -> Bedrock (Opus/Sonnet)
+  //      GROWTH/BD -> Bedrock Haiku 4.5
+  //      其他 -> Gemini 2.5 Flash（额度用完回退 Gemini 1.5 Flash -> Bedrock Haiku 4.5）
   private readonly agentAIMapping: Map<string, AgentAIMapping> = new Map([
-    ['ARCHITECT-01', { agentCode: 'ARCHITECT-01', provider: 'bedrock-opus', model: 'us.anthropic.claude-opus-4-20250514-v1:0', description: '架构师 - Claude Opus 4.5 via Bedrock' }],
-    ['CODER-01', { agentCode: 'CODER-01', provider: 'bedrock-sonnet', model: 'us.anthropic.claude-sonnet-4-20250514-v1:0', description: 'Coder - Claude Sonnet 4.5 via Bedrock' }],
-    ['ANALYST-01', { agentCode: 'ANALYST-01', provider: 'bedrock-haiku', model: 'us.anthropic.claude-haiku-4-20250514-v1:0', description: 'Business Analyst - Claude Haiku 4.5 via Bedrock' }],
-    ['GROWTH-01', { agentCode: 'GROWTH-01', provider: 'bedrock-haiku', model: 'us.anthropic.claude-haiku-4-20250514-v1:0', description: '全球增长负责人 - Claude Haiku 4.5 via Bedrock' }],
-    ['BD-01', { agentCode: 'BD-01', provider: 'bedrock-haiku', model: 'us.anthropic.claude-haiku-4-20250514-v1:0', description: '全球生态发展负责人 - Claude Haiku 4.5 via Bedrock' }],
+    // 核心团队 - 使用 Bedrock Claude
+    ['ARCHITECT-01', { agentCode: 'ARCHITECT-01', provider: 'bedrock-opus', model: 'us.anthropic.claude-opus-4-5-20251101-v1:0', description: '首席架构师 - Claude Opus 4.5 via Bedrock' }],
+    ['CODER-01', { agentCode: 'CODER-01', provider: 'bedrock-sonnet', model: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', description: '高级开发工程师 - Claude Sonnet 4.5 via Bedrock' }],
+    ['GROWTH-01', { agentCode: 'GROWTH-01', provider: 'bedrock-haiku', model: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', description: '全球增长负责人 - Claude Haiku 4.5 via Bedrock' }],
+    ['BD-01', { agentCode: 'BD-01', provider: 'bedrock-haiku', model: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', description: '全球生态发展负责人 - Claude Haiku 4.5 via Bedrock' }],
+    
+    // 其他成员 - 使用 Gemini 2.5 Flash（额度用完回退）
+    ['ANALYST-01', { agentCode: 'ANALYST-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '业务分析师 - Gemini 2.5 Flash' }],
+    ['SOCIAL-01', { agentCode: 'SOCIAL-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '社交媒体运营官 - Gemini 2.5 Flash' }],
+    ['CONTENT-01', { agentCode: 'CONTENT-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '内容创作官 - Gemini 2.5 Flash' }],
+    ['SUPPORT-01', { agentCode: 'SUPPORT-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '客户成功经理 - Gemini 2.5 Flash' }],
+    ['SECURITY-01', { agentCode: 'SECURITY-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '安全审计官 - Gemini 2.5 Flash' }],
+    ['DEVREL-01', { agentCode: 'DEVREL-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '开发者关系 - Gemini 2.5 Flash' }],
+    ['LEGAL-01', { agentCode: 'LEGAL-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '合规顾问 - Gemini 2.5 Flash' }],
   ]);
 
   constructor(private configService: ConfigService) {
@@ -92,6 +121,12 @@ export class HqAIService {
     if (proxyUrl) {
       this.proxyAgent = new HttpsProxyAgent(proxyUrl);
       this.logger.log(`Proxy configured: ${proxyUrl}`);
+    }
+
+    // 初始化中转配置
+    this.relayUrl = this.configService.get<string>('HQ_AI_RELAY_URL');
+    if (this.relayUrl) {
+      this.logger.log(`AI Relay configured: ${this.relayUrl}`);
     }
 
     // 初始化 AWS Bedrock
@@ -205,15 +240,21 @@ export class HqAIService {
     messages: ChatMessage[],
     options: ChatCompletionOptions & { provider?: AIProvider } = {},
   ): Promise<ChatCompletionResult> {
-    const provider = this.selectProvider(options.provider);
+    // 如果配置了中转，优先使用中转
+    if (this.relayUrl) {
+      return this.relayChatCompletion(messages, options);
+    }
+
+    const inferredProvider = this.inferProviderFromModel(options.model);
+    const provider = this.selectProvider(inferredProvider || options.provider);
     
     switch (provider) {
       case 'bedrock-opus':
-        return this.bedrockChat(messages, { ...options, model: options.model || 'us.anthropic.claude-opus-4-20250514-v1:0' });
+        return this.bedrockChat(messages, { ...options, model: options.model || 'us.anthropic.claude-opus-4-5-20251101-v1:0' });
       case 'bedrock-sonnet':
-        return this.bedrockChat(messages, { ...options, model: options.model || 'us.anthropic.claude-sonnet-4-20250514-v1:0' });
+        return this.bedrockChat(messages, { ...options, model: options.model || 'us.anthropic.claude-sonnet-4-5-20250929-v1:0' });
       case 'bedrock-haiku':
-        return this.bedrockChat(messages, { ...options, model: options.model || 'us.anthropic.claude-haiku-4-20250514-v1:0' });
+        return this.bedrockChat(messages, { ...options, model: options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0' });
       case 'gemini':
         return this.geminiChat(messages, options);
       case 'openai':
@@ -224,6 +265,29 @@ export class HqAIService {
         return this.deepseekChat(messages, options);
       default:
         throw new Error(`Unknown provider: ${provider}`);
+    }
+  }
+
+  /**
+   * 中转补全
+   */
+  private async relayChatCompletion(
+    messages: ChatMessage[],
+    options: ChatCompletionOptions & { provider?: AIProvider } = {},
+  ): Promise<ChatCompletionResult> {
+    this.logger.log(`Relaying chat completion to: ${this.relayUrl}`);
+    try {
+      const response = await axios.post(this.relayUrl!, {
+        messages,
+        options,
+      }, {
+        timeout: 120000,
+        proxy: false,
+      });
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`AI Relay error: ${error.message}`);
+      throw error;
     }
   }
 
@@ -278,6 +342,7 @@ export class HqAIService {
         headers: {
           'Authorization': `Bearer ${this.bedrockToken}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         httpsAgent: this.proxyAgent || undefined,
         proxy: false,
@@ -316,7 +381,7 @@ export class HqAIService {
       throw new Error('Gemini not configured. Set GEMINI_API_KEY');
     }
 
-    const modelName = options.model || 'gemini-2.5-flash-preview-05-20';
+    const modelName = options.model || 'gemini-2.5-flash';
     const model = this.gemini.getGenerativeModel({ model: modelName });
 
     // 构建对话历史
@@ -340,6 +405,10 @@ export class HqAIService {
       throw new Error('Last message must be from user');
     }
 
+    const normalizedSystemInstruction = systemInstruction
+      ? { role: 'system', parts: [{ text: systemInstruction }] }
+      : undefined;
+
     try {
       const chat = model.startChat({
         history,
@@ -347,7 +416,7 @@ export class HqAIService {
           temperature: options.temperature ?? 0.7,
           maxOutputTokens: options.maxTokens ?? 4096,
         },
-        systemInstruction: systemInstruction || undefined,
+        systemInstruction: normalizedSystemInstruction,
       });
 
       const result = await chat.sendMessage(lastUserMessage.parts[0].text);
@@ -364,6 +433,42 @@ export class HqAIService {
         finishReason: 'stop',
       };
     } catch (error: any) {
+      if (normalizedSystemInstruction && String(error?.message || '').includes('system_instruction')) {
+        this.logger.warn('Gemini system_instruction rejected, retrying without system instruction');
+        const chat = model.startChat({
+          history,
+          generationConfig: {
+            temperature: options.temperature ?? 0.7,
+            maxOutputTokens: options.maxTokens ?? 4096,
+          },
+        });
+        const result = await chat.sendMessage(lastUserMessage.parts[0].text);
+        const response = result.response;
+        return {
+          content: response.text(),
+          model: modelName,
+          usage: {
+            promptTokens: response.usageMetadata?.promptTokenCount || 0,
+            completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+            totalTokens: response.usageMetadata?.totalTokenCount || 0,
+          },
+          finishReason: 'stop',
+        };
+      }
+      const errorMessage = `${error?.message || ''} ${JSON.stringify(error?.response?.data || {})}`;
+      const isQuotaError = /RESOURCE_EXHAUSTED|quota|429|Too Many Requests/i.test(errorMessage);
+
+      if (isQuotaError) {
+        if (modelName !== 'gemini-1.5-flash') {
+          this.logger.warn('Gemini quota exceeded, fallback to gemini-1.5-flash');
+          return this.geminiChat(messages, { ...options, model: 'gemini-1.5-flash' });
+        }
+        if (this.bedrockToken) {
+          this.logger.warn('Gemini quota exceeded, fallback to Bedrock Haiku 4.5');
+          return this.bedrockChat(messages, { ...options, model: 'us.anthropic.claude-haiku-4-5-20251001-v1:0' });
+        }
+      }
+
       this.logger.error(`Gemini error: ${error.message}`);
       throw error;
     }
@@ -384,12 +489,14 @@ export class HqAIService {
     
     // 构建消息
     const openaiMessages: OpenAI.ChatCompletionMessageParam[] = [];
+    const derivedSystemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
     
-    if (options.systemPrompt) {
-      openaiMessages.push({ role: 'system', content: options.systemPrompt });
+    if (derivedSystemPrompt) {
+      openaiMessages.push({ role: 'system', content: derivedSystemPrompt });
     }
     
     for (const msg of messages) {
+      if (msg.role === 'system') continue;
       openaiMessages.push({ role: msg.role, content: msg.content });
     }
 
@@ -439,10 +546,12 @@ export class HqAIService {
       }
     }
 
+    const derivedSystemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
+
     const response = await this.anthropic.messages.create({
       model,
       max_tokens: options.maxTokens ?? 4096,
-      system: options.systemPrompt,
+      system: derivedSystemPrompt,
       messages: claudeMessages,
     });
 
@@ -474,12 +583,14 @@ export class HqAIService {
     const model = options.model || 'deepseek-chat';
     
     const dsMessages: OpenAI.ChatCompletionMessageParam[] = [];
+    const derivedSystemPrompt = options.systemPrompt || messages.find(m => m.role === 'system')?.content;
     
-    if (options.systemPrompt) {
-      dsMessages.push({ role: 'system', content: options.systemPrompt });
+    if (derivedSystemPrompt) {
+      dsMessages.push({ role: 'system', content: derivedSystemPrompt });
     }
     
     for (const msg of messages) {
+      if (msg.role === 'system') continue;
       dsMessages.push({ role: msg.role, content: msg.content });
     }
 

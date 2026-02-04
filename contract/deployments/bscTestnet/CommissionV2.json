@@ -1,0 +1,14 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "contractName": "CommissionV2",
+  "address": "0x1de9d3e3EFbF30f0846aBC07b684C7E675138827",
+  "deployedAt": "2026-02-01T04:25:59.147Z",
+  "deployer": "0x2bee8AE78e4E41cf7facc4A4387A8F299dd2b8f3",
+  "constructorArgs": [
+    "0xc23453b4842FDc4360A0a3518E2C0f51a2069386",
+    "0x2bee8AE78e4E41cf7facc4A4387A8F299dd2b8f3"
+  ],
+  "transactionHash": "0xe9d7331672cf63aa791a1e3dfe590023848c14174c0d276b1495056a6cd6c6ec",
+  "blockNumber": 0
+}

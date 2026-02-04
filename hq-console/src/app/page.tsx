@@ -52,6 +52,14 @@ export default function HqDashboard() {
              <div className="space-y-6">
                 {agents.slice(0, 3).map((agent) => (
                   <div key={agent.id} className="flex items-center">
+                    {(() => {
+                      const initials = agent.name
+                        ?.split(' ')
+                        .map(part => part.charAt(0))
+                        .join('')
+                        .toUpperCase()
+                        .slice(0, 2) || 'AG';
+                      return (
                     <div className={`h-9 w-9 rounded-full flex items-center justify-center mr-4 border ${
                       agent.role.includes('Sales') ? 'bg-blue-900 border-blue-700' :
                       agent.role.includes('Dev') ? 'bg-purple-900 border-purple-700' :
@@ -61,8 +69,10 @@ export default function HqDashboard() {
                         agent.role.includes('Sales') ? 'text-blue-200' :
                         agent.role.includes('Dev') ? 'text-purple-200' :
                         'text-emerald-200'
-                      }`}>{agent.id}</span>
+                      }`}>{initials}</span>
                     </div>
+                      );
+                    })()}
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-slate-200">{agent.name} ({agent.role})</p>

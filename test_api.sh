@@ -1,1 +1,7 @@
-ssh -i ~/agentrix.pem ubuntu@57.182.89.146 'curl -s "http://localhost:3001/api/unified-marketplace/search?layer=resource&humanAccessible=true"'
+#!/bin/bash
+echo "Testing HQ chat completion API..."
+curl -s -X POST "http://57.182.89.146:8080/api/hq/chat/completion" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"hello, who are you?"}]}'
+echo ""
+echo "Done."

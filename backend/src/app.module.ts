@@ -76,6 +76,8 @@ import { ExpertProfileModule } from './modules/expert-profile/expert-profile.mod
 import { DatasetModule } from './modules/dataset/dataset.module';
 // 通用模块（守卫、装饰器等）
 import { CommonModule } from './modules/common/common.module';
+// Commerce Skill 模块
+import { CommerceModule } from './modules/commerce/commerce.module';
 
 @Module({
   imports: [
@@ -158,6 +160,8 @@ import { CommonModule } from './modules/common/common.module';
     DatasetModule,
     // 通用模块
     CommonModule,
+    // Commerce Skill
+    CommerceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -69,10 +69,12 @@ export function AgentRoster({ selectedAgentId, onSelectAgent }: AgentRosterProps
         >
           <div className="flex items-center space-x-3">
             <div className={cn(
-              "h-10 w-10 rounded-full flex items-center justify-center border",
+              "h-10 w-10 min-w-[40px] rounded-full flex items-center justify-center border",
               getRoleColor(agent.role)
             )}>
-              <span className="font-mono text-xs">{agent.id}</span>
+              <span className="font-mono text-[10px] leading-tight text-center px-1 break-all">
+                {agent.code || agent.id.substring(0, 4)}
+              </span>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
