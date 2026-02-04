@@ -1,11 +1,14 @@
 import axios from 'axios';
 
 // HQ Backend API URL with /api prefix
-const HQ_API_URL = process.env.NEXT_PUBLIC_HQ_URL || 'http://localhost:3005/api';
+const HQ_API_URL = process.env.NEXT_PUBLIC_HQ_API_URL || process.env.NEXT_PUBLIC_HQ_URL || 'http://57.182.89.146:8080/api';
+
+// 使用较长的超时时间以适应复杂 AI 推理 (5 分钟)
+const AI_TIMEOUT = 300000; // 5 minutes
 
 export const api = axios.create({
   baseURL: HQ_API_URL,
-  timeout: 30000,
+  timeout: AI_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -33,7 +36,8 @@ export interface Alert {
 }
 
 export interface AgentStatus {
-  id: string;
+  id: string;      // UUID
+  code: string;    // ARCHITECT-01, etc.
   name: string;
   role: string;
   status: 'running' | 'idle' | 'paused' | 'error';
@@ -59,13 +63,160 @@ export async function getAgentStatuses(): Promise<AgentStatus[]> {
 }
 
 export async function sendAgentCommand(agentId: string, command: string): Promise<{ response: string }> {
-  const { data } = await api.post('/hq/chat', { agentId, messages: [{ role: 'user', content: command }] });
-  return { response: data.content };
+  // Try the chat endpoint first, fallback to completion endpoint
+  try {
+    const { data } = await api.post('/hq/chat', { agentId, messages: [{ role: 'user', content: command }] });
+    return { response: data.content };
+  } catch (error: any) {
+    // Fallback to completion endpoint, then CLI chat if core endpoints fail
+    console.log('Chat endpoint failed, using completion fallback');
+    try {
+      const { data } = await api.post('/hq/chat/completion', { 
+        messages: [{ role: 'user', content: command }],
+        options: { 
+          model: getModelForAgent(agentId),
+          systemPrompt: getSystemPromptForAgent(agentId)
+        }
+      });
+      return { response: data.content };
+    } catch (completionError: any) {
+      console.log('Completion endpoint failed, using CLI chat fallback');
+      const { data } = await api.post('/hq/cli/chat', { agentId, message: command });
+      return { response: data.response || data.content || '' };
+    }
+  }
 }
 
-export async function chatWithAgent(agentId: string, messages: any[]): Promise<any> {
-  const { data } = await api.post('/hq/chat', { agentId, messages });
-  return data;
+// Agent to model mapping (matching backend configuration)
+export function getModelForAgent(agentCode: string): string {
+  const mapping: Record<string, string> = {
+    'ARCHITECT-01': 'us.anthropic.claude-opus-4-5-20251101-v1:0',
+    'CODER-01': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+    'GROWTH-01': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'BD-01': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'ANALYST-01': 'gemini-2.5-flash',
+    'SOCIAL-01': 'gemini-2.5-flash',
+    'CONTENT-01': 'gemini-2.5-flash',
+    'SUPPORT-01': 'gemini-2.5-flash',
+    'SECURITY-01': 'gemini-2.5-flash',
+    'DEVREL-01': 'gemini-2.5-flash',
+    'LEGAL-01': 'gemini-2.5-flash',
+  };
+  return mapping[agentCode] || 'gemini-2.5-flash';
+}
+
+// Tools description for agents
+const TOOLS_PROMPT = `
+You have access to the following tools to interact with the local development environment:
+
+## Available Tools
+
+### 1. read_file - Read file contents
+\`<tool>read_file</tool><params>{"filePath": "/absolute/path/to/file", "startLine": 1, "endLine": 100}</params>\`
+
+### 2. write_file - Create or overwrite a file
+\`<tool>write_file</tool><params>{"filePath": "/absolute/path/to/file", "content": "file content here"}</params>\`
+
+### 3. edit_file - Edit a file by string replacement
+\`<tool>edit_file</tool><params>{"filePath": "/absolute/path/to/file", "oldString": "exact text to replace", "newString": "replacement text"}</params>\`
+
+### 4. list_dir - List directory contents
+\`<tool>list_dir</tool><params>{"path": "/absolute/path/to/directory"}</params>\`
+
+### 5. run_command - Execute shell command
+\`<tool>run_command</tool><params>{"command": "ls -la", "cwd": "/optional/working/dir"}</params>\`
+
+### 6. fetch_url - Fetch content from URL
+\`<tool>fetch_url</tool><params>{"url": "https://example.com", "method": "GET"}</params>\`
+
+### 7. search_knowledge - Search local knowledge base
+\`<tool>search_knowledge</tool><params>{"query": "payment architecture", "category": "architecture"}</params>\`
+Categories: architecture, product, integration, development, code, config, scripts
+
+### 8. list_knowledge - List all knowledge base entries
+\`<tool>list_knowledge</tool><params>{}</params>\`
+
+## Important Rules
+- Always use absolute paths (e.g., /mnt/d/wsl/Ubuntu-24.04/Code/... or D:\\wsl\\...)
+- For edit_file, the oldString must be unique in the file
+- Include enough context in oldString to ensure uniqueness
+- Commands run in bash shell by default
+- The workspace root is: /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website
+
+When you need to use a tool, output the tool call in the format shown above. The system will execute the tool and return results, then you should continue your response based on those results.
+`;
+
+function getSystemPromptForAgent(agentCode: string): string {
+  const basePrompts: Record<string, string> = {
+    'ARCHITECT-01': 'You are the Chief Architect of Agentrix. You design system architecture, make technical decisions, and can read/modify code in the workspace.',
+    'CODER-01': 'You are a Senior Developer at Agentrix. You write high-quality code, solve programming problems, and can directly edit files and run commands.',
+    'ANALYST-01': 'You are a Business Analyst. You analyze requirements, provide business insights, and can access files and fetch data from URLs.',
+    'GROWTH-01': 'You are the Growth Lead. You develop growth strategies, analyze user data, and can access local files for analysis.',
+    'BD-01': 'You are the Business Development Lead. You handle partnerships, ecosystem growth, and can access relevant documents.',
+  };
+  const basePrompt = basePrompts[agentCode] || 'You are an AI assistant. Be helpful and concise.';
+  return basePrompt + '\n\n' + TOOLS_PROMPT;
+}
+
+export async function chatWithAgent(agentId: string, messages: any[], options?: { useToolPrompt?: boolean }): Promise<any> {
+  // 检查是否有 system 消息
+  const systemMessages = messages.filter(m => m.role === 'system');
+  const nonSystemMessages = messages.filter(m => m.role !== 'system');
+  const lastUserMessage = [...nonSystemMessages].reverse().find(m => m.role === 'user')?.content || '';
+  const systemContext = systemMessages.map(m => m.content).join('\n\n');
+  
+  // 如果有工具系统提示词，使用 completion 端点以确保提示词生效
+  if (systemMessages.length > 0) {
+    // 使用 completion 端点，它会透传所有消息包括 system
+    try {
+      const { data } = await api.post('/hq/chat/completion', { 
+        messages: messages,
+        options: { 
+          model: getModelForAgent(agentId)
+        }
+      });
+      return data;
+    } catch (error: any) {
+      console.error('Completion endpoint failed:', error.message);
+      // Fallback to CLI chat (cloud compatible)
+      const { data } = await api.post('/hq/cli/chat', {
+        agentId,
+        message: lastUserMessage,
+        context: systemContext || undefined,
+        model: getModelForAgent(agentId),
+      });
+      return { ...data, content: data.response };
+    }
+  }
+  
+  // 没有 system 消息时，使用标准 chat 端点 (带记忆功能)
+  try {
+    const { data } = await api.post('/hq/chat', { agentId, messages: nonSystemMessages });
+    return data;
+  } catch (error: any) {
+    // Fallback to completion endpoint if chat fails
+    console.log('Chat endpoint failed, using completion fallback');
+    const systemMessage = { role: 'system', content: getSystemPromptForAgent(agentId) };
+    const allMessages = [systemMessage, ...nonSystemMessages];
+    try {
+      const { data } = await api.post('/hq/chat/completion', { 
+        messages: allMessages,
+        options: { 
+          model: getModelForAgent(agentId)
+        }
+      });
+      return data;
+    } catch (completionError: any) {
+      console.log('Completion endpoint failed, using CLI chat fallback');
+      const { data } = await api.post('/hq/cli/chat', {
+        agentId,
+        message: lastUserMessage,
+        context: systemContext || undefined,
+        model: getModelForAgent(agentId),
+      });
+      return { ...data, content: data.response };
+    }
+  }
 }
 
 // ============================================
@@ -147,9 +298,48 @@ export const hqApi = {
     return data;
   },
 
-  // Agent Chat in Workspace
+  // Agent Chat in Workspace (旧接口，建议迁移到 unifiedChat)
   async chatWithAgent(workspaceId: string, request: AgentChatRequest): Promise<AgentChatResponse> {
     const { data } = await api.post(`/hq/workspace/${workspaceId}/chat`, request);
+    return data;
+  },
+
+  /**
+   * 统一聊天接口 - 推荐使用
+   * 解决问题1: 对话入口分散
+   * 解决问题2: 聊天记录统一存储
+   * 解决问题6: 简化 API 调用
+   */
+  async unifiedChat(request: {
+    agentCode: string;
+    message: string;
+    sessionId?: string;
+    mode?: 'workspace' | 'staff' | 'general';
+    context?: {
+      currentFile?: string;
+      selectedCode?: string;
+      topic?: string;
+    };
+  }): Promise<{
+    sessionId: string;
+    agentCode: string;
+    response: string;
+    model?: string;
+    timestamp: Date;
+  }> {
+    const { data } = await api.post('/hq/unified-chat', request);
+    return data;
+  },
+
+  // 获取 Agent 历史会话
+  async getAgentSessions(agentCode: string, limit = 10): Promise<any[]> {
+    const { data } = await api.get(`/hq/unified-chat/sessions/${agentCode}?limit=${limit}`);
+    return data;
+  },
+
+  // 获取会话详情
+  async getSession(sessionId: string): Promise<any> {
+    const { data } = await api.get(`/hq/unified-chat/session/${sessionId}`);
     return data;
   },
 

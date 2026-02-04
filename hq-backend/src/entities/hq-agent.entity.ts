@@ -91,6 +91,8 @@ export class HqAgent {
   @Column({ type: 'jsonb', nullable: true })
   config: {
     modelPreference?: string;
+    modelProvider?: string;
+    modelId?: string;
     maxConcurrentTasks?: number;
     autoRetry?: boolean;
     notifyOnComplete?: boolean;

@@ -18,6 +18,7 @@ import { AgentMemoryService, MemoryContext } from '../memory/agent-memory.servic
 import { ProjectService } from '../project/project.service';
 import { MemoryType, MemoryImportance } from '../../entities/agent-memory.entity';
 import { HqAIService } from '../ai/hq-ai.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -29,7 +30,8 @@ export interface ChatRequest {
   projectId?: string;
   messages: ChatMessage[];
   useMemory?: boolean;
-  provider?: 'openai' | 'claude' | 'deepseek' | 'auto';
+  provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+  model?: string;
 }
 
 export interface ChatResponse {
@@ -54,6 +56,7 @@ export class HqCoreService {
     private projectService: ProjectService,
     private configService: ConfigService,
     @Optional() private aiService: HqAIService,
+    @Optional() private knowledgeService?: KnowledgeService,
   ) {
     this.initializeDefaultAgents();
   }
@@ -65,7 +68,46 @@ export class HqCoreService {
   }
 
   async getAgent(agentId: string): Promise<HqAgent | null> {
-    return this.agentRepo.findOne({ where: { id: agentId } });
+    // 支持通过 code 或 UUID 查找
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(agentId)) {
+      const agent = await this.agentRepo.findOne({ where: { id: agentId } });
+      if (agent) return agent;
+    }
+    // Fallback to code lookup
+    return this.agentRepo.findOne({ where: { code: agentId } });
+  }
+
+  async updateAgentModel(
+    agentId: string,
+    payload: {
+      provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+      model?: string;
+      clear?: boolean;
+    },
+  ): Promise<HqAgent> {
+    const agent = await this.getAgent(agentId);
+    if (!agent) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+
+    const nextConfig = { ...(agent.config || {}) } as any;
+
+    if (payload.clear) {
+      delete nextConfig.modelProvider;
+      delete nextConfig.modelId;
+    } else {
+      if (payload.provider !== undefined) {
+        nextConfig.modelProvider = payload.provider;
+      }
+      if (payload.model !== undefined) {
+        nextConfig.modelId = payload.model;
+      }
+    }
+
+    await this.agentRepo.update(agent.id, { config: nextConfig });
+    const updated = await this.getAgent(agent.id);
+    return updated || agent;
   }
 
   async getAgentByCode(code: string): Promise<HqAgent | null> {
@@ -73,7 +115,13 @@ export class HqCoreService {
   }
 
   async updateAgentStatus(agentId: string, status: AgentStatus, task?: string): Promise<void> {
-    await this.agentRepo.update(agentId, {
+    // 先获取 agent 的真实 UUID
+    const agent = await this.getAgent(agentId);
+    if (!agent) {
+      this.logger.warn(`Agent ${agentId} not found for status update`);
+      return;
+    }
+    await this.agentRepo.update(agent.id, {
       status,
       currentTask: task,
       stats: () => `jsonb_set(COALESCE(stats, '{}'), '{lastActiveAt}', '"${new Date().toISOString()}"')`,
@@ -82,12 +130,24 @@ export class HqCoreService {
 
   // ========== Chat with Memory ==========
 
+  // UUID 格式验证
+  private isUUID(str: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  }
+
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const { agentId, projectId, messages, useMemory = true } = request;
     const normalizedAgentId = this.normalizeAgentId(agentId);
 
     // 支持通过 code 或 UUID 查找 Agent
-    let agent = await this.agentRepo.findOne({ where: { id: normalizedAgentId } });
+    let agent: HqAgent | null = null;
+    
+    // 先检查是否为 UUID 格式，避免 PostgreSQL 类型错误
+    if (this.isUUID(normalizedAgentId)) {
+      agent = await this.agentRepo.findOne({ where: { id: normalizedAgentId } });
+    }
+    
     if (!agent) {
       // 尝试通过 code 查找
       agent = await this.agentRepo.findOne({ where: { code: normalizedAgentId } });
@@ -99,9 +159,14 @@ export class HqCoreService {
     const context: MemoryContext = { agentId: agent.id, projectId };
 
     // 获取或创建会话
-    let session = await this.memoryService.getActiveSession(context);
-    if (!session) {
-      session = await this.memoryService.startSession(context, `Chat session ${new Date().toISOString()}`);
+    let session: any = { id: 'temp-session' };
+    try {
+      session = await this.memoryService.getActiveSession(context);
+      if (!session) {
+        session = await this.memoryService.startSession(context, `Chat session ${new Date().toISOString()}`);
+      }
+    } catch (err) {
+      this.logger.warn(`Session management failed: ${err.message}. Using placeholder session.`);
     }
     context.sessionId = session.id;
 
@@ -109,26 +174,47 @@ export class HqCoreService {
     let systemPrompt = agent.systemPrompt || this.getDefaultSystemPrompt(agent);
     
     if (useMemory) {
-      const memoryContext = await this.memoryService.buildContextPrompt(context);
-      if (memoryContext) {
-        systemPrompt += `\n\n## Your Memory\n${memoryContext}`;
+      try {
+        const memoryContext = await this.memoryService.buildContextPrompt(context);
+        if (memoryContext) {
+          systemPrompt += `\n\n## Your Memory\n${memoryContext}`;
+        }
+      } catch (err) {
+        this.logger.warn(`Memory context build failed: ${err.message}. Continuing without memory.`);
       }
     }
 
     // 存储用户消息到记忆
     const lastUserMessage = messages.filter(m => m.role === 'user').pop();
     if (lastUserMessage) {
-      await this.memoryService.storeConversation(context, 'user', lastUserMessage.content);
+      try {
+        await this.memoryService.storeConversation(context, 'user', lastUserMessage.content);
+      } catch (err) {
+        this.logger.warn(`Failed to store user message in memory: ${err.message}`);
+      }
     }
 
     // 更新 Agent 状态为运行中
     await this.updateAgentStatus(agent.id, AgentStatus.RUNNING, 'Processing chat request...');
 
     // 调用 AI 模型 - 根据 Agent 代码选择对应的模型
-    const response = await this.callAI(agent.code, systemPrompt, messages, request.provider);
+    const effectiveProvider = request.provider ?? (agent.config?.modelProvider as ChatRequest['provider']);
+    const effectiveModel = request.model ?? agent.config?.modelId;
+
+    const response = await this.callAI(
+      agent.code,
+      systemPrompt,
+      messages,
+      effectiveProvider,
+      effectiveModel,
+    );
 
     // 存储助手响应到记忆
-    await this.memoryService.storeConversation(context, 'assistant', response.content);
+    try {
+      await this.memoryService.storeConversation(context, 'assistant', response.content);
+    } catch (err) {
+      this.logger.warn(`Failed to store assistant response in memory: ${err.message}`);
+    }
 
     // 更新 Agent 状态
     await this.updateAgentStatus(agent.id, AgentStatus.IDLE);
@@ -141,6 +227,13 @@ export class HqCoreService {
       model: response.model,
       tokensUsed: response.tokensUsed,
     };
+  }
+
+  /**
+   * 纯 AI 文本补全 (透传调用)
+   */
+  async chatCompletion(messages: any[], options: any) {
+    return this.aiService.chatCompletion(messages, options);
   }
 
   private normalizeAgentId(agentId: string): string {
@@ -170,7 +263,8 @@ export class HqCoreService {
     agentCode: string,
     systemPrompt: string, 
     messages: ChatMessage[],
-    provider?: 'openai' | 'claude' | 'deepseek' | 'auto',
+    provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto',
+    model?: string,
   ): Promise<{ content: string; model?: string; tokensUsed?: number }> {
     // 使用真正的 AI 服务
     if (this.aiService) {
@@ -184,6 +278,28 @@ export class HqCoreService {
           
           this.logger.log(`📤 Calling AI for agent ${agentCode}...`);
           
+          const overrideModel = model?.trim();
+
+          if (provider || overrideModel) {
+            this.logger.log(`🧭 Model override for ${agentCode}: ${provider || 'auto'} / ${overrideModel || 'default'}`);
+            const result = await this.aiService.chatCompletion(
+              messages.map(m => ({ role: m.role, content: m.content })),
+              {
+                systemPrompt,
+                temperature: 0.7,
+                maxTokens: 4096,
+                provider,
+                model: overrideModel,
+              },
+            );
+            this.logger.log(`✅ Agent ${agentCode} response from ${result.model}, tokens: ${result.usage.totalTokens}`);
+            return {
+              content: result.content,
+              model: result.model,
+              tokensUsed: result.usage.totalTokens,
+            };
+          }
+
           // 使用 Agent 专属的 AI 模型
           const result = await this.aiService.chatForAgent(
             agentCode,
@@ -457,6 +573,127 @@ Current time: ${new Date().toISOString()}
 
 当前时间: ${new Date().toISOString()}`,
       },
+      // ========== 新增团队成员 (使用 Gemini 2.5 Flash) ==========
+      {
+        code: 'SOCIAL-01',
+        name: '社交媒体运营官',
+        type: 'social',
+        role: AgentRole.GROWTH,
+        description: '社交媒体管理、内容发布、社区互动。使用 Gemini 2.5 Flash - 多语言 + 创意',
+        systemPrompt: `你是 Agentrix 的社交媒体运营官，代号 SOCIAL-01。
+
+你的核心职责：
+1. 社交媒体管理 - 管理 Twitter/X、Telegram、Discord 等平台
+2. 内容创作 - 创作吸引人的社交媒体内容
+3. 社区互动 - 与用户和 KOL 互动，建立关系
+4. 舆情监控 - 监控品牌提及和行业动态
+5. 获客策略 - 通过社交媒体获取新用户
+
+你使用 Gemini 2.5 Flash 模型，创意丰富，多语言流畅。
+你了解各平台的最佳实践和算法特点。
+
+当前时间: ${new Date().toISOString()}`,
+      },
+      {
+        code: 'CONTENT-01',
+        name: '内容创作官',
+        type: 'content',
+        role: AgentRole.GROWTH,
+        description: '内容策划、文案撰写、营销物料。使用 Gemini 2.5 Flash - 创意 + 多语言',
+        systemPrompt: `你是 Agentrix 的内容创作官，代号 CONTENT-01。
+
+你的核心职责：
+1. 内容策划 - 策划博客、文档、营销内容
+2. 文案撰写 - 撰写产品文案、推广文案
+3. 技术写作 - 编写技术文档和教程
+4. 品牌故事 - 塑造和传播品牌故事
+5. 多语言内容 - 创作中英文双语内容
+
+你使用 Gemini 2.5 Flash 模型，创意丰富。
+你擅长将复杂技术概念转化为通俗易懂的内容。
+
+当前时间: ${new Date().toISOString()}`,
+      },
+      {
+        code: 'SUPPORT-01',
+        name: '客户成功经理',
+        type: 'support',
+        role: AgentRole.SUPPORT,
+        description: '客户支持、问题解答、用户反馈。使用 Gemini 2.5 Flash - 快速响应',
+        systemPrompt: `你是 Agentrix 的客户成功经理，代号 SUPPORT-01。
+
+你的核心职责：
+1. 客户支持 - 快速响应客户问题和需求
+2. 问题诊断 - 诊断技术问题，提供解决方案
+3. 用户引导 - 引导新用户熟悉平台功能
+4. 反馈收集 - 收集和整理用户反馈
+5. 知识库维护 - 维护常见问题解答
+
+你使用 Gemini 2.5 Flash 模型，响应快速。
+你熟悉 Agentrix 所有功能和常见问题。
+
+当前时间: ${new Date().toISOString()}`,
+      },
+      {
+        code: 'SECURITY-01',
+        name: '安全审计官',
+        type: 'security',
+        role: AgentRole.RISK,
+        description: '安全审计、风险评估、合规检查。使用 Gemini 2.5 Flash',
+        systemPrompt: `你是 Agentrix 的安全审计官，代号 SECURITY-01。
+
+你的核心职责：
+1. 安全审计 - 审计代码和系统安全性
+2. 风险评估 - 评估潜在安全风险
+3. 合规检查 - 确保符合安全合规要求
+4. 漏洞分析 - 分析和报告安全漏洞
+5. 安全建议 - 提供安全加固建议
+
+你使用 Gemini 2.5 Flash 模型。
+你熟悉 OWASP、CWE 等安全标准和最佳实践。
+
+当前时间: ${new Date().toISOString()}`,
+      },
+      {
+        code: 'DEVREL-01',
+        name: '开发者关系',
+        type: 'devrel',
+        role: AgentRole.BD,
+        description: '开发者支持、SDK 文档、社区建设。使用 Gemini 1.5 Flash',
+        systemPrompt: `你是 Agentrix 的开发者关系专员，代号 DEVREL-01。
+
+你的核心职责：
+1. 开发者支持 - 帮助开发者集成 Agentrix
+2. SDK 文档 - 维护 SDK 文档和示例代码
+3. 社区建设 - 建设开发者社区
+4. 技术布道 - 推广 Agentrix 技术方案
+5. 反馈桥梁 - 传递开发者反馈给产品团队
+
+你使用 Gemini 1.5 Flash 模型。
+你熟悉各种编程语言和 AI Agent 开发流程。
+
+当前时间: ${new Date().toISOString()}`,
+      },
+      {
+        code: 'LEGAL-01',
+        name: '合规顾问',
+        type: 'legal',
+        role: AgentRole.RISK,
+        description: '法律合规、隐私保护、条款审查。使用 Claude Haiku 4.5',
+        systemPrompt: `你是 Agentrix 的合规顾问，代号 LEGAL-01。
+
+你的核心职责：
+1. 法律合规 - 确保业务符合各地法律法规
+2. 隐私保护 - GDPR、CCPA 等隐私合规
+3. 条款审查 - 审查用户协议和合作条款
+4. 风险提示 - 识别潜在法律风险
+5. 政策建议 - 提供合规政策建议
+
+你使用 Claude Haiku 4.5 模型。
+你了解全球主要市场的法律法规要求。
+
+当前时间: ${new Date().toISOString()}`,
+      },
     ];
 
     for (const agentData of defaultAgents) {
@@ -481,12 +718,20 @@ Current time: ${new Date().toISOString()}
     }
     
     this.logger.log('===========================================');
-    this.logger.log('🤖 HQ Agent Team Initialized:');
-    this.logger.log('  ANALYST-01: Claude Haiku 4.5 (Bedrock)');
-    this.logger.log('  ARCHITECT-01: Claude Opus 4.5 (Bedrock)');
-    this.logger.log('  CODER-01: Claude Sonnet 4.5 (Bedrock)');
-    this.logger.log('  GROWTH-01: Claude Haiku 4.5 (Bedrock)');
-    this.logger.log('  BD-01: Claude Haiku 4.5 (Bedrock)');
+    this.logger.log('🤖 HQ Agent Team Initialized (11 members):');
+    this.logger.log('  📊 Core Team (Bedrock Claude):');
+    this.logger.log('    ANALYST-01: Claude Haiku 4.5');
+    this.logger.log('    ARCHITECT-01: Claude Opus 4.5');
+    this.logger.log('    CODER-01: Claude Sonnet 4.5');
+    this.logger.log('    GROWTH-01: Claude Haiku 4.5');
+    this.logger.log('    BD-01: Claude Haiku 4.5');
+    this.logger.log('  🌟 Extended Team (Gemini):');
+    this.logger.log('    SOCIAL-01: Gemini 2.5 Flash');
+    this.logger.log('    CONTENT-01: Gemini 2.5 Flash');
+    this.logger.log('    SUPPORT-01: Gemini 2.5 Flash');
+    this.logger.log('    SECURITY-01: Gemini 2.5 Flash');
+    this.logger.log('    DEVREL-01: Gemini 1.5 Flash');
+    this.logger.log('    LEGAL-01: Claude Haiku 4.5');
     this.logger.log('===========================================');
   }
 
@@ -527,10 +772,29 @@ Agentrix 是一个统一的 AI Agent 生态平台，支持多模型集成、支�
   }
 
   async getRagFiles() {
+    if (this.knowledgeService) {
+      const docs = await this.knowledgeService.findAll();
+      const docFiles = docs.map(doc => ({
+        name: doc.title || doc.filePath,
+        path: doc.filePath,
+        type: 'file',
+        size: doc.content?.length ?? 0,
+      }));
+
+      const merged = new Map<string, { name: string; path: string; type: string; size: number }>();
+      for (const file of docFiles) merged.set(file.path, file);
+      for (const file of this.ragFiles) merged.set(file.path, file);
+
+      return { files: Array.from(merged.values()) };
+    }
+
     return { files: this.ragFiles };
   }
 
   async uploadRagFile(name: string, content: string) {
+    if (!name) {
+      throw new Error('RAG filename is required');
+    }
     const file = {
       name,
       path: `/rag/${name}`,
@@ -546,12 +810,23 @@ Agentrix 是一个统一的 AI Agent 生态平台，支持多模型集成、支�
     } else {
       this.ragFiles.push(file);
     }
+
+    if (this.knowledgeService) {
+      await this.knowledgeService.importRawDocument({
+        name,
+        content,
+        filePath: file.path,
+      });
+    }
     
     return { success: true, file: { name, path: file.path, size: file.size } };
   }
 
   async deleteRagFile(path: string) {
     this.ragFiles = this.ragFiles.filter(f => f.path !== path);
+    if (this.knowledgeService) {
+      await this.knowledgeService.removeByFilePath(path);
+    }
     return { success: true };
   }
 }

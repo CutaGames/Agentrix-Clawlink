@@ -1,6 +1,7 @@
 /**
  * HQ Core Controller
- * 统一的 API 入口
+ * 
+ * 统一的 API 入口，解决问题6: 简化 API 调用
  */
 
 import {
@@ -15,7 +16,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { HqCoreService, ChatRequest, ChatResponse } from './hq-core.service';
+import { HqCoreService } from './hq-core.service';
 import { UnifiedChatService, UnifiedChatRequest, UnifiedChatResponse } from './unified-chat.service';
 import { HqAgent } from '../../entities/hq-agent.entity';
 import { HqAlert, AlertStatus, AlertSeverity } from '../../entities/hq-alert.entity';
@@ -50,6 +51,20 @@ export class HqCoreController {
   @ApiOperation({ summary: '获取单个 Agent' })
   async getAgent(@Param('agentId') agentId: string): Promise<HqAgent | null> {
     return this.hqCoreService.getAgent(agentId);
+  }
+
+  @Put('agents/:agentId/model')
+  @ApiOperation({ summary: '更新 Agent 模型设置' })
+  async updateAgentModel(
+    @Param('agentId') agentId: string,
+    @Body()
+    body: {
+      provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+      model?: string;
+      clear?: boolean;
+    },
+  ): Promise<HqAgent> {
+    return this.hqCoreService.updateAgentModel(agentId, body);
   }
 
   // ========== 统一聊天接口 (新) ==========
@@ -91,15 +106,16 @@ export class HqCoreController {
   // ========== 旧聊天接口 (保持兼容) ==========
 
   @Post('chat')
-  @ApiOperation({ summary: '与 Agent 对话' })
+  @ApiOperation({ summary: '与 Agent 对话 (旧接口，建议迁移到 unified-chat)' })
   async chat(@Body() request: ChatRequest): Promise<ChatResponse> {
-    this.logger.log(`Chat request for agent ${request.agentId}`);
+    this.logger.log(`Legacy chat request for agent ${request.agentId}`);
     return this.hqCoreService.chat(request);
   }
 
   @Post('chat/completion')
-  @ApiOperation({ summary: 'AI 文本补全' })
+  @ApiOperation({ summary: '纯 AI 文本补全 (用于分布式/中转)' })
   async chatCompletion(@Body() request: any) {
+    this.logger.log(`AI Completion relay request`);
     return this.hqCoreService.chatCompletion(request.messages, request.options);
   }
 
@@ -108,15 +124,37 @@ export class HqCoreController {
   @Get('alerts')
   @ApiOperation({ summary: '获取告警列表' })
   async getAlerts(
+    @Query('projectId') projectId?: string,
     @Query('status') status?: AlertStatus,
     @Query('severity') severity?: AlertSeverity,
     @Query('limit') limit?: string,
   ): Promise<HqAlert[]> {
     return this.hqCoreService.getAlerts({
+      projectId,
       status,
       severity,
       limit: limit ? parseInt(limit) : undefined,
     });
+  }
+
+  @Put('alerts/:alertId/acknowledge')
+  @ApiOperation({ summary: '确认告警' })
+  async acknowledgeAlert(
+    @Param('alertId') alertId: string,
+    @Body() body: { userId: string },
+  ): Promise<{ success: boolean }> {
+    await this.hqCoreService.acknowledgeAlert(alertId, body.userId);
+    return { success: true };
+  }
+
+  @Put('alerts/:alertId/resolve')
+  @ApiOperation({ summary: '解决告警' })
+  async resolveAlert(
+    @Param('alertId') alertId: string,
+    @Body() body: { userId: string; notes?: string },
+  ): Promise<{ success: boolean }> {
+    await this.hqCoreService.resolveAlert(alertId, body.userId, body.notes);
+    return { success: true };
   }
 
   // ========== Knowledge Base ==========
@@ -131,5 +169,24 @@ export class HqCoreController {
   @ApiOperation({ summary: '保存知识库内容' })
   async saveKnowledgeBase(@Body() body: { content: string }) {
     return this.hqCoreService.saveKnowledgeBase(body.content);
+  }
+
+  @Get('rag-files')
+  @ApiOperation({ summary: '获取 RAG 文件列表' })
+  async getRagFiles() {
+    return this.hqCoreService.getRagFiles();
+  }
+
+  @Post('rag-files/upload')
+  @ApiOperation({ summary: '上传 RAG 文件' })
+  async uploadRagFile(@Body() body: { name?: string; filename?: string; content: string }) {
+    const name = body.name || body.filename;
+    return this.hqCoreService.uploadRagFile(name, body.content);
+  }
+
+  @Delete('rag-files/:filename')
+  @ApiOperation({ summary: '删除 RAG 文件' })
+  async deleteRagFile(@Param('filename') filename: string) {
+    return this.hqCoreService.deleteRagFile(`/rag/${filename}`);
   }
 }
