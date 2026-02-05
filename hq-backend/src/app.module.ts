@@ -29,6 +29,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
 import { CLIModule } from './modules/cli/cli.module';
 import { SocialModule } from './modules/social/social.module';
+import { TickModule } from './hq/tick/tick.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -72,6 +73,9 @@ import { AppService } from './app.service';
 
     // IDE/CLI 接口
     CLIModule,
+
+    // 自主运行系统
+    TickModule,
   ],
   controllers: [AppController],
   providers: [AppService],

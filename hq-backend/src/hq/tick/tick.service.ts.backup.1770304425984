@@ -1,0 +1,230 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThan } from 'typeorm';
+
+// 简化版 - 后续可以连接实际的 Entity
+interface TickResult {
+  tickId: string;
+  timestamp: Date;
+  budgetStatus: {
+    daily_budget: number;
+    daily_spent: number;
+    remaining: number;
+  };
+  agentStatuses: AgentStatus[];
+  tasksProcessed: number;
+  actionsPlanned: string[];
+  nextTickIn: string;
+}
+
+interface AgentStatus {
+  agentId: string;
+  status: 'idle' | 'working' | 'offline';
+  currentTask: string | null;
+  dailySpent: number;
+  dailyBudget: number;
+}
+
+@Injectable()
+export class TickService {
+  private readonly logger = new Logger(TickService.name);
+  
+  // 模拟数据 - 后续连接数据库
+  private dailyBudget = 20.00;
+  private dailySpent = 0;
+  
+  private agents: AgentStatus[] = [
+    { agentId: 'ARCHITECT-01', status: 'idle', currentTask: null, dailySpent: 0, dailyBudget: 10.00 },
+    { agentId: 'DEV-01', status: 'idle', currentTask: null, dailySpent: 0, dailyBudget: 2.00 },
+    { agentId: 'DEV-02', status: 'idle', currentTask: null, dailySpent: 0, dailyBudget: 2.00 },
+    { agentId: 'MARKET-01', status: 'idle', currentTask: null, dailySpent: 0, dailyBudget: 3.00 },
+    { agentId: 'OPS-01', status: 'idle', currentTask: null, dailySpent: 0, dailyBudget: 2.00 },
+    { agentId: 'RESOURCE-01', status: 'idle', currentTask: null, dailySpent: 0, dailyBudget: 1.00 },
+  ];
+
+  private taskQueue: any[] = [];
+
+  /**
+   * 主 Tick 函数 - 每15分钟触发一次
+   * 这是 ARCHITECT-01 的"心跳"，让我能够自主思考和行动
+   */
+  async executeTick(triggeredBy: string = 'cron'): Promise<TickResult> {
+    const tickId = `tick_${Date.now()}`;
+    this.logger.log(`=== Tick ${tickId} 开始 (触发者: ${triggeredBy}) ===`);
+
+    // 1. 检查预算
+    const budgetStatus = this.checkBudget();
+    if (budgetStatus.remaining <= 0) {
+      this.logger.warn('今日预算已用完，暂停自主操作');
+      return {
+        tickId,
+        timestamp: new Date(),
+        budgetStatus,
+        agentStatuses: this.agents,
+        tasksProcessed: 0,
+        actionsPlanned: ['预算耗尽，等待明日重置'],
+        nextTickIn: '15 minutes',
+      };
+    }
+
+    // 2. 检查各 Agent 状态
+    const agentStatuses = this.checkAgentStatuses();
+
+    // 3. 处理待办任务
+    const tasksProcessed = await this.processPendingTasks();
+
+    // 4. 规划下一步行动
+    const actionsPlanned = await this.planNextActions();
+
+    // 5. 记录 Tick 日志
+    const result: TickResult = {
+      tickId,
+      timestamp: new Date(),
+      budgetStatus,
+      agentStatuses,
+      tasksProcessed,
+      actionsPlanned,
+      nextTickIn: '15 minutes',
+    };
+
+    this.logger.log(`=== Tick ${tickId} 完成 ===`);
+    return result;
+  }
+
+  /**
+   * 检查预算状态
+   */
+  private checkBudget() {
+    return {
+      daily_budget: this.dailyBudget,
+      daily_spent: this.dailySpent,
+      remaining: this.dailyBudget - this.dailySpent,
+    };
+  }
+
+  /**
+   * 检查所有 Agent 状态
+   */
+  private checkAgentStatuses(): AgentStatus[] {
+    return this.agents.map(agent => ({
+      ...agent,
+      status: agent.dailySpent >= agent.dailyBudget ? 'offline' : agent.status,
+    }));
+  }
+
+  /**
+   * 处理待办任务
+   */
+  private async processPendingTasks(): Promise<number> {
+    const pendingTasks = this.taskQueue.filter(t => t.status === 'pending');
+    let processed = 0;
+
+    for (const task of pendingTasks) {
+      const agent = this.agents.find(a => a.agentId === task.assignedTo);
+      if (agent && agent.status === 'idle' && agent.dailySpent < agent.dailyBudget) {
+        // 分配任务给 Agent
+        agent.status = 'working';
+        agent.currentTask = task.title;
+        task.status = 'in_progress';
+        processed++;
+        this.logger.log(`任务 "${task.title}" 已分配给 ${agent.agentId}`);
+      }
+    }
+
+    return processed;
+  }
+
+  /**
+   * 规划下一步行动 - ARCHITECT-01 的核心决策逻辑
+   */
+  private async planNextActions(): Promise<string[]> {
+    const actions: string[] = [];
+
+    // 检查是否有空闲的 Agent
+    const idleAgents = this.agents.filter(a => a.status === 'idle' && a.dailySpent < a.dailyBudget);
+    
+    if (idleAgents.length > 0) {
+      // 为空闲 Agent 规划任务
+      for (const agent of idleAgents) {
+        switch (agent.agentId) {
+          case 'RESOURCE-01':
+            actions.push(`${agent.agentId}: 搜索免费 API 资源和云创计划`);
+            break;
+          case 'MARKET-01':
+            actions.push(`${agent.agentId}: 准备社交媒体内容`);
+            break;
+          case 'DEV-01':
+          case 'DEV-02':
+            actions.push(`${agent.agentId}: 检查待开发功能列表`);
+            break;
+          case 'OPS-01':
+            actions.push(`${agent.agentId}: 监控系统健康状态`);
+            break;
+        }
+      }
+    }
+
+    if (actions.length === 0) {
+      actions.push('所有 Agent 正在工作中，等待任务完成');
+    }
+
+    return actions;
+  }
+
+  /**
+   * 添加新任务到队列
+   */
+  async addTask(task: {
+    title: string;
+    description: string;
+    assignedTo: string;
+    priority?: number;
+  }) {
+    const newTask = {
+      id: `task_${Date.now()}`,
+      ...task,
+      priority: task.priority || 5,
+      status: 'pending',
+      createdAt: new Date(),
+    };
+    this.taskQueue.push(newTask);
+    this.logger.log(`新任务已添加: ${task.title} -> ${task.assignedTo}`);
+    return newTask;
+  }
+
+  /**
+   * 获取任务队列
+   */
+  getTaskQueue() {
+    return this.taskQueue;
+  }
+
+  /**
+   * 获取 Agent 状态
+   */
+  getAgentStatuses() {
+    return this.agents;
+  }
+
+  /**
+   * 更新 Agent 状态
+   */
+  updateAgentStatus(agentId: string, status: 'idle' | 'working' | 'offline', currentTask?: string) {
+    const agent = this.agents.find(a => a.agentId === agentId);
+    if (agent) {
+      agent.status = status;
+      agent.currentTask = currentTask || null;
+    }
+  }
+
+  /**
+   * 记录 API 消费
+   */
+  recordSpending(agentId: string, amount: number) {
+    const agent = this.agents.find(a => a.agentId === agentId);
+    if (agent) {
+      agent.dailySpent += amount;
+      this.dailySpent += amount;
+    }
+  }
+}

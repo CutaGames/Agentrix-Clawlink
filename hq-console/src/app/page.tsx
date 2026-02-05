@@ -1,117 +1,259 @@
 "use client";
 
-import { Button } from "@/components/ui/button"
-import { Bot, Zap } from "lucide-react"
-import { KpiGrid } from "@/components/bridge/KpiGrid"
-import { AlertFeed } from "@/components/bridge/AlertFeed"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { useAgents } from "@/hooks/useAgents"
-import { ShieldAlert, DollarSign } from "lucide-react"
+import React, { useState } from 'react';
+import { useAgents, useAgentChat } from '@/hooks/useAgents';
+import { StrategicPlanBoard } from '@/components/StrategicPlanBoard';
+import { AgentMatrix } from '@/components/AgentMatrix';
+import { CommandCenter } from '@/components/CommandCenter';
 
-export default function HqDashboard() {
-  const { agents } = useAgents();
+type ViewMode = 'dashboard' | 'chat';
+
+export default function HQConsolePage() {
+  const { agents, loading, refetch } = useAgents();
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>('ARCHITECT-01');
+  const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+  const chat = useAgentChat(selectedAgentId);
+
+  const handleAgentSelect = (agentId: string) => {
+    setSelectedAgentId(agentId);
+    setViewMode('chat');
+  };
+
+  const handleSendCommand = (to: string, content: string) => {
+    // 如果是发给当前选中的 agent，直接发送
+    if (to === selectedAgentId) {
+      chat.sendMessage(content);
+    } else {
+      // 切换到目标 agent 并发送
+      setSelectedAgentId(to);
+      setViewMode('chat');
+      // 延迟发送，等待 agent 切换
+      setTimeout(() => {
+        chat.sendMessage(content);
+      }, 100);
+    }
+  };
 
   return (
-    <main className="flex min-h-screen flex-col p-6 md:p-8">
-      {/* Header / Operations Room Title */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
-            CEO Command Room <span className="text-slate-500 font-mono text-xl">V2.0</span>
-          </h1>
-          <p className="text-slate-400 mt-1">Operational Mode: <span className="text-emerald-400 font-mono font-bold">AUTOMATED (24/7)</span></p>
+    <div className="min-h-screen bg-gray-950 text-white">
+      {/* Top Navigation */}
+      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold">🏛️ Agentrix HQ</h1>
+            <span className="px-3 py-1 bg-blue-600 rounded-full text-sm">指挥中心</span>
+          </div>
+          <div className="flex items-center gap-4">
+            {/* View Mode Toggle */}
+            <div className="flex bg-gray-800 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('dashboard')}
+                className={`px-4 py-2 rounded-md text-sm transition-colors ${
+                  viewMode === 'dashboard' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                📊 总览
+              </button>
+              <button
+                onClick={() => setViewMode('chat')}
+                className={`px-4 py-2 rounded-md text-sm transition-colors ${
+                  viewMode === 'chat' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                💬 对话
+              </button>
+            </div>
+            {/* Status Indicator */}
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-sm text-gray-400">系统在线</span>
+            </div>
+            {/* Refresh Button */}
+            <button
+              onClick={refetch}
+              disabled={loading}
+              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+            >
+              🔄 刷新
+            </button>
+          </div>
         </div>
-        <div className="flex space-x-4">
-          <Button variant="outline" className="text-slate-200 border-slate-700 hover:bg-slate-800">
-            <Zap className="mr-2 h-4 w-4 text-yellow-400" /> Emergency Stop
-          </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700">
-            <Bot className="mr-2 h-4 w-4" /> Deploy New Agent
-          </Button>
-        </div>
-      </div>
+      </header>
 
-      {/* Layer 1: The Radar (Status Overview) */}
-      <KpiGrid />
-
-      <div className="grid gap-6 md:grid-cols-7 lg:grid-cols-7 mt-8">
-        
-        {/* Layer 2: Alert Feed (The Radar) */}
-        <div className="col-span-3">
-          <AlertFeed />
-        </div>
-
-        {/* Layer 3: Active Operations (The Workbench Preview) */}
-        <Card className="col-span-4 bg-slate-900 border-slate-800">
-           <CardHeader>
-            <CardTitle className="text-xl text-white">Agent Activity Log</CardTitle>
-            <CardDescription className="text-slate-400">What your team is working on right now.</CardDescription>
-           </CardHeader>
-           <CardContent>
-             <div className="space-y-6">
-                {agents.slice(0, 3).map((agent) => (
-                  <div key={agent.id} className="flex items-center">
-                    {(() => {
-                      const initials = agent.name
-                        ?.split(' ')
-                        .map(part => part.charAt(0))
-                        .join('')
-                        .toUpperCase()
-                        .slice(0, 2) || 'AG';
-                      return (
-                    <div className={`h-9 w-9 rounded-full flex items-center justify-center mr-4 border ${
-                      agent.role.includes('Sales') ? 'bg-blue-900 border-blue-700' :
-                      agent.role.includes('Dev') ? 'bg-purple-900 border-purple-700' :
-                      'bg-emerald-900 border-emerald-700'
-                    }`}>
-                      <span className={`font-mono text-xs ${
-                        agent.role.includes('Sales') ? 'text-blue-200' :
-                        agent.role.includes('Dev') ? 'text-purple-200' :
-                        'text-emerald-200'
-                      }`}>{initials}</span>
-                    </div>
-                      );
-                    })()}
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-slate-200">{agent.name} ({agent.role})</p>
-                        <Badge variant="secondary" className={`${
-                          agent.status === 'running' ? 'bg-blue-900/30 text-blue-400' :
-                          agent.status === 'paused' ? 'bg-yellow-900/30 text-yellow-400' :
-                          agent.status === 'error' ? 'bg-red-900/30 text-red-400' :
-                          'bg-emerald-900/30 text-emerald-400'
-                        }`}>
-                          {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
-                        </Badge>
+      {/* Main Content */}
+      <main className="p-6">
+        {viewMode === 'dashboard' ? (
+          /* Dashboard View */
+          <div className="space-y-6">
+            {/* Row 1: Strategic Plan */}
+            <StrategicPlanBoard />
+            
+            {/* Row 2: Agent Matrix + Command Center */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <AgentMatrix
+                onSelectAgent={handleAgentSelect}
+                selectedAgentId={selectedAgentId || undefined}
+              />
+              <CommandCenter 
+                onSendCommand={handleSendCommand}
+                selectedAgentId={selectedAgentId || undefined}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Chat View */
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-120px)]">
+            {/* Left Sidebar: Agent List + Quick Stats */}
+            <div className="space-y-4">
+              <AgentMatrix
+                compact
+                onSelectAgent={handleAgentSelect}
+                selectedAgentId={selectedAgentId || undefined}
+              />
+              <StrategicPlanBoard compact />
+            </div>
+            
+            {/* Main Chat Area */}
+            <div className="lg:col-span-2 bg-gray-900 rounded-lg border border-gray-700 flex flex-col">
+              {/* Chat Header */}
+              <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🤖</span>
+                  <div>
+                    <h3 className="font-semibold">{selectedAgentId || '选择 Agent'}</h3>
+                    <p className="text-xs text-gray-400">
+                      {chat.workingStatus || '等待指令...'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {chat.lastModel && (
+                    <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">
+                      {chat.lastModel}
+                    </span>
+                  )}
+                  <button
+                    onClick={chat.clearChat}
+                    className="text-xs text-gray-400 hover:text-white px-2 py-1"
+                  >
+                    清空对话
+                  </button>
+                </div>
+              </div>
+              
+              {/* Chat Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {chat.messages.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <p className="text-4xl mb-4">💬</p>
+                    <p>开始与 {selectedAgentId} 对话</p>
+                    <p className="text-sm mt-2">输入指令或问题</p>
+                  </div>
+                ) : (
+                  chat.messages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex ${
+                        msg.role === 'user' ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                          msg.role === 'user'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-800 text-gray-100'
+                        }`}
+                      >
+                        <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+                        {msg.timestamp && (
+                          <div className="text-xs opacity-50 mt-1">
+                            {new Date(msg.timestamp).toLocaleTimeString()}
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-slate-400">{agent.currentTask || 'No active task'}</p>
-                      {agent.progress !== undefined && (
-                        <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2">
-                          <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${agent.progress}%` }}></div>
-                        </div>
-                      )}
+                    </div>
+                  ))
+                )}
+                {chat.sending && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-800 rounded-lg px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="animate-spin">⚙️</span>
+                        <span className="text-sm text-gray-400">
+                          {chat.workingStatus || '处理中...'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ))}
-             </div>
-             
-             <div className="mt-8 pt-6 border-t border-slate-800">
-                <h4 className="text-sm font-medium text-slate-400 mb-4">Quick Actions (Manual Override)</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <Button variant="outline" className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 justify-start">
-                    <ShieldAlert className="mr-2 h-4 w-4" /> Review Banned Users
-                  </Button>
-                  <Button variant="outline" className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 justify-start">
-                    <DollarSign className="mr-2 h-4 w-4" /> Approve Refunds ($500+)
-                  </Button>
+                )}
+              </div>
+              
+              {/* Tool Executions */}
+              {chat.toolExecutions.length > 0 && (
+                <div className="px-4 py-2 border-t border-gray-700 bg-gray-800">
+                  <div className="text-xs text-gray-400 mb-1">工具执行:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {chat.toolExecutions.map((te, i) => (
+                      <span
+                        key={i}
+                        className={`text-xs px-2 py-1 rounded ${
+                          te.status === 'running' ? 'bg-blue-600' :
+                          te.status === 'success' ? 'bg-green-600' : 'bg-red-600'
+                        }`}
+                      >
+                        {te.tool}: {te.status}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-             </div>
-
-           </CardContent>
-        </Card>
-
-      </div>
-    </main>
-  )
+              )}
+              
+              {/* Chat Input */}
+              <div className="p-4 border-t border-gray-700">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
+                    if (input.value.trim()) {
+                      chat.sendMessage(input.value);
+                      input.value = '';
+                    }
+                  }}
+                  className="flex gap-3"
+                >
+                  <input
+                    name="message"
+                    type="text"
+                    placeholder="输入指令或问题..."
+                    disabled={chat.sending}
+                    className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={chat.sending}
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 rounded-lg font-medium transition-colors"
+                  >
+                    发送
+                  </button>
+                </form>
+              </div>
+            </div>
+            
+            {/* Right Sidebar: Command Center */}
+            <div>
+              <CommandCenter 
+                compact
+                onSendCommand={handleSendCommand}
+                selectedAgentId={selectedAgentId || undefined}
+              />
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }
