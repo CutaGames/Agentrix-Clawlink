@@ -159,10 +159,10 @@ export class MPCWalletService {
       // 生成新钱包
       const result = await this.generateMPCWallet(userId, derivedPassword);
       
-      // 更新钱包的 ownerId 字段
+      // 更新钱包: set userId and chain
       await this.mpcWalletRepository.update(
         { merchantId: userId, isActive: true },
-        { chain },
+        { userId, chain },
       );
 
       this.logger.log(`MPC wallet created for social user ${userId}: ${result.walletAddress}`);

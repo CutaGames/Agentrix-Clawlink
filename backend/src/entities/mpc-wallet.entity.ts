@@ -29,12 +29,8 @@ export class MPCWallet {
   @Column({ type: 'uuid', nullable: true })
   userId: string; // 用户ID
 
-  @Column({
-    type: 'enum',
-    enum: ['execution', 'settlement', 'dev', 'test'],
-    default: 'execution',
-  })
-  purpose: string; // 钱包用途
+  @Column({ type: 'varchar', length: 50, default: 'execution' })
+  purpose: string; // 钱包用途: execution | settlement | dev | test
 
   @Column({ type: 'varchar', length: 255, unique: true })
   walletAddress: string; // MPC 钱包地址
