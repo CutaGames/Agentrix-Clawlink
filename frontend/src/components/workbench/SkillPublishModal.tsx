@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Code, Globe, Shield, Zap, RefreshCw } from 'lucide-react';
-import { skillApi, CreateSkillDto, SkillCategory } from '../../../lib/api/skill.api';
+import { X, Plus, Trash2, Code, Globe, Shield, Zap, RefreshCw, Users, DollarSign, ToggleLeft, ToggleRight } from 'lucide-react';
+import { skillApi, CreateSkillDto, SkillCategory, CommercePublishDto, SplitRuleDto } from '../../../lib/api/skill.api';
 
 interface SkillPublishModalProps {
   isOpen: boolean;
@@ -28,8 +28,24 @@ const SkillPublishModal: React.FC<SkillPublishModalProps> = ({ isOpen, onClose, 
       properties: {},
       required: [],
     },
+    pricing: {
+      type: 'free' as any,
+      pricePerCall: 0,
+      currency: 'USD',
+    },
     tags: [],
   });
+
+  // Commerce config state
+  const [enableSplitPlan, setEnableSplitPlan] = useState(false);
+  const [splitRules, setSplitRules] = useState<SplitRuleDto[]>([
+    { recipient: '', shareBps: 7000, role: 'merchant' },
+    { recipient: '', shareBps: 3000, role: 'agent' },
+  ]);
+  const [ucpEnabled, setUcpEnabled] = useState(true);
+  const [x402Enabled, setX402Enabled] = useState(true);
+  const [targetPlatforms, setTargetPlatforms] = useState<string[]>(['agentrix', 'claude', 'openai']);
+  const [humanAccessible, setHumanAccessible] = useState(true);
 
   useEffect(() => {
     if (product) {
@@ -107,12 +123,40 @@ const SkillPublishModal: React.FC<SkillPublishModalProps> = ({ isOpen, onClose, 
     setLoading(true);
     setError(null);
     try {
-      const res = await skillApi.create(formData);
+      // Use Commerce Publish API for one-stop publishing
+      const publishDto: CommercePublishDto = {
+        name: formData.name,
+        displayName: formData.displayName || formData.name,
+        description: formData.description,
+        category: formData.category,
+        version: formData.version,
+        tags: formData.tags,
+        executor: formData.executor,
+        inputSchema: formData.inputSchema,
+        pricing: {
+          type: formData.pricing?.type || 'free',
+          pricePerCall: formData.pricing?.pricePerCall,
+          currency: formData.pricing?.currency || 'USD',
+        },
+        splitPlan: enableSplitPlan ? {
+          name: `${formData.name} Split Plan`,
+          productType: 'skill',
+          rules: splitRules.filter(r => r.recipient),
+        } : undefined,
+        marketplace: {
+          humanAccessible,
+          targetPlatforms,
+        },
+        ucpEnabled,
+        x402Enabled: x402Enabled && formData.pricing?.type !== 'free',
+      };
+
+      const res = await skillApi.commercePublish(publishDto);
       if (res.success) {
-        if (onPublish) onPublish(res.data);
+        if (onPublish) onPublish(res);
         onClose();
       } else {
-        setError('Failed to publish skill');
+        setError('Failed to publish commerce skill');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred while publishing');
@@ -136,19 +180,19 @@ const SkillPublishModal: React.FC<SkillPublishModalProps> = ({ isOpen, onClose, 
         </div>
 
         {/* Steps Indicator */}
-        <div className="px-6 py-4 bg-white/5 flex items-center gap-4">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex items-center gap-2">
+        <div className="px-6 py-4 bg-white/5 flex items-center gap-3 overflow-x-auto">
+          {[1, 2, 3, 4].map((s) => (
+            <div key={s} className="flex items-center gap-2 shrink-0">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                 step === s ? 'bg-blue-500 text-white' : 
                 step > s ? 'bg-green-500 text-white' : 'bg-white/10 text-gray-400'
               }`}>
-                {step > s ? '✓' : s}
+                {step > s ? '\u2713' : s}
               </div>
               <span className={`text-sm ${step === s ? 'text-white font-medium' : 'text-gray-500'}`}>
-                {s === 1 ? 'Basic Info' : s === 2 ? 'Schema & Logic' : 'Pricing'}
+                {s === 1 ? 'Basic Info' : s === 2 ? 'Schema' : s === 3 ? 'Pricing' : 'Commerce'}
               </span>
-              {s < 3 && <div className="w-8 h-px bg-white/10" />}
+              {s < 4 && <div className="w-6 h-px bg-white/10" />}
             </div>
           ))}
         </div>
@@ -361,6 +405,147 @@ const SkillPublishModal: React.FC<SkillPublishModalProps> = ({ isOpen, onClose, 
               </div>
             </div>
           )}
+
+          {step === 4 && (
+            <div className="space-y-6">
+              {/* Split Plan Config */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-medium text-gray-400 flex items-center gap-2">
+                    <Users className="w-4 h-4" /> Revenue Split Plan
+                  </label>
+                  <button
+                    onClick={() => setEnableSplitPlan(!enableSplitPlan)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    {enableSplitPlan ? <ToggleRight className="w-6 h-6 text-green-400" /> : <ToggleLeft className="w-6 h-6" />}
+                  </button>
+                </div>
+                {enableSplitPlan && (
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 space-y-3">
+                    <p className="text-xs text-gray-500">Define how revenue is split (total must = 10000 bps = 100%)</p>
+                    {splitRules.map((rule, idx) => (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="Wallet or User ID"
+                          value={rule.recipient}
+                          onChange={(e) => {
+                            const updated = [...splitRules];
+                            updated[idx] = { ...updated[idx], recipient: e.target.value };
+                            setSplitRules(updated);
+                          }}
+                          className="col-span-5 bg-[#1a1b23] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white"
+                        />
+                        <input
+                          type="number"
+                          placeholder="BPS"
+                          value={rule.shareBps}
+                          onChange={(e) => {
+                            const updated = [...splitRules];
+                            updated[idx] = { ...updated[idx], shareBps: parseInt(e.target.value) || 0 };
+                            setSplitRules(updated);
+                          }}
+                          className="col-span-3 bg-[#1a1b23] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white"
+                        />
+                        <select
+                          value={rule.role}
+                          onChange={(e) => {
+                            const updated = [...splitRules];
+                            updated[idx] = { ...updated[idx], role: e.target.value as any };
+                            setSplitRules(updated);
+                          }}
+                          className="col-span-3 bg-[#1a1b23] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white"
+                        >
+                          <option value="merchant">Merchant</option>
+                          <option value="agent">Agent</option>
+                          <option value="referrer">Referrer</option>
+                          <option value="platform">Platform</option>
+                          <option value="custom">Custom</option>
+                        </select>
+                        <button
+                          onClick={() => setSplitRules(splitRules.filter((_, i) => i !== idx))}
+                          className="col-span-1 text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => setSplitRules([...splitRules, { recipient: '', shareBps: 0, role: 'custom' }])}
+                      className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                    >
+                      <Plus className="w-3 h-3" /> Add Recipient
+                    </button>
+                    <div className="text-xs text-gray-500">
+                      Total: {splitRules.reduce((s, r) => s + r.shareBps, 0)} / 10000 bps
+                      ({(splitRules.reduce((s, r) => s + r.shareBps, 0) / 100).toFixed(1)}%)
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Protocol Toggles */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-3">Protocol Support</label>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
+                    <div>
+                      <div className="text-sm text-white font-medium">UCP (Universal Commerce Protocol)</div>
+                      <div className="text-xs text-gray-500">Enable checkout sessions for AI agents</div>
+                    </div>
+                    <button onClick={() => setUcpEnabled(!ucpEnabled)} className="transition-colors">
+                      {ucpEnabled ? <ToggleRight className="w-6 h-6 text-green-400" /> : <ToggleLeft className="w-6 h-6 text-gray-500" />}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
+                    <div>
+                      <div className="text-sm text-white font-medium">X402 Micropayments</div>
+                      <div className="text-xs text-gray-500">Enable pay-per-call via HTTP 402</div>
+                    </div>
+                    <button onClick={() => setX402Enabled(!x402Enabled)} className="transition-colors">
+                      {x402Enabled ? <ToggleRight className="w-6 h-6 text-green-400" /> : <ToggleLeft className="w-6 h-6 text-gray-500" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Platforms */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-3">Target AI Platforms</label>
+                <div className="flex flex-wrap gap-2">
+                  {['agentrix', 'claude', 'openai', 'gemini', 'windsurf', 'cursor'].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        setTargetPlatforms(prev =>
+                          prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                        );
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        targetPlatforms.includes(p)
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+                          : 'bg-white/5 text-gray-500 border border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Human Accessible Toggle */}
+              <div className="flex items-center justify-between bg-white/5 p-3 rounded-lg border border-white/10">
+                <div>
+                  <div className="text-sm text-white font-medium">Human Accessible</div>
+                  <div className="text-xs text-gray-500">Show in marketplace for human users (not just agents)</div>
+                </div>
+                <button onClick={() => setHumanAccessible(!humanAccessible)} className="transition-colors">
+                  {humanAccessible ? <ToggleRight className="w-6 h-6 text-green-400" /> : <ToggleLeft className="w-6 h-6 text-gray-500" />}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -375,7 +560,7 @@ const SkillPublishModal: React.FC<SkillPublishModalProps> = ({ isOpen, onClose, 
             Back
           </button>
           
-          {step < 3 ? (
+          {step < 4 ? (
             <button 
               onClick={() => setStep(step + 1)}
               className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-blue-500/20"
@@ -389,7 +574,7 @@ const SkillPublishModal: React.FC<SkillPublishModalProps> = ({ isOpen, onClose, 
               className="px-8 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-green-500/20 flex items-center gap-2"
             >
               {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
-              Publish Skill
+              Publish to Marketplace
             </button>
           )}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AgentStatus, getAgentStatuses, sendAgentCommand, chatWithAgent } from '@/lib/api';
+import { AgentStatus, getAgentStatuses, sendAgentCommand, chatWithAgent, chatWithAgentStream, hqApi } from '@/lib/api';
 import { getToolsSystemPrompt, parseToolCalls, executeToolCall, ToolCall } from '@/lib/tools';
 import { isToolAllowed } from '@/lib/agent-permissions';
 
@@ -93,7 +93,7 @@ export function useAgents() {
   const fetchAgents = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await hqApi.getAgentStatuses();
+      const data = await getAgentStatuses();
       setAgents(data);
       setError(null);
     } catch (e) {
@@ -121,7 +121,9 @@ export function useAgentChat(agentId: string | null) {
   const [artifact, setArtifact] = useState<string | null>(null);
   const [workingStatus, setWorkingStatus] = useState<string | null>(null);
   const [toolExecutions, setToolExecutions] = useState<Array<{ tool: string; status: string; result?: any }>>([]);
+  const [lastModel, setLastModel] = useState<string | null>(null);
   const prevAgentIdRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   // Load chat history when agent changes
   useEffect(() => {
@@ -131,6 +133,8 @@ export function useAgentChat(agentId: string | null) {
       setArtifact(null);
       setWorkingStatus(null);
       setToolExecutions([]);
+      setLastModel(null);
+      sessionIdRef.current = null;
     }
     prevAgentIdRef.current = agentId;
   }, [agentId]);
@@ -185,7 +189,7 @@ export function useAgentChat(agentId: string | null) {
     }
     
     return results.join('\n\n');
-  }, []);
+  }, [agentId]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!agentId || sending) return;
@@ -198,10 +202,65 @@ export function useAgentChat(agentId: string | null) {
 
     try {
       setWorkingStatus('Processing your request...');
-      const systemMessage = { role: 'system' as const, content: getToolsSystemPrompt() };
+      const toolPrompt = getToolsSystemPrompt();
       let currentMessages = [...messages, userMessage];
-      let response = await chatWithAgent(agentId, [systemMessage, ...currentMessages]);
-      let responseContent = response.content || response.message || 'OK';
+      const assistantTimestamp = new Date().toISOString();
+      setMessages(prev => [...prev, { role: 'assistant', content: '', timestamp: assistantTimestamp }]);
+
+      let responseContent = '';
+      let response: any = null;
+      try {
+        setWorkingStatus('Streaming response...');
+        response = await chatWithAgentStream(
+          agentId,
+          currentMessages,
+          { toolPrompt },
+          {
+            onChunk: (_chunk, full) => {
+              responseContent = full;
+              setMessages(prev => prev.map(m =>
+                m.timestamp === assistantTimestamp && m.role === 'assistant'
+                  ? { ...m, content: full }
+                  : m
+              ));
+            },
+            onMeta: (meta) => {
+              if (meta?.model) setLastModel(meta.model);
+            },
+          }
+        );
+      } catch (streamError: any) {
+        console.warn('Stream failed, falling back to standard chat:', streamError?.message || streamError, streamError);
+        setWorkingStatus('Processing your request...');
+        try {
+          response = await chatWithAgent(agentId, currentMessages, { toolPrompt });
+          responseContent = response.content || response.message || 'OK';
+          setMessages(prev => prev.map(m =>
+            m.timestamp === assistantTimestamp && m.role === 'assistant'
+              ? { ...m, content: responseContent }
+              : m
+          ));
+        } catch (chatError: any) {
+          console.warn('Standard chat failed, falling back to unified chat:', chatError?.message || chatError, chatError);
+          setWorkingStatus('Switching to unified chat...');
+          const unified = await hqApi.unifiedChat({
+            agentCode: agentId,
+            message: content,
+            sessionId: sessionIdRef.current || undefined,
+            mode: 'staff',
+          });
+          responseContent = unified.response || 'OK';
+          if (unified.sessionId) sessionIdRef.current = unified.sessionId;
+          if (unified.model) setLastModel(unified.model);
+          setMessages(prev => prev.map(m =>
+            m.timestamp === assistantTimestamp && m.role === 'assistant'
+              ? { ...m, content: responseContent }
+              : m
+          ));
+        }
+      }
+
+      if (response?.model) setLastModel(response.model);
       
       // Check for tool calls in response
       let toolCalls = parseToolCalls(responseContent);
@@ -232,34 +291,52 @@ export function useAgentChat(agentId: string | null) {
         };
         currentMessages = [...currentMessages, toolResultMessage];
         
-        // Update UI with tool call message
-        setMessages(prev => [...prev, toolCallMessage]);
-        
         // Get next response
         setWorkingStatus('Agent processing tool results...');
-        response = await chatWithAgent(agentId, [systemMessage, ...currentMessages]);
-        responseContent = response.content || response.message || 'OK';
+        try {
+          response = await chatWithAgent(agentId, currentMessages, { toolPrompt });
+          if (response?.model) setLastModel(response.model);
+          responseContent = response.content || response.message || 'OK';
+        } catch (toolChatError: any) {
+          console.warn('Tool follow-up chat failed, switching to unified chat:', toolChatError?.message || toolChatError);
+          const unified = await hqApi.unifiedChat({
+            agentCode: agentId,
+            message: toolResultMessage.content,
+            sessionId: sessionIdRef.current || undefined,
+            mode: 'staff',
+          });
+          responseContent = unified.response || 'OK';
+          if (unified.sessionId) sessionIdRef.current = unified.sessionId;
+          if (unified.model) setLastModel(unified.model);
+        }
+        setMessages(prev => prev.map(m =>
+          m.timestamp === assistantTimestamp && m.role === 'assistant'
+            ? { ...m, content: responseContent }
+            : m
+        ));
         toolCalls = parseToolCalls(responseContent);
       }
       
       setWorkingStatus(null);
-      const assistantMessage = { 
-        role: 'assistant', 
-        content: responseContent,
-        timestamp: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, assistantMessage]);
+      if (!responseContent) {
+        setMessages(prev => prev.map(m =>
+          m.timestamp === assistantTimestamp && m.role === 'assistant'
+            ? { ...m, content: responseContent || 'OK' }
+            : m
+        ));
+      }
       
       // Check if response contains artifact
-      if (response.artifact) {
+      if (response?.artifact) {
         setArtifact(response.artifact);
       }
-    } catch (e) {
-      console.error('Chat API Error:', e);
+      if (response?.model) setLastModel(response.model);
+    } catch (e: any) {
+      console.error('Chat API Error:', e?.message || e, e);
       setWorkingStatus(null);
-      let errorMsg = 'Failed to connect to AI engine.';
-      if ((e as any).response?.data?.message) {
-        errorMsg = (e as any).response.data.message;
+      let errorMsg = e?.message || 'Failed to connect to AI engine.';
+      if (e?.response?.data?.message) {
+        errorMsg = e.response.data.message;
       }
       const errResponse = { 
         role: 'assistant', 
@@ -283,5 +360,5 @@ export function useAgentChat(agentId: string | null) {
     }
   }, [agentId]);
 
-  return { messages, sending, artifact, workingStatus, toolExecutions, sendMessage, clearChat };
+  return { messages, sending, artifact, workingStatus, toolExecutions, sendMessage, clearChat, lastModel };
 }

@@ -1,6 +1,9 @@
 import { Injectable, BadRequestException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CommerceOrder, CommerceOrderStatus, CommerceOrderType } from '../../entities/commerce-order.entity';
+import { CommerceSettlement, CommerceSettlementStatus } from '../../entities/commerce-settlement.entity';
+import { CommerceLedgerEntry, LedgerEntryType } from '../../entities/commerce-ledger.entity';
 import { SplitPlanService } from './split-plan.service';
 import { BudgetPoolService } from './budget-pool.service';
 import { UsagePatternService, UsageHint } from './usage-pattern.service';
@@ -18,23 +21,9 @@ import { PaymentService } from '../payment/payment.service';
 import { PayIntent, PayIntentStatus, PayIntentType } from '../../entities/pay-intent.entity';
 import { Payment, PaymentStatus, PaymentMethod } from '../../entities/payment.entity';
 import { v4 as uuidv4 } from 'uuid';
+import { CacheService } from '../cache/cache.service';
 
-// Commerce Order Entity (内联定义，可后续独立)
-export interface CommerceOrder {
-  id: string;
-  userId: string;
-  type: 'product' | 'service' | 'subscription';
-  status: 'draft' | 'pending' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded';
-  amount: number;
-  currency: string;
-  items: OrderItem[];
-  splitPlanId?: string;
-  paymentIntentId?: string;
-  metadata?: Record<string, any>;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
+// Order Item (保留此类型定义)
 export interface OrderItem {
   id: string;
   name: string;
@@ -43,9 +32,6 @@ export interface OrderItem {
   totalPrice: number;
   metadata?: Record<string, any>;
 }
-
-// 幂等性缓存 (生产环境应使用 Redis)
-const idempotencyCache = new Map<string, { result: any; expiresAt: number }>();
 
 export type CommerceMode = 'PAY_ONLY' | 'SPLIT_ONLY' | 'PAY_AND_SPLIT';
 
@@ -93,18 +79,18 @@ export type CommerceAction =
 @Injectable()
 export class CommerceService {
   private readonly logger = new Logger(CommerceService.name);
-  
-  // 内存订单存储 (生产环境应使用数据库实体)
-  private orders = new Map<string, CommerceOrder>();
-  // 内存结算记录
-  private settlements = new Map<string, any>();
-  // 内存账本
-  private ledgerEntries: any[] = [];
 
   constructor(
+    @InjectRepository(CommerceOrder)
+    private readonly orderRepository: Repository<CommerceOrder>,
+    @InjectRepository(CommerceSettlement)
+    private readonly settlementRepository: Repository<CommerceSettlement>,
+    @InjectRepository(CommerceLedgerEntry)
+    private readonly ledgerRepository: Repository<CommerceLedgerEntry>,
     private readonly splitPlanService: SplitPlanService,
     private readonly budgetPoolService: BudgetPoolService,
     private readonly usagePatternService: UsagePatternService,
+    private readonly cacheService: CacheService,
     @Inject(forwardRef(() => PaymentService))
     private readonly paymentService?: PaymentService,
   ) {}
@@ -113,14 +99,10 @@ export class CommerceService {
    * 幂等性检查
    */
   private async checkIdempotency(key: string): Promise<{ cached: boolean; result?: any }> {
-    const cached = idempotencyCache.get(key);
+    const cached = await this.cacheService.get<{ result: any; expiresAt: number }>(`idempotency:${key}`);
     if (cached) {
-      if (cached.expiresAt > Date.now()) {
-        this.logger.debug(`Idempotency cache hit for key: ${key}`);
-        return { cached: true, result: cached.result };
-      }
-      // 过期清理
-      idempotencyCache.delete(key);
+      this.logger.debug(`Idempotency cache hit for key: ${key}`);
+      return { cached: true, result: cached.result };
     }
     return { cached: false };
   }
@@ -128,11 +110,12 @@ export class CommerceService {
   /**
    * 保存幂等性结果
    */
-  private saveIdempotencyResult(key: string, result: any, ttlMs: number = 24 * 60 * 60 * 1000): void {
-    idempotencyCache.set(key, {
+  private async saveIdempotencyResult(key: string, result: any, ttlMs: number = 24 * 60 * 60 * 1000): Promise<void> {
+    const ttlSeconds = Math.floor(ttlMs / 1000);
+    await this.cacheService.set(`idempotency:${key}`, {
       result,
       expiresAt: Date.now() + ttlMs,
-    });
+    }, ttlSeconds);
   }
 
   /**
@@ -306,7 +289,7 @@ export class CommerceService {
 
     // 保存幂等性结果
     if (idempotencyKey && result) {
-      this.saveIdempotencyResult(idempotencyKey, result);
+      await this.saveIdempotencyResult(idempotencyKey, result);
     }
 
     return result;
@@ -326,11 +309,10 @@ export class CommerceService {
   }): Promise<CommerceOrder> {
     const totalAmount = params.items.reduce((sum, item) => sum + item.totalPrice, 0);
     
-    const order: CommerceOrder = {
-      id: uuidv4(),
+    const order = this.orderRepository.create({
       userId,
-      type: params.type,
-      status: 'draft',
+      type: params.type as CommerceOrderType,
+      status: CommerceOrderStatus.DRAFT,
       amount: totalAmount,
       currency: params.currency || 'USD',
       items: params.items.map(item => ({
@@ -339,31 +321,28 @@ export class CommerceService {
       })),
       splitPlanId: params.splitPlanId,
       metadata: params.metadata,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    this.orders.set(order.id, order);
-    this.logger.log(`Order created: ${order.id}, amount: ${order.amount} ${order.currency}`);
-
-    // 记录账本
-    this.addLedgerEntry({
-      type: 'order_created',
-      orderId: order.id,
-      userId,
-      amount: order.amount,
-      currency: order.currency,
-      timestamp: new Date(),
     });
 
-    return order;
+    const savedOrder = await this.orderRepository.save(order);
+    this.logger.log(`Order created: ${savedOrder.id}, amount: ${savedOrder.amount} ${savedOrder.currency}`);
+
+    // 记录账本
+    await this.addLedgerEntry({
+      type: LedgerEntryType.ORDER_CREATED,
+      orderId: savedOrder.id,
+      userId,
+      amount: savedOrder.amount,
+      currency: savedOrder.currency,
+    });
+
+    return savedOrder;
   }
 
   /**
    * 获取订单
    */
   private async getOrder(orderId: string, userId?: string): Promise<CommerceOrder> {
-    const order = this.orders.get(orderId);
+    const order = await this.orderRepository.findOne({ where: { id: orderId } });
     if (!order) {
       throw new BadRequestException(`Order not found: ${orderId}`);
     }
@@ -377,13 +356,13 @@ export class CommerceService {
    * 更新订单
    */
   private async updateOrder(orderId: string, userId: string, params: {
-    status?: CommerceOrder['status'];
+    status?: CommerceOrderStatus;
     items?: OrderItem[];
     metadata?: Record<string, any>;
   }): Promise<CommerceOrder> {
     const order = await this.getOrder(orderId, userId);
 
-    if (order.status === 'paid' || order.status === 'fulfilled') {
+    if (order.status === CommerceOrderStatus.PAID || order.status === CommerceOrderStatus.FULFILLED) {
       throw new BadRequestException('Cannot update a paid or fulfilled order');
     }
 
@@ -400,10 +379,7 @@ export class CommerceService {
       order.metadata = { ...order.metadata, ...params.metadata };
     }
 
-    order.updatedAt = new Date();
-    this.orders.set(order.id, order);
-
-    return order;
+    return await this.orderRepository.save(order);
   }
 
   // ==================== 支付处理 ====================
@@ -419,14 +395,13 @@ export class CommerceService {
   }): Promise<any> {
     const order = await this.getOrder(params.orderId, userId);
 
-    if (order.status !== 'draft' && order.status !== 'pending') {
+    if (order.status !== CommerceOrderStatus.DRAFT && order.status !== CommerceOrderStatus.PENDING) {
       throw new BadRequestException(`Order is not in a payable state: ${order.status}`);
     }
 
     // 更新订单状态为 pending
-    order.status = 'pending';
-    order.updatedAt = new Date();
-    this.orders.set(order.id, order);
+    order.status = CommerceOrderStatus.PENDING;
+    await this.orderRepository.save(order);
 
     // 如果有支付服务，创建真实的支付意图
     if (this.paymentService) {
@@ -444,7 +419,7 @@ export class CommerceService {
         });
 
         order.paymentIntentId = (paymentIntent as any).id || (paymentIntent as any).paymentIntentId;
-        this.orders.set(order.id, order);
+        await this.orderRepository.save(order);
 
         return {
           paymentIntent,
@@ -483,20 +458,19 @@ export class CommerceService {
   }): Promise<any> {
     const order = await this.getOrder(params.orderId, userId);
 
-    if (order.status !== 'pending') {
+    if (order.status !== CommerceOrderStatus.PENDING) {
       throw new BadRequestException(`Order is not pending payment: ${order.status}`);
     }
 
     // 更新订单状态
-    order.status = 'paid';
-    order.updatedAt = new Date();
+    order.status = CommerceOrderStatus.PAID;
     order.metadata = {
       ...order.metadata,
       paidAt: new Date(),
       txHash: params.txHash,
       paymentIntentId: params.paymentIntentId,
     };
-    this.orders.set(order.id, order);
+    await this.orderRepository.save(order);
 
     // 如果有分佣计划，创建结算记录
     if (order.splitPlanId) {
@@ -504,14 +478,13 @@ export class CommerceService {
     }
 
     // 记录账本
-    this.addLedgerEntry({
-      type: 'payment_captured',
+    await this.addLedgerEntry({
+      type: LedgerEntryType.PAYMENT_CAPTURED,
       orderId: order.id,
       userId,
       amount: order.amount,
       currency: order.currency,
-      txHash: params.txHash,
-      timestamp: new Date(),
+      metadata: { txHash: params.txHash },
     });
 
     this.logger.log(`Payment captured for order ${order.id}`);
@@ -536,32 +509,30 @@ export class CommerceService {
   }): Promise<any> {
     const order = await this.getOrder(params.orderId, userId);
 
-    if (order.status !== 'paid' && order.status !== 'fulfilled') {
+    if (order.status !== CommerceOrderStatus.PAID && order.status !== CommerceOrderStatus.FULFILLED) {
       throw new BadRequestException(`Order cannot be refunded: ${order.status}`);
     }
 
     const refundAmount = params.amount || order.amount;
 
     // 更新订单状态
-    order.status = 'refunded';
-    order.updatedAt = new Date();
+    order.status = CommerceOrderStatus.REFUNDED;
     order.metadata = {
       ...order.metadata,
       refundedAt: new Date(),
       refundAmount,
       refundReason: params.reason,
     };
-    this.orders.set(order.id, order);
+    await this.orderRepository.save(order);
 
     // 记录账本
-    this.addLedgerEntry({
-      type: 'refund',
+    await this.addLedgerEntry({
+      type: LedgerEntryType.REFUND,
       orderId: order.id,
       userId,
       amount: -refundAmount,
       currency: order.currency,
       reason: params.reason,
-      timestamp: new Date(),
     });
 
     this.logger.log(`Refund processed for order ${order.id}, amount: ${refundAmount}`);
@@ -591,8 +562,7 @@ export class CommerceService {
         currency: order.currency,
       });
 
-      const settlement = {
-        id: `stl_${uuidv4()}`,
+      const settlement = this.settlementRepository.create({
         orderId: order.id,
         splitPlanId: order.splitPlanId,
         totalAmount: order.amount,
@@ -605,12 +575,11 @@ export class CommerceService {
           amount: a.amount,
           shareBps: Math.round(a.percentage * 100),
         })),
-        status: 'pending',
-        createdAt: new Date(),
-      };
+        status: CommerceSettlementStatus.PENDING,
+      });
 
-      this.settlements.set(settlement.id, settlement);
-      this.logger.log(`Settlement created: ${settlement.id} for order ${order.id}`);
+      const saved = await this.settlementRepository.save(settlement);
+      this.logger.log(`Settlement created: ${saved.id} for order ${order.id}`);
     } catch (error: any) {
       this.logger.error(`Failed to create settlement: ${error.message}`);
     }
@@ -620,32 +589,41 @@ export class CommerceService {
    * 获取结算列表
    */
   private async getSettlements(userId: string, params: {
-    status?: string;
+    status?: CommerceSettlementStatus;
     startDate?: Date;
     endDate?: Date;
     page?: number;
     limit?: number;
   }): Promise<any> {
-    const settlements = Array.from(this.settlements.values())
-      .filter(s => {
-        // 过滤条件
-        if (params.status && s.status !== params.status) return false;
-        if (params.startDate && s.createdAt < params.startDate) return false;
-        if (params.endDate && s.createdAt > params.endDate) return false;
-        return true;
-      })
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
     const page = params.page || 1;
     const limit = params.limit || 20;
     const offset = (page - 1) * limit;
 
+    const queryBuilder = this.settlementRepository.createQueryBuilder('settlement');
+
+    if (params.status) {
+      queryBuilder.andWhere('settlement.status = :status', { status: params.status });
+    }
+    if (params.startDate) {
+      queryBuilder.andWhere('settlement.createdAt >= :startDate', { startDate: params.startDate });
+    }
+    if (params.endDate) {
+      queryBuilder.andWhere('settlement.createdAt <= :endDate', { endDate: params.endDate });
+    }
+
+    queryBuilder.orderBy('settlement.createdAt', 'DESC');
+
+    const [items, total] = await queryBuilder
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
+
     return {
-      items: settlements.slice(offset, offset + limit),
-      total: settlements.length,
+      items,
+      total,
       page,
       limit,
-      totalPages: Math.ceil(settlements.length / limit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -655,30 +633,29 @@ export class CommerceService {
   private async payoutSettlement(userId: string, params: {
     settlementId: string;
   }): Promise<any> {
-    const settlement = this.settlements.get(params.settlementId);
+    const settlement = await this.settlementRepository.findOne({ where: { id: params.settlementId } });
     if (!settlement) {
       throw new BadRequestException(`Settlement not found: ${params.settlementId}`);
     }
 
-    if (settlement.status === 'paid') {
+    if (settlement.status === CommerceSettlementStatus.PAID) {
       throw new BadRequestException('Settlement already paid');
     }
 
     // 模拟打款处理
-    settlement.status = 'paid';
+    settlement.status = CommerceSettlementStatus.PAID;
     settlement.paidAt = new Date();
     settlement.paidBy = userId;
-    this.settlements.set(settlement.id, settlement);
+    await this.settlementRepository.save(settlement);
 
     // 记录每个分配的账本条目
     for (const allocation of settlement.allocations) {
-      this.addLedgerEntry({
-        type: 'payout',
+      await this.addLedgerEntry({
+        type: LedgerEntryType.PAYOUT,
         settlementId: settlement.id,
         recipientId: allocation.recipientId,
         amount: allocation.amount,
         currency: settlement.currency,
-        timestamp: new Date(),
       });
     }
 
@@ -698,49 +675,74 @@ export class CommerceService {
   /**
    * 添加账本条目
    */
-  private addLedgerEntry(entry: any): void {
-    this.ledgerEntries.push({
-      id: `led_${uuidv4()}`,
-      ...entry,
-    });
+  private async addLedgerEntry(entry: {
+    type: LedgerEntryType;
+    userId?: string;
+    orderId?: string;
+    settlementId?: string;
+    recipientId?: string;
+    amount: number;
+    currency: string;
+    reason?: string;
+    metadata?: Record<string, any>;
+  }): Promise<void> {
+    const ledgerEntry = this.ledgerRepository.create(entry);
+    await this.ledgerRepository.save(ledgerEntry);
   }
 
   /**
    * 获取账本
    */
   private async getLedger(userId: string, params: {
-    type?: string;
+    type?: LedgerEntryType;
     startDate?: Date;
     endDate?: Date;
     page?: number;
     limit?: number;
   }): Promise<any> {
-    let entries = [...this.ledgerEntries]
-      .filter(e => {
-        if (params.type && e.type !== params.type) return false;
-        if (params.startDate && e.timestamp < params.startDate) return false;
-        if (params.endDate && e.timestamp > params.endDate) return false;
-        return true;
-      })
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
     const page = params.page || 1;
     const limit = params.limit || 50;
     const offset = (page - 1) * limit;
 
+    const queryBuilder = this.ledgerRepository.createQueryBuilder('ledger');
+
+    if (params.type) {
+      queryBuilder.andWhere('ledger.type = :type', { type: params.type });
+    }
+    if (params.startDate) {
+      queryBuilder.andWhere('ledger.createdAt >= :startDate', { startDate: params.startDate });
+    }
+    if (params.endDate) {
+      queryBuilder.andWhere('ledger.createdAt <= :endDate', { endDate: params.endDate });
+    }
+
+    queryBuilder.orderBy('ledger.createdAt', 'DESC');
+
+    const [items, total] = await queryBuilder
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
+
     // 计算汇总
+    const summaryResult = await this.ledgerRepository
+      .createQueryBuilder('ledger')
+      .select('SUM(CASE WHEN ledger.amount > 0 THEN ledger.amount ELSE 0 END)', 'totalIncome')
+      .addSelect('SUM(CASE WHEN ledger.amount < 0 THEN ABS(ledger.amount) ELSE 0 END)', 'totalExpense')
+      .addSelect('SUM(ledger.amount)', 'netBalance')
+      .getRawOne();
+
     const summary = {
-      totalIncome: entries.filter(e => e.amount > 0).reduce((sum, e) => sum + e.amount, 0),
-      totalExpense: entries.filter(e => e.amount < 0).reduce((sum, e) => sum + Math.abs(e.amount), 0),
-      netBalance: entries.reduce((sum, e) => sum + e.amount, 0),
+      totalIncome: parseFloat(summaryResult.totalIncome || '0'),
+      totalExpense: parseFloat(summaryResult.totalExpense || '0'),
+      netBalance: parseFloat(summaryResult.netBalance || '0'),
     };
 
     return {
-      items: entries.slice(offset, offset + limit),
-      total: entries.length,
+      items,
+      total,
       page,
       limit,
-      totalPages: Math.ceil(entries.length / limit),
+      totalPages: Math.ceil(total / limit),
       summary,
     };
   }

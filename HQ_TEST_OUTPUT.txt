@@ -1,4 +1,0 @@
-🚀 开始执行 Agentrix HQ Workbench 完整测试
-📍 测试目标: http://localhost:3005
-❌ 无法连接到 HQ 服务: connect ECONNREFUSED 127.0.0.1:3005
-请确保 HQ 服务已启动: npm run start:hq:dev

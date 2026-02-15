@@ -11,6 +11,9 @@ import { AppModule } from './app.module';
 
 console.log('🔧 Loading HQ Backend...');
 
+// 设置全局时区为新加坡 (UTC+8)
+process.env.TZ = 'Asia/Singapore';
+
 async function bootstrap() {
   console.log('🛸 Starting Agentrix HQ Backend (Independent Service)...');
   

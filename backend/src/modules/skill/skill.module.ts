@@ -8,7 +8,9 @@ import { ExternalSkillMapping } from '../../entities/external-skill-mapping.enti
 import { ProductSkillConversion } from '../../entities/product-skill-conversion.entity';
 import { SkillAnalytics } from '../../entities/skill-analytics.entity';
 import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
+import { SkillReview } from '../../entities/skill-review.entity';
 import { SkillService } from './skill.service';
+import { SkillReviewService } from './skill-review.service';
 import { SkillController } from './skill.controller';
 import { SkillAdminController } from './skill-admin.controller';
 import { SkillConverterService } from './skill-converter.service';
@@ -40,6 +42,7 @@ import { AgentAuthorizationModule } from '../agent-authorization/agent-authoriza
 import { MarketplaceModule } from '../marketplace/marketplace.module';
 import { UnifiedMarketplaceModule } from '../unified-marketplace/unified-marketplace.module';
 import { DeveloperAccountModule } from '../developer-account/developer-account.module';
+import { A2AModule } from '../a2a/a2a.module';
 
 @Module({
   imports: [
@@ -51,6 +54,7 @@ import { DeveloperAccountModule } from '../developer-account/developer-account.m
       ProductSkillConversion,
       SkillAnalytics,
       UserInstalledSkill,
+      SkillReview,
     ]),
     forwardRef(() => ProductModule),
     forwardRef(() => PaymentModule),
@@ -60,10 +64,12 @@ import { DeveloperAccountModule } from '../developer-account/developer-account.m
     forwardRef(() => AutoEarnModule),
     forwardRef(() => AgentAuthorizationModule),
     forwardRef(() => DeveloperAccountModule),
+    forwardRef(() => A2AModule),
   ],
   controllers: [SkillController, SkillAdminController, DeveloperRevenueController, OnboardingController],
   providers: [
     SkillService,
+    SkillReviewService,
     SkillConverterService,
     SkillExecutorService,
     DynamicToolAdapter,
@@ -85,7 +91,8 @@ import { DeveloperAccountModule } from '../developer-account/developer-account.m
     DeveloperRevenueService,
   ],
   exports: [
-    SkillService, 
+    SkillService,
+    SkillReviewService,
     SkillConverterService,
     SkillExecutorService, 
     DynamicToolAdapter, 

@@ -16,8 +16,9 @@ export interface Order {
 }
 
 export interface CreateOrderDto {
-  merchantId: string;
+  merchantId?: string;
   productId?: string;
+  skillId?: string;
   amount: number;
   currency: string;
   agentId?: string;

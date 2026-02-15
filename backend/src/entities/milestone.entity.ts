@@ -95,7 +95,7 @@ export class Milestone {
   budgetPoolId: string;
 
   @ManyToOne(() => BudgetPool, (pool) => pool.milestones)
-  @JoinColumn({ name: 'budgetPoolId' })
+  @JoinColumn({ name: 'budget_pool_id' })
   budgetPool: BudgetPool;
 
   /** 关联的订单ID (可选) */
@@ -143,7 +143,7 @@ export class Milestone {
   reviewedById: string;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'reviewedById' })
+  @JoinColumn({ name: 'reviewed_by_id' })
   reviewedBy: User;
 
   /** 审核时间 */
@@ -169,6 +169,15 @@ export class Milestone {
   /** 元数据 */
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
+
+
+  /** On-chain BudgetPool contract milestoneId */
+  @Column({ nullable: true })
+  onchainMilestoneId: number;
+
+  /** Release transaction hash */
+  @Column({ type: 'varchar', nullable: true })
+  releaseTxHash: string;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -25,6 +25,12 @@ export interface ModelPreset {
 
 export const MODEL_PRESETS: ModelPreset[] = [
   {
+    id: 'claude-opus-4-6',
+    label: 'Claude Opus 4.6 (Bedrock)',
+    provider: 'bedrock-opus',
+    model: 'arn:aws:bedrock:us-east-1:696737009512:inference-profile/us.anthropic.claude-opus-4-6-v1',
+  },
+  {
     id: 'claude-opus-4-5',
     label: 'Claude Opus 4.5 (Bedrock)',
     provider: 'bedrock-opus',
@@ -94,4 +100,10 @@ export const PROVIDER_OPTIONS: Array<{ label: string; value: AIProvider }> = [
 export function getEffectiveModelId(agentCode?: string, override?: AgentModelOverride | null): string {
   if (override?.model) return override.model;
   return agentCode ? getModelForAgent(agentCode) : 'Unknown';
+}
+
+export function getModelLabel(modelId?: string | null): string {
+  if (!modelId) return 'Unknown';
+  const preset = MODEL_PRESETS.find(p => p.model === modelId);
+  return preset?.label || modelId;
 }

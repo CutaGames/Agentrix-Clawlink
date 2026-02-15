@@ -48,17 +48,7 @@ export default function MerchantsPage() {
   const [total, setTotal] = useState(0);
   const router = useRouter();
 
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-      router.replace('/admin/login');
-      return;
-    }
-
-    fetchMerchants(token);
-  }, [router, page]);
-
-  const fetchMerchants = async (token: string) => {
+  const fetchMerchants = useCallback(async (token: string) => {
     try {
       setLoading(true);
       setError('');
@@ -100,7 +90,17 @@ export default function MerchantsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchTerm, router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.replace('/admin/login');
+      return;
+    }
+
+    fetchMerchants(token);
+  }, [router, page, fetchMerchants]);
 
   const handleSearch = () => {
     const token = localStorage.getItem('admin_token');

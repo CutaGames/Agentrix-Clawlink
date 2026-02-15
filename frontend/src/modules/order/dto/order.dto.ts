@@ -10,15 +10,20 @@ import {
 import { AssetType } from '../../../entities/order.entity';
 
 export class CreateOrderDto {
-  @ApiProperty({ description: '商户ID' })
+  @ApiProperty({ description: '商户ID', required: false })
   @IsString()
-  @IsNotEmpty()
-  merchantId: string;
+  @IsOptional()
+  merchantId?: string;
 
-  @ApiProperty({ description: '商品ID' })
+  @ApiProperty({ description: '商品ID (products表中的ID，Skill购买时可为空)', required: false })
   @IsString()
-  @IsNotEmpty()
-  productId: string;
+  @IsOptional()
+  productId?: string;
+
+  @ApiProperty({ description: 'Skill ID (skills表中的ID，Skill购买时使用)', required: false })
+  @IsString()
+  @IsOptional()
+  skillId?: string;
 
   @ApiProperty({ description: '金额' })
   @IsNumber()

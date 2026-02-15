@@ -223,7 +223,85 @@ export class AgentService {
 
     // 识别意图
     let intent = 'general';
-    if (lowerMessage.includes('搜索') || lowerMessage.includes('找') || lowerMessage.includes('search')) {
+    // Commerce 意图识别（优先级高于通用电商意图）
+    // 收付款与兑换
+    if (/付款|发起支付|pay\s+\d|send\s+\d/i.test(lowerMessage)) {
+      intent = 'commerce_payment';
+      entities.commerceCategory = 'pay_exchange';
+      entities.commerceSubCategory = 'payment';
+    } else if (/收款|收款码|收款链接|generate.*payment.*link/i.test(lowerMessage)) {
+      intent = 'commerce_receive';
+      entities.commerceCategory = 'pay_exchange';
+      entities.commerceSubCategory = 'receive';
+    } else if (/兑换|换币|入金|on-?ramp|买.*usdc|买.*usdt|buy.*usdc|buy.*usdt/i.test(lowerMessage)) {
+      intent = 'commerce_onramp';
+      entities.commerceCategory = 'pay_exchange';
+      entities.commerceSubCategory = 'onramp';
+    } else if (/提现|出金|off-?ramp|卖.*usdc|卖.*usdt/i.test(lowerMessage)) {
+      intent = 'commerce_offramp';
+      entities.commerceCategory = 'pay_exchange';
+      entities.commerceSubCategory = 'offramp';
+    } else if (/汇率|exchange.*rate|rate.*usd/i.test(lowerMessage)) {
+      intent = 'commerce_rate';
+      entities.commerceCategory = 'pay_exchange';
+      entities.commerceSubCategory = 'rate';
+    // 协作分账
+    } else if (/分账|分成|split|revenue.*shar/i.test(lowerMessage)) {
+      intent = 'commerce_split';
+      entities.commerceCategory = 'collab';
+      entities.commerceSubCategory = 'split';
+    } else if (/预算池|budget.*pool|任务预算|项目预算/i.test(lowerMessage)) {
+      intent = 'commerce_budget';
+      entities.commerceCategory = 'collab';
+      entities.commerceSubCategory = 'budget';
+    } else if (/里程碑|milestone|阶段交付/i.test(lowerMessage)) {
+      intent = 'commerce_milestone';
+      entities.commerceCategory = 'collab';
+      entities.commerceSubCategory = 'milestone';
+    } else if (/协作酬劳|协作报酬|酬劳|报酬|collaboration.*pay/i.test(lowerMessage)) {
+      intent = 'commerce_collaboration';
+      entities.commerceCategory = 'collab';
+      entities.commerceSubCategory = 'collaboration';
+    // 分佣结算
+    } else if (/分润|分佣|佣金|commission/i.test(lowerMessage)) {
+      intent = 'commerce_commissions';
+      entities.commerceCategory = 'commission';
+      entities.commerceSubCategory = 'commissions';
+    } else if (/结算记录|结算历史|settlement.*record/i.test(lowerMessage)) {
+      intent = 'commerce_settlements';
+      entities.commerceCategory = 'commission';
+      entities.commerceSubCategory = 'settlements';
+    } else if (/执行结算|发起结算|execute.*settlement/i.test(lowerMessage)) {
+      intent = 'commerce_settlement_execute';
+      entities.commerceCategory = 'commission';
+      entities.commerceSubCategory = 'settlement_execute';
+    } else if (/手续费|费用计算|费率计算|预览分账|fee.*calc/i.test(lowerMessage)) {
+      intent = 'commerce_fees';
+      entities.commerceCategory = 'commission';
+      entities.commerceSubCategory = 'fees';
+    } else if (/费率结构|平台费率|fee.*structure|platform.*rate/i.test(lowerMessage)) {
+      intent = 'commerce_rates';
+      entities.commerceCategory = 'commission';
+      entities.commerceSubCategory = 'rates';
+    // 发布
+    } else if (/发布.*任务|发布协作任务|publish.*task/i.test(lowerMessage)) {
+      intent = 'commerce_publish_task';
+      entities.commerceCategory = 'publish';
+      entities.commerceSubCategory = 'publish_task';
+    } else if (/发布商品|publish.*product/i.test(lowerMessage)) {
+      intent = 'commerce_publish_product';
+      entities.commerceCategory = 'publish';
+      entities.commerceSubCategory = 'publish_product';
+    } else if (/发布skill|发布技能|publish.*skill/i.test(lowerMessage)) {
+      intent = 'commerce_publish_skill';
+      entities.commerceCategory = 'publish';
+      entities.commerceSubCategory = 'publish_skill';
+    } else if (/同步到外部|sync.*external|同步.*marketplace/i.test(lowerMessage)) {
+      intent = 'commerce_sync_external';
+      entities.commerceCategory = 'publish';
+      entities.commerceSubCategory = 'sync_external';
+    // 通用电商意图
+    } else if (lowerMessage.includes('搜索') || lowerMessage.includes('找') || lowerMessage.includes('search')) {
       intent = 'search';
     } else if (lowerMessage.includes('购买') || lowerMessage.includes('买') || lowerMessage.includes('buy')) {
       intent = 'purchase';
@@ -231,10 +309,14 @@ export class AgentService {
       intent = 'add_to_cart';
     } else if (lowerMessage.includes('下单') || lowerMessage.includes('order')) {
       intent = 'create_order';
-    } else if (lowerMessage.includes('支付') || lowerMessage.includes('pay')) {
+    } else if (/支付|pay/i.test(lowerMessage)) {
       intent = 'payment';
     } else if (lowerMessage.includes('退款') || lowerMessage.includes('refund')) {
       intent = 'refund';
+    } else if (/查询订单|订单状态|支付状态|order.*status/i.test(lowerMessage)) {
+      intent = 'commerce_query';
+      entities.commerceCategory = 'pay_exchange';
+      entities.commerceSubCategory = 'query';
     } else if (lowerMessage.includes('查询') || lowerMessage.includes('query')) {
       intent = 'query';
     }
@@ -564,6 +646,77 @@ export class AgentService {
             entities.category = lastEntities.category;
           }
         }
+      }
+
+      // Commerce 意图处理 — 返回 commerce_categories 类型让前端渲染表单
+      if (intent.startsWith('commerce_')) {
+        const commerceCategories = this.getCommerceCategories();
+        const openCategory = entities.commerceCategory || null;
+        const openSubCategory = entities.commerceSubCategory || null;
+
+        // 构建友好的提示文本
+        const commerceHints: Record<string, string> = {
+          commerce_payment: '已为您打开支付功能，请填写支付信息。',
+          commerce_receive: '已为您打开收款功能，请设置收款金额。',
+          commerce_onramp: '已为您打开法币兑换功能，请填写兑换信息。',
+          commerce_offramp: '已为您打开提现功能，请填写提现信息。',
+          commerce_rate: '已为您打开汇率查询功能。',
+          commerce_query: '已为您打开订单查询功能，请输入订单号。',
+          commerce_split: '已为您打开分账方案创建功能，请配置分账规则。',
+          commerce_budget: '已为您打开预算池管理功能。',
+          commerce_milestone: '已为您打开里程碑管理功能。',
+          commerce_collaboration: '已为您打开协作酬劳功能。',
+          commerce_commissions: '已为您打开分润记录查看功能。',
+          commerce_settlements: '已为您打开结算记录查看功能。',
+          commerce_settlement_execute: '已为您打开结算执行功能。',
+          commerce_fees: '已为您打开费用计算功能。',
+          commerce_rates: '已为您打开费率结构查看功能。',
+          commerce_publish_task: '已为您打开任务发布功能，请填写任务信息。',
+          commerce_publish_product: '已为您打开商品发布功能，请填写商品信息。',
+          commerce_publish_skill: '已为您打开 Skill 发布功能，请填写技能信息。',
+          commerce_sync_external: '已为您打开外部平台同步功能。',
+        };
+
+        const responseText = commerceHints[intent] || '已为您打开 Commerce 功能面板，请选择具体操作。';
+
+        const response = {
+          response: responseText,
+          type: 'commerce_categories' as any,
+          data: {
+            layout: 'three-tier',
+            categories: commerceCategories,
+            openCategory,
+            openSubCategory,
+          },
+          sessionId: session?.id,
+          intent,
+          entities,
+        };
+
+        // 保存助手消息
+        if (session) {
+          await this.saveMessage(
+            session.id,
+            userId || null,
+            MessageRole.ASSISTANT,
+            response.response,
+            MessageType.TEXT,
+            { intent, entities, commerceCategory: openCategory, commerceSubCategory: openSubCategory },
+          );
+        }
+
+        // 记录审计日志
+        await this.logAudit(
+          userId || null,
+          AuditAction.AGENT_MESSAGE,
+          AuditStatus.SUCCESS,
+          `Agent Commerce意图: ${intent}`,
+          { message, intent, entities },
+          response,
+          { sessionId: session?.id, duration: Date.now() - startTime },
+        );
+
+        return response;
       }
 
       // 商品搜索/比价
@@ -1419,6 +1572,69 @@ payment = paymind.payments.create(
     }
 
     return this.generateCodeExample(prompt, language);
+  }
+
+  /**
+   * 获取 Commerce 分类数据（与前端 getCommerceCategories 保持一致）
+   */
+  private getCommerceCategories() {
+    return [
+      {
+        id: 'pay_exchange',
+        icon: '💰',
+        title: '收付款与兑换',
+        description: '支付、收款、汇率、法币出入金',
+        protocol: 'X402',
+        subCategories: [
+          { id: 'payment', title: '发起支付', example: '我要付款 100 USDC' },
+          { id: 'receive', title: '生成收款码', example: '生成收款链接 50 USDC' },
+          { id: 'query', title: '查询订单/支付状态', example: '查询订单 order_xxx' },
+          { id: 'onramp', title: '法币 → 加密货币', example: '用 100 USD 兑换 USDC' },
+          { id: 'offramp', title: '加密货币 → 法币', example: '把 100 USDC 提现' },
+          { id: 'rate', title: '汇率查询', example: '查询 USDC 汇率' },
+        ],
+      },
+      {
+        id: 'collab',
+        icon: '👥',
+        title: '协作分账',
+        description: '分账方案、预算池、里程碑、协作酬劳',
+        protocol: 'UCP',
+        subCategories: [
+          { id: 'split', title: '创建分账方案', example: '创建分账方案' },
+          { id: 'budget', title: '管理预算池', example: '建一个任务预算池' },
+          { id: 'milestone', title: '里程碑管理', example: '给预算池加里程碑' },
+          { id: 'collaboration', title: '发放协作酬劳', example: '按里程碑放款' },
+        ],
+      },
+      {
+        id: 'commission',
+        icon: '💸',
+        title: '分佣结算',
+        description: '分润记录、结算管理、费用计算',
+        protocol: 'UCP',
+        subCategories: [
+          { id: 'commissions', title: '查看分润记录', example: '查看我的分润记录' },
+          { id: 'settlements', title: '查看结算记录', example: '查看结算记录' },
+          { id: 'settlement_execute', title: '执行结算', example: '执行结算' },
+          { id: 'fees', title: '费用计算/预览', example: '算手续费' },
+          { id: 'rates', title: '查看费率结构', example: '费率结构是什么' },
+        ],
+      },
+      {
+        id: 'publish',
+        icon: '🚀',
+        title: '发布',
+        description: '任务/商品/Skill 发布到 Marketplace',
+        protocol: 'UCP',
+        subCategories: [
+          { id: 'publish_task', title: '发布协作任务', example: '发布一个协作任务到 marketplace' },
+          { id: 'publish_product', title: '发布商品', example: '发布商品到 marketplace' },
+          { id: 'publish_skill', title: '发布 Skill', example: '发布 skill 到 marketplace' },
+          { id: 'sync_external', title: '同步到外部平台', example: '同步到外部任务平台' },
+        ],
+      },
+    ];
   }
 
   private getServiceSearchCode(lang: string): string {

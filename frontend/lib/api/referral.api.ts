@@ -56,6 +56,53 @@ export interface UpdateReferralStatusDto {
   oneTimeReward?: number;
 }
 
+// ===== Social Referral Link Types =====
+
+export type ReferralLinkType = 'general' | 'product' | 'skill' | 'campaign';
+export type ReferralLinkStatus = 'active' | 'paused' | 'expired' | 'archived';
+
+export interface CreateReferralLinkDto {
+  title?: string;
+  type?: ReferralLinkType;
+  targetId?: string;
+  targetType?: string;
+  targetName?: string;
+  channel?: string;
+  splitPlanId?: string;
+  expiresAt?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ReferralLinkResponse {
+  id: string;
+  shortCode: string;
+  shortUrl: string;
+  fullUrl: string;
+  title?: string;
+  type: ReferralLinkType;
+  status: ReferralLinkStatus;
+  targetId?: string;
+  targetName?: string;
+  channel?: string;
+  clicks: number;
+  uniqueClicks: number;
+  conversions: number;
+  totalCommission: number;
+  totalGMV: number;
+  conversionRate: number;
+  createdAt: string;
+}
+
+export interface ReferralLinkStats {
+  totalLinks: number;
+  totalClicks: number;
+  totalUniqueClicks: number;
+  totalConversions: number;
+  totalCommission: number;
+  totalGMV: number;
+  conversionRate: number;
+}
+
 export const referralApi = {
   /**
    * 创建推广关系
@@ -136,6 +183,47 @@ export const referralApi = {
     totalAmount: number;
   }> => {
     return apiClient.post('/referral/commissions/settle', { period });
+  },
+
+  // ===== Social Referral Links =====
+
+  /**
+   * 创建推广短链（通用/商品级/Skill级）
+   */
+  createReferralLink: async (dto: CreateReferralLinkDto): Promise<ReferralLinkResponse> => {
+    return apiClient.post<ReferralLinkResponse>('/referral/links', dto);
+  },
+
+  /**
+   * 获取我的推广短链列表
+   */
+  getMyReferralLinks: async (type?: ReferralLinkType): Promise<ReferralLinkResponse[]> => {
+    const query = type ? `?type=${type}` : '';
+    return apiClient.get<ReferralLinkResponse[]>(`/referral/links${query}`);
+  },
+
+  /**
+   * 获取推广短链统计汇总
+   */
+  getReferralLinkStats: async (): Promise<ReferralLinkStats> => {
+    return apiClient.get<ReferralLinkStats>('/referral/links/stats');
+  },
+
+  /**
+   * 更新推广短链状态（暂停/恢复）
+   */
+  updateReferralLinkStatus: async (
+    linkId: string,
+    status: ReferralLinkStatus,
+  ): Promise<ReferralLinkResponse> => {
+    return apiClient.put<ReferralLinkResponse>(`/referral/links/${linkId}/status`, { status });
+  },
+
+  /**
+   * 归档推广短链
+   */
+  archiveReferralLink: async (linkId: string): Promise<{ success: boolean }> => {
+    return apiClient.delete<{ success: boolean }>(`/referral/links/${linkId}`);
   },
 };
 

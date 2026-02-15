@@ -37,12 +37,15 @@ import { OrderService } from '../order/order.service';
 import { AssetType, OrderStatus } from '../../entities/order.entity';
 import { Skill, SkillStatus, SkillPricingType } from '../../entities/skill.entity';
 import { Product, ProductStatus } from '../../entities/product.entity';
+import { UCPCheckoutSessionEntity, CheckoutSessionStatus } from '../../entities/ucp-checkout-session.entity';
+import { AP2MandateEntity, MandateStatus } from '../../entities/ap2-mandate.entity';
 
 const UCP_VERSION = '2026-01-11';
 
 @Injectable()
 export class UCPService {
   private readonly logger = new Logger(UCPService.name);
+  // In-memory caches kept for hot-path performance; DB is source of truth
   private readonly checkoutSessions = new Map<string, UCPCheckoutSession>();
   private readonly ucpOrders = new Map<string, UCPOrder>(); // UCP order tracking
 
@@ -54,6 +57,10 @@ export class UCPService {
     private skillRepository: Repository<Skill>,
     @InjectRepository(Product)
     private productRepository: Repository<Product>,
+    @InjectRepository(UCPCheckoutSessionEntity)
+    private checkoutSessionRepository: Repository<UCPCheckoutSessionEntity>,
+    @InjectRepository(AP2MandateEntity)
+    private mandateRepository: Repository<AP2MandateEntity>,
   ) {}
 
   /**
@@ -283,8 +290,9 @@ export class UCPService {
       updated_at: new Date().toISOString(),
     };
 
-    // Store session in memory (in production, use Redis or database)
+    // Persist to database + cache in memory
     this.checkoutSessions.set(sessionId, session);
+    await this.persistCheckoutSession(session);
 
     this.logger.log(`Created UCP checkout session: ${sessionId}`);
     return session;
@@ -294,11 +302,23 @@ export class UCPService {
    * Get checkout session by ID
    */
   async getCheckout(sessionId: string): Promise<UCPCheckoutSession> {
-    const session = this.checkoutSessions.get(sessionId);
-    if (!session) {
-      throw new NotFoundException(`Checkout session ${sessionId} not found`);
+    // Check in-memory cache first
+    let session = this.checkoutSessions.get(sessionId);
+    if (session) return session;
+
+    // Fall back to database
+    try {
+      const entity = await this.checkoutSessionRepository.findOne({ where: { id: sessionId } });
+      if (entity) {
+        session = this.entityToCheckoutSession(entity);
+        this.checkoutSessions.set(sessionId, session); // Warm cache
+        return session;
+      }
+    } catch (e) {
+      this.logger.warn(`DB lookup failed for checkout ${sessionId}: ${e.message}`);
     }
-    return session;
+
+    throw new NotFoundException(`Checkout session ${sessionId} not found`);
   }
 
   /**
@@ -356,6 +376,7 @@ export class UCPService {
     session.updated_at = new Date().toISOString();
 
     this.checkoutSessions.set(sessionId, session);
+    await this.persistCheckoutSession(session);
     return session;
   }
 
@@ -395,6 +416,7 @@ export class UCPService {
           session.continue_url = paymentResult.continueUrl;
         }
         this.checkoutSessions.set(sessionId, session);
+        await this.persistCheckoutSession(session);
         return session;
       }
 
@@ -412,6 +434,7 @@ export class UCPService {
       }];
 
       this.checkoutSessions.set(sessionId, session);
+      await this.persistCheckoutSession(session);
       this.logger.log(`Completed UCP checkout session: ${sessionId}, order: ${orderId}`);
       
       return session;
@@ -425,6 +448,7 @@ export class UCPService {
         severity: 'fatal',
       }];
       this.checkoutSessions.set(sessionId, session);
+      await this.persistCheckoutSession(session);
       return session;
     }
   }
@@ -451,134 +475,141 @@ export class UCPService {
     }
 
     this.checkoutSessions.set(sessionId, session);
+    await this.persistCheckoutSession(session);
     this.logger.log(`Cancelled UCP checkout session: ${sessionId}`);
     
     return session;
   }
 
-  // ============ AP2 Mandate Management ============
-
-  /**
-   * In-memory mandate storage (in production, use database)
-   */
-  private mandates = new Map<string, AP2Mandate>();
+  // ============ AP2 Mandate Management (DB-backed) ============
 
   /**
    * Create an AP2 mandate for autonomous agent payments
    */
   async createMandate(dto: CreateMandateDto): Promise<AP2Mandate> {
-    const mandateId = `mandate_${uuidv4().replace(/-/g, '').slice(0, 16)}`;
     const now = new Date();
     const validUntil = dto.valid_until ? new Date(dto.valid_until) : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    const mandate: AP2Mandate = {
-      id: mandateId,
-      agent_id: dto.agent_id,
-      principal_id: dto.principal_id,
-      max_amount: dto.max_amount,
+    const entity = this.mandateRepository.create({
+      agentId: dto.agent_id,
+      principalId: dto.principal_id,
+      maxAmount: String(dto.max_amount),
       currency: dto.currency || 'USD',
-      valid_from: now.toISOString(),
-      valid_until: validUntil.toISOString(),
-      allowed_merchants: dto.allowed_merchants || [],
-      allowed_categories: dto.allowed_categories || [],
-      used_amount: 0,
-      transaction_count: 0,
-      status: 'active',
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    };
+      validFrom: now,
+      validUntil: validUntil,
+      allowedMerchants: dto.allowed_merchants || [],
+      allowedCategories: dto.allowed_categories || [],
+      usedAmount: '0',
+      transactionCount: 0,
+      status: MandateStatus.ACTIVE,
+    });
 
-    this.mandates.set(mandateId, mandate);
-    this.logger.log(`Created AP2 mandate: ${mandateId} for agent ${dto.agent_id}`);
+    const saved = await this.mandateRepository.save(entity);
+    this.logger.log(`Created AP2 mandate: ${saved.id} for agent ${dto.agent_id}`);
 
-    return mandate;
+    return this.entityToMandate(saved);
   }
 
   /**
    * Get mandate by ID
    */
   async getMandate(mandateId: string): Promise<AP2Mandate> {
-    const mandate = this.mandates.get(mandateId);
-    if (!mandate) {
+    const entity = await this.mandateRepository.findOne({ where: { id: mandateId } });
+    if (!entity) {
       throw new NotFoundException(`Mandate ${mandateId} not found`);
     }
-    return mandate;
+    return this.entityToMandate(entity);
   }
 
   /**
    * Verify mandate validity and limits
    */
   async verifyMandate(mandateId: string, amount: number, merchantId?: string, category?: string): Promise<MandateVerificationResult> {
-    const mandate = await this.getMandate(mandateId);
+    const entity = await this.mandateRepository.findOne({ where: { id: mandateId } });
+    if (!entity) {
+      return { valid: false, reason: `Mandate ${mandateId} not found` };
+    }
 
     // Check status
-    if (mandate.status !== 'active') {
-      return { valid: false, reason: `Mandate is ${mandate.status}` };
+    if (entity.status !== MandateStatus.ACTIVE) {
+      return { valid: false, reason: `Mandate is ${entity.status}` };
     }
 
     // Check expiration
-    if (new Date(mandate.valid_until) < new Date()) {
-      mandate.status = 'expired';
-      this.mandates.set(mandateId, mandate);
+    if (entity.validUntil < new Date()) {
+      entity.status = MandateStatus.EXPIRED;
+      await this.mandateRepository.save(entity);
       return { valid: false, reason: 'Mandate has expired' };
     }
 
+    const maxAmount = Number(entity.maxAmount);
+    const usedAmount = Number(entity.usedAmount);
+
     // Check amount limit
-    if (amount > mandate.max_amount) {
-      return { valid: false, reason: `Amount ${amount} exceeds mandate limit ${mandate.max_amount}` };
+    if (amount > maxAmount) {
+      return { valid: false, reason: `Amount ${amount} exceeds mandate limit ${maxAmount}` };
+    }
+
+    // Check remaining budget
+    if (amount > (maxAmount - usedAmount)) {
+      return { valid: false, reason: `Amount ${amount} exceeds remaining budget ${maxAmount - usedAmount}` };
     }
 
     // Check merchant allowlist
-    if (mandate.allowed_merchants.length > 0 && merchantId) {
-      if (!mandate.allowed_merchants.includes(merchantId)) {
+    if (entity.allowedMerchants.length > 0 && merchantId) {
+      if (!entity.allowedMerchants.includes(merchantId)) {
         return { valid: false, reason: `Merchant ${merchantId} not in allowed list` };
       }
     }
 
     // Check category allowlist
-    if (mandate.allowed_categories.length > 0 && category) {
-      if (!mandate.allowed_categories.includes(category)) {
+    if (entity.allowedCategories.length > 0 && category) {
+      if (!entity.allowedCategories.includes(category)) {
         return { valid: false, reason: `Category ${category} not in allowed list` };
       }
     }
 
-    return { valid: true, remaining_amount: mandate.max_amount - mandate.used_amount };
+    return { valid: true, remaining_amount: maxAmount - usedAmount };
   }
 
   /**
    * Use mandate for a transaction
    */
   async useMandate(mandateId: string, amount: number): Promise<{ success: boolean; mandate: AP2Mandate }> {
-    const mandate = await this.getMandate(mandateId);
+    const entity = await this.mandateRepository.findOne({ where: { id: mandateId } });
+    if (!entity) throw new NotFoundException(`Mandate ${mandateId} not found`);
     const verification = await this.verifyMandate(mandateId, amount);
 
     if (!verification.valid) {
       throw new BadRequestException(verification.reason);
     }
 
-    mandate.used_amount += amount;
-    mandate.transaction_count += 1;
-    mandate.updated_at = new Date().toISOString();
+    entity.usedAmount = String(Number(entity.usedAmount) + amount);
+    entity.transactionCount += 1;
 
-    this.mandates.set(mandateId, mandate);
-    this.logger.log(`Used mandate ${mandateId}: ${amount}, total used: ${mandate.used_amount}`);
+    const maxAmount = Number(entity.maxAmount);
+    if (Number(entity.usedAmount) >= maxAmount) {
+      entity.status = MandateStatus.EXHAUSTED;
+    }
 
-    return { success: true, mandate };
+    await this.mandateRepository.save(entity);
+    this.logger.log(`Used mandate ${mandateId}: ${amount}, total used: ${entity.usedAmount}`);
+
+    return { success: true, mandate: this.entityToMandate(entity) };
   }
 
   /**
    * Revoke mandate
    */
   async revokeMandate(mandateId: string): Promise<AP2Mandate> {
-    const mandate = await this.getMandate(mandateId);
+    const entity = await this.mandateRepository.findOne({ where: { id: mandateId } });
+    if (!entity) throw new NotFoundException(`Mandate ${mandateId} not found`);
     
-    mandate.status = 'revoked';
-    mandate.updated_at = new Date().toISOString();
-
-    this.mandates.set(mandateId, mandate);
+    entity.status = MandateStatus.REVOKED;
+    await this.mandateRepository.save(entity);
     this.logger.log(`Revoked mandate: ${mandateId}`);
 
-    return mandate;
+    return this.entityToMandate(entity);
   }
 
   // ============ Identity Linking ============
@@ -906,15 +937,10 @@ export class UCPService {
    * List mandates for an agent
    */
   async listMandates(agentId: string, status?: string): Promise<AP2Mandate[]> {
-    const mandates: AP2Mandate[] = [];
-    for (const mandate of this.mandates.values()) {
-      if (mandate.agent_id === agentId) {
-        if (!status || mandate.status === status) {
-          mandates.push(mandate);
-        }
-      }
-    }
-    return mandates;
+    const where: any = { agentId };
+    if (status) where.status = status;
+    const entities = await this.mandateRepository.find({ where, order: { createdAt: 'DESC' } });
+    return entities.map(e => this.entityToMandate(e));
   }
 
   // ============ Helper Methods ============
@@ -1368,5 +1394,81 @@ export class UCPService {
         ucpEnabled: true 
       }
     });
+  }
+
+  // ============ DB Persistence Helpers ============
+
+  /**
+   * Persist checkout session to database
+   */
+  private async persistCheckoutSession(session: UCPCheckoutSession): Promise<void> {
+    try {
+      const entity = this.checkoutSessionRepository.create({
+        id: session.id,
+        status: session.status as CheckoutSessionStatus,
+        currency: session.currency,
+        buyer: session.buyer as any,
+        lineItems: session.line_items,
+        totals: session.totals,
+        payment: session.payment as any,
+        fulfillment: session.fulfillment as any,
+        messages: session.messages,
+        links: session.links,
+        continueUrl: session.continue_url,
+        merchantOrderId: session.merchant_order_id,
+        ucp: session.ucp as any,
+        metadata: { order: session.order, error: session.error },
+      });
+      await this.checkoutSessionRepository.save(entity);
+    } catch (e) {
+      this.logger.warn(`Failed to persist checkout session ${session.id}: ${e.message}`);
+    }
+  }
+
+  /**
+   * Convert checkout session entity to DTO
+   */
+  private entityToCheckoutSession(entity: UCPCheckoutSessionEntity): UCPCheckoutSession {
+    return {
+      ucp: entity.ucp as any || { version: '2026-01-11', capabilities: [] },
+      id: entity.id,
+      status: entity.status as any,
+      currency: entity.currency,
+      buyer: entity.buyer as any,
+      line_items: entity.lineItems || [],
+      totals: entity.totals || [],
+      payment: entity.payment as any,
+      fulfillment: entity.fulfillment as any,
+      messages: entity.messages,
+      links: entity.links,
+      continue_url: entity.continueUrl,
+      merchant_order_id: entity.merchantOrderId,
+      created_at: entity.createdAt?.toISOString(),
+      updated_at: entity.updatedAt?.toISOString(),
+      order: entity.metadata?.order,
+      error: entity.metadata?.error,
+    };
+  }
+
+  /**
+   * Convert AP2 mandate entity to DTO
+   */
+  private entityToMandate(entity: AP2MandateEntity): AP2Mandate {
+    return {
+      id: entity.id,
+      agent_id: entity.agentId,
+      principal_id: entity.principalId,
+      max_amount: Number(entity.maxAmount),
+      currency: entity.currency,
+      valid_from: entity.validFrom?.toISOString(),
+      valid_until: entity.validUntil?.toISOString(),
+      allowed_merchants: entity.allowedMerchants || [],
+      allowed_categories: entity.allowedCategories || [],
+      used_amount: Number(entity.usedAmount),
+      transaction_count: entity.transactionCount,
+      status: entity.status as any,
+      created_at: entity.createdAt?.toISOString(),
+      updated_at: entity.updatedAt?.toISOString(),
+    };
   }
 }

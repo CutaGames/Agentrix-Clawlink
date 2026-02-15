@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { useAgents } from '@/hooks/useAgents';
 import { agentDefinitions } from '@/lib/strategic-plan';
 
 interface AgentTask {
@@ -37,40 +38,59 @@ interface AgentMatrixProps {
   compact?: boolean;
 }
 
-// Mock current tasks for demo
-const mockAgentTasks: Record<string, { status: AgentWithTasks['status']; currentTask?: AgentTask }> = {
-  'ARCHITECT-01': {
-    status: 'active',
-    currentTask: {
-      id: 't1',
-      title: '升级 HQ Console 界面',
-      status: 'running',
-      progress: 40,
-    },
-  },
-  'DEV-01': {
-    status: 'standby',
-  },
-  'MARKET-01': {
-    status: 'standby',
-  },
-  'SALES-01': {
-    status: 'standby',
-  },
-  'CONTENT-01': {
-    status: 'standby',
-  },
-  'OPS-01': {
-    status: 'standby',
-  },
+// Map backend status to UI status
+function mapStatus(backendStatus: string): AgentWithTasks['status'] {
+  switch (backendStatus) {
+    case 'running': return 'busy';
+    case 'idle': return 'standby';
+    case 'paused': return 'standby';
+    case 'error': return 'error';
+    default: return 'standby';
+  }
+}
+
+// Role-based capabilities and descriptions
+const roleMetadata: Record<string, { description: string; capabilities: string[] }> = {
+  architect: { description: '总体规划、技术决策、团队协调', capabilities: ['架构设计', '代码审查', '任务分配', '技术指导'] },
+  coder: { description: '功能开发、Bug修复、代码实现', capabilities: ['前端开发', '后端开发', 'API开发', '测试'] },
+  analyst: { description: '数据分析、业务洞察、市场研究', capabilities: ['数据分析', '市场调研', '竞品分析', '报告'] },
+  growth: { description: '用户增长、营销策略、转化优化', capabilities: ['增长策略', '用户获取', '转化优化', 'A/B测试'] },
+  bd: { description: '商务拓展、合作伙伴、生态建设', capabilities: ['商务谈判', '合作拓展', '生态建设', '收入分析'] },
+  social: { description: '社交媒体运营、内容分发、社区管理', capabilities: ['Twitter运营', '社区管理', '内容分发', '互动'] },
+  content: { description: '文案撰写、文档编写、品牌内容', capabilities: ['文案撰写', '技术文档', '社交内容', '品牌故事'] },
+  support: { description: '客户支持、问题解决、用户满意度', capabilities: ['客户沟通', '问题诊断', '满意度', '反馈'] },
+  security: { description: '安全审计、风险评估、合规检查', capabilities: ['安全审计', '漏洞扫描', '合规检查', '风险评估'] },
+  legal: { description: '法律合规、合同审查、知识产权', capabilities: ['合同审查', '合规咨询', '知识产权', '风险管理'] },
+  devrel: { description: '开发者关系、技术布道、社区建设', capabilities: ['技术布道', '开发者社区', 'SDK文档', '技术分享'] },
 };
 
 export function AgentMatrix({ onSelectAgent, selectedAgentId, compact = false }: AgentMatrixProps) {
-  // Merge agent definitions with mock tasks
-  const agents: AgentWithTasks[] = agentDefinitions.map(agent => ({
-    ...agent,
-    ...mockAgentTasks[agent.id],
-  }));
+  const { agents: backendAgents } = useAgents();
+
+  // Build agents from backend data, falling back to static definitions
+  const agents: AgentWithTasks[] = React.useMemo(() => {
+    if (backendAgents && backendAgents.length > 0) {
+      return backendAgents.map(ba => {
+        const meta = roleMetadata[ba.role] || { description: ba.role || 'AI Agent', capabilities: [] };
+        return {
+          id: ba.code,
+          name: ba.name || ba.code,
+          role: ba.role || 'agent',
+          description: meta.description,
+          capabilities: meta.capabilities,
+          status: mapStatus(ba.status),
+          currentTask: ba.currentTask ? {
+            id: 'current',
+            title: ba.currentTask,
+            status: 'running' as const,
+            progress: ba.progress || 0,
+          } : undefined,
+        };
+      });
+    }
+    // Fallback to static definitions
+    return agentDefinitions.map(agent => ({ ...agent }));
+  }, [backendAgents]);
 
   const activeCount = agents.filter(a => a.status === 'active' || a.status === 'busy').length;
   const totalCount = agents.length;

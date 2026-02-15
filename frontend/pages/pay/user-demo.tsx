@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Image from 'next/image'
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { Navigation } from '../../components/ui/Navigation'
@@ -43,7 +44,6 @@ export default function UserDemoPage() {
   }
 
   const handlePaymentSuccess = (result: any) => {
-    console.log('支付成功:', result)
     // 可以在这里处理支付成功后的逻辑
     // 延迟关闭支付流程，让用户看到成功信息
     setTimeout(() => {
@@ -194,7 +194,14 @@ export default function UserDemoPage() {
                               <p className="font-semibold">AI 智能音箱套装</p>
                               <p className="text-sm text-slate-400">¥1,299.00</p>
                             </div>
-                            <img src="/placeholder-product.jpg" alt="Product" className="w-20 h-20 rounded-lg bg-slate-700" />
+                            <Image 
+                              src="/placeholder-product.jpg" 
+                              alt="Product" 
+                              width={80}
+                              height={80}
+                              className="rounded-lg bg-slate-700" 
+                              unoptimized
+                            />
                           </div>
                         </div>
                       </div>
@@ -222,7 +229,14 @@ export default function UserDemoPage() {
                                   <p className="font-semibold">AI 智能音箱套装</p>
                                   <p className="text-sm text-slate-400">¥1,299.00</p>
                                 </div>
-                                <img src="/placeholder-product.jpg" alt="Product" className="w-16 h-16 rounded-lg bg-slate-700" />
+                                <Image 
+                                  src="/placeholder-product.jpg" 
+                                  alt="Product" 
+                                  width={64}
+                                  height={64}
+                                  className="rounded-lg bg-slate-700" 
+                                  unoptimized
+                                />
                               </div>
                             </div>
                           </div>

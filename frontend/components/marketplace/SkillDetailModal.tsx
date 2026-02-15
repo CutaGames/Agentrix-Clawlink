@@ -13,7 +13,7 @@
  * - SLA标志
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, 
   Zap, 
@@ -36,6 +36,10 @@ import {
   Workflow,
   CheckCircle,
   AlertCircle,
+  MessageSquare,
+  ThumbsUp,
+  Send,
+  Loader2,
 } from 'lucide-react';
 
 export interface SkillDetailProps {
@@ -76,6 +80,18 @@ export interface SkillDetailProps {
   onTryIt?: (params: any) => Promise<any>;
   onPurchase?: () => void;
   onAddToAgent?: () => void;
+  reviewCount?: number;
+}
+
+interface ReviewItem {
+  id: string;
+  userId: string;
+  userName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  verifiedUsage: boolean;
+  helpfulCount: number;
 }
 
 // 层级配置
@@ -101,11 +117,89 @@ export const SkillDetailModal: React.FC<SkillDetailProps> = ({
   onPurchase,
   onAddToAgent,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'integrate' | 'playground'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'integrate' | 'playground' | 'reviews'>('overview');
   const [copied, setCopied] = useState(false);
   const [playgroundInput, setPlaygroundInput] = useState('{}');
   const [playgroundOutput, setPlaygroundOutput] = useState<any>(null);
   const [isRunning, setIsRunning] = useState(false);
+  // Reviews state
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [hoverRating, setHoverRating] = useState(0);
+
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+
+  const loadReviews = useCallback(async () => {
+    if (!skill.id) return;
+    setReviewsLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/api/skills/${skill.id}/reviews?page=1&limit=20`);
+      if (res.ok) {
+        const data = await res.json();
+        setReviews(data.data?.reviews || data.reviews || []);
+        setReviewsTotal(data.data?.total || data.total || 0);
+      }
+    } catch (e) {
+      console.error('Failed to load reviews:', e);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [skill.id, apiBase]);
+
+  useEffect(() => {
+    if (activeTab === 'reviews' && reviews.length === 0) {
+      loadReviews();
+    }
+  }, [activeTab, loadReviews, reviews.length]);
+
+  const submitReview = async () => {
+    if (!newComment.trim()) { setReviewError('请输入评价内容'); return; }
+    setSubmittingReview(true);
+    setReviewError('');
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`${apiBase}/api/skills/${skill.id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ rating: newRating, comment: newComment }),
+      });
+      if (res.ok) {
+        setNewComment('');
+        setNewRating(5);
+        await loadReviews();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setReviewError(err.message || '提交失败，请重试');
+      }
+    } catch (e: any) {
+      setReviewError(e.message || '网络错误');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const renderStars = (rating: number, size = 'w-4 h-4', interactive = false) => (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(i => (
+        <Star
+          key={i}
+          className={`${size} cursor-${interactive ? 'pointer' : 'default'} transition-colors ${
+            i <= (interactive ? (hoverRating || newRating) : rating)
+              ? 'text-amber-400 fill-amber-400'
+              : 'text-slate-300'
+          }`}
+          onClick={interactive ? () => setNewRating(i) : undefined}
+          onMouseEnter={interactive ? () => setHoverRating(i) : undefined}
+          onMouseLeave={interactive ? () => setHoverRating(0) : undefined}
+        />
+      ))}
+    </div>
+  );
 
   if (!isOpen) return null;
 
@@ -248,6 +342,17 @@ console.log(response.result);`;
               演练场
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('reviews')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'reviews' 
+                ? 'border-blue-600 text-blue-600' 
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 inline mr-2" />
+            评价 {reviewsTotal > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs bg-slate-200 rounded-full">{reviewsTotal}</span>}
+          </button>
         </div>
 
         {/* Content */}
@@ -367,6 +472,102 @@ console.log(response.result);`;
                   {isPaid && <li>• 每次调用将扣除 ${skill.price} {skill.currency || 'USD'}</li>}
                 </ul>
               </div>
+            </div>
+          )}
+
+          {/* Reviews Tab */}
+          {activeTab === 'reviews' && (
+            <div className="space-y-6">
+              {/* Rating Summary */}
+              <div className="flex items-center gap-8 p-5 bg-slate-50 rounded-xl">
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-slate-900">{(skill.rating || 0).toFixed(1)}</div>
+                  {renderStars(skill.rating || 0, 'w-5 h-5')}
+                  <div className="text-sm text-slate-500 mt-1">{reviewsTotal} 条评价</div>
+                </div>
+                <div className="flex-1 space-y-1">
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const count = reviews.filter(r => Math.round(r.rating) === star).length;
+                    const pct = reviewsTotal > 0 ? (count / reviewsTotal) * 100 : 0;
+                    return (
+                      <div key={star} className="flex items-center gap-2 text-sm">
+                        <span className="w-3 text-slate-500">{star}</span>
+                        <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="w-8 text-right text-slate-400">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Submit Review */}
+              <div className="p-4 border border-slate-200 rounded-xl space-y-3">
+                <h4 className="font-semibold text-slate-900">写评价</h4>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-slate-600">评分:</span>
+                  {renderStars(newRating, 'w-6 h-6', true)}
+                  <span className="text-sm text-slate-500">{newRating}.0</span>
+                </div>
+                <textarea
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  placeholder="分享您的使用体验..."
+                  className="w-full h-20 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
+                />
+                {reviewError && <p className="text-sm text-red-500">{reviewError}</p>}
+                <button
+                  onClick={submitReview}
+                  disabled={submittingReview || !newComment.trim()}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {submittingReview ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  提交评价
+                </button>
+              </div>
+
+              {/* Review List */}
+              {reviewsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                </div>
+              ) : reviews.length > 0 ? (
+                <div className="space-y-4">
+                  {reviews.map(review => (
+                    <div key={review.id} className="p-4 border border-slate-100 rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-600">
+                            {review.userName?.charAt(0)?.toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <span className="font-medium text-slate-900 text-sm">{review.userName}</span>
+                            {review.verifiedUsage && (
+                              <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 rounded">已验证使用</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs text-slate-400">{new Date(review.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      {renderStars(review.rating, 'w-3.5 h-3.5')}
+                      <p className="text-sm text-slate-700 mt-2">{review.comment}</p>
+                      {review.helpfulCount > 0 && (
+                        <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
+                          <ThumbsUp className="w-3 h-3" />
+                          {review.helpfulCount} 人觉得有帮助
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-slate-400">
+                  <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p>还没有评价，成为第一个评价的人！</p>
+                </div>
+              )}
             </div>
           )}
 

@@ -6,6 +6,7 @@ import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency, type SupportedCurrency } from '../../contexts/CurrencyContext'
+import { ArrowLeft } from 'lucide-react'
 
 type ProductType = 'physical' | 'service' | 'onchain'
 type KycLevel = 'none' | 'basic' | 'advanced'
@@ -339,7 +340,7 @@ export default function UnifiedPaymentDemo() {
                 <p className="text-xs text-slate-400">{(option.successRate * 100).toFixed(1)}% success</p>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-200">
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-200">
               {option.features.map((feature) => (
                 <span key={feature} className="rounded-full bg-white/10 px-2 py-1">
                   {feature}
@@ -470,8 +471,12 @@ export default function UnifiedPaymentDemo() {
       </Head>
       <Navigation />
       <main className="bg-slate-950 text-white min-h-screen">
-        <section className="border-b border-white/10 bg-gradient-to-r from-cyan-600/30 to-blue-700/40 py-16">
+        <section className="border-b border-white/10 bg-gradient-to-r from-cyan-600/30 to-blue-700/40 py-8">
           <div className="container mx-auto px-6">
+            <Link href="/marketplace" className="inline-flex items-center text-cyan-200 hover:text-white mb-6 text-sm transition-colors">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {t({ zh: '返回市场', en: 'Back to Marketplace' })}
+            </Link>
             <div className="max-w-4xl space-y-5">
               <p className="text-xs uppercase tracking-[0.4em] text-cyan-200">{t({ zh: 'Agentrix Unified Pay', en: 'Agentrix Unified Pay' })}</p>
               <h1 className="text-4xl font-bold md:text-5xl">{t({ zh: '统一支付演示，分步体验真实链路。', en: 'Unified payment demo, step-by-step.' })}</h1>

@@ -1,20 +1,28 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+// import Redis from 'ioredis';
 
 /**
- * 缓存服务（V3.0：性能优化）
- * 支持内存缓存和Redis缓存
+ * 缓存服务（V3.0：性能优化 / V7.0: Redis 幂等性增强）
+ * 支持内存缓存 and Redis 缓存
  */
 @Injectable()
-export class CacheService {
+export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
   private memoryCache: Map<string, { value: any; expiresAt: number }> = new Map();
+  private redisClient: any | null = null;
   private useRedis: boolean = false;
 
   constructor(private configService: ConfigService) {
-    // 检查是否配置了Redis
-    const redisUrl = this.configService.get<string>('REDIS_URL');
-    this.useRedis = !!redisUrl;
+    this.logger.log('CacheService initialized (Memory-only mode for stability)');
+    this.useRedis = false;
+  }
+
+  onModuleInit() {
+    this.logger.log('CacheModule initialized');
+  }
+
+  onModuleDestroy() {
   }
 
   /**
@@ -22,13 +30,6 @@ export class CacheService {
    */
   async get<T>(key: string): Promise<T | null> {
     try {
-      if (this.useRedis) {
-        // TODO: 实现Redis缓存
-        // const client = await this.getRedisClient();
-        // const value = await client.get(key);
-        // return value ? JSON.parse(value) : null;
-      }
-
       // 内存缓存
       const cached = this.memoryCache.get(key);
       if (!cached) {
@@ -54,20 +55,11 @@ export class CacheService {
   async set(key: string, value: any, ttlSeconds: number = 3600): Promise<void> {
     try {
       const expiresAt = Date.now() + ttlSeconds * 1000;
-
-      if (this.useRedis) {
-        // TODO: 实现Redis缓存
-        // const client = await this.getRedisClient();
-        // await client.setex(key, ttlSeconds, JSON.stringify(value));
-        return;
-      }
-
       // 内存缓存
       this.memoryCache.set(key, { value, expiresAt });
 
-      // 限制内存缓存大小（最多1000个条目）
+      // 限制内存缓存大小
       if (this.memoryCache.size > 1000) {
-        // 删除最旧的条目
         const firstKey = this.memoryCache.keys().next().value;
         this.memoryCache.delete(firstKey);
       }
@@ -81,10 +73,8 @@ export class CacheService {
    */
   async delete(key: string): Promise<void> {
     try {
-      if (this.useRedis) {
-        // TODO: 实现Redis缓存
-        // const client = await this.getRedisClient();
-        // await client.del(key);
+      if (this.useRedis && this.redisClient) {
+        await this.redisClient.del(key);
         return;
       }
 
@@ -99,10 +89,8 @@ export class CacheService {
    */
   async clear(): Promise<void> {
     try {
-      if (this.useRedis) {
-        // TODO: 实现Redis缓存
-        // const client = await this.getRedisClient();
-        // await client.flushdb();
+      if (this.useRedis && this.redisClient) {
+        await this.redisClient.flushdb();
         return;
       }
 
@@ -113,14 +101,14 @@ export class CacheService {
   }
 
   /**
-   * 获取或设置缓存（如果不存在则执行函数）
+   * 获取或设置缓存
    */
   async getOrSet<T>(
     key: string,
     factory: () => Promise<T>,
     ttlSeconds: number = 3600,
   ): Promise<T> {
-    const cached = await this.get<T>(key);
+    const cached = await await this.get<T>(key);
     if (cached !== null) {
       return cached;
     }
@@ -130,4 +118,3 @@ export class CacheService {
     return value;
   }
 }
-

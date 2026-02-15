@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Image from 'next/image'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { SmartCheckout } from '../../components/payment/SmartCheckout'
@@ -83,28 +84,30 @@ function skillToProduct(skill: SkillData): ProductInfo {
     merchantId = skill.authorInfo?.id;
   }
   if (!isValidUUID(merchantId)) {
-    merchantId = SYSTEM_MERCHANT_ID || skill.id; // Fallback to skill's own ID
+    merchantId = SYSTEM_MERCHANT_ID || ''; // Empty = backend uses current user as fallback
   }
   
-  // 使用 productId（如果存在），否则使用 skill.id
-  // 订单创建需要 productId 存在于 products 表中
-  const productId = skill.productId || skill.id;
+  // productId 只在 skill 有关联 product 时才使用，否则为 null
+  // 避免将 skill.id 当作 productId 传入（会违反 orders 表 FK 约束）
+  const productId = skill.productId || null;
   
   return {
-    id: productId,
+    id: productId || skill.id, // 用于显示，但创建订单时会区分处理
     name: skill.displayName || skill.name,
     description: skill.description,
     price: price,
     stock: 999, // Skills have unlimited stock
     category: 'skill',
-    merchantId: merchantId!,
+    merchantId: isValidUUID(merchantId) ? merchantId! : '', // 空字符串让后端 fallback 到当前用户
     commissionRate: 0, // Default commission rate for skills
     status: 'active', // Skills are active by default
     metadata: {
       currency: currency,
       image: skill.imageUrl,
-      assetType: 'virtual', // 使用后端 AssetType 枚举中的有效值
+      assetType: 'virtual',
       productType: 'skill',
+      skillId: skill.id, // 保存真实的 skill ID
+      realProductId: skill.productId || null, // 真实的 product ID（可能为 null）
       ...skill.metadata,
     },
   };
@@ -112,17 +115,39 @@ function skillToProduct(skill: SkillData): ProductInfo {
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { productId, skillId } = router.query
-  const { isAuthenticated } = useUser()
+  const { productId, skillId, token: mobileToken, mobile } = router.query
+  const { isAuthenticated, login } = useUser()
   const [product, setProduct] = useState<ProductInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [showCheckout, setShowCheckout] = useState(false)
   const [order, setOrder] = useState<any>(null)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const isMobile = mobile === '1'
+  const [tokenReady, setTokenReady] = useState(!isMobile)
+
+  // Mobile auth: accept token from query param and set it for API calls
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (mobileToken && typeof mobileToken === 'string') {
+      localStorage.setItem('access_token', mobileToken);
+      // Also set auth API client token
+      import('../../lib/api/client').then(({ apiClient }) => {
+        (apiClient as any).token = mobileToken;
+      }).catch(() => {});
+      // Fetch user info with the token
+      fetch(`${API_BASE}/auth/me`, {
+        headers: { 'Authorization': `Bearer ${mobileToken}` },
+      }).then(r => r.json()).then(u => {
+        if (u?.id) login({ id: u.id, agentrixId: u.agentrixId, email: u.email });
+      }).catch(() => {}).finally(() => setTokenReady(true));
+    } else {
+      setTokenReady(true);
+    }
+  }, [router.isReady, mobileToken]);
 
   useEffect(() => {
-    // 确保 router 已准备好再读取 query 参数
-    if (!router.isReady) return;
+    // Wait for token to be ready before loading data
+    if (!router.isReady || !tokenReady) return;
     
     if (productId && typeof productId === 'string') {
       loadProduct(productId)
@@ -131,7 +156,7 @@ export default function CheckoutPage() {
     } else {
       setLoading(false)
     }
-  }, [router.isReady, productId, skillId])
+  }, [router.isReady, tokenReady, productId, skillId])
 
   const loadProduct = async (id: string) => {
     try {
@@ -206,26 +231,25 @@ export default function CheckoutPage() {
         throw new Error(`商品价格无效: ${productData.price}`);
       }
 
-      console.log('创建订单参数:', {
-        productId: productData.id,
-        merchantId: productData.merchantId,
-        amount: amount,
-        amountType: typeof amount,
-        currency: productData.metadata?.currency || 'CNY',
-      });
-
-      // 创建订单
+      // 创建订单 — Skill 购买时 productId 可能为 null
+      const isSkill = productData.metadata?.productType === 'skill';
+      const realProductId = isSkill
+        ? (productData.metadata?.realProductId || undefined)
+        : productData.id;
+      
       const orderData = await orderApi.createOrder({
-        productId: productData.id,
-        merchantId: productData.merchantId,
-        amount: amount, // 确保是数字类型
+        productId: realProductId,
+        merchantId: productData.merchantId || undefined,
+        amount: amount,
         currency: productData.metadata?.currency || 'CNY',
+        skillId: isSkill ? productData.metadata?.skillId : undefined,
         metadata: {
           assetType: mapAssetType(productData.metadata?.assetType),
           productType: productData.metadata?.productType,
           paymentMethod: productData.metadata?.paymentMethod,
+          skillId: productData.metadata?.skillId,
         },
-      })
+      } as any)
 
       setOrder(orderData)
       setShowCheckout(true)
@@ -237,7 +261,6 @@ export default function CheckoutPage() {
   }
 
   const handlePaymentSuccess = async (result: any) => {
-    console.log('Payment successful:', result)
     setShowCheckout(false)
     const params = new URLSearchParams()
     if (result?.id) {
@@ -251,8 +274,19 @@ export default function CheckoutPage() {
 
   const handlePaymentCancel = () => {
     setShowCheckout(false)
-    router.back()
+    if (isMobile) {
+      // Mobile: just close, the WebBrowser will handle return
+    } else {
+      router.back()
+    }
   }
+
+  // Auto-start payment for mobile users once product is loaded and authenticated
+  useEffect(() => {
+    if (isMobile && product && !loading && !showCheckout && !order && isAuthenticated) {
+      handleStartPayment();
+    }
+  }, [isMobile, product, loading, isAuthenticated]);
 
   if (loading) {
     return (
@@ -306,11 +340,13 @@ export default function CheckoutPage() {
             <div className="bg-white/5 border border-white/10 rounded-2xl p-8 mb-6">
               <div className="flex items-start gap-6">
                 {product.metadata?.image && (
-                  <div className="w-32 h-32 rounded-lg overflow-hidden flex-shrink-0">
-                    <img
+                  <div className="w-32 h-32 rounded-lg overflow-hidden flex-shrink-0 relative">
+                    <Image
                       src={product.metadata.image}
                       alt={product.name}
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
+                      unoptimized
                     />
                   </div>
                 )}

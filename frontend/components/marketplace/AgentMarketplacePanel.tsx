@@ -12,7 +12,6 @@ export function AgentMarketplacePanel() {
 
   useEffect(() => {
     loadAgents();
-    loadRankings();
   }, [searchKeyword, sortBy]);
 
   const loadAgents = async () => {
@@ -25,8 +24,8 @@ export function AgentMarketplacePanel() {
         pageSize: 20,
       });
       if (data) {
-        setAgents(data.agents || []);
-        if (data.rankings) {
+        setAgents(Array.isArray(data.agents) ? data.agents : []);
+        if (Array.isArray(data.rankings)) {
           setRankings(data.rankings);
         }
       } else {
@@ -34,6 +33,7 @@ export function AgentMarketplacePanel() {
       }
     } catch (err: any) {
       error(err.message || '加载Agent失败');
+      setAgents([]);
     } finally {
       setLoading(false);
     }
@@ -44,7 +44,7 @@ export function AgentMarketplacePanel() {
       const agentIds = agents.map((a) => a.id);
       if (agentIds.length > 0) {
         const data = await agentMarketplaceApi.getAgentRankings(agentIds);
-        setRankings(data || []);
+        setRankings(Array.isArray(data) ? data : []);
       }
     } catch (err: any) {
       // 忽略错误

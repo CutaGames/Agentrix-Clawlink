@@ -1,1 +1,0 @@
-ssh -i ~/agentrix.pem ubuntu@57.182.89.146 'docker exec agentrix-postgres psql -U agentrix -d paymind -c "SELECT status, human_accessible, count(*) FROM skills WHERE layer = '"'resource'"' GROUP BY status, human_accessible;"'

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentStatus, PaymentMethod } from '../../entities/payment.entity';
 import { Order, OrderStatus } from '../../entities/order.entity';
+import { Refund, RefundStatus } from '../../entities/refund.entity';
 
 export interface RefundRequest {
   paymentId: string;
@@ -16,22 +17,25 @@ export interface RefundResult {
   paymentId: string;
   amount: number;
   currency: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: RefundStatus;
   reason: string;
   transactionHash?: string; // 链上退款时的交易哈希
+  stripeRefundId?: string;
+  failureReason?: string;
   createdAt: Date;
 }
 
 @Injectable()
 export class RefundService {
   private readonly logger = new Logger(RefundService.name);
-  private refunds: Map<string, RefundResult> = new Map();
 
   constructor(
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
+    @InjectRepository(Refund)
+    private refundRepository: Repository<Refund>,
   ) {}
 
   /**
@@ -53,14 +57,14 @@ export class RefundService {
     }
 
     // 检查是否已有退款
-    const existingRefunds = Array.from(this.refunds.values()).filter(
-      (r) => r.paymentId === request.paymentId && r.status !== 'failed',
-    );
+    const existingRefunds = await this.refundRepository.find({
+      where: { paymentId: request.paymentId },
+    });
 
     if (existingRefunds.length > 0) {
       const totalRefunded = existingRefunds
-        .filter((r) => r.status === 'completed')
-        .reduce((sum, r) => sum + r.amount, 0);
+        .filter((r) => r.status === RefundStatus.COMPLETED)
+        .reduce((sum, r) => sum + parseFloat(r.amount.toString()), 0);
 
       const refundAmount = request.amount || payment.amount;
       if (totalRefunded + refundAmount > payment.amount) {
@@ -72,45 +76,38 @@ export class RefundService {
     const refundAmount = request.amount || payment.amount;
 
     // 创建退款记录
-    const refundId = `refund_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const refund: RefundResult = {
-      refundId,
+    const refund = this.refundRepository.create({
       paymentId: request.paymentId,
       amount: refundAmount,
       currency: payment.currency,
-      status: 'pending',
+      status: RefundStatus.PENDING,
       reason: request.reason,
-      createdAt: new Date(),
-    };
-
-    this.refunds.set(refundId, refund);
-
-    // 异步处理退款
-    this.processRefund(refundId, payment).catch((error) => {
-      this.logger.error(`处理退款失败: ${refundId}`, error);
-      const refundRecord = this.refunds.get(refundId);
-      if (refundRecord) {
-        refundRecord.status = 'failed';
-        this.refunds.set(refundId, refundRecord);
-      }
+      requestedBy: request.requestedBy,
     });
 
-    this.logger.log(`创建退款请求: ${refundId}, 金额: ${refundAmount} ${payment.currency}`);
+    const savedRefund = await this.refundRepository.save(refund);
 
-    return refund;
+    // 异步处理退款
+    this.processRefund(savedRefund.id, payment).catch((error) => {
+      this.logger.error(`处理退款失败: ${savedRefund.id}`, error);
+    });
+
+    this.logger.log(`创建退款请求: ${savedRefund.id}, 金额: ${refundAmount} ${payment.currency}`);
+
+    return this.toRefundResult(savedRefund);
   }
 
   /**
    * 处理退款（根据支付方式选择不同的退款流程）
    */
   private async processRefund(refundId: string, payment: Payment): Promise<void> {
-    const refund = this.refunds.get(refundId);
+    const refund = await this.refundRepository.findOne({ where: { id: refundId } });
     if (!refund) {
       throw new NotFoundException('退款记录不存在');
     }
 
-    refund.status = 'processing';
-    this.refunds.set(refundId, refund);
+    refund.status = RefundStatus.PROCESSING;
+    await this.refundRepository.save(refund);
 
     try {
       // 根据支付方式处理退款
@@ -153,12 +150,13 @@ export class RefundService {
         }
       }
 
-      refund.status = 'completed';
-      this.refunds.set(refundId, refund);
+      refund.status = RefundStatus.COMPLETED;
+      await this.refundRepository.save(refund);
       this.logger.log(`退款完成: ${refundId}`);
     } catch (error) {
-      refund.status = 'failed';
-      this.refunds.set(refundId, refund);
+      refund.status = RefundStatus.FAILED;
+      refund.failureReason = error.message;
+      await this.refundRepository.save(refund);
       this.logger.error(`退款失败: ${refundId}`, error);
       throw error;
     }
@@ -167,9 +165,9 @@ export class RefundService {
   /**
    * 处理Stripe退款
    */
-  private async processStripeRefund(refund: RefundResult, payment: Payment): Promise<void> {
+  private async processStripeRefund(refund: Refund, payment: Payment): Promise<void> {
     // 实际应该调用Stripe API
-    this.logger.log(`处理Stripe退款: ${refund.refundId}, 金额: ${refund.amount}`);
+    this.logger.log(`处理Stripe退款: ${refund.id}, 金额: ${refund.amount}`);
     // 模拟处理时间
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -177,13 +175,13 @@ export class RefundService {
   /**
    * 处理加密货币退款
    */
-  private async processCryptoRefund(refund: RefundResult, payment: Payment): Promise<void> {
+  private async processCryptoRefund(refund: Refund, payment: Payment): Promise<void> {
     // 实际应该调用链上合约或钱包服务
-    this.logger.log(`处理加密货币退款: ${refund.refundId}, 金额: ${refund.amount}`);
+    this.logger.log(`处理加密货币退款: ${refund.id}, 金额: ${refund.amount}`);
     
     // 模拟生成交易哈希
     refund.transactionHash = `0x${Math.random().toString(16).substr(2, 64)}`;
-    this.refunds.set(refund.refundId, refund);
+    await this.refundRepository.save(refund);
     
     // 模拟处理时间
     await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -192,13 +190,13 @@ export class RefundService {
   /**
    * 处理X402退款
    */
-  private async processX402Refund(refund: RefundResult, payment: Payment): Promise<void> {
+  private async processX402Refund(refund: Refund, payment: Payment): Promise<void> {
     // 实际应该调用X402服务
-    this.logger.log(`处理X402退款: ${refund.refundId}, 金额: ${refund.amount}`);
+    this.logger.log(`处理X402退款: ${refund.id}, 金额: ${refund.amount}`);
     
     // 模拟生成交易哈希
     refund.transactionHash = `x402_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    this.refunds.set(refund.refundId, refund);
+    await this.refundRepository.save(refund);
     
     // 模拟处理时间
     await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -208,18 +206,19 @@ export class RefundService {
    * 获取退款信息
    */
   async getRefund(refundId: string): Promise<RefundResult> {
-    const refund = this.refunds.get(refundId);
+    const refund = await this.refundRepository.findOne({ where: { id: refundId } });
     if (!refund) {
       throw new NotFoundException('退款记录不存在');
     }
-    return refund;
+    return this.toRefundResult(refund);
   }
 
   /**
    * 获取支付的所有退款
    */
   async getPaymentRefunds(paymentId: string): Promise<RefundResult[]> {
-    return Array.from(this.refunds.values()).filter((r) => r.paymentId === paymentId);
+    const refunds = await this.refundRepository.find({ where: { paymentId } });
+    return refunds.map(r => this.toRefundResult(r));
   }
 
   /**
@@ -235,6 +234,24 @@ export class RefundService {
       reason: `自动退款: ${reason}`,
       requestedBy,
     });
+  }
+
+  /**
+   * 转换 Refund entity 为 RefundResult
+   */
+  private toRefundResult(refund: Refund): RefundResult {
+    return {
+      refundId: refund.id,
+      paymentId: refund.paymentId,
+      amount: parseFloat(refund.amount.toString()),
+      currency: refund.currency,
+      status: refund.status,
+      reason: refund.reason,
+      transactionHash: refund.transactionHash,
+      stripeRefundId: refund.stripeRefundId,
+      failureReason: refund.failureReason,
+      createdAt: refund.createdAt,
+    };
   }
 }
 

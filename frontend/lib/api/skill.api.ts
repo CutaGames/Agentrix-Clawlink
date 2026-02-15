@@ -329,4 +329,92 @@ export const skillApi = {
   isSkillInstalled: async (skillId: string): Promise<{ installed: boolean }> => {
     return apiClient.get(`/skills/${skillId}/installed`);
   },
+
+  /**
+   * Commerce Skill 一键发布到 Marketplace
+   * 整合: skill creation + pricing + split plan + budget pool + marketplace listing
+   */
+  commercePublish: async (dto: CommercePublishDto): Promise<CommercePublishResult> => {
+    return apiClient.post('/commerce/publish', dto);
+  },
+
+  /**
+   * Commerce Skill 发布预览
+   */
+  commercePublishPreview: async (dto: CommercePublishDto): Promise<any> => {
+    return apiClient.post('/commerce/publish/preview', dto);
+  },
 };
+
+// ========== Commerce Publish Types ==========
+
+export interface SplitRuleDto {
+  recipient: string;
+  shareBps: number;
+  role: 'platform' | 'merchant' | 'agent' | 'referrer' | 'custom';
+}
+
+export interface CommercePublishDto {
+  skillId?: string;
+  name?: string;
+  displayName?: string;
+  description?: string;
+  category?: string;
+  version?: string;
+  tags?: string[];
+  executor?: SkillExecutor;
+  inputSchema?: SkillInputSchema;
+  outputSchema?: SkillOutputSchema;
+  pricing: {
+    type: string;
+    pricePerCall?: number;
+    currency?: string;
+    freeQuota?: number;
+    commissionRate?: number;
+  };
+  splitPlan?: {
+    splitPlanId?: string;
+    name?: string;
+    productType?: string;
+    rules?: SplitRuleDto[];
+    feeConfig?: {
+      onrampFeeBps?: number;
+      offrampFeeBps?: number;
+      splitFeeBps?: number;
+      minSplitFee?: number;
+    };
+  };
+  budgetPool?: {
+    totalBudget: number;
+    currency?: string;
+    deadline?: string;
+    milestones?: Array<{
+      name: string;
+      description?: string;
+      reservedAmount: number;
+    }>;
+  };
+  marketplace?: {
+    humanAccessible?: boolean;
+    featured?: boolean;
+    targetPlatforms?: string[];
+    legacyListing?: boolean;
+  };
+  ucpEnabled?: boolean;
+  x402Enabled?: boolean;
+}
+
+export interface CommercePublishResult {
+  success: boolean;
+  skill: Skill;
+  splitPlan?: any;
+  budgetPoolId?: string;
+  marketplaceListingId?: string;
+  publishedAt: string;
+  endpoints: {
+    marketplace: string;
+    execute: string;
+    analytics: string;
+    splitPlanPreview?: string;
+  };
+}

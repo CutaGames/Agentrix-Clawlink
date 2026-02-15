@@ -20,9 +20,15 @@ const ALLOWED_ROOTS = [
 function normalizePathForAccess(inputPath: string): string {
   if (!inputPath) return inputPath;
   
-  if (inputPath.startsWith('/')) {
-    return inputPath;
-  }
+    // Windows 环境下支持 WSL 路径反向转换
+    if (process.platform === 'win32') {
+      const wslMatch = inputPath.match(/^\/mnt\/([A-Za-z])\/(.*)$/) || inputPath.match(/^\\+mnt\\([A-Za-z])\\(.*)$/);
+      if (wslMatch) {
+        const driveLetter = wslMatch[1].toUpperCase();
+        const restPath = wslMatch[2].replace(/[\/]/g, '\\');
+        return `${driveLetter}:\\${restPath}`;
+      }
+    }
   
   const windowsPathMatch = inputPath.match(/^([A-Za-z]):\\(.*)$/);
   if (windowsPathMatch) {

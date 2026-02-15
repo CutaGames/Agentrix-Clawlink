@@ -1,0 +1,629 @@
+import axios from 'axios';
+
+// HQ Backend API URL with /api prefix
+const HQ_API_URL = process.env.NEXT_PUBLIC_HQ_API_URL || process.env.NEXT_PUBLIC_HQ_URL || 'http://localhost:3005/api';
+
+// 使用较长的超时时间以适应复杂 AI 推理 (5 分钟)
+const AI_TIMEOUT = 600000; // 10 minutes
+
+export const api = axios.create({
+  baseURL: HQ_API_URL,
+  timeout: AI_TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Dashboard Stats
+export interface DashboardStats {
+  revenue24h: number;
+  revenueChange: number;
+  activeAgents: number;
+  totalAgents: number;
+  activeMerchants: number;
+  newMerchants24h: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  systemHealth: 'HEALTHY' | 'DEGRADED' | 'DOWN';
+}
+
+export interface Alert {
+  id: string;
+  type: 'risk' | 'biz' | 'sys' | 'ops';
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+}
+
+export interface AgentStatus {
+  id: string;      // UUID
+  code: string;    // ARCHITECT-01, etc.
+  name: string;
+  role: string;
+  status: 'running' | 'idle' | 'paused' | 'error';
+  currentTask?: string;
+  progress?: number;
+  lastActive: string;
+}
+
+// API Functions
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const { data } = await api.get('/hq/dashboard');
+  return data;
+}
+
+export async function getAlerts(limit = 10): Promise<Alert[]> {
+  const { data } = await api.get(`/hq/alerts?limit=${limit}`);
+  return data;
+}
+
+export async function getAgentStatuses(): Promise<AgentStatus[]> {
+  const { data } = await api.get('/hq/agents');
+  return data;
+}
+
+export async function sendAgentCommand(agentId: string, command: string): Promise<{ response: string }> {
+  // Try the chat endpoint first, fallback to completion endpoint
+  try {
+    const { data } = await api.post('/hq/chat', { agentId, messages: [{ role: 'user', content: command }] });
+    return { response: data.content };
+  } catch (error: any) {
+    // Fallback to completion endpoint, then CLI chat if core endpoints fail
+    console.log('Chat endpoint failed, using completion fallback');
+    try {
+      const { data } = await api.post('/hq/chat/completion', { 
+        messages: [{ role: 'user', content: command }],
+        options: { 
+          model: getModelForAgent(agentId),
+          systemPrompt: getSystemPromptForAgent(agentId)
+        }
+      });
+      return { response: data.content };
+    } catch (completionError: any) {
+      console.log('Completion endpoint failed, using CLI chat fallback');
+      const { data } = await api.post('/hq/cli/chat', { agentId, message: command });
+      return { response: data.response || data.content || '' };
+    }
+  }
+}
+
+// Agent to model mapping (matching backend configuration)
+export function getModelForAgent(agentCode: string): string {
+  const mapping: Record<string, string> = {
+    'ARCHITECT-01': 'arn:aws:bedrock:us-east-1:696737009512:inference-profile/us.anthropic.claude-opus-4-6-v1',
+    'CODER-01': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+    'GROWTH-01': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'BD-01': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'ANALYST-01': 'gemini-2.5-flash',
+    'SOCIAL-01': 'gemini-2.5-flash',
+    'CONTENT-01': 'gemini-2.5-flash',
+    'SUPPORT-01': 'gemini-2.5-flash',
+    'SECURITY-01': 'gemini-2.5-flash',
+    'DEVREL-01': 'gemini-2.5-flash',
+    'LEGAL-01': 'gemini-2.5-flash',
+  };
+  return mapping[agentCode] || 'gemini-2.5-flash';
+}
+
+// Tools description for agents
+const TOOLS_PROMPT = `
+You have access to the following tools to interact with the local development environment:
+
+## Available Tools
+
+### 1. read_file - Read file contents
+\`<tool>read_file</tool><params>{"filePath": "/absolute/path/to/file", "startLine": 1, "endLine": 100}</params>\`
+
+### 2. write_file - Create or overwrite a file
+\`<tool>write_file</tool><params>{"filePath": "/absolute/path/to/file", "content": "file content here"}</params>\`
+
+### 3. edit_file - Edit a file by string replacement
+\`<tool>edit_file</tool><params>{"filePath": "/absolute/path/to/file", "oldString": "exact text to replace", "newString": "replacement text"}</params>\`
+
+### 4. list_dir - List directory contents
+\`<tool>list_dir</tool><params>{"path": "/absolute/path/to/directory"}</params>\`
+
+### 5. run_command - Execute shell command
+\`<tool>run_command</tool><params>{"command": "ls -la", "cwd": "/optional/working/dir"}</params>\`
+
+### 6. fetch_url - Fetch content from URL
+\`<tool>fetch_url</tool><params>{"url": "https://example.com", "method": "GET"}</params>\`
+
+### 7. search_knowledge - Search local knowledge base
+\`<tool>search_knowledge</tool><params>{"query": "payment architecture", "category": "architecture"}</params>\`
+Categories: architecture, product, integration, development, code, config, scripts
+
+### 8. list_knowledge - List all knowledge base entries
+\`<tool>list_knowledge</tool><params>{}</params>\`
+
+## Important Rules
+- Always use absolute paths (e.g., /mnt/d/wsl/Ubuntu-24.04/Code/... or D:\\wsl\\...)
+- For edit_file, the oldString must be unique in the file
+- Include enough context in oldString to ensure uniqueness
+- Commands run in bash shell by default
+- The workspace root is: /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website
+
+When you need to use a tool, output the tool call in the format shown above. The system will execute the tool and return results, then you should continue your response based on those results.
+`;
+
+function getSystemPromptForAgent(agentCode: string): string {
+  const basePrompts: Record<string, string> = {
+    'ARCHITECT-01': 'You are the Chief Architect of Agentrix. You design system architecture, make technical decisions, and can read/modify code in the workspace.',
+    'CODER-01': 'You are a Senior Developer at Agentrix. You write high-quality code, solve programming problems, and can directly edit files and run commands.',
+    'ANALYST-01': 'You are a Business Analyst. You analyze requirements, provide business insights, and can access files and fetch data from URLs.',
+    'GROWTH-01': 'You are the Growth Lead. You develop growth strategies, analyze user data, and can access local files for analysis.',
+    'BD-01': 'You are the Business Development Lead. You handle partnerships, ecosystem growth, and can access relevant documents.',
+  };
+  const basePrompt = basePrompts[agentCode] || 'You are an AI assistant. Be helpful and concise.';
+  return basePrompt + '\n\n' + TOOLS_PROMPT;
+}
+
+export async function chatWithAgent(
+  agentId: string,
+  messages: any[],
+  options?: {
+    useToolPrompt?: boolean;
+    toolPrompt?: string;
+    useMemory?: boolean;
+    provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+    model?: string;
+  }
+): Promise<any> {
+  // 检查是否有 system 消息
+  const systemMessages = messages.filter(m => m.role === 'system');
+  const nonSystemMessages = messages.filter(m => m.role !== 'system');
+  const lastUserMessage = [...nonSystemMessages].reverse().find(m => m.role === 'user')?.content || '';
+  const systemContext = systemMessages.map(m => m.content).join('\n\n');
+  const toolPrompt = options?.toolPrompt;
+  
+  // 如果显式传入 system 消息且没有工具提示，使用 completion 端点透传
+  if (systemMessages.length > 0 && !toolPrompt) {
+    try {
+      const { data } = await api.post('/hq/chat/completion', { 
+        messages: messages,
+        options: { 
+          model: options?.model || getModelForAgent(agentId),
+          provider: options?.provider,
+        }
+      });
+      return data;
+    } catch (error: any) {
+      console.error('Completion endpoint failed:', error.message);
+      // Fallback to CLI chat (cloud compatible)
+      const { data } = await api.post('/hq/cli/chat', {
+        agentId,
+        message: lastUserMessage,
+        context: systemContext || undefined,
+        model: options?.model || getModelForAgent(agentId),
+      });
+      return { ...data, content: data.response };
+    }
+  }
+  
+  // 使用标准 chat 端点 (带记忆功能 + 追加工具提示词)
+  try {
+    const { data } = await api.post('/hq/chat', { 
+      agentId, 
+      messages: nonSystemMessages,
+      useMemory: options?.useMemory ?? true,
+      toolPrompt: toolPrompt,
+      provider: options?.provider,
+      model: options?.model,
+    });
+    return data;
+  } catch (error: any) {
+    // Fallback to completion endpoint if chat fails
+    console.log('Chat endpoint failed, using completion fallback');
+    const fallbackContext = [systemContext, toolPrompt].filter(Boolean).join('\n\n');
+    const systemMessage = { role: 'system', content: fallbackContext || getSystemPromptForAgent(agentId) };
+    const allMessages = [systemMessage, ...nonSystemMessages];
+    try {
+      const { data } = await api.post('/hq/chat/completion', { 
+        messages: allMessages,
+        options: { 
+          model: options?.model || getModelForAgent(agentId),
+          provider: options?.provider,
+        }
+      });
+      return data;
+    } catch (completionError: any) {
+      console.log('Completion endpoint failed, using CLI chat fallback');
+      const { data } = await api.post('/hq/cli/chat', {
+        agentId,
+        message: lastUserMessage,
+        context: fallbackContext || undefined,
+        model: options?.model || getModelForAgent(agentId),
+      });
+      return { ...data, content: data.response };
+    }
+  }
+}
+
+export async function chatWithAgentStream(
+  agentId: string,
+  messages: any[],
+  options?: {
+    useToolPrompt?: boolean;
+    toolPrompt?: string;
+    useMemory?: boolean;
+    provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+    model?: string;
+    signal?: AbortSignal;
+  },
+  handlers?: {
+    onChunk?: (chunk: string, full: string) => void;
+    onMeta?: (meta: { agentId?: string; sessionId?: string; model?: string }) => void;
+    onStatus?: (status: { status: string; agentId?: string }) => void;
+  }
+): Promise<{ content: string; model?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  const systemMessages = messages.filter(m => m.role === 'system');
+  const nonSystemMessages = messages.filter(m => m.role !== 'system');
+
+  // Build toolPrompt from system messages if not explicitly provided
+  const effectiveToolPrompt = options?.toolPrompt || (systemMessages.length > 0 ? systemMessages.map(m => m.content).join('\n') : undefined);
+
+  const payload = {
+    agentId,
+    messages: nonSystemMessages,
+    useMemory: options?.useMemory ?? true,
+    toolPrompt: effectiveToolPrompt,
+    provider: options?.provider,
+    model: options?.model,
+  };
+
+  const response = await fetch(`${HQ_API_URL}/hq/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error('Failed to connect to AI stream');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let full = '';
+  let model: string | undefined;
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
+
+  const handleEvent = (raw: string) => {
+    let event = 'message';
+    const dataLines: string[] = [];
+
+    raw.split('\n').forEach(line => {
+      if (line.startsWith('event:')) {
+        event = line.replace('event:', '').trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.replace('data:', '').trim());
+      }
+    });
+
+    const dataStr = dataLines.join('\n');
+    if (!dataStr) return;
+
+    if (event === 'ping') return;
+
+    let payload: any = dataStr;
+    try {
+      payload = JSON.parse(dataStr);
+    } catch {
+      payload = { content: dataStr };
+    }
+
+    if (event === 'status') {
+      handlers?.onStatus?.(payload);
+      return;
+    }
+
+    if (event === 'meta') {
+      model = payload?.model || model;
+      handlers?.onMeta?.(payload);
+      return;
+    }
+
+    if (event === 'chunk') {
+      const chunk = payload?.content || '';
+      full += chunk;
+      handlers?.onChunk?.(chunk, full);
+      return;
+    }
+
+    if (event === 'done') {
+      if (payload?.usage) usage = payload.usage;
+      if (payload?.model) model = payload.model;
+      return;
+    }
+
+    if (event === 'error') {
+      throw new Error(payload?.message || 'Stream error');
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx = buffer.indexOf('\n\n');
+    while (idx !== -1) {
+      const rawEvent = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      handleEvent(rawEvent);
+      idx = buffer.indexOf('\n\n');
+    }
+  }
+
+  if (buffer.trim()) {
+    handleEvent(buffer.trim());
+  }
+
+  return { content: full, model, usage };
+}
+
+// ============================================
+// Workspace API
+// ============================================
+
+export interface Workspace {
+  id: string;
+  name: string;
+  rootPath: string;
+  description?: string;
+  type: string;
+  isActive: boolean;
+  settings?: {
+    defaultAgent?: string;
+    autoSave?: boolean;
+  };
+}
+
+export interface FileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileNode[];
+  language?: string;
+  size?: number;
+}
+
+export interface AgentChatRequest {
+  agentCode: string;
+  message: string;
+  filePath?: string;
+  selectedCode?: string;
+}
+
+export interface AgentChatResponse {
+  agentCode: string;
+  response: string;
+  suggestedChanges?: {
+    filePath: string;
+    oldCode: string;
+    newCode: string;
+    explanation: string;
+  }[];
+}
+
+export interface TickExecutionDto {
+  id: string;
+  tickId: string;
+  triggeredBy: string;
+  status: 'running' | 'completed' | 'failed';
+  startTime: string;
+  endTime?: string;
+  durationMs?: number;
+  tasksProcessed: number;
+  tasksCompleted: number;
+  tasksFailed: number;
+  actionsPlanned?: string[];
+}
+
+export interface TickStatsDto {
+  totalExecutions: number;
+  successRate: number;
+  avgDuration: number;
+  lastExecution: string | null;
+  nextExecution: string | null;
+}
+
+// HQ API Object for Workspace features
+export const hqApi = {
+  // Workspace Management
+  async getWorkspaces(): Promise<Workspace[]> {
+    const { data } = await api.get('/hq/workspace');
+    return data;
+  },
+
+  async createWorkspace(params: { name: string; rootPath: string; description?: string }): Promise<Workspace> {
+    const { data } = await api.post('/hq/workspace', params);
+    return data;
+  },
+
+  async getWorkspace(id: string): Promise<Workspace> {
+    const { data } = await api.get(`/hq/workspace/${id}`);
+    return data;
+  },
+
+  // File Operations
+  async getFileTree(workspaceId: string, subPath?: string): Promise<FileNode[]> {
+    const params = subPath ? `?path=${encodeURIComponent(subPath)}` : '';
+    const { data } = await api.get(`/hq/workspace/${workspaceId}/files${params}`);
+    return data;
+  },
+
+  async readFile(workspaceId: string, filePath: string): Promise<{ content: string; language: string; fileName: string }> {
+    const { data } = await api.get(`/hq/workspace/${workspaceId}/file?path=${encodeURIComponent(filePath)}`);
+    return data;
+  },
+
+  async saveFile(workspaceId: string, filePath: string, content: string): Promise<{ success: boolean }> {
+    const { data } = await api.put(`/hq/workspace/${workspaceId}/file`, { filePath, content });
+    return data;
+  },
+
+  async executeCommand(command: string): Promise<{ output: string; exitCode: number }> {
+    const { data } = await api.post('/hq/workspace/execute', { command });
+    return data;
+  },
+
+  // Agent Chat in Workspace (旧接口，建议迁移到 unifiedChat)
+  async chatWithAgent(workspaceId: string, request: AgentChatRequest): Promise<AgentChatResponse> {
+    const { data } = await api.post(`/hq/workspace/${workspaceId}/chat`, request);
+    return data;
+  },
+
+  /**
+   * 统一聊天接口 - 推荐使用
+   * 解决问题1: 对话入口分散
+   * 解决问题2: 聊天记录统一存储
+   * 解决问题6: 简化 API 调用
+   */
+  async unifiedChat(request: {
+    agentCode: string;
+    message: string;
+    sessionId?: string;
+    mode?: 'workspace' | 'staff' | 'general';
+    workingDir?: string;
+    context?: {
+      currentFile?: string;
+      selectedCode?: string;
+      topic?: string;
+    };
+  }): Promise<{
+    sessionId: string;
+    agentCode: string;
+    response: string;
+    model?: string;
+    timestamp: Date;
+  }> {
+    const { data } = await api.post('/hq/unified-chat', request);
+    return data;
+  },
+
+  // 获取 Agent 历史会话
+  async getAgentSessions(agentCode: string, limit = 10): Promise<any[]> {
+    const { data } = await api.get(`/hq/unified-chat/sessions/${agentCode}?limit=${limit}`);
+    return data;
+  },
+
+  // 获取会话详情
+  async getSession(sessionId: string): Promise<any> {
+    const { data } = await api.get(`/hq/unified-chat/session/${sessionId}`);
+    return data;
+  },
+
+  // Knowledge Base
+  async getKnowledgeStats(): Promise<{ total: number; byCategory: Record<string, number>; totalWords: number }> {
+    const { data } = await api.get('/hq/knowledge/stats');
+    return data;
+  },
+
+  async importKnowledgeDocuments(projectRoot: string): Promise<{ success: number; failed: string[] }> {
+    const { data } = await api.post('/hq/knowledge/import-important', { projectRoot });
+    return data;
+  },
+
+  async searchKnowledge(query: string, category?: string): Promise<any[]> {
+    const { data } = await api.post('/hq/knowledge/search', { query, category });
+    return data;
+  },
+
+  // Tick API
+  async getTickExecutions(params?: { limit?: number; status?: string }): Promise<{ executions: TickExecutionDto[]; total: number }> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.status) query.set('status', params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const { data } = await api.get(`/hq/tick/executions${suffix}`);
+    return data;
+  },
+
+  async getTickStats(days = 7): Promise<TickStatsDto> {
+    const { data } = await api.get(`/hq/tick/stats?days=${days}`);
+    return data;
+  },
+
+  async triggerTick(agentId?: string): Promise<any> {
+    const { data } = await api.post('/hq/tick/execute', { agentId, type: 'manual' });
+    return data;
+  },
+
+  async getAgentTickStatus(agentId: string): Promise<any> {
+    const { data } = await api.get(`/hq/tick/agents/${agentId}/status`);
+    return data;
+  },
+
+  async pauseAgentTick(agentId: string): Promise<any> {
+    const { data } = await api.post(`/hq/tick/agents/${agentId}/pause`);
+    return data;
+  },
+
+  async resumeAgentTick(agentId: string): Promise<any> {
+    const { data } = await api.post(`/hq/tick/agents/${agentId}/resume`);
+    return data;
+  },
+
+  // Phase 4: Metrics
+  async getSystemMetrics(): Promise<any> {
+    const { data } = await api.get('/hq/tick/metrics');
+    return data?.data || data;
+  },
+
+  async getAgentMetrics(agentCode: string): Promise<any> {
+    const { data } = await api.get(`/hq/tick/metrics/${agentCode}`);
+    return data?.data || data;
+  },
+
+  async triggerAutoHeal(): Promise<any> {
+    const { data } = await api.post('/hq/tick/heal');
+    return data?.data || data;
+  },
+
+  // Phase 5: Learning
+  async getTeamSkillProfiles(): Promise<any> {
+    const { data } = await api.get('/hq/tick/learning/profiles');
+    return data?.data || data;
+  },
+
+  async getAgentSkillProfile(agentCode: string): Promise<any> {
+    const { data } = await api.get(`/hq/tick/learning/profile/${agentCode}`);
+    return data?.data || data;
+  },
+
+  async getTeamLearningSummary(): Promise<any> {
+    const { data } = await api.get('/hq/tick/learning/summary');
+    return data?.data || data;
+  },
+
+  async getShareHistory(limit = 20): Promise<any> {
+    const { data } = await api.get(`/hq/tick/learning/history?limit=${limit}`);
+    return data?.data || data;
+  },
+
+  // Phase 3: Pipelines
+  async getPipelineTemplates(): Promise<any> {
+    const { data } = await api.get('/hq/tick/pipeline/templates');
+    return data?.data || data;
+  },
+
+  async getActivePipelines(): Promise<any> {
+    const { data } = await api.get('/hq/tick/pipeline/active');
+    return data?.data || data;
+  },
+
+  async startPipeline(template: string, params?: any): Promise<any> {
+    const { data } = await api.post('/hq/tick/pipeline/start', { template, params });
+    return data?.data || data;
+  },
+
+  // Phase 2: Communication
+  async getCommunicationStats(): Promise<any> {
+    const { data } = await api.get('/hq/tick/communicate/stats');
+    return data?.data || data;
+  },
+};

@@ -20,12 +20,15 @@ import {
   Wrench,
   MessageSquare,
   Radio,
+  Clock,
+  ListTodo,
 } from "lucide-react";
 import { useState } from "react";
 
 const navigation = [
   { name: "Bridge", href: "/", icon: LayoutDashboard, description: "总览" },
-  { name: "Staff", href: "/staff", icon: Bot, description: "作战室" },
+  { name: "Workshop", href: "/workspace", icon: Code, description: "IDE 编程" },
+  { name: "Tasks", href: "/tasks", icon: ListTodo, description: "任务管理" },
   { name: "Agents", href: "/agents", icon: Bot, description: "Agent 管理" },
   { name: "Skills", href: "/skills", icon: Wrench, description: "技能包" },
   { name: "Remote", href: "/remote", icon: Radio, description: "远程控制" },
@@ -39,7 +42,7 @@ const navigation = [
   { name: "System", href: "/engine/system", icon: Settings, description: "系统配置" },
   { name: "───────", href: "#", icon: null, description: "Tools" },
   { name: "Knowledge", href: "/tools/knowledge", icon: Book, description: "知识库" },
-  { name: "Workspace", href: "/tools/workspace", icon: Code, description: "IDE 编程" },
+  { name: "Tick", href: "/tools/tick", icon: Clock, description: "自主执行" },
 ];
 
 export function Sidebar() {

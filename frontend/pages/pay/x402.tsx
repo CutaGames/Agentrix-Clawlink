@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Image from 'next/image'
 import { useRouter } from 'next/router'
 import { useEffect, useState, useCallback } from 'react'
 import { SmartCheckout } from '../../components/payment/SmartCheckout'
@@ -147,7 +148,7 @@ export default function X402Payment() {
   }
 
   const handlePaymentSuccess = (result: any) => {
-    console.log('Payment successful:', result)
+    // Payment successful logic
     setShowCheckout(false)
     // 可以显示成功消息或跳转
   }
@@ -453,10 +454,13 @@ export default function X402Payment() {
                       : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  <img 
+                  <Image 
                     src={connector.icon} 
                     alt={connector.name} 
-                    className="w-10 h-10 mr-4 rounded-lg"
+                    width={40}
+                    height={40}
+                    className="mr-4 rounded-lg"
+                    unoptimized
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = '🔗';
                     }}

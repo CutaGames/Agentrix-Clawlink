@@ -27,18 +27,42 @@ export function WorkspaceSelector({
   onSelect,
   onCreate,
 }: WorkspaceSelectorProps) {
+  const apiBase = process.env.NEXT_PUBLIC_HQ_API_URL || process.env.NEXT_PUBLIC_HQ_URL || '';
+  const isCloudBackend = apiBase && !apiBase.includes('localhost') && !apiBase.includes('127.0.0.1');
+  const defaultCloudPath = '/home/ubuntu/Agentrix-independent-HQ';
+  const defaultLocalPath = process.env.NEXT_PUBLIC_WORKSPACE_ROOT || '/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website';
   const [isOpen, setIsOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newPath, setNewPath] = useState('');
+  const [newPath, setNewPath] = useState(isCloudBackend ? defaultCloudPath : defaultLocalPath);
+  const [pathWarning, setPathWarning] = useState<string | null>(null);
+  const canPickDirectory = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
-  const handleCreate = () => {
-    if (newName && newPath) {
-      onCreate(newName, newPath);
+  const handlePickLocalFolder = async () => {
+    if (!canPickDirectory) return;
+    try {
+      const handle = await (window as any).showDirectoryPicker();
+      if (!handle) return;
+      const workspaceId = `local-handle:${Date.now()}`;
+      (window as any).__hqLocalWorkspaceHandles = (window as any).__hqLocalWorkspaceHandles || {};
+      (window as any).__hqLocalWorkspaceHandles[workspaceId] = handle;
+      onCreate(handle.name || 'Local Workspace', `local://${workspaceId}`);
       setShowCreate(false);
       setNewName('');
-      setNewPath('');
+      setNewPath(isCloudBackend ? defaultCloudPath : defaultLocalPath);
+      setPathWarning(null);
+    } catch (error) {
+      console.error('Failed to pick local folder:', error);
     }
+  };
+
+  const handleCreate = () => {
+    if (!newName || !newPath) return;
+    onCreate(newName, newPath);
+    setShowCreate(false);
+    setNewName('');
+    setNewPath(isCloudBackend ? defaultCloudPath : defaultLocalPath);
+    setPathWarning(null);
   };
 
   return (
@@ -113,12 +137,33 @@ export function WorkspaceSelector({
                 <input
                   type="text"
                   value={newPath}
-                  onChange={(e) => setNewPath(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNewPath(value);
+                    if (isCloudBackend && /^(?:[A-Za-z]:\\|\/mnt\/)/.test(value)) {
+                      setPathWarning('当前后端在云端，无法直接访问本地路径，请使用服务器路径。');
+                    } else {
+                      setPathWarning(null);
+                    }
+                  }}
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
-                  placeholder="/path/to/project"
+                  placeholder={isCloudBackend ? defaultCloudPath : "/path/to/project"}
                 />
+                {pathWarning && (
+                  <div className="mt-2 text-xs text-amber-400">
+                    {pathWarning}
+                  </div>
+                )}
               </div>
               <div className="flex gap-2 justify-end">
+                {canPickDirectory && (
+                  <button
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded"
+                    onClick={handlePickLocalFolder}
+                  >
+                    选择本地文件夹
+                  </button>
+                )}
                 <button
                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded"
                   onClick={() => setShowCreate(false)}

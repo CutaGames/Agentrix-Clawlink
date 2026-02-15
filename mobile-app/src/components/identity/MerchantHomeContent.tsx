@@ -14,14 +14,14 @@ const mockMerchantData = {
 };
 
 const mockRecentOrders = [
-  { id: '1', amount: 1500, status: 'completed', time: '5分钟前' },
-  { id: '2', amount: 800, status: 'processing', time: '1小时前' },
-  { id: '3', amount: 2300, status: 'completed', time: '今天' },
+  { id: '1', amount: 1500, status: 'completed', time: '5m ago' },
+  { id: '2', amount: 800, status: 'processing', time: '1h ago' },
+  { id: '3', amount: 2300, status: 'completed', time: 'Today' },
 ];
 
 const mockSplitPlans = [
-  { id: '1', name: '标准 10%', rate: 10, status: 'active' },
-  { id: '2', name: '高级 15%', rate: 15, status: 'active' },
+  { id: '1', name: 'Standard 10%', rate: 10, status: 'active' },
+  { id: '2', name: 'Premium 15%', rate: 15, status: 'active' },
   { id: '3', name: 'VIP 20%', rate: 20, status: 'inactive' },
 ];
 
@@ -34,33 +34,33 @@ export const MerchantHomeContent: React.FC = () => {
       {/* 收款概览 */}
       <Card style={styles.overviewCard}>
         <View style={styles.overviewHeader}>
-          <Text style={styles.overviewLabel}>📈 今日收款</Text>
+          <Text style={styles.overviewLabel}>📈 Today's Revenue</Text>
         </View>
         <Text style={styles.overviewValue}>
-          ¥{mockMerchantData.todayRevenue.toLocaleString()}
+          ${mockMerchantData.todayRevenue.toLocaleString()}
         </Text>
         <View style={styles.overviewStats}>
           <View style={styles.overviewStat}>
-            <Text style={styles.statLabel}>待结算</Text>
-            <Text style={styles.statValue}>¥{mockMerchantData.pendingSettlement.toLocaleString()}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+            <Text style={styles.statValue}>${mockMerchantData.pendingSettlement.toLocaleString()}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.overviewStat}>
-            <Text style={styles.statLabel}>可提现</Text>
-            <Text style={styles.statValue}>¥{mockMerchantData.availableBalance.toLocaleString()}</Text>
+            <Text style={styles.statLabel}>Available</Text>
+            <Text style={styles.statValue}>${mockMerchantData.availableBalance.toLocaleString()}</Text>
           </View>
         </View>
       </Card>
 
       {/* 快速收款 */}
       <Card>
-        <Text style={styles.sectionTitle}>💳 快速收款</Text>
+        <Text style={styles.sectionTitle}>💳 Quick Pay</Text>
         <View style={styles.quickPayForm}>
           <View style={styles.inputRow}>
-            <Text style={styles.currencyPrefix}>¥</Text>
+            <Text style={styles.currencyPrefix}>$</Text>
             <TextInput
               style={styles.amountInput}
-              placeholder="输入金额"
+              placeholder="Enter amount"
               placeholderTextColor={colors.muted}
               keyboardType="numeric"
               value={payAmount}
@@ -68,11 +68,11 @@ export const MerchantHomeContent: React.FC = () => {
             />
           </View>
           <TouchableOpacity style={styles.planSelector}>
-            <Text style={styles.planSelectorLabel}>分佣计划</Text>
-            <Text style={styles.planSelectorValue}>标准 10% ▼</Text>
+            <Text style={styles.planSelectorLabel}>Commission Plan</Text>
+            <Text style={styles.planSelectorValue}>Standard 10% ▼</Text>
           </TouchableOpacity>
           <PrimaryButton 
-            title="生成收款码" 
+            title="Generate QR Code" 
             onPress={() => navigation.navigate('QuickPay', { amount: payAmount })}
           />
         </View>
@@ -81,16 +81,16 @@ export const MerchantHomeContent: React.FC = () => {
       {/* 最近订单 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📋 最近订单</Text>
+          <Text style={styles.sectionTitle}>📋 Recent Orders</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Settlements')}>
-            <Text style={styles.viewAll}>查看全部 →</Text>
+            <Text style={styles.viewAll}>View All →</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.orderList}>
           {mockRecentOrders.map((order) => (
             <View key={order.id} style={styles.orderItem}>
               <View>
-                <Text style={styles.orderAmount}>¥{order.amount.toLocaleString()}</Text>
+                <Text style={styles.orderAmount}>${order.amount.toLocaleString()}</Text>
                 <Text style={styles.orderTime}>{order.time}</Text>
               </View>
               <View style={[
@@ -99,7 +99,7 @@ export const MerchantHomeContent: React.FC = () => {
                 order.status === 'processing' && styles.statusProcessing,
               ]}>
                 <Text style={styles.orderStatusText}>
-                  {order.status === 'completed' ? '已完成' : '处理中'}
+                  {order.status === 'completed' ? 'Done' : 'Processing'}
                 </Text>
               </View>
             </View>
@@ -110,8 +110,8 @@ export const MerchantHomeContent: React.FC = () => {
       {/* 分佣计划 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📊 分佣计划</Text>
-          <Text style={styles.badge}>{mockSplitPlans.filter(p => p.status === 'active').length} 个</Text>
+          <Text style={styles.sectionTitle}>📊 Commission Plans</Text>
+          <Text style={styles.badge}>{mockSplitPlans.filter(p => p.status === 'active').length} active</Text>
         </View>
         <View style={styles.planList}>
           {mockSplitPlans.map((plan) => (
@@ -122,21 +122,21 @@ export const MerchantHomeContent: React.FC = () => {
             >
               <View>
                 <Text style={styles.planName}>{plan.name}</Text>
-                <Text style={styles.planRate}>{plan.rate}% 分佣</Text>
+                <Text style={styles.planRate}>{plan.rate}% commission</Text>
               </View>
               <View style={[
                 styles.planStatus,
                 plan.status === 'active' && styles.planActive,
               ]}>
                 <Text style={styles.planStatusText}>
-                  {plan.status === 'active' ? '启用' : '停用'}
+                  {plan.status === 'active' ? 'Active' : 'Inactive'}
                 </Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
         <PrimaryButton 
-          title="管理计划" 
+          title="Manage Plans" 
           onPress={() => navigation.navigate('SplitPlans')}
         />
       </Card>

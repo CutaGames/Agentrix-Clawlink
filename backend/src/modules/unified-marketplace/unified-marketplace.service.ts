@@ -17,9 +17,11 @@ import {
 } from '../../entities/skill.entity';
 import { ExternalSkillMapping, SyncStatus } from '../../entities/external-skill-mapping.entity';
 import { SkillAnalytics, CallerType, CallPlatform } from '../../entities/skill-analytics.entity';
+import { HumanCommissionService } from '../commission/human-commission.service';
 
 export interface UnifiedSearchParams {
   query?: string;
+  // Skill 相关过滤
   layer?: SkillLayer[];
   category?: SkillCategory[];
   resourceType?: SkillResourceType[];
@@ -28,14 +30,17 @@ export interface UnifiedSearchParams {
   priceMax?: number;
   rating?: number;
   humanAccessible?: boolean;
-  callerType?: 'agent' | 'human';
+  callerType?: 'agent' | 'human' | 'task'; // 新增 'task' 类型用于搜索任务
   targetPlatform?: 'claude' | 'openai' | 'gemini' | 'grok';
   tags?: string[];
   authorId?: string;
+  // 分页和排序
   page?: number;
   limit?: number;
-  sortBy?: 'callCount' | 'rating' | 'createdAt' | 'name';
+  sortBy?: 'callCount' | 'rating' | 'createdAt' | 'name' | 'budget';
   sortOrder?: 'ASC' | 'DESC';
+  // 新增：指定搜索类型
+  searchType?: 'skill' | 'task' | 'all'; // 默认 'all'
 }
 
 export interface UnifiedSearchResult {
@@ -79,6 +84,7 @@ export class UnifiedMarketplaceService {
     private externalMappingRepository: Repository<ExternalSkillMapping>,
     @InjectRepository(SkillAnalytics)
     private analyticsRepository: Repository<SkillAnalytics>,
+    private humanCommissionService: HumanCommissionService,
   ) {}
 
   /**
@@ -339,7 +345,7 @@ export class UnifiedMarketplaceService {
   /**
    * 获取 Skill 详情
    */
-  async getSkillDetail(id: string): Promise<Skill & { analytics?: SkillAnalyticsSummary }> {
+  async getSkillDetail(id: string): Promise<(Skill & { analytics?: SkillAnalyticsSummary }) | null> {
     const skill = await this.skillRepository.findOne({ where: { id } });
     if (!skill) {
       return null;
@@ -508,7 +514,7 @@ export class UnifiedMarketplaceService {
       throw new Error('Skill not found');
     }
 
-    // 记录调用
+    // 记录调用 (recordSkillCall 内部已 increment callCount，不要重复)
     await this.recordSkillCall({
       skillId,
       callerType: userId ? CallerType.HUMAN : CallerType.AGENT,
@@ -516,9 +522,6 @@ export class UnifiedMarketplaceService {
       platform: CallPlatform.AGENTRIX_WEB,
       success: true,
     });
-
-    // 更新调用计数
-    await this.skillRepository.increment({ id: skillId }, 'callCount', 1);
 
     // 返回模拟执行结果（实际执行逻辑需要根据 skill.executor 类型处理）
     return {
@@ -549,7 +552,7 @@ export class UnifiedMarketplaceService {
     const price = skill.pricing?.pricePerCall || 0;
     const totalAmount = price * quantity;
 
-    // 记录调用（购买也算一次调用）
+    // 记录调用（购买也算一次调用, recordSkillCall 内部已 increment callCount）
     await this.recordSkillCall({
       skillId,
       callerType: CallerType.HUMAN,
@@ -559,18 +562,33 @@ export class UnifiedMarketplaceService {
       revenueGenerated: totalAmount,
     });
 
-    // 更新调用计数
-    await this.skillRepository.increment({ id: skillId }, 'callCount', 1);
+    const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const currency = skill.pricing?.currency || 'USD';
+    const skillName = skill.displayName || skill.name;
+
+    // 触发人类推广佣金计算
+    try {
+      await this.humanCommissionService.calculateCommissionForOrder({
+        orderId,
+        buyerId: userId,
+        skillId,
+        skillName,
+        orderAmount: totalAmount,
+        currency,
+      });
+    } catch (e) {
+      this.logger.warn(`Commission calculation failed for order ${orderId}: ${e.message}`);
+    }
 
     return {
       skillId,
-      skillName: skill.displayName || skill.name,
+      skillName,
       quantity,
       unitPrice: price,
       totalAmount,
-      currency: skill.pricing?.currency || 'USD',
+      currency,
       purchasedAt: new Date().toISOString(),
-      orderId: `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      orderId,
     };
   }
 

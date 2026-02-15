@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Image from 'next/image'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { productApi, ProductInfo } from '../../../lib/api/product.api'
@@ -115,12 +116,14 @@ export default function ProductDetailPage() {
           <div className="grid md:grid-cols-2 gap-12">
             {/* 左侧：商品图片 */}
             <div className="space-y-4">
-              <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden aspect-square flex items-center justify-center">
+              <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden aspect-square flex items-center justify-center relative">
                 {product.metadata?.image ? (
-                  <img
+                  <Image
                     src={product.metadata.image}
                     alt={product.name}
-                    className="w-full h-full object-cover"
+                    fill
+                    className="object-cover"
+                    unoptimized
                   />
                 ) : (
                   <div className="text-6xl">🛍️</div>

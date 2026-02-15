@@ -79,13 +79,10 @@ export class PayIntentService {
     const expiresAt = new Date();
     expiresAt.setSeconds(expiresAt.getSeconds() + (dto.expiresIn || 3600)); // 默认1小时
 
-    // 逻辑调整：如果创建者是商户或代理，不应将其设为 payer (userId)
-    // userId 应该留空，等待支付者授权时绑定
-    const isMerchantOrAgent = dto.merchantId === creatorId || dto.agentId === creatorId;
-    const payerId = isMerchantOrAgent ? null : creatorId;
-
+    // userId 始终设为 creatorId（数据库列有 NOT NULL 约束）
+    // 如果创建者是商户/代理，后续支付时可通过 authorize 更新实际付款人
     const payIntent = this.payIntentRepository.create({
-      userId: payerId,
+      userId: creatorId,
       type: dto.type,
       amount: dto.amount,
       currency: dto.currency,
@@ -125,7 +122,7 @@ export class PayIntentService {
 
     await this.payIntentRepository.save(savedPayIntent);
 
-    this.logger.log(`创建PayIntent: id=${savedPayIntent.id}, creatorId=${creatorId}, payerId=${payerId}, amount=${dto.amount}`);
+    this.logger.log(`创建PayIntent: id=${savedPayIntent.id}, creatorId=${creatorId}, amount=${dto.amount}`);
 
     // 触发Webhook
     await this.triggerWebhook(savedPayIntent, 'payment_intent.created');

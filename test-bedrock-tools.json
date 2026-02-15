@@ -1,0 +1,9 @@
+{
+  "agentId": "CODER-01",
+  "messages": [
+    {
+      "role": "user",
+      "content": "帮我搜索Python最新的异步编程最佳实践"
+    }
+  ]
+}

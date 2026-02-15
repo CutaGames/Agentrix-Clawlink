@@ -37,7 +37,6 @@ export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     if (typeof window !== 'undefined' && router.query.ref) {
       const refId = router.query.ref as string;
-      console.log('🔍 检测到推广 ID:', refId);
       localStorage.setItem('agentrix_referral_id', refId);
       
       // 可选：清除 URL 中的 ref 参数以保持美观
@@ -54,9 +53,9 @@ export default function App({ Component, pageProps }: AppProps) {
       })
       // 加载授权诊断工具
       import('../utils/auth-diagnosis').then(() => {
-        console.log('✅ 授权诊断工具已加载，使用: await window.checkAuth()');
+        // Auth diagnosis tool loaded
       }).catch((err) => {
-        console.warn('授权诊断工具加载失败:', err);
+        console.warn('Auth diagnosis tool load failed:', err);
       })
     }
   }, [])

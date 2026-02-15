@@ -13,6 +13,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SkillService } from './skill.service';
+import { SkillReviewService } from './skill-review.service';
 import { OpenAPIImporterService, ImportConfig } from './openapi-importer.service';
 import { EcosystemImporterService } from './ecosystem-importer.service';
 import { Skill, SkillStatus } from '../../entities/skill.entity';
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class SkillController {
   constructor(
     private readonly skillService: SkillService,
+    private readonly skillReviewService: SkillReviewService,
     private readonly openApiImporter: OpenAPIImporterService,
     private readonly ecosystemImporter: EcosystemImporterService,
   ) {}
@@ -73,11 +75,13 @@ export class SkillController {
     return this.skillService.getSkillStats(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateSkillDto: Partial<Skill>) {
     return this.skillService.update(id, updateSkillDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.skillService.remove(id);
@@ -91,6 +95,7 @@ export class SkillController {
     return this.skillService.generatePack(id, platform);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post(':id/publish')
   publish(@Param('id') id: string) {
     return this.skillService.publish(id);
@@ -195,6 +200,26 @@ export class SkillController {
   ) {
     const installed = await this.skillService.isSkillInstalled(req.user?.id, id);
     return { installed };
+  }
+
+  // ========== 用户评价 API ==========
+
+  @Get(':id/reviews')
+  async getSkillReviews(
+    @Param('id') id: string,
+    @Query('page') page = '1',
+  ) {
+    return this.skillReviewService.getReviews(id, parseInt(page));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/reviews')
+  async submitSkillReview(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() body: { rating: number; comment: string },
+  ) {
+    return this.skillReviewService.submitReview(id, req.user.id, body);
   }
 
   // ========== V2.0 Playground API ==========

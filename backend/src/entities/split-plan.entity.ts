@@ -151,7 +151,7 @@ export class SplitPlan {
   ownerId: string;
 
   @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'ownerId' })
+  @JoinColumn({ name: 'owner_id' })
   owner: User;
 
   /** 使用次数统计 */

@@ -30,7 +30,9 @@ import {
   UserCheck,
   BarChart3,
   FileText,
-  Plus
+  Plus,
+  GitFork,
+  Landmark,
 } from 'lucide-react';
 
 // 四层架构的用户友好标签
@@ -65,6 +67,11 @@ export interface MarketplaceItemProps {
   tags?: string[];
   slaGuarantee?: boolean;
   performanceMetric?: string; // e.g., "99.9% Uptime" or "24h delivery"
+  // Commerce 标识
+  hasSplitPlan?: boolean;
+  hasBudgetPool?: boolean;
+  ucpEnabled?: boolean;
+  x402Enabled?: boolean;
   // 交互
   onClick?: () => void;
   onTryIt?: () => void;
@@ -130,12 +137,17 @@ export const MarketplaceItemCard: React.FC<MarketplaceItemProps> = ({
   imageUrl,
   tags = [],
   slaGuarantee,
+  hasSplitPlan,
+  hasBudgetPool,
+  ucpEnabled,
+  x402Enabled,
   onClick,
   onTryIt,
   onAddToCart,
   performanceMetric,
   variant = 'default',
 }) => {
+  const isCommerceSkill = hasSplitPlan || hasBudgetPool || ucpEnabled || x402Enabled;
   const layerInfo = layerConfig[layer];
   const valueInfo = valueType ? valueTypeConfig[valueType] : null;
   const hasImage = !!imageUrl;
@@ -291,12 +303,20 @@ export const MarketplaceItemCard: React.FC<MarketplaceItemProps> = ({
         </div>
 
         {/* 状态/性能标记 (左上角) */}
-        {slaGuarantee && (
-          <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-slate-900/80 backdrop-blur-sm text-[9px] font-bold text-white rounded-md uppercase tracking-wider flex items-center gap-1 shadow-sm">
-            <Shield className="w-2.5 h-2.5 text-emerald-400" />
-            Verified
-          </div>
-        )}
+        <div className="absolute top-2 left-2 flex gap-1">
+          {slaGuarantee && (
+            <div className="px-1.5 py-0.5 bg-slate-900/80 backdrop-blur-sm text-[9px] font-bold text-white rounded-md uppercase tracking-wider flex items-center gap-1 shadow-sm">
+              <Shield className="w-2.5 h-2.5 text-emerald-400" />
+              Verified
+            </div>
+          )}
+          {isCommerceSkill && (
+            <div className="px-1.5 py-0.5 bg-emerald-600/90 backdrop-blur-sm text-[9px] font-bold text-white rounded-md flex items-center gap-1 shadow-sm">
+              <ShoppingCart className="w-2.5 h-2.5" />
+              Commerce
+            </div>
+          )}
+        </div>
         
         {/* 价格标签 */}
         <div className="absolute bottom-2 right-2">
@@ -316,12 +336,22 @@ export const MarketplaceItemCard: React.FC<MarketplaceItemProps> = ({
       <div className="p-3 flex-1 flex flex-col">
         {/* 分类与价值类型 */}
         <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter border ${layerInfo.color}`}>
               {layerInfo.labelZh}
             </span>
             {valueInfo && (
               <span className="text-xs" title={valueInfo.labelZh}>{valueInfo.emoji}</span>
+            )}
+            {hasSplitPlan && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                <GitFork className="w-2.5 h-2.5" />Split
+              </span>
+            )}
+            {hasBudgetPool && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                <Landmark className="w-2.5 h-2.5" />Pool
+              </span>
             )}
           </div>
           {performanceMetric && (

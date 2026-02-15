@@ -23,6 +23,8 @@ import { AgentAuthorizationModule } from '../agent-authorization/agent-authoriza
 import { AutoEarnModule } from '../auto-earn/auto-earn.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { UCPModule } from '../ucp/ucp.module';
+import { CommerceModule } from '../commerce/commerce.module';
+import { A2AModule } from '../a2a/a2a.module';
 import { User } from '../../entities/user.entity';
 import { Payment } from '../../entities/payment.entity';
 
@@ -45,6 +47,8 @@ import { Payment } from '../../entities/payment.entity';
     AutoEarnModule,
     WalletModule,
     forwardRef(() => UCPModule),
+    forwardRef(() => CommerceModule),
+    forwardRef(() => A2AModule),
   ],
   controllers: [McpController, OidcController, OAuthController, GuestCheckoutController],
   providers: [

@@ -150,9 +150,24 @@ export class SkillService {
       updateData.x402Enabled = true;
       updateData.x402ServiceEndpoint = `${baseUrl}/.well-known/x402`;
     } else if (skill.x402Enabled) {
-      // 即使是免费的，如果用户显式勾选了 X402，也给它设置 endpoint
       updateData.x402ServiceEndpoint = `${baseUrl}/.well-known/x402`;
     }
+    
+    // V3.0: 自动在 Unified Marketplace 上架
+    // 发布后 skill.status = PUBLISHED，unified-marketplace 搜索
+    // 自动能找到 (它只搜索 status=PUBLISHED 的 skill)
+    // 这里添加 marketplace metadata 以确保完整性
+    updateData.metadata = {
+      ...skill.metadata,
+      marketplace: {
+        ...(skill.metadata?.marketplace || {}),
+        publishedVia: 'skill-publish',
+        publishedAt: new Date().toISOString(),
+        listings: {
+          unifiedMarketplace: true,
+        },
+      },
+    };
     
     return this.update(id, updateData);
   }
@@ -165,7 +180,7 @@ export class SkillService {
     if (skill.status !== SkillStatus.DRAFT) {
       throw new Error('Only draft skills can be submitted for review');
     }
-    skill.status = 'pending_review' as any;
+    skill.status = SkillStatus.PENDING_REVIEW;
     await this.skillRepository.save(skill);
     return { success: true, message: 'Skill submitted for review', skill };
   }
@@ -175,10 +190,10 @@ export class SkillService {
     if (!skill) {
       throw new Error('Skill not found');
     }
-    if ((skill.status as any) !== 'pending_review') {
+    if (skill.status !== SkillStatus.PENDING_REVIEW) {
       throw new Error('Only pending skills can be approved');
     }
-    skill.status = 'active' as any;
+    skill.status = SkillStatus.ACTIVE;
     await this.skillRepository.save(skill);
     return { success: true, message: 'Skill approved and activated', skill };
   }
@@ -188,10 +203,10 @@ export class SkillService {
     if (!skill) {
       throw new Error('Skill not found');
     }
-    if ((skill.status as any) !== 'pending_review') {
+    if (skill.status !== SkillStatus.PENDING_REVIEW) {
       throw new Error('Only pending skills can be rejected');
     }
-    skill.status = 'rejected' as any;
+    skill.status = SkillStatus.REJECTED;
     (skill as any).rejectionReason = reason;
     await this.skillRepository.save(skill);
     return { success: true, message: 'Skill rejected', skill };

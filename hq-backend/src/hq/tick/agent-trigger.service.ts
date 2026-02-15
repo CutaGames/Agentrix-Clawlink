@@ -1,69 +1,104 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-
 /**
- * Agent 触发器
+ * Agent Trigger Service (Rewritten - Phase 4)
  * 
- * 负责调用 HQ Backend API 触发其他 Agent 执行任务
- * 这是 ARCHITECT-01 控制其他 Agent 的核心机制
+ * 连接到真实的 unified-chat API
+ * 支持任务上下文注入和结果解析
  */
+
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { UnifiedChatService } from '../../modules/core/unified-chat.service';
+import { TaskContextService } from './task-context.service';
+import { BudgetMonitorService } from './budget-monitor.service';
+import { AgentTask } from '../../entities/agent-task.entity';
 
 export interface TriggerResult {
   success: boolean;
-  agentId: string;
+  agentCode: string;
   taskId: string;
   response?: string;
   error?: string;
   cost?: number;
+  tokensUsed?: number;
+  model?: string;
 }
 
 @Injectable()
 export class AgentTriggerService {
   private readonly logger = new Logger(AgentTriggerService.name);
-  private readonly apiBaseUrl: string;
 
   constructor(
+    private readonly unifiedChatService: UnifiedChatService,
+    private readonly taskContextService: TaskContextService,
+    private readonly budgetMonitor: BudgetMonitorService,
     private readonly configService: ConfigService,
-  ) {
-    this.apiBaseUrl = this.configService.get('HQ_API_URL') || 'http://localhost:3005/api';
-  }
+  ) {}
 
   /**
-   * 触发 Agent 执行任务
-   * 通过调用 unified-chat API 让指定 Agent 执行任务
+   * 触发 Agent 执行任务 (使用真实的 UnifiedChatService)
    */
   async triggerAgent(
-    agentId: string,
-    taskTitle: string,
-    taskDescription: string,
-    taskId: string,
+    agentCode: string,
+    task: AgentTask,
   ): Promise<TriggerResult> {
-    this.logger.log(`触发 ${agentId} 执行任务: ${taskTitle}`);
+    this.logger.log(`🚀 Triggering ${agentCode} for task: ${task.title}`);
+
+    // 1. 检查预算
+    const budgetCheck = this.budgetMonitor.canAgentExecute(agentCode);
+    if (!budgetCheck.allowed) {
+      this.logger.warn(`❌ ${agentCode} budget exhausted: ${budgetCheck.reason}`);
+      return {
+        success: false,
+        agentCode,
+        taskId: task.id,
+        error: `Budget check failed: ${budgetCheck.reason}`,
+      };
+    }
 
     try {
-      // 构建任务指令
-      const prompt = this.buildTaskPrompt(taskTitle, taskDescription);
+      // 2. 构建任务上下文
+      const context = await this.taskContextService.buildTaskContext(task.id);
+      const contextPrompt = this.taskContextService.formatContextAsPrompt(context);
 
-      // 调用 unified-chat API
-      const response = await this.callUnifiedChat(agentId, prompt);
+      // 3. 构建任务指令
+      const taskPrompt = this.buildTaskPrompt(task, contextPrompt);
 
-      this.logger.log(`${agentId} 任务完成: ${taskTitle}`);
+      // 4. 调用 UnifiedChatService
+      const startTime = Date.now();
+      const chatResponse = await this.unifiedChatService.chat({
+        agentCode,
+        message: taskPrompt,
+        mode: 'staff',
+        context: {
+          topic: task.type,
+          ...task.context,
+        },
+      });
+      const executionTime = (Date.now() - startTime) / 1000;
+
+      // 5. 记录预算消耗 (使用 AI 服务返回的真实 token 用量)
+      const usage = chatResponse.usage;
+      const inputTokens = usage?.promptTokens || 0;
+      const outputTokens = usage?.completionTokens || 0;
+      this.budgetMonitor.recordUsage(agentCode, chatResponse.model || 'unknown', inputTokens, outputTokens);
+
+      this.logger.log(`✅ ${agentCode} completed task "${task.title}" in ${executionTime.toFixed(2)}s`);
 
       return {
         success: true,
-        agentId,
-        taskId,
-        response: response.content,
-        cost: response.cost,
+        agentCode,
+        taskId: task.id,
+        response: chatResponse.response,
+        model: chatResponse.model,
+        cost: this.budgetMonitor.getBudgetStatus().byAgent[agentCode]?.used || 0,
+        tokensUsed: (inputTokens + outputTokens) || undefined,
       };
     } catch (error) {
-      this.logger.error(`${agentId} 任务失败: ${error.message}`);
+      this.logger.error(`❌ ${agentCode} task failed: ${error.message}`);
       return {
         success: false,
-        agentId,
-        taskId,
+        agentCode,
+        taskId: task.id,
         error: error.message,
       };
     }
@@ -72,81 +107,51 @@ export class AgentTriggerService {
   /**
    * 构建任务提示词
    */
-  private buildTaskPrompt(taskTitle: string, taskDescription: string): string {
-    return `
-## 任务指令
+  private buildTaskPrompt(task: AgentTask, contextPrompt: string): string {
+    return `${contextPrompt}
 
-**任务**: ${taskTitle}
+## Task Instructions
 
-**详细描述**: ${taskDescription}
+${task.description}
 
-**要求**:
-1. 认真执行任务
-2. 完成后给出详细报告
-3. 如果遇到问题，说明原因和建议
+**Expected Deliverables**:
+- Clear execution report
+- Any files created/modified
+- Next steps or recommendations
+- Issues encountered (if any)
 
-请开始执行任务。
+**Execution Guidelines**:
+1. Start by understanding the task requirements
+2. Break down into subtasks if needed
+3. Execute systematically
+4. Document your work
+5. Report completion with summary
+
+Begin execution now.
 `;
   }
 
   /**
-   * 调用 unified-chat API
-   */
-  private async callUnifiedChat(
-    agentId: string,
-    message: string,
-  ): Promise<{ content: string; cost: number }> {
-    // 这里需要实现实际的 HTTP 调用
-    // 暂时使用模拟响应
-    
-    this.logger.log(`调用 unified-chat API: ${agentId}`);
-    
-    // TODO: 实现真实的 API 调用
-    // const response = await firstValueFrom(
-    //   this.httpService.post(`${this.apiBaseUrl}/hq/unified-chat`, {
-    //     agentId,
-    //     message,
-    //   })
-    // );
-    
-    // 模拟响应
-    return {
-      content: `任务已完成: ${message.substring(0, 50)}...`,
-      cost: 0.01,
-    };
-  }
-
-  /**
-   * 批量触发多个 Agent
+   * 批量触发多个 Agent (串行执行以避免并发过高)
    */
   async triggerMultipleAgents(
-    tasks: Array<{
-      agentId: string;
-      taskTitle: string;
-      taskDescription: string;
-      taskId: string;
-    }>
+    tasks: Array<{ agentCode: string; task: AgentTask }>
   ): Promise<TriggerResult[]> {
     const results: TriggerResult[] = [];
 
-    for (const task of tasks) {
-      const result = await this.triggerAgent(
-        task.agentId,
-        task.taskTitle,
-        task.taskDescription,
-        task.taskId,
-      );
+    for (const { agentCode, task } of tasks) {
+      const result = await this.triggerAgent(agentCode, task);
       results.push(result);
 
-      // 避免并发过高，每个任务间隔 1 秒
-      await this.sleep(1000);
+      // 避免并发过高，每个任务间隔 2 秒
+      await this.sleep(2000);
     }
 
     return results;
   }
 
   /**
-   * 发送每日报告给 CEO
+   * 发送每日报告给 ARCHITECT-01
    */
   async sendDailyReport(report: {
     date: string;
@@ -155,17 +160,21 @@ export class AgentTriggerService {
     totalCost: number;
     highlights: string[];
     issues: string[];
+    budgetStatus: any;
   }): Promise<void> {
-    this.logger.log('=== 每日报告 ===');
-    this.logger.log(`日期: ${report.date}`);
-    this.logger.log(`完成任务: ${report.tasksCompleted}`);
-    this.logger.log(`失败任务: ${report.tasksFailed}`);
-    this.logger.log(`总花费: $${report.totalCost.toFixed(2)}`);
-    this.logger.log(`亮点: ${report.highlights.join(', ')}`);
-    this.logger.log(`问题: ${report.issues.join(', ')}`);
-    this.logger.log('================');
+    this.logger.log('=== 📊 Daily Report ===');
+    this.logger.log(`Date: ${report.date}`);
+    this.logger.log(`Completed: ${report.tasksCompleted} | Failed: ${report.tasksFailed}`);
+    this.logger.log(`Total Cost: $${report.totalCost.toFixed(2)}`);
+    this.logger.log(`Budget Used: ${report.budgetStatus.percentUsed.toFixed(1)}%`);
+    this.logger.log(`Highlights: ${report.highlights.join(', ')}`);
+    if (report.issues.length > 0) {
+      this.logger.warn(`Issues: ${report.issues.join(', ')}`);
+    }
+    this.logger.log('=====================');
 
-    // TODO: 发送到 Telegram/Email/其他通知渠道
+    // TODO: 可选择发送到 Telegram/Email/Slack
+    // 也可以作为一个任务分配给 SOCIAL-01 或 SUPPORT-01 去发布
   }
 
   private sleep(ms: number): Promise<void> {

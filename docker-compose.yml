@@ -58,6 +58,7 @@ services:
       dockerfile: Dockerfile
     container_name: agentrix-backend
     restart: unless-stopped
+    env_file: .env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3001

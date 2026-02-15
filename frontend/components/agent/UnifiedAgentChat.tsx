@@ -245,6 +245,77 @@ export function UnifiedAgentChat({
     onModeChange?.(newMode);
   };
 
+  // Commerce模块分类定义（仪表盘、收付款与兑换、协作分账、分佣结算、发布）
+  const getCommerceCategories = () => [
+    {
+      id: 'dashboard',
+      icon: '📊',
+      title: 'Commerce 仪表盘',
+      description: '概览、待办事项、数据统计',
+      protocol: 'Insight',
+      subCategories: [
+        { id: 'overview', title: '全景概览', example: '查看我的 Commerce 概览' },
+        { id: 'pending', title: '待处理事项', example: '有哪些待处理的里程碑？' },
+        { id: 'income', title: '收益分析', example: '查看最近收益' },
+      ],
+    },
+    {
+      id: 'pay_exchange',
+      icon: '💰',
+      title: '收付款与兑换',
+      description: '支付、收款、汇率、法币出入金',
+      protocol: 'X402',
+      subCategories: [
+        { id: 'payment', title: '发起支付', example: '我要付款 100 USDC' },
+        { id: 'receive', title: '生成收款码', example: '生成收款链接 50 USDC' },
+        { id: 'query', title: '查询订单/支付状态', example: '查询订单 order_xxx' },
+        { id: 'onramp', title: '法币 → 加密货币', example: '用 100 USD 兑换 USDC' },
+        { id: 'offramp', title: '加密货币 → 法币', example: '把 100 USDC 提现' },
+        { id: 'rate', title: '汇率查询', example: '查询 USDC 汇率' },
+      ],
+    },
+    {
+      id: 'collab',
+      icon: '👥',
+      title: '协作分账',
+      description: '分账方案、预算池、里程碑、协作酬劳',
+      protocol: 'UCP',
+      subCategories: [
+        { id: 'split', title: '创建分账方案', example: '创建分账方案' },
+        { id: 'budget', title: '管理预算池', example: '建一个任务预算池' },
+        { id: 'milestone', title: '里程碑管理', example: '给预算池加里程碑' },
+        { id: 'collaboration', title: '发放协作酬劳', example: '按里程碑放款' },
+      ],
+    },
+    {
+      id: 'commission',
+      icon: '💸',
+      title: '分佣结算',
+      description: '分润记录、结算管理、费用计算',
+      protocol: 'UCP',
+      subCategories: [
+        { id: 'commissions', title: '查看分润记录', example: '查看我的分润记录' },
+        { id: 'settlements', title: '查看结算记录', example: '查看结算记录' },
+        { id: 'settlement_execute', title: '执行结算', example: '执行结算' },
+        { id: 'fees', title: '费用计算/预览', example: '算手续费' },
+        { id: 'rates', title: '查看费率结构', example: '费率结构是什么' },
+      ],
+    },
+    {
+      id: 'publish',
+      icon: '🚀',
+      title: '发布',
+      description: '任务/商品/Skill 发布到 Marketplace',
+      protocol: 'UCP',
+      subCategories: [
+        { id: 'publish_task', title: '发布协作任务', example: '发布一个协作任务到 marketplace' },
+        { id: 'publish_product', title: '发布商品', example: '发布商品到 marketplace' },
+        { id: 'publish_skill', title: '发布 Skill', example: '发布 skill 到 marketplace' },
+        { id: 'sync_external', title: '同步到外部平台', example: '同步到外部任务平台' },
+      ],
+    },
+  ];
+
   const handleSend = async (messageOverride?: string) => {
     const messageToSend = messageOverride || input.trim();
     if (!messageToSend || isLoading) return;
@@ -297,6 +368,7 @@ export function UnifiedAgentChat({
           setMessages((prev) => [...prev, assistantMessage]);
         } else {
           // 三层结构：4 个场景入口
+          const commerceCategories = getCommerceCategories();
           const assistantMessage: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
@@ -305,61 +377,8 @@ export function UnifiedAgentChat({
             metadata: {
               type: 'commerce_categories',
               data: {
-                layout: 'three-tier', // 标记为三层结构
-                categories: [
-                  {
-                    id: 'pay',
-                    icon: '💰',
-                    title: '收付款',
-                    description: '支付、收款、生成链接',
-                    protocol: 'X402',
-                    subCategories: [
-                      { id: 'payment', title: '发起支付', example: '我要付款 100 USDC' },
-                      { id: 'receive', title: '生成收款链接', example: '生成收款链接 50 USDC' },
-                      { id: 'query', title: '查询订单状态', example: '查询订单 order_xxx' },
-                    ],
-                  },
-                  {
-                    id: 'exchange',
-                    icon: '💱',
-                    title: '资金兑换',
-                    description: 'On-ramp / Off-ramp',
-                    protocol: 'UCP',
-                    subCategories: [
-                      { id: 'onramp', title: '法币 → 加密货币', example: '用 100 USD 兑换 USDC' },
-                      { id: 'offramp', title: '加密货币 → 法币', example: '把 100 USDC 提现' },
-                      { id: 'rate', title: '汇率查询', example: '查询 USDC 汇率' },
-                    ],
-                  },
-                  {
-                    id: 'collab',
-                    icon: '👥',
-                    title: '协作分账',
-                    description: '分佣、预算池、里程碑、酬劳',
-                    protocol: 'UCP',
-                    subCategories: [
-                      { id: 'split', title: '创建分账方案', example: '创建分账方案' },
-                      { id: 'budget', title: '管理预算池', example: '建一个任务预算池' },
-                      { id: 'milestone', title: '里程碑管理', example: '给预算池加里程碑' },
-                      { id: 'collaboration', title: '发放协作酬劳', example: '按里程碑放款' },
-                      { id: 'fees', title: '费用计算/预览', example: '算手续费' },
-                      { id: 'rates', title: '查看费率结构', example: '费率结构是什么' },
-                    ],
-                  },
-                  {
-                    id: 'publish',
-                    icon: '🚀',
-                    title: '发布',
-                    description: '任务/商品/Skill 发布到 Marketplace',
-                    protocol: 'UCP',
-                    subCategories: [
-                      { id: 'publish_task', title: '发布协作任务', example: '发布一个协作任务到 marketplace' },
-                      { id: 'publish_product', title: '发布商品', example: '发布商品到 marketplace' },
-                      { id: 'publish_skill', title: '发布 Skill', example: '发布 skill 到 marketplace' },
-                      { id: 'sync_external', title: '同步到外部平台', example: '同步到外部任务平台' },
-                    ],
-                  },
-                ],
+                layout: 'three-tier',
+                categories: commerceCategories,
               },
             },
           };
@@ -385,21 +404,24 @@ export function UnifiedAgentChat({
 
     // 三层结构意图映射：子功能 ID → 父分类 ID
     const commerceIntentMap: Array<{ id: string; parentId: string; keywords: RegExp }> = [
-      // 收付款场景
-      { id: 'payment', parentId: 'pay', keywords: /(付款|支付|结算)/i },
-      { id: 'receive', parentId: 'pay', keywords: /(收款|收款链接)/i },
-      { id: 'query', parentId: 'pay', keywords: /(查询订单|订单状态)/i },
-      // 资金兑换场景
-      { id: 'onramp', parentId: 'exchange', keywords: /(兑换|换币|入金|on-?ramp)/i },
-      { id: 'offramp', parentId: 'exchange', keywords: /(提现|出金|off-?ramp)/i },
-      { id: 'rate', parentId: 'exchange', keywords: /(汇率)/i },
+      // 收付款与兑换场景
+      { id: 'payment', parentId: 'pay_exchange', keywords: /(付款|支付)/i },
+      { id: 'receive', parentId: 'pay_exchange', keywords: /(收款|收款链接|收款码)/i },
+      { id: 'query', parentId: 'pay_exchange', keywords: /(查询订单|订单状态|支付状态)/i },
+      { id: 'onramp', parentId: 'pay_exchange', keywords: /(兑换|换币|入金|on-?ramp)/i },
+      { id: 'offramp', parentId: 'pay_exchange', keywords: /(提现|出金|off-?ramp)/i },
+      { id: 'rate', parentId: 'pay_exchange', keywords: /(汇率)/i },
       // 协作分账场景
-      { id: 'split', parentId: 'collab', keywords: /(分账|分佣|分成)/i },
+      { id: 'split', parentId: 'collab', keywords: /(分账|分成)/i },
       { id: 'budget', parentId: 'collab', keywords: /(预算池|预算)/i },
       { id: 'milestone', parentId: 'collab', keywords: /(里程碑|阶段交付)/i },
       { id: 'collaboration', parentId: 'collab', keywords: /(协作酬劳|协作报酬|酬劳|报酬)/i },
-      { id: 'fees', parentId: 'collab', keywords: /(手续费|费用计算|费率计算|预览分账)/i },
-      { id: 'rates', parentId: 'collab', keywords: /(费率结构|平台费率)/i },
+      // 分佣结算场景
+      { id: 'commissions', parentId: 'commission', keywords: /(分润|分佣记录|佣金)/i },
+      { id: 'settlements', parentId: 'commission', keywords: /(结算记录|结算历史)/i },
+      { id: 'settlement_execute', parentId: 'commission', keywords: /(执行结算|发起结算)/i },
+      { id: 'fees', parentId: 'commission', keywords: /(手续费|费用计算|费率计算|预览分账)/i },
+      { id: 'rates', parentId: 'commission', keywords: /(费率结构|平台费率)/i },
       // 发布场景
       { id: 'publish_task', parentId: 'publish', keywords: /(发布任务|发布协作任务)/i },
       { id: 'publish_product', parentId: 'publish', keywords: /(发布商品)/i },
@@ -418,62 +440,9 @@ export function UnifiedAgentChat({
           type: 'commerce_categories',
           data: {
             layout: 'three-tier',
-            openCategory: matchedCommerceIntent.parentId, // 打开父分类
-            openSubCategory: matchedCommerceIntent.id, // 高亮子分类
-            categories: [
-              {
-                id: 'pay',
-                icon: '💰',
-                title: '收付款',
-                description: '支付、收款、生成链接',
-                protocol: 'X402',
-                subCategories: [
-                  { id: 'payment', title: '发起支付', example: '我要付款 100 USDC' },
-                  { id: 'receive', title: '生成收款链接', example: '生成收款链接 50 USDC' },
-                  { id: 'query', title: '查询订单状态', example: '查询订单 order_xxx' },
-                ],
-              },
-              {
-                id: 'exchange',
-                icon: '💱',
-                title: '资金兑换',
-                description: 'On-ramp / Off-ramp',
-                protocol: 'UCP',
-                subCategories: [
-                  { id: 'onramp', title: '法币 → 加密货币', example: '用 100 USD 兑换 USDC' },
-                  { id: 'offramp', title: '加密货币 → 法币', example: '把 100 USDC 提现' },
-                  { id: 'rate', title: '汇率查询', example: '查询 USDC 汇率' },
-                ],
-              },
-              {
-                id: 'collab',
-                icon: '👥',
-                title: '协作分账',
-                description: '分佣、预算池、里程碑、酬劳',
-                protocol: 'UCP',
-                subCategories: [
-                  { id: 'split', title: '创建分账方案', example: '创建分账方案' },
-                  { id: 'budget', title: '管理预算池', example: '建一个任务预算池' },
-                  { id: 'milestone', title: '里程碑管理', example: '给预算池加里程碑' },
-                  { id: 'collaboration', title: '发放协作酬劳', example: '按里程碑放款' },
-                  { id: 'fees', title: '费用计算/预览', example: '算手续费' },
-                  { id: 'rates', title: '查看费率结构', example: '费率结构是什么' },
-                ],
-              },
-              {
-                id: 'publish',
-                icon: '🚀',
-                title: '发布',
-                description: '任务/商品/Skill 发布到 Marketplace',
-                protocol: 'UCP',
-                subCategories: [
-                  { id: 'publish_task', title: '发布协作任务', example: '发布一个协作任务到 marketplace' },
-                  { id: 'publish_product', title: '发布商品', example: '发布商品到 marketplace' },
-                  { id: 'publish_skill', title: '发布 Skill', example: '发布 skill 到 marketplace' },
-                  { id: 'sync_external', title: '同步到外部平台', example: '同步到外部任务平台' },
-                ],
-              },
-            ],
+            openCategory: matchedCommerceIntent.parentId,
+            openSubCategory: matchedCommerceIntent.id,
+            categories: getCommerceCategories(),
           },
         },
       };

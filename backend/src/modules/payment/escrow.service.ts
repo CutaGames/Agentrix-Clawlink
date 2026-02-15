@@ -1,16 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan } from 'typeorm';
 import { Payment, PaymentStatus } from '../../entities/payment.entity';
-
-export enum EscrowStatus {
-  PENDING = 'pending', // 等待支付
-  FUNDED = 'funded', // 资金已托管
-  CONFIRMED = 'confirmed', // 用户确认收货
-  DISPUTED = 'disputed', // 争议中
-  RELEASED = 'released', // 已释放给商户
-  REFUNDED = 'refunded', // 已退款
-}
+import { Escrow, EscrowStatus } from '../../entities/escrow.entity';
 
 export interface EscrowConfig {
   paymentId: string;
@@ -33,41 +25,41 @@ export interface EscrowConfig {
 @Injectable()
 export class EscrowService {
   private readonly logger = new Logger(EscrowService.name);
-  private escrows: Map<string, {
-    config: EscrowConfig;
-    status: EscrowStatus;
-    transactionHash?: string;
-    createdAt: Date;
-    confirmedAt?: Date;
-    releasedAt?: Date;
-  }> = new Map();
 
   constructor(
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectRepository(Escrow)
+    private escrowRepository: Repository<Escrow>,
   ) {}
 
   /**
    * 创建托管交易
    */
   async createEscrow(config: EscrowConfig): Promise<{ escrowId: string; contractAddress?: string }> {
-    const escrowId = `escrow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    this.escrows.set(escrowId, {
-      config: {
-        ...config,
-        paymentId: config.paymentId || '', // 允许稍后设置
-      },
+    const escrow = this.escrowRepository.create({
+      paymentId: config.paymentId || '',
+      merchantId: config.merchantId,
+      userId: config.userId,
+      amount: config.amount,
+      currency: config.currency,
+      commissionRate: config.commissionRate,
+      autoReleaseDays: config.autoReleaseDays || 7,
+      description: config.description,
+      orderType: config.orderType,
+      settlementType: config.settlementType,
+      commission: config.commission,
       status: EscrowStatus.PENDING,
-      createdAt: new Date(),
+      contractAddress: `0x${Math.random().toString(16).substr(2, 40)}`,
     });
 
-    this.logger.log(`创建托管交易: ${escrowId}, 金额: ${config.amount} ${config.currency}`);
+    const saved = await this.escrowRepository.save(escrow);
+
+    this.logger.log(`创建托管交易: ${saved.id}, 金额: ${config.amount} ${config.currency}`);
 
     return {
-      escrowId,
-      // 实际应该返回智能合约地址
-      contractAddress: `0x${Math.random().toString(16).substr(2, 40)}`,
+      escrowId: saved.id,
+      contractAddress: saved.contractAddress,
     };
   }
 
@@ -75,20 +67,20 @@ export class EscrowService {
    * 更新托管交易的paymentId
    */
   async updateEscrowPaymentId(escrowId: string, paymentId: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) {
       throw new NotFoundException('托管交易不存在');
     }
 
-    escrow.config.paymentId = paymentId;
-    this.escrows.set(escrowId, escrow);
+    escrow.paymentId = paymentId;
+    await this.escrowRepository.save(escrow);
   }
 
   /**
    * 资金托管（用户支付后）
    */
   async fundEscrow(escrowId: string, transactionHash: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) {
       throw new NotFoundException('托管交易不存在');
     }
@@ -99,6 +91,7 @@ export class EscrowService {
 
     escrow.status = EscrowStatus.FUNDED;
     escrow.transactionHash = transactionHash;
+    await this.escrowRepository.save(escrow);
 
     // 更新支付记录
     const payment = await this.paymentRepository.findOne({
@@ -123,12 +116,12 @@ export class EscrowService {
    * 根据订单类型和结算条件处理
    */
   async confirmDelivery(escrowId: string, userId: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) {
       throw new NotFoundException('托管交易不存在');
     }
 
-    if (escrow.config.userId !== userId) {
+    if (escrow.userId !== userId) {
       throw new BadRequestException('无权操作此托管交易');
     }
 
@@ -144,24 +137,24 @@ export class EscrowService {
     let agentAmount: number = 0;
     let paymindAmount: number = 0;
 
-    if (escrow.config.commission) {
+    if (escrow.commission) {
       // 使用配置的分成比例
-      merchantAmount = escrow.config.amount * escrow.config.commission.merchant;
-      agentAmount = escrow.config.amount * escrow.config.commission.agent;
-      paymindAmount = escrow.config.amount * escrow.config.commission.paymind;
+      merchantAmount = escrow.amount * escrow.commission.merchant;
+      agentAmount = escrow.amount * escrow.commission.agent;
+      paymindAmount = escrow.amount * escrow.commission.paymind;
     } else {
       // 使用旧的commissionRate计算方式（兼容）
-      const commission = escrow.config.commissionRate
-        ? escrow.config.amount * escrow.config.commissionRate
+      const commission = escrow.commissionRate
+        ? escrow.amount * escrow.commissionRate
         : 0;
-      merchantAmount = escrow.config.amount - commission;
+      merchantAmount = escrow.amount - commission;
     }
 
     // 释放资金（实际应该调用智能合约）
     // 合约会自动分成：商家、Agent、PayMind
     await this.releaseFunds(
       escrowId, 
-      escrow.config.merchantId, 
+      escrow.merchantId, 
       merchantAmount, 
       agentAmount,
       paymindAmount,
@@ -169,6 +162,8 @@ export class EscrowService {
 
     escrow.status = EscrowStatus.RELEASED;
     escrow.releasedAt = new Date();
+    escrow.releaseDetails = { merchantAmount, agentAmount, paymindAmount };
+    await this.escrowRepository.save(escrow);
 
     // 更新支付记录
     const payment = await this.paymentRepository.findOne({
@@ -194,12 +189,12 @@ export class EscrowService {
    * 申请退款（争议）
    */
   async disputeEscrow(escrowId: string, userId: string, reason: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) {
       throw new NotFoundException('托管交易不存在');
     }
 
-    if (escrow.config.userId !== userId) {
+    if (escrow.userId !== userId) {
       throw new BadRequestException('无权操作此托管交易');
     }
 
@@ -208,6 +203,8 @@ export class EscrowService {
     }
 
     escrow.status = EscrowStatus.DISPUTED;
+    escrow.disputeReason = reason;
+    await this.escrowRepository.save(escrow);
 
     // 更新支付记录
     const payment = await this.paymentRepository.findOne({
@@ -230,17 +227,17 @@ export class EscrowService {
    * 自动释放（超时自动释放）
    */
   async autoRelease(escrowId: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) return;
 
     if (escrow.status !== EscrowStatus.FUNDED) return;
 
-    const autoReleaseDays = escrow.config.autoReleaseDays || 7;
+    const autoReleaseDays = escrow.autoReleaseDays || 7;
     const releaseTime = new Date(escrow.createdAt);
     releaseTime.setDate(releaseTime.getDate() + autoReleaseDays);
 
     if (new Date() >= releaseTime) {
-      await this.confirmDelivery(escrowId, escrow.config.userId);
+      await this.confirmDelivery(escrowId, escrow.userId);
       this.logger.log(`自动释放资金: ${escrowId}`);
     }
   }
@@ -266,15 +263,12 @@ export class EscrowService {
    * 获取托管交易信息
    */
   async getEscrow(escrowId: string): Promise<any> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) {
       throw new NotFoundException('托管交易不存在');
     }
 
-    return {
-      escrowId,
-      ...escrow,
-    };
+    return escrow;
   }
 
   /**
@@ -284,7 +278,7 @@ export class EscrowService {
    * 实体商品：等待确认收货
    */
   async autoSettleByOrderType(escrowId: string): Promise<void> {
-    const escrow = this.escrows.get(escrowId);
+    const escrow = await this.escrowRepository.findOne({ where: { id: escrowId } });
     if (!escrow) {
       throw new NotFoundException('托管交易不存在');
     }
@@ -293,13 +287,13 @@ export class EscrowService {
       return; // 只有已托管的交易才能结算
     }
 
-    const settlementType = escrow.config.settlementType;
-    const orderType = escrow.config.orderType;
+    const settlementType = escrow.settlementType;
+    const orderType = escrow.orderType;
 
     // NFT/虚拟资产：即时结算
     if (settlementType === 'instant' || orderType === 'nft' || orderType === 'virtual') {
       this.logger.log(`即时结算托管交易: ${escrowId} (订单类型: ${orderType})`);
-      await this.confirmDelivery(escrowId, escrow.config.userId);
+      await this.confirmDelivery(escrowId, escrow.userId);
       return;
     }
 
@@ -330,25 +324,29 @@ export class EscrowService {
     const cutoffDate = new Date(now);
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
-    // 遍历所有已托管的交易
-    for (const [escrowId, escrow] of this.escrows.entries()) {
-      if (escrow.status !== EscrowStatus.FUNDED) continue;
-      if (escrow.createdAt > cutoffDate) continue; // 未到7天
+    // 查询所有已托管的交易
+    const escrows = await this.escrowRepository.find({
+      where: {
+        status: EscrowStatus.FUNDED,
+        createdAt: LessThan(cutoffDate),
+      },
+    });
 
-      const settlementType = escrow.config.settlementType;
-      const orderType = escrow.config.orderType;
+    for (const escrow of escrows) {
+      const settlementType = escrow.settlementType;
+      const orderType = escrow.orderType;
 
       // 只处理需要确认收货的订单
       if (settlementType === 'delivery_confirmed' || 
           orderType === 'product' || 
           orderType === 'physical') {
         try {
-          await this.confirmDelivery(escrowId, escrow.config.userId);
+          await this.confirmDelivery(escrow.id, escrow.userId);
           successCount++;
-          this.logger.log(`自动确认收货: ${escrowId}`);
+          this.logger.log(`自动确认收货: ${escrow.id}`);
         } catch (error) {
           failCount++;
-          this.logger.error(`自动确认收货失败: ${escrowId}`, error);
+          this.logger.error(`自动确认收货失败: ${escrow.id}`, error);
         }
       }
     }

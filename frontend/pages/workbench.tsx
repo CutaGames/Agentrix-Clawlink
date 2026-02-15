@@ -38,6 +38,7 @@ const defaultL2: Record<L1Tab, L2SubItem> = {
   'agent-accounts': 'my-agents',
   'kyc': 'status',
   'workspaces': 'list',
+  'promotion': 'overview',
 };
 
 const modeDefaultL1: Record<'personal' | 'merchant' | 'developer', L1Tab> = {
@@ -210,6 +211,12 @@ function WorkbenchContent() {
         'kyc:status': { main: 'kyc', sub: 'status' },
         'kyc:upgrade': { main: 'kyc', sub: 'upgrade' },
         'kyc:documents': { main: 'kyc', sub: 'documents' },
+        // Promotion center (top-level tab)
+        'promotion:overview': { main: 'promotion', sub: 'overview' },
+        'promotion:my-links': { main: 'promotion', sub: 'my-links' },
+        'promotion:materials': { main: 'promotion', sub: 'materials' },
+        // Dashboard KYC sub-item
+        'dashboard:kyc': { main: 'kyc', sub: 'status' },
         // Workspaces mappings
         'workspaces:list': { main: 'workspaces', sub: 'list' },
         'workspaces:create': { main: 'workspaces', sub: 'create' },
@@ -236,7 +243,7 @@ function WorkbenchContent() {
     }
 
     return null;
-  }, [agentMode, activeL1, activeL2]);
+  }, [agentMode, activeL1, activeL2, handleCommand]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">

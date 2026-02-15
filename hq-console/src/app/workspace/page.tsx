@@ -6,19 +6,22 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   WorkspaceLayout, 
   FileExplorer, 
-  CodeEditor, 
+  MultiTabEditor,
   AgentChat, 
   WorkspaceSelector,
   WorkspaceStatusPanel,
   useWorkspaceStatus,
+  IntegratedTerminal,
 } from '@/components/workspace';
 import { AgentActivity, useAgentActivity, Activity } from '@/components/workspace/AgentActivity';
 import { hqApi } from '@/lib/api';
+import { readFile, writeFile } from '@/lib/tools';
 import { ToolExecutionCallback } from '@/components/workspace/AgentChat';
+import { useHqWebSocket } from '@/hooks/useHqWebSocket';
 
 interface Workspace {
   id: string;
@@ -26,6 +29,7 @@ interface Workspace {
   rootPath: string;
   description?: string;
   type?: string;
+  isLocal?: boolean;
 }
 
 interface OpenFile {
@@ -37,12 +41,26 @@ interface OpenFile {
 }
 
 export default function WorkspacePage() {
+  const apiBase = process.env.NEXT_PUBLIC_HQ_API_URL || process.env.NEXT_PUBLIC_HQ_URL || '';
+  const isCloudBackend = apiBase && !apiBase.includes('localhost') && !apiBase.includes('127.0.0.1');
+  const defaultLocalRoot = process.env.NEXT_PUBLIC_WORKSPACE_ROOT || '/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website';
+  const defaultCloudRoot = '/home/ubuntu/Agentrix-independent-HQ';
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<OpenFile | null>(null);
   const [selectedCode, setSelectedCode] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [leftWidth, setLeftWidth] = useState(240);
+  const [rightWidth, setRightWidth] = useState(420);
+  const [dragging, setDragging] = useState<'left' | 'right' | 'bottom' | null>(null);
+  const [showLeftSidebar, setShowLeftSidebar] = useState(true);
+  const [showBottomPanel, setShowBottomPanel] = useState(false);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(260);
+  const [bottomPanelTab, setBottomPanelTab] = useState<'terminal' | 'files' | 'activity'>('terminal');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
+  const wsState = useHqWebSocket();
   
   // 使用工作区状态 Hook
   const workspaceStatus = useWorkspaceStatus();
@@ -52,9 +70,15 @@ export default function WorkspacePage() {
   const toolCallbacks: ToolExecutionCallback = {
     onFileChange: (change) => {
       workspaceStatus.addFileChange(change);
+      // Auto-show bottom panel on file changes
+      if (!showBottomPanel) setShowBottomPanel(true);
+      setBottomPanelTab('files');
     },
     onTerminalOutput: (output) => {
       workspaceStatus.addTerminalOutput(output);
+      // Auto-show bottom panel on terminal output
+      if (!showBottomPanel) setShowBottomPanel(true);
+      setBottomPanelTab('terminal');
     },
     onActivityChange: (activity) => {
       if (activity.status === 'running') {
@@ -78,15 +102,150 @@ export default function WorkspacePage() {
     loadWorkspaces();
   }, []);
 
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMove = (event: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const effectiveLeft = showLeftSidebar ? leftWidth : 0;
+      const minLeft = 180;
+      const minRight = 280;
+      const minCenter = 320;
+
+      if (dragging === 'left') {
+        const proposed = event.clientX - rect.left;
+        const maxLeft = rect.width - rightWidth - minCenter;
+        setLeftWidth(Math.max(minLeft, Math.min(maxLeft, proposed)));
+      }
+
+      if (dragging === 'right') {
+        const proposed = rect.right - event.clientX;
+        const maxRight = rect.width - effectiveLeft - minCenter;
+        setRightWidth(Math.max(minRight, Math.min(maxRight, proposed)));
+      }
+
+      if (dragging === 'bottom' && centerRef.current) {
+        const centerRect = centerRef.current.getBoundingClientRect();
+        const proposed = centerRect.bottom - event.clientY;
+        const minBottom = 120;
+        const maxBottom = centerRect.height - 120;
+        setBottomPanelHeight(Math.max(minBottom, Math.min(maxBottom, proposed)));
+      }
+    };
+
+    const handleUp = () => setDragging(null);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [dragging, leftWidth, rightWidth, showLeftSidebar]);
+
+  useEffect(() => {
+    if (!currentWorkspace || typeof window === 'undefined') return;
+    if (!currentWorkspace.isLocal || !currentWorkspace.rootPath?.startsWith('local://')) return;
+    const handle = (window as any)?.__hqLocalWorkspaceHandles?.[currentWorkspace.id];
+    if (handle) return;
+
+    const fallbackWorkspace: Workspace = {
+      id: `local:${Date.now()}`,
+      name: 'Local Workspace',
+      rootPath: defaultLocalRoot,
+      type: 'local',
+      isLocal: true,
+    };
+    const existing = loadLocalWorkspaces();
+    const updated = [fallbackWorkspace, ...existing.filter(ws => ws.rootPath !== defaultLocalRoot)];
+    saveLocalWorkspaces(updated.map(ws => ({ ...ws, isLocal: undefined })));
+    setWorkspaces(prev => [fallbackWorkspace, ...prev.filter(ws => ws.id !== currentWorkspace.id)]);
+    setCurrentWorkspace(fallbackWorkspace);
+  }, [currentWorkspace, defaultLocalRoot]);
+
+  const loadLocalWorkspaces = (): Workspace[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('hq_local_workspaces');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as Workspace[];
+      return parsed.map(ws => ({ ...ws, isLocal: true }));
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalWorkspaces = (items: Workspace[]) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('hq_local_workspaces', JSON.stringify(items));
+    } catch {
+      // ignore
+    }
+  };
+
+  const isLocalPath = (inputPath: string) => {
+    return inputPath.startsWith('local://') || /^([A-Za-z]:\\|\/mnt\/)/.test(inputPath);
+  };
+
   const loadWorkspaces = async () => {
     try {
       const data = await hqApi.getWorkspaces();
-      setWorkspaces(data);
-      if (data.length > 0 && !currentWorkspace) {
-        setCurrentWorkspace(data[0]);
+      const normalizedRemote = data.map(ws => ({
+        ...ws,
+        isLocal: isLocalPath(ws.rootPath),
+      }));
+      const localWorkspaces = loadLocalWorkspaces();
+      const merged = [...localWorkspaces, ...normalizedRemote];
+      setWorkspaces(merged);
+      if (merged.length > 0 && !currentWorkspace) {
+        setCurrentWorkspace(merged[0]);
+        return;
+      }
+
+      if (merged.length === 0) {
+        if (isCloudBackend) {
+          const workspace = await hqApi.createWorkspace({
+            name: 'HQ Default Workspace',
+            rootPath: defaultCloudRoot,
+            description: 'Auto-created default workspace',
+          });
+          const next = { ...workspace, isLocal: false };
+          setWorkspaces([next]);
+          setCurrentWorkspace(next);
+        } else {
+          const localWorkspace: Workspace = {
+            id: `local:${Date.now()}`,
+            name: 'Local Workspace',
+            rootPath: defaultLocalRoot,
+            type: 'local',
+            isLocal: true,
+          };
+          const updated = [localWorkspace, ...localWorkspaces.filter(ws => ws.rootPath !== defaultLocalRoot)];
+          saveLocalWorkspaces(updated.map(ws => ({ ...ws, isLocal: undefined })));
+          setWorkspaces([localWorkspace]);
+          setCurrentWorkspace(localWorkspace);
+        }
       }
     } catch (error) {
       console.error('Failed to load workspaces:', error);
+      const localWorkspaces = loadLocalWorkspaces();
+      setWorkspaces(localWorkspaces);
+      if (localWorkspaces.length > 0 && !currentWorkspace) {
+        setCurrentWorkspace(localWorkspaces[0]);
+      } else if (localWorkspaces.length === 0 && !isCloudBackend) {
+        const localWorkspace: Workspace = {
+          id: `local:${Date.now()}`,
+          name: 'Local Workspace',
+          rootPath: defaultLocalRoot,
+          type: 'local',
+          isLocal: true,
+        };
+        saveLocalWorkspaces([{ ...localWorkspace, isLocal: undefined }]);
+        setWorkspaces([localWorkspace]);
+        setCurrentWorkspace(localWorkspace);
+      }
     } finally {
       setLoading(false);
     }
@@ -102,13 +261,29 @@ export default function WorkspacePage() {
   // 创建工作区
   const handleCreateWorkspace = useCallback(async (name: string, rootPath: string) => {
     try {
+      if ((isCloudBackend && isLocalPath(rootPath)) || rootPath.startsWith('local://')) {
+        const localWorkspace: Workspace = {
+          id: rootPath.startsWith('local://') ? rootPath.replace('local://', '') : `local:${Date.now()}`,
+          name,
+          rootPath,
+          type: 'local',
+          isLocal: true,
+        };
+        const existing = loadLocalWorkspaces();
+        const updated = [localWorkspace, ...existing.filter(ws => ws.rootPath !== rootPath)];
+        saveLocalWorkspaces(updated.map(ws => ({ ...ws, isLocal: undefined })));
+        setWorkspaces(prev => [localWorkspace, ...prev]);
+        setCurrentWorkspace(localWorkspace);
+        return;
+      }
+
       const workspace = await hqApi.createWorkspace({ name, rootPath });
       setWorkspaces(prev => [...prev, workspace]);
       setCurrentWorkspace(workspace);
     } catch (error) {
       console.error('Failed to create workspace:', error);
     }
-  }, []);
+  }, [isCloudBackend]);
 
   // 打开文件
   const handleOpenFile = useCallback(async (filePath: string) => {
@@ -122,6 +297,39 @@ export default function WorkspacePage() {
     }
 
     try {
+      if (currentWorkspace.isLocal) {
+        if (currentWorkspace.rootPath.startsWith('local://')) {
+          const localHandle = (window as any)?.__hqLocalWorkspaceHandles?.[currentWorkspace.id];
+          if (localHandle) {
+            const fileHandle = await getFileHandle(localHandle, filePath);
+            const file = await fileHandle.getFile();
+            const content = await file.text();
+            const newFile: OpenFile = {
+              path: filePath,
+              name: file.name,
+              content,
+              language: file.name.split('.').pop() || 'plaintext',
+              isDirty: false,
+            };
+            setOpenFiles(prev => [...prev, newFile]);
+            setActiveFile(newFile);
+            return;
+          }
+        }
+
+        const data = await readFile(filePath);
+        const newFile: OpenFile = {
+          path: filePath,
+          name: data.filePath.split('/').pop() || filePath,
+          content: data.content,
+          language: data.language || 'plaintext',
+          isDirty: false,
+        };
+        setOpenFiles(prev => [...prev, newFile]);
+        setActiveFile(newFile);
+        return;
+      }
+
       const data = await hqApi.readFile(currentWorkspace.id, filePath);
       const newFile: OpenFile = {
         path: filePath,
@@ -150,7 +358,21 @@ export default function WorkspacePage() {
     if (!currentWorkspace) return;
 
     try {
-      await hqApi.saveFile(currentWorkspace.id, filePath, content);
+      if (currentWorkspace.isLocal) {
+        if (currentWorkspace.rootPath.startsWith('local://')) {
+          const localHandle = (window as any)?.__hqLocalWorkspaceHandles?.[currentWorkspace.id];
+          if (localHandle) {
+            const fileHandle = await getFileHandle(localHandle, filePath, true);
+            const writable = await fileHandle.createWritable();
+            await writable.write(content);
+            await writable.close();
+          }
+        } else {
+          await writeFile(filePath, content);
+        }
+      } else {
+        await hqApi.saveFile(currentWorkspace.id, filePath, content);
+      }
       setOpenFiles(prev =>
         prev.map(f =>
           f.path === filePath ? { ...f, content, isDirty: false } : f
@@ -160,6 +382,7 @@ export default function WorkspacePage() {
       console.error('Failed to save file:', error);
     }
   }, [currentWorkspace]);
+
 
   // 文件内容变更
   const handleContentChange = useCallback((filePath: string, content: string) => {
@@ -178,6 +401,42 @@ export default function WorkspacePage() {
     setSelectedCode(code);
   }, []);
 
+  const createUntitledPath = useCallback(() => {
+    const fileName = `untitled-${Date.now()}.md`;
+    if (!currentWorkspace) return fileName;
+    if (currentWorkspace.isLocal && currentWorkspace.rootPath.startsWith('local://')) {
+      return fileName;
+    }
+    const root = currentWorkspace.rootPath?.replace(/\\/g, '/').replace(/\/+$/, '') || '';
+    return root ? `${root}/${fileName}` : fileName;
+  }, [currentWorkspace]);
+
+  const handleCreateTab = useCallback(() => {
+    if (!currentWorkspace) return;
+    const filePath = createUntitledPath();
+    const newFile: OpenFile = {
+      path: filePath,
+      name: filePath.split('/').pop() || filePath,
+      content: '',
+      language: 'markdown',
+      isDirty: true,
+    };
+    setOpenFiles(prev => [...prev, newFile]);
+    setActiveFile(newFile);
+  }, [createUntitledPath, currentWorkspace]);
+
+  const handleTabChange = useCallback((tabId: string) => {
+    const next = openFiles.find(f => f.path === tabId) || null;
+    setActiveFile(next);
+  }, [openFiles]);
+
+  const handleTabSave = useCallback((tabId: string) => {
+    const file = openFiles.find(f => f.path === tabId);
+    if (file) {
+      handleSaveFile(file.path, file.content);
+    }
+  }, [openFiles, handleSaveFile]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900">
@@ -189,7 +448,18 @@ export default function WorkspacePage() {
   return (
     <WorkspaceLayout>
       {/* 顶部工具栏 */}
-      <div className="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4">
+      <div className="h-10 bg-gray-800 border-b border-gray-700 flex items-center px-3 gap-2 select-none">
+        {/* Toggle left sidebar */}
+        <button
+          className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+          onClick={() => setShowLeftSidebar(prev => !prev)}
+          title={showLeftSidebar ? 'Hide Explorer' : 'Show Explorer'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+          </svg>
+        </button>
+
         <WorkspaceSelector
           workspaces={workspaces}
           currentWorkspace={currentWorkspace}
@@ -197,107 +467,260 @@ export default function WorkspacePage() {
           onCreate={handleCreateWorkspace}
         />
         <div className="flex-1" />
-        <div className="text-sm text-gray-400">
+
+        {/* Bottom panel toggle buttons */}
+        <div className="flex items-center gap-1 mr-2">
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showBottomPanel && bottomPanelTab === 'terminal'
+                ? 'bg-gray-600 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
+            onClick={() => {
+              if (showBottomPanel && bottomPanelTab === 'terminal') {
+                setShowBottomPanel(false);
+              } else {
+                setShowBottomPanel(true);
+                setBottomPanelTab('terminal');
+              }
+            }}
+          >
+            Terminal
+          </button>
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showBottomPanel && bottomPanelTab === 'files'
+                ? 'bg-gray-600 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
+            onClick={() => {
+              if (showBottomPanel && bottomPanelTab === 'files') {
+                setShowBottomPanel(false);
+              } else {
+                setShowBottomPanel(true);
+                setBottomPanelTab('files');
+              }
+            }}
+          >
+            Files {workspaceStatus.fileChanges.length > 0 && (
+              <span className="ml-1 bg-blue-500 text-white text-[10px] px-1 py-0.5 rounded-full">
+                {workspaceStatus.fileChanges.length}
+              </span>
+            )}
+          </button>
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showBottomPanel && bottomPanelTab === 'activity'
+                ? 'bg-gray-600 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-700'
+            }`}
+            onClick={() => {
+              if (showBottomPanel && bottomPanelTab === 'activity') {
+                setShowBottomPanel(false);
+              } else {
+                setShowBottomPanel(true);
+                setBottomPanelTab('activity');
+              }
+            }}
+          >
+            Activity {agentActivity.isThinking && (
+              <span className="ml-1 inline-block w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+            )}
+          </button>
+        </div>
+
+        <div className="mr-2 flex items-center gap-1.5 text-xs text-gray-400">
+          <span
+            className={`h-2 w-2 rounded-full ${wsState.connected ? 'bg-emerald-400' : wsState.connecting ? 'bg-yellow-400' : 'bg-red-400'}`}
+            title={wsState.connected ? 'WebSocket connected' : wsState.connecting ? 'WebSocket connecting' : wsState.error || 'WebSocket disconnected'}
+          />
+          <span>{wsState.connected ? 'WS Connected' : wsState.connecting ? 'WS Connecting' : 'WS Disconnected'}</span>
+        </div>
+        <div className="text-xs text-gray-500">
           HQ Workspace IDE
         </div>
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 左侧: 文件浏览器 + Agent 状态面板 */}
-        <div className="w-72 bg-gray-900 border-r border-gray-700 flex flex-col">
-          {/* 文件浏览器 */}
-          <div className="flex-1 overflow-auto border-b border-gray-700">
-            {currentWorkspace ? (
-              <FileExplorer
-                workspaceId={currentWorkspace.id}
-                onFileSelect={handleOpenFile}
-              />
-            ) : (
-              <div className="p-4 text-gray-500 text-sm">
-                Select or create a workspace
+      <div ref={containerRef} className="flex-1 flex overflow-hidden" style={{ userSelect: dragging ? 'none' : 'auto' }}>
+        {/* 左侧: 文件浏览器 (collapsible) */}
+        {showLeftSidebar && (
+          <>
+            <div
+              className="bg-slate-950 border-r border-slate-700/80 flex flex-col overflow-hidden"
+              style={{ width: leftWidth }}
+            >
+              <div className="flex-1 overflow-auto">
+                {currentWorkspace ? (
+                  <FileExplorer
+                    workspaceId={currentWorkspace.id}
+                    workspaceRootPath={currentWorkspace.rootPath}
+                    isLocal={currentWorkspace.isLocal}
+                    onFileSelect={handleOpenFile}
+                  />
+                ) : (
+                  <div className="p-4 text-gray-500 text-sm">
+                    Select or create a workspace
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          
-          {/* Agent 活动状态 */}
-          {(agentActivity.isThinking || agentActivity.activities.length > 0) && (
-            <div className="p-3 border-b border-gray-700">
-              <div className="text-xs text-gray-500 uppercase font-medium mb-2">Agent 状态</div>
-              <AgentActivity 
-                activities={agentActivity.activities}
-                isThinking={agentActivity.isThinking}
-                thinkingDuration={agentActivity.thinkingDuration}
-              />
             </div>
-          )}
-          
-          {/* 文件/终端状态面板 */}
-          <div className="h-64 flex-shrink-0">
-            <WorkspaceStatusPanel
-              fileChanges={workspaceStatus.fileChanges}
-              terminalOutputs={workspaceStatus.terminalOutputs}
-              onFileClick={handleOpenFile}
-              onClearFiles={workspaceStatus.clearFileChanges}
-              onClearTerminal={workspaceStatus.clearTerminalOutputs}
+
+            {/* 拖拽分隔条 (左) */}
+            <div
+              className="w-1 bg-slate-800 hover:bg-emerald-400/70 cursor-col-resize flex-shrink-0"
+              onMouseDown={() => setDragging('left')}
+              onDoubleClick={() => setLeftWidth(240)}
+            />
+          </>
+        )}
+
+        {/* 中间: 代码编辑器 + 底部面板 */}
+        <div ref={centerRef} className="flex-1 flex flex-col bg-slate-950 min-w-0">
+          {/* 编辑器区域 */}
+          <div className="flex-1 min-h-0">
+            <MultiTabEditor
+              tabs={openFiles.map(file => ({
+                id: file.path,
+                path: file.path,
+                content: file.content,
+                language: file.language,
+                modified: file.isDirty,
+              }))}
+              activeTabId={activeFile?.path || ''}
+              onTabChange={handleTabChange}
+              onTabClose={handleCloseFile}
+              onTabCreate={handleCreateTab}
+              onContentChange={handleContentChange}
+              onSave={handleTabSave}
+              onSelectCode={handleSelectCode}
             />
           </div>
-        </div>
 
-        {/* 中间: 代码编辑器 */}
-        <div className="flex-1 flex flex-col">
-          {/* 文件标签 */}
-          <div className="h-10 bg-gray-800 flex items-center overflow-x-auto">
-            {openFiles.map(file => (
+          {/* 底部面板 (resizable, collapsible) */}
+          {showBottomPanel && (
+            <>
+              {/* 垂直拖拽分隔条 */}
               <div
-                key={file.path}
-                className={`flex items-center px-3 h-full cursor-pointer border-r border-gray-700 ${
-                  activeFile?.path === file.path
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                }`}
-                onClick={() => setActiveFile(file)}
-              >
-                <span className="text-sm truncate max-w-[150px]">
-                  {file.isDirty && '• '}
-                  {file.name}
-                </span>
-                <button
-                  className="ml-2 text-gray-500 hover:text-white"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCloseFile(file.path);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* 编辑器 */}
-          <div className="flex-1">
-            {activeFile ? (
-              <CodeEditor
-                content={activeFile.content}
-                language={activeFile.language}
-                onChange={(content: string) => handleContentChange(activeFile.path, content)}
-                onSave={() => handleSaveFile(activeFile.path, activeFile.content)}
-                onSelectCode={handleSelectCode}
+                className="h-1 bg-slate-800 hover:bg-emerald-400/70 cursor-row-resize flex-shrink-0"
+                onMouseDown={() => setDragging('bottom')}
+                onDoubleClick={() => setBottomPanelHeight(260)}
               />
-            ) : (
-              <div className="flex items-center justify-center h-full bg-gray-900 text-gray-500">
-                Select a file to edit
+
+              <div
+                className="flex flex-col bg-slate-950 overflow-hidden flex-shrink-0"
+                style={{ height: bottomPanelHeight }}
+              >
+                {/* 底部面板标签栏 */}
+                <div className="flex items-center border-b border-slate-700/80 bg-slate-900/80 px-1 h-8 flex-shrink-0">
+                  <button
+                    className={`px-3 py-1 text-xs font-medium rounded-t transition-colors ${
+                      bottomPanelTab === 'terminal'
+                        ? 'text-white bg-slate-800 border-b-2 border-emerald-500'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    onClick={() => setBottomPanelTab('terminal')}
+                  >
+                    Terminal {workspaceStatus.terminalOutputs.length > 0 && (
+                      <span className="ml-1 bg-green-600 text-white text-[10px] px-1 rounded-full">
+                        {workspaceStatus.terminalOutputs.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className={`px-3 py-1 text-xs font-medium rounded-t transition-colors ${
+                      bottomPanelTab === 'files'
+                        ? 'text-white bg-slate-800 border-b-2 border-blue-500'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    onClick={() => setBottomPanelTab('files')}
+                  >
+                    Files {workspaceStatus.fileChanges.length > 0 && (
+                      <span className="ml-1 bg-blue-600 text-white text-[10px] px-1 rounded-full">
+                        {workspaceStatus.fileChanges.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className={`px-3 py-1 text-xs font-medium rounded-t transition-colors ${
+                      bottomPanelTab === 'activity'
+                        ? 'text-white bg-slate-800 border-b-2 border-amber-500'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    onClick={() => setBottomPanelTab('activity')}
+                  >
+                    Activity {agentActivity.isThinking && (
+                      <span className="ml-1 inline-block w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                    )}
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    className="p-1 text-gray-500 hover:text-white hover:bg-gray-700 rounded"
+                    onClick={() => setShowBottomPanel(false)}
+                    title="Close Panel"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* 底部面板内容 */}
+                <div className="flex-1 overflow-auto">
+                  {bottomPanelTab === 'terminal' && (
+                    <WorkspaceStatusPanel
+                      forceTab="terminal"
+                      fileChanges={[]}
+                      terminalOutputs={workspaceStatus.terminalOutputs}
+                      onFileClick={handleOpenFile}
+                      onClearTerminal={workspaceStatus.clearTerminalOutputs}
+                    />
+                  )}
+                  {bottomPanelTab === 'files' && (
+                    <WorkspaceStatusPanel
+                      forceTab="files"
+                      fileChanges={workspaceStatus.fileChanges}
+                      terminalOutputs={[]}
+                      onFileClick={handleOpenFile}
+                      onClearFiles={workspaceStatus.clearFileChanges}
+                    />
+                  )}
+                  {bottomPanelTab === 'activity' && (
+                    <div className="p-3">
+                      <AgentActivity
+                        activities={agentActivity.activities}
+                        isThinking={agentActivity.isThinking}
+                        thinkingDuration={agentActivity.thinkingDuration}
+                      />
+                      {!agentActivity.isThinking && agentActivity.activities.length === 0 && (
+                        <div className="text-gray-500 text-sm text-center py-6">
+                          No agent activity yet
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
+
+        {/* 拖拽分隔条 (右) */}
+        <div
+          className="w-1 bg-slate-800 hover:bg-emerald-400/70 cursor-col-resize flex-shrink-0"
+          onMouseDown={() => setDragging('right')}
+          onDoubleClick={() => setRightWidth(420)}
+        />
 
         {/* 右侧: Agent 聊天 */}
-        <div className="w-96 bg-gray-900 border-l border-gray-700">
+        <div
+          className="bg-slate-950 border-l border-slate-700/80 flex-shrink-0"
+          style={{ width: rightWidth }}
+        >
           {currentWorkspace && (
             <AgentChat
               workspaceId={currentWorkspace.id}
+              workspaceRootPath={currentWorkspace.rootPath}
               currentFile={activeFile?.path}
               selectedCode={selectedCode}
               onOpenFile={handleOpenFile}
@@ -308,4 +731,21 @@ export default function WorkspacePage() {
       </div>
     </WorkspaceLayout>
   );
+}
+
+async function getFileHandle(
+  root: FileSystemDirectoryHandle,
+  relativePath: string,
+  create = false,
+) {
+  const segments = relativePath.replace(/^\//, '').split('/').filter(Boolean);
+  const fileName = segments.pop();
+  if (!fileName) {
+    throw new Error('Invalid file path');
+  }
+  let current = root;
+  for (const segment of segments) {
+    current = await current.getDirectoryHandle(segment, { create });
+  }
+  return await current.getFileHandle(fileName, { create });
 }

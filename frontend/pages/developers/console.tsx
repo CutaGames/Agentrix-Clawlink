@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { 
   Key, 
   Webhook, 
@@ -18,11 +19,12 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  ArrowLeft
 } from 'lucide-react';
-import { apiKeyApi, ApiKey } from '../../lib/api/api-key.api';
 import { webhookApi, WebhookConfig } from '../../lib/api/webhook.api';
 import { formatDateTime } from '../../utils/format';
+import { apiKeyApi, ApiKey } from '../../lib/api/api-key.api';
 
 const DeveloperConsole = () => {
   const [activeTab, setActiveTab] = useState<'keys' | 'webhooks' | 'logs' | 'simulator' | 'settings'>('keys');
@@ -97,6 +99,10 @@ const DeveloperConsole = () => {
 
       {/* Sidebar / Navigation */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <Link href="/" className="inline-flex items-center text-gray-500 hover:text-indigo-600 mb-6 text-sm font-medium transition-colors">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Home
+        </Link>
         <div className="flex flex-col md:flex-row gap-8">
           
           {/* Sidebar */}
@@ -555,7 +561,7 @@ const SandboxSimulator = ({ apiKeys }: { apiKeys: ApiKey[] }) => {
           <div className="mt-8 p-6 bg-gray-900 rounded-2xl text-indigo-300 font-mono text-sm overflow-auto max-h-96">
             <div className="flex justify-between items-center mb-4">
               <span className="text-gray-400 uppercase text-xs font-bold">Response</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${result.error ? 'bg-red-900 text-red-200' : 'bg-green-900 text-green-200'}`}>
+              <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${result.error ? 'bg-red-900 text-red-200' : 'bg-green-900 text-green-200'}`}>
                 {result.error ? 'Error' : 'Success'}
               </span>
             </div>

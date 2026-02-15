@@ -14,14 +14,14 @@ const mockDeveloperData = {
 };
 
 const mockPendingTasks = [
-  { id: '1', title: '里程碑 "API对接"', type: 'milestone', status: '待提交', dueDate: '明天' },
-  { id: '2', title: '里程碑 "UI设计"', type: 'milestone', status: '审批中', dueDate: null },
-  { id: '3', title: '新订单 "小程序开发"', type: 'order', status: '待接单', dueDate: null },
+  { id: '1', title: 'Milestone "API Integration"', type: 'milestone', status: 'To Submit', dueDate: 'Tomorrow' },
+  { id: '2', title: 'Milestone "UI Design"', type: 'milestone', status: 'In Review', dueDate: null },
+  { id: '3', title: 'New Order "Mini-App Dev"', type: 'order', status: 'Pending', dueDate: null },
 ];
 
 const mockBudgetPools = [
-  { id: '1', name: 'Agentrix SDK 开发', budget: 5000, status: 'active' },
-  { id: '2', name: '商城小程序', budget: 3000, status: 'active' },
+  { id: '1', name: 'Agentrix SDK Dev', budget: 5000, status: 'active' },
+  { id: '2', name: 'Commerce Mini-App', budget: 3000, status: 'active' },
 ];
 
 const mockMarketOrders = 8;
@@ -34,29 +34,29 @@ export const DeveloperHomeContent: React.FC = () => {
       {/* 收益概览 */}
       <Card style={styles.overviewCard}>
         <View style={styles.overviewHeader}>
-          <Text style={styles.overviewLabel}>💰 开发者收益</Text>
+          <Text style={styles.overviewLabel}>💰 Developer Earnings</Text>
         </View>
         <View style={styles.balanceRow}>
           <View style={styles.balanceItem}>
-            <Text style={styles.balanceLabel}>待结算</Text>
+            <Text style={styles.balanceLabel}>Pending</Text>
             <Text style={styles.balanceValue}>${mockDeveloperData.pendingSettlement.toLocaleString()}</Text>
           </View>
           <View style={styles.balanceDivider} />
           <View style={styles.balanceItem}>
-            <Text style={styles.balanceLabel}>可提现</Text>
+            <Text style={styles.balanceLabel}>Available</Text>
             <Text style={styles.balanceValue}>${mockDeveloperData.availableBalance.toLocaleString()}</Text>
           </View>
         </View>
         <View style={styles.weekEarned}>
-          <Text style={styles.weekEarnedText}>本周 +${mockDeveloperData.weekEarned}</Text>
+          <Text style={styles.weekEarnedText}>This Week +${mockDeveloperData.weekEarned}</Text>
         </View>
       </Card>
 
       {/* 待处理任务 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>⚡ 待处理任务</Text>
-          <Text style={styles.badge}>{mockPendingTasks.length} 项</Text>
+          <Text style={styles.sectionTitle}>⚡ Pending Tasks</Text>
+          <Text style={styles.badge}>{mockPendingTasks.length} items</Text>
         </View>
         <View style={styles.taskList}>
           {mockPendingTasks.map((task) => (
@@ -70,9 +70,9 @@ export const DeveloperHomeContent: React.FC = () => {
                   <View style={styles.taskMeta}>
                     <Text style={[
                       styles.taskStatus,
-                      task.status === '待提交' && styles.statusWarning,
-                      task.status === '审批中' && styles.statusInfo,
-                      task.status === '待接单' && styles.statusPrimary,
+                      task.status === 'To Submit' && styles.statusWarning,
+                      task.status === 'In Review' && styles.statusInfo,
+                      task.status === 'Pending' && styles.statusPrimary,
                     ]}>
                       {task.status}
                     </Text>
@@ -90,8 +90,8 @@ export const DeveloperHomeContent: React.FC = () => {
       {/* 我的预算池 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📦 我的预算池</Text>
-          <Text style={styles.badge}>{mockBudgetPools.length} 个活跃</Text>
+          <Text style={styles.sectionTitle}>📦 My Budget Pools</Text>
+          <Text style={styles.badge}>{mockBudgetPools.length} active</Text>
         </View>
         <View style={styles.poolList}>
           {mockBudgetPools.map((pool) => (
@@ -106,7 +106,7 @@ export const DeveloperHomeContent: React.FC = () => {
           ))}
         </View>
         <PrimaryButton 
-          title="查看全部" 
+          title="View All" 
           onPress={() => navigation.navigate('BudgetPools')}
         />
       </Card>
@@ -114,17 +114,17 @@ export const DeveloperHomeContent: React.FC = () => {
       {/* 任务市场入口 */}
       <Card>
         <View style={styles.marketHeader}>
-          <Text style={styles.sectionTitle}>🎯 任务市场</Text>
+          <Text style={styles.sectionTitle}>🎯 Task Market</Text>
           <View style={styles.matchBadge}>
-            <Text style={styles.matchText}>{mockMarketOrders} 个匹配</Text>
+            <Text style={styles.matchText}>{mockMarketOrders} matches</Text>
           </View>
         </View>
         <Text style={styles.marketDesc}>
-          发现适合你技能的新订单机会
+          Discover new opportunities matching your skills
         </Text>
         <PrimaryButton 
-          title="浏览市场" 
-          onPress={() => {/* TODO: 任务市场页面 */}}
+          title="Browse Market" 
+          onPress={() => navigation.navigate('TaskMarket')}
         />
       </Card>
     </View>

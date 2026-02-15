@@ -20,7 +20,8 @@ import {
   Wallet,
   Bot,
   UserCheck,
-  Users
+  Users,
+  Share2
 } from 'lucide-react';
 import { useAgentMode } from '../../contexts/AgentModeContext';
 import { useLocalization } from '../../contexts/LocalizationContext';
@@ -29,7 +30,7 @@ import { useUser } from '../../contexts/UserContext';
 import { useState } from 'react';
 
 export type L1Tab = 'dashboard' | 'agents' | 'earn' | 'shop' | 'pay' | 'assets' | 'skills' | 'security' |
-                    'unified-account' | 'agent-accounts' | 'kyc' | 'workspaces' |
+                    'unified-account' | 'agent-accounts' | 'kyc' | 'workspaces' | 'promotion' |
                     'products' | 'orders' | 'finance' | 'analytics' |
                     'build' | 'publish' | 'revenue' | 'docs' | 'settings';
 
@@ -54,7 +55,7 @@ export function L1TopNav({ activeTab, onTabChange, onConfigOpen }: L1TopNavProps
     { id: 'agent-accounts' as const, label: { zh: 'Agent', en: 'Agents' }, icon: Bot },
     { id: 'earn' as const, label: { zh: '赚钱', en: 'Earn' }, icon: TrendingUp },
     { id: 'shop' as const, label: { zh: '购物', en: 'Shopping' }, icon: ShoppingBag },
-    { id: 'kyc' as const, label: { zh: '实名认证', en: 'KYC' }, icon: ShieldCheck },
+    { id: 'promotion' as const, label: { zh: '推广中心', en: 'Promote' }, icon: Share2 },
   ];
 
   const merchantTabs = [

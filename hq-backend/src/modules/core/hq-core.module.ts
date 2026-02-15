@@ -10,8 +10,10 @@ import { HqAlert } from '../../entities/hq-alert.entity';
 import { ChatSession } from '../../entities/chat-session.entity';
 import { MemoryModule } from '../memory/memory.module';
 import { ProjectModule } from '../project/project.module';
-import { AIModule } from '../ai/ai.module';
+import { HqAIModule } from '../ai/hq-ai.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { ChatHistoryModule } from '../chat-history/chat-history.module';
+import { ToolsModule } from '../tools/tools.module';
 
 @Module({
   imports: [
@@ -19,8 +21,10 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
     ConfigModule,
     MemoryModule,
     ProjectModule,
-    AIModule,
+    HqAIModule,
     KnowledgeModule,
+    ChatHistoryModule,
+    ToolsModule,
   ],
   controllers: [HqCoreController],
   providers: [

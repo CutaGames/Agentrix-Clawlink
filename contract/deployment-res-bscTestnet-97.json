@@ -15,7 +15,9 @@
     "Commission": "0x5E8023659620DFD296f48f92Da0AE48c9CB443f0",
     "Commission_V4_OLD": "0xD7F033fbB1AaD7E351CB8127E9Ff0Be37cACA84A",
     "ERC8004SessionManager": "0xf94E5C7adc5bDA0bD95Cb880c5a5489562f694B7",
-    "ERC8004SessionManager_OLD": "0xCF3cC47b5CC4299b33d748C431f0C40C2fdFb6B4"
+    "ERC8004SessionManager_OLD": "0xCF3cC47b5CC4299b33d748C431f0C40C2fdFb6B4",
+    "CommissionV2": "0xF6c6Ba02761Ca2C8Df3c7D60c8b206fd12a44862",
+    "CommissionV2_OLD": "0x1de9d3e3EFbF30f0846aBC07b684C7E675138827"
   },
   "notes": {
     "Commission": "V5.0 deployed on 2026-01-16, includes scanned product fees, X402 channel fee config, Agent 7:3 split",

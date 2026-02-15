@@ -30,6 +30,11 @@ import { WebSocketModule } from './modules/websocket/websocket.module';
 import { CLIModule } from './modules/cli/cli.module';
 import { SocialModule } from './modules/social/social.module';
 import { TickModule } from './hq/tick/tick.module';
+import { ChatHistoryModule } from './modules/chat-history/chat-history.module';
+import { CommunicationModule } from './modules/communication/communication.module';
+import { TickApiModule } from './modules/tick/tick-api.module';
+import { ToolModule } from './modules/tools/tool.module';
+import { TaskModule } from './hq/task/task.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -76,6 +81,21 @@ import { AppService } from './app.service';
 
     // 自主运行系统
     TickModule,
+
+    // 对话历史
+    ChatHistoryModule,
+
+    // Agent间通信
+    CommunicationModule,
+
+    // Tick API
+    TickApiModule,
+
+    // 工具系统
+    ToolModule,
+
+    // 任务管理系统
+    TaskModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useUser } from '../../contexts/UserContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -12,6 +12,72 @@ export default function AuthCallback() {
   const [status, setStatus] = useState<'processing' | 'creating-wallet' | 'success' | 'error'>('processing')
   const [statusMessage, setStatusMessage] = useState('正在处理登录...')
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
+
+  // 自动创建 MPC 钱包
+  const autoCreateMPCWallet = useCallback(async (token: string, socialId: string): Promise<{
+    walletAddress: string
+    encryptedShardA?: string
+    encryptedShardC?: string
+  }> => {
+    const response = await fetch(`${API_BASE_URL}/mpc-wallet/create-for-social`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        socialProviderId: socialId,
+        chain: 'BSC',
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Failed to create wallet')
+    }
+
+    return response.json()
+  }, [])
+
+  // 存储分片A到IndexedDB
+  const storeShardA = useCallback(async (userId: string, encryptedShardA: string) => {
+    try {
+      const dbName = 'agentrix_mpc_wallet'
+      const storeName = 'shards'
+      
+      const request = indexedDB.open(dbName, 1)
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.createObjectStore(storeName, { keyPath: 'userId' })
+        }
+      }
+      
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        const tx = db.transaction(storeName, 'readwrite')
+        const store = tx.objectStore(storeName)
+        store.put({ userId, shardA: encryptedShardA, createdAt: new Date().toISOString() })
+      }
+    } catch (error) {
+      console.error('Failed to store shard A:', error)
+    }
+  }, [])
+
+  const completeLogin = useCallback((userId: string, agentrixId: string, email?: string, walletAddress?: string) => {
+    login({
+      id: userId,
+      agentrixId: agentrixId,
+      email: email,
+      walletAddress: walletAddress,
+      roles: ['user'],
+      role: 'user',
+      createdAt: new Date().toISOString(),
+    })
+    toast.success('登录成功！')
+    router.push('/workbench')
+  }, [login, router, toast])
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -103,73 +169,7 @@ export default function AuthCallback() {
     if (router.isReady) {
       handleCallback()
     }
-  }, [router.isReady, router.query])
-
-  // 自动创建 MPC 钱包
-  const autoCreateMPCWallet = async (token: string, socialId: string): Promise<{
-    walletAddress: string
-    encryptedShardA?: string
-    encryptedShardC?: string
-  }> => {
-    const response = await fetch(`${API_BASE_URL}/mpc-wallet/create-for-social`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        socialProviderId: socialId,
-        chain: 'BSC',
-      }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || 'Failed to create wallet')
-    }
-
-    return response.json()
-  }
-
-  // 存储分片A到IndexedDB
-  const storeShardA = async (userId: string, encryptedShardA: string) => {
-    try {
-      const dbName = 'agentrix_mpc_wallet'
-      const storeName = 'shards'
-      
-      const request = indexedDB.open(dbName, 1)
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result
-        if (!db.objectStoreNames.contains(storeName)) {
-          db.createObjectStore(storeName, { keyPath: 'userId' })
-        }
-      }
-      
-      request.onsuccess = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result
-        const tx = db.transaction(storeName, 'readwrite')
-        const store = tx.objectStore(storeName)
-        store.put({ userId, shardA: encryptedShardA, createdAt: new Date().toISOString() })
-      }
-    } catch (error) {
-      console.error('Failed to store shard A:', error)
-    }
-  }
-
-  const completeLogin = (userId: string, agentrixId: string, email?: string, walletAddress?: string) => {
-    login({
-      id: userId,
-      agentrixId: agentrixId,
-      email: email,
-      walletAddress: walletAddress,
-      roles: ['user'],
-      role: 'user',
-      createdAt: new Date().toISOString(),
-    })
-    toast.success('登录成功！')
-    router.push('/workbench')
-  }
+  }, [router, completeLogin, toast, autoCreateMPCWallet, storeShardA])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">

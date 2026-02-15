@@ -17,10 +17,17 @@ export class OrderService {
     if (!userId) {
       throw new UnauthorizedException('请先登录后再创建订单 / Please login before creating an order');
     }
+
+    // Skill 购买时 productId 可能为空，skillId 存入 metadata
+    const resolvedProductId = dto.productId || null;
+    const resolvedMerchantId = dto.merchantId || userId; // fallback to buyer as merchant
     
     const order = this.orderRepository.create({
       userId,
-      ...dto,
+      productId: resolvedProductId,
+      merchantId: resolvedMerchantId,
+      amount: dto.amount,
+      currency: dto.currency,
       assetType:
         dto.assetType ||
         (dto.metadata?.assetType as AssetType) ||
@@ -33,6 +40,7 @@ export class OrderService {
         dto.executorHasWallet ?? dto.metadata?.executorHasWallet ?? true,
       metadata: {
         ...dto.metadata,
+        skillId: dto.skillId || dto.metadata?.skillId,
         assetType:
           dto.assetType ||
           dto.metadata?.assetType ||

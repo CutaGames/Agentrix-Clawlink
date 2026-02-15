@@ -32,6 +32,7 @@ export function ToolExecutionDisplay({ execution, compact, onRetry, onOpenFile }
   const [expanded, setExpanded] = useState(!compact);
   const [showDiff, setShowDiff] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showFullOutput, setShowFullOutput] = useState(false);
 
   const { tool, params, status, result, error, oldContent, newContent } = execution;
   const config = TOOL_CONFIG[tool] || { icon: <FileText className="h-4 w-4" />, name: tool, bg: 'bg-gray-500/10 border-gray-500/30' };
@@ -55,16 +56,28 @@ export function ToolExecutionDisplay({ execution, compact, onRetry, onOpenFile }
   // 文件读取结果
   const renderReadResult = () => {
     const content = result?.content || '';
+    const limit = 12000;
+    const displayContent = showFullOutput ? content : content.slice(0, limit);
     return (
       <div className="mt-2 rounded border border-gray-700 overflow-hidden">
         <div className="bg-gray-800 px-3 py-1 flex justify-between items-center">
           <span className="text-xs text-gray-400 truncate">{params.filePath}</span>
-          <button onClick={() => handleCopy(content)} className="text-gray-500 hover:text-white">
-            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          </button>
+          <div className="flex items-center gap-2">
+            {content.length > limit && (
+              <button
+                onClick={() => setShowFullOutput(!showFullOutput)}
+                className="text-xs text-blue-400 hover:underline"
+              >
+                {showFullOutput ? '收起' : '展开'}
+              </button>
+            )}
+            <button onClick={() => handleCopy(content)} className="text-gray-500 hover:text-white">
+              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
         </div>
         <pre className="p-2 text-xs text-gray-300 max-h-48 overflow-auto bg-gray-900">
-          <code>{content.slice(0, 3000)}{content.length > 3000 ? '\n...(truncated)' : ''}</code>
+          <code>{displayContent}{!showFullOutput && content.length > limit ? '\n...(truncated)' : ''}</code>
         </pre>
       </div>
     );
@@ -136,15 +149,37 @@ export function ToolExecutionDisplay({ execution, compact, onRetry, onOpenFile }
   const renderCommandResult = () => {
     const stdout = result?.stdout || result?.output || '';
     const stderr = result?.stderr || '';
+    const limit = 12000;
+    const fullOutput = [stdout, stderr].filter(Boolean).join('\n');
+    const displayStdout = showFullOutput ? stdout : stdout.slice(0, limit);
+    const displayStderr = showFullOutput ? stderr : stderr.slice(0, limit);
     return (
       <div className="mt-2 rounded border border-gray-700 overflow-hidden font-mono">
-        <div className="bg-gray-800 px-3 py-1 flex justify-between">
+        <div className="bg-gray-800 px-3 py-1 flex justify-between items-center">
           <span className="text-xs text-gray-300">$ {params.command}</span>
-          <span className={`text-xs ${result?.exitCode === 0 ? 'text-green-400' : 'text-red-400'}`}>exit: {result?.exitCode || 0}</span>
+          <div className="flex items-center gap-3">
+            {fullOutput.length > limit && (
+              <button
+                onClick={() => setShowFullOutput(!showFullOutput)}
+                className="text-xs text-blue-400 hover:underline"
+              >
+                {showFullOutput ? '收起' : '展开'}
+              </button>
+            )}
+            <span className={`text-xs ${result?.exitCode === 0 ? 'text-green-400' : 'text-red-400'}`}>exit: {result?.exitCode || 0}</span>
+          </div>
         </div>
         <div className="bg-gray-900 p-2 max-h-48 overflow-auto">
-          {stdout && <pre className="text-xs text-gray-300 whitespace-pre-wrap">{stdout}</pre>}
-          {stderr && <pre className="text-xs text-red-400 whitespace-pre-wrap">{stderr}</pre>}
+          {stdout && (
+            <pre className="text-xs text-gray-300 whitespace-pre-wrap">
+              {displayStdout}{!showFullOutput && stdout.length > limit ? '\n...(truncated)' : ''}
+            </pre>
+          )}
+          {stderr && (
+            <pre className="text-xs text-red-400 whitespace-pre-wrap">
+              {displayStderr}{!showFullOutput && stderr.length > limit ? '\n...(truncated)' : ''}
+            </pre>
+          )}
         </div>
       </div>
     );

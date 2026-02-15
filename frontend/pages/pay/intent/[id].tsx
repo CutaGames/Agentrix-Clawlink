@@ -60,6 +60,14 @@ const PayIntentPage = () => {
 
   const fetchPayIntent = useCallback(async () => {
     if (!id) return;
+    
+    // 检查是否是本地生成的临时 ID
+    if ((id as string).startsWith('local-')) {
+      setError('此支付链接是本地临时生成的，无法在其他设备上使用。请在原始设备上使用钱包支付功能，或重新生成支付二维码。');
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
       const data = await payIntentApi.get(id as string);
@@ -71,7 +79,12 @@ const PayIntentPage = () => {
       }
     } catch (err: any) {
       console.error('Failed to fetch pay intent:', err);
-      setError(err.message || '无法加载支付信息');
+      // 提供更详细的错误信息
+      if (err.message?.includes('不存在') || err.message?.includes('not found')) {
+        setError('支付意图不存在或已过期。请返回商品页面重新发起支付。');
+      } else {
+        setError(err.message || '无法加载支付信息');
+      }
     } finally {
       setLoading(false);
     }
@@ -81,23 +94,9 @@ const PayIntentPage = () => {
     fetchPayIntent();
   }, [fetchPayIntent]);
 
-  // 自动触发逻辑
-  useEffect(() => {
-    if (auto === 'true' && payIntent && !loading && !processing && !success && !autoTriggered) {
-      if (isConnected) {
-        console.log('Auto-triggering payment for connected wallet:', address);
-        setAutoTriggered(true);
-        handleConfirm();
-      } else if (window.ethereum) {
-        // 如果在钱包浏览器中但未连接，尝试自动连接
-        console.log('Attempting auto-connect in wallet browser...');
-        // 默认尝试连接 metamask (EVM 兼容钱包)
-        connect('metamask').catch(err => console.error('Auto-connect failed:', err));
-      }
-    }
-  }, [auto, payIntent, loading, isConnected, autoTriggered, address, connect, processing, success]);
+  // 自动触发逻辑 (Moved below handleConfirm)
 
-  const handleConfirm = async () => {
+  const handleConfirm = React.useCallback(async () => {
     if (!payIntent) return;
     
     try {
@@ -113,7 +112,7 @@ const PayIntentPage = () => {
       
       if (isCrypto && window.ethereum && isConnected) {
         try {
-          console.log('Starting on-chain transaction for PayIntent:', payIntent.id);
+          // Starting on-chain transaction for PayIntent
           
           // 检查并切换到 BSC Testnet
           const provider = new ethers.BrowserProvider(window.ethereum);
@@ -121,7 +120,7 @@ const PayIntentPage = () => {
           const targetChainId = BigInt(BSC_TESTNET_PARAMS.chainId);
           
           if (network.chainId !== targetChainId) {
-            console.log(`Switching network from ${network.chainId} to ${targetChainId}`);
+            // Switching network
             try {
               await window.ethereum.request({
                 method: 'wallet_switchEthereumChain',
@@ -156,9 +155,9 @@ const PayIntentPage = () => {
             const tokenContract = new ethers.Contract(config.address, ERC20_ABI, signer);
             const amountInWei = ethers.parseUnits(payIntent.amount.toString(), config.decimals);
             
-            console.log(`Transferring ${payIntent.amount} ${tokenSymbol} to ${to}`);
+            // Transferring tokens
             const tx = await tokenContract.transfer(to, amountInWei);
-            console.log('Transaction sent:', tx.hash);
+            // Transaction sent
             txHash = tx.hash;
             
             // 等待交易确认（可选，但为了用户体验建议等待）
@@ -200,7 +199,22 @@ const PayIntentPage = () => {
     } finally {
       setProcessing(false);
     }
-  };
+  }, [payIntent, isConnected, address, connect]);
+
+  // 自动触发逻辑
+  useEffect(() => {
+    if (auto === 'true' && payIntent && !loading && !processing && !success && !autoTriggered) {
+      if (isConnected) {
+        // Auto-triggering payment for connected wallet
+        setAutoTriggered(true);
+        handleConfirm();
+      } else if (window.ethereum) {
+        // 如果在钱包浏览器中但未连接，尝试自动连接
+        // 默认尝试连接 metamask (EVM 兼容钱包)
+        connect('metamask').catch(err => console.error('Auto-connect failed:', err));
+      }
+    }
+  }, [auto, payIntent, loading, isConnected, autoTriggered, address, connect, processing, success, handleConfirm]);
 
   if (loading) {
     return (

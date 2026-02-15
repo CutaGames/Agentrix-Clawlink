@@ -13,10 +13,12 @@ import { UCPScannerService } from './ucp-scanner.service';
 import { OrderModule } from '../order/order.module';
 import { Skill } from '../../entities/skill.entity';
 import { Product } from '../../entities/product.entity';
+import { UCPCheckoutSessionEntity } from '../../entities/ucp-checkout-session.entity';
+import { AP2MandateEntity } from '../../entities/ap2-mandate.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Skill, Product]),
+    TypeOrmModule.forFeature([Skill, Product, UCPCheckoutSessionEntity, AP2MandateEntity]),
     forwardRef(() => OrderModule),
   ],
   controllers: [UCPController],

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { EscrowService, EscrowStatus } from './escrow.service';
+import { EscrowService } from './escrow.service';
+import { EscrowStatus } from '../../entities/escrow.entity';
 
 @Injectable()
 export class EscrowSchedulerService {

@@ -18,9 +18,9 @@ const IdentityTabs: React.FC = () => {
   const { switchTo, canSwitchTo, identities } = useIdentitySwitch();
 
   const tabs: { type: IdentityType; label: string; icon: string }[] = [
-    { type: 'personal', label: '个人', icon: '👤' },
-    { type: 'merchant', label: '商户', icon: '🏪' },
-    { type: 'developer', label: '开发者', icon: '💻' },
+    { type: 'personal', label: 'Personal', icon: '👤' },
+    { type: 'merchant', label: 'Merchant', icon: '🏪' },
+    { type: 'developer', label: 'Developer', icon: '💻' },
   ];
 
   return (
@@ -45,7 +45,7 @@ const IdentityTabs: React.FC = () => {
               {tab.label}
             </Text>
             {isLocked && <Text style={styles.lockIcon}>🔒</Text>}
-            {isPending && <Text style={styles.pendingBadge}>审核中</Text>}
+            {isPending && <Text style={styles.pendingBadge}>Pending</Text>}
           </TouchableOpacity>
         );
       })}

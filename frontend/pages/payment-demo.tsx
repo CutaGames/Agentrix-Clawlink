@@ -107,7 +107,7 @@ export default function PaymentDemo() {
 
   // Unified callback / logger
   const pushCallback = (payload: { status: string; method: string; message: string }) => {
-    console.log('[Agentrix Callback]', payload)
+    // [Agentrix Callback] logic
     setMessage(payload.message)
   }
 
@@ -512,7 +512,7 @@ export default function PaymentDemo() {
             <SmartCheckout
               order={currentOrder}
               onSuccess={(result) => {
-                console.log('Payment successful:', result)
+                // Payment successful logic
                 pushCallback({
                   status: 'success',
                   method: 'v7.0',

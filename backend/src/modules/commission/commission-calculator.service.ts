@@ -269,8 +269,8 @@ export class CommissionCalculatorService {
 
     // X402 V2 通道费处理（从平台费中扣除）
     const isX402 = payment.metadata?.isX402 || payment.metadata?.paymentMethod === 'x402';
-    // 通道费率默认为 0.3%，支持通过环境变量 X402_CHANNEL_FEE_RATE 配置
-    const x402ChannelFeeRate = parseFloat(this.configService.get('X402_CHANNEL_FEE_RATE', '0.003'));
+    // 通道费率默认为 0%（X402通道费已取消），支持通过环境变量 X402_CHANNEL_FEE_RATE 配置
+    const x402ChannelFeeRate = parseFloat(this.configService.get('X402_CHANNEL_FEE_RATE', '0'));
     let x402ChannelFee = 0;
 
     let order: Order | null = null;

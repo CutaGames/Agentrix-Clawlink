@@ -19,6 +19,9 @@ import { PaymentMethod } from '../../entities/payment.entity';
 import { getUCPMCPTools } from '../ucp/mcp/ucp-mcp.tools';
 import { commerceMcpTools } from '../commerce/commerce-mcp.tools';
 import { UCPService } from '../ucp/ucp.service';
+import { CommerceService, CommerceAction, CommerceMode } from '../commerce/commerce.service';
+import { A2AService } from '../a2a/a2a.service';
+import { a2aMcpTools } from '../a2a/a2a-mcp.tools';
 
 @Injectable()
 export class McpService implements OnModuleInit {
@@ -47,6 +50,10 @@ export class McpService implements OnModuleInit {
     private readonly agentWalletService: AgentWalletService,
     @Inject(forwardRef(() => UCPService))
     private readonly ucpService: UCPService,
+    @Inject(forwardRef(() => CommerceService))
+    private readonly commerceService: CommerceService,
+    @Inject(forwardRef(() => A2AService))
+    private readonly a2aService: A2AService,
   ) {
     this.server = new Server(
       {
@@ -628,7 +635,10 @@ export class McpService implements OnModuleInit {
     // Commerce MCP Tools - Unified Commerce Skill
     this.logger.log(`Loaded ${commerceMcpTools.length} Commerce MCP tools`);
 
-    return [...staticTools, ...dynamicTools, ...productSkills, ...ucpTools, ...commerceMcpTools];
+    // A2A MCP Tools - Agent-to-Agent Task Management
+    this.logger.log(`Loaded ${a2aMcpTools.length} A2A MCP tools`);
+
+    return [...staticTools, ...dynamicTools, ...productSkills, ...ucpTools, ...commerceMcpTools, ...a2aMcpTools];
   }
 
   /**
@@ -1090,6 +1100,59 @@ export class McpService implements OnModuleInit {
         return this.handleUCPFindLinkedUser(args);
       }
 
+      // ============ Commerce MCP Tools ============
+      if (name === 'commerce') {
+        return this.handleCommerceTool(args);
+      }
+      if (name === 'split_plan') {
+        return this.handleSplitPlanTool(args);
+      }
+      if (name === 'budget_pool') {
+        return this.handleBudgetPoolTool(args);
+      }
+      if (name === 'milestone') {
+        return this.handleMilestoneTool(args);
+      }
+      if (name === 'calculate_commerce_fees') {
+        return this.handleCalculateCommerceFees(args);
+      }
+      // === New Commerce Skill tools (2026-02-08) ===
+      if (name === 'publish_to_marketplace') {
+        return this.handlePublishToMarketplace(args);
+      }
+      if (name === 'search_marketplace') {
+        return this.handleSearchMarketplace(args);
+      }
+      if (name === 'execute_skill') {
+        return this.handleExecuteSkill(args);
+      }
+
+      // ============ A2A Task Management MCP Tools ============
+      if (name === 'a2a_create_task') {
+        return this.handleA2ACreateTask(args);
+      }
+      if (name === 'a2a_get_task') {
+        return this.handleA2AGetTask(args);
+      }
+      if (name === 'a2a_list_tasks') {
+        return this.handleA2AListTasks(args);
+      }
+      if (name === 'a2a_accept_task') {
+        return this.handleA2AAcceptTask(args);
+      }
+      if (name === 'a2a_deliver_task') {
+        return this.handleA2ADeliverTask(args);
+      }
+      if (name === 'a2a_review_task') {
+        return this.handleA2AReviewTask(args);
+      }
+      if (name === 'a2a_cancel_task') {
+        return this.handleA2ACancelTask(args);
+      }
+      if (name === 'a2a_get_reputation') {
+        return this.handleA2AGetReputation(args);
+      }
+
       // 尝试动态 Skills
       try {
         const skills = await this.skillService.findAll();
@@ -1150,7 +1213,12 @@ export class McpService implements OnModuleInit {
     const authRequiredTools = [
       'quick_purchase', 'confirm_payment', 'pay_with_wallet',
       'setup_quickpay', 'setup_agent_authorization', 'agent_authorize',
-      'create_wallet', 'x402_pay', 'x402_authorize', 'subscribe_service'
+      'create_wallet', 'x402_pay', 'x402_authorize', 'subscribe_service',
+      // Commerce tools that modify state require auth
+      'commerce', 'split_plan', 'budget_pool', 'milestone',
+      'publish_to_marketplace', 'execute_skill', // search_marketplace is public
+      // A2A tools require auth
+      'a2a_create_task', 'a2a_accept_task', 'a2a_deliver_task', 'a2a_review_task', 'a2a_cancel_task',
     ];
     
     if (authRequiredTools.includes(name) && !context.isAuthenticated) {
@@ -2686,26 +2754,54 @@ export class McpService implements OnModuleInit {
    * Verify AP2 mandate
    */
   private async handleUCPVerifyMandate(args: any) {
-    // TODO: Implement mandate verification
-    return this.toolResponse({
-      success: true,
-      mandate_id: args.mandate_id,
-      is_valid: true,
-      message: 'Mandate verification not yet fully implemented.',
-    });
+    try {
+      const result = await this.ucpService.verifyMandate(
+        args.mandate_id,
+        args.amount || 0,
+        args.merchant_id,
+        args.category,
+      );
+      return this.toolResponse({
+        success: true,
+        mandate_id: args.mandate_id,
+        is_valid: result.valid,
+        remaining_amount: result.remaining_amount,
+        reason: result.reason,
+        message: result.valid
+          ? `✅ Mandate ${args.mandate_id} is valid. Remaining: ${result.remaining_amount}`
+          : `❌ Mandate invalid: ${result.reason}`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({
+        success: false,
+        mandate_id: args.mandate_id,
+        is_valid: false,
+        error: error.message,
+        message: `Failed to verify mandate: ${error.message}`,
+      });
+    }
   }
 
   /**
    * Revoke AP2 mandate
    */
   private async handleUCPRevokeMandate(args: any) {
-    // TODO: Implement mandate revocation
-    return this.toolResponse({
-      success: true,
-      mandate_id: args.mandate_id,
-      status: 'revoked',
-      message: `Mandate ${args.mandate_id} has been revoked.`,
-    });
+    try {
+      const mandate = await this.ucpService.revokeMandate(args.mandate_id);
+      return this.toolResponse({
+        success: true,
+        mandate_id: mandate.id,
+        status: mandate.status,
+        message: `✅ Mandate ${mandate.id} has been revoked.`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({
+        success: false,
+        mandate_id: args.mandate_id,
+        error: error.message,
+        message: `Failed to revoke mandate: ${error.message}`,
+      });
+    }
   }
 
   // ============ Platform Capability Handlers (Phase 3) ============
@@ -2960,5 +3056,627 @@ export class McpService implements OnModuleInit {
       });
     }
   }
-}
 
+  // ============ Commerce MCP Tool Handlers ============
+
+  /**
+   * Unified commerce tool handler
+   * Routes to CommerceService.execute() based on action
+   */
+  private async handleCommerceTool(args: any) {
+    const { action, mode = 'PAY_AND_SPLIT', params = {}, ...rest } = args;
+
+    if (!action) {
+      return this.toolResponse({
+        success: false,
+        error: 'MISSING_ACTION',
+        message: 'Please provide an action. Available actions: create_split_plan, get_split_plan, update_split_plan, activate_split_plan, archive_split_plan, list_split_plans, preview_allocation, create_budget_pool, get_budget_pool, fund_budget_pool, activate_budget_pool, cancel_budget_pool, list_budget_pools, create_milestone, get_milestone, start_milestone, submit_milestone, approve_milestone, reject_milestone, release_milestone_funds, calculate_fees, get_fee_structure',
+      });
+    }
+
+    try {
+      // Map commerce tool actions to CommerceService actions
+      const actionMap: Record<string, CommerceAction> = {
+        'create_split_plan': 'createSplitPlan',
+        'get_split_plan': 'getSplitPlan',
+        'update_split_plan': 'updateSplitPlan',
+        'activate_split_plan': 'activateSplitPlan',
+        'archive_split_plan': 'archiveSplitPlan',
+        'list_split_plans': 'getSplitPlans',
+        'preview_allocation': 'previewAllocation',
+        'create_budget_pool': 'createBudgetPool',
+        'get_budget_pool': 'getBudgetPool',
+        'fund_budget_pool': 'fundBudgetPool',
+        'activate_budget_pool': 'fundBudgetPool',
+        'cancel_budget_pool': 'cancelBudgetPool',
+        'list_budget_pools': 'getBudgetPools',
+        'create_milestone': 'createMilestone',
+        'get_milestone': 'getMilestone',
+        'start_milestone': 'startMilestone',
+        'submit_milestone': 'submitMilestone',
+        'approve_milestone': 'approveMilestone',
+        'reject_milestone': 'rejectMilestone',
+        'release_milestone_funds': 'releaseMilestone',
+        'calculate_fees': 'previewAllocation',
+        'get_fee_structure': 'previewAllocation',
+      };
+
+      const commerceAction = actionMap[action];
+      if (!commerceAction) {
+        return this.toolResponse({
+          success: false,
+          error: 'UNKNOWN_ACTION',
+          message: `Unknown commerce action: ${action}. Available: ${Object.keys(actionMap).join(', ')}`,
+        });
+      }
+
+      // Extract userId from context if available
+      const userId = args._mcpContext?.userId || rest.userId;
+
+      const result = await this.commerceService.execute(
+        commerceAction,
+        mode as CommerceMode,
+        { ...params, ...rest },
+        userId,
+        rest.idempotencyKey,
+      );
+
+      return this.toolResponse({
+        success: true,
+        action,
+        mode,
+        data: result,
+      });
+    } catch (error: any) {
+      this.logger.error(`Commerce tool [${action}] failed: ${error.message}`);
+      return this.toolResponse({
+        success: false,
+        error: 'COMMERCE_ERROR',
+        action,
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Split plan tool handler
+   */
+  private async handleSplitPlanTool(args: any) {
+    const { action, planId, ...params } = args;
+
+    if (!action) {
+      return this.toolResponse({
+        success: false,
+        error: 'MISSING_ACTION',
+        message: 'Please provide an action: create, get, update, activate, archive, list, preview',
+      });
+    }
+
+    try {
+      const actionMap: Record<string, CommerceAction> = {
+        'create': 'createSplitPlan',
+        'get': 'getSplitPlan',
+        'update': 'updateSplitPlan',
+        'activate': 'activateSplitPlan',
+        'archive': 'archiveSplitPlan',
+        'list': 'getSplitPlans',
+        'preview': 'previewAllocation',
+      };
+
+      const commerceAction = actionMap[action];
+      if (!commerceAction) {
+        return this.toolResponse({
+          success: false,
+          error: 'UNKNOWN_ACTION',
+          message: `Unknown split_plan action: ${action}`,
+        });
+      }
+
+      const userId = args._mcpContext?.userId || params.userId;
+      const executeParams = planId ? { id: planId, ...params } : params;
+
+      const result = await this.commerceService.execute(
+        commerceAction,
+        'SPLIT_ONLY',
+        executeParams,
+        userId,
+      );
+
+      return this.toolResponse({
+        success: true,
+        action: `split_plan.${action}`,
+        data: result,
+      });
+    } catch (error: any) {
+      this.logger.error(`Split plan tool [${action}] failed: ${error.message}`);
+      return this.toolResponse({
+        success: false,
+        error: 'SPLIT_PLAN_ERROR',
+        action,
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Budget pool tool handler
+   */
+  private async handleBudgetPoolTool(args: any) {
+    const { action, poolId, ...params } = args;
+
+    if (!action) {
+      return this.toolResponse({
+        success: false,
+        error: 'MISSING_ACTION',
+        message: 'Please provide an action: create, get, fund, activate, cancel, list',
+      });
+    }
+
+    try {
+      const actionMap: Record<string, CommerceAction> = {
+        'create': 'createBudgetPool',
+        'get': 'getBudgetPool',
+        'fund': 'fundBudgetPool',
+        'activate': 'fundBudgetPool',
+        'cancel': 'cancelBudgetPool',
+        'list': 'getBudgetPools',
+      };
+
+      const commerceAction = actionMap[action];
+      if (!commerceAction) {
+        return this.toolResponse({
+          success: false,
+          error: 'UNKNOWN_ACTION',
+          message: `Unknown budget_pool action: ${action}`,
+        });
+      }
+
+      const userId = args._mcpContext?.userId || params.userId;
+      const executeParams = poolId ? { id: poolId, ...params } : params;
+
+      const result = await this.commerceService.execute(
+        commerceAction,
+        'PAY_AND_SPLIT',
+        executeParams,
+        userId,
+      );
+
+      return this.toolResponse({
+        success: true,
+        action: `budget_pool.${action}`,
+        data: result,
+      });
+    } catch (error: any) {
+      this.logger.error(`Budget pool tool [${action}] failed: ${error.message}`);
+      return this.toolResponse({
+        success: false,
+        error: 'BUDGET_POOL_ERROR',
+        action,
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Milestone tool handler
+   */
+  private async handleMilestoneTool(args: any) {
+    const { action, milestoneId, poolId, ...params } = args;
+
+    if (!action) {
+      return this.toolResponse({
+        success: false,
+        error: 'MISSING_ACTION',
+        message: 'Please provide an action: create, get, start, submit, approve, reject, release',
+      });
+    }
+
+    try {
+      const actionMap: Record<string, CommerceAction> = {
+        'create': 'createMilestone',
+        'get': 'getMilestone',
+        'start': 'startMilestone',
+        'submit': 'submitMilestone',
+        'approve': 'approveMilestone',
+        'reject': 'rejectMilestone',
+        'release': 'releaseMilestone',
+      };
+
+      const commerceAction = actionMap[action];
+      if (!commerceAction) {
+        return this.toolResponse({
+          success: false,
+          error: 'UNKNOWN_ACTION',
+          message: `Unknown milestone action: ${action}`,
+        });
+      }
+
+      const userId = args._mcpContext?.userId || params.userId;
+      const executeParams = {
+        ...(milestoneId ? { id: milestoneId } : {}),
+        ...(poolId ? { budgetPoolId: poolId } : {}),
+        ...params,
+      };
+
+      const result = await this.commerceService.execute(
+        commerceAction,
+        'PAY_AND_SPLIT',
+        executeParams,
+        userId,
+      );
+
+      return this.toolResponse({
+        success: true,
+        action: `milestone.${action}`,
+        data: result,
+      });
+    } catch (error: any) {
+      this.logger.error(`Milestone tool [${action}] failed: ${error.message}`);
+      return this.toolResponse({
+        success: false,
+        error: 'MILESTONE_ERROR',
+        action,
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Fee calculator tool handler
+   */
+  private async handleCalculateCommerceFees(args: any) {
+    const { amount, paymentType = 'CRYPTO_DIRECT' } = args;
+
+    if (!amount || amount <= 0) {
+      return this.toolResponse({
+        success: false,
+        error: 'INVALID_AMOUNT',
+        message: 'Please provide a valid amount in micro units (1 USDC = 1000000)',
+      });
+    }
+
+    try {
+      // Fee calculation based on the unified fee structure
+      const fees = {
+        amount,
+        paymentType,
+        breakdown: {
+          onrampFee: 0,
+          offrampFee: 0,
+          splitFee: 0,
+          totalFee: 0,
+        },
+        netAmount: amount,
+        currency: 'USDC (micro units)',
+      };
+
+      // Onramp: +0.1%
+      if (paymentType === 'ONRAMP' || paymentType === 'MIXED') {
+        fees.breakdown.onrampFee = Math.floor(amount * 10 / 10000);
+      }
+
+      // Offramp: +0.1%
+      if (paymentType === 'OFFRAMP' || paymentType === 'MIXED') {
+        fees.breakdown.offrampFee = Math.floor(amount * 10 / 10000);
+      }
+
+      // Split fee: 0.3%, min 0.1 USDC (100000 micro units)
+      fees.breakdown.splitFee = Math.max(
+        Math.floor(amount * 30 / 10000),
+        100000,
+      );
+
+      fees.breakdown.totalFee = fees.breakdown.onrampFee + fees.breakdown.offrampFee + fees.breakdown.splitFee;
+      fees.netAmount = amount - fees.breakdown.totalFee;
+
+      // Convert to human-readable
+      const toUsdc = (micro: number) => (micro / 1000000).toFixed(6);
+
+      return this.toolResponse({
+        success: true,
+        fees,
+        humanReadable: {
+          amount: `${toUsdc(amount)} USDC`,
+          onrampFee: `${toUsdc(fees.breakdown.onrampFee)} USDC (0.1%)`,
+          offrampFee: `${toUsdc(fees.breakdown.offrampFee)} USDC (0.1%)`,
+          splitFee: `${toUsdc(fees.breakdown.splitFee)} USDC (0.3%, min 0.1 USDC)`,
+          totalFee: `${toUsdc(fees.breakdown.totalFee)} USDC`,
+          netAmount: `${toUsdc(fees.netAmount)} USDC`,
+        },
+        feeStructure: {
+          cryptoDirect: '0% (free)',
+          onramp: '+0.1%',
+          offramp: '+0.1%',
+          split: '0.3% (min 0.1 USDC)',
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`Fee calculation failed: ${error.message}`);
+      return this.toolResponse({
+        success: false,
+        error: 'FEE_CALC_ERROR',
+        message: error.message,
+      });
+    }
+  }
+
+  // ========== Commerce Skill Launch Tools (2026-02-08) ==========
+
+  private async handlePublishToMarketplace(args: any): Promise<any> {
+    try {
+      const userId = args.userId || args._mcpContext?.userId;
+      if (!userId) {
+        return this.toolResponse({ success: false, error: 'AUTH_REQUIRED', message: 'Authentication required to publish.' });
+      }
+      const { type, name, description, category, pricing, splitPlan, budgetPool, tags, visibility } = args;
+      if (!type || !name || !description) {
+        return this.toolResponse({ success: false, error: 'VALIDATION_ERROR', message: 'type, name, and description are required.' });
+      }
+      const publishDto = {
+        name, description, category: category || 'other',
+        pricingType: pricing?.model || 'free', pricePerCall: pricing?.price || 0,
+        currency: pricing?.currency || 'USD', executorType: type === 'skill' ? 'internal' : 'http',
+        tags: tags || [], visibility: visibility || 'public',
+        splitPlanTemplate: splitPlan?.template, splitRules: splitPlan?.rules,
+        budgetPoolConfig: budgetPool,
+      };
+      const result = await this.commerceService.execute('createSplitPlan', 'PAY_AND_SPLIT', publishDto, userId);
+      return this.toolResponse({
+        success: true, message: `Published "${name}" to Agentrix Marketplace!`,
+        data: result, platformUrl: `https://www.agentrix.top/marketplace`,
+        fees: { walletPayment: 'Free', splitCommission: '0.3%', onramp: '0.1%', offramp: '0.1%' },
+      });
+    } catch (error: any) {
+      this.logger.error(`publish_to_marketplace error: ${error.message}`);
+      return this.toolResponse({ success: false, error: 'PUBLISH_FAILED', message: error.message });
+    }
+  }
+
+  private async handleSearchMarketplace(args: any): Promise<any> {
+    try {
+      const { query, type, category, priceMin, priceMax, sortBy, page, limit } = args;
+      if (!query) {
+        return this.toolResponse({ success: false, error: 'VALIDATION_ERROR', message: 'Please provide a search query.' });
+      }
+      // Search skills
+      let skillResults: any[] = [];
+      try {
+        const skills = await this.skillService.findAll();
+        const filtered = (Array.isArray(skills) ? skills : []).filter((s: any) =>
+          s.name?.toLowerCase().includes(query.toLowerCase()) ||
+          s.description?.toLowerCase().includes(query.toLowerCase())
+        );
+        skillResults = filtered.map((s: any) => ({
+          id: s.id, type: 'skill', name: s.name,
+          description: s.description?.substring(0, 200),
+          category: s.category, pricing: { model: s.pricingType || 'free', price: s.pricePerCall || 0 },
+          rating: s.rating || 0, totalCalls: s.totalCalls || 0,
+          executeAction: 'execute_skill',
+        }));
+      } catch (e) { /* skill search optional */ }
+      // Search products
+      let productResults: any[] = [];
+      try {
+        if (!type || type === 'all' || type === 'product') {
+          const products = await this.productService.getProducts(query, undefined, 'active');
+          productResults = (Array.isArray(products) ? products : []).map((p: any) => ({
+            id: p.id, type: 'product', name: p.name,
+            description: p.description?.substring(0, 200),
+            pricing: { model: 'one_time', price: p.price || 0 },
+          }));
+        }
+      } catch (e) { /* product search optional */ }
+      let allResults = [...skillResults, ...productResults];
+      if (type && type !== 'all') allResults = allResults.filter(r => r.type === type);
+      if (priceMin !== undefined) allResults = allResults.filter(r => r.pricing.price >= priceMin);
+      if (priceMax !== undefined) allResults = allResults.filter(r => r.pricing.price <= priceMax);
+      if (sortBy === 'price_low') allResults.sort((a, b) => a.pricing.price - b.pricing.price);
+      else if (sortBy === 'price_high') allResults.sort((a, b) => b.pricing.price - a.pricing.price);
+      else if (sortBy === 'popular') allResults.sort((a, b) => (b.totalCalls || 0) - (a.totalCalls || 0));
+      const pageNum = page || 1;
+      const limitNum = Math.min(limit || 10, 50);
+      const paged = allResults.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+      return this.toolResponse({
+        success: true, results: paged, total: allResults.length, page: pageNum, query,
+        platformUrl: `https://www.agentrix.top/marketplace?q=${encodeURIComponent(query)}`,
+        tip: paged.length === 0 ? 'No results. Try broader terms.' : `Found ${allResults.length} results. Use execute_skill with skillId to run a skill.`,
+      });
+    } catch (error: any) {
+      this.logger.error(`search_marketplace error: ${error.message}`);
+      return this.toolResponse({ success: false, error: 'SEARCH_FAILED', message: error.message });
+    }
+  }
+
+  private async handleExecuteSkill(args: any): Promise<any> {
+    try {
+      const userId = args.userId || args._mcpContext?.userId;
+      const { skillId, params, paymentMethod, maxPrice } = args;
+      if (!skillId) {
+        return this.toolResponse({ success: false, error: 'VALIDATION_ERROR', message: 'skillId is required. Use search_marketplace first.' });
+      }
+      // Execute via SkillExecutorService
+      const result = await this.skillExecutorService.execute(skillId, {
+        ...params, userId, paymentMethod: paymentMethod || 'balance', maxPrice,
+      });
+      return this.toolResponse({
+        success: true, message: `Skill executed successfully`,
+        result, paymentMethod: paymentMethod || 'balance',
+        platformFee: '0.3% on revenue splits',
+      });
+    } catch (error: any) {
+      this.logger.error(`execute_skill error: ${error.message}`);
+      return this.toolResponse({ success: false, error: 'EXECUTION_FAILED', message: error.message });
+    }
+  }
+
+  // ============ A2A Task Management Handlers ============
+
+  private async handleA2ACreateTask(args: any): Promise<any> {
+    try {
+      const task = await this.a2aService.createTask({
+        requesterAgentId: args.requester_agent_id,
+        targetAgentId: args.target_agent_id,
+        requesterUserId: args.requester_user_id || args._mcpContext?.userId,
+        title: args.title,
+        description: args.description || '',
+        taskType: args.task_type,
+        params: args.params,
+        priority: args.priority,
+        maxPrice: args.max_price ? String(args.max_price) : undefined,
+        currency: args.currency,
+        mandateId: args.mandate_id,
+        budgetPoolId: args.budget_pool_id,
+        skillId: args.skill_id,
+        deadline: args.deadline,
+        callback: args.callback,
+        parentTaskId: args.parent_task_id,
+        metadata: args.metadata,
+      });
+      return this.toolResponse({
+        success: true,
+        task_id: task.id,
+        status: task.status,
+        message: `✅ A2A task created: ${task.id} → agent ${args.target_agent_id}`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message, message: `Failed to create A2A task: ${error.message}` });
+    }
+  }
+
+  private async handleA2AGetTask(args: any): Promise<any> {
+    try {
+      const task = await this.a2aService.getTask(args.task_id);
+      return this.toolResponse({
+        success: true,
+        task: {
+          id: task.id, status: task.status, title: task.title,
+          requester: task.requesterAgentId, target: task.targetAgentId,
+          priority: task.priority, currency: task.currency,
+          agreed_price: task.agreedPrice, deliverables_count: task.deliverables?.length || 0,
+          quality_score: task.qualityAssessment?.score,
+          created_at: task.createdAt, accepted_at: task.acceptedAt,
+          delivered_at: task.deliveredAt, completed_at: task.completedAt,
+        },
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+
+  private async handleA2AListTasks(args: any): Promise<any> {
+    try {
+      const result = await this.a2aService.listTasks({
+        agentId: args.agent_id,
+        role: args.role,
+        status: args.status,
+        taskType: args.task_type,
+        page: args.page,
+        limit: args.limit,
+      });
+      return this.toolResponse({
+        success: true,
+        tasks: result.tasks.map(t => ({
+          id: t.id, status: t.status, title: t.title,
+          requester: t.requesterAgentId, target: t.targetAgentId,
+          priority: t.priority, created_at: t.createdAt,
+        })),
+        total: result.total,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+
+  private async handleA2AAcceptTask(args: any): Promise<any> {
+    try {
+      const task = await this.a2aService.acceptTask(args.task_id, args.agent_id, {
+        agreedPrice: args.agreed_price ? String(args.agreed_price) : undefined,
+        message: args.message,
+      });
+      return this.toolResponse({
+        success: true, task_id: task.id, status: task.status,
+        message: `✅ Task ${task.id} accepted by ${args.agent_id}`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+
+  private async handleA2ADeliverTask(args: any): Promise<any> {
+    try {
+      const task = await this.a2aService.deliverTask(args.task_id, args.agent_id, {
+        deliverables: args.deliverables || [],
+        message: args.message,
+      });
+      return this.toolResponse({
+        success: true, task_id: task.id, status: task.status,
+        deliverables_count: task.deliverables?.length || 0,
+        message: `✅ Deliverables submitted for task ${task.id}`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+
+  private async handleA2AReviewTask(args: any): Promise<any> {
+    try {
+      if (args.auto_assess) {
+        const result = await this.a2aService.autoApproveIfQualified(args.task_id, args.threshold || 70);
+        return this.toolResponse({
+          success: true, task_id: args.task_id,
+          auto_approved: result.approved,
+          quality_score: result.assessment.score,
+          message: result.approved
+            ? `✅ Auto-approved: score ${result.assessment.score}`
+            : `⚠️ Below threshold: score ${result.assessment.score}, manual review needed`,
+        });
+      }
+      const task = await this.a2aService.reviewTask(args.task_id, args.agent_id, {
+        approved: args.approved,
+        qualityScore: args.quality_score,
+        comment: args.comment,
+        criteria: args.criteria,
+      });
+      return this.toolResponse({
+        success: true, task_id: task.id, status: task.status,
+        quality_score: task.qualityAssessment?.score,
+        message: args.approved ? `✅ Task approved` : `❌ Task rejected`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+
+  private async handleA2ACancelTask(args: any): Promise<any> {
+    try {
+      const task = await this.a2aService.cancelTask(args.task_id, args.agent_id, args.reason);
+      return this.toolResponse({
+        success: true, task_id: task.id, status: task.status,
+        message: `Task ${task.id} cancelled`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+
+  private async handleA2AGetReputation(args: any): Promise<any> {
+    try {
+      const rep = await this.a2aService.getReputation(args.agent_id);
+      return this.toolResponse({
+        success: true,
+        agent_id: rep.agentId,
+        overall_score: rep.overallScore,
+        tier: rep.tier,
+        tasks_completed: rep.tasksCompleted,
+        tasks_failed: rep.tasksFailed,
+        avg_quality_score: rep.avgQualityScore,
+        avg_response_time: rep.avgResponseTime,
+        on_time_rate: rep.onTimeRate,
+        specializations: rep.specializations,
+        message: `Agent ${rep.agentId}: ${rep.tier} tier, score ${rep.overallScore}/100`,
+      });
+    } catch (error: any) {
+      return this.toolResponse({ success: false, error: error.message });
+    }
+  }
+}

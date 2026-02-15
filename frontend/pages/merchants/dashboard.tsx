@@ -277,11 +277,11 @@ export default function MerchantDashboard() {
                 return (
                   <div key={idx} className="flex-1 flex flex-col items-center group">
                     <div className="w-full bg-indigo-100 rounded-t-sm relative group-hover:bg-indigo-200 transition-colors" style={{ height: `${height}%` }}>
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                         ${day.volume.toFixed(2)}
                       </div>
                     </div>
-                    <span className="text-[10px] text-gray-400 mt-2 rotate-45 origin-left">{day.date.split('-').slice(1).join('/')}</span>
+                    <span className="text-xs text-gray-400 mt-2 rotate-45 origin-left">{day.date.split('-').slice(1).join('/')}</span>
                   </div>
                 );
               })}
@@ -370,7 +370,7 @@ export default function MerchantDashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-[10px] font-bold rounded uppercase ${
+                        <span className={`px-2 py-1 text-xs font-bold rounded uppercase ${
                           tx.mode === 'production' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                         }`}>
                           {tx.mode}

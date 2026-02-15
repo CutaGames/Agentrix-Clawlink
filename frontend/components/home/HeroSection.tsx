@@ -58,7 +58,7 @@ export function HeroSection() {
               </button>
               
               <button
-                onClick={() => router.push('/marketplace')}
+                onClick={() => router.push('/unified-marketplace')}
                 className="px-8 py-4 bg-slate-800/50 hover:bg-slate-800 text-white font-bold rounded-xl border border-white/10 hover:border-white/20 transition-all backdrop-blur-sm"
               >
                 {t({ zh: '浏览市场', en: 'Explore Marketplace' })}

@@ -153,7 +153,7 @@ Select the most appropriate skills for this task.`,
         ],
         {
           temperature: skill.config?.temperature || 0.5,
-          maxTokens: skill.config?.maxTokens || 4096,
+          maxTokens: skill.config?.maxTokens || 16384,
         },
       );
 

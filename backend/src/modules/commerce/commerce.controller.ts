@@ -1,6 +1,7 @@
 import { Body, Controller, Post, Get, Put, Delete, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CommerceService, CommerceMode, CommerceAction } from './commerce.service';
+import { CommercePublishService } from './commerce-publish.service';
 import { SplitPlanService } from './split-plan.service';
 import { BudgetPoolService } from './budget-pool.service';
 import { CreateSplitPlanDto, UpdateSplitPlanDto, PreviewAllocationDto } from './dto/split-plan.dto';
@@ -13,6 +14,8 @@ import {
   ApproveMilestoneDto,
   RejectMilestoneDto,
 } from './dto/budget-pool.dto';
+import { CommerceExecuteDto } from './dto/commerce-execute.dto';
+import { CommercePublishDto } from './dto/commerce-publish.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SplitPlanStatus } from '../../entities/split-plan.entity';
 import { BudgetPoolStatus } from '../../entities/budget-pool.entity';
@@ -22,6 +25,7 @@ import { BudgetPoolStatus } from '../../entities/budget-pool.entity';
 export class CommerceController {
   constructor(
     private readonly commerceService: CommerceService,
+    private readonly commercePublishService: CommercePublishService,
     private readonly splitPlanService: SplitPlanService,
     private readonly budgetPoolService: BudgetPoolService,
   ) {}
@@ -35,13 +39,7 @@ export class CommerceController {
   @ApiOperation({ summary: 'Execute commerce action' })
   async execute(
     @Request() req,
-    @Body()
-    body: {
-      action: CommerceAction;
-      mode?: CommerceMode;
-      params?: Record<string, any>;
-      idempotencyKey?: string;
-    },
+    @Body() body: CommerceExecuteDto,
   ) {
     return this.commerceService.execute(
       body.action,
@@ -49,6 +47,63 @@ export class CommerceController {
       body.params || {},
       req.user?.id,
       body.idempotencyKey,
+    );
+  }
+
+  // ===== Commerce Publish APIs =====
+
+  /**
+   * Publish a Commerce Skill to the Unified Marketplace
+   * One-stop integration: skill creation + pricing + split plan + budget pool + marketplace listing
+   */
+  @Post('publish')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Publish commerce skill to marketplace' })
+  async publishCommerceSkill(@Request() req, @Body() dto: CommercePublishDto) {
+    return this.commercePublishService.publishCommerceSkill(req.user.id, dto as any);
+  }
+
+  /**
+   * Preview publish result before committing
+   */
+  @Post('publish/preview')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Preview publish result' })
+  async publishPreview(@Request() req, @Body() dto: CommercePublishDto) {
+    return this.commercePublishService.getPublishPreview(req.user.id, dto as any);
+  }
+
+  /**
+   * Unpublish a skill (revert to draft)
+   */
+  @Post('unpublish/:skillId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Unpublish a skill' })
+  async unpublishSkill(@Request() req, @Param('skillId') skillId: string) {
+    return this.commercePublishService.unpublishSkill(req.user.id, skillId);
+  }
+
+  /**
+   * Get my published commerce skills
+   */
+  @Get('my-published')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get my published commerce skills' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getMyPublishedSkills(
+    @Request() req,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.commercePublishService.getMyPublishedSkills(
+      req.user.id,
+      Number(page),
+      Math.min(Number(limit), 100),
     );
   }
 

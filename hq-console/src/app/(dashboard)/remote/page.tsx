@@ -36,7 +36,7 @@ export default function RemotePage() {
   const [sending, setSending] = useState(false);
 
   const API_BASE = process.env.NEXT_PUBLIC_HQ_API_URL || 'http://57.182.89.146:8080/api';
-  const WS_URL = process.env.NEXT_PUBLIC_HQ_WS_URL || 'http://localhost:3005';
+  const WS_URL = process.env.NEXT_PUBLIC_HQ_WS_URL || 'http://57.182.89.146:8080';
 
   useEffect(() => {
     fetchStatus();

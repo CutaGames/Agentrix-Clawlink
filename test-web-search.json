@@ -1,0 +1,9 @@
+{
+  "agentId": "SOCIAL-01",
+  "messages": [
+    {
+      "role": "user",
+      "content": "搜索最新的AI Agent框架"
+    }
+  ]
+}

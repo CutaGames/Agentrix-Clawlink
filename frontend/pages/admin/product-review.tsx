@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { 
   Package, 
@@ -189,9 +190,15 @@ export default function ProductReviewPage() {
             {products.map((product) => (
               <div key={product.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="flex">
-                  <div className="w-48 h-48 bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                  <div className="w-48 h-full bg-gray-100 flex items-center justify-center relative min-h-[12rem]">
                     {product.imageUrl ? (
-                      <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                      <Image 
+                        src={product.imageUrl} 
+                        alt={product.name} 
+                        fill 
+                        className="object-cover" 
+                        unoptimized
+                      />
                     ) : (
                       <Package className="w-16 h-16 text-gray-300" />
                     )}

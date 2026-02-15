@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 
@@ -9,11 +9,7 @@ export default function AuditBrowser() {
   const router = useRouter();
   const { payIntentId } = router.query;
 
-  useEffect(() => {
-    fetchProofs();
-  }, [payIntentId]);
-
-  const fetchProofs = async () => {
+  const fetchProofs = useCallback(async () => {
     setLoading(true);
     try {
       const url = payIntentId 
@@ -31,7 +27,11 @@ export default function AuditBrowser() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [payIntentId]);
+
+  useEffect(() => {
+    fetchProofs();
+  }, [fetchProofs]);
 
   const verifyChain = async (proofId: string) => {
     setVerifying(proofId);

@@ -16,6 +16,7 @@ import { AirdropService } from '../auto-earn/airdrop.service';
 import { AgentAuthorizationService } from '../agent-authorization/agent-authorization.service';
 import { AgentMarketplaceService } from '../marketplace/agent-marketplace.service';
 import { UnifiedMarketplaceService } from '../unified-marketplace/unified-marketplace.service';
+import { A2AService } from '../a2a/a2a.service';
 import axios from 'axios';
 
 export interface ExecutionContext {
@@ -59,6 +60,8 @@ export class SkillExecutorService {
     private readonly agentAuthorizationService: AgentAuthorizationService,
     private readonly agentMarketplaceService: AgentMarketplaceService,
     private readonly unifiedMarketplaceService: UnifiedMarketplaceService,
+    @Inject(forwardRef(() => A2AService))
+    private readonly a2aService: A2AService,
   ) {
     this.registerDefaultHandlers();
   }
@@ -464,15 +467,38 @@ export class SkillExecutorService {
       };
     });
 
-    // 调用/委托任务给 Agent (Placeholder)
+    // 调用/委托任务给 Agent (Real A2A message passing)
     this.registerHandler('agent_invoke', async (params, context) => {
       this.logger.log(`Invoking agent ${params.agentId} with task: ${params.task}`);
-      // TODO: 实现真实的 A2A 消息传递
+
+      const task = await this.a2aService.createTask({
+        requesterAgentId: params.requesterAgentId || context.metadata?.agentId || 'system',
+        targetAgentId: params.agentId,
+        requesterUserId: context.userId,
+        title: params.task || params.title || 'A2A Task',
+        description: params.description || params.task || '',
+        taskType: params.taskType,
+        params: params.params,
+        priority: params.priority,
+        maxPrice: params.maxPrice ? String(params.maxPrice) : undefined,
+        currency: params.currency,
+        paymentMethod: params.paymentMethod,
+        mandateId: params.mandateId,
+        budgetPoolId: params.budgetPoolId,
+        skillId: params.skillId,
+        deadline: params.deadline,
+        callback: params.callback,
+        parentTaskId: params.parentTaskId,
+        metadata: params.metadata,
+      });
+
       return {
         success: true,
-        message: `Task sent to agent ${params.agentId}`,
-        jobId: `job_${Date.now()}`,
-        status: 'pending'
+        message: `Task delegated to agent ${params.agentId}`,
+        taskId: task.id,
+        jobId: task.id,
+        status: task.status,
+        createdAt: task.createdAt,
       };
     });
 

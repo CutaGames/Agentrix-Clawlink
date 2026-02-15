@@ -5,6 +5,7 @@ import { Order } from '../../../entities/order.entity';
 import { OpenAIIntegrationService } from './openai-integration.service';
 import { OpenAIIntegrationController } from './openai-integration.controller';
 import { MarketplaceGPTsController } from './marketplace-gpts.controller';
+import { AiPluginController } from './ai-plugin.controller';
 import { AiCapabilityModule } from '../../ai-capability/ai-capability.module';
 import { SearchModule } from '../../search/search.module';
 import { ProductModule } from '../../product/product.module';
@@ -28,7 +29,7 @@ import { AuthModule } from '../../auth/auth.module';
     forwardRef(() => ApiKeyModule),
     forwardRef(() => AuthModule),
   ],
-  controllers: [OpenAIIntegrationController, MarketplaceGPTsController],
+  controllers: [OpenAIIntegrationController, MarketplaceGPTsController, AiPluginController],
   providers: [OpenAIIntegrationService],
   exports: [OpenAIIntegrationService],
 })

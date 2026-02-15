@@ -11,6 +11,7 @@ import { Workspace, WorkspaceType } from './entities/workspace.entity';
 import { WorkspaceFile } from './entities/workspace-file.entity';
 import { HqAIService, ChatMessage } from '../ai/hq-ai.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
+import { AgentMemoryService } from '../memory/agent-memory.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -93,6 +94,7 @@ export class WorkspaceService {
     private fileRepo: Repository<WorkspaceFile>,
     private aiService: HqAIService,
     private knowledgeService: KnowledgeService,
+    private memoryService: AgentMemoryService,
   ) {}
 
   /**
@@ -369,7 +371,8 @@ export class WorkspaceService {
 
     // 构建系统提示
     const systemPrompts: Record<string, string> = {
-      'ARCHITECT-01': `你是 Agentrix 的首席架构师，负责系统架构设计和技术决策。
+      'ARCHITECT-01': `你是 Agentrix 的首席架构师（ARCHITECT-01），同时承担 Agent CEO、CFO 开源节流与 HQ 项目灵魂职责。
+    你的核心任务：系统架构设计、技术决策、代码审查、技术债务管理与团队技术指导；以营收为导向管理 Agent 团队、提升效率与创收；通过技能/Marketplace/融资/主动接单增收并控制成本；持续增强 HQ 能力，重大决策需老板确认。
 当前工作区: ${workspace.name} (${workspace.rootPath})
 请基于以下上下文回答用户问题，提供架构建议。
 

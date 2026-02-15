@@ -44,6 +44,7 @@ interface WorkspaceStatusPanelProps {
   onFileClick?: (path: string) => void;
   onClearFiles?: () => void;
   onClearTerminal?: () => void;
+  forceTab?: 'files' | 'terminal';
 }
 
 export function WorkspaceStatusPanel({
@@ -52,8 +53,10 @@ export function WorkspaceStatusPanel({
   onFileClick,
   onClearFiles,
   onClearTerminal,
+  forceTab,
 }: WorkspaceStatusPanelProps) {
-  const [activeTab, setActiveTab] = useState<'files' | 'terminal'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'terminal'>(forceTab || 'files');
+  const effectiveTab = forceTab || activeTab;
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const terminalRef = useRef<HTMLDivElement>(null);
 
@@ -102,43 +105,45 @@ export function WorkspaceStatusPanel({
 
   return (
     <div className="h-full flex flex-col bg-gray-900">
-      {/* 标签栏 */}
-      <div className="flex border-b border-gray-700">
-        <button
-          className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 ${
-            activeTab === 'files'
-              ? 'text-white bg-gray-800 border-b-2 border-blue-500'
-              : 'text-gray-400 hover:text-white hover:bg-gray-800'
-          }`}
-          onClick={() => setActiveTab('files')}
-        >
-          <FolderOpen className="w-4 h-4" />
-          文件 {fileChanges.length > 0 && (
-            <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {fileChanges.length}
-            </span>
-          )}
-        </button>
-        <button
-          className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 ${
-            activeTab === 'terminal'
-              ? 'text-white bg-gray-800 border-b-2 border-green-500'
-              : 'text-gray-400 hover:text-white hover:bg-gray-800'
-          }`}
-          onClick={() => setActiveTab('terminal')}
-        >
-          <Terminal className="w-4 h-4" />
-          终端 {terminalOutputs.length > 0 && (
-            <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {terminalOutputs.length}
-            </span>
-          )}
-        </button>
-      </div>
+      {/* 标签栏 - hidden when parent controls tab */}
+      {!forceTab && (
+        <div className="flex border-b border-gray-700">
+          <button
+            className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 ${
+              effectiveTab === 'files'
+                ? 'text-white bg-gray-800 border-b-2 border-blue-500'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+            onClick={() => setActiveTab('files')}
+          >
+            <FolderOpen className="w-4 h-4" />
+            文件 {fileChanges.length > 0 && (
+              <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {fileChanges.length}
+              </span>
+            )}
+          </button>
+          <button
+            className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 ${
+              effectiveTab === 'terminal'
+                ? 'text-white bg-gray-800 border-b-2 border-green-500'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+            onClick={() => setActiveTab('terminal')}
+          >
+            <Terminal className="w-4 h-4" />
+            终端 {terminalOutputs.length > 0 && (
+              <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {terminalOutputs.length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* 内容区 */}
       <div className="flex-1 overflow-auto">
-        {activeTab === 'files' ? (
+        {effectiveTab === 'files' ? (
           <div className="p-2">
             {fileChanges.length === 0 ? (
               <div className="text-gray-500 text-sm text-center py-8">
@@ -213,7 +218,7 @@ export function WorkspaceStatusPanel({
               </div>
             )}
           </div>
-        ) : (
+        ) : effectiveTab === 'terminal' ? (
           <div className="h-full flex flex-col">
             {terminalOutputs.length === 0 ? (
               <div className="text-gray-500 text-sm text-center py-8 flex-1 flex flex-col items-center justify-center">
@@ -262,7 +267,7 @@ export function WorkspaceStatusPanel({
               </div>
             )}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

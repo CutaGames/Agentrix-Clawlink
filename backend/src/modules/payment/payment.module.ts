@@ -35,6 +35,8 @@ import { PayIntent } from '../../entities/pay-intent.entity';
 import { QuickPayGrant } from '../../entities/quick-pay-grant.entity';
 import { Order } from '../../entities/order.entity';
 import { StripeSettlement } from '../../entities/stripe-settlement.entity';
+import { Escrow } from '../../entities/escrow.entity';
+import { Refund } from '../../entities/refund.entity';
 import { CommissionModule } from '../commission/commission.module';
 import { UserModule } from '../user/user.module';
 import { AuthModule } from '../auth/auth.module';
@@ -76,7 +78,21 @@ import { BuyerFeeService } from './buyer-fee.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, User, AutoPayGrant, PayIntent, QuickPayGrant, Order, Withdrawal, RiskAssessment, WalletConnection, AgentSession, StripeSettlement]),
+    TypeOrmModule.forFeature([
+      Payment, 
+      User, 
+      AutoPayGrant, 
+      PayIntent, 
+      QuickPayGrant, 
+      Order, 
+      Withdrawal, 
+      RiskAssessment, 
+      WalletConnection, 
+      AgentSession, 
+      StripeSettlement,
+      Escrow,
+      Refund,
+    ]),
     ScheduleModule.forRoot(),
     forwardRef(() => CommissionModule),
     forwardRef(() => UserModule),

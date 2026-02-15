@@ -1,18 +1,105 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-// HQ Backend API URL with /api prefix
-const HQ_API_URL = process.env.NEXT_PUBLIC_HQ_API_URL || process.env.NEXT_PUBLIC_HQ_URL || 'http://57.182.89.146:8080/api';
+// =============================================================
+// Dual-Server Failover Configuration
+// Primary: Tokyo (via nginx)  |  Backup: Singapore (direct)
+// =============================================================
+const HQ_SERVERS = [
+  {
+    name: 'Tokyo (Primary)',
+    apiUrl: process.env.NEXT_PUBLIC_HQ_API_URL || 'http://57.182.89.146:8080/api',
+    wsUrl: process.env.NEXT_PUBLIC_HQ_WS_URL || 'http://57.182.89.146:8080',
+  },
+  {
+    name: 'Singapore (Backup)',
+    apiUrl: process.env.NEXT_PUBLIC_HQ_BACKUP_API_URL || 'http://18.139.157.116:3005/api',
+    wsUrl: process.env.NEXT_PUBLIC_HQ_BACKUP_WS_URL || 'http://18.139.157.116:3005',
+  },
+];
 
-// 使用较长的超时时间以适应复杂 AI 推理 (5 分钟)
-const AI_TIMEOUT = 300000; // 5 minutes
+// Failover state management
+class ServerFailover {
+  private currentIndex = 0;
+  private lastHealthCheck = 0;
+  private healthCheckInterval = 30000; // 30s
+
+  get current() { return HQ_SERVERS[this.currentIndex]; }
+  get currentApiUrl() { return this.current.apiUrl; }
+  get currentWsUrl() { return this.current.wsUrl; }
+  get serverName() { return this.current.name; }
+
+  switchToBackup(): boolean {
+    const nextIndex = (this.currentIndex + 1) % HQ_SERVERS.length;
+    if (nextIndex !== this.currentIndex) {
+      console.warn(`[HQ-Failover] Switching from ${HQ_SERVERS[this.currentIndex].name} to ${HQ_SERVERS[nextIndex].name}`);
+      this.currentIndex = nextIndex;
+      return true;
+    }
+    return false;
+  }
+
+  switchToPrimary(): void {
+    if (this.currentIndex !== 0) {
+      console.log(`[HQ-Failover] Switching back to ${HQ_SERVERS[0].name}`);
+      this.currentIndex = 0;
+    }
+  }
+
+  async tryRecoverPrimary(): Promise<void> {
+    if (this.currentIndex === 0) return;
+    const now = Date.now();
+    if (now - this.lastHealthCheck < this.healthCheckInterval) return;
+    this.lastHealthCheck = now;
+    try {
+      const res = await axios.get(`${HQ_SERVERS[0].apiUrl}/health`, { timeout: 5000 });
+      if (res.data?.status === 'healthy') {
+        console.log('[HQ-Failover] Primary server recovered! Switching back.');
+        this.currentIndex = 0;
+      }
+    } catch {
+      // Primary still down, stay on backup
+    }
+  }
+}
+
+export const serverFailover = new ServerFailover();
+
+// Long timeout for complex AI reasoning
+const AI_TIMEOUT = 600000; // 10 minutes
 
 export const api = axios.create({
-  baseURL: HQ_API_URL,
+  baseURL: serverFailover.currentApiUrl,
   timeout: AI_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Request interceptor: always use current server URL
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  config.baseURL = serverFailover.currentApiUrl;
+  serverFailover.tryRecoverPrimary();
+  return config;
+});
+
+// Response interceptor: on network error, switch server and retry
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const config = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
+    const isNetworkError = !error.response || error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK';
+    if (config && !config._retried && isNetworkError) {
+      config._retried = true;
+      const switched = serverFailover.switchToBackup();
+      if (switched) {
+        console.warn(`[HQ-Failover] Retrying request on ${serverFailover.serverName}: ${config.url}`);
+        config.baseURL = serverFailover.currentApiUrl;
+        return api.request(config);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Dashboard Stats
 export interface DashboardStats {
@@ -90,7 +177,7 @@ export async function sendAgentCommand(agentId: string, command: string): Promis
 // Agent to model mapping (matching backend configuration)
 export function getModelForAgent(agentCode: string): string {
   const mapping: Record<string, string> = {
-    'ARCHITECT-01': 'us.anthropic.claude-opus-4-5-20251101-v1:0',
+    'ARCHITECT-01': 'arn:aws:bedrock:us-east-1:696737009512:inference-profile/us.anthropic.claude-opus-4-6-v1',
     'CODER-01': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
     'GROWTH-01': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
     'BD-01': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
@@ -158,21 +245,32 @@ function getSystemPromptForAgent(agentCode: string): string {
   return basePrompt + '\n\n' + TOOLS_PROMPT;
 }
 
-export async function chatWithAgent(agentId: string, messages: any[], options?: { useToolPrompt?: boolean }): Promise<any> {
+export async function chatWithAgent(
+  agentId: string,
+  messages: any[],
+  options?: {
+    useToolPrompt?: boolean;
+    toolPrompt?: string;
+    useMemory?: boolean;
+    provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+    model?: string;
+  }
+): Promise<any> {
   // 检查是否有 system 消息
   const systemMessages = messages.filter(m => m.role === 'system');
   const nonSystemMessages = messages.filter(m => m.role !== 'system');
   const lastUserMessage = [...nonSystemMessages].reverse().find(m => m.role === 'user')?.content || '';
   const systemContext = systemMessages.map(m => m.content).join('\n\n');
+  const toolPrompt = options?.toolPrompt;
   
-  // 如果有工具系统提示词，使用 completion 端点以确保提示词生效
-  if (systemMessages.length > 0) {
-    // 使用 completion 端点，它会透传所有消息包括 system
+  // 如果显式传入 system 消息且没有工具提示，使用 completion 端点透传
+  if (systemMessages.length > 0 && !toolPrompt) {
     try {
       const { data } = await api.post('/hq/chat/completion', { 
         messages: messages,
         options: { 
-          model: getModelForAgent(agentId)
+          model: options?.model || getModelForAgent(agentId),
+          provider: options?.provider,
         }
       });
       return data;
@@ -183,26 +281,35 @@ export async function chatWithAgent(agentId: string, messages: any[], options?: 
         agentId,
         message: lastUserMessage,
         context: systemContext || undefined,
-        model: getModelForAgent(agentId),
+        model: options?.model || getModelForAgent(agentId),
       });
       return { ...data, content: data.response };
     }
   }
   
-  // 没有 system 消息时，使用标准 chat 端点 (带记忆功能)
+  // 使用标准 chat 端点 (带记忆功能 + 追加工具提示词)
   try {
-    const { data } = await api.post('/hq/chat', { agentId, messages: nonSystemMessages });
+    const { data } = await api.post('/hq/chat', { 
+      agentId, 
+      messages: nonSystemMessages,
+      useMemory: options?.useMemory ?? true,
+      toolPrompt: toolPrompt,
+      provider: options?.provider,
+      model: options?.model,
+    });
     return data;
   } catch (error: any) {
     // Fallback to completion endpoint if chat fails
     console.log('Chat endpoint failed, using completion fallback');
-    const systemMessage = { role: 'system', content: getSystemPromptForAgent(agentId) };
+    const fallbackContext = [systemContext, toolPrompt].filter(Boolean).join('\n\n');
+    const systemMessage = { role: 'system', content: fallbackContext || getSystemPromptForAgent(agentId) };
     const allMessages = [systemMessage, ...nonSystemMessages];
     try {
       const { data } = await api.post('/hq/chat/completion', { 
         messages: allMessages,
         options: { 
-          model: getModelForAgent(agentId)
+          model: options?.model || getModelForAgent(agentId),
+          provider: options?.provider,
         }
       });
       return data;
@@ -211,12 +318,138 @@ export async function chatWithAgent(agentId: string, messages: any[], options?: 
       const { data } = await api.post('/hq/cli/chat', {
         agentId,
         message: lastUserMessage,
-        context: systemContext || undefined,
-        model: getModelForAgent(agentId),
+        context: fallbackContext || undefined,
+        model: options?.model || getModelForAgent(agentId),
       });
       return { ...data, content: data.response };
     }
   }
+}
+
+export async function chatWithAgentStream(
+  agentId: string,
+  messages: any[],
+  options?: {
+    useToolPrompt?: boolean;
+    toolPrompt?: string;
+    useMemory?: boolean;
+    provider?: 'openai' | 'claude' | 'deepseek' | 'gemini' | 'bedrock-opus' | 'bedrock-sonnet' | 'bedrock-haiku' | 'auto';
+    model?: string;
+    signal?: AbortSignal;
+  },
+  handlers?: {
+    onChunk?: (chunk: string, full: string) => void;
+    onMeta?: (meta: { agentId?: string; sessionId?: string; model?: string }) => void;
+    onStatus?: (status: { status: string; agentId?: string }) => void;
+  }
+): Promise<{ content: string; model?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  const systemMessages = messages.filter(m => m.role === 'system');
+  const nonSystemMessages = messages.filter(m => m.role !== 'system');
+
+  // Build toolPrompt from system messages if not explicitly provided
+  const effectiveToolPrompt = options?.toolPrompt || (systemMessages.length > 0 ? systemMessages.map(m => m.content).join('\n') : undefined);
+
+  const payload = {
+    agentId,
+    messages: nonSystemMessages,
+    useMemory: options?.useMemory ?? true,
+    toolPrompt: effectiveToolPrompt,
+    provider: options?.provider,
+    model: options?.model,
+  };
+
+  const response = await fetch(`${serverFailover.currentApiUrl}/hq/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error('Failed to connect to AI stream');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let full = '';
+  let model: string | undefined;
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
+
+  const handleEvent = (raw: string) => {
+    let event = 'message';
+    const dataLines: string[] = [];
+
+    raw.split('\n').forEach(line => {
+      if (line.startsWith('event:')) {
+        event = line.replace('event:', '').trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.replace('data:', '').trim());
+      }
+    });
+
+    const dataStr = dataLines.join('\n');
+    if (!dataStr) return;
+
+    if (event === 'ping') return;
+
+    let payload: any = dataStr;
+    try {
+      payload = JSON.parse(dataStr);
+    } catch {
+      payload = { content: dataStr };
+    }
+
+    if (event === 'status') {
+      handlers?.onStatus?.(payload);
+      return;
+    }
+
+    if (event === 'meta') {
+      model = payload?.model || model;
+      handlers?.onMeta?.(payload);
+      return;
+    }
+
+    if (event === 'chunk') {
+      const chunk = payload?.content || '';
+      full += chunk;
+      handlers?.onChunk?.(chunk, full);
+      return;
+    }
+
+    if (event === 'done') {
+      if (payload?.usage) usage = payload.usage;
+      if (payload?.model) model = payload.model;
+      return;
+    }
+
+    if (event === 'error') {
+      throw new Error(payload?.message || 'Stream error');
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let idx = buffer.indexOf('\n\n');
+    while (idx !== -1) {
+      const rawEvent = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      handleEvent(rawEvent);
+      idx = buffer.indexOf('\n\n');
+    }
+  }
+
+  if (buffer.trim()) {
+    handleEvent(buffer.trim());
+  }
+
+  return { content: full, model, usage };
 }
 
 // ============================================
@@ -263,6 +496,28 @@ export interface AgentChatResponse {
   }[];
 }
 
+export interface TickExecutionDto {
+  id: string;
+  tickId: string;
+  triggeredBy: string;
+  status: 'running' | 'completed' | 'failed';
+  startTime: string;
+  endTime?: string;
+  durationMs?: number;
+  tasksProcessed: number;
+  tasksCompleted: number;
+  tasksFailed: number;
+  actionsPlanned?: string[];
+}
+
+export interface TickStatsDto {
+  totalExecutions: number;
+  successRate: number;
+  avgDuration: number;
+  lastExecution: string | null;
+  nextExecution: string | null;
+}
+
 // HQ API Object for Workspace features
 export const hqApi = {
   // Workspace Management
@@ -298,6 +553,11 @@ export const hqApi = {
     return data;
   },
 
+  async executeCommand(command: string): Promise<{ output: string; exitCode: number }> {
+    const { data } = await api.post('/hq/workspace/execute', { command });
+    return data;
+  },
+
   // Agent Chat in Workspace (旧接口，建议迁移到 unifiedChat)
   async chatWithAgent(workspaceId: string, request: AgentChatRequest): Promise<AgentChatResponse> {
     const { data } = await api.post(`/hq/workspace/${workspaceId}/chat`, request);
@@ -315,6 +575,7 @@ export const hqApi = {
     message: string;
     sessionId?: string;
     mode?: 'workspace' | 'staff' | 'general';
+    workingDir?: string;
     context?: {
       currentFile?: string;
       selectedCode?: string;
@@ -357,5 +618,99 @@ export const hqApi = {
   async searchKnowledge(query: string, category?: string): Promise<any[]> {
     const { data } = await api.post('/hq/knowledge/search', { query, category });
     return data;
+  },
+
+  // Tick API
+  async getTickExecutions(params?: { limit?: number; status?: string }): Promise<{ executions: TickExecutionDto[]; total: number }> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.status) query.set('status', params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const { data } = await api.get(`/hq/tick/executions${suffix}`);
+    return data;
+  },
+
+  async getTickStats(days = 7): Promise<TickStatsDto> {
+    const { data } = await api.get(`/hq/tick/stats?days=${days}`);
+    return data;
+  },
+
+  async triggerTick(agentId?: string): Promise<any> {
+    const { data } = await api.post('/hq/tick/execute', { agentId, type: 'manual' });
+    return data;
+  },
+
+  async getAgentTickStatus(agentId: string): Promise<any> {
+    const { data } = await api.get(`/hq/tick/agents/${agentId}/status`);
+    return data;
+  },
+
+  async pauseAgentTick(agentId: string): Promise<any> {
+    const { data } = await api.post(`/hq/tick/agents/${agentId}/pause`);
+    return data;
+  },
+
+  async resumeAgentTick(agentId: string): Promise<any> {
+    const { data } = await api.post(`/hq/tick/agents/${agentId}/resume`);
+    return data;
+  },
+
+  // Phase 4: Metrics
+  async getSystemMetrics(): Promise<any> {
+    const { data } = await api.get('/hq/tick/metrics');
+    return data?.data || data;
+  },
+
+  async getAgentMetrics(agentCode: string): Promise<any> {
+    const { data } = await api.get(`/hq/tick/metrics/${agentCode}`);
+    return data?.data || data;
+  },
+
+  async triggerAutoHeal(): Promise<any> {
+    const { data } = await api.post('/hq/tick/heal');
+    return data?.data || data;
+  },
+
+  // Phase 5: Learning
+  async getTeamSkillProfiles(): Promise<any> {
+    const { data } = await api.get('/hq/tick/learning/profiles');
+    return data?.data || data;
+  },
+
+  async getAgentSkillProfile(agentCode: string): Promise<any> {
+    const { data } = await api.get(`/hq/tick/learning/profile/${agentCode}`);
+    return data?.data || data;
+  },
+
+  async getTeamLearningSummary(): Promise<any> {
+    const { data } = await api.get('/hq/tick/learning/summary');
+    return data?.data || data;
+  },
+
+  async getShareHistory(limit = 20): Promise<any> {
+    const { data } = await api.get(`/hq/tick/learning/history?limit=${limit}`);
+    return data?.data || data;
+  },
+
+  // Phase 3: Pipelines
+  async getPipelineTemplates(): Promise<any> {
+    const { data } = await api.get('/hq/tick/pipeline/templates');
+    return data?.data || data;
+  },
+
+  async getActivePipelines(): Promise<any> {
+    const { data } = await api.get('/hq/tick/pipeline/active');
+    return data?.data || data;
+  },
+
+  async startPipeline(template: string, params?: any): Promise<any> {
+    const { data } = await api.post('/hq/tick/pipeline/start', { template, params });
+    return data?.data || data;
+  },
+
+  // Phase 2: Communication
+  async getCommunicationStats(): Promise<any> {
+    const { data } = await api.get('/hq/tick/communicate/stats');
+    return data?.data || data;
   },
 };

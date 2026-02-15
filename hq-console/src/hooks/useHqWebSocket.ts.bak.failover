@@ -1,0 +1,201 @@
+/**
+ * WebSocket Hook with Auto-Reconnect
+ * 
+ * WebSocket 连接管理，支持断线自动重连
+ */
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { io, Socket } from 'socket.io-client';
+
+const HQ_WS_URL = process.env.NEXT_PUBLIC_HQ_WS_URL || 'http://localhost:3005';
+
+export interface WebSocketOptions {
+  userId?: string;
+  token?: string;
+  autoConnect?: boolean;
+  reconnectDelay?: number;
+  maxReconnectAttempts?: number;
+}
+
+export interface WebSocketState {
+  connected: boolean;
+  connecting: boolean;
+  error: string | null;
+  reconnectAttempts: number;
+}
+
+export function useHqWebSocket(options: WebSocketOptions = {}) {
+  const {
+    userId,
+    token,
+    autoConnect = true,
+    reconnectDelay = 3000,
+    maxReconnectAttempts = 10,
+  } = options;
+
+  const socketRef = useRef<Socket | null>(null);
+  const [state, setState] = useState<WebSocketState>({
+    connected: false,
+    connecting: false,
+    error: null,
+    reconnectAttempts: 0,
+  });
+
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const connect = useCallback(() => {
+    if (socketRef.current?.connected) {
+      console.log('[HQ-WebSocket] Already connected');
+      return;
+    }
+
+    setState(prev => ({ ...prev, connecting: true, error: null }));
+
+    const socket = io(`${HQ_WS_URL}/hq`, {
+      transports: ['websocket', 'polling'],
+      reconnection: false, // 我们自己管理重连
+    });
+
+    socket.on('connect', () => {
+      console.log('[HQ-WebSocket] Connected:', socket.id);
+      setState({ connected: true, connecting: false, error: null, reconnectAttempts: 0 });
+
+      // 发送认证
+      if (userId) {
+        socket.emit('auth', { userId, token });
+      }
+    });
+
+    socket.on('connected', (data) => {
+      console.log('[HQ-WebSocket] Server confirmed connection:', data);
+    });
+
+    socket.on('auth:success', (data) => {
+      console.log('[HQ-WebSocket] Auth successful:', data.userId);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('[HQ-WebSocket] Disconnected:', reason);
+      setState(prev => ({ ...prev, connected: false }));
+
+      // 尝试重连
+      if (reason !== 'io client disconnect') {
+        attemptReconnect();
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('[HQ-WebSocket] Connection error:', error.message);
+      setState(prev => ({
+        ...prev,
+        connected: false,
+        connecting: false,
+        error: error.message,
+      }));
+
+      attemptReconnect();
+    });
+
+    socketRef.current = socket;
+  }, [userId, token]);
+
+  const attemptReconnect = useCallback(() => {
+    setState(prev => {
+      if (prev.reconnectAttempts >= maxReconnectAttempts) {
+        return {
+          ...prev,
+          error: `Max reconnect attempts (${maxReconnectAttempts}) reached`,
+        };
+      }
+
+      return { ...prev, reconnectAttempts: prev.reconnectAttempts + 1 };
+    });
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      console.log(`[HQ-WebSocket] Attempting to reconnect...`);
+      connect();
+    }, reconnectDelay);
+  }, [connect, reconnectDelay, maxReconnectAttempts]);
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    setState({ connected: false, connecting: false, error: null, reconnectAttempts: 0 });
+  }, []);
+
+  const subscribe = useCallback((event: string, handler: (...args: any[]) => void) => {
+    if (!socketRef.current) return;
+    socketRef.current.on(event, handler);
+  }, []);
+
+  const unsubscribe = useCallback((event: string, handler?: (...args: any[]) => void) => {
+    if (!socketRef.current) return;
+    if (handler) {
+      socketRef.current.off(event, handler);
+    } else {
+      socketRef.current.off(event);
+    }
+  }, []);
+
+  const emit = useCallback((event: string, data?: any) => {
+    if (!socketRef.current?.connected) {
+      console.warn('[HQ-WebSocket] Not connected, cannot emit:', event);
+      return;
+    }
+    socketRef.current.emit(event, data);
+  }, []);
+
+  // Agent 订阅
+  const subscribeAgent = useCallback((agentId: string) => {
+    emit('subscribe:agent', { agentId });
+  }, [emit]);
+
+  const unsubscribeAgent = useCallback((agentId: string) => {
+    emit('unsubscribe:agent', { agentId });
+  }, [emit]);
+
+  // Project 订阅
+  const subscribeProject = useCallback((projectId: string) => {
+    emit('subscribe:project', { projectId });
+  }, [emit]);
+
+  const unsubscribeProject = useCallback((projectId: string) => {
+    emit('unsubscribe:project', { projectId });
+  }, [emit]);
+
+  useEffect(() => {
+    if (autoConnect) {
+      connect();
+    }
+
+    return () => {
+      disconnect();
+    };
+  }, [autoConnect, connect, disconnect]);
+
+  return {
+    ...state,
+    connect,
+    disconnect,
+    subscribe,
+    unsubscribe,
+    emit,
+    subscribeAgent,
+    unsubscribeAgent,
+    subscribeProject,
+    unsubscribeProject,
+    socket: socketRef.current,
+  };
+}

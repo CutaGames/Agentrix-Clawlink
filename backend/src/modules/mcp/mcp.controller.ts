@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req, Res, Logger, UseGuards, Param } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Req, Res, Logger, UseGuards, Param, Headers } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { McpService } from './mcp.service';
 import { McpAuthContextService } from './mcp-auth-context.service';
@@ -17,7 +17,189 @@ export class McpController {
   ) {}
 
   /**
-   * MCP SSE 端点
+   * Streamable HTTP Transport endpoint (MCP 2025-03-26 spec)
+   * Single endpoint for IDE compatibility: Windsurf, Cursor, Claude Desktop, VS Code
+   * POST: Send JSON-RPC messages
+   * GET: Open SSE stream for server-initiated messages
+   * DELETE: Terminate session
+   */
+  @Post()
+  async streamableHttpPost(@Req() req: Request, @Res() res: Response) {
+    this.logger.log('Streamable HTTP POST request');
+    const sessionId = req.headers['mcp-session-id'] as string;
+    const accept = req.headers['accept'] || '';
+
+    try {
+      const body = req.body;
+      if (!body || typeof body !== 'object') {
+        return res.status(400).json({
+          jsonrpc: '2.0',
+          error: { code: -32700, message: 'Parse error' },
+          id: null,
+        });
+      }
+
+      // Handle batch requests (array of JSON-RPC messages)
+      const messages = Array.isArray(body) ? body : [body];
+      const responses: any[] = [];
+
+      for (const msg of messages) {
+        const response = await this.handleSingleJsonRpc(msg, req, res);
+        if (response) responses.push(response);
+      }
+
+      // Generate session ID on initialize
+      const initMsg = messages.find(m => m.method === 'initialize');
+      if (initMsg) {
+        const newSessionId = `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        res.setHeader('Mcp-Session-Id', newSessionId);
+      } else if (sessionId) {
+        res.setHeader('Mcp-Session-Id', sessionId);
+      }
+
+      // If all messages are notifications (no id), return 202
+      if (responses.length === 0) {
+        return res.status(202).send();
+      }
+
+      // Return single response or batch
+      if (!Array.isArray(body)) {
+        return res.json(responses[0]);
+      }
+      return res.json(responses);
+    } catch (error: any) {
+      this.logger.error(`Streamable HTTP error: ${error.message}`);
+      return res.status(500).json({
+        jsonrpc: '2.0',
+        error: { code: -32603, message: error.message },
+        id: req.body?.id || null,
+      });
+    }
+  }
+
+  @Get()
+  async streamableHttpGet(@Req() req: Request, @Res() res: Response) {
+    const accept = req.headers['accept'] || '';
+    
+    // If requesting JSON, return server info
+    if (accept.includes('application/json')) {
+      return res.json({
+        name: 'agentrix-mcp-server',
+        version: '1.0.0',
+        protocolVersion: '2024-11-05',
+        capabilities: this.mcpService.getCapabilities(),
+      });
+    }
+
+    // If requesting SSE, open event stream
+    if (accept.includes('text/event-stream')) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
+      const sessionId = req.headers['mcp-session-id'] as string || 
+        `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      res.setHeader('Mcp-Session-Id', sessionId);
+
+      // Send initial endpoint event
+      res.write(`event: endpoint\ndata: /api/mcp\n\n`);
+
+      // Keep alive
+      const keepAlive = setInterval(() => {
+        res.write(': keepalive\n\n');
+      }, 30000);
+
+      req.on('close', () => {
+        clearInterval(keepAlive);
+      });
+
+      return;
+    }
+
+    // Default: return server info as JSON
+    return res.json({
+      name: 'agentrix-mcp-server',
+      version: '1.0.0',
+      protocolVersion: '2024-11-05',
+      capabilities: this.mcpService.getCapabilities(),
+    });
+  }
+
+  @Delete()
+  async streamableHttpDelete(@Req() req: Request, @Res() res: Response) {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (sessionId) {
+      this.logger.log(`MCP session terminated: ${sessionId}`);
+    }
+    return res.status(200).json({ success: true });
+  }
+
+  /**
+   * Handle a single JSON-RPC message (shared by streamable HTTP and stateless)
+   */
+  private async handleSingleJsonRpc(msg: any, req: Request, res?: Response): Promise<any> {
+    const { jsonrpc, method, params, id } = msg;
+
+    // Notifications (no id) don't get responses
+    if (id === undefined || id === null) {
+      if (method === 'notifications/initialized') {
+        return null;
+      }
+      return null;
+    }
+
+    if (jsonrpc !== '2.0') {
+      return { jsonrpc: '2.0', error: { code: -32600, message: 'Invalid Request' }, id };
+    }
+
+    switch (method) {
+      case 'initialize':
+        return {
+          jsonrpc: '2.0',
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: this.mcpService.getCapabilities(),
+            serverInfo: { name: 'agentrix-mcp-server', version: '1.0.0' },
+          },
+          id,
+        };
+
+      case 'tools/list':
+        const tools = await this.mcpService.getToolsList();
+        return { jsonrpc: '2.0', result: { tools }, id };
+
+      case 'tools/call':
+        if (!params?.name) {
+          return { jsonrpc: '2.0', error: { code: -32602, message: 'Tool name required' }, id };
+        }
+        const authContext = await this.mcpAuthContextService.extractAuthContext(req);
+        if (!this.mcpAuthContextService.validateToolPermission(authContext, params.name)) {
+          return {
+            jsonrpc: '2.0',
+            error: { code: -32600, message: `Permission denied for tool: ${params.name}` },
+            id,
+          };
+        }
+        const secureCtx = this.mcpAuthContextService.createSecureToolContext(authContext, params.arguments || {});
+        const toolResult = await this.mcpService.callToolWithContext(params.name, params.arguments || {}, secureCtx);
+        return { jsonrpc: '2.0', result: toolResult, id };
+
+      case 'resources/list':
+        return { jsonrpc: '2.0', result: { resources: [] }, id };
+
+      case 'prompts/list':
+        return { jsonrpc: '2.0', result: { prompts: [] }, id };
+
+      case 'ping':
+        return { jsonrpc: '2.0', result: {}, id };
+
+      default:
+        return { jsonrpc: '2.0', error: { code: -32601, message: `Method not found: ${method}` }, id };
+    }
+  }
+
+  /**
+   * MCP SSE 端点 (Legacy)
    * 用于 ChatGPT 等云端 AI 建立长连接
    */
   @Get('sse')

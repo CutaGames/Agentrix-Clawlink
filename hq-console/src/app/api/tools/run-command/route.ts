@@ -11,7 +11,7 @@ const BLOCKED_PATTERNS = [
   /sudo\s+rm/,
   /mkfs/,
   /dd\s+if=/,
-  />\s*\/dev\//,
+  />\s*\/dev\/(?!null\b)/,
   /chmod\s+777\s+\//,
   /:(){ :|:& };:/,  // Fork bomb
 ];
@@ -33,6 +33,16 @@ const ALLOWED_ROOTS = [
 function normalizePathForAccess(inputPath: string): string {
   if (!inputPath) return inputPath;
   
+  // Windows 环境下支持 WSL 路径反向转换
+  if (process.platform === 'win32') {
+    const wslMatch = inputPath.match(/^\/mnt\/([A-Za-z])\/(.*)$/) || inputPath.match(/^\\+mnt\\([A-Za-z])\\(.*)$/);
+    if (wslMatch) {
+      const driveLetter = wslMatch[1].toUpperCase();
+      const restPath = wslMatch[2].replace(/[\/]/g, '\\');
+      return `${driveLetter}:\\${restPath}`;
+    }
+  }
+  
   if (inputPath.startsWith('/')) {
     return inputPath;
   }
@@ -45,6 +55,22 @@ function normalizePathForAccess(inputPath: string): string {
   }
   
   return inputPath;
+}
+
+function toWslPath(inputPath: string): string {
+  if (!inputPath) return inputPath;
+  if (inputPath.startsWith('/')) return inputPath;
+  const windowsPathMatch = inputPath.match(/^([A-Za-z]):\\(.*)$/);
+  if (windowsPathMatch) {
+    const driveLetter = windowsPathMatch[1].toLowerCase();
+    const restPath = windowsPathMatch[2].replace(/\\/g, '/');
+    return `/mnt/${driveLetter}/${restPath}`;
+  }
+  return inputPath;
+}
+
+function escapeForSingleQuotes(value: string): string {
+  return value.replace(/'/g, `'"'"'`);
 }
 
 function isCommandSafe(command: string): { safe: boolean; reason?: string } {
@@ -97,14 +123,24 @@ export async function POST(request: NextRequest) {
     const accessCwd = cwd ? normalizePathForAccess(cwd) : process.cwd();
 
     // Execute command
+    const resolvedShell = shell === 'powershell'
+      ? 'powershell.exe'
+      : (process.platform === 'win32' ? 'powershell.exe' : '/bin/bash');
+
+    const useWsl = process.platform === 'win32' && (command.includes('/mnt/') || (cwd && cwd.startsWith('/mnt/')));
+    const wslCwd = cwd ? toWslPath(cwd) : '';
+    const wslCommand = useWsl
+      ? `wsl.exe -d Ubuntu-24.04 -- bash -lc '${escapeForSingleQuotes(wslCwd ? `cd ${wslCwd}; ${command}` : command)}'`
+      : command;
+
     const options = {
-      cwd: accessCwd,
+      cwd: useWsl ? process.cwd() : accessCwd,
       timeout,
       maxBuffer: 1024 * 1024 * 10, // 10MB
-      shell: shell === 'powershell' ? 'powershell.exe' : '/bin/bash',
+      shell: resolvedShell,
     };
 
-    const result = await execAsync(command, options);
+    const result = await execAsync(wslCommand, options);
 
     return NextResponse.json({
       success: true,

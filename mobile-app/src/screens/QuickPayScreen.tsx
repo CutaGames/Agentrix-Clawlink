@@ -30,7 +30,7 @@ export const QuickPayScreen: React.FC = () => {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `请支付 ¥${numAmount.toFixed(2)} - Agentrix 收款链接: https://pay.agentrix.io/xxx`,
+        message: `请支付 $${numAmount.toFixed(2)} - Agentrix 收款链接: https://pay.agentrix.io/xxx`,
         title: 'Agentrix 收款',
       });
     } catch (e) {
@@ -49,7 +49,7 @@ export const QuickPayScreen: React.FC = () => {
         <Card style={styles.successCard}>
           <Text style={styles.successIcon}>✅</Text>
           <Text style={styles.successTitle}>收款码已生成</Text>
-          <Text style={styles.successAmount}>¥{numAmount.toFixed(2)}</Text>
+          <Text style={styles.successAmount}>${numAmount.toFixed(2)}</Text>
         </Card>
 
         <Card>
@@ -67,11 +67,11 @@ export const QuickPayScreen: React.FC = () => {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>手续费</Text>
-            <Text style={styles.infoValue}>¥{commission.toFixed(2)}</Text>
+            <Text style={styles.infoValue}>${commission.toFixed(2)}</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>实收金额</Text>
-            <Text style={[styles.infoValue, styles.netAmount]}>¥{netAmount.toFixed(2)}</Text>
+            <Text style={[styles.infoValue, styles.netAmount]}>${netAmount.toFixed(2)}</Text>
           </View>
         </Card>
 
@@ -96,7 +96,7 @@ export const QuickPayScreen: React.FC = () => {
       <Card>
         <Text style={styles.sectionTitle}>收款金额</Text>
         <View style={styles.amountInputContainer}>
-          <Text style={styles.currencyPrefix}>¥</Text>
+          <Text style={styles.currencyPrefix}>$</Text>
           <TextInput
             style={styles.amountInput}
             placeholder="0.00"
@@ -137,15 +137,15 @@ export const QuickPayScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>分佣预览</Text>
           <View style={styles.previewRow}>
             <Text style={styles.previewLabel}>收款金额</Text>
-            <Text style={styles.previewValue}>¥{numAmount.toFixed(2)}</Text>
+            <Text style={styles.previewValue}>${numAmount.toFixed(2)}</Text>
           </View>
           <View style={styles.previewRow}>
             <Text style={styles.previewLabel}>分佣 ({selectedPlan.rate}%)</Text>
-            <Text style={[styles.previewValue, styles.negative]}>-¥{commission.toFixed(2)}</Text>
+            <Text style={[styles.previewValue, styles.negative]}>-${commission.toFixed(2)}</Text>
           </View>
           <View style={[styles.previewRow, styles.previewTotal]}>
             <Text style={styles.previewTotalLabel}>实收金额</Text>
-            <Text style={styles.previewTotalValue}>¥{netAmount.toFixed(2)}</Text>
+            <Text style={styles.previewTotalValue}>${netAmount.toFixed(2)}</Text>
           </View>
         </Card>
       )}

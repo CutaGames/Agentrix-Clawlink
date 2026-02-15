@@ -10,54 +10,26 @@ import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
 
 async function bootstrap() {
   console.log('🚀 Starting Agentrix Backend...');
-  console.log('📝 Node version:', process.version);
-  console.log('📁 CWD:', process.cwd());
 
   // 配置全局代理（针对 Node.js fetch/undici）
+  // 注意：在某些 WSL 环境下，设置 ProxyAgent 会导致初始化挂起，因此默认关闭
+  /*
   const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy || 
                      process.env.HTTP_PROXY || process.env.http_proxy;
   
   if (httpsProxy) {
     try {
-      console.log(`🌐 Detected proxy: ${httpsProxy}. Setting up global agent.`);
       const proxyAgent = new ProxyAgent(httpsProxy);
       setGlobalDispatcher(proxyAgent);
     } catch (proxyError: any) {
       console.error(`⚠️ Failed to set global proxy: ${proxyError.message}`);
     }
   }
+  */
   
-  // 跳过枚举类型修复以加快启动
-  // try {
-  //   await fixEnumTypesBeforeSync();
-  // } catch (error: any) {
-  //   console.warn('⚠️  枚举类型修复失败（可能表不存在，将在 synchronize 时创建）:', error.message);
-  // }
-
-  console.log('🔧 Creating NestJS application...');
-  let app: NestExpressApplication;
-  
-  try {
-    app = await NestFactory.create<NestExpressApplication>(AppModule, {
-      rawBody: true,
-      abortOnError: false, // 不因错误中止启动
-      logger: ['error', 'warn', 'log', 'debug'], // 启用所有日志级别
-    });
-  } catch (error: any) {
-    console.error('❌ Failed to create NestJS application:', error.message);
-    console.error('Stack:', error.stack);
-    
-    // 如果是数据库连接错误，打印详细信息
-    if (error.message?.includes('database') || error.message?.includes('connect')) {
-      console.error('\n🔍 Database connection failed. Please check:');
-      console.error('  1. PostgreSQL is running: sudo service postgresql status');
-      console.error('  2. Database exists: PGPASSWORD=agentrix_secure_2024 psql -U agentrix -h localhost -l');
-      console.error('  3. Credentials in .env or environment variables');
-      console.error('  4. Database: paymind, User: agentrix, Password: agentrix_secure_2024\n');
-    }
-    
-    process.exit(1);
-  }
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // Trust proxy for secure cookies behind Nginx
   app.set('trust proxy', 1);

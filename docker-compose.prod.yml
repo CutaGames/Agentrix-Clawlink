@@ -34,7 +34,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      DB_SYNC: "true" # Temporarily enable sync to fix schema
+      DB_SYNC: "false"
     expose:
       - "3001"
     depends_on:
@@ -44,7 +44,7 @@ services:
       - backend_uploads:/app/uploads
       - ./backend/knowledge:/app/knowledge # Mount knowledge files
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -63,7 +63,7 @@ services:
     environment:
       NODE_ENV: production
       HQ_PORT: 3005
-      DB_SYNC: "true" # Temporarily enable sync to fix schema
+      DB_SYNC: "false"
     expose:
       - "3005"
     depends_on:
@@ -73,7 +73,7 @@ services:
       - .:/app/workspace
       - ./backend/knowledge:/app/knowledge # Share knowledge files
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3005/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3005/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

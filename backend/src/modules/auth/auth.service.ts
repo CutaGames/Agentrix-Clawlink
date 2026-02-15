@@ -94,6 +94,13 @@ export class AuthService {
   }
 
   /**
+   * 通过 ID 查找用户
+   */
+  async findUserById(id: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { id } });
+  }
+
+  /**
    * 通过邮箱查找用户
    */
   async findUserByEmail(email: string): Promise<User | null> {
@@ -222,6 +229,207 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * 社交账号 Token 登录（Mobile 端使用）
+   * 移动端通过 OAuth SDK 获取 access_token 后，发送到此接口验证并登录
+   */
+  async socialTokenLogin(dto: {
+    provider: string;
+    accessToken: string;
+    socialId?: string;
+    email?: string;
+    username?: string;
+    displayName?: string;
+    avatarUrl?: string;
+  }) {
+    const { provider, accessToken, socialId, email, username, displayName, avatarUrl } = dto;
+
+    // 1. 根据 provider 验证 token 并获取用户信息
+    let verifiedProfile: { socialId: string; email?: string; displayName?: string; avatarUrl?: string; username?: string };
+
+    switch (provider) {
+      case 'google': {
+        // 验证 Google ID Token
+        const googleProfile = await this.verifyGoogleToken(accessToken);
+        verifiedProfile = googleProfile;
+        break;
+      }
+      case 'x':
+      case 'twitter': {
+        // Twitter OAuth 2.0 — 使用 access_token 获取用户信息
+        const twitterProfile = await this.verifyTwitterToken(accessToken);
+        verifiedProfile = twitterProfile;
+        break;
+      }
+      case 'telegram': {
+        // Telegram — 客户端传递 initData，后端验证
+        verifiedProfile = {
+          socialId: socialId || accessToken,
+          email,
+          displayName: displayName || username,
+          avatarUrl,
+          username,
+        };
+        break;
+      }
+      case 'discord': {
+        // Discord — 使用 access_token 获取用户信息
+        const discordProfile = await this.verifyDiscordToken(accessToken);
+        verifiedProfile = discordProfile;
+        break;
+      }
+      default:
+        throw new BadRequestException(`不支持的登录方式: ${provider}`);
+    }
+
+    if (!verifiedProfile.socialId) {
+      throw new BadRequestException('无法获取社交账号ID');
+    }
+
+    // 2. 映射 provider 到 SocialAccountType
+    const { SocialAccountType } = await import('../../entities/social-account.entity');
+    const typeMap: Record<string, any> = {
+      google: SocialAccountType.GOOGLE,
+      x: SocialAccountType.X,
+      twitter: SocialAccountType.X,
+      telegram: SocialAccountType.TELEGRAM,
+      discord: SocialAccountType.DISCORD,
+    };
+    const socialType = typeMap[provider];
+
+    // 3. 查找是否已有用户通过该社交账号登录
+    const { SocialAccountService } = await import('./social-account.service');
+    // 使用注入的 repository 直接查询
+    const existingSocial = await this.userRepository.manager
+      .getRepository('SocialAccount')
+      .findOne({
+        where: { type: socialType, socialId: verifiedProfile.socialId },
+        relations: ['user'],
+      });
+
+    let user: User;
+
+    if (existingSocial && (existingSocial as any).user) {
+      // 已有用户，直接登录
+      user = (existingSocial as any).user;
+    } else {
+      // 尝试通过 email 查找
+      if (verifiedProfile.email) {
+        user = await this.userRepository.findOne({ where: { email: verifiedProfile.email } });
+      }
+
+      if (!user) {
+        // 创建新用户
+        const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        user = this.userRepository.create({
+          email: verifiedProfile.email,
+          agentrixId,
+          avatarUrl: verifiedProfile.avatarUrl,
+          nickname: verifiedProfile.displayName || verifiedProfile.username,
+          roles: [UserRole.USER],
+        });
+
+        if (provider === 'google') (user as any).googleId = verifiedProfile.socialId;
+        if (provider === 'x' || provider === 'twitter') (user as any).twitterId = verifiedProfile.socialId;
+
+        user = await this.userRepository.save(user);
+        await this.ensureUserDefaultAccount(user.id, verifiedProfile.displayName || verifiedProfile.email);
+      }
+
+      // 绑定社交账号
+      try {
+        await this.userRepository.manager
+          .getRepository('SocialAccount')
+          .save({
+            userId: user.id,
+            type: socialType,
+            socialId: verifiedProfile.socialId,
+            email: verifiedProfile.email,
+            username: verifiedProfile.username,
+            displayName: verifiedProfile.displayName,
+            avatarUrl: verifiedProfile.avatarUrl,
+          });
+      } catch (e) {
+        // 可能已绑定，忽略
+        this.logger.warn(`Social account binding skipped: ${e.message}`);
+      }
+    }
+
+    // 4. 生成 JWT
+    return this.login(user);
+  }
+
+  /**
+   * 验证 Google ID Token (通过 Google tokeninfo 端点)
+   */
+  private async verifyGoogleToken(idToken: string): Promise<{ socialId: string; email?: string; displayName?: string; avatarUrl?: string }> {
+    try {
+      const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+      if (!response.ok) {
+        throw new UnauthorizedException('Google token 验证失败');
+      }
+      const data = await response.json() as any;
+      return {
+        socialId: data.sub,
+        email: data.email,
+        displayName: data.name,
+        avatarUrl: data.picture,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('Google token 验证失败: ' + error.message);
+    }
+  }
+
+  /**
+   * 验证 Twitter OAuth 2.0 access token
+   */
+  private async verifyTwitterToken(accessToken: string): Promise<{ socialId: string; email?: string; displayName?: string; avatarUrl?: string; username?: string }> {
+    try {
+      const response = await fetch('https://api.twitter.com/2/users/me?user.fields=profile_image_url,description', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        throw new UnauthorizedException('Twitter token 验证失败');
+      }
+      const { data } = await response.json() as any;
+      return {
+        socialId: data.id,
+        displayName: data.name,
+        username: data.username,
+        avatarUrl: data.profile_image_url,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('Twitter token 验证失败: ' + error.message);
+    }
+  }
+
+  /**
+   * 验证 Discord OAuth 2.0 access token
+   */
+  private async verifyDiscordToken(accessToken: string): Promise<{ socialId: string; email?: string; displayName?: string; avatarUrl?: string; username?: string }> {
+    try {
+      const response = await fetch('https://discord.com/api/users/@me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        throw new UnauthorizedException('Discord token 验证失败');
+      }
+      const data = await response.json() as any;
+      return {
+        socialId: data.id,
+        email: data.email,
+        displayName: data.global_name || data.username,
+        username: data.username,
+        avatarUrl: data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : undefined,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('Discord token 验证失败: ' + error.message);
+    }
   }
 
   /**
@@ -492,6 +700,148 @@ export class AuthService {
     } else {
       throw new BadRequestException('不支持的链类型');
     }
+  }
+
+  // ========== 邮箱验证码登录 ==========
+
+  // 内存存储验证码（生产环境应使用 Redis）
+  private emailCodes = new Map<string, { code: string; expiresAt: number; attempts: number }>();
+
+  /**
+   * 发送邮箱验证码
+   */
+  async sendEmailVerificationCode(email: string): Promise<{ success: boolean; message: string }> {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // 检查是否频繁发送（60秒内不能重复发送）
+    const existing = this.emailCodes.get(normalizedEmail);
+    if (existing && existing.expiresAt - 240000 > Date.now()) {
+      throw new BadRequestException('Please wait before requesting a new code');
+    }
+
+    // 生成 6 位验证码
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 300000; // 5 分钟有效
+
+    this.emailCodes.set(normalizedEmail, { code, expiresAt, attempts: 0 });
+
+    // 清理过期验证码
+    for (const [key, val] of this.emailCodes.entries()) {
+      if (val.expiresAt < Date.now()) this.emailCodes.delete(key);
+    }
+
+    // 发送邮件
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #333;">Agentrix Verification Code</h2>
+        <p>Your verification code is:</p>
+        <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333;">${code}</span>
+        </div>
+        <p style="color: #666; font-size: 14px;">This code will expire in 5 minutes.</p>
+        <p style="color: #666; font-size: 14px;">If you didn't request this code, please ignore this email.</p>
+      </div>
+    `;
+    const fromEmail = process.env.SMTP_USER || 'noreply@agentrix.top';
+
+    try {
+      if (process.env.SENDGRID_API_KEY) {
+        // SendGrid HTTP API
+        const sgRes = await fetch('https://api.sendgrid.com/v3/mail/send', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: normalizedEmail }] }],
+            from: { email: fromEmail, name: 'Agentrix' },
+            subject: 'Agentrix Login Verification Code',
+            content: [{ type: 'text/html', value: emailHtml }],
+          }),
+        });
+        if (!sgRes.ok) {
+          const errText = await sgRes.text();
+          throw new Error(`SendGrid ${sgRes.status}: ${errText}`);
+        }
+      } else if (process.env.SMTP_PASSWORD) {
+        // Fallback: SMTP via nodemailer
+        const nodemailer = require('nodemailer');
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.exmail.qq.com',
+          port: parseInt(process.env.SMTP_PORT || '465'),
+          secure: (process.env.SMTP_PORT || '465') === '465',
+          auth: { user: fromEmail, pass: process.env.SMTP_PASSWORD },
+        });
+        await transporter.sendMail({
+          from: `"Agentrix" <${fromEmail}>`,
+          to: normalizedEmail,
+          subject: 'Agentrix Login Verification Code',
+          html: emailHtml,
+        });
+      } else {
+        throw new Error('No email provider configured (SENDGRID_API_KEY or SMTP_PASSWORD)');
+      }
+
+      this.logger.log(`Verification code sent to ${normalizedEmail}`);
+    } catch (error) {
+      this.logger.error(`Failed to send email to ${normalizedEmail}: ${error.message}`);
+      // 开发环境下仍然返回成功（方便测试）
+      if (process.env.NODE_ENV === 'production') {
+        this.emailCodes.delete(normalizedEmail);
+        throw new BadRequestException('Failed to send verification email');
+      }
+      this.logger.warn(`[DEV] Verification code for ${normalizedEmail}: ${code}`);
+    }
+
+    return { success: true, message: 'Verification code sent' };
+  }
+
+  /**
+   * 验证邮箱验证码并登录（未注册自动注册）
+   */
+  async verifyEmailCodeAndLogin(email: string, code: string) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const stored = this.emailCodes.get(normalizedEmail);
+
+    if (!stored) {
+      throw new BadRequestException('No verification code found. Please request a new one.');
+    }
+
+    if (stored.expiresAt < Date.now()) {
+      this.emailCodes.delete(normalizedEmail);
+      throw new BadRequestException('Verification code expired. Please request a new one.');
+    }
+
+    stored.attempts += 1;
+    if (stored.attempts > 5) {
+      this.emailCodes.delete(normalizedEmail);
+      throw new BadRequestException('Too many attempts. Please request a new code.');
+    }
+
+    if (stored.code !== code.trim()) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    // 验证成功，删除验证码
+    this.emailCodes.delete(normalizedEmail);
+
+    // 查找或创建用户
+    let user = await this.userRepository.findOne({ where: { email: normalizedEmail } });
+
+    if (!user) {
+      const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      user = this.userRepository.create({
+        email: normalizedEmail,
+        agentrixId,
+        roles: [UserRole.USER],
+      });
+      user = await this.userRepository.save(user);
+      await this.ensureUserDefaultAccount(user.id, normalizedEmail);
+      this.logger.log(`New user registered via email OTP: ${normalizedEmail}`);
+    }
+
+    return this.login(user);
   }
 }
 

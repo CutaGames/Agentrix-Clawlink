@@ -1,10 +1,13 @@
 // 个人身份首页内容
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '../Card';
 import { PrimaryButton } from '../PrimaryButton';
 import { colors } from '../../theme/colors';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const BANNER_W = SCREEN_W - 32; // 16px padding each side
 
 // Mock 数据 - 后续替换为 API
 const mockAssets = {
@@ -30,17 +33,121 @@ const mockAutoEarn = {
   activeStrategies: 3,
 };
 
+// ========== Launch Activity Banners ==========
+const LAUNCH_BANNERS = [
+  {
+    id: 'launch',
+    emoji: '🎉',
+    title: 'Agentrix Commerce Live!',
+    subtitle: '8 official skills now available — Smart Checkout, X402 Pay & more',
+    cta: 'Explore',
+    target: 'Marketplace',
+    gradient: ['#3B82F6', '#8B5CF6'],
+  },
+  {
+    id: 'free-trial',
+    emoji: '🎁',
+    title: 'Free Trial for Early Users',
+    subtitle: 'Try Smart Checkout free — first 100 calls on us',
+    cta: 'Claim Now',
+    target: 'Marketplace',
+    gradient: ['#10B981', '#059669'],
+  },
+  {
+    id: 'referral',
+    emoji: '💰',
+    title: 'Refer & Earn Commission',
+    subtitle: '10% L1 + 3% L2 referral rewards — share skills, earn crypto',
+    cta: 'Start Earning',
+    target: 'Promote',
+    gradient: ['#F97316', '#DC2626'],
+  },
+  {
+    id: 'bounty',
+    emoji: '🎯',
+    title: 'Bounty Board Open',
+    subtitle: 'Post tasks or bid on bounties — dev, design, content & more',
+    cta: 'View Tasks',
+    target: 'TaskMarket',
+    gradient: ['#8B5CF6', '#EC4899'],
+  },
+];
+
+const LaunchBannerCarousel: React.FC<{ navigation: any }> = ({ navigation }) => {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const next = (activeIdx + 1) % LAUNCH_BANNERS.length;
+      scrollRef.current?.scrollTo({ x: next * BANNER_W, animated: true });
+      setActiveIdx(next);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [activeIdx]);
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / BANNER_W);
+    if (idx !== activeIdx && idx >= 0 && idx < LAUNCH_BANNERS.length) setActiveIdx(idx);
+  };
+
+  return (
+    <View style={styles.bannerContainer}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScroll}
+        decelerationRate="fast"
+        snapToInterval={BANNER_W}
+        contentContainerStyle={{ gap: 0 }}
+      >
+        {LAUNCH_BANNERS.map((b) => (
+          <TouchableOpacity
+            key={b.id}
+            style={[styles.bannerCard, { width: BANNER_W }]}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate(b.target)}
+          >
+            <View style={[styles.bannerGradientBg, { backgroundColor: b.gradient[0] }]}>
+              <View style={styles.bannerContent}>
+                <Text style={styles.bannerEmoji}>{b.emoji}</Text>
+                <View style={styles.bannerTextCol}>
+                  <Text style={styles.bannerTitle}>{b.title}</Text>
+                  <Text style={styles.bannerSubtitle} numberOfLines={2}>{b.subtitle}</Text>
+                </View>
+              </View>
+              <View style={styles.bannerCtaBtn}>
+                <Text style={styles.bannerCtaText}>{b.cta} →</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <View style={styles.bannerDots}>
+        {LAUNCH_BANNERS.map((b, i) => (
+          <View key={b.id} style={[styles.bannerDot, i === activeIdx && styles.bannerDotActive]} />
+        ))}
+      </View>
+    </View>
+  );
+};
+
 export const PersonalHomeContent: React.FC = () => {
   const navigation = useNavigation<any>();
 
   return (
     <View style={styles.container}>
+      {/* 🎉 Launch Activity Banners */}
+      <LaunchBannerCarousel navigation={navigation} />
+
       {/* 资产总览卡片 */}
       <Card style={styles.assetCard}>
         <View style={styles.assetHeader}>
-          <Text style={styles.assetLabel}>💰 总资产</Text>
+          <Text style={styles.assetLabel}>💰 Total Assets</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Assets')}>
-            <Text style={styles.viewAll}>查看全部 →</Text>
+            <Text style={styles.viewAll}>View All →</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.assetValue}>
@@ -51,7 +158,7 @@ export const PersonalHomeContent: React.FC = () => {
           mockAssets.change24h >= 0 ? styles.positive : styles.negative
         ]}>
           {mockAssets.change24h >= 0 ? '+' : ''}${mockAssets.change24h.toFixed(2)} 
-          ({mockAssets.change24hPercent.toFixed(1)}%) 今日
+          ({mockAssets.change24hPercent.toFixed(1)}%) Today
         </Text>
         <View style={styles.assetList}>
           {mockAssets.topAssets.map((asset) => (
@@ -66,8 +173,8 @@ export const PersonalHomeContent: React.FC = () => {
       {/* 空投发现 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>🎁 发现空投</Text>
-          <Text style={styles.badge}>{mockAirdrops.length} 个可领</Text>
+          <Text style={styles.sectionTitle}>🎁 Airdrops</Text>
+          <Text style={styles.badge}>{mockAirdrops.length} available</Text>
         </View>
         <View style={styles.airdropList}>
           {mockAirdrops.slice(0, 2).map((airdrop) => (
@@ -78,15 +185,15 @@ export const PersonalHomeContent: React.FC = () => {
             >
               <Text style={styles.airdropName}>{airdrop.name}</Text>
               <Text style={styles.airdropProtocol}>{airdrop.protocol}</Text>
-              <Text style={styles.airdropValue}>预估 ${airdrop.estimatedValue}</Text>
+              <Text style={styles.airdropValue}>Est. ${airdrop.estimatedValue}</Text>
               <TouchableOpacity style={styles.claimButton}>
-                <Text style={styles.claimButtonText}>领取</Text>
+                <Text style={styles.claimButtonText}>Claim</Text>
               </TouchableOpacity>
             </TouchableOpacity>
           ))}
         </View>
         <PrimaryButton 
-          title="查看全部空投" 
+          title="View All Airdrops" 
           onPress={() => navigation.navigate('Airdrop')} 
         />
       </Card>
@@ -94,26 +201,26 @@ export const PersonalHomeContent: React.FC = () => {
       {/* AutoEarn 收益 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>⚡ AutoEarn 收益</Text>
+          <Text style={styles.sectionTitle}>⚡ AutoEarn</Text>
         </View>
         <View style={styles.earnStats}>
           <View style={styles.earnStat}>
             <Text style={styles.earnValue}>+${mockAutoEarn.todayEarned.toFixed(2)}</Text>
-            <Text style={styles.earnLabel}>今日</Text>
+            <Text style={styles.earnLabel}>Today</Text>
           </View>
           <View style={styles.earnDivider} />
           <View style={styles.earnStat}>
             <Text style={styles.earnValue}>+${mockAutoEarn.totalEarned.toFixed(2)}</Text>
-            <Text style={styles.earnLabel}>累计</Text>
+            <Text style={styles.earnLabel}>Total</Text>
           </View>
           <View style={styles.earnDivider} />
           <View style={styles.earnStat}>
             <Text style={styles.earnValue}>{mockAutoEarn.activeStrategies}</Text>
-            <Text style={styles.earnLabel}>策略运行中</Text>
+            <Text style={styles.earnLabel}>Active</Text>
           </View>
         </View>
         <PrimaryButton 
-          title="管理策略" 
+          title="Manage Strategies" 
           onPress={() => navigation.navigate('AutoEarn')} 
         />
       </Card>
@@ -121,23 +228,23 @@ export const PersonalHomeContent: React.FC = () => {
       {/* 我的 Agent 快速入口 */}
       <Card>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>🤖 我的 Agent</Text>
+          <Text style={styles.sectionTitle}>🤖 My Agent</Text>
         </View>
         <Text style={styles.agentDesc}>
-          你的 AI 助手，随时待命
+          Your AI assistant, always ready
         </Text>
         <View style={styles.agentActions}>
           <TouchableOpacity style={styles.agentAction}>
             <Text style={styles.agentActionIcon}>💬</Text>
-            <Text style={styles.agentActionLabel}>对话</Text>
+            <Text style={styles.agentActionLabel}>Chat</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.agentAction}>
             <Text style={styles.agentActionIcon}>📋</Text>
-            <Text style={styles.agentActionLabel}>任务</Text>
+            <Text style={styles.agentActionLabel}>Tasks</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.agentAction}>
             <Text style={styles.agentActionIcon}>⚙️</Text>
-            <Text style={styles.agentActionLabel}>设置</Text>
+            <Text style={styles.agentActionLabel}>Settings</Text>
           </TouchableOpacity>
         </View>
       </Card>
@@ -148,6 +255,73 @@ export const PersonalHomeContent: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     gap: 16,
+  },
+  // Launch Banner Carousel
+  bannerContainer: {
+    marginBottom: 0,
+  },
+  bannerCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  bannerGradientBg: {
+    borderRadius: 16,
+    padding: 16,
+    minHeight: 110,
+    justifyContent: 'space-between',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  bannerEmoji: {
+    fontSize: 32,
+    marginTop: 2,
+  },
+  bannerTextCol: {
+    flex: 1,
+  },
+  bannerTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  bannerSubtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  bannerCtaBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginTop: 8,
+  },
+  bannerCtaText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  bannerDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  bannerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  bannerDotActive: {
+    width: 18,
+    backgroundColor: colors.primary,
+    borderRadius: 3,
   },
   // 资产卡片
   assetCard: {

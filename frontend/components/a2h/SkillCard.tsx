@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import Image from 'next/image';
 import { 
   Zap, 
   Package, 
@@ -140,8 +141,14 @@ export const SkillCard: React.FC<SkillCardProps> = (props) => {
         onClick={handleAction}
       >
         {hasImage ? (
-          <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-            <img src={imageUrl} alt={displayName || name} className="w-full h-full object-cover" />
+          <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 relative">
+            <Image 
+              src={imageUrl} 
+              alt={displayName || name} 
+              fill
+              className="object-cover"
+              unoptimized
+            />
           </div>
         ) : (
           <div className={`p-2 rounded-lg ${layerColors[layer]}`}>
@@ -165,16 +172,17 @@ export const SkillCard: React.FC<SkillCardProps> = (props) => {
 
   return (
     <div
-      className="group bg-white rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-lg transition-all overflow-hidden"
+      className={`group relative bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl hover:border-blue-200 transition-all duration-300 cursor-pointer`}
       onClick={handleAction}
     >
-      {/* Product Image (if available) */}
       {hasImage && (
         <div className="relative w-full h-40 overflow-hidden bg-slate-100">
-          <img 
+          <Image 
             src={imageUrl} 
             alt={displayName || name} 
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            unoptimized
           />
           {/* Protocol Badges - Bottom Left */}
           <div className="absolute bottom-2 left-2 flex items-center gap-1">

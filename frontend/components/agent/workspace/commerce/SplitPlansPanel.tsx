@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Settings, Archive, Trash2, Play, Eye, ChevronRight, Users, Percent, Layers, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, Settings, Archive, Trash2, Play, Eye, ChevronRight, Users, Percent, Layers, Check, X, ArrowDown, ArrowRight, GitBranch, Wallet, DollarSign, TrendingUp, Info } from 'lucide-react';
 import { useLocalization } from '../../../../contexts/LocalizationContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import { commerceApi, SplitPlan, SplitPlanStatus, ProductType, SplitRule } from '../../../../lib/api/commerce.api';
@@ -530,7 +530,7 @@ const CreateSplitPlanModal: React.FC<CreateSplitPlanModalProps> = ({ onClose, on
   );
 };
 
-// ===== Detail Modal =====
+// ===== Detail Modal with Multi-Level Commission Visualization =====
 
 interface SplitPlanDetailModalProps {
   plan: SplitPlan;
@@ -538,16 +538,108 @@ interface SplitPlanDetailModalProps {
   onUpdate: () => void;
 }
 
+// Role color mapping for the chain diagram
+const ROLE_COLORS: Record<string, { bg: string; border: string; text: string; glow: string }> = {
+  platform: { bg: 'bg-blue-500/15', border: 'border-blue-500/40', text: 'text-blue-400', glow: 'shadow-blue-500/10' },
+  merchant: { bg: 'bg-emerald-500/15', border: 'border-emerald-500/40', text: 'text-emerald-400', glow: 'shadow-emerald-500/10' },
+  referrer: { bg: 'bg-purple-500/15', border: 'border-purple-500/40', text: 'text-purple-400', glow: 'shadow-purple-500/10' },
+  promoter: { bg: 'bg-amber-500/15', border: 'border-amber-500/40', text: 'text-amber-400', glow: 'shadow-amber-500/10' },
+  executor: { bg: 'bg-cyan-500/15', border: 'border-cyan-500/40', text: 'text-cyan-400', glow: 'shadow-cyan-500/10' },
+  custom: { bg: 'bg-pink-500/15', border: 'border-pink-500/40', text: 'text-pink-400', glow: 'shadow-pink-500/10' },
+};
+
+const getRoleColor = (role: string) => ROLE_COLORS[role] || ROLE_COLORS.custom;
+
 const SplitPlanDetailModal: React.FC<SplitPlanDetailModalProps> = ({ plan, onClose, onUpdate }) => {
   const { t } = useLocalization();
+  const [detailTab, setDetailTab] = useState<'overview' | 'chain' | 'simulate'>('overview');
+  const [simulateAmount, setSimulateAmount] = useState(100);
 
   const formatShare = (bps: number) => `${(bps / 100).toFixed(1)}%`;
   const formatFee = (bps: number) => `${(bps / 100).toFixed(2)}%`;
 
+  const activeRules = useMemo(() => plan.rules.filter(r => r.active), [plan.rules]);
+
+  // Simulate commission distribution
+  const simulation = useMemo(() => {
+    const amount = simulateAmount;
+    const platformFee = amount * (plan.feeConfig.splitFeeBps / 10000);
+    const distributable = amount - platformFee;
+    const results = activeRules.map(rule => ({
+      role: rule.customRoleName || rule.role,
+      roleKey: rule.role,
+      share: rule.shareBps,
+      amount: distributable * (rule.shareBps / 10000),
+    }));
+    return { amount, platformFee, distributable, results };
+  }, [simulateAmount, plan, activeRules]);
+
+  // Build multi-level chain: L1 = Platform Base, L2 = Commission Pool split, L3 = Sub-referral
+  const chainLevels = useMemo(() => {
+    const levels: Array<{
+      level: string;
+      label: { zh: string; en: string };
+      color: string;
+      nodes: Array<{ name: string; role: string; shareBps: number; amount: number }>;
+    }> = [];
+
+    // L1: Platform takes base fee
+    levels.push({
+      level: 'L1',
+      label: { zh: '平台基础层', en: 'Platform Base Layer' },
+      color: 'blue',
+      nodes: [{
+        name: t({ zh: '平台手续费', en: 'Platform Fee' }),
+        role: 'platform',
+        shareBps: plan.feeConfig.splitFeeBps,
+        amount: simulation.platformFee,
+      }],
+    });
+
+    // L2: Primary split among roles
+    const l2Nodes = activeRules
+      .filter(r => ['merchant', 'platform', 'executor'].includes(r.role) || r.role === 'custom')
+      .map(r => ({
+        name: r.customRoleName || r.role,
+        role: r.role,
+        shareBps: r.shareBps,
+        amount: simulation.distributable * (r.shareBps / 10000),
+      }));
+    if (l2Nodes.length > 0) {
+      levels.push({
+        level: 'L2',
+        label: { zh: '主分佣层', en: 'Primary Split Layer' },
+        color: 'emerald',
+        nodes: l2Nodes,
+      });
+    }
+
+    // L3: Referral / Promoter chain
+    const l3Nodes = activeRules
+      .filter(r => ['referrer', 'promoter'].includes(r.role))
+      .map(r => ({
+        name: r.customRoleName || r.role,
+        role: r.role,
+        shareBps: r.shareBps,
+        amount: simulation.distributable * (r.shareBps / 10000),
+      }));
+    if (l3Nodes.length > 0) {
+      levels.push({
+        level: 'L3',
+        label: { zh: '推荐分佣层', en: 'Referral Split Layer' },
+        color: 'purple',
+        nodes: l3Nodes,
+      });
+    }
+
+    return levels;
+  }, [plan, activeRules, simulation, t]);
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-xl font-bold text-white">{plan.name}</h3>
             <p className="text-sm text-slate-400">{t(PRODUCT_TYPE_LABELS[plan.productType])} · v{plan.version}</p>
@@ -558,67 +650,311 @@ const SplitPlanDetailModal: React.FC<SplitPlanDetailModalProps> = ({ plan, onClo
         </div>
 
         {plan.description && (
-          <p className="text-slate-300 mb-6">{plan.description}</p>
+          <p className="text-slate-300 mb-4 text-sm">{plan.description}</p>
         )}
 
-        {/* Fee Config */}
-        <div className="mb-6">
-          <h4 className="text-sm font-bold text-slate-400 uppercase mb-3">{t({ zh: '费率配置', en: 'Fee Configuration' })}</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">Onramp</p>
-              <p className="text-white font-semibold">{formatFee(plan.feeConfig.onrampFeeBps)}</p>
-            </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">Offramp</p>
-              <p className="text-white font-semibold">{formatFee(plan.feeConfig.offrampFeeBps)}</p>
-            </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">{t({ zh: '分佣费', en: 'Split Fee' })}</p>
-              <p className="text-white font-semibold">{formatFee(plan.feeConfig.splitFeeBps)}</p>
-            </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 mb-1">{t({ zh: '最低分佣', en: 'Min Split' })}</p>
-              <p className="text-white font-semibold">{(plan.feeConfig.minSplitFee / 1000000).toFixed(2)} USDC</p>
-            </div>
-          </div>
+        {/* Detail Tabs */}
+        <div className="flex gap-1 bg-slate-800/50 rounded-xl p-1 mb-6">
+          {[
+            { id: 'overview' as const, label: { zh: '概览', en: 'Overview' }, icon: Eye },
+            { id: 'chain' as const, label: { zh: '分佣链路图', en: 'Commission Chain' }, icon: GitBranch },
+            { id: 'simulate' as const, label: { zh: '模拟计算', en: 'Simulate' }, icon: TrendingUp },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setDetailTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all flex-1 justify-center ${
+                  detailTab === tab.id
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Icon size={14} />
+                {t(tab.label)}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Rules */}
-        <div className="mb-6">
-          <h4 className="text-sm font-bold text-slate-400 uppercase mb-3">{t({ zh: '分佣规则', en: 'Split Rules' })}</h4>
-          {plan.rules.length === 0 ? (
-            <p className="text-slate-500 text-sm">{t({ zh: '暂无规则', en: 'No rules defined' })}</p>
-          ) : (
-            <div className="space-y-2">
-              {plan.rules.map((rule, index) => (
-                <div
-                  key={index}
-                  className={`flex items-center justify-between bg-slate-800/50 rounded-lg p-3 ${!rule.active ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full ${rule.active ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                    <div>
-                      <p className="text-white font-medium">{rule.customRoleName || rule.role}</p>
-                      <p className="text-xs text-slate-500">{rule.source} · {rule.recipient || 'Not set'}</p>
+        {/* ===== Tab: Overview ===== */}
+        {detailTab === 'overview' && (
+          <>
+            {/* Fee Config */}
+            <div className="mb-6">
+              <h4 className="text-sm font-bold text-slate-400 uppercase mb-3">{t({ zh: '费率配置', en: 'Fee Configuration' })}</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-slate-800/50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Onramp</p>
+                  <p className="text-white font-semibold">{formatFee(plan.feeConfig.onrampFeeBps)}</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Offramp</p>
+                  <p className="text-white font-semibold">{formatFee(plan.feeConfig.offrampFeeBps)}</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">{t({ zh: '分佣费', en: 'Split Fee' })}</p>
+                  <p className="text-white font-semibold">{formatFee(plan.feeConfig.splitFeeBps)}</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">{t({ zh: '最低分佣', en: 'Min Split' })}</p>
+                  <p className="text-white font-semibold">{(plan.feeConfig.minSplitFee / 1000000).toFixed(2)} USDC</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Rules */}
+            <div className="mb-6">
+              <h4 className="text-sm font-bold text-slate-400 uppercase mb-3">{t({ zh: '分佣规则', en: 'Split Rules' })}</h4>
+              {plan.rules.length === 0 ? (
+                <p className="text-slate-500 text-sm">{t({ zh: '暂无规则', en: 'No rules defined' })}</p>
+              ) : (
+                <div className="space-y-2">
+                  {plan.rules.map((rule, index) => {
+                    const colors = getRoleColor(rule.role);
+                    return (
+                      <div
+                        key={index}
+                        className={`flex items-center justify-between rounded-lg p-3 border ${!rule.active ? 'opacity-40 bg-slate-800/30 border-white/5' : `${colors.bg} ${colors.border}`}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`w-2 h-2 rounded-full ${rule.active ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                          <div>
+                            <p className={`font-medium ${rule.active ? colors.text : 'text-slate-500'}`}>{rule.customRoleName || rule.role}</p>
+                            <p className="text-xs text-slate-500">{rule.source} · {rule.recipient || t({ zh: '未设置', en: 'Not set' })}</p>
+                          </div>
+                        </div>
+                        <span className={`font-bold text-lg ${rule.active ? colors.text : 'text-slate-500'}`}>{formatShare(rule.shareBps)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Stats */}
+            <div className="flex items-center justify-between text-sm text-slate-500 pt-4 border-t border-slate-700/50">
+              <span>{t({ zh: '使用次数', en: 'Usage Count' })}: {plan.usageCount}</span>
+              <span>{t({ zh: '创建于', en: 'Created' })}: {new Date(plan.createdAt).toLocaleDateString()}</span>
+            </div>
+          </>
+        )}
+
+        {/* ===== Tab: Commission Chain Diagram (L1/L2/L3) ===== */}
+        {detailTab === 'chain' && (
+          <div className="space-y-2">
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4 flex items-start gap-2">
+              <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-300">
+                {t({
+                  zh: '下图展示了一笔 $100 交易在当前分佣计划下的资金流向。每一层级代表一个分佣阶段，从平台基础费到主分佣再到推荐链路。',
+                  en: 'The diagram below shows the fund flow of a $100 transaction under this split plan. Each level represents a commission stage, from platform base fee to primary split to referral chain.'
+                })}
+              </p>
+            </div>
+
+            {/* Transaction Source */}
+            <div className="flex justify-center mb-1">
+              <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-xl px-6 py-3 text-center shadow-lg shadow-amber-500/5">
+                <div className="flex items-center gap-2 justify-center mb-1">
+                  <DollarSign size={18} className="text-amber-400" />
+                  <span className="text-lg font-bold text-amber-300">$100.00</span>
+                </div>
+                <span className="text-[10px] text-amber-400/70 uppercase font-bold tracking-wider">{t({ zh: '交易金额', en: 'Transaction Amount' })}</span>
+              </div>
+            </div>
+
+            {/* Chain Levels */}
+            {chainLevels.map((level, levelIdx) => {
+              const levelColors: Record<string, string> = {
+                blue: 'from-blue-500/30 to-blue-500/5 border-blue-500/20',
+                emerald: 'from-emerald-500/30 to-emerald-500/5 border-emerald-500/20',
+                purple: 'from-purple-500/30 to-purple-500/5 border-purple-500/20',
+              };
+              const arrowColors: Record<string, string> = {
+                blue: 'text-blue-500',
+                emerald: 'text-emerald-500',
+                purple: 'text-purple-500',
+              };
+              const labelColors: Record<string, string> = {
+                blue: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+                emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+                purple: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+              };
+
+              return (
+                <React.Fragment key={level.level}>
+                  {/* Arrow connector */}
+                  <div className="flex justify-center py-1">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-0.5 h-4 ${arrowColors[level.color]?.replace('text-', 'bg-') || 'bg-slate-600'} opacity-50`} />
+                      <ArrowDown size={16} className={arrowColors[level.color] || 'text-slate-500'} />
                     </div>
                   </div>
-                  <span className="text-blue-400 font-bold">{formatShare(rule.shareBps)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Stats */}
-        <div className="flex items-center justify-between text-sm text-slate-500 pt-4 border-t border-slate-700/50">
-          <span>{t({ zh: '使用次数', en: 'Usage Count' })}: {plan.usageCount}</span>
-          <span>{t({ zh: '创建于', en: 'Created' })}: {new Date(plan.createdAt).toLocaleDateString()}</span>
-        </div>
+                  {/* Level Container */}
+                  <div className={`bg-gradient-to-b ${levelColors[level.color] || ''} border rounded-xl p-4`}>
+                    {/* Level Header */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${labelColors[level.color] || ''}`}>
+                        {level.level}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-300">{t(level.label)}</span>
+                    </div>
+
+                    {/* Nodes */}
+                    <div className={`grid gap-3 ${level.nodes.length === 1 ? 'grid-cols-1' : level.nodes.length === 2 ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3'}`}>
+                      {level.nodes.map((node, nodeIdx) => {
+                        const colors = getRoleColor(node.role);
+                        return (
+                          <div
+                            key={nodeIdx}
+                            className={`${colors.bg} border ${colors.border} rounded-xl p-3 shadow-lg ${colors.glow} relative`}
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <Wallet size={14} className={colors.text} />
+                              <span className={`text-sm font-bold ${colors.text}`}>{node.name}</span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-white text-xl font-black">${node.amount.toFixed(2)}</span>
+                              <span className={`text-xs font-bold ${colors.text} opacity-70`}>
+                                {(node.shareBps / 100).toFixed(1)}%
+                              </span>
+                            </div>
+                            {/* Mini progress bar */}
+                            <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${colors.border.replace('border-', 'bg-').replace('/40', '')}`}
+                                style={{ width: `${Math.min(node.shareBps / 100, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+
+            {/* No referral hint */}
+            {!activeRules.some(r => ['referrer', 'promoter'].includes(r.role)) && (
+              <div className="flex justify-center py-1">
+                <div className="flex flex-col items-center">
+                  <div className="w-0.5 h-4 bg-slate-600 opacity-30" />
+                  <ArrowDown size={16} className="text-slate-600" />
+                </div>
+              </div>
+            )}
+            {!activeRules.some(r => ['referrer', 'promoter'].includes(r.role)) && (
+              <div className="border border-dashed border-slate-700 rounded-xl p-4 text-center">
+                <GitBranch size={20} className="mx-auto mb-2 text-slate-600" />
+                <p className="text-sm text-slate-500">{t({ zh: '此计划暂无推荐/推广者分佣层', en: 'No referral/promoter layer in this plan' })}</p>
+                <p className="text-xs text-slate-600 mt-1">{t({ zh: '添加 referrer 或 promoter 角色以启用 L3 推荐链路', en: 'Add referrer or promoter roles to enable L3 referral chain' })}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== Tab: Simulate ===== */}
+        {detailTab === 'simulate' && (
+          <div className="space-y-6">
+            {/* Amount Input */}
+            <div className="bg-slate-800/50 rounded-xl p-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                {t({ zh: '模拟交易金额 (USDC)', en: 'Simulate Transaction Amount (USDC)' })}
+              </label>
+              <div className="flex items-center gap-3">
+                <DollarSign size={20} className="text-slate-500" />
+                <input
+                  type="number"
+                  min="1"
+                  step="10"
+                  value={simulateAmount}
+                  onChange={(e) => setSimulateAmount(Math.max(1, parseFloat(e.target.value) || 1))}
+                  className="flex-1 bg-slate-900/50 border border-white/10 rounded-lg px-4 py-2.5 text-white text-lg font-bold outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex gap-2 mt-3">
+                {[10, 50, 100, 500, 1000].map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setSimulateAmount(amt)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                      simulateAmount === amt ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    ${amt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Simulation Results */}
+            <div className="bg-slate-800/50 rounded-xl p-4">
+              <h4 className="text-sm font-bold text-slate-400 uppercase mb-4">{t({ zh: '分佣结果', en: 'Split Results' })}</h4>
+
+              {/* Platform Fee */}
+              <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                    <Layers size={16} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-blue-400">{t({ zh: '平台手续费', en: 'Platform Fee' })}</p>
+                    <p className="text-[10px] text-slate-500">{formatFee(plan.feeConfig.splitFeeBps)}</p>
+                  </div>
+                </div>
+                <span className="text-lg font-black text-blue-400">${simulation.platformFee.toFixed(2)}</span>
+              </div>
+
+              {/* Distributable */}
+              <div className="flex items-center justify-between px-3 py-2 mb-3">
+                <span className="text-xs text-slate-500">{t({ zh: '可分配金额', en: 'Distributable' })}</span>
+                <span className="text-sm font-bold text-white">${simulation.distributable.toFixed(2)}</span>
+              </div>
+
+              {/* Role Splits */}
+              <div className="space-y-2">
+                {simulation.results.map((result, idx) => {
+                  const colors = getRoleColor(result.roleKey);
+                  const barWidth = Math.min((result.share / 10000) * 100, 100);
+                  return (
+                    <div key={idx} className={`p-3 rounded-lg border ${colors.bg} ${colors.border}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Wallet size={14} className={colors.text} />
+                          <span className={`text-sm font-semibold ${colors.text}`}>{result.role}</span>
+                          <span className="text-[10px] text-slate-500">{formatShare(result.share)}</span>
+                        </div>
+                        <span className="text-lg font-black text-white">${result.amount.toFixed(2)}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${colors.border.replace('border-', 'bg-').replace('/40', '')}`}
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Total Check */}
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/5">
+                <span className="text-sm font-bold text-slate-400">{t({ zh: '合计', en: 'Total' })}</span>
+                <span className="text-lg font-black text-white">
+                  ${(simulation.platformFee + simulation.results.reduce((s, r) => s + r.amount, 0)).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={onClose}
-          className="w-full mt-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition-colors"
+          className="w-full mt-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition-colors"
         >
           {t({ zh: '关闭', en: 'Close' })}
         </button>

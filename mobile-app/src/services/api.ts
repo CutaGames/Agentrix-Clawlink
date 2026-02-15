@@ -16,12 +16,9 @@ import * as SecureStore from 'expo-secure-store';
 
 // 根据环境自动选择 API 地址
 const getDefaultBaseUrl = () => {
-  // Expo Go 在真机上需要使用 tunnel 地址或者后端的公网地址
-  // 开发时可以使用 localhost (仅模拟器有效)
-  if (__DEV__) {
-    return 'http://localhost:3001/api';
-  }
-  return 'https://api.agentrix.io/api'; // 生产环境
+  // 真机无法访问 localhost，始终使用公网后端地址
+  // 如需本地调试，可在 Settings 页面手动修改
+  return 'https://api.agentrix.top/api';
 };
 
 const DEFAULT_BASE_URL = getDefaultBaseUrl();

@@ -355,6 +355,11 @@ contract CommissionV2 is Ownable, ReentrancyGuard, Pausable {
             pendingBalances[rule.recipient] += allocation;
         }
         
+        // 先把分配金额从 relayer 转入合约（供各方 claimAll 提取）
+        if (distributableAmount > 0) {
+            settlementToken.safeTransferFrom(msg.sender, address(this), distributableAmount);
+        }
+        
         // 平台费用直接转入 Treasury
         if (platformFee > 0) {
             settlementToken.safeTransferFrom(msg.sender, platformTreasury, platformFee);

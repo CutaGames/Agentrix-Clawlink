@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Image from 'next/image'
 import { useRouter } from 'next/router'
 import { useState, useEffect } from 'react'
 import { Navigation } from '../components/ui/Navigation'
@@ -252,11 +253,13 @@ export default function TestScenarios() {
                     onClick={() => handleProductClick(product)}
                   >
                     {product.metadata?.image && (
-                      <div className="mb-4 rounded-lg overflow-hidden">
-                        <img
+                      <div className="mb-4 rounded-lg overflow-hidden relative h-48">
+                        <Image
                           src={product.metadata.image}
                           alt={product.name}
-                          className="w-full h-48 object-cover"
+                          fill
+                          className="object-cover"
+                          unoptimized
                         />
                       </div>
                     )}

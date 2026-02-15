@@ -85,7 +85,7 @@ export class BudgetPool {
   splitPlanId: string;
 
   @ManyToOne(() => SplitPlan, { nullable: true })
-  @JoinColumn({ name: 'splitPlanId' })
+  @JoinColumn({ name: 'split_plan_id' })
   splitPlan: SplitPlan;
 
   /** 状态 */
@@ -105,7 +105,7 @@ export class BudgetPool {
   ownerId: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'ownerId' })
+  @JoinColumn({ name: 'owner_id' })
   owner: User;
 
   /** 关联的里程碑 */
@@ -115,6 +115,15 @@ export class BudgetPool {
   /** 元数据 */
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
+
+
+  /** On-chain BudgetPool contract poolId */
+  @Column({ nullable: true })
+  onchainPoolId: number;
+
+  /** Fund transaction hash */
+  @Column({ type: 'varchar', nullable: true })
+  fundTxHash: string;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -126,9 +135,13 @@ export class BudgetPool {
    * 计算可用余额
    */
   get availableAmount(): string {
-    const funded = BigInt(this.fundedAmount || '0');
-    const reserved = BigInt(this.reservedAmount || '0');
-    const released = BigInt(this.releasedAmount || '0');
+    const safeBigInt = (v: string | null | undefined) => {
+      if (!v) return 0n;
+      return BigInt(String(v).split('.')[0] || '0');
+    };
+    const funded = safeBigInt(this.fundedAmount);
+    const reserved = safeBigInt(this.reservedAmount);
+    const released = safeBigInt(this.releasedAmount);
     return (funded - reserved - released).toString();
   }
 }

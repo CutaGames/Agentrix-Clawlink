@@ -897,6 +897,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
       } catch (apiErr) {
         console.warn('PayIntent API failed, using fallback QR generation:', apiErr);
         // 如果 API 失败，创建一个本地的 payIntent 对象用于 QR 码生成
+        // 注意：本地 ID 无法在后端验证，QR 码将使用 EIP-681 协议（钱包直接支付）
         intent = {
           id: `local-${Date.now()}`,
           type: 'order_payment',
@@ -908,9 +909,11 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           merchantId: order.merchantId,
           metadata: {
             to: toAddress,
-            payUrl: `${window.location.origin}/pay/checkout?orderId=${order.id}&amount=${finalAmount}&currency=${finalCurrency}&to=${toAddress}`,
+            // 不设置 payUrl，让 QRCodeView 自动使用 EIP-681 协议
+            // payUrl: `${window.location.origin}/pay/checkout?...`, // 移除，避免生成无法访问的 localhost URL
             originalAmount: order.amount,
             originalCurrency: order.currency,
+            isLocalFallback: true, // 标记这是本地 fallback
           },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1730,22 +1733,58 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
         </div>
 
         <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-sm mb-6">
-          {/* Prefer backend QR image (wallet-compatible), fallback to deep-link */}
-          {payIntent.metadata?.qrCode ? (
-            <img 
-              src={payIntent.metadata.qrCode} 
-              alt="Payment QR Code" 
-              className="w-48 h-48"
-            />
-          ) : (
-            <QRCodeSVG 
-              value={payUrl}
-              size={192}
-              level="M"
-              includeMargin={true}
-              className="rounded-lg"
-            />
-          )}
+          {/* 
+           * QR码显示优先级：
+           * 1. 如果是本地开发环境 (localhost)，优先使用 EIP-681 链接，因为手机无法访问 localhost
+           * 2. 如果后端QR码包含 localhost URL，也使用 EIP-681 链接
+           * 3. 生产环境下，如果后端生成了 QR 码，使用后端 QR 码
+           * 4. 否则使用前端生成的 EIP-681 QR 码
+           */}
+          {(() => {
+            // 检查是否是本地开发环境
+            const isLocalhost = typeof window !== 'undefined' && 
+              (window.location.hostname === 'localhost' || 
+               window.location.hostname === '127.0.0.1' ||
+               window.location.hostname.startsWith('192.168.') ||
+               window.location.hostname.startsWith('10.'));
+            
+            // 检查后端 QR 码的 payUrl 是否包含 localhost
+            const backendPayUrl = payIntent.metadata?.payUrl || '';
+            const backendQrIsLocalhost = backendPayUrl.includes('localhost') || backendPayUrl.includes('127.0.0.1');
+            
+            // 在本地环境下，优先使用 EIP-681 链接（钱包可直接识别）
+            const shouldUseEip681 = isLocalhost || backendQrIsLocalhost;
+            
+            if (shouldUseEip681 && eip681Link) {
+              return (
+                <QRCodeSVG 
+                  value={eip681Link}
+                  size={192}
+                  level="M"
+                  includeMargin={true}
+                  className="rounded-lg"
+                />
+              );
+            } else if (payIntent.metadata?.qrCode && !shouldUseEip681) {
+              return (
+                <img 
+                  src={payIntent.metadata.qrCode} 
+                  alt="Payment QR Code" 
+                  className="w-48 h-48"
+                />
+              );
+            } else {
+              return (
+                <QRCodeSVG 
+                  value={payUrl}
+                  size={192}
+                  level="M"
+                  includeMargin={true}
+                  className="rounded-lg"
+                />
+              );
+            }
+          })()}
         </div>
 
         <div className="text-center space-y-2 mb-8">
@@ -1755,6 +1794,14 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
           <p className="text-sm text-slate-500 max-w-[240px]">
             Scan this QR code with your mobile wallet (MetaMask, Trust Wallet, OKX, etc.) to complete the payment.
           </p>
+          {/* 显示收款地址 */}
+          {toAddress && (
+            <div className="pt-2">
+              <p className="text-xs text-slate-400 break-all">
+                To: {toAddress.slice(0, 10)}...{toAddress.slice(-8)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">

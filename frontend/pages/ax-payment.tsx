@@ -316,7 +316,7 @@ export default function AXPaymentPage() {
         <SmartCheckout
           order={demoOrders[selectedDemo]}
           onSuccess={(result) => {
-            console.log('Payment success:', result);
+            // Payment success logic
             setShowCheckout(false);
             setSelectedDemo(null);
           }}

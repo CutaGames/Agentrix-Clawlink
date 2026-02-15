@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import Image from 'next/image'
 
 interface FileUploadProps {
   onUpload: (file: File) => Promise<string>  // 返回文件URL
@@ -103,11 +104,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       )}
 
       {preview && (
-        <div className="relative">
-          <img
+        <div className="relative mt-4">
+          <Image 
             src={preview}
             alt="Preview"
-            className="w-full h-64 object-contain rounded-lg border border-gray-200"
+            width={400}
+            height={256}
+            className="object-contain rounded-lg border border-gray-200 w-full h-64"
+            unoptimized
           />
           {uploading && (
             <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">

@@ -78,6 +78,8 @@ import { DatasetModule } from './modules/dataset/dataset.module';
 import { CommonModule } from './modules/common/common.module';
 // Commerce Skill 模块
 import { CommerceModule } from './modules/commerce/commerce.module';
+// A2A (Agent-to-Agent) 模块
+import { A2AModule } from './modules/a2a/a2a.module';
 
 @Module({
   imports: [
@@ -162,6 +164,8 @@ import { CommerceModule } from './modules/commerce/commerce.module';
     CommonModule,
     // Commerce Skill
     CommerceModule,
+    // A2A (Agent-to-Agent)
+    A2AModule,
   ],
   controllers: [AppController],
   providers: [AppService],

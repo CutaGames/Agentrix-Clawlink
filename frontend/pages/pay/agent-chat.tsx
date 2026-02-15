@@ -134,7 +134,7 @@ export default function AgentChatPayment() {
   }
 
   const handlePaymentSuccess = (result: any) => {
-    console.log('Payment successful:', result)
+    // Payment successful logic
     setShowCheckout(false)
     setCurrentPaymentRequest(null)
     // 可以添加成功消息到聊天

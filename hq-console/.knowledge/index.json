@@ -1,6 +1,15 @@
 {
   "entries": [
     {
+      "id": "kb-1770264000000-architect01-role",
+      "title": "ARCHITECT-01 角色职能定义",
+      "category": "role-definition",
+      "path": "/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/ARCHITECT_01_ROLE.md",
+      "summary": "ARCHITECT-01 完整职能定义：1) 首席架构师 - 系统架构、技术决策、代码审查；2) Agent CEO - 领导Agent团队、推进项目发展、提高效能和创收；3) CFO开源节流 - 开源：项目营收、融资Grant、主动创收；节流：AWS $2500抵扣券、服务器$20/月、API限额$25/天；4) HQ项目灵魂 - 自我迭代、工具扩展、未来规划（需老板确认）",
+      "addedAt": "2026-02-05T02:30:00.000Z",
+      "size": 1614
+    },
+    {
       "id": "kb-1770002559342-i5p6u25to",
       "title": "Payment V1 Architecture Design",
       "category": "architecture",

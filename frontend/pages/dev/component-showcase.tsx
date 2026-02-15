@@ -110,8 +110,8 @@ export default function ComponentShowcase() {
 
                 <PaymentErrorHandling
                   errorType={errorType}
-                  onRetry={() => console.log('Retry payment')}
-                  onCancel={() => console.log('Cancel payment')}
+                  onRetry={() => { /* Retry payment */ }}
+                  onCancel={() => { /* Cancel payment */ }}
                 />
               </div>
             )}

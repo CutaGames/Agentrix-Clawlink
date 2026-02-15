@@ -95,7 +95,7 @@ interface UserModuleV2Props {
   hideNavigation?: boolean; // 嵌入模式下隐藏组件自带导航，使用外部 L1/L2
 }
 
-type MainTab = 'dashboard' | 'agents' | 'skills' | 'autoEarn' | 'shopping' | 'assets' | 'payments' | 'security' | 'profile' | 'unified-account' | 'agent-accounts' | 'kyc' | 'earn' | 'shop';
+type MainTab = 'dashboard' | 'agents' | 'skills' | 'autoEarn' | 'shopping' | 'assets' | 'payments' | 'security' | 'profile' | 'unified-account' | 'agent-accounts' | 'kyc' | 'earn' | 'shop' | 'promotion';
 
 // --- 子组件: 授权额度消耗进度波形图 ---
 const UsageWaveform = ({ progress = 65 }: { progress?: number }) => {
@@ -442,6 +442,11 @@ export function UserModuleV2({ onCommand, forcedMainTab, forcedSubTab, hideNavig
     ],
     shop: [
       { id: 'marketplace', label: { zh: '智能商城', en: 'Shop' } },
+    ],
+    promotion: [
+      { id: 'overview', label: { zh: '推广总览', en: 'Overview' } },
+      { id: 'my-links', label: { zh: '我的链接', en: 'My Links' } },
+      { id: 'materials', label: { zh: '营销素材', en: 'Materials' } },
     ],
   }), []);
 
@@ -1130,6 +1135,9 @@ export function UserModuleV2({ onCommand, forcedMainTab, forcedSubTab, hideNavig
         );
 
       case 'shopping-promotions':
+      case 'promotion-overview':
+      case 'promotion-my-links':
+      case 'promotion-materials':
         return (
           <div className="p-6">
             <PromotionPanel />

@@ -2,7 +2,9 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CommissionController } from './commission.controller';
+import { HumanCommissionController } from './human-commission.controller';
 import { CommissionService } from './commission.service';
+import { HumanCommissionService } from './human-commission.service';
 import { CommissionCalculatorService } from './commission-calculator.service';
 import { CommissionSchedulerService } from './commission-scheduler.service';
 import { CommissionStrategyV4Service } from './commission-strategy-v4.service';
@@ -18,6 +20,8 @@ import { User } from '../../entities/user.entity';
 import { Order } from '../../entities/order.entity';
 import { PayIntent } from '../../entities/pay-intent.entity';
 import { AuditProof } from '../../entities/audit-proof.entity';
+import { HumanCommission } from '../../entities/human-commission.entity';
+import { HumanReferralChain } from '../../entities/human-referral-chain.entity';
 import { PaymentModule } from '../payment/payment.module';
 
 @Module({
@@ -33,11 +37,13 @@ import { PaymentModule } from '../payment/payment.module';
       Order,
       PayIntent,
       AuditProof,
+      HumanCommission,
+      HumanReferralChain,
     ]),
     ScheduleModule.forRoot(),
     forwardRef(() => PaymentModule),
   ],
-  controllers: [CommissionController],
+  controllers: [CommissionController, HumanCommissionController],
   providers: [
     CommissionService,
     CommissionCalculatorService,
@@ -45,6 +51,7 @@ import { PaymentModule } from '../payment/payment.module';
     CommissionStrategyV4Service,
     AttributionCommissionService,
     AuditProofService,
+    HumanCommissionService,
   ],
   exports: [
     CommissionService,
@@ -52,6 +59,7 @@ import { PaymentModule } from '../payment/payment.module';
     CommissionStrategyV4Service,
     AttributionCommissionService,
     AuditProofService,
+    HumanCommissionService,
     TypeOrmModule,
   ],
 })

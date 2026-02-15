@@ -75,7 +75,10 @@ export enum SkillOriginalPlatform {
 
 export enum SkillStatus {
   DRAFT = 'draft',
+  PENDING_REVIEW = 'pending_review',
   PUBLISHED = 'published',
+  ACTIVE = 'active',
+  REJECTED = 'rejected',
   DEPRECATED = 'deprecated',
 }
 

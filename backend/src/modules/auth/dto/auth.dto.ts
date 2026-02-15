@@ -55,6 +55,41 @@ export class WalletLoginDto {
   chainId?: string;
 }
 
+export class SocialTokenLoginDto {
+  @ApiProperty({ description: '社交账号类型', enum: SocialAccountType })
+  @IsEnum(SocialAccountType, { message: '无效的社交账号类型' })
+  provider: SocialAccountType;
+
+  @ApiProperty({ description: '来自社交平台的 OAuth access token 或 id token' })
+  @IsString()
+  accessToken: string;
+
+  @ApiProperty({ description: '社交平台用户ID（可选，部分平台需要）', required: false })
+  @IsOptional()
+  @IsString()
+  socialId?: string;
+
+  @ApiProperty({ description: '用户邮箱（可选，部分平台返回）', required: false })
+  @IsOptional()
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email?: string;
+
+  @ApiProperty({ description: '用户名（可选）', required: false })
+  @IsOptional()
+  @IsString()
+  username?: string;
+
+  @ApiProperty({ description: '显示名称（可选）', required: false })
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @ApiProperty({ description: '头像URL（可选）', required: false })
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
+}
+
 export class BindSocialAccountDto {
   @ApiProperty({ description: '社交账号类型', enum: SocialAccountType })
   @IsEnum(SocialAccountType, { message: '无效的社交账号类型' })

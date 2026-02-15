@@ -5,6 +5,8 @@ import { Navigation } from '../../components/ui/Navigation'
 import { Footer } from '../../components/layout/Footer'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { useCurrency, type SupportedCurrency } from '../../contexts/CurrencyContext'
+import { ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 
 type ChannelType = 'fiat' | 'wallet' | 'cross-border'
 type KycLevel = 'none' | 'basic' | 'advanced'
@@ -142,8 +144,12 @@ export default function SmartRoutingPage() {
       </Head>
       <Navigation />
       <main className="bg-slate-950 text-white">
-        <section className="border-b border-white/10 bg-gradient-to-r from-indigo-600/90 to-blue-600/90 py-16 text-white">
+        <section className="border-b border-white/10 bg-gradient-to-r from-indigo-600/90 to-blue-600/90 py-8 text-white">
           <div className="container mx-auto px-6">
+            <Link href="/marketplace" className="inline-flex items-center text-indigo-100 hover:text-white mb-6 text-sm transition-colors">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {t({ zh: '返回市场', en: 'Back to Marketplace' })}
+            </Link>
             <p className="text-sm uppercase tracking-wide text-indigo-100">
               {t({ zh: 'Routing Context · 实时评分', en: 'Routing context · real-time scoring' })}
             </p>
@@ -334,7 +340,7 @@ export default function SmartRoutingPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
                         <span className="rounded-full bg-white/10 px-2 py-1">
                           {channel.requiresKyc === 'advanced'
                             ? t({ zh: '高级 KYC', en: 'Advanced KYC' })

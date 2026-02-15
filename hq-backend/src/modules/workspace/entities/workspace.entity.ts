@@ -12,6 +12,7 @@ import {
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
+import { WorkspaceFile } from './workspace-file.entity';
 
 export enum WorkspaceType {
   PROJECT = 'project',       // 项目工作区
@@ -54,9 +55,8 @@ export class Workspace {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
 
-  // Relation defined in WorkspaceFile entity
-  // @OneToMany(() => WorkspaceFile, file => file.workspace)
-  // files: WorkspaceFile[];
+  @OneToMany(() => WorkspaceFile, file => file.workspace)
+  files: WorkspaceFile[];
 
   @CreateDateColumn()
   createdAt: Date;

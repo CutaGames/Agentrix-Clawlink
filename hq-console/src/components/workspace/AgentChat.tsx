@@ -1,54 +1,22 @@
 /**
- * Agent Chat Component
+ * Agent Chat Component (Refactored - Phase 3)
  * 
- * 与架构师/Coder Agent 聊天 - 支持文件上传、图片、拖放、工具调用
+ * 主组件 - 组合各个拆分的子组件
+ * 从 1172 行减少到 ~350 行
  */
 
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { hqApi, chatWithAgent } from '@/lib/api';
-import { Send, Paperclip, Image, X, Upload, Loader2, FileText, Download, ExternalLink, Maximize2, Minimize2, Terminal, FolderOpen, Edit, Globe, Lock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
-import { useTools, ToolExecution } from '@/hooks/useTools';
-import { getToolsSystemPrompt, parseToolCalls, ToolCall } from '@/lib/tools';
-import { isToolAllowed } from '@/lib/agent-permissions';
-
-// 权限请求接口
-interface PermissionRequest {
-  id: string;
-  tool: string;
-  params: Record<string, any>;
-  reason: string;
-  status: 'pending' | 'approved' | 'denied';
-}
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'tool';
-  content: string;
-  agentCode?: string;
-  timestamp: Date;
-  attachments?: AttachedFile[];
-  generatedFiles?: GeneratedFile[];
-  toolExecutions?: ToolExecution[];
-  permissionRequest?: PermissionRequest;
-}
-
-interface AttachedFile {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  content?: string;
-  preview?: string;
-}
-
-interface GeneratedFile {
-  path: string;
-  name: string;
-  language?: string;
-  content?: string;
-}
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { hqApi } from '@/lib/api';
+import { useTools, type ToolExecution } from '@/hooks/useTools';
+import { getToolsSystemPrompt, type ToolCall, readFile as localReadFile, writeFile as localWriteFile, editFile as localEditFile, listDir as localListDir } from '@/lib/tools';
+import { useAgents } from '@/hooks/useAgents';
+import { useChatStream, type Message } from '@/hooks/useChatStream';
+import { AgentSelector, FALLBACK_AGENTS, AGENT_META, type AgentOption } from './AgentSelector';
+import { ChatMessageList } from './ChatMessageList';
+import { ChatInput } from './ChatInput';
+import type { AttachedFile, GeneratedFile, PermissionRequest } from './ChatMessage';
 
 // 工具执行回调类型
 export interface ToolExecutionCallback {
@@ -74,185 +42,526 @@ export interface ToolExecutionCallback {
 
 interface AgentChatProps {
   workspaceId: string;
+  workspaceRootPath?: string;
   currentFile?: string;
   selectedCode?: string;
   onOpenFile?: (path: string) => void;
   callbacks?: ToolExecutionCallback;
 }
 
-const AGENTS = [
-  { code: 'ARCHITECT-01', name: '架构师', icon: '🏛️', description: 'Claude Opus 4.5 - 系统架构设计' },
-  { code: 'CODER-01', name: 'Coder', icon: '💻', description: 'Claude Sonnet 4.5 - 代码实现' },
-  { code: 'GROWTH-01', name: '增长负责人', icon: '📈', description: 'Claude Haiku 4.5 - 增长策略' },
-  { code: 'BD-01', name: 'BD 负责人', icon: '🌍', description: 'Claude Haiku 4.5 - 生态发展' },
-  { code: 'SOCIAL-01', name: '社媒运营', icon: '📱', description: 'Gemini 2.5 Flash - 社交媒体' },
-  { code: 'CONTENT-01', name: '内容创作', icon: '✍️', description: 'Gemini 2.5 Flash - 内容策划' },
-  { code: 'SUPPORT-01', name: '客户成功', icon: '🎯', description: 'Gemini 2.5 Flash - 客户支持' },
-  { code: 'SECURITY-01', name: '安全审计', icon: '🔒', description: 'Gemini 2.5 Flash - 安全审计' },
-];
+function getWorkspaceToolsPrompt(workspaceRootPath?: string): string {
+  const base = getToolsSystemPrompt();
+  if (!workspaceRootPath) return base;
+  return `${base}
 
-const TOOLS_SYSTEM_PROMPT = getToolsSystemPrompt();
-
-// Extract generated files from AI response
-function extractGeneratedFiles(content: string): GeneratedFile[] {
-  const files: GeneratedFile[] = [];
-  const codeBlockRegex = /```(\w+)?\s*\n?(?:\/\/\s*file:\s*([^\n]+)\n)?([\s\S]*?)```/g;
-  
-  let match;
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    const language = match[1] || 'text';
-    const filePath = match[2]?.trim();
-    const code = match[3]?.trim();
-    
-    if (filePath && code) {
-      files.push({
-        path: filePath,
-        name: filePath.split('/').pop() || filePath,
-        language,
-        content: code,
-      });
-    }
-  }
-  
-  return files;
+## 当前工作区
+ 工作目录: ${workspaceRootPath}
+ 请使用以上目录下的绝对路径或相对路径
+ 当路径不在工作目录下时，请改写为工作目录内路径`;
 }
 
-export function AgentChat({ workspaceId, currentFile, selectedCode, onOpenFile, callbacks }: AgentChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [thinkingStartTime, setThinkingStartTime] = useState<Date | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState(AGENTS[1]); // Default to Coder
-  const abortControllerRef = useRef<AbortController | null>(null);
+// Session type for multi-session support
+interface ChatSession {
+  id: string;
+  name: string;
+  agentCode: string;
+  messages: Message[];
+  totalTokens: number;
+  createdAt: number;
+}
 
-  // 停止生成
-  const handleStop = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setLoading(false);
-    setThinkingStartTime(null);
-    callbacks?.onActivityChange?.({ type: 'stopped', description: '已停止', status: 'completed' });
-  }, [callbacks]);
-  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  
-  // 工具执行 Hook
-  const { executeTool, executeToolsInMessage, isExecuting, executions } = useTools();
+function generateSessionId() {
+  return `s_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
 
-  // 计算思考时间
-  const thinkingDuration = thinkingStartTime 
-    ? Math.floor((Date.now() - thinkingStartTime.getTime()) / 1000) 
-    : 0;
+export function AgentChat({ workspaceId, workspaceRootPath, currentFile, selectedCode, onOpenFile, callbacks }: AgentChatProps) {
+  // localStorage keys
+  const sessionsKey = `hq_ws_sessions_${workspaceId}`;
+  const activeSessionKey = `hq_ws_active_session_${workspaceId}`;
 
-  // 自动滚动到底部
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const newHeight = Math.min(textareaRef.current.scrollHeight, isExpanded ? 200 : 100);
-      textareaRef.current.style.height = `${newHeight}px`;
-    }
-  }, [input, isExpanded]);
-
-  // Handle file reading
-  const handleFileSelect = useCallback(async (files: FileList | null) => {
-    if (!files) return;
-    
-    const newFiles: AttachedFile[] = [];
-    
-    for (const file of Array.from(files)) {
-      const id = `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setAttachedFiles(prev => prev.map(f => 
-            f.id === id ? { ...f, preview: e.target?.result as string } : f
-          ));
+  // Load sessions from localStorage
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = localStorage.getItem(sessionsKey);
+      if (stored) {
+        const parsed: ChatSession[] = JSON.parse(stored);
+        return parsed.map(s => ({
+          ...s,
+          messages: s.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })),
+        }));
+      }
+    } catch {}
+    // Migrate from old single-session format
+    try {
+      const oldKey = `hq_workspace_chat_${workspaceId}`;
+      const oldMessages = localStorage.getItem(oldKey);
+      const oldAgent = localStorage.getItem(`${oldKey}_agent`);
+      if (oldMessages) {
+        const msgs = JSON.parse(oldMessages).map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+        const agent = oldAgent ? JSON.parse(oldAgent) : FALLBACK_AGENTS[1];
+        const migrated: ChatSession = {
+          id: generateSessionId(),
+          name: `${agent.name} Session`,
+          agentCode: agent.code,
+          messages: msgs,
+          totalTokens: 0,
+          createdAt: Date.now(),
         };
-        reader.readAsDataURL(file);
-        
-        newFiles.push({
-          id,
-          name: file.name,
-          type: file.type,
-          size: file.size,
-        });
+        // Clean up old keys
+        localStorage.removeItem(oldKey);
+        localStorage.removeItem(`${oldKey}_agent`);
+        return [migrated];
+      }
+    } catch {}
+    return [];
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem(activeSessionKey);
+      if (stored) return stored;
+    } catch {}
+    return null;
+  });
+
+  // Derive current session
+  const currentSession = sessions.find(s => s.id === activeSessionId) || sessions[0] || null;
+  const messages = currentSession?.messages || [];
+  const totalTokens = currentSession?.totalTokens || 0;
+
+  const [input, setInput] = useState('');
+  const [selectedAgent, setSelectedAgent] = useState<AgentOption>(() => {
+    if (typeof window === 'undefined') return FALLBACK_AGENTS[1];
+    // Restore from current session's agent
+    try {
+      const storedSessionId = localStorage.getItem(activeSessionKey);
+      const storedSessions = localStorage.getItem(sessionsKey);
+      if (storedSessions && storedSessionId) {
+        const parsed: ChatSession[] = JSON.parse(storedSessions);
+        const active = parsed.find(s => s.id === storedSessionId);
+        if (active) {
+          const matched = FALLBACK_AGENTS.find(a => a.code === active.agentCode);
+          if (matched) return matched;
+        }
+      }
+    } catch {}
+    return FALLBACK_AGENTS[1];
+  });
+  const [lastModel, setLastModel] = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
+  const [iterationLimitInfo, setIterationLimitInfo] = useState<{ count: number } | null>(null);
+  const iterationLimitResolverRef = useRef<((choice: 'continue' | 'summarize') => void) | null>(null);
+  const [showContinue, setShowContinue] = useState(false);
+  
+  const { agents: backendAgents } = useAgents();
+  const { executeTool } = useTools();
+
+  // Track the effective session ID (use ref so setMessages always targets the latest)
+  const effectiveSessionIdRef = useRef<string | null>(activeSessionId || sessions[0]?.id || null);
+  useEffect(() => {
+    effectiveSessionIdRef.current = activeSessionId || sessions[0]?.id || null;
+  }, [activeSessionId, sessions]);
+
+  // Helper: update messages in the current session
+  const setMessages = useCallback((updater: Message[] | ((prev: Message[]) => Message[])) => {
+    const targetId = effectiveSessionIdRef.current;
+    setSessions(prev => prev.map(s => {
+      if (s.id !== targetId) return s;
+      const newMessages = typeof updater === 'function' ? updater(s.messages) : updater;
+      return { ...s, messages: newMessages };
+    }));
+  }, []);
+
+  // Helper: update totalTokens in the current session
+  const setTotalTokens = useCallback((updater: number | ((prev: number) => number)) => {
+    const targetId = effectiveSessionIdRef.current;
+    setSessions(prev => prev.map(s => {
+      if (s.id !== targetId) return s;
+      const newTokens = typeof updater === 'function' ? updater(s.totalTokens) : updater;
+      return { ...s, totalTokens: newTokens };
+    }));
+  }, []);
+
+  // Persist sessions to localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (sessions.length > 0) {
+        localStorage.setItem(sessionsKey, JSON.stringify(sessions));
       } else {
-        const content = await file.text();
-        newFiles.push({
-          id,
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          content: content.slice(0, 50000),
-        });
+        localStorage.removeItem(sessionsKey);
+      }
+    } catch {}
+  }, [sessions, sessionsKey]);
+
+  // Persist active session id
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (activeSessionId) {
+        localStorage.setItem(activeSessionKey, activeSessionId);
+      } else {
+        localStorage.removeItem(activeSessionKey);
+      }
+    } catch {}
+  }, [activeSessionId, activeSessionKey]);
+
+  // Build a context summary from all existing sessions so new sessions aren't "amnesiac"
+  const buildCrossSessionContext = useCallback((): Message | null => {
+    const allSessions = sessions.filter(s => s.messages.length > 0);
+    if (allSessions.length === 0) return null;
+
+    const summaryParts: string[] = [];
+    for (const s of allSessions) {
+      const agentName = FALLBACK_AGENTS.find(a => a.code === s.agentCode)?.name || s.agentCode;
+      // Take key messages: first user message + last 2 exchanges
+      const userMsgs = s.messages.filter(m => m.role === 'user');
+      const firstTopic = userMsgs[0]?.content?.slice(0, 200) || '';
+      const recentExchanges = s.messages.slice(-4).map(m => {
+        const preview = m.content.length > 300 ? m.content.slice(0, 300) + '...' : m.content;
+        return `  [${m.role}]: ${preview}`;
+      }).join('\n');
+
+      summaryParts.push(
+        `### Session "${s.name}" (${agentName}, ${s.messages.length} messages)\n` +
+        `Topic: ${firstTopic}\n` +
+        `Recent:\n${recentExchanges}`
+      );
+    }
+
+    return {
+      id: 'cross-session-ctx',
+      role: 'assistant' as const,
+      content: `[CONTEXT FROM PREVIOUS SESSIONS]\nBelow is a summary of conversations from other sessions in this workspace. Use this context to maintain continuity.\n\n${summaryParts.join('\n\n---\n\n')}`,
+      timestamp: new Date(),
+    };
+  }, [sessions]);
+
+  // Create a new session (returns the new session for immediate use)
+  const createSession = useCallback((agentCode: string, name?: string): ChatSession => {
+    const agent = FALLBACK_AGENTS.find(a => a.code === agentCode) || FALLBACK_AGENTS[1];
+
+    // Build cross-session context so the new session has memory of prior conversations
+    const contextMsg = buildCrossSessionContext();
+    const initialMessages: Message[] = contextMsg ? [contextMsg] : [];
+
+    const session: ChatSession = {
+      id: generateSessionId(),
+      name: name || `${agent.name} ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+      agentCode,
+      messages: initialMessages,
+      totalTokens: 0,
+      createdAt: Date.now(),
+    };
+    setSessions(prev => [...prev, session]);
+    setActiveSessionId(session.id);
+    effectiveSessionIdRef.current = session.id; // Update ref immediately for same-tick setMessages calls
+    setShowContinue(false);
+    return session;
+  }, [buildCrossSessionContext]);
+
+  // Switch to a session
+  const switchSession = useCallback((sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+    setActiveSessionId(sessionId);
+    effectiveSessionIdRef.current = sessionId;
+    setShowContinue(false);
+    // Update selected agent to match session's agent
+    const agent = FALLBACK_AGENTS.find(a => a.code === session.agentCode);
+    if (agent) setSelectedAgent(agent);
+  }, [sessions]);
+
+  // Delete a session
+  const deleteSession = useCallback((sessionId: string) => {
+    setSessions(prev => {
+      const remaining = prev.filter(s => s.id !== sessionId);
+      // If we deleted the active session, switch to the last remaining one
+      if (activeSessionId === sessionId) {
+        const next = remaining[remaining.length - 1];
+        setActiveSessionId(next?.id || null);
+        if (next) {
+          const agent = FALLBACK_AGENTS.find(a => a.code === next.agentCode);
+          if (agent) setSelectedAgent(agent);
+        }
+      }
+      return remaining;
+    });
+    setShowContinue(false);
+  }, [activeSessionId]);
+
+  // Path normalization utilities
+  const normalizeWorkspacePath = useCallback((inputPath?: string) => {
+    if (!inputPath) return inputPath;
+    if (!workspaceRootPath) return inputPath;
+
+    const normalizedInput = inputPath.replace(/\\/g, '/');
+    const normalizedRoot = workspaceRootPath.replace(/\\/g, '/');
+    
+    if (!normalizedInput.startsWith('/')) {
+      return `${normalizedRoot}/${normalizedInput}`;
+    }
+    if (normalizedInput.startsWith(normalizedRoot)) {
+      return normalizedInput;
+    }
+
+    const repoName = normalizedRoot.split('/').filter(Boolean).pop();
+    if (repoName) {
+      const repoMarker = `/${repoName}/`;
+      const repoIndex = normalizedInput.indexOf(repoMarker);
+      if (repoIndex !== -1) {
+        return `${normalizedRoot}/${normalizedInput.slice(repoIndex + repoMarker.length)}`;
       }
     }
-    
-    setAttachedFiles(prev => [...prev, ...newFiles]);
-  }, []);
 
-  // Drag and drop
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
+    const knownRoots = [
+      '/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website',
+      'D:/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website',
+    ];
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    handleFileSelect(e.dataTransfer.files);
-  }, [handleFileSelect]);
-
-  // Paste images
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    const files: File[] = [];
-    
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) files.push(file);
+    for (const root of knownRoots) {
+      if (normalizedInput.startsWith(root)) {
+        return `${normalizedRoot}/${normalizedInput.slice(root.length)}`;
       }
     }
-    
-    if (files.length > 0) {
-      const dt = new DataTransfer();
-      files.forEach(f => dt.items.add(f));
-      handleFileSelect(dt.files);
-    }
-  }, [handleFileSelect]);
 
-  const removeFile = useCallback((id: string) => {
-    setAttachedFiles(prev => prev.filter(f => f.id !== id));
+    const altMarker = '/Agentrix-website/';
+    if (normalizedInput.includes(altMarker)) {
+      const tail = normalizedInput.split(altMarker)[1];
+      return `${normalizedRoot}/${tail}`;
+    }
+
+    return normalizedInput;
+  }, [workspaceRootPath]);
+
+  const normalizeWorkspaceSubPath = useCallback((inputPath?: string) => {
+    if (!inputPath) return '';
+    if (!workspaceRootPath) return inputPath.replace(/\\/g, '/');
+    const normalizedRoot = workspaceRootPath.replace(/\\/g, '/');
+    const absolute = normalizeWorkspacePath(inputPath)?.replace(/\\/g, '/');
+    if (absolute?.startsWith(normalizedRoot)) {
+      return absolute.slice(normalizedRoot.length).replace(/^\/+/, '');
+    }
+    return absolute || '';
+  }, [normalizeWorkspacePath, workspaceRootPath]);
+
+  // Tool execution wrapper for workspace files
+  const executeWorkspaceToolCall = useCallback(async (call: ToolCall): Promise<ToolExecution> => {
+    const timestamp = new Date().toISOString();
+    const baseParams = call.params || {};
+    const normalizedParams: Record<string, any> = {
+      ...baseParams,
+      filePath: baseParams.filePath || baseParams.path,
+      path: baseParams.path || baseParams.filePath,
+    };
+
+    const executionBase: ToolExecution = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      tool: call.tool,
+      params: normalizedParams,
+      status: 'running',
+      timestamp,
+    };
+
+    const isWorkspaceFileTool = ['read_file', 'write_file', 'edit_file', 'list_dir'].includes(call.tool);
+    const isLocalWorkspace = Boolean(workspaceRootPath && (workspaceRootPath.startsWith('local://') || /^([A-Za-z]:\\|\/mnt\/)/.test(workspaceRootPath)));
+    if (!isWorkspaceFileTool || !workspaceId) {
+      return executeTool(call);
+    }
+
+    if (isLocalWorkspace && workspaceRootPath?.startsWith('local://')) {
+      return { ...executionBase, status: 'error', error: 'Local handle workspaces do not support tool file operations yet.' };
+    }
+
+    if (isLocalWorkspace) {
+      try {
+        switch (call.tool) {
+          case 'read_file': {
+            const filePath = normalizeWorkspacePath(normalizedParams.filePath);
+            if (!filePath) throw new Error('filePath is required');
+            const data = await localReadFile(filePath);
+            return { ...executionBase, status: 'success', result: { ...data, filePath } };
+          }
+          case 'write_file': {
+            const filePath = normalizeWorkspacePath(normalizedParams.filePath);
+            if (!filePath) throw new Error('filePath is required');
+            const content = normalizedParams.content ?? '';
+            const data = await localWriteFile(filePath, content, { createIfNotExists: true });
+            return { ...executionBase, status: 'success', result: { ...data, filePath } };
+          }
+          case 'edit_file': {
+            const filePath = normalizeWorkspacePath(normalizedParams.filePath);
+            if (!filePath) throw new Error('filePath is required');
+            const oldString = normalizedParams.oldString ?? '';
+            const newString = normalizedParams.newString ?? '';
+            if (!oldString) throw new Error('oldString is required');
+            const data = await localEditFile(filePath, oldString, newString, { backup: true });
+            return { ...executionBase, status: 'success', result: { ...data, filePath } };
+          }
+          case 'list_dir': {
+            const dirPath = normalizeWorkspacePath(normalizedParams.path || workspaceRootPath || '');
+            if (!dirPath) throw new Error('path is required');
+            const data = await localListDir(dirPath, { recursive: false, maxDepth: 1 });
+            return { ...executionBase, status: 'success', result: data };
+          }
+          default:
+            return executeTool(call);
+        }
+      } catch (error: any) {
+        return { ...executionBase, status: 'error', error: error.message || 'Tool execution failed' };
+      }
+    }
+
+    try {
+      switch (call.tool) {
+        case 'read_file': {
+          const filePath = normalizeWorkspacePath(normalizedParams.filePath);
+          if (!filePath) throw new Error('filePath is required');
+          const data = await hqApi.readFile(workspaceId, filePath);
+          return { ...executionBase, status: 'success', result: { ...data, filePath } };
+        }
+        case 'write_file': {
+          const filePath = normalizeWorkspacePath(normalizedParams.filePath);
+          if (!filePath) throw new Error('filePath is required');
+          const content = normalizedParams.content ?? '';
+          await hqApi.saveFile(workspaceId, filePath, content);
+          return {
+            ...executionBase,
+            status: 'success',
+            result: { success: true, filePath, bytesWritten: String(content).length },
+          };
+        }
+        case 'edit_file': {
+          const filePath = normalizeWorkspacePath(normalizedParams.filePath);
+          if (!filePath) throw new Error('filePath is required');
+          const oldString = normalizedParams.oldString ?? '';
+          const newString = normalizedParams.newString ?? '';
+          if (!oldString) throw new Error('oldString is required');
+          const current = await hqApi.readFile(workspaceId, filePath);
+          if (!current.content.includes(oldString)) {
+            throw new Error('oldString not found in file');
+          }
+          const updated = current.content.replace(oldString, newString);
+          await hqApi.saveFile(workspaceId, filePath, updated);
+          return { ...executionBase, status: 'success', result: { success: true, filePath, replaced: true } };
+        }
+        case 'list_dir': {
+          const dirPath = normalizeWorkspaceSubPath(normalizedParams.path || '');
+          const data = await hqApi.getFileTree(workspaceId, dirPath || undefined);
+          const items = (data || []).map(item => ({
+            name: item.name,
+            path: item.path,
+            type: item.type,
+          }));
+          return { ...executionBase, status: 'success', result: { path: dirPath, items, count: items.length } };
+        }
+        default:
+          return executeTool(call);
+      }
+    } catch (error: any) {
+      return { ...executionBase, status: 'error', error: error.message || 'Tool execution failed' };
+    }
+  }, [executeTool, normalizeWorkspacePath, normalizeWorkspaceSubPath, workspaceId]);
+
+  const executeToolCalls = useCallback(async (calls: ToolCall[]) => {
+    const results: ToolExecution[] = [];
+    for (const call of calls) {
+      results.push(await executeWorkspaceToolCall(call));
+    }
+    return { results };
+  }, [executeWorkspaceToolCall]);
+
+  // Streaming update handler: upsert a streaming placeholder message in real-time
+  const handleStreamingUpdate = useCallback((msgId: string, content: string) => {
+    setMessages(prev => {
+      const existing = prev.find(m => m.id === msgId);
+      if (existing) {
+        return prev.map(m => m.id === msgId ? { ...m, content } : m);
+      }
+      // Insert streaming placeholder
+      return [...prev, {
+        id: msgId,
+        role: 'assistant' as const,
+        content,
+        timestamp: new Date(),
+      }];
+    });
   }, []);
 
-  // 发送消息
-  const handleSend = async () => {
+  // Iteration limit confirmation handler
+  const handleIterationLimitReached = useCallback((iterationCount: number): Promise<'continue' | 'summarize'> => {
+    return new Promise((resolve) => {
+      setIterationLimitInfo({ count: iterationCount });
+      iterationLimitResolverRef.current = (choice: 'continue' | 'summarize') => {
+        setIterationLimitInfo(null);
+        iterationLimitResolverRef.current = null;
+        resolve(choice);
+      };
+    });
+  }, []);
+
+  // Use chat stream hook
+  const { loading, thinkingDuration, sendMessage, stopGeneration } = useChatStream({
+    onToolExecute: executeToolCalls,
+    buildSystemPrompt: getWorkspaceToolsPrompt,
+    callbacks,
+    onStreamingUpdate: handleStreamingUpdate,
+    onIterationLimitReached: handleIterationLimitReached,
+  });
+
+  // Agent options from backend
+  const agentOptions = useMemo(() => {
+    if (!backendAgents || backendAgents.length === 0) return FALLBACK_AGENTS;
+    return backendAgents.map(agent => {
+      const meta = AGENT_META[agent.code] || { icon: '🤖', description: agent.role || 'AI Agent' };
+      return {
+        code: agent.code,
+        name: agent.name || agent.code,
+        icon: meta.icon,
+        description: meta.description,
+      };
+    });
+  }, [backendAgents]);
+
+  // Update selected agent when options change
+  useEffect(() => {
+    if (agentOptions.length === 0) return;
+    setSelectedAgent(prev => {
+      const matched = agentOptions.find(agent => agent.code === prev.code);
+      if (matched) return matched;
+      return agentOptions.find(agent => agent.code === 'CODER-01') || agentOptions[0];
+    });
+  }, [agentOptions]);
+
+  // Handle agent selection: switch to existing session for that agent or create new one
+  const handleAgentSelect = useCallback((agent: AgentOption) => {
+    setSelectedAgent(agent);
+    // Find existing session for this agent
+    const existingSession = sessions.find(s => s.agentCode === agent.code);
+    if (existingSession) {
+      setActiveSessionId(existingSession.id);
+    } else {
+      createSession(agent.code);
+    }
+    setShowContinue(false);
+  }, [sessions, createSession]);
+
+  // Send message handler
+  const handleSend = useCallback(async () => {
     if ((!input.trim() && attachedFiles.length === 0) || loading) return;
+
+    // Auto-create session if none exists
+    if (!currentSession) {
+      createSession(selectedAgent.code);
+    }
 
     // Build message with attachments
     let fullContent = input.trim();
     const attachmentsCopy = [...attachedFiles];
-    
+
     if (attachmentsCopy.length > 0) {
       fullContent += attachmentsCopy.map(f => {
         if (f.content) {
@@ -283,295 +592,135 @@ export function AgentChat({ workspaceId, currentFile, selectedCode, onOpenFile, 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setAttachedFiles([]);
-    setLoading(true);
-    setThinkingStartTime(new Date());
-    
-    // 通知开始思考
-    callbacks?.onActivityChange?.({ type: 'thinking', description: 'Agent 思考中...', status: 'running' });
 
-    try {
-      // 构建包含工具系统提示词的消息历史
-      const systemMessage = { role: 'system' as const, content: TOOLS_SYSTEM_PROMPT };
-      const conversationHistory = messages.map(m => ({
-        role: m.role === 'tool' ? 'assistant' as const : m.role as 'user' | 'assistant',
-        content: m.content
-      }));
-      
-      // 添加系统提示词和用户消息
-      const apiMessages = [
-        systemMessage,
-        ...conversationHistory,
-        { role: 'user' as const, content: fullContent }
-      ];
-      
-      // Use direct chat API with fallback
-      callbacks?.onActivityChange?.({ type: 'thinking', description: '等待 AI 响应...', status: 'running' });
-      const response = await chatWithAgent(selectedAgent.code, apiMessages);
-      callbacks?.onActivityChange?.({ type: 'thinking', description: '收到响应', status: 'completed' });
+    const result = await sendMessage({
+      agentCode: selectedAgent.code,
+      conversationHistory: messages,
+      userContent: fullContent,
+      workspaceRootPath,
+    });
 
-      let responseContent = response.content || response.message || 'OK';
-      const generatedFiles = extractGeneratedFiles(responseContent);
-      
-      // 检查响应中是否包含工具调用
-      const toolCalls = parseToolCalls(responseContent);
-      const agentPermissionKey = selectedAgent.code;
-      const deniedToolCalls = toolCalls.filter(tc => !isToolAllowed(agentPermissionKey, tc.tool));
-      const allowedToolCalls = toolCalls.filter(tc => isToolAllowed(agentPermissionKey, tc.tool));
-      console.log('[AgentChat] Parsed tool calls from response:', toolCalls.length, toolCalls);
-      
-      if (toolCalls.length > 0) {
-        // 检查是否有需要权限的工具调用
-        const permissionRequired = allowedToolCalls.filter(tc => tc.requiresPermission);
-        const autoExecute = allowedToolCalls.filter(tc => !tc.requiresPermission);
-        
-        // 添加 Agent 响应消息
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: responseContent,
-          agentCode: selectedAgent.code,
-          timestamp: new Date(),
-          generatedFiles: generatedFiles.length > 0 ? generatedFiles : undefined,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-        
-        if (deniedToolCalls.length > 0) {
-          const deniedResults: ToolExecution[] = deniedToolCalls.map((tc, idx) => ({
-            id: `blocked-${Date.now()}-${idx}`,
-            tool: tc.tool,
-            params: tc.params,
-            status: 'error',
-            error: 'Permission denied by UI settings',
-            timestamp: new Date().toISOString(),
-          }));
-          const deniedMessage: Message = {
-            id: (Date.now() + 10).toString(),
-            role: 'tool',
-            content: formatToolResults(deniedResults),
-            timestamp: new Date(),
-            toolExecutions: deniedResults,
-          };
-          setMessages(prev => [...prev, deniedMessage]);
-          callbacks?.onActivityChange?.({ type: 'permission', description: '部分工具被权限策略拦截', status: 'error' });
+    if (result) {
+      // Replace streaming placeholder with final message (which has toolExecutions etc.)
+      setMessages(prev => {
+        const hasPlaceholder = prev.some(m => m.id === result.message.id);
+        if (hasPlaceholder) {
+          return prev.map(m => m.id === result.message.id ? result.message : m);
         }
-
-        // 自动执行不需要权限的工具
-        if (autoExecute.length > 0) {
-          console.log('[AgentChat] Auto-executing', autoExecute.length, 'tools');
-          
-          // 通知每个工具执行
-          for (const tool of autoExecute) {
-            const toolType = tool.tool === 'read_file' ? 'reading_file' 
-              : tool.tool === 'write_file' ? 'writing_file'
-              : tool.tool === 'edit_file' ? 'editing_file'
-              : tool.tool === 'list_dir' ? 'listing_dir'
-              : tool.tool === 'run_command' ? 'running_command'
-              : 'thinking';
-            callbacks?.onActivityChange?.({ 
-              type: toolType, 
-              description: `执行 ${tool.tool}: ${JSON.stringify(tool.params).slice(0, 50)}...`, 
-              status: 'running' 
-            });
-          }
-          
-          const toolResults = await executeToolsInMessage(responseContent, autoExecute);
-          console.log('[AgentChat] Tool execution results:', toolResults);
-          
-          // 通知工具执行结果，更新文件/终端面板
-          for (const result of toolResults.results) {
-            if (['read_file', 'write_file', 'edit_file'].includes(result.tool)) {
-              callbacks?.onFileChange?.({
-                type: result.tool === 'read_file' ? 'read' : result.tool === 'write_file' ? 'write' : 'edit',
-                path: result.params.filePath || result.params.path,
-                preview: result.result?.content?.slice(0, 200) || result.result?.message,
-                success: result.status === 'success',
-                error: result.error,
-              });
-            } else if (result.tool === 'run_command') {
-              callbacks?.onTerminalOutput?.({
-                command: result.params.command,
-                output: result.result?.stdout || result.result?.output || '',
-                exitCode: result.result?.exitCode,
-                cwd: result.params.cwd,
-              });
-            } else if (result.tool === 'list_dir') {
-              callbacks?.onFileChange?.({
-                type: 'read',
-                path: result.params.path,
-                preview: result.result?.items?.slice(0, 10).map((i: any) => i.name).join(', '),
-                success: result.status === 'success',
-                error: result.error,
-              });
-            }
-            
-            callbacks?.onActivityChange?.({ 
-              type: result.tool, 
-              description: `${result.tool} ${result.status === 'success' ? '成功' : '失败'}`, 
-              status: result.status === 'success' ? 'completed' : 'error' 
-            });
-          }
-          
-          // 添加工具执行结果消息
-          if (toolResults.results.length > 0) {
-            const toolResultMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              role: 'tool',
-              content: formatToolResults(toolResults.results),
-              timestamp: new Date(),
-              toolExecutions: toolResults.results,
-            };
-            setMessages(prev => [...prev, toolResultMessage]);
-            
-            // 继续与 Agent 对话，传递工具结果
-            callbacks?.onActivityChange?.({ type: 'thinking', description: '分析工具结果...', status: 'running' });
-            const followUpMessages = [
-              systemMessage,
-              ...conversationHistory,
-              { role: 'user' as const, content: fullContent },
-              { role: 'assistant' as const, content: responseContent },
-              { role: 'user' as const, content: `工具执行结果:\n${formatToolResults(toolResults.results)}\n\n请根据以上结果继续回答。` }
-            ];
-            
-            const followUpResponse = await chatWithAgent(selectedAgent.code, followUpMessages);
-            const followUpContent = followUpResponse.content || followUpResponse.message || '';
-            
-            if (followUpContent) {
-              const followUpMessage: Message = {
-                id: (Date.now() + 3).toString(),
-                role: 'assistant',
-                content: followUpContent,
-                agentCode: selectedAgent.code,
-                timestamp: new Date(),
-              };
-              setMessages(prev => [...prev, followUpMessage]);
-            }
-            callbacks?.onActivityChange?.({ type: 'completed', description: '完成', status: 'completed' });
-          }
-        }
-        
-        // 如果有需要权限的工具调用，添加到待处理列表
-        if (permissionRequired.length > 0) {
-          const newPermissions: PermissionRequest[] = permissionRequired.map((tc, idx) => ({
-            id: `perm-${Date.now()}-${idx}`,
-            tool: tc.tool,
-            params: tc.params,
-            reason: tc.reason || '执行此操作需要您的授权',
-            status: 'pending' as const,
-          }));
-          setPendingPermissions(prev => [...prev, ...newPermissions]);
-        }
-      } else {
-        // 没有工具调用，直接显示响应
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: responseContent,
-          agentCode: selectedAgent.code,
-          timestamp: new Date(),
-          generatedFiles: generatedFiles.length > 0 ? generatedFiles : undefined,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
+        return [...prev, result.message];
+      });
+      if (result.model) setLastModel(result.model);
+      if (result.message.tokenUsage) {
+        setTotalTokens(prev => prev + result.message.tokenUsage!.totalTokens);
       }
-    } catch (error) {
-      console.error('Chat failed:', error);
-      callbacks?.onActivityChange?.({ type: 'error', description: '请求失败', status: 'error' });
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `[Error] ${error instanceof Error ? error.message : 'Failed to connect to AI engine. Please check the server status.'}`,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
-      setThinkingStartTime(null);
+      // Show Continue button if response was truncated
+      setShowContinue(!!result.isTruncated);
     }
-  };
-  
-  // 格式化工具执行结果
-  const formatToolResults = (results: ToolExecution[]): string => {
-    return results.map(r => {
-      if (r.status === 'success') {
-        return `✅ ${r.tool}: ${JSON.stringify(r.result, null, 2)}`;
-      } else {
-        return `❌ ${r.tool}: ${r.error}`;
+  }, [input, attachedFiles, loading, currentFile, selectedCode, selectedAgent, messages, workspaceRootPath, sendMessage, currentSession, createSession]);
+
+  // Continue truncated response
+  const handleContinue = useCallback(async () => {
+    if (loading) return;
+    setShowContinue(false);
+
+    const result = await sendMessage({
+      agentCode: selectedAgent.code,
+      conversationHistory: messages,
+      userContent: 'Continue',
+      workspaceRootPath,
+    });
+
+    if (result) {
+      setMessages(prev => {
+        const hasPlaceholder = prev.some(m => m.id === result.message.id);
+        if (hasPlaceholder) {
+          return prev.map(m => m.id === result.message.id ? result.message : m);
+        }
+        return [...prev, result.message];
+      });
+      if (result.model) setLastModel(result.model);
+      if (result.message.tokenUsage) {
+        setTotalTokens(prev => prev + result.message.tokenUsage!.totalTokens);
       }
-    }).join('\n\n');
-  };
-  
-  // 处理权限请求
-  const handlePermission = async (permId: string, approved: boolean) => {
+      setShowContinue(!!result.isTruncated);
+    }
+  }, [loading, sendMessage, selectedAgent, messages, workspaceRootPath]);
+
+  // Clear conversation (clears current session's messages)
+  const handleClear = useCallback(() => {
+    setMessages([]);
+    setAttachedFiles([]);
+    setTotalTokens(0);
+    setShowContinue(false);
+  }, [setMessages, setTotalTokens]);
+
+  // Handle file attachments
+  const handleFilesAttach = useCallback((files: AttachedFile[]) => {
+    setAttachedFiles(prev => [...prev, ...files]);
+  }, []);
+
+  const handleFileRemove = useCallback((id: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.id !== id));
+  }, []);
+
+  // Handle permissions
+  const handlePermissionApprove = useCallback(async (permId: string) => {
     const perm = pendingPermissions.find(p => p.id === permId);
     if (!perm) return;
-    
-    // 更新权限状态
-    setPendingPermissions(prev => 
-      prev.map(p => p.id === permId ? { ...p, status: approved ? 'approved' : 'denied' } : p)
+
+    setPendingPermissions(prev =>
+      prev.map(p => p.id === permId ? { ...p, status: 'approved' as const } : p)
     );
-    
-    if (approved) {
-      setLoading(true);
-      try {
-        // 执行工具
-        const toolCall: ToolCall = {
-          tool: perm.tool,
-          params: perm.params,
-        };
-        const result = await executeTool(toolCall);
-        
-        // 添加工具执行结果消息
-        const toolResultMessage: Message = {
-          id: Date.now().toString(),
-          role: 'tool',
-          content: result.status === 'success' 
-            ? `✅ ${perm.tool} 执行成功:\n\`\`\`\n${JSON.stringify(result.result, null, 2)}\n\`\`\``
-            : `❌ ${perm.tool} 执行失败: ${result.error}`,
-          timestamp: new Date(),
-          toolExecutions: [result],
-        };
-        setMessages(prev => [...prev, toolResultMessage]);
-      } catch (error) {
-        console.error('Tool execution failed:', error);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      // 用户拒绝了权限
-      const deniedMessage: Message = {
+
+    try {
+      const toolCall: ToolCall = { tool: perm.tool, params: perm.params };
+      const result = await executeTool(toolCall);
+
+      const toolResultMessage: Message = {
         id: Date.now().toString(),
         role: 'tool',
-        content: `🚫 用户拒绝了 ${perm.tool} 操作的权限请求`,
+        content: result.status === 'success'
+          ? `✅ ${perm.tool} 执行成功:\n\`\`\`\n${JSON.stringify(result.result, null, 2)}\n\`\`\``
+          : `❌ ${perm.tool} 执行失败: ${result.error}`,
         timestamp: new Date(),
+        toolExecutions: [result],
       };
-      setMessages(prev => [...prev, deniedMessage]);
+      setMessages(prev => [...prev, toolResultMessage]);
+    } catch (error) {
+      console.error('Tool execution failed:', error);
     }
-    
-    // 移除已处理的权限请求
+
     setTimeout(() => {
       setPendingPermissions(prev => prev.filter(p => p.id !== permId));
     }, 2000);
-  };
+  }, [pendingPermissions, executeTool]);
 
-  // Keyboard shortcuts
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const handlePermissionDeny = useCallback((permId: string) => {
+    const perm = pendingPermissions.find(p => p.id === permId);
+    if (!perm) return;
 
-  // 清空对话
-  const handleClear = () => {
-    setMessages([]);
-    setAttachedFiles([]);
-  };
+    setPendingPermissions(prev =>
+      prev.map(p => p.id === permId ? { ...p, status: 'denied' as const } : p)
+    );
+
+    const deniedMessage: Message = {
+      id: Date.now().toString(),
+      role: 'tool',
+      content: `🚫 用户拒绝了 ${perm.tool} 操作的权限请求`,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, deniedMessage]);
+
+    setTimeout(() => {
+      setPendingPermissions(prev => prev.filter(p => p.id !== permId));
+    }, 2000);
+  }, [pendingPermissions]);
 
   // Save generated file
   const handleSaveFile = async (file: GeneratedFile) => {
     if (!file.content) return;
-    
+
     try {
-      // Use local tools API
       const response = await fetch('/api/tools/write-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -580,7 +729,7 @@ export function AgentChat({ workspaceId, currentFile, selectedCode, onOpenFile, 
           content: file.content,
         }),
       });
-      
+
       if (response.ok) {
         alert(`File saved: ${file.name}`);
         onOpenFile?.(file.path);
@@ -594,322 +743,125 @@ export function AgentChat({ workspaceId, currentFile, selectedCode, onOpenFile, 
   };
 
   return (
-    <div 
-      className="h-full flex flex-col"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {/* Drop overlay */}
-      {isDragOver && (
-        <div className="absolute inset-0 bg-blue-900/50 z-50 flex items-center justify-center">
-          <div className="text-blue-300 flex items-center gap-2">
-            <Upload className="h-8 w-8" />
-            <span className="text-lg">Drop files here</span>
-          </div>
-        </div>
-      )}
+    <div className="h-full flex flex-col">
+      {/* Agent Selector */}
+      <AgentSelector
+        agents={agentOptions}
+        selected={selectedAgent}
+        onSelect={handleAgentSelect}
+        lastModel={lastModel}
+      />
 
-      {/* 头部 - Agent 选择 */}
-      <div className="h-14 bg-gray-800 border-b border-gray-700 p-2">
-        <div className="flex gap-1">
-          {AGENTS.map(agent => (
-            <button
-              key={agent.code}
-              className={`flex-1 px-2 py-1 rounded text-xs ${
-                selectedAgent.code === agent.code
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-              onClick={() => setSelectedAgent(agent)}
-              title={agent.description}
-            >
-              <span className="mr-1">{agent.icon}</span>
-              {agent.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 上下文指示器 */}
-      {(currentFile || selectedCode) && (
-        <div className="bg-gray-800/50 border-b border-gray-700 p-2 text-xs text-gray-400">
-          <div className="flex items-center gap-2">
-            {currentFile && (
-              <span className="bg-gray-700 px-2 py-0.5 rounded">
-                📄 {currentFile.split('/').pop()}
-              </span>
-            )}
-            {selectedCode && (
-              <span className="bg-gray-700 px-2 py-0.5 rounded">
-                ✂️ {selectedCode.length} chars selected
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
-          <div className="text-center text-gray-500 mt-8">
-            <p className="text-4xl mb-4">{selectedAgent.icon}</p>
-            <p className="font-medium">{selectedAgent.name}</p>
-            <p className="text-sm">{selectedAgent.description}</p>
-            <p className="text-xs mt-4 text-gray-600">
-              开始对话，获取帮助...
-              <br />
-              支持拖放文件、粘贴图片
-            </p>
-          </div>
-        ) : (
-          messages.map(msg => (
+      {/* Session Bar */}
+      <div className="bg-gray-900/80 border-b border-gray-700/60 px-1.5 py-1 flex items-center gap-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-600">
+        {sessions.map(s => {
+          const isActive = s.id === (currentSession?.id);
+          return (
             <div
-              key={msg.id}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              key={s.id}
+              className={`group flex items-center gap-1 px-2 py-0.5 rounded text-[10px] cursor-pointer flex-shrink-0 transition-colors ${
+                isActive
+                  ? 'bg-blue-600/80 text-white'
+                  : 'bg-gray-800/60 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+              }`}
+              onClick={() => switchSession(s.id)}
             >
-              <div
-                className={`max-w-[85%] rounded-lg p-3 ${
-                  msg.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-200'
-                }`}
-              >
-                {/* Attachments preview for user messages */}
-                {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {msg.attachments.map(file => (
-                      <div key={file.id} className="bg-gray-600/50 rounded px-2 py-1 text-xs flex items-center gap-1">
-                        {file.preview ? (
-                          <img src={file.preview} alt={file.name} className="h-8 w-8 object-cover rounded" />
-                        ) : (
-                          <FileText className="h-4 w-4" />
-                        )}
-                        <span className="truncate max-w-[100px]">{file.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-
-                {/* Generated files for assistant messages */}
-                {msg.generatedFiles && msg.generatedFiles.length > 0 && (
-                  <div className="mt-3 space-y-2 border-t border-gray-600 pt-2">
-                    <p className="text-xs text-gray-400">Generated Files:</p>
-                    {msg.generatedFiles.map((file, idx) => (
-                      <div key={idx} className="bg-gray-800 rounded p-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-blue-400" />
-                          <span className="text-xs text-blue-300">{file.name}</span>
-                          <span className="text-xs text-gray-500">{file.language}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => onOpenFile?.(file.path)}
-                            className="p-1 hover:bg-gray-700 rounded"
-                            title="Open in editor"
-                          >
-                            <ExternalLink className="h-3 w-3 text-gray-400" />
-                          </button>
-                          <button
-                            onClick={() => handleSaveFile(file)}
-                            className="p-1 hover:bg-gray-700 rounded"
-                            title="Save file"
-                          >
-                            <Download className="h-3 w-3 text-green-400" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <p className="text-xs mt-1 opacity-50">
-                  {msg.timestamp.toLocaleTimeString()}
-                </p>
-              </div>
-            </div>
-          ))
-        )}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-700 text-gray-200 rounded-lg p-3 flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Thinking...</span>
-            </div>
-          </div>
-        )}
-        
-        {/* 权限请求 UI */}
-        {pendingPermissions.filter(p => p.status === 'pending').map(perm => (
-          <div key={perm.id} className="flex justify-start">
-            <div className="bg-amber-900/50 border border-amber-600/50 text-gray-200 rounded-lg p-4 max-w-[85%]">
-              <div className="flex items-center gap-2 mb-2">
-                <Lock className="h-5 w-5 text-amber-400" />
-                <span className="font-medium text-amber-300">权限请求</span>
-              </div>
-              <div className="text-sm mb-3">
-                <p className="mb-1">Agent 请求执行以下操作:</p>
-                <div className="bg-gray-800 rounded p-2 mt-1 font-mono text-xs">
-                  <div className="flex items-center gap-2 text-amber-200">
-                    {perm.tool === 'run_command' && <Terminal className="h-4 w-4" />}
-                    {perm.tool === 'write_file' && <Edit className="h-4 w-4" />}
-                    {perm.tool === 'edit_file' && <Edit className="h-4 w-4" />}
-                    {perm.tool === 'read_file' && <FolderOpen className="h-4 w-4" />}
-                    {perm.tool === 'list_dir' && <FolderOpen className="h-4 w-4" />}
-                    {perm.tool === 'fetch_url' && <Globe className="h-4 w-4" />}
-                    <span>{perm.tool}</span>
-                  </div>
-                  <pre className="text-gray-400 mt-1 overflow-x-auto">
-                    {JSON.stringify(perm.params, null, 2)}
-                  </pre>
-                </div>
-                {perm.reason && (
-                  <p className="mt-2 text-gray-400 text-xs">
-                    <AlertTriangle className="h-3 w-3 inline mr-1" />
-                    原因: {perm.reason}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2">
+              <span className="truncate max-w-[100px]" title={s.name}>{s.name}</span>
+              <span className="text-[8px] opacity-60">({s.messages.length})</span>
+              {sessions.length > 1 && (
                 <button
-                  onClick={() => handlePermission(perm.id, true)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors"
+                  className="ml-0.5 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
+                  onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                  title="Delete session"
                 >
-                  <CheckCircle className="h-4 w-4" />
-                  允许
+                  ×
                 </button>
-                <button
-                  onClick={() => handlePermission(perm.id, false)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
-                >
-                  <XCircle className="h-4 w-4" />
-                  拒绝
-                </button>
-              </div>
+              )}
             </div>
-          </div>
-        ))}
-        
-        <div ref={messagesEndRef} />
+          );
+        })}
+        <button
+          className="flex-shrink-0 px-1.5 py-0.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded text-xs transition-colors"
+          onClick={() => createSession(selectedAgent.code)}
+          title="New session"
+        >
+          +
+        </button>
       </div>
 
-      {/* Attached files preview */}
-      {attachedFiles.length > 0 && (
-        <div className="border-t border-gray-700 bg-gray-800/50 p-2">
-          <div className="flex flex-wrap gap-2">
-            {attachedFiles.map(file => (
-              <div key={file.id} className="bg-gray-700 rounded px-2 py-1 flex items-center gap-2 text-xs">
-                {file.preview ? (
-                  <img src={file.preview} alt={file.name} className="h-6 w-6 object-cover rounded" />
-                ) : (
-                  <FileText className="h-4 w-4 text-gray-400" />
-                )}
-                <span className="truncate max-w-[100px] text-gray-300">{file.name}</span>
-                <button 
-                  onClick={() => removeFile(file.id)}
-                  className="text-gray-500 hover:text-red-400"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+      {/* Message List */}
+      <ChatMessageList
+        messages={messages}
+        loading={loading}
+        selectedAgent={selectedAgent}
+        pendingPermissions={pendingPermissions}
+        currentFile={currentFile}
+        selectedCode={selectedCode}
+        onOpenFile={onOpenFile}
+        onSaveFile={handleSaveFile}
+        onPermissionApprove={handlePermissionApprove}
+        onPermissionDeny={handlePermissionDeny}
+      />
+
+      {/* Iteration Limit Confirmation */}
+      {iterationLimitInfo && (
+        <div className="px-3 py-3 bg-amber-900/40 border-t border-amber-600/50 flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-amber-300 text-sm">
+            <span className="text-lg">⚠️</span>
+            <span>已执行 <strong>{iterationLimitInfo.count}</strong> 轮工具调用，是否继续？</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => iterationLimitResolverRef.current?.('continue')}
+              className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors"
+            >
+              继续执行 (+10轮)
+            </button>
+            <button
+              onClick={() => iterationLimitResolverRef.current?.('summarize')}
+              className="flex-1 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded-md transition-colors"
+            >
+              生成报告
+            </button>
           </div>
         </div>
       )}
 
-      {/* Hidden file inputs */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="*/*"
-        className="hidden"
-        onChange={(e) => handleFileSelect(e.target.files)}
-      />
-      <input
-        ref={imageInputRef}
-        type="file"
-        multiple
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => handleFileSelect(e.target.files)}
-      />
-
-      {/* 输入区域 */}
-      <div className="border-t border-gray-700 p-3 bg-gray-800">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => imageInputRef.current?.click()}
-              className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
-              title="Add image (or paste)"
-            >
-              <Image className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
-              title="Attach file"
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200 transition-colors"
-              title={isExpanded ? "Collapse" : "Expand"}
-            >
-              {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">{input.length} chars</span>
-            <button
-              onClick={handleClear}
-              disabled={messages.length === 0}
-              className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50"
-            >
-              Clear
-            </button>
-          </div>
+      {/* Continue Button - shown when AI response was truncated */}
+      {showContinue && !loading && (
+        <div className="px-3 py-2 bg-blue-900/30 border-t border-blue-600/40 flex items-center gap-2">
+          <span className="text-blue-300 text-xs flex-1">Response was cut off</span>
+          <button
+            onClick={handleContinue}
+            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-md transition-colors font-medium"
+          >
+            Continue
+          </button>
         </div>
+      )}
 
-        {/* Input area */}
-        <div className="flex gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={`Ask ${selectedAgent.name}... (Ctrl+Enter to send)`}
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none transition-colors"
-            style={{ minHeight: isExpanded ? '80px' : '40px' }}
-            disabled={loading}
-          />
-          {loading ? (
-            <button
-              onClick={handleStop}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 rounded-lg transition-colors flex items-center justify-center"
-              title="停止生成"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() && attachedFiles.length === 0}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 rounded-lg transition-colors flex items-center justify-center"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          )}
+      {/* Token Usage Bar */}
+      {totalTokens > 0 && (
+        <div className="px-3 py-1 bg-gray-800/60 border-t border-gray-700/50 flex items-center justify-between text-[10px] text-gray-500">
+          <span>Tokens: ~{totalTokens.toLocaleString()}</span>
+          <span>{messages.filter(m => m.role === 'assistant').length} responses</span>
         </div>
-      </div>
+      )}
+
+      {/* Input Area */}
+      <ChatInput
+        input={input}
+        onInputChange={setInput}
+        onSend={handleSend}
+        onStop={stopGeneration}
+        onClear={handleClear}
+        loading={loading}
+        messageCount={messages.length}
+        agentName={selectedAgent.name}
+        attachedFiles={attachedFiles}
+        onFilesAttach={handleFilesAttach}
+        onFileRemove={handleFileRemove}
+      />
     </div>
   );
 }

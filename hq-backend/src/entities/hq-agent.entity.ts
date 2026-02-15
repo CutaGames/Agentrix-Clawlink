@@ -13,10 +13,12 @@ import {
   Index,
   ManyToMany,
   JoinTable,
+  AfterLoad,
 } from 'typeorm';
 import { HqSkill } from './hq-skill.entity';
 
 export enum AgentRole {
+  COMMANDER = 'commander', // CEO + Strategy
   ARCHITECT = 'architect',
   CODER = 'coder',
   GROWTH = 'growth',
@@ -24,6 +26,7 @@ export enum AgentRole {
   ANALYST = 'analyst',
   SUPPORT = 'support',
   RISK = 'risk',
+  REVENUE = 'revenue',
   FINANCE = 'finance',
   CUSTOM = 'custom',
 }
@@ -51,7 +54,11 @@ export class HqAgent {
 
   @Column({ nullable: true })
   type: string; // Agent type: 'coder', 'analyst', etc.
+  @Column({ nullable: true })
+  provider?: string; // AI provider: 'bedrock', 'gemini', 'openai', etc.
 
+  @Column({ nullable: true })
+  model?: string; // Model name: 'claude-opus-4-5', 'gemini-2.5-flash', etc.
   @Column({
     type: 'enum',
     enum: AgentRole,
@@ -122,4 +129,18 @@ export class HqAgent {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  /**
+   * Sync provider and model from config field after loading
+   * This ensures backward compatibility with existing data structure
+   */
+  @AfterLoad()
+  syncProviderModelFromConfig() {
+    if (!this.provider && this.config?.modelProvider) {
+      this.provider = this.config.modelProvider;
+    }
+    if (!this.model && this.config?.modelId) {
+      this.model = this.config.modelId;
+    }
+  }
 }

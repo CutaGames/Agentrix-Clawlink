@@ -13,6 +13,7 @@ import {
   Query,
   UseGuards,
   Request,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { UnifiedMarketplaceService, UnifiedSearchParams } from './unified-marketplace.service';
@@ -122,7 +123,11 @@ export class UnifiedMarketplaceController {
   @Get('skills/:id')
   @ApiOperation({ summary: '获取 Skill 详情' })
   async getSkillDetail(@Param('id') id: string) {
-    return this.marketplaceService.getSkillDetail(id);
+    const detail = await this.marketplaceService.getSkillDetail(id);
+    if (!detail) {
+      throw new NotFoundException(`Skill ${id} not found`);
+    }
+    return detail;
   }
 
   /**
@@ -212,6 +217,8 @@ export class UnifiedMarketplaceController {
    * 记录 Skill 调用 (内部 API)
    */
   @Post('analytics/record')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: '记录 Skill 调用' })
   async recordSkillCall(
     @Body() body: {

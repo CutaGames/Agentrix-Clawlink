@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Optional, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { BudgetPool, BudgetPoolStatus, FundingSource } from '../../entities/budget-pool.entity';
@@ -12,6 +12,7 @@ import {
   ApproveMilestoneDto,
   RejectMilestoneDto,
 } from './dto/budget-pool.dto';
+import { BlockchainService } from './blockchain.service';
 
 @Injectable()
 export class BudgetPoolService {
@@ -21,7 +22,19 @@ export class BudgetPoolService {
     @InjectRepository(Milestone)
     private readonly milestoneRepo: Repository<Milestone>,
     private readonly dataSource: DataSource,
+    @Optional() private readonly blockchainService?: BlockchainService,
   ) {}
+
+  private readonly logger = new Logger(BudgetPoolService.name);
+
+  /**
+   * 安全转换为BigInt — 处理decimal字符串（如 "0.000000"）
+   */
+  private safeBigInt(value: string | number | null | undefined): bigint {
+    if (value == null) return 0n;
+    const str = String(value).split('.')[0] || '0';
+    return BigInt(str);
+  }
 
   // ===== Budget Pool Operations =====
 
@@ -121,10 +134,18 @@ export class BudgetPoolService {
       throw new BadRequestException('walletAddress is required for wallet funding');
     }
 
-    // TODO: 验证支付/钱包转账
+    // Verify on-chain transaction if txHash provided
+    const txHash = (dto as any).txHash;
+    if (txHash && this.blockchainService && this.blockchainService.isAvailable()) {
+      const verification = await this.blockchainService.verifyTransaction(txHash);
+      if (!verification.success) {
+        throw new BadRequestException('On-chain transaction verification failed');
+      }
+      this.logger.log('On-chain tx verified: ' + txHash);
+    }
 
-    const currentFunded = BigInt(pool.fundedAmount || '0');
-    const newFunded = currentFunded + BigInt(dto.amount);
+    const currentFunded = this.safeBigInt(pool.fundedAmount || '0');
+    const newFunded = currentFunded + this.safeBigInt(dto.amount);
 
     pool.fundedAmount = newFunded.toString();
     pool.fundingSource = dto.fundingSource;
@@ -135,7 +156,7 @@ export class BudgetPoolService {
     }
 
     // 如果充值达到总预算，激活
-    if (newFunded >= BigInt(pool.totalBudget)) {
+    if (newFunded >= this.safeBigInt(pool.totalBudget)) {
       pool.status = BudgetPoolStatus.ACTIVE;
     }
 
@@ -173,8 +194,8 @@ export class BudgetPoolService {
     const pool = await this.findPoolById(dto.budgetPoolId, userId);
 
     // 检查预算是否足够
-    const available = BigInt(pool.fundedAmount) - BigInt(pool.reservedAmount) - BigInt(pool.releasedAmount);
-    if (available < BigInt(dto.reservedAmount)) {
+    const available = this.safeBigInt(pool.fundedAmount) - this.safeBigInt(pool.reservedAmount) - this.safeBigInt(pool.releasedAmount);
+    if (available < this.safeBigInt(dto.reservedAmount)) {
       throw new BadRequestException('Insufficient available budget');
     }
 
@@ -199,7 +220,7 @@ export class BudgetPoolService {
       const savedMilestone = await manager.save(Milestone, milestone);
 
       // 更新预算池预留金额
-      const newReserved = BigInt(pool.reservedAmount) + BigInt(dto.reservedAmount);
+      const newReserved = this.safeBigInt(pool.reservedAmount) + this.safeBigInt(dto.reservedAmount);
       await manager.update(BudgetPool, pool.id, {
         reservedAmount: newReserved.toString(),
       });
@@ -358,16 +379,26 @@ export class BudgetPoolService {
       await manager.save(Milestone, milestone);
 
       // 更新预算池
-      const reservedDelta = BigInt(milestone.reservedAmount);
-      const newReserved = BigInt(pool.reservedAmount) - reservedDelta;
-      const newReleased = BigInt(pool.releasedAmount) + reservedDelta;
+      const reservedDelta = this.safeBigInt(milestone.reservedAmount);
+      const newReserved = this.safeBigInt(pool.reservedAmount) - reservedDelta;
+      const newReleased = this.safeBigInt(pool.releasedAmount) + reservedDelta;
 
       await manager.update(BudgetPool, pool.id, {
         reservedAmount: newReserved.toString(),
         releasedAmount: newReleased.toString(),
       });
 
-      // TODO: 触发实际的资金分配 (调用 CommissionV2 合约)
+      // Call on-chain contract to release funds
+      if (this.blockchainService && this.blockchainService.isAvailable() && (milestone as any).onchainMilestoneId != null) {
+        try {
+          const releaseTxHash = await this.blockchainService.releaseMilestoneFundsOnChain((milestone as any).onchainMilestoneId);
+          milestone.metadata = { ...milestone.metadata, releaseTxHash };
+          await manager.save(Milestone, milestone);
+          this.logger.log('On-chain funds released: tx=' + releaseTxHash);
+        } catch (error) {
+          this.logger.error('On-chain fund release failed: ' + error.message);
+        }
+      }
 
       return milestone;
     });

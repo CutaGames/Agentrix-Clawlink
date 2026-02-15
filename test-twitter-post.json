@@ -1,0 +1,9 @@
+{
+  "agentId": "SOCIAL-01",
+  "messages": [
+    {
+      "role": "user",
+      "content": "发一条推文测试：Agentrix HQ 工具系统部署成功！🎉 #AgentrixHQ #AI"
+    }
+  ]
+}

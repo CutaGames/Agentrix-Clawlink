@@ -112,6 +112,7 @@ export function useTools() {
 
   // Format tool result for display
   const formatToolResult = useCallback((execution: ToolExecution): string => {
+    const previewLimit = 8000;
     if (execution.status === 'error') {
       return `❌ Tool "${execution.tool}" failed: ${execution.error}`;
     }
@@ -121,7 +122,7 @@ export function useTools() {
     switch (execution.tool) {
       case 'read_file':
         const readRes = result as ReadFileResult;
-        return `📄 Read ${readRes.filePath}\n\`\`\`${readRes.language}\n${readRes.content.slice(0, 2000)}${readRes.content.length > 2000 ? '\n... (truncated)' : ''}\n\`\`\``;
+        return `📄 Read ${readRes.filePath}\n\`\`\`${readRes.language}\n${readRes.content.slice(0, previewLimit)}${readRes.content.length > previewLimit ? '\n... (truncated)' : ''}\n\`\`\``;
       
       case 'write_file':
         const writeRes = result as WriteFileResult;
@@ -141,13 +142,13 @@ export function useTools() {
       case 'run_command':
         const cmdRes = result as RunCommandResult;
         const output = cmdRes.stdout || cmdRes.stderr || '(no output)';
-        return `💻 $ ${cmdRes.command}\n\`\`\`\n${output.slice(0, 2000)}${output.length > 2000 ? '\n... (truncated)' : ''}\n\`\`\`\nExit code: ${cmdRes.exitCode}`;
+        return `💻 $ ${cmdRes.command}\n\`\`\`\n${output.slice(0, previewLimit)}${output.length > previewLimit ? '\n... (truncated)' : ''}\n\`\`\`\nExit code: ${cmdRes.exitCode}`;
       
       case 'fetch_url':
         const fetchRes = result as FetchUrlResult;
         const body = typeof fetchRes.body === 'string' 
-          ? fetchRes.body.slice(0, 1000) 
-          : JSON.stringify(fetchRes.body, null, 2).slice(0, 1000);
+          ? fetchRes.body.slice(0, 4000) 
+          : JSON.stringify(fetchRes.body, null, 2).slice(0, 4000);
         return `🌐 ${fetchRes.url}\nStatus: ${fetchRes.status} ${fetchRes.statusText}\n\`\`\`\n${body}\n\`\`\``;
       
       case 'search_knowledge':

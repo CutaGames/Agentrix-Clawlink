@@ -100,7 +100,8 @@ echo -e "${BLUE}[步骤 6/6]${NC} 运行 E2E 测试..."
 cd "$ROOT_DIR"
 
 if [ -f "package.json" ] && grep -q "playwright" package.json; then
-    npx playwright test tests/e2e/workbench-restructuring.spec.ts --reporter=html
+    echo "正在运行全模块 Commerce E2E 测试..."
+    npx playwright test tests/e2e/commerce-all-modules.spec.ts --reporter=html
     E2E_RESULT=$?
     
     if [ $E2E_RESULT -eq 0 ]; then

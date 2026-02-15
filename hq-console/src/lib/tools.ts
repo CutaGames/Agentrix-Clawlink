@@ -417,6 +417,9 @@ export function getToolsSystemPrompt(): string {
 3. 直接输出: 当需要使用工具时，直接输出 <tool_call>...</tool_call>，不要放在代码块中
 4. 真实执行: 工具会真正执行，结果会返回给你继续处理
 5. 不要假装: 需要读写文件时，必须调用工具
+6. 如果被问到“当前使用的模型”，请回答“以界面 Model 显示为准”，不要自行猜测
+7. 分段读取: 如果需要读取多个文件或大文件，请一次最多读取 2-3 个文件/区段，先摘要再继续请求下一批
+8. 续写策略: 若任务仍需更多材料，请明确提示“继续读取/继续分析”并等待用户确认
 
 当需要使用工具时，按上述格式输出。工具执行结果会返回给你继续处理。`;
 }
@@ -481,8 +484,12 @@ export function parseToolCalls(text: string): ToolCall[] {
   while ((match = newFormatRegex.exec(cleanedText)) !== null) {
     try {
       const tool = normalizeToolName(match[1].trim());
-      const paramsStr = match[2].trim();
+      let paramsStr = match[2].trim();
       console.log('[Tools] Found tool_call:', tool, 'params:', paramsStr.substring(0, 100));
+      // Sanitize: replace literal newlines inside JSON strings to prevent parse errors
+      paramsStr = paramsStr.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
+      // Fix double-escaped newlines that were already escaped
+      paramsStr = paramsStr.replace(/\\\\n/g, '\\n').replace(/\\\\r/g, '\\r').replace(/\\\\t/g, '\\t');
       const params = normalizeToolParams(tool, JSON.parse(paramsStr));
       const requiresPermission = match[3] === 'true';
       const reason = match[4]?.trim();
@@ -528,6 +535,27 @@ export function parseToolCalls(text: string): ToolCall[] {
   }
   
   return toolCalls;
+}
+
+/**
+ * Strip tool call XML tags from content for clean display.
+ * Removes <tool_call>...</tool_call>, <tool>...</tool><params>...</params>,
+ * and <tool_use>...</tool_use> blocks from the text.
+ */
+export function stripToolCallsFromContent(text: string): string {
+  if (!text) return text;
+  let cleaned = text;
+  // Remove ```tool/xml/json code blocks wrapping tool calls
+  cleaned = cleaned.replace(/```(?:tool|xml|json)?\s*<(?:tool_call|tool_use|tool)[\s\S]*?<\/(?:tool_call|tool_use|params)>\s*```/g, '');
+  // Remove <tool_call>...</tool_call>
+  cleaned = cleaned.replace(/<tool_call>\s*<name>\s*\w+\s*<\/name>\s*<params>\s*[\s\S]*?\s*<\/params>(?:\s*<requires_permission>\s*(?:true|false)\s*<\/requires_permission>)?(?:\s*<reason>\s*[\s\S]*?\s*<\/reason>)?\s*<\/tool_call>/g, '');
+  // Remove <tool_use>...</tool_use>
+  cleaned = cleaned.replace(/<tool_use>\s*<tool_name>\s*[\w-]+\s*<\/tool_name>\s*<parameters>\s*[\s\S]*?\s*<\/parameters>\s*<\/tool_use>/g, '');
+  // Remove <tool>...</tool><params>...</params>
+  cleaned = cleaned.replace(/<tool>\s*\w+\s*<\/tool>\s*<params>\s*[\s\S]*?\s*<\/params>/g, '');
+  // Clean up excessive blank lines left behind
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  return cleaned;
 }
 
 export async function executeToolCall(toolCall: ToolCall): Promise<{ success: boolean; result: any; error?: string }> {

@@ -44,15 +44,15 @@ export class CommissionStrategyV4Service {
     private fundPathRepo: Repository<FundPath>,
   ) {}
 
-  // X402 V2 Channel Fee Rate - deducted from platform fee
-  private readonly X402_CHANNEL_FEE_RATE = 0.003; // 0.3%
+  // X402 V2 Channel Fee Rate - cancelled, no longer charged
+  private readonly X402_CHANNEL_FEE_RATE = 0; // 0% (X402 channel fee cancelled)
 
-  // Rates based on V4.0 Design
+  // Rates based on V5.0 Design (channel fee removed)
   private readonly RATES = {
-    physical: { pool: 0.022, platform: 0.005, channel: 0.003 },
-    service: { pool: 0.037, platform: 0.010, channel: 0.003 },
-    virtual: { pool: 0.022, platform: 0.005, channel: 0.003 },
-    nft: { pool: 0.017, platform: 0.005, channel: 0.003 },
+    physical: { pool: 0.025, platform: 0.005, channel: 0 },
+    service: { pool: 0.040, platform: 0.010, channel: 0 },
+    virtual: { pool: 0.025, platform: 0.005, channel: 0 },
+    nft: { pool: 0.020, platform: 0.005, channel: 0 },
   };
 
   /**
@@ -297,7 +297,7 @@ export class CommissionStrategyV4Service {
         toLabel: 'X402/ARN 通道',
         amount: this.formatDecimal(result.channel, decimals),
         currency,
-        rate: '0.003',
+        rate: '0',
         description: result.isX402 
           ? 'X402 V2 通道费 (从平台费扣除)' 
           : 'ARN 通道费',

@@ -150,19 +150,19 @@ function getNetworkConfig(networkName: string): NetworkConfig {
     hardhat: {
       settlementToken: "0x0000000000000000000000000000000000000001",
       platformTreasury: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      platformFeeBps: 100, // 1%
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
     },
     localhost: {
       settlementToken: "0x0000000000000000000000000000000000000001",
       platformTreasury: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      platformFeeBps: 100,
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
     },
 
     // BSC Testnet
     bscTestnet: {
       settlementToken: process.env.BSC_TESTNET_USDC_ADDRESS || "0x64544969ed7EBf5f083679233325356EbE738930",
       platformTreasury: process.env.PAYMIND_TREASURY_ADDRESS || process.env.PLATFORM_TREASURY || "",
-      platformFeeBps: 100,
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
       admins: process.env.ADMIN_ADDRESSES?.split(",") || [process.env.RELAYER_ADDRESS].filter(Boolean),
       globalReviewers: process.env.REVIEWER_ADDRESSES?.split(",") || [],
     },
@@ -171,7 +171,7 @@ function getNetworkConfig(networkName: string): NetworkConfig {
     bsc: {
       settlementToken: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
       platformTreasury: process.env.PLATFORM_TREASURY || "",
-      platformFeeBps: 50, // 0.5% on mainnet
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
       admins: process.env.ADMIN_ADDRESSES?.split(",") || [],
       globalReviewers: process.env.REVIEWER_ADDRESSES?.split(",") || [],
     },
@@ -180,7 +180,7 @@ function getNetworkConfig(networkName: string): NetworkConfig {
     base: {
       settlementToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       platformTreasury: process.env.PLATFORM_TREASURY || "",
-      platformFeeBps: 50,
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
       admins: process.env.ADMIN_ADDRESSES?.split(",") || [],
     },
 
@@ -188,7 +188,7 @@ function getNetworkConfig(networkName: string): NetworkConfig {
     baseSepolia: {
       settlementToken: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       platformTreasury: process.env.PLATFORM_TREASURY || "",
-      platformFeeBps: 100,
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
       admins: process.env.ADMIN_ADDRESSES?.split(",") || [],
     },
 
@@ -196,7 +196,7 @@ function getNetworkConfig(networkName: string): NetworkConfig {
     polygon: {
       settlementToken: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
       platformTreasury: process.env.PLATFORM_TREASURY || "",
-      platformFeeBps: 50,
+      platformFeeBps: 30, // 0.3% — confirmed by CEO 2026-02-08
       admins: process.env.ADMIN_ADDRESSES?.split(",") || [],
       globalReviewers: process.env.REVIEWER_ADDRESSES?.split(",") || [],
     },

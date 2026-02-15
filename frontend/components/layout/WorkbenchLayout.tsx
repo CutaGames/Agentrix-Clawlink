@@ -62,6 +62,7 @@ export function WorkbenchLayout({
     'agent-accounts': 'my-agents',
     'kyc': 'status',
     'workspaces': 'list',
+    'promotion': 'overview',
   };
 
   const [activeL1, setActiveL1] = useState<L1Tab>(propActiveL1 || defaultL1[mode]);
@@ -184,6 +185,7 @@ export function WorkbenchLayout({
       'agent-accounts': { zh: 'Agent 账户', en: 'Agent Accounts' },
       'kyc': { zh: '实名认证', en: 'KYC' },
       'workspaces': { zh: '工作空间', en: 'Workspaces' },
+      'promotion': { zh: '推广', en: 'Promotion' },
     };
     return t(l1Labels[activeL1] || { zh: activeL1, en: activeL1 });
   };

@@ -11,23 +11,38 @@ import { Repository, MoreThanOrEqual } from 'typeorm';
 // 预算配置
 export const BUDGET_CONFIG = {
   daily: {
-    total: 25.00,           // 每日总预算 $25
-    architect: 10.00,       // ARCHITECT-01 预算
-    dev: 4.00,              // DEV-01 预算
-    growth: 3.00,           // GROWTH-01 预算
-    resource: 3.00,         // RESOURCE-01 预算
-    ops: 2.00,              // OPS-01 预算
-    bd: 2.00,               // BD-01 预算
-    reserve: 1.00,          // 预留
+    total: 30.00,           // 每日总预算 $30 (付费 Agent 按需启用)
+    architect: 15.00,       // ARCHITECT-01 预算（CEO/CFO/架构师）— 按需启用
+    coder01: 8.00,          // CODER-01 预算（主力开发）— 按需启用
+    growth: 4.00,           // GROWTH-01 预算（增长/BD）— Groq 免费但追踪
+    security: 2.00,         // SECURITY-01 预算 — Gemini 免费但追踪
+    reserve: 1.00,          // 预留缓冲
+    // 注意：9 个免费 Agent (Groq/Gemini) 7×24 运行，不消耗预算
+    // GROWTH-01, BD-01, CONTENT-01, SUPPORT-01 → Groq (14,400 req/day FREE)
+    // ANALYST-01, SOCIAL-01, SECURITY-01, DEVREL-01, LEGAL-01 → Gemini (1,500 req/day FREE)
   },
   models: {
     // 每 1K tokens 的成本 (USD)
+    // Bedrock Claude models (cross-region inference profile IDs)
+    'arn:aws:bedrock:us-east-1:696737009512:inference-profile/us.anthropic.claude-opus-4-6-v1': { input: 0.015, output: 0.075 },
+    'us.anthropic.claude-sonnet-4-5-20250929-v1:0': { input: 0.003, output: 0.015 },
+    'us.anthropic.claude-haiku-4-5-20251001-v1:0': { input: 0.0008, output: 0.004 },
+    // Direct Claude
     'claude-sonnet-4-20250514': { input: 0.003, output: 0.015 },
     'claude-3-haiku-20240307': { input: 0.00025, output: 0.00125 },
+    // Gemini (free tier, but track anyway)
+    'gemini-2.5-flash': { input: 0.0, output: 0.0 },
+    'gemini-1.5-flash': { input: 0.0, output: 0.0 },
+    // OpenAI
     'gpt-4o': { input: 0.005, output: 0.015 },
     'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
-    'deepseek-chat': { input: 0.0001, output: 0.0002 }, // 非常便宜
-  },
+    // Groq (FREE tier)
+    'llama-3.3-70b-versatile': { input: 0.0, output: 0.0 },
+    'llama-3.1-8b-instant': { input: 0.0, output: 0.0 },
+    'mixtral-8x7b-32768': { input: 0.0, output: 0.0 },
+    // DeepSeek
+    'deepseek-chat': { input: 0.0001, output: 0.0002 },
+  } as Record<string, { input: number; output: number }>,
   alerts: {
     warning: 0.8,           // 80% 时警告
     critical: 0.95,         // 95% 时停止
@@ -111,12 +126,19 @@ export class BudgetMonitorService {
     // 按 Agent 汇总
     const byAgent: BudgetStatus['byAgent'] = {};
     const agentBudgets = {
+      // 付费 Agent (Bedrock) — 按需启用
       'ARCHITECT-01': BUDGET_CONFIG.daily.architect,
-      'DEV-01': BUDGET_CONFIG.daily.dev,
+      'CODER-01': BUDGET_CONFIG.daily.coder01,
+      // 免费 Agent (Groq/Gemini) — 不消耗预算但仍追踪
       'GROWTH-01': BUDGET_CONFIG.daily.growth,
-      'RESOURCE-01': BUDGET_CONFIG.daily.resource,
-      'OPS-01': BUDGET_CONFIG.daily.ops,
-      'BD-01': BUDGET_CONFIG.daily.bd,
+      'BD-01': 0,
+      'CONTENT-01': 0,
+      'SUPPORT-01': 0,
+      'ANALYST-01': 0,
+      'SOCIAL-01': 0,
+      'SECURITY-01': BUDGET_CONFIG.daily.security,
+      'DEVREL-01': 0,
+      'LEGAL-01': 0,
     };
 
     for (const [code, budget] of Object.entries(agentBudgets)) {
@@ -153,11 +175,17 @@ export class BudgetMonitorService {
    * 检查 Agent 是否可以执行任务
    */
   canAgentExecute(agentCode: string): { allowed: boolean; reason?: string } {
+    // Free agents (Groq/Gemini) always allowed — they cost $0
+    const FREE_AGENTS = ['GROWTH-01', 'BD-01', 'CONTENT-01', 'SUPPORT-01', 'ANALYST-01', 'SOCIAL-01', 'SECURITY-01', 'DEVREL-01', 'LEGAL-01'];
+    if (FREE_AGENTS.includes(agentCode)) {
+      return { allowed: true };
+    }
+
     const status = this.getBudgetStatus();
 
-    // 检查总预算
+    // 检查总预算 (only affects paid agents)
     if (status.status === 'exceeded') {
-      return { allowed: false, reason: '今日总预算已用完' };
+      return { allowed: false, reason: '今日总预算已用完（仅影响付费 Agent）' };
     }
 
     // 检查 Agent 预算
@@ -166,7 +194,7 @@ export class BudgetMonitorService {
       return { allowed: false, reason: `${agentCode} 今日预算已用完` };
     }
 
-    // 临界状态时只允许高优先级任务
+    // 临界状态时只允许 ARCHITECT-01
     if (status.status === 'critical' && agentCode !== 'ARCHITECT-01') {
       return { allowed: false, reason: '预算临界，仅允许 ARCHITECT-01 执行' };
     }

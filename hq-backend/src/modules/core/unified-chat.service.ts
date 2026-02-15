@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { HqAIService } from '../ai/hq-ai.service';
 import { PromptBuilderService } from './prompt-builder.service';
 import { ChatSession, ChatMessage } from '../../entities/chat-session.entity';
+import { ChatHistoryService } from '../chat-history/chat-history.service';
+import { ChatMessageRole } from '../../entities/chat-history.entity';
+import { ToolService } from '../tools/tool.service';
 
 /**
  * 统一聊天服务
@@ -33,28 +37,41 @@ export interface UnifiedChatResponse {
   response: string;
   model?: string;
   timestamp: Date;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
 @Injectable()
 export class UnifiedChatService {
   private readonly logger = new Logger(UnifiedChatService.name);
-  private readonly defaultWorkingDir = '/mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website';
+  private readonly defaultWorkingDir: string;
 
   constructor(
     private readonly aiService: HqAIService,
     private readonly promptBuilder: PromptBuilderService,
     @InjectRepository(ChatSession)
     private readonly sessionRepo: Repository<ChatSession>,
-  ) {}
+    private readonly chatHistoryService: ChatHistoryService,
+    private readonly configService: ConfigService,
+    private readonly toolService: ToolService,
+  ) {
+    this.defaultWorkingDir = this.configService.get<string>(
+      'HQ_DEFAULT_WORKING_DIR',
+      '/home/ubuntu/Agentrix-independent-HQ',
+    );
+  }
 
   /**
-   * 统一的聊天接口 - 所有对话入口都应该调用这个方法
+   * 统一的聊天接口 - 所有对话入口都应该调用这个方法（带工具执行）
    */
   async chat(request: UnifiedChatRequest): Promise<UnifiedChatResponse> {
-    const { 
-      agentCode, 
-      message, 
-      sessionId, 
+    const {
+      agentCode,
+      message,
+      sessionId,
       workingDir = this.defaultWorkingDir,
       userId,
       context,
@@ -81,7 +98,12 @@ export class UnifiedChatService {
       context,
     });
 
-    // 3. 添加用户消息到历史
+    // 3. 获取 Agent 工具列表
+    const agentRole = agentCode.split('-')[0].toLowerCase(); // CEO, SOCIAL, BD, etc.
+    const tools = this.toolService.getClaudeTools(agentRole);
+    this.logger.log(`🔧 Agent ${agentCode} has ${tools.length} tools available`);
+
+    // 4. 添加用户消息到历史
     const userMessage: ChatMessage = {
       role: 'user',
       content: message,
@@ -89,23 +111,91 @@ export class UnifiedChatService {
     };
     session.messages.push(userMessage);
 
-    // 4. 构建 AI 请求消息
-    const conversationMessages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...session.messages.slice(-20).map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-    ];
+    await this.chatHistoryService.saveMessage({
+      sessionId: session.id,
+      userId,
+      agentId: agentCode,
+      role: ChatMessageRole.USER,
+      content: message,
+    });
 
-    // 5. 调用 AI
-    const aiResult = await this.aiService.chatForAgent(
-      agentCode,
-      conversationMessages,
-      { systemPrompt, maxTokens: 16384 },
-    );
+    // 5. 工具执行循环（最多5轮）
+    const maxIterations = 5;
+    let iterationCount = 0;
+    let aiResult: any;
 
-    // 6. 保存 AI 响应
+    while (iterationCount < maxIterations) {
+      iterationCount++;
+
+      // 5.1 构建 AI 请求消息
+      const conversationMessages = [
+        { role: 'system' as const, content: systemPrompt },
+        ...session.messages.slice(-20).map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+      ];
+
+      // 5.2 调用 AI（带工具）
+      aiResult = await this.aiService.chatForAgent(
+        agentCode,
+        conversationMessages,
+        { systemPrompt, maxTokens: 16384, tools },
+      );
+
+      // 5.3 检查是否需要调用工具
+      if (aiResult.finishReason !== 'tool_use' || !aiResult.toolCalls || aiResult.toolCalls.length === 0) {
+        // 完成，返回文本响应
+        this.logger.log(`✅ Iteration ${iterationCount}: Agent returned final response`);
+        break;
+      }
+
+      // 5.4 执行工具
+      this.logger.log(`🔧 Iteration ${iterationCount}: Agent wants to call ${aiResult.toolCalls.length} tools`);
+
+      const toolResults = [];
+      for (const toolCall of aiResult.toolCalls) {
+        this.logger.log(`🔧 Executing tool: ${toolCall.name}`);
+
+        const result = await this.toolService.executeTool(
+          toolCall.name,
+          toolCall.arguments,
+          { agentCode, taskId: session.id },
+        );
+
+        toolResults.push({
+          tool_use_id: toolCall.id,
+          type: 'tool_result',
+          content: result.success ? result.output : `Error: ${result.error}`,
+          is_error: !result.success,
+        });
+
+        this.logger.log(`${result.success ? '✅' : '❌'} Tool ${toolCall.name}: ${result.success ? 'success' : result.error}`);
+      }
+
+      // 5.5 保存工具调用和结果到会话
+      const callsSummary = aiResult.toolCalls.map((tc: any) => `Action: ${tc.name}\nArguments: ${JSON.stringify(tc.arguments)}`).join('\n\n');
+      session.messages.push({
+        role: 'assistant',
+        content: `我决定调用以下工具来完成任务：\n\n${callsSummary}`,
+        timestamp: new Date(),
+      });
+
+      const resultsSummary = toolResults.map((tr, idx) => `Result of ${aiResult.toolCalls[idx].name}:\n${tr.content}`).join('\n\n');
+      session.messages.push({
+        role: 'user',
+        content: `以下是工具执行的结果，请根据这些信息继续：\n\n${resultsSummary}`,
+        timestamp: new Date(),
+      });
+    }
+
+    // 达到最大迭代次数但仍未完成
+    if (iterationCount >= maxIterations && aiResult.finishReason === 'tool_use') {
+      this.logger.warn(`⚠️ Agent ${agentCode} reached max tool iterations (${maxIterations})`);
+      aiResult.content = '工具执行循环达到上限，任务可能未完成。请检查执行日志。';
+    }
+
+    // 6. 保存 AI 最终响应
     const assistantMessage: ChatMessage = {
       role: 'assistant',
       content: aiResult.content,
@@ -117,9 +207,22 @@ export class UnifiedChatService {
       session.context = context;
     }
 
+    await this.chatHistoryService.saveMessage({
+      sessionId: session.id,
+      userId,
+      agentId: agentCode,
+      role: ChatMessageRole.ASSISTANT,
+      content: aiResult.content,
+      metadata: {
+        model: aiResult.model,
+        usage: aiResult.usage,
+        iterations: iterationCount,
+      },
+    });
+
     await this.sessionRepo.save(session);
 
-    this.logger.log(`✅ UnifiedChat complete: session=${session.id}, model=${aiResult.model}`);
+    this.logger.log(`✅ UnifiedChat complete: session=${session.id}, model=${aiResult.model}, iterations=${iterationCount}, tokens=${aiResult.usage?.totalTokens || 0}`);
 
     return {
       sessionId: session.id,
@@ -127,6 +230,7 @@ export class UnifiedChatService {
       response: aiResult.content,
       model: aiResult.model,
       timestamp: new Date(),
+      usage: aiResult.usage,
     };
   }
 
@@ -219,5 +323,164 @@ export class UnifiedChatService {
    */
   async deleteSession(sessionId: string): Promise<void> {
     await this.sessionRepo.delete(sessionId);
+  }
+
+  /**
+   * 流式聊天接口 - 带工具执行事件的 SSE 流
+   * 每次工具调用都发送 tool_start / tool_end 事件给客户端
+   */
+  async *chatStream(request: UnifiedChatRequest): AsyncGenerator<{
+    type: 'meta' | 'chunk' | 'done' | 'error' | 'tool_start' | 'tool_end';
+    data: any;
+  }> {
+    const {
+      agentCode,
+      message,
+      sessionId,
+      workingDir = this.defaultWorkingDir,
+      userId,
+      context,
+      mode = 'general',
+    } = request;
+
+    this.logger.log(`📨 UnifiedChatStream: agent=${agentCode}, mode=${mode}`);
+
+    // 1. 获取或创建会话
+    let session: ChatSession | null = null;
+    if (sessionId) {
+      session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    }
+    if (!session) {
+      session = await this.createSession(agentCode, userId, mode, workingDir);
+    }
+
+    // 2. 构建系统提示词
+    const systemPrompt = this.buildPromptForMode(mode, { agentCode, workingDir, context });
+
+    // 3. 获取 Agent 工具列表
+    const agentRole = agentCode.split('-')[0].toLowerCase();
+    const tools = this.toolService.getClaudeTools(agentRole);
+
+    // 元数据
+    yield {
+      type: 'meta',
+      data: { agentId: agentCode, sessionId: session.id, toolsAvailable: tools.length },
+    };
+
+    // 4. 添加用户消息
+    session.messages.push({ role: 'user', content: message, timestamp: new Date() });
+    await this.chatHistoryService.saveMessage({
+      sessionId: session.id, userId, agentId: agentCode,
+      role: ChatMessageRole.USER, content: message,
+    });
+
+    // 5. 工具执行循环
+    const maxIterations = 5;
+    let iterationCount = 0;
+    let aiResult: any;
+
+    try {
+      while (iterationCount < maxIterations) {
+        iterationCount++;
+
+        const conversationMessages = [
+          { role: 'system' as const, content: systemPrompt },
+          ...session.messages.slice(-20).map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+        ];
+
+        aiResult = await this.aiService.chatForAgent(
+          agentCode, conversationMessages,
+          { systemPrompt, maxTokens: 16384, tools },
+        );
+
+        if (aiResult.finishReason !== 'tool_use' || !aiResult.toolCalls || aiResult.toolCalls.length === 0) {
+          break;
+        }
+
+        // 执行工具并发送事件
+        const toolResults: Array<{ name: string; content: string }> = [];
+        for (const toolCall of aiResult.toolCalls) {
+          yield {
+            type: 'tool_start',
+            data: { name: toolCall.name, arguments: toolCall.arguments, iteration: iterationCount },
+          };
+
+          const result = await this.toolService.executeTool(
+            toolCall.name, toolCall.arguments,
+            { agentCode, taskId: session.id },
+          );
+
+          const resultContent = result.success ? result.output : `Error: ${result.error}`;
+          toolResults.push({ name: toolCall.name, content: resultContent });
+
+          yield {
+            type: 'tool_end',
+            data: {
+              name: toolCall.name,
+              success: result.success,
+              output: result.success
+                ? (result.output?.substring(0, 500) || 'Done')
+                : `Error: ${result.error}`,
+              executionTimeMs: result.executionTimeMs,
+            },
+          };
+        }
+
+        // 保存工具调用结果到会话（使用已执行的结果，不重复执行）
+        const callsSummary = aiResult.toolCalls.map((tc: any) => `Action: ${tc.name}\nArguments: ${JSON.stringify(tc.arguments)}`).join('\n\n');
+        session.messages.push({
+          role: 'assistant',
+          content: `我决定调用以下工具来完成任务：\n\n${callsSummary}`,
+          timestamp: new Date(),
+        });
+
+        const resultsSummary = toolResults.map(tr => `Result of ${tr.name}:\n${tr.content}`).join('\n\n');
+        session.messages.push({
+          role: 'user',
+          content: `以下是工具执行的结果，请根据这些信息继续：\n\n${resultsSummary}`,
+          timestamp: new Date(),
+        });
+      }
+
+      // 达到最大迭代
+      if (iterationCount >= maxIterations && aiResult?.finishReason === 'tool_use') {
+        aiResult.content = '工具执行循环达到上限，任务可能未完成。请检查执行日志。';
+      }
+
+      // 6. 流式输出最终响应
+      const content = aiResult?.content || '';
+      const chunkSize = 20;
+      for (let i = 0; i < content.length; i += chunkSize) {
+        yield { type: 'chunk', data: { content: content.slice(i, i + chunkSize) } };
+      }
+
+      // 7. 保存到历史
+      session.messages.push({ role: 'assistant', content, timestamp: new Date() });
+      session.lastMessageAt = new Date();
+      if (context) session.context = context;
+
+      await this.chatHistoryService.saveMessage({
+        sessionId: session.id, userId, agentId: agentCode,
+        role: ChatMessageRole.ASSISTANT, content,
+        metadata: { model: aiResult?.model, usage: aiResult?.usage, iterations: iterationCount },
+      });
+      await this.sessionRepo.save(session);
+
+      yield {
+        type: 'done',
+        data: {
+          sessionId: session.id,
+          model: aiResult?.model,
+          tokensUsed: aiResult?.usage?.totalTokens || 0,
+          iterations: iterationCount,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`❌ ChatStream error: ${error.message}`);
+      yield { type: 'error', data: { message: error.message } };
+    }
   }
 }

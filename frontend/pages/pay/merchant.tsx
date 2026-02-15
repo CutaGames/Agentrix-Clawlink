@@ -29,7 +29,7 @@ export default function MerchantPayment() {
   }
 
   const handlePaymentSuccess = (result: any) => {
-    console.log('Payment successful:', result)
+    // Payment successful logic
     setShowCheckout(false)
     // 可以跳转到成功页面或显示成功消息
   }
