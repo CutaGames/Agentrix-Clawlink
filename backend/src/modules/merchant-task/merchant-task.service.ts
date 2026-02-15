@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { MerchantTask, TaskStatus, TaskType } from '../../entities/merchant-task.entity';
 import { OrderService } from '../order/order.service';
 import { NotificationService } from '../notification/notification.service';
+import { TaskCommissionService } from './task-commission.service';
 
 export interface CreateTaskDto {
   merchantId: string;
@@ -36,6 +37,7 @@ export class MerchantTaskService {
     private taskRepository: Repository<MerchantTask>,
     private orderService: OrderService,
     private notificationService: NotificationService,
+    private taskCommissionService: TaskCommissionService,
   ) {}
 
   /**
@@ -217,6 +219,18 @@ export class MerchantTaskService {
 
     const savedTask = await this.taskRepository.save(task);
 
+    // Apply platform commission (5%)
+    let commissionBreakdown;
+    try {
+      commissionBreakdown = await this.taskCommissionService.applyCommission(savedTask.id);
+      this.logger.log(
+        `Task ${savedTask.id} commission: ${commissionBreakdown.commissionAmount} ${commissionBreakdown.currency} ` +
+        `(${commissionBreakdown.commissionRate}), net: ${commissionBreakdown.netPayoutAmount}`,
+      );
+    } catch (error) {
+      this.logger.warn('佣金计算失败:', error);
+    }
+
     // 发送通知给用户
     try {
       await this.notificationService.createNotification(task.userId, {
@@ -225,13 +239,15 @@ export class MerchantTaskService {
         message: `您的任务"${task.title}"已完成`,
         metadata: {
           taskId: savedTask.id,
+          commission: commissionBreakdown,
         },
       });
     } catch (error) {
       this.logger.warn('发送任务通知失败:', error);
     }
 
-    return savedTask;
+    // Re-fetch to include commission data
+    return this.taskRepository.findOne({ where: { id: savedTask.id } });
   }
 
   /**
@@ -262,6 +278,33 @@ export class MerchantTaskService {
       where,
       order: { createdAt: 'DESC' },
     });
+  }
+
+  /**
+   * 取消任务
+   */
+  async cancelTask(userId: string, taskId: string, reason?: string): Promise<MerchantTask> {
+    const task = await this.taskRepository.findOne({
+      where: { id: taskId, userId },
+    });
+
+    if (!task) {
+      throw new NotFoundException('任务不存在');
+    }
+
+    if (task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CANCELLED) {
+      throw new BadRequestException('任务已完成或已取消，无法取消');
+    }
+
+    task.status = TaskStatus.CANCELLED;
+    if (reason) {
+      if (!task.progress) task.progress = {} as any;
+      (task.progress as any).cancelReason = reason;
+    }
+
+    const savedTask = await this.taskRepository.save(task);
+    this.logger.log(`任务已取消: taskId=${taskId}, userId=${userId}`);
+    return savedTask;
   }
 
   /**

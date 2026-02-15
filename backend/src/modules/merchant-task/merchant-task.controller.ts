@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { MerchantTaskService, CreateTaskDto, UpdateTaskProgressDto } from './merchant-task.service';
 import { TaskMarketplaceService, PublishTaskDto, SearchTasksParams, CreateBidDto } from './task-marketplace.service';
+import { TaskCommissionService, TASK_COMMISSION } from './task-commission.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 
@@ -27,6 +28,7 @@ export class MerchantTaskController {
   constructor(
     private readonly taskService: MerchantTaskService,
     private readonly marketplaceService: TaskMarketplaceService,
+    private readonly commissionService: TaskCommissionService,
   ) {}
 
   @Post()
@@ -85,6 +87,19 @@ export class MerchantTaskController {
   @ApiBearerAuth()
   async getMyTasks(@Request() req: any) {
     return this.taskService.getUserTasks(req.user?.id);
+  }
+
+  @Put(':taskId/cancel')
+  @ApiOperation({ summary: '取消任务' })
+  @ApiResponse({ status: 200, description: '返回取消的任务' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async cancelTask(
+    @Request() req: any,
+    @Param('taskId') taskId: string,
+    @Body() body?: { reason?: string },
+  ) {
+    return this.taskService.cancelTask(req.user?.id, taskId, body?.reason);
   }
 
   @Get('merchant-tasks')
@@ -214,6 +229,31 @@ export class MerchantTaskController {
   @ApiBearerAuth()
   async getMyBids(@Request() req: any) {
     return this.marketplaceService.getUserBids(req.user?.id);
+  }
+
+  // ========== Commission APIs ==========
+
+  @Get('commission/preview')
+  @ApiOperation({ summary: '预览任务佣金' })
+  @ApiQuery({ name: 'amount', required: true, description: '任务金额' })
+  @ApiQuery({ name: 'currency', required: false, description: '币种' })
+  async previewCommission(
+    @Query('amount') amount: string,
+    @Query('currency') currency?: string,
+  ) {
+    return this.commissionService.calculateCommission(
+      Number(amount),
+      currency || 'USD',
+      TASK_COMMISSION.DEFAULT_RATE_BPS,
+    );
+  }
+
+  @Get('commission/summary')
+  @ApiOperation({ summary: '获取我的佣金汇总' })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getCommissionSummary(@Request() req: any) {
+    return this.commissionService.getUserCommissionSummary(req.user?.id);
   }
 }
 

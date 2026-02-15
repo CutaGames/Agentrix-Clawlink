@@ -7,6 +7,7 @@
  */
 
 import Head from 'next/head';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { Navigation } from '../../components/ui/Navigation';
@@ -32,6 +33,10 @@ import {
   Globe,
   ChevronRight,
   ArrowLeft,
+  MessageSquare,
+  Send,
+  ThumbsUp,
+  Loader2,
 } from 'lucide-react';
 
 interface SkillPricing {
@@ -86,6 +91,15 @@ export default function SkillDetailPage() {
   const [loading, setLoading] = useState(true);
   const [installing, setInstalling] = useState(false);
   const [installed, setInstalled] = useState(false);
+  // Reviews state
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [hoverRating, setHoverRating] = useState(0);
 
   useEffect(() => {
     // 确保 router 已准备好再读取 query 参数
@@ -155,6 +169,74 @@ export default function SkillDetailPage() {
   const handleTry = () => {
     router.push(`/workbench?tab=agents&action=test&skillId=${id}`);
   };
+
+  // Reviews functions
+  const loadReviews = async () => {
+    if (!id) return;
+    setReviewsLoading(true);
+    try {
+      const res = await fetch(`/api/skills/${id}/reviews?page=1&limit=20`);
+      if (res.ok) {
+        const data = await res.json();
+        setReviews(data.data?.reviews || data.reviews || []);
+        setReviewsTotal(data.data?.total || data.total || 0);
+      }
+    } catch (e) {
+      console.error('Failed to load reviews:', e);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (skill && reviews.length === 0 && !reviewsLoading) {
+      loadReviews();
+    }
+  }, [skill]);
+
+  const submitReview = async () => {
+    if (!newComment.trim()) { setReviewError(t({ zh: '请输入评价内容', en: 'Please enter your review' })); return; }
+    setSubmittingReview(true);
+    setReviewError('');
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`/api/skills/${id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ rating: newRating, comment: newComment }),
+      });
+      if (res.ok) {
+        setNewComment('');
+        setNewRating(5);
+        await loadReviews();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setReviewError(err.message || t({ zh: '提交失败，请重试', en: 'Submit failed, please retry' }));
+      }
+    } catch (e: any) {
+      setReviewError(e.message || t({ zh: '网络错误', en: 'Network error' }));
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const renderStars = (rating: number, size = 'w-4 h-4', interactive = false) => (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(i => (
+        <Star
+          key={i}
+          className={`${size} cursor-${interactive ? 'pointer' : 'default'} transition-colors ${
+            i <= (interactive ? (hoverRating || newRating) : rating)
+              ? 'text-amber-400 fill-amber-400'
+              : 'text-slate-600'
+          }`}
+          onClick={interactive ? () => setNewRating(i) : undefined}
+          onMouseEnter={interactive ? () => setHoverRating(i) : undefined}
+          onMouseLeave={interactive ? () => setHoverRating(0) : undefined}
+        />
+      ))}
+    </div>
+  );
 
   // 格式化价格显示
   const formatPrice = (pricing?: SkillPricing) => {
@@ -269,12 +351,14 @@ export default function SkillDetailPage() {
               <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
                 <div className="flex gap-6">
                   {/* 图片/图标 */}
-                  <div className={`flex-shrink-0 ${isResource ? 'w-40 h-40' : 'w-20 h-20'} rounded-xl overflow-hidden bg-slate-700/50`}>
+                  <div className={`flex-shrink-0 ${isResource ? 'w-40 h-40' : 'w-20 h-20'} rounded-xl overflow-hidden bg-slate-700/50 relative`}>
                     {skill.imageUrl || skill.thumbnailUrl ? (
-                      <img 
+                      <Image 
                         src={skill.imageUrl || skill.thumbnailUrl}
                         alt={skill.displayName || skill.name}
-                        className="w-full h-full object-cover"
+                        fill
+                        className="object-cover"
+                        unoptimized
                       />
                     ) : (
                       <div className={`w-full h-full flex items-center justify-center ${
@@ -405,6 +489,109 @@ export default function SkillDetailPage() {
                   ))}
                 </div>
               )}
+
+              {/* 评价区域 */}
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <MessageSquare size={20} />
+                    {t({ zh: '用户评价', en: 'Reviews' })}
+                    {reviewsTotal > 0 && <span className="ml-1 px-2 py-0.5 text-xs bg-slate-700 rounded-full text-slate-300">{reviewsTotal}</span>}
+                  </h2>
+                </div>
+
+                {/* Rating Summary */}
+                <div className="flex items-center gap-8 p-5 bg-slate-900/50 rounded-xl mb-6">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold text-white">{(skill.rating || 0).toFixed(1)}</div>
+                    {renderStars(skill.rating || 0, 'w-5 h-5')}
+                    <div className="text-sm text-slate-500 mt-1">{reviewsTotal} {t({ zh: '条评价', en: 'reviews' })}</div>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    {[5, 4, 3, 2, 1].map(star => {
+                      const count = reviews.filter(r => Math.round(r.rating) === star).length;
+                      const pct = reviewsTotal > 0 ? (count / reviewsTotal) * 100 : 0;
+                      return (
+                        <div key={star} className="flex items-center gap-2 text-sm">
+                          <span className="w-3 text-slate-500">{star}</span>
+                          <Star size={12} className="text-amber-400 fill-amber-400" />
+                          <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="w-8 text-right text-slate-500 text-xs">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Submit Review */}
+                <div className="p-4 border border-slate-700/50 rounded-xl space-y-3 mb-6">
+                  <h4 className="font-semibold text-white">{t({ zh: '写评价', en: 'Write a Review' })}</h4>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-slate-400">{t({ zh: '评分:', en: 'Rating:' })}</span>
+                    {renderStars(newRating, 'w-6 h-6', true)}
+                    <span className="text-sm text-slate-500">{newRating}.0</span>
+                  </div>
+                  <textarea
+                    value={newComment}
+                    onChange={e => setNewComment(e.target.value)}
+                    placeholder={t({ zh: '分享您的使用体验...', en: 'Share your experience...' })}
+                    className="w-full h-20 px-3 py-2 text-sm bg-slate-900 border border-slate-700 text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none placeholder:text-slate-600"
+                  />
+                  {reviewError && <p className="text-sm text-red-400">{reviewError}</p>}
+                  <button
+                    onClick={submitReview}
+                    disabled={submittingReview || !newComment.trim()}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-500 disabled:opacity-50 transition-colors"
+                  >
+                    {submittingReview ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    {submittingReview ? t({ zh: '提交中...', en: 'Submitting...' }) : t({ zh: '提交评价', en: 'Submit Review' })}
+                  </button>
+                </div>
+
+                {/* Reviews List */}
+                {reviewsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                  </div>
+                ) : reviews.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>{t({ zh: '暂无评价，来做第一个评价者吧！', en: 'No reviews yet. Be the first!' })}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {reviews.map((review: any) => (
+                      <div key={review.id} className="p-4 bg-slate-900/50 rounded-xl">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                              <span className="text-blue-400 text-sm font-bold">{(review.userName || 'A').charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-white">{review.userName || t({ zh: '匿名用户', en: 'Anonymous' })}</span>
+                              {review.verifiedUsage && (
+                                <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-green-500/20 text-green-400 rounded">
+                                  {t({ zh: '已验证', en: 'Verified' })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <div className="mb-2">{renderStars(review.rating, 'w-3.5 h-3.5')}</div>
+                        <p className="text-sm text-slate-300 leading-relaxed">{review.comment}</p>
+                        {review.helpfulCount > 0 && (
+                          <div className="mt-2 flex items-center gap-1 text-xs text-slate-500">
+                            <ThumbsUp size={12} /> {review.helpfulCount} {t({ zh: '人觉得有帮助', en: 'found helpful' })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 右侧：操作面板 */}
@@ -522,9 +709,9 @@ export default function SkillDetailPage() {
                     {t({ zh: '发布者', en: 'Publisher' })}
                   </h3>
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center relative overflow-hidden">
                       {skill.authorInfo.avatar ? (
-                        <img src={skill.authorInfo.avatar} alt="" className="w-full h-full rounded-full" />
+                        <Image src={skill.authorInfo.avatar} alt="" fill className="rounded-full object-cover" unoptimized />
                       ) : (
                         <span className="text-blue-400 font-bold text-lg">
                           {skill.authorInfo.name.charAt(0).toUpperCase()}
