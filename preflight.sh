@@ -123,11 +123,11 @@ fi
 
 # ── 2. Patch expo-image for Kotlin 2.x ───────────────────────────────────────
 header "2. Patch expo-image (Kotlin 2.x Null-Safety)"
-GLIDE_FILE="node_modules/expo-image/android/src/main/java/expo/modules/image/GlideUrlWrapperLoader.kt"
+GLIDE_FILE="node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt"
 if [[ -f "$GLIDE_FILE" ]]; then
   python3 - << 'PYEOF'
 import re, os, sys
-filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/GlideUrlWrapperLoader.kt'
+filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
 with open(filepath, 'r') as f:
     content = f.read()
 fixed = re.sub(r'\.body\(\)(?!!)', '.body()!!', content)

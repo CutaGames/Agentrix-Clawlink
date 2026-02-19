@@ -65,7 +65,7 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
-          filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/GlideUrlWrapperLoader.kt'
+          filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
           if not os.path.exists(filepath):
               print(f"[skip] {filepath} not found — expo-image may have been updated")
               sys.exit(0)
