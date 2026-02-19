@@ -58,6 +58,29 @@ jobs:
       - name: npm install
         run: npm install
 
+      # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
+      # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
+      # this !! null-assertion. Patch is idempotent — won't double-apply if !! already present.
+      - name: Patch expo-image for Kotlin 2.x compatibility
+        run: |
+          python3 - << 'PYEOF'
+          import re, os, sys
+          filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/GlideUrlWrapperLoader.kt'
+          if not os.path.exists(filepath):
+              print(f"[skip] {filepath} not found — expo-image may have been updated")
+              sys.exit(0)
+          with open(filepath, 'r') as f:
+              content = f.read()
+          # Add !! null assertion to .body() calls where not already present
+          fixed = re.sub(r'\.body\(\)(?!!)', '.body()!!', content)
+          if fixed == content:
+              print(f"[ok] Already patched or no match: {filepath}")
+          else:
+              with open(filepath, 'w') as f:
+                  f.write(fixed)
+              print(f"[patched] {filepath}")
+          PYEOF
+
       - name: Expo prebuild
         run: npx expo prebuild --platform android --clean --no-install
         env:
