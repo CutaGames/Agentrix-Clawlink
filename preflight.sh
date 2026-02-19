@@ -130,15 +130,16 @@ import re, os, sys
 filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
 with open(filepath, 'r') as f:
     content = f.read()
-fixed = re.sub(r'\.body\(\)(?!!)', '.body()!!', content)
+# originalResponse.body returns ResponseBody? but builder expects ResponseBody
+# !! force-unwraps; idempotent (won't double-apply)
+fixed = re.sub(r'originalResponse\.body(?!\!)', 'originalResponse.body!!', content)
 if fixed == content:
     print("  [ok] Already patched — no changes needed")
 else:
     with open(filepath, 'w') as f:
         f.write(fixed)
-    import re as _re
-    n = len(_re.findall(r'\.body\(\)!!', fixed))
-    print(f"  [patched] Added !! null-assertion to {n} .body() call(s)")
+    n = fixed.count('originalResponse.body!!')
+    print(f"  [patched] Added !! to {n} occurrence(s)")
 PYEOF
   track_result "expo_image_patch" "PASS"
 else

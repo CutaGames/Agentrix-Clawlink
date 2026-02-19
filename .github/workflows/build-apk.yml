@@ -71,14 +71,17 @@ jobs:
               sys.exit(0)
           with open(filepath, 'r') as f:
               content = f.read()
-          # Add !! null assertion to .body() calls where not already present
-          fixed = re.sub(r'\.body\(\)(?!!)', '.body()!!', content)
+          # Fix: originalResponse.body returns ResponseBody? (nullable)
+          # but Response.Builder.body() expects ResponseBody (non-null)
+          # Add !! to force-unwrap, idempotent (won't double-apply)
+          fixed = re.sub(r'originalResponse\.body(?!\!)', 'originalResponse.body!!', content)
           if fixed == content:
               print(f"[ok] Already patched or no match: {filepath}")
           else:
               with open(filepath, 'w') as f:
                   f.write(fixed)
-              print(f"[patched] {filepath}")
+              n = fixed.count('originalResponse.body!!')
+              print(f"[patched] Added !! to {n} occurrence(s) in {filepath}")
           PYEOF
 
       - name: Expo prebuild
