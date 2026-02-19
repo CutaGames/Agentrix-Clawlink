@@ -1,0 +1,55 @@
+// ---- Navigation Types for ClawLink ----
+
+export type AuthStackParamList = {
+  Login: undefined;
+  AuthCallback: { code?: string; token?: string; provider?: string };
+};
+
+export type OnboardingStackParamList = {
+  DeploySelect: undefined;
+  CloudDeploy: undefined;
+  ConnectExisting: undefined;
+};
+
+export type AgentStackParamList = {
+  AgentConsole: undefined;
+  AgentChat: { instanceId?: string; instanceName?: string };
+  OpenClawBind: undefined;
+  SkillInstall: { skillId: string; skillName: string };
+};
+
+export type MarketStackParamList = {
+  Marketplace: undefined;
+  SkillDetail: { skillId: string; skillName: string };
+  Checkout: { skillId: string; skillName?: string };
+};
+
+export type SocialStackParamList = {
+  Feed: undefined;
+  PostDetail: { postId: string };
+  UserProfile: { userId: string };
+};
+
+export type MeStackParamList = {
+  Profile: undefined;
+  ReferralDashboard: undefined;
+  Settings: undefined;
+  Account: undefined;
+  MySkills: undefined;
+  MyOrders: undefined;
+  NotificationCenter: undefined;
+  ShareCard: { shareUrl: string; title?: string; userName?: string };
+};
+
+export type MainTabParamList = {
+  Agent: undefined;
+  Market: undefined;
+  Social: undefined;
+  Me: undefined;
+};
+
+export type RootStackParamList = {
+  Auth: undefined;
+  Onboarding: undefined;
+  Main: undefined;
+};
