@@ -8,6 +8,8 @@ import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
 import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
 import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScreen';
+import { LocalDeployScreen } from '../screens/onboarding/LocalDeployScreen';
+import { SocialBindScreen } from '../screens/onboarding/SocialBindScreen';
 
 const Root = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -28,6 +30,8 @@ function OnboardingNavigator() {
       <OnboardingStack.Screen name="DeploySelect" component={DeploySelectScreen} />
       <OnboardingStack.Screen name="CloudDeploy" component={CloudDeployScreen} />
       <OnboardingStack.Screen name="ConnectExisting" component={ConnectExistingScreen} />
+      <OnboardingStack.Screen name="LocalDeploy" component={LocalDeployScreen} />
+      <OnboardingStack.Screen name="SocialBind" component={SocialBindScreen} />
     </OnboardingStack.Navigator>
   );
 }

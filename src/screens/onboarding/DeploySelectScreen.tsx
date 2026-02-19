@@ -34,11 +34,11 @@ const OPTIONS = [
   {
     id: 'local',
     emoji: '💻',
-    title: 'Local (Windows/Mac/Linux)',
-    subtitle: 'Download installer & run on your computer.',
-    badge: 'ADVANCED',
-    badgeColor: colors.textMuted,
-    action: null,
+    title: 'Local (Windows / Mac)',
+    subtitle: 'Download & run on your PC. Free, fully private.',
+    badge: 'FREE',
+    badgeColor: colors.success,
+    action: 'LocalDeploy' as const,
     highlight: false,
   },
 ];
@@ -62,8 +62,6 @@ export function DeploySelectScreen() {
             onPress={() => {
               if (opt.action) {
                 navigation.navigate(opt.action);
-              } else {
-                // TODO: Local installer flow
               }
             }}
           >

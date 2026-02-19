@@ -18,7 +18,7 @@ jobs:
   build:
     name: 🔨 Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       debug-apk: ${{ steps.paths.outputs.debug }}
@@ -88,6 +88,37 @@ jobs:
         run: npx expo prebuild --platform android --clean --no-install
         env:
           CI: '1'
+
+      # Restrict C++ builds to arm64-v8a + x86_64 only.
+      # Drops legacy 32-bit targets (armeabi-v7a, x86) that almost no modern device needs.
+      # Cuts CMake compilation time from ~20 min → ~8 min (4 ABIs → 2).
+      # Idempotent: skips if ndk block already present.
+      - name: Patch android/app/build.gradle — restrict ABI targets
+        run: |
+          python3 - << 'PYEOF'
+          import re, os, sys
+          filepath = 'android/app/build.gradle'
+          if not os.path.exists(filepath):
+              print(f'[skip] {filepath} not found')
+              sys.exit(0)
+          with open(filepath) as f:
+              content = f.read()
+          if 'abiFilters' in content:
+              print('[ok] abiFilters already present — skipping')
+              sys.exit(0)
+          # Insert ndk block as first line inside defaultConfig
+          fixed = re.sub(
+              r'(defaultConfig\s*\{)',
+              '\\1\n        ndk {\n            abiFilters "arm64-v8a", "x86_64"\n        }',
+              content, count=1
+          )
+          if fixed == content:
+              print('[warn] Could not find defaultConfig block — skipping')
+          else:
+              with open(filepath, 'w') as f:
+                  f.write(fixed)
+              print('[patched] Added abiFilters arm64-v8a + x86_64 to defaultConfig')
+          PYEOF
 
       - name: Grant Gradle execute permission
         run: chmod +x android/gradlew

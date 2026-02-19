@@ -141,6 +141,52 @@ export async function unbindInstance(instanceId: string): Promise<void> {
   return apiFetch(`/openclaw/instances/${instanceId}`, { method: 'DELETE' });
 }
 
+// ── Local Agent ────────────────────────────────────────────────────────────────
+
+export interface ProvisionLocalResult {
+  instanceId: string;
+  relayToken: string;
+  wsRelayUrl: string;
+  downloadUrls: { win: string; mac: string };
+}
+
+/** Create a new LOCAL-type instance and get relay token + download links */
+export async function provisionLocalAgent(opts: {
+  name: string;
+  os?: 'android' | 'ios';
+}): Promise<ProvisionLocalResult> {
+  return apiFetch<ProvisionLocalResult>('/openclaw/local/provision', {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
+}
+
+/** Check whether the local agent binary is connected to the relay */
+export async function getRelayStatus(instanceId: string): Promise<{ connected: boolean; instanceId: string }> {
+  return apiFetch(`/openclaw/local/${instanceId}/relay-status`);
+}
+
+// ── Social Binding ─────────────────────────────────────────────────────────────
+
+export interface TelegramQrResult {
+  deepLink: string;
+  relayToken: string;
+  platform: 'telegram';
+}
+
+/** Generate a Telegram deep-link QR for binding this instance */
+export async function generateTelegramQr(instanceId: string): Promise<TelegramQrResult> {
+  return apiFetch<TelegramQrResult>('/openclaw/social/telegram/qr', {
+    method: 'POST',
+    body: JSON.stringify({ instanceId }),
+  });
+}
+
+/** Unlink Telegram from an instance */
+export async function unlinkTelegram(instanceId: string): Promise<void> {
+  return apiFetch(`/openclaw/social/telegram/${instanceId}`, { method: 'DELETE' });
+}
+
 // Stream chat using WebSocket — returns cleanup function
 export function streamAgentChat(
   instanceId: string,

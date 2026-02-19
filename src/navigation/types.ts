@@ -9,6 +9,8 @@ export type OnboardingStackParamList = {
   DeploySelect: undefined;
   CloudDeploy: undefined;
   ConnectExisting: undefined;
+  LocalDeploy: undefined;
+  SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
 export type AgentStackParamList = {
