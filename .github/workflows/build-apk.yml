@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 55
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
-      debug-apk: ${{ steps.paths.outputs.debug }}
       release-apk: ${{ steps.paths.outputs.release }}
 
     steps:
@@ -132,31 +131,25 @@ jobs:
           key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      - name: Build Debug APK (for UI testing)
+      # Build a single release APK — used for both UI tests and the download link.
+      # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
+      # Unsigned release APK installs fine on any emulator or test device.
+      - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --parallel
         env:
-          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false'
-
-      - name: Build Release APK (for download)
-        working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
-        env:
-          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false'
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
       - name: Set build tag and APK paths
         id: tag
         run: echo "tag=build-${{ github.run_number }}" >> $GITHUB_OUTPUT
 
-      - name: Stage APKs
+      - name: Stage APK
         id: paths
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             artifacts/ClawLink-debug-build-${{ github.run_number }}.apk
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
              artifacts/ClawLink-build-${{ github.run_number }}.apk
-          echo "debug=artifacts/ClawLink-debug-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
 
       - name: Upload APKs
@@ -232,7 +225,7 @@ jobs:
 
             echo "=== Installing APK ==="
             adb wait-for-device
-            adb install -r artifacts/ClawLink-debug-build-${{ github.run_number }}.apk
+            adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
 
             echo "=== Running Maestro flows ==="
             mkdir -p maestro-output
