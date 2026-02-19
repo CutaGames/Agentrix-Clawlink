@@ -1,63 +1,63 @@
-name: Build & Release APK
+name: Build → Test → Release APK
 
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:          # allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
 
-# Allow this workflow to create releases
+# Allow creating releases and writing job summaries
 permissions:
   contents: write
+  checks: write
 
 jobs:
-  build-android:
-    name: Build Android APK
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 1 — Build debug APK (fast, auto-signed, for device testing)
+  #          + release APK (for the download link)
+  # ═══════════════════════════════════════════════════════════════════
+  build:
+    name: 🔨 Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      debug-apk: ${{ steps.paths.outputs.debug }}
+      release-apk: ${{ steps.paths.outputs.release }}
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Node.js ───────────────────────────────────────────────────
-      - name: Set up Node.js 20
+      - name: Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # ── 3. Java 17 (required by Gradle / React Native) ───────────────
-      - name: Set up Java 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # ── 4. Android SDK ───────────────────────────────────────────────
-      - name: Set up Android SDK
+      - name: Android SDK
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: '11.0'
           accept-android-sdk-licenses: true
 
-      - name: Install Android build tools
-        run: |
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
+      - name: Install SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
 
-      # ── 5. JS dependencies ───────────────────────────────────────────
-      - name: Install npm dependencies
+      - name: npm install
         run: npm install
 
-      # ── 6. Expo prebuild  (generates android/ native folder) ─────────
       - name: Expo prebuild
         run: npx expo prebuild --platform android --clean --no-install
         env:
-          # Skip Expo login during prebuild — not needed for local builds
           CI: '1'
 
-      # ── 7. Gradle build ──────────────────────────────────────────────
-      - name: Make Gradle executable
+      - name: Grant Gradle execute permission
         run: chmod +x android/gradlew
 
       - name: Cache Gradle
@@ -69,49 +69,242 @@ jobs:
           key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      - name: Build Release APK
+      - name: Build Debug APK (for UI testing)
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false'
 
-      # ── 8. Rename APK with build number ──────────────────────────────
-      - name: Rename APK
+      - name: Build Release APK (for download)
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+        env:
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false'
+
+      - name: Set build tag and APK paths
+        id: tag
+        run: echo "tag=build-${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Stage APKs
+        id: paths
         run: |
           mkdir -p artifacts
-          TAG="build-${{ github.run_number }}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             artifacts/ClawLink-debug-build-${{ github.run_number }}.apk
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
-             artifacts/ClawLink-${TAG}.apk
-          echo "APK_PATH=artifacts/ClawLink-${TAG}.apk" >> $GITHUB_ENV
-          echo "TAG=${TAG}" >> $GITHUB_ENV
+             artifacts/ClawLink-build-${{ github.run_number }}.apk
+          echo "debug=artifacts/ClawLink-debug-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
+          echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
 
-      # ── 9. Upload as workflow artifact (always visible in Actions tab) ─
-      - name: Upload APK artifact
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: ClawLink-APK-build-${{ github.run_number }}
-          path: ${{ env.APK_PATH }}
-          retention-days: 30
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 7
 
-      # ── 10. Create GitHub Release with direct download link ───────────
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 2 — Spin up Android emulator, install APK, run Maestro UI tests
+  # ═══════════════════════════════════════════════════════════════════
+  ui-test:
+    name: 🤖 UI Automation (Maestro)
+    runs-on: macos-14          # macOS runners have hardware acceleration for Android emulator
+    needs: build
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout (for .maestro/ flows)
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api30-${{ runner.os }}
+
+      - name: Create AVD (if not cached)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: echo "AVD created and cached"
+
+      - name: Run Maestro tests on emulator
+        id: maestro
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -e
+
+            echo "=== Installing APK ==="
+            adb wait-for-device
+            adb install -r artifacts/ClawLink-debug-build-${{ github.run_number }}.apk
+
+            echo "=== Running Maestro flows ==="
+            mkdir -p maestro-output
+
+            # Run each flow; capture pass/fail per test
+            PASS=0; FAIL=0; ERRORS=""
+
+            for flow in .maestro/*.yaml; do
+              echo "--- Running: $flow ---"
+              if maestro test "$flow" \
+                  --output "maestro-output/$(basename $flow .yaml)-report.xml" \
+                  --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
+                echo "✅ PASS: $flow"
+                PASS=$((PASS + 1))
+              else
+                echo "❌ FAIL: $flow"
+                FAIL=$((FAIL + 1))
+                ERRORS="$ERRORS\n- \`$flow\`"
+              fi
+            done
+
+            # Copy screenshots
+            mkdir -p maestro-output/screenshots
+            find . -name "*.png" -newer artifacts/ -exec cp {} maestro-output/screenshots/ \; 2>/dev/null || true
+
+            # Write summary env vars
+            echo "MAESTRO_PASS=$PASS" >> $GITHUB_ENV
+            echo "MAESTRO_FAIL=$FAIL" >> $GITHUB_ENV
+            echo "MAESTRO_ERRORS<<EOF" >> $GITHUB_ENV
+            echo -e "$ERRORS" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+
+            echo "=== Results: $PASS passed, $FAIL failed ==="
+
+            # Fail the step if any test failed
+            [ "$FAIL" -eq 0 ] || exit 1
+
+      # ── Always: upload test artifacts (screenshots + logs) ────────────
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-results-build-${{ github.run_number }}
+          path: maestro-output/
+          retention-days: 14
+
+      # ── On failure: write detailed error report to job summary ─────────
+      - name: Failure report
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
+          ## ❌ UI Test Failed — Build #${{ github.run_number }}
+
+          **Commit:** `${{ github.sha }}`
+          **Branch:** `${{ github.ref_name }}`
+          **Author:** ${{ github.actor }}
+
+          ### Failed Tests
+          ${{ env.MAESTRO_ERRORS }}
+
+          ### Results
+          | Status | Count |
+          |--------|-------|
+          | ✅ Passed | ${{ env.MAESTRO_PASS }} |
+          | ❌ Failed | ${{ env.MAESTRO_FAIL }} |
+
+          ### Artifacts
+          Screenshots and logs are attached to this workflow run under
+          **maestro-results-build-${{ github.run_number }}**.
+
+          ### How to debug locally
+          ```bash
+          # Install Maestro
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+
+          # Run a specific failing flow against your local emulator
+          maestro test .maestro/01-launch.yaml
+          ```
+          SUMMARY
+
+      # ── On success: write success summary ──────────────────────────────
+      - name: Success summary
+        if: success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
+          ## ✅ All UI Tests Passed — Build #${{ github.run_number }}
+
+          | Status | Count |
+          |--------|-------|
+          | ✅ Passed | ${{ env.MAESTRO_PASS }} |
+          | ❌ Failed | 0 |
+
+          Screenshots captured during tests are in the **maestro-results** artifact.
+          SUMMARY
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 3 — Create GitHub Release with download link (only if tests pass)
+  # ═══════════════════════════════════════════════════════════════════
+  release:
+    name: 🚀 Release
+    runs-on: ubuntu-latest
+    needs: [build, ui-test]
+    if: success()
+
+    steps:
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG }}
-          name: "ClawLink Build #${{ github.run_number }}"
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: "✅ ClawLink Build #${{ github.run_number }}"
           body: |
             ## ClawLink APK — Build #${{ github.run_number }}
 
-            **Commit:** `${{ github.sha }}`
-            **Branch:** `${{ github.ref_name }}`
-            **Built at:** ${{ github.event.head_commit.timestamp }}
+            **All UI tests passed** ✅
 
-            ### Install
-            1. Download `ClawLink-build-${{ github.run_number }}.apk` below
-            2. On your Android device: Settings → Security → enable **Install from unknown sources**
-            3. Open the downloaded APK and install
+            | | |
+            |---|---|
+            | Commit | `${{ github.sha }}` |
+            | Branch | `${{ github.ref_name }}` |
+            | Author | ${{ github.actor }} |
 
-            > APK is unsigned (debug-signed for sideloading). Use EAS Build `production` profile for Play Store release.
-          files: ${{ env.APK_PATH }}
+            ### 📥 Install on Android
+            1. Download **ClawLink-build-${{ github.run_number }}.apk** below
+            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
+            3. Open the APK and tap Install
+
+            ### Automated Tests
+            This build passed all Maestro UI automation flows before release.
+          files: |
+            artifacts/ClawLink-build-${{ github.run_number }}.apk
           draft: false
           prerelease: false
