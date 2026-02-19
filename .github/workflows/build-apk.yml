@@ -40,14 +40,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '11.0'
-          accept-android-sdk-licenses: true
-
-      - name: Install SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
+      # ubuntu-latest pre-installs Android SDK at /usr/local/lib/android/sdk
+      # We just need to install the specific platform + build-tools we need
+      - name: Install Android SDK packages
+        run: |
+          ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            --sdk_root=${ANDROID_SDK_ROOT} 2>&1 | tail -5
 
       - name: npm install
         run: npm install
