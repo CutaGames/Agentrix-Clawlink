@@ -67,7 +67,8 @@
         {
           "android": {
             "newArchEnabled": true,
-            "ndkVersion": "27.0.12077973"
+            "ndkVersion": "27.0.12077973",
+            "kotlinVersion": "1.9.24"
           }
         }
       ],
