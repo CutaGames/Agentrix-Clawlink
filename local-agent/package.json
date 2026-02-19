@@ -1,0 +1,39 @@
+{
+  "name": "clawlink-agent",
+  "version": "1.0.0",
+  "description": "ClawLink Local Agent — connects your PC to the Agentrix relay server",
+  "main": "index.js",
+  "bin": {
+    "clawlink-agent": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "build:win": "pkg . --target node18-win-x64 --output dist/clawlink-agent-win.exe --compress GZip",
+    "build:mac": "pkg . --target node18-macos-x64 --output dist/clawlink-agent-mac --compress GZip",
+    "build:all": "npm run build:win && npm run build:mac"
+  },
+  "pkg": {
+    "assets": [
+      "assets/**/*"
+    ],
+    "targets": [
+      "node18-win-x64",
+      "node18-macos-x64"
+    ]
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5",
+    "node-fetch": "^2.7.0",
+    "open": "^9.1.0",
+    "kleur": "^4.1.5"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
