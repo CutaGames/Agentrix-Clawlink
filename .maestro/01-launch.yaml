@@ -1,0 +1,20 @@
+appId: app.clawlink.mobile
+---
+# Test 01: App launches without crash and shows Auth or Splash screen
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+# Wait for app to finish loading (splash → auth screen)
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Verify we're on a screen (not a blank white screen / crash)
+# The auth screen has "ClawLink" branding or a login button
+- assertVisible:
+    enabled: true
+    # Either the logo text or login/get-started button must be visible
+    selector:
+      textRegex: "ClawLink|Get Started|Sign In|Connect Wallet|Continue with Google"
+
+- takeScreenshot: "01-app-launch-success"
