@@ -30,6 +30,27 @@ jobs:
           cd mobile-app
           npm install --legacy-peer-deps
 
+      # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
+      # (ResponseBody? vs ResponseBody). Patch is idempotent.
+      - name: Patch expo-image for Kotlin 2.x compatibility
+        run: |
+          python3 - << 'PYEOF'
+          import re, os, sys
+          filepath = 'mobile-app/node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
+          if not os.path.exists(filepath):
+              print(f"[skip] {filepath} not found — expo-image may have been updated")
+              sys.exit(0)
+          with open(filepath, 'r') as f:
+              content = f.read()
+          fixed = re.sub(r'originalResponse\.body(?!\!)', 'originalResponse.body!!', content)
+          if fixed == content:
+              print(f"[ok] Already patched or no match: {filepath}")
+          else:
+              with open(filepath, 'w') as f:
+                  f.write(fixed)
+              print(f"[patched] Applied expo-image Kotlin 2.x null-safety fix")
+          PYEOF
+
       - name: Set up NDK
         run: |
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "ndk;27.0.12077973"
