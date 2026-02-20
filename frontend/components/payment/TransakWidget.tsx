@@ -17,6 +17,7 @@ interface TransakWidgetProps {
   onError?: (error: any) => void;
   onEvent?: (eventType: string, data?: any) => void;
   onClose?: () => void;
+  isFiatAmount?: boolean;  // true=用户指定法币支出(fiatAmount), false=用户指定收到加密货币数量(cryptoAmount, default)
 }
 
 export const TransakWidget: React.FC<TransakWidgetProps> = ({
@@ -31,6 +32,7 @@ export const TransakWidget: React.FC<TransakWidgetProps> = ({
   onError,
   onEvent,
   onClose,
+  isFiatAmount = false,  // 默认为 false: 用户指定收到的加密货币数量
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,9 +51,8 @@ export const TransakWidget: React.FC<TransakWidgetProps> = ({
         setLoading(true);
         setError(null);
 
-        // 使用正确的 Create Session API
-        // amount 应该是合约需要收到的 USDC 金额（商品价格）
-        // Transak 会基于此计算用户需要支付的法币金额（包含 fee）
+        // isFiatAmount=true: 用户指定法币支出金额 → Transak lock fiatAmount（用户付 X 法币）
+        // isFiatAmount=false: 用户指定收到加密货币数量 → Transak lock cryptoAmount（用户收 X USDC）
         const result = await paymentApi.createTransakSession({
           amount: amount,
           fiatCurrency: fiatCurrency || 'USD',
@@ -64,6 +65,7 @@ export const TransakWidget: React.FC<TransakWidgetProps> = ({
           disableWalletAddressForm: true,
           disableFiatAmountEditing: true, // 锁定金额不可编辑
           isKYCRequired: true,
+          isFiatAmount: isFiatAmount,  // 透传：控制 Transak 锁定法币还是加密货币数量
         });
 
         if (result?.widgetUrl) {

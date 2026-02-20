@@ -1,7 +1,3 @@
-// WebSocket Gateway - 需要安装 @nestjs/websockets 和 socket.io 依赖
-// 暂时禁用此功能
-
-/*
 import {
   WebSocketGateway as NestWebSocketGateway,
   WebSocketServer,
@@ -135,10 +131,9 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   handlePing(@ConnectedSocket() client: AuthenticatedSocket) {
     return { pong: Date.now() };
   }
-}
-*/
 
-// 临时占位类，避免编译错误
-export class WebSocketGateway {
-  // 占位实现
+  /** Push streaming chat chunk to client (called from proxy service) */
+  sendChatChunk(userId: string, instanceId: string, chunk: string, done: boolean) {
+    this.server.to(`user:${userId}`).emit('chat:chunk', { instanceId, chunk, done });
+  }
 }

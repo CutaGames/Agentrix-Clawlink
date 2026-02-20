@@ -80,6 +80,15 @@ import { CommonModule } from './modules/common/common.module';
 import { CommerceModule } from './modules/commerce/commerce.module';
 // A2A (Agent-to-Agent) 模块
 import { A2AModule } from './modules/a2a/a2a.module';
+// ClawLink: OpenClaw 连接 & 代理模块
+import { OpenClawConnectionModule } from './modules/openclaw-connection/openclaw-connection.module';
+import { OpenClawProxyModule } from './modules/openclaw-proxy/openclaw-proxy.module';
+import { OpenClawBridgeModule } from './modules/openclaw-bridge/openclaw-bridge.module';
+import { TokenQuotaModule } from './modules/token-quota/token-quota.module';
+// ClawLink: 社区动态模块
+import { SocialModule } from './modules/social/social.module';
+// WebSocket 实时推送
+import { WebSocketModule } from './modules/websocket/websocket.module';
 
 @Module({
   imports: [
@@ -166,6 +175,16 @@ import { A2AModule } from './modules/a2a/a2a.module';
     CommerceModule,
     // A2A (Agent-to-Agent)
     A2AModule,
+    // ClawLink: OpenClaw 连接 & 代理
+    OpenClawConnectionModule,
+    OpenClawProxyModule,
+    OpenClawBridgeModule,
+    // Token quota tracking
+    TokenQuotaModule,
+    // ClawLink: 社区动态
+    SocialModule,
+    // WebSocket 实时推送
+    WebSocketModule,
   ],
   controllers: [AppController],
   providers: [AppService],

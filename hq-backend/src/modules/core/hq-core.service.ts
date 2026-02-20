@@ -317,6 +317,8 @@ export class HqCoreService {
       this.logger.log(`🔍 AI Status check for ${agentCode}: Bedrock=${aiStatus.bedrockOpus}, Gemini=${aiStatus.gemini}, OpenAI=${aiStatus.openai}`);
       
       const temperature = toolMode ? 0 : 0.7;
+      const maxTokens = Math.max(256, Number(this.configService.get<string>('HQ_MAX_TOKENS', '4096')) || 4096);
+      const enablePaidFallbacks = String(this.configService.get<string>('HQ_ENABLE_PAID_FALLBACKS', 'false') || 'false').toLowerCase() === 'true';
 
       try {
         // 检查是否有任何 AI 服务可用
@@ -334,7 +336,7 @@ export class HqCoreService {
               {
                 systemPrompt,
                 temperature,
-                maxTokens: 16384,
+                maxTokens,
                 provider,
                 model: overrideModel,
               },
@@ -354,7 +356,7 @@ export class HqCoreService {
             { 
               systemPrompt, 
               temperature,
-              maxTokens: 16384,
+              maxTokens,
             },
           );
           
@@ -374,7 +376,7 @@ export class HqCoreService {
         this.logger.error(`Stack: ${error.stack}`);
 
         const isGeminiQuota = /RESOURCE_EXHAUSTED|quota|429|Too Many Requests/i.test(errorMessage);
-        if (isGeminiQuota && this.aiService?.getStatus?.().bedrockOpus) {
+        if (isGeminiQuota && enablePaidFallbacks && (this.aiService?.getStatus?.().bedrockOpus || this.aiService?.getStatus?.().bedrockSonnet)) {
           this.logger.warn(`🔁 Gemini quota hit. Falling back to Bedrock Haiku for ${agentCode}.`);
           try {
             const fallback = await this.aiService.chatCompletion(
@@ -382,7 +384,7 @@ export class HqCoreService {
               {
                 systemPrompt,
                 temperature,
-                maxTokens: 16384,
+                maxTokens,
                 provider: 'bedrock-haiku',
                 model: 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
               },

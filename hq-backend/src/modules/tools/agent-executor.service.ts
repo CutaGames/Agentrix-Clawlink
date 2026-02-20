@@ -47,6 +47,9 @@ export interface AgentExecutorResult {
 export class AgentExecutorService {
   private readonly logger = new Logger(AgentExecutorService.name);
   private proxyAgent: HttpsProxyAgent<string> | null = null;
+  private readonly lowCostMode: boolean;
+  private readonly defaultMaxIterations: number;
+  private readonly defaultMaxTokens: number;
 
   constructor(
     private readonly toolService: ToolService,
@@ -57,6 +60,13 @@ export class AgentExecutorService {
     if (proxyUrl) {
       this.proxyAgent = new HttpsProxyAgent(proxyUrl);
     }
+
+    this.lowCostMode = String(this.configService.get<string>('HQ_LOW_COST_MODE', process.env.HQ_LOW_COST_MODE || '') || '')
+      .toLowerCase() === 'true';
+    const envIterations = Number(this.configService.get<string>('HQ_MAX_TOOL_ITERATIONS', this.lowCostMode ? '2' : '5'));
+    this.defaultMaxIterations = Math.max(1, Number.isFinite(envIterations) ? envIterations : (this.lowCostMode ? 2 : 5));
+    const envTokens = Number(this.configService.get<string>('HQ_MAX_TOKENS', '4096'));
+    this.defaultMaxTokens = Math.max(256, Number.isFinite(envTokens) ? envTokens : 4096);
   }
 
   /**
@@ -67,11 +77,13 @@ export class AgentExecutorService {
       agentCode,
       systemPrompt,
       messages,
-      maxIterations = 5,
+      maxIterations,
       workingDir = '/home/ubuntu/Agentrix-independent-HQ',
       taskId,
       dryRun = false,
     } = request;
+
+    const finalMaxIterations = Math.max(1, maxIterations ?? this.defaultMaxIterations);
 
     const context: ToolExecutionContext = {
       agentCode,
@@ -110,9 +122,9 @@ export class AgentExecutorService {
     }
 
     if (isBedrock) {
-      return this.executeBedrockWithTools(agentCode, systemPrompt, messages, toolDefs, context, maxIterations, model);
+      return this.executeBedrockWithTools(agentCode, systemPrompt, messages, toolDefs, context, finalMaxIterations, model);
     } else {
-      return this.executeGeminiWithTools(agentCode, systemPrompt, messages, toolDefs, context, maxIterations, model);
+      return this.executeGeminiWithTools(agentCode, systemPrompt, messages, toolDefs, context, finalMaxIterations, model);
     }
   }
 
@@ -164,7 +176,7 @@ export class AgentExecutorService {
 
       const body: any = {
         anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 16384,
+        max_tokens: this.defaultMaxTokens,
         system: systemPrompt,
         messages: claudeMessages,
         tools: claudeTools,

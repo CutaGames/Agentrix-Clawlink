@@ -256,6 +256,8 @@ export const paymentApi = {
     disableFiatAmountEditing?: boolean;
     isKYCRequired?: boolean;
     referrerDomain?: string;
+    productType?: 'BUY' | 'SELL';
+    isFiatAmount?: boolean;  // true=用户指定法币支出(lock fiatAmount), false=用户指定收到加密货币数量(lock cryptoAmount)
   }): Promise<{ sessionId: string; widgetUrl: string }> => {
     const result = await apiClient.post<{ sessionId: string; widgetUrl: string }>(
       '/payments/provider/transak/session',

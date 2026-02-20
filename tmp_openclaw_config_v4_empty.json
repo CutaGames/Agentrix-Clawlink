@@ -1,0 +1,13 @@
+{
+  "gateway": {
+     "mode": "remote",
+     "port": 18789
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google:gemini-2.0-flash-exp"
+      }
+    }
+  }
+}

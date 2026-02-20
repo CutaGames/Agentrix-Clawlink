@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Agentrix",
-    "slug": "agentrix-mobile",
-    "scheme": "agentrix",
+    "name": "ClawLink",
+    "slug": "clawlink",
+    "scheme": "clawlink",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.agentrix.mobile",
+      "bundleIdentifier": "app.clawlink.mobile",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "metamask",
@@ -29,7 +29,11 @@
           "discord",
           "tg",
           "telegram"
-        ]
+        ],
+        "NSCameraUsageDescription": "ClawLink uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSMicrophoneUsageDescription": "ClawLink uses the microphone for voice commands to your AI agent.",
+        "NSPhotoLibraryAddUsageDescription": "ClawLink saves share cards to your photo library.",
+        "NSPhotoLibraryUsageDescription": "ClawLink reads the photo library to select images."
       }
     },
     "android": {
@@ -37,11 +41,19 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B1220"
       },
-      "package": "com.agentrix.mobile",
+      "package": "app.clawlink.mobile",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "RECORD_AUDIO"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "agentrix" }],
+          "data": [{ "scheme": "clawlink" }, { "scheme": "https", "host": "clawlink.app" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
@@ -58,7 +70,16 @@
             "ndkVersion": "27.0.12077973"
           }
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0B1220",
+          "sounds": []
+        }
+      ],
+      "expo-image-picker"
     ],
     "extra": {
       "eas": {

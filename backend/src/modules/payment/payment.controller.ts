@@ -151,6 +151,8 @@ export class PaymentController {
       disableFiatAmountEditing?: boolean;
       isKYCRequired?: boolean;
       referrerDomain?: string;
+      productType?: 'BUY' | 'SELL';  // BUY = onramp (default), SELL = offramp
+      isFiatAmount?: boolean;  // true=用户指定法币支出(lock fiatAmount), false=用户指定收到加密货币数量(lock cryptoAmount)
     },
   ) {
     // 调试日志
@@ -239,6 +241,8 @@ export class PaymentController {
       disableFiatAmountEditing: dto.disableFiatAmountEditing !== undefined ? dto.disableFiatAmountEditing : true,
       isKYCRequired: dto.isKYCRequired !== undefined ? dto.isKYCRequired : true,
       referrerDomain,
+      productType: dto.productType || 'BUY',
+      isFiatAmount: dto.isFiatAmount === true,  // 透传：true=lock法币金额, false=lock加密货币数量
     });
   }
 

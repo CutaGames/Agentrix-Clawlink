@@ -61,6 +61,19 @@ export class HqCoreController {
     return this.hqCoreService.getAgent(agentId);
   }
 
+  @Put('agents/:agentId/model')
+  @ApiOperation({ summary: '更新 Agent 使用的 Provider/Model（写入 agent.config.modelProvider/modelId）' })
+  async updateAgentModel(
+    @Param('agentId') agentId: string,
+    @Body() body: { provider?: string; model?: string; clear?: boolean },
+  ): Promise<HqAgent> {
+    return this.hqCoreService.updateAgentModel(agentId, {
+      provider: body.provider as any,
+      model: body.model,
+      clear: body.clear,
+    });
+  }
+
   // ========== 统一聊天接口 (新) ==========
 
   @Post('unified-chat')

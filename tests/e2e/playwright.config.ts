@@ -1,5 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+const frontendPort = (() => {
+  try {
+    const parsed = new URL(frontendUrl);
+    return parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+  } catch {
+    return '3000';
+  }
+})();
+
 export default defineConfig({
   testDir: './',
   testIgnore: ['**/agent-flow.spec.ts'],
@@ -14,7 +24,7 @@ export default defineConfig({
     ['junit', { outputFile: 'tests/reports/e2e-junit.xml' }],
   ],
   use: {
-    baseURL: process.env.FRONTEND_URL || 'http://localhost:3000',
+    baseURL: frontendUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -24,13 +34,13 @@ export default defineConfig({
       name: 'chromium',
       use: { 
         ...devices['Desktop Chrome'],
-        baseURL: process.env.FRONTEND_URL || 'http://localhost:3000',
+        baseURL: frontendUrl,
       },
     },
   ],
   webServer: {
-    command: 'cd /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/frontend && npm run dev',
-    url: 'http://localhost:3000',
+    command: `cd /mnt/d/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/frontend && rm -rf .next && npx next dev -p ${frontendPort}`,
+    url: frontendUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 180 * 1000,
     stdout: 'ignore',

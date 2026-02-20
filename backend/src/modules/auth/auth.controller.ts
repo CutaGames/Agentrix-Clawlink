@@ -64,9 +64,51 @@ export class AuthController {
   }
 
   @Get('twitter')
-  @UseGuards(AuthGuard('twitter'))
-  @ApiOperation({ summary: 'Twitter OAuth 登录' })
-  async twitterAuth() {}
+  @ApiOperation({ summary: 'Twitter OAuth 登录（自动选择 OAuth 1.0a 或 OAuth 2.0 PKCE）' })
+  async twitterAuth(@Request() req, @Res() res: Response) {
+    const consumerKey = this.configService.get<string>('TWITTER_CONSUMER_KEY')
+      || this.configService.get<string>('TWITTER_API_KEY');
+    const clientId = this.configService.get<string>('TWITTER_CLIENT_ID');
+
+    // 优先走 OAuth 1.0a（如果配置了 consumer key）
+    if (consumerKey && consumerKey !== 'placeholder-consumer-key') {
+      const passport = require('passport');
+      return new Promise<void>((resolve) => {
+        passport.authenticate('twitter')(req, res, () => resolve());
+      });
+    }
+
+    // 降级到 OAuth 2.0 PKCE（与 mobile 流程复用）
+    if (clientId) {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+      const webRedirect = `${frontendUrl}/auth/callback`;
+
+      const crypto = require('crypto');
+      const codeVerifier = crypto.randomBytes(32).toString('base64url');
+      const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+      const stateKey = this.encodeMobileState(webRedirect, { cv: codeVerifier });
+
+      const callbackUrl = this.configService.get<string>('TWITTER_CALLBACK_URL')
+        || `${this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api'}/auth/twitter/callback`;
+
+      const params = new URLSearchParams({
+        response_type: 'code',
+        client_id: clientId,
+        redirect_uri: callbackUrl,
+        scope: 'tweet.read users.read offline.access',
+        state: stateKey,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+      });
+
+      this.logger.log(`[Twitter Web] Falling back to OAuth 2.0 PKCE, callbackUrl=${callbackUrl}`);
+      return res.redirect(`https://twitter.com/i/oauth2/authorize?${params.toString()}`);
+    }
+
+    // 都没配置
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    return res.redirect(`${frontendUrl}/auth/callback?error=Twitter+OAuth+not+configured`);
+  }
 
   @Get('twitter/callback')
   @ApiOperation({ summary: 'Twitter OAuth 回调（共享：Web OAuth 1.0a + Mobile OAuth 2.0 PKCE）' })
@@ -140,12 +182,22 @@ export class AuthController {
         accessToken: tokenData.access_token,
       });
 
-      return this.redirectMobileWithParams(res, mobileRedirect, {
+      const redirectParams: Record<string, string> = {
         token: loginResult.access_token,
         userId: loginResult.user.id,
         email: loginResult.user.email || '',
         agentrixId: loginResult.user.agentrixId,
-      });
+      };
+
+      // 检查是否需要创建 MPC 钱包（Web 流程也需要此参数）
+      const hasWallet = (loginResult.user as any).walletAddress;
+      if (!hasWallet) {
+        redirectParams.needMPCWallet = 'true';
+        redirectParams.socialType = 'x';
+        redirectParams.socialId = loginResult.user.id;
+      }
+
+      return this.redirectMobileWithParams(res, mobileRedirect, redirectParams);
     } catch (err) {
       this.logger.error(`Mobile Twitter callback error: ${err.message}`);
       return this.redirectMobileWithParams(res, mobileRedirect, { error: err.message || 'Twitter login failed' });

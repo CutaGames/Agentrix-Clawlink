@@ -1,0 +1,24 @@
+{
+  "agent": {
+    "model": "google/gemini-2.0-flash-exp",
+    "thinkingLevel": "high",
+    "soul": "/home/ubuntu/.openclaw/workspace/SOUL.md"
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "0.0.0.0",
+    "auth": {
+      "mode": "password",
+      "password": "agentrix_secure_2026"
+    }
+  },
+  "models": {
+    "google": {
+      "apiKey": "AIzaSyDcjbZ85LVBf8qRw0PNb6URMYmbwLjnAdk"
+    },
+    "openai": {
+      "apiKey": "fk235761-wCrllyRS6SkvzeLZrs4tuqTqIzjBNgG3",
+      "baseURL": "https://openai.api2d.net/v1"
+    }
+  }
+}

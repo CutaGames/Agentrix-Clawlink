@@ -17,6 +17,8 @@ import { TaskQueueService, CreateTaskDto } from './task-queue.service';
 import { AgentCommunicationService } from './agent-communication.service';
 import { UnifiedChatService } from '../../modules/core/unified-chat.service';
 
+const LOW_COST_MODE = String(process.env.HQ_LOW_COST_MODE || '').toLowerCase() === 'true';
+
 /** Collaboration pipeline definition */
 export interface CollaborationPipeline {
   id: string;
@@ -125,6 +127,7 @@ const ROLE_TASK_TEMPLATES: Record<string, Array<{ title: string; description: st
   ],
 };
 
+
 /** Standard collaboration pipelines */
 const COLLABORATION_TEMPLATES: Record<string, Omit<CollaborationPipeline, 'id' | 'status' | 'createdAt'>> = {
   // === 内容发布流水线: CONTENT → GROWTH审核 → SOCIAL发布 ===
@@ -229,6 +232,10 @@ export class AutoTaskGeneratorService {
    * and generates specific, high-priority tasks for other agents.
    */
   async runStrategicPlanning(): Promise<AgentTask[]> {
+    if (LOW_COST_MODE) {
+      this.logger.log('🪙 HQ_LOW_COST_MODE enabled — skipping strategic planning');
+      return [];
+    }
     this.logger.log('🎖️ Running Strategic Planning (COMMANDER-01)...');
     
     // 1. Check if COMMANDER-01 is available
@@ -340,8 +347,16 @@ Respond in this exact JSON format:
 
       // Use agent code-based template lookup for accurate task assignment
       const templateKey = this.agentTemplateMap[agent.code] || agent.role.toLowerCase();
-      const templates = ROLE_TASK_TEMPLATES[templateKey] || ROLE_TASK_TEMPLATES[agent.role.toLowerCase()] || [];
+      let templates = ROLE_TASK_TEMPLATES[templateKey] || ROLE_TASK_TEMPLATES[agent.role.toLowerCase()] || [];
       if (templates.length === 0) continue;
+
+      if (LOW_COST_MODE) {
+        // Keep the same high-output templates, but make them quota-efficient.
+        templates = templates.map(t => ({
+          ...t,
+          description: `${t.description}\n\n[Quota-efficiency rules]\n- Use tools (web_search/http_request/twitter_* etc) only when needed.\n- Max 1-2 tool calls total for this task.\n- Prefer: 1 search → extract top 3-8 best items → deliver as URLs + ready-to-send drafts/checklists.\n- Avoid long quotes; summarize and move to action.`,
+        }));
+      }
 
       // Pick a random template for variety
       const template = templates[Math.floor(Math.random() * templates.length)];

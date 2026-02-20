@@ -103,11 +103,7 @@ export class SplitPlan {
   version: number;
 
   /** 关联的商品类型 (作为默认模板选择器) */
-  @Column({
-    type: 'enum',
-    enum: ['physical', 'service', 'virtual', 'nft', 'skill', 'agent_task'],
-    default: 'service',
-  })
+  @Column({ type: 'varchar', length: 20, default: 'service', nullable: true })
   productType: 'physical' | 'service' | 'virtual' | 'nft' | 'skill' | 'agent_task';
 
   /** 分佣规则列表 (JSON) */

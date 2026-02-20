@@ -1,0 +1,25 @@
+{
+  "gateway": {
+    "mode": "remote",
+    "port": 18789
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google:gemini-2.0-flash-exp"
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "google": {
+        "apiKey": "AIzaSyCi8Nf9n-H8W9M-...",
+        "baseUrl": "https://generativelanguage.googleapis.com"
+      },
+      "openai": {
+        "apiKey": "fk189286-B0LDeiL6RzS0vP5o65K5S2p91l32pB4c",
+        "baseUrl": "https://api2d.net/v1"
+      }
+    }
+  }
+}

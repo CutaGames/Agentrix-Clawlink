@@ -1,116 +1,170 @@
-# Agentrix Mobile App APK 构建指南
+# ClawLink — Build APK Guide
 
-## 📱 快速开始
+## Prerequisites
 
-### 方法 1: 使用 Expo Go 测试（推荐）
+| Tool | Version | Notes |
+|------|---------|-------|
+| Node.js | ≥ 20 | `node --version` |
+| npm | ≥ 10 | bundled with Node 20 |
+| Java (JDK) | 17 | `java --version`; Gradle requires exactly 17 |
+| Android SDK | API 34+ | via Android Studio or `sdkmanager` |
+| `ANDROID_HOME` | set | e.g. `export ANDROID_HOME=~/Android/Sdk` |
+| EAS CLI | latest | `npm install -g eas-cli` (for cloud builds only) |
 
-1. 在手机上安装 **Expo Go** 应用
-   - Android: [Google Play](https://play.google.com/store/apps/details?id=host.exp.exponent)
-   - iOS: [App Store](https://apps.apple.com/app/expo-go/id982107779)
+---
 
-2. 启动开发服务器:
-   ```bash
-   cd mobile-app
-   ./start-expo.sh
-   # 或者直接运行:
-   npx expo start --offline
-   ```
+## Option A — EAS Cloud Build (Recommended)
 
-3. 扫描终端中显示的 QR 码即可在手机上预览应用
+No local Android SDK / Java needed. EAS builds in the cloud.
 
-### 方法 2: 使用 EAS Build 构建 APK（需要 Expo 账号）
-
-1. **登录 Expo 账号**:
-   ```bash
-   npx eas login
-   ```
-
-2. **构建预览版 APK**:
-   ```bash
-   npx eas build --platform android --profile preview
-   ```
-
-3. 构建完成后，会生成一个下载链接，可以直接下载 APK 安装到手机
-
-### 方法 3: 本地构建 APK（需要 Android SDK）
-
-1. **预备工作**:
-   ```bash
-   # 安装 Android SDK (如果没有)
-   sudo apt install android-sdk
-   
-   # 或者设置 ANDROID_HOME 环境变量
-   export ANDROID_HOME=$HOME/Android/Sdk
-   ```
-
-2. **生成原生项目**:
-   ```bash
-   npx expo prebuild --platform android
-   ```
-
-3. **构建 APK**:
-   ```bash
-   cd android
-   ./gradlew assembleRelease
-   # APK 位置: android/app/build/outputs/apk/release/app-release.apk
-   ```
-
-## ⚙️ 构建配置
-
-### eas.json 配置说明
-
-```json
-{
-  "build": {
-    "preview": {
-      "distribution": "internal",  // 内部分发
-      "android": {
-        "buildType": "apk"         // 生成 APK 而非 AAB
-      }
-    },
-    "production": {
-      "android": {
-        "buildType": "app-bundle"  // Google Play 使用 AAB
-      }
-    }
-  }
-}
-```
-
-## 🔧 常见问题
-
-### WSL 代理问题
-如果遇到代理错误，请运行:
 ```bash
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+cd mobile-app
+
+# Authenticate with Expo account
+eas login
+
+# Preview APK (internal distribution, returns a download link)
+eas build --platform android --profile preview
+
+# After build completes, download the APK link from the console
+# or list builds: eas build:list --platform android
 ```
 
-### 端口占用
+> Profile `preview` outputs an `.apk`. Profile `production` outputs an `.aab` (Play Store bundle).
+
+---
+
+## Option B — Local Build via `build-local.sh`
+
+> Runs inside WSL (Ubuntu) on Windows, or natively on macOS/Linux.
+
+### 1. Set up environment
+
 ```bash
-# 查找占用端口的进程
-lsof -i :8081
-# 终止进程
-kill -9 <PID>
+# Ensure JAVA_HOME points to JDK 17
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64   # Ubuntu/WSL
+export ANDROID_HOME=$HOME/Android/Sdk
+export PATH=$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$PATH
 ```
 
-### 网络问题
-使用 `--offline` 模式:
+### 2. Replace the LAN IP placeholder (development only)
+
+In `src/config/env.ts`, find:
+
+```ts
+apiBase: 'http://LAN_IP:3001/api',
+```
+
+Replace `LAN_IP` with your machine's local IP (e.g., `192.168.x.x`). Staging/production already point to `https://api.agentrix.top`.
+
+### 3. Run the build script
+
 ```bash
-npx expo start --offline
+cd mobile-app
+chmod +x build-local.sh
+
+./build-local.sh          # release APK (first run triggers prebuild)
+./build-local.sh debug    # debug APK
+./build-local.sh clean    # force fresh prebuild then release
 ```
 
-## 📦 依赖版本
+The APK will appear in `mobile-app/build-output/`.
 
-- Expo SDK: 52
-- React Native: 0.77
-- Node.js: 22+
+### 4. Install on a device
 
-## 🚀 下一步
+```bash
+adb install -r build-output/ClawLink-YYYYMMDD-release.apk
+```
 
-1. 注册 [Expo 账号](https://expo.dev/signup)
-2. 配置签名密钥（生产环境）
-3. 集成 CI/CD 自动构建
+---
 
-## 📞 支持
+## Option C — Expo Go / Tunnel (Quick JS Testing)
 
-如有问题，请参考 [Expo 官方文档](https://docs.expo.dev/)
+No build needed. Runs JS directly in the **Expo Go** app.
+
+```bash
+cd mobile-app
+npx expo start --tunnel
+```
+
+Scan the QR code with Expo Go (iOS/Android).  
+**Note:** Native modules (camera, push notifications) are unavailable in Expo Go — use Option A/B for full testing.
+
+---
+
+## Option D — Development Client
+
+For testing native modules (camera, deep links, push notifications) in a dev build:
+
+```bash
+eas build --platform android --profile development
+# or locally:
+./build-local.sh debug
+```
+
+Install the `.apk`, then start the dev server:
+
+```bash
+npx expo start --dev-client
+```
+
+---
+
+## Deep Link Testing
+
+```bash
+# Test custom scheme
+adb shell am start -W -a android.intent.action.VIEW \
+  -d "clawlink://agent" app.clawlink.mobile
+
+# Test HTTPS share link
+adb shell am start -W -a android.intent.action.VIEW \
+  -d "https://clawlink.app/i/testuser" app.clawlink.mobile
+```
+
+---
+
+## Push Notification Testing
+
+1. Build with `preview` or `production` profile (push tokens require a real EAS build, not Expo Go).
+2. After login, the app requests notification permissions automatically.
+3. The Expo push token is stored and sent to the backend.
+4. Test via Expo's push tool: https://expo.dev/notifications
+
+---
+
+## Common Issues
+
+| Issue | Fix |
+|-------|-----|
+| `SDK location not found` | Set `ANDROID_HOME`; create `android/local.properties` with `sdk.dir=...` |
+| `Gradle build failed: Java version` | Set `JAVA_HOME` to JDK 17 (not 21) |
+| `expo-notifications: no token` | Push tokens only work in EAS-built apps or dev clients, not Expo Go |
+| `LAN_IP` still in `env.ts` | Replace with your actual local IP for dev builds |
+| Build stalls on prebuild | Delete `android/` and re-run with `./build-local.sh clean` |
+| Camera not working | `expo-camera` is in `app.json` plugins — should work after prebuild |
+| Proxy errors in WSL | `unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY` |
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `app.json` | App identity, permissions, EAS project ID, plugins |
+| `eas.json` | Build profiles: development / preview / production + update channels |
+| `src/config/env.ts` | API base URLs per environment; replace `LAN_IP` for dev |
+| `build-local.sh` | Convenience script for local Gradle builds |
+| `build-output/` | Local APK output (git-ignored) |
+
+---
+
+## App Details
+
+- **Name:** ClawLink
+- **Bundle ID:** `app.clawlink.mobile`
+- **EAS Project ID:** `96a641e0-ce03-45ff-9de7-2cd89c488236`
+- **Deep link scheme:** `clawlink://`
+- **HTTPS link:** `https://clawlink.app`
+- **API (prod):** `https://api.agentrix.top/api`
+

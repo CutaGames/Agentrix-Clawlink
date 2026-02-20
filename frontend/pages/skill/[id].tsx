@@ -199,7 +199,7 @@ export default function SkillDetailPage() {
     setSubmittingReview(true);
     setReviewError('');
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('access_token') || localStorage.getItem('token')) : null;
       const res = await fetch(`/api/skills/${id}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -503,8 +503,8 @@ export default function SkillDetailPage() {
                 {/* Rating Summary */}
                 <div className="flex items-center gap-8 p-5 bg-slate-900/50 rounded-xl mb-6">
                   <div className="text-center">
-                    <div className="text-4xl font-bold text-white">{(skill.rating || 0).toFixed(1)}</div>
-                    {renderStars(skill.rating || 0, 'w-5 h-5')}
+                    <div className="text-4xl font-bold text-white">{Number(skill.rating || 0).toFixed(1)}</div>
+                    {renderStars(Number(skill.rating || 0), 'w-5 h-5')}
                     <div className="text-sm text-slate-500 mt-1">{reviewsTotal} {t({ zh: '条评价', en: 'reviews' })}</div>
                   </div>
                   <div className="flex-1 space-y-1">

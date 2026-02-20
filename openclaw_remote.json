@@ -1,0 +1,44 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "auto",
+    "port": 18789,
+    "auth": {
+      "token": "openclaw-test-token-2026"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google/gemini-2.0-flash"
+      }
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "google": {
+        "baseUrl": "https://generativelanguage.googleapis.com",
+        "apiKey": "${GOOGLE_API_KEY}",
+        "api": "google-generative-ai",
+        "models": [
+          {
+            "id": "gemini-2.0-flash",
+            "name": "Gemini 2.0 Flash"
+          }
+        ]
+      },
+      "openai": {
+        "baseUrl": "https://api.api2d.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o"
+          }
+        ]
+      }
+    }
+  }
+}

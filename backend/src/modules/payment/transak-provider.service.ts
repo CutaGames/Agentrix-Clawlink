@@ -452,7 +452,7 @@ export class TransakProviderService implements IProvider {
    * 文档: https://docs.transak.com/docs/transak-integration-update-mandatory-migration-to-create-session-api
    */
   async createSession(params: {
-    amount: number;  // 这是商品的 USDC 价格（合约要收到的金额）
+    amount: number;  // 金额：当 isFiatAmount=true 时为法币金额（用户支出），当 isFiatAmount=false 时为加密货币金额（用户收到）
     fiatCurrency: string;  // 用户选择的支付法币
     cryptoCurrency: string;
     network?: string;
@@ -466,6 +466,8 @@ export class TransakProviderService implements IProvider {
     disableFiatAmountEditing?: boolean;
     isKYCRequired?: boolean;
     referrerDomain?: string;
+    productType?: 'BUY' | 'SELL';  // BUY = onramp (default), SELL = offramp
+    isFiatAmount?: boolean;  // true=用户指定法币支出金额(fiatAmount)，false=用户指定收到的加密货币数量(cryptoAmount)
   }): Promise<{ sessionId: string; widgetUrl: string }> {
     // 参数验证
     if (!params.amount || params.amount <= 0) {
@@ -475,13 +477,12 @@ export class TransakProviderService implements IProvider {
       params.cryptoCurrency = 'USDC'; // 默认使用 USDC
     }
     
-    // V3.1: cryptoAmount 始终是商品的 USDC 价格，不需要汇率转换
-    // Transak 会根据用户选择的支付方式自动计算需要支付的法币金额
-    const cryptoAmount = params.amount;
+    // 判断金额类型：
+    // isFiatAmount=true  → 用户指定法币支出（如存款 $10 USD），Transak 计算收到多少加密货币
+    // isFiatAmount=false → 用户指定收到的加密货币数量（如购买商品需要 10 USDC），Transak 计算需要支付多少法币
+    const isFiatAmount = params.isFiatAmount === true;
     
     // 对于 Transak 不支持的法币（CNY），转换为 USD
-    // 但这只影响 fiatCurrency 参数，不影响 cryptoAmount
-    // 如果没有提供 fiatCurrency，默认使用 USD
     let fiatCurrency = params.fiatCurrency || 'USD';
     if (fiatCurrency.toUpperCase() === 'CNY') {
       this.logger.log(`Transak: CNY not supported, switching to USD for fiat selection`);
@@ -489,7 +490,7 @@ export class TransakProviderService implements IProvider {
     }
 
     this.logger.log(
-      `Transak: Creating session for ${cryptoAmount} ${params.cryptoCurrency} (user pays in ${fiatCurrency})`,
+      `Transak: Creating session for ${params.amount} ${isFiatAmount ? fiatCurrency + ' (fiat spend mode)' : params.cryptoCurrency + ' (crypto receive mode)'} (user pays in ${fiatCurrency})`,
     );
     this.logger.debug(`Transak: Environment=${this.environment}, BaseUrl=${this.baseUrl}`);
 
@@ -503,10 +504,18 @@ export class TransakProviderService implements IProvider {
       // 构建 widgetParams（这些参数会在 Session 创建时锁定）
       const widgetParams: Record<string, any> = {
         referrerDomain: resolvedReferrerDomain,
-        // ✅ 核心修复：只使用 cryptoAmount 锁定合约需要收到的代币数量
-        // fee 由 Transak 根据用户选择的支付通道动态计算
-        // 用户实际支付金额 = cryptoAmount + Transak动态fee
-        cryptoAmount: params.amount.toString(), // 商品价格，合约收到的金额
+        // 根据 isFiatAmount 选择正确的金额参数：
+        // fiatAmount  = 用户支出法币（存款模式）：用户付 $10，Transak 扣费后收到约 $9-9.5 USDC
+        // cryptoAmount = 用户收到加密货币（购买模式）：用户要收到 10 USDC，Transak 计算需要额外支付多少法币
+        ...(isFiatAmount
+          ? { fiatAmount: params.amount.toString() }      // 法币锁定：用户花 X 法币
+          : { cryptoAmount: params.amount.toString() }    // 加密货币锁定：用户收到 X USDC
+        ),
+        // isFiatAmount=true 时强制锁定法币金额（用户不得修改）
+        ...(isFiatAmount && {
+          disableFiatAmountEditing: true,
+          isReadOnlyFiatAmount: true,
+        }),
         fiatCurrency: fiatCurrency, // 用户选择的支付法币
         cryptoCurrencyCode: params.cryptoCurrency,
         ...(params.network && { network: params.network }),
@@ -530,6 +539,8 @@ export class TransakProviderService implements IProvider {
         isAutoFillUserData: true,
         disableEmail: false, // 不禁用 email，确保不跳过 email OTA
         skipEmailOTA: false, // 明确不跳过 email OTA
+        // Off-ramp: productType=SELL
+        ...(params.productType === 'SELL' && { productType: 'SELL', isBuyOrSell: 'SELL' }),
       };
 
       // 调用 Transak Create Session API
@@ -625,6 +636,7 @@ export class TransakProviderService implements IProvider {
     hideMenu?: boolean;
     disableWalletAddressForm?: boolean;
     disableFiatAmountEditing?: boolean;
+    productType?: 'BUY' | 'SELL';
   }): { sessionId: string; widgetUrl: string } {
     // 生成一个虚拟的 sessionId 用于追踪
     const sessionId = `direct_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -682,7 +694,12 @@ export class TransakProviderService implements IProvider {
     // 尝试锁定金额（通过 disablePaymentMethods 等间接方式）
     // 注意：直接 URL 方式可能无法完全锁定金额编辑
     urlParams.set('themeColor', '4f46e5'); // 主题色
-    urlParams.set('productsAvailed', 'BUY'); // 只显示购买选项
+    // productType: BUY (default onramp) or SELL (offramp)
+    const productType = params.productType || 'BUY';
+    urlParams.set('productsAvailed', productType);
+    if (productType === 'SELL') {
+      urlParams.set('isBuyOrSell', 'SELL');
+    }
     
     const widgetUrl = `${widgetBaseUrl}?${urlParams.toString()}`;
     

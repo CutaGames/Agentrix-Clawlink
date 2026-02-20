@@ -1,0 +1,59 @@
+{
+  "agent": {
+    "model": "google/gemini-2.0-flash-exp",
+    "thinkingLevel": "high",
+    "soul": "/home/ubuntu/.openclaw/workspace/SOUL.md"
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "0.0.0.0",
+    "auth": {
+      "mode": "password",
+      "password": "agentrix_secure_2026"
+    }
+  },
+  "models": {
+    "google": {
+      "apiKey": "AIzaSyDcjbZ85LVBf8qRw0PNb6URMYmbwLjnAdk"
+    },
+    "openai": {
+      "apiKey": "fk235761-wCrllyRS6SkvzeLZrs4tuqTqIzjBNgG3",
+      "baseURL": "https://openai.api2d.net/v1"
+    }
+  },
+  "tools": {
+    "mcp": {
+      "agentrix-commerce": {
+        "type": "sse",
+        "url": "https://api.agentrix.top/api/mcp/sse",
+        "headers": {
+          "X-API-Key": "fk235761-wCrllyRS6SkvzeLZrs4tuqTqIzjBNgG3"
+        }
+      }
+    }
+  },
+  "automation": {
+    "cron": {
+      "growth-check": {
+        "schedule": "0 */4 * * *",
+        "action": "Proactively search for new Grant, start-up funds, free APIs and cloud resources for Agentrix project. Compile a report and summary."
+      },
+      "social-engagement": {
+        "schedule": "0 9,18 * * *",
+        "action": "Search Twitter/X for Agentrix mentions or relevant AI agent topics. Engage with potential users and partners."
+      },
+      "project-health": {
+        "schedule": "0 0 * * *",
+        "action": "Automated status check of Agentrix website and report to owner."
+      }
+    }
+  },
+  "channels": {
+    "webchat": {
+      "enabled": true
+    }
+  },
+  "browser": {
+    "enabled": true
+  }
+}

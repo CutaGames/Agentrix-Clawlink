@@ -30,8 +30,19 @@ export default function ReferralLandingPage() {
     setPlatform(p);
 
     if (p === 'desktop') {
-      // Desktop: redirect to website marketplace with ref code
-      window.location.href = `${WEBSITE_BASE}/marketplace?ref=${code}`;
+      // Desktop: resolve short link via backend API, then redirect to target page
+      fetch(`/api/referral/r/${code}/resolve`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.fullUrl) {
+            window.location.href = data.fullUrl;
+          } else {
+            window.location.href = `${WEBSITE_BASE}/marketplace?ref=${code}`;
+          }
+        })
+        .catch(() => {
+          window.location.href = `${WEBSITE_BASE}/marketplace?ref=${code}`;
+        });
       return;
     }
 

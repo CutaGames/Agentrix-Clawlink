@@ -6,6 +6,8 @@ import { Injectable } from '@nestjs/common';
  */
 @Injectable()
 export class PromptBuilderService {
+
+  private readonly lowCostMode: boolean = String(process.env.HQ_LOW_COST_MODE || '').toLowerCase() === 'true';
   
   /**
    * Agent 角色描述
@@ -76,6 +78,22 @@ KOL 互动：回复 AI/Crypto 领域 KOL 的推文，提供有价值的评论，
    * 工具调用辅助提示词
    */
   getToolsPrompt(workingDir: string): string {
+    if (this.lowCostMode) {
+      return `
+## 工具调用规则
+
+当前处于配额敏感模式（HQ_LOW_COST_MODE=true）：允许使用工具，但必须“少而精”。
+优先输出可直接复用的草稿、清单、模板、步骤计划；需要外部信息时，先用 1 次 web_search/http_request 获取关键事实，再快速产出结果。
+建议：每个任务最多 1-2 次工具调用；避免反复搜索与长篇引用。
+
+### 重要规则
+1. 工作目录: ${workingDir}
+2. 直接执行: 工具会真正执行，结果会通过系统反馈给你。
+3. 真实性: 不要编造执行结果，必须通过工具获取真实数据。
+4. 步进执行: 复杂的任务请分步骤执行，观察每一步的工具返回结果后再决定下一步行动。
+`;
+    }
+
     return `
 ## 工具调用规则
 
@@ -121,6 +139,14 @@ KOL 互动：回复 AI/Crypto 领域 KOL 的推文，提供有价值的评论，
     // 添加工具提示词
     if (enableTools) {
       prompt += `\n\n${this.getToolsPrompt(workingDir)}`;
+    }
+
+    // 添加低成本模式约束（强调高产出 + 少工具调用）
+    if (this.lowCostMode) {
+      prompt += `\n\n### 成本限制（HQ_LOW_COST_MODE）\n` +
+        `- 目标是“高产出”，不是“少输出”：请用最少的工具调用，快速拿到关键事实后立即产出。\n` +
+        `- 建议：每个任务最多 1-2 次工具调用（web_search/http_request/twitter_* 等）。\n` +
+        `- 输出要短、结构化，可直接用于发布/外联/申请（必要时标注 [NEEDS_SOURCE]）。`;
     }
 
     // 添加自定义指令

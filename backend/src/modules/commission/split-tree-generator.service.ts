@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 
 /**
@@ -83,9 +84,15 @@ export interface SplitTreeResult {
 export class SplitTreeGeneratorService {
   private readonly logger = new Logger(SplitTreeGeneratorService.name);
 
-  // 平台钱包地址（从配置读取）
-  private platformWallet = '0x0000000000000000000000000000000000000000';
-  private channelWallet = '0x0000000000000000000000000000000000000001';
+  constructor(private readonly configService: ConfigService) {}
+
+  // 平台钉子地址（从环境变量读取）
+  private get platformWallet(): string {
+    return this.configService.get<string>('PLATFORM_WALLET_ADDRESS') || '0x0000000000000000000000000000000000000000';
+  }
+  private get channelWallet(): string {
+    return this.configService.get<string>('CHANNEL_WALLET_ADDRESS') || '0x0000000000000000000000000000000000000001';
+  }
 
   // 费率配置
   private readonly RATES = {

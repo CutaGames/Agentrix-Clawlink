@@ -5,8 +5,10 @@ import { Repository } from 'typeorm';
 import { Request } from 'express';
 import { TransakProviderService } from './transak-provider.service';
 import { PaymentService } from './payment.service';
+import { OnRampCommissionService } from './on-ramp-commission.service';
 import { Payment, PaymentStatus, PaymentMethod } from '../../entities/payment.entity';
 import { Withdrawal, WithdrawalStatus } from '../../entities/withdrawal.entity';
+import { Commission, PayeeType } from '../../entities/commission.entity';
 
 /**
  * Transak Webhook Controller
@@ -22,10 +24,13 @@ export class TransakWebhookController {
   constructor(
     private readonly transakProvider: TransakProviderService,
     private readonly paymentService: PaymentService,
+    private readonly onRampCommissionService: OnRampCommissionService,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Withdrawal)
     private withdrawalRepository: Repository<Withdrawal>,
+    @InjectRepository(Commission)
+    private commissionRepository: Repository<Commission>,
   ) {}
 
   @Post('webhook')
@@ -143,6 +148,37 @@ export class TransakWebhookController {
               transakWebhookReceivedAt: new Date().toISOString(),
             };
             await this.withdrawalRepository.save(withdrawal);
+
+            // 平台 0.1% 手续费记录（Off-ramp: 从 cryptoAmount 扣除）
+            if (cryptoAmount > 0) {
+              const platformWallet = process.env.PLATFORM_WALLET_ADDRESS || '0x0';
+              const rateInfo = this.onRampCommissionService.getAgentrixRate();
+              const platformFee = cryptoAmount * rateInfo;
+              if (platformFee > 0) {
+                const commission = this.commissionRepository.create({
+                  paymentId: withdrawal.id,
+                  payeeId: platformWallet,
+                  payeeType: PayeeType.AGENTRIX,
+                  amount: platformFee,
+                  currency: cryptoCurrency || 'USDC',
+                  commissionBase: cryptoAmount,
+                  status: 'locked',
+                  breakdown: {
+                    type: 'off_ramp_platform_fee',
+                    rate: rateInfo,
+                    baseAmount: cryptoAmount,
+                    baseCurrency: cryptoCurrency,
+                    fiatAmount,
+                    fiatCurrency,
+                    transakOrderId: orderId,
+                  },
+                });
+                await this.commissionRepository.save(commission);
+                this.logger.log(
+                  `Platform fee recorded (off-ramp): ${platformFee.toFixed(6)} ${cryptoCurrency} (rate=${rateInfo * 100}%)`,
+                );
+              }
+            }
 
             this.logger.log(`Transak webhook: Withdrawal ${withdrawal.id} marked as completed`);
           }
@@ -270,6 +306,38 @@ export class TransakWebhookController {
             transakWebhookReceivedAt: new Date().toISOString(),
           };
           await this.paymentRepository.save(payment);
+
+          // 平台 0.1% 手续费记录（On-ramp: 以 USDC 计价，基于 cryptoAmount）
+          if (cryptoAmount > 0) {
+            const platformWallet = process.env.PLATFORM_WALLET_ADDRESS || '0x0';
+            const rateInfo = this.onRampCommissionService.getAgentrixRate();
+            const platformFeeUSDC = cryptoAmount * rateInfo;
+            if (platformFeeUSDC > 0) {
+              const commission = this.commissionRepository.create({
+                paymentId: payment.id,
+                orderId: orderId || partnerOrderId,
+                payeeId: platformWallet,
+                payeeType: PayeeType.AGENTRIX,
+                amount: platformFeeUSDC,
+                currency: cryptoCurrency || 'USDC',  // 以加密货币计价
+                commissionBase: cryptoAmount,
+                status: 'locked',
+                breakdown: {
+                  type: 'on_ramp_platform_fee',
+                  rate: rateInfo,
+                  baseAmount: cryptoAmount,
+                  baseCurrency: cryptoCurrency,
+                  fiatAmount,
+                  fiatCurrency,
+                  transakOrderId: orderId,
+                },
+              });
+              await this.commissionRepository.save(commission);
+              this.logger.log(
+                `Platform fee recorded (on-ramp): ${platformFeeUSDC.toFixed(6)} ${cryptoCurrency || 'USDC'} (rate=${rateInfo * 100}%)`,
+              );
+            }
+          }
 
           this.logger.log(`Transak webhook: Payment ${payment.id} marked as completed`);
         } else {

@@ -44,6 +44,11 @@ export class TickService {
   private isProcessing = false; // Prevent concurrent ticks
   private lastQuotaExhaustedAt: Date | null = null; // Track when all quotas were exhausted
 
+  private readonly disabledAgentCodes: Set<string>;
+  private readonly maxTasksPerTick: number;
+  private readonly taskDelayMs: number;
+  private readonly lowCostMode: boolean;
+
   constructor(
     @InjectRepository(HqAgent)
     private agentRepo: Repository<HqAgent>,
@@ -58,7 +63,16 @@ export class TickService {
     private autoTaskGenerator: AutoTaskGeneratorService,
     private agentMetrics: AgentMetricsService,
     private agentLearning: AgentLearningService,
-  ) {}
+  ) {
+    this.lowCostMode = String(process.env.HQ_LOW_COST_MODE || '').toLowerCase() === 'true';
+    const disabled = (process.env.HQ_DISABLED_AGENT_CODES || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    this.disabledAgentCodes = new Set(disabled);
+    this.maxTasksPerTick = Math.max(1, Number(process.env.HQ_TICK_MAX_TASKS || '3') || 3);
+    this.taskDelayMs = Math.max(0, Number(process.env.HQ_TICK_TASK_DELAY_MS || '6000') || 6000);
+  }
 
   /**
    * 主 Tick 函数 - 每 30 分钟触发一次
@@ -138,6 +152,20 @@ export class TickService {
         where: { isActive: true },
         order: { code: 'ASC' },
       });
+
+      // Optional kill-switch for expensive agents (e.g., ARCHITECT-01/CODER-01)
+      if (this.disabledAgentCodes.size > 0) {
+        const before = agents.length;
+        for (let i = agents.length - 1; i >= 0; i--) {
+          if (this.disabledAgentCodes.has(agents[i].code)) {
+            agents.splice(i, 1);
+          }
+        }
+        const removed = before - agents.length;
+        if (removed > 0) {
+          this.logger.warn(`⛔ Disabled agents filtered out by HQ_DISABLED_AGENT_CODES: ${removed}`);
+        }
+      }
 
       if (agents.length === 0) {
         this.logger.warn('⚠️ No active agents found');
@@ -242,14 +270,13 @@ export class TickService {
         }
 
         // RPM guard: wait between tasks to avoid Gemini 429 errors
-        // With 3 keys × 15 RPM = 45 RPM max, 4s gap keeps us safe
-        if (tasksProcessed > 0) {
-          await new Promise(r => setTimeout(r, 4000));
+        if (tasksProcessed > 0 && this.taskDelayMs > 0) {
+          await new Promise(r => setTimeout(r, this.taskDelayMs));
         }
 
-        // 限制每个 Tick 最多处理 6 个任务 (控制RPM，避免配额耗尽)
-        if (tasksProcessed >= 6) {
-          this.logger.log('📊 Reached task limit for this tick (RPM guard)');
+        // 限制每个 Tick 最多处理 N 个任务 (可配置，避免免费配额耗尽)
+        if (tasksProcessed >= this.maxTasksPerTick) {
+          this.logger.log(`📊 Reached task limit for this tick (max=${this.maxTasksPerTick})`);
           break;
         }
       }
@@ -264,7 +291,11 @@ export class TickService {
       if (tasksProcessed === 0 || executableTasks.length < 5) {
         // First, try Strategic Planning (COMMANDER-01) if queue is very low
         if (executableTasks.length < 3) {
-           await this.autoTaskGenerator.runStrategicPlanning();
+          if (this.lowCostMode) {
+            this.logger.log('🪙 HQ_LOW_COST_MODE enabled — skipping strategic planning to save quota');
+          } else {
+            await this.autoTaskGenerator.runStrategicPlanning();
+          }
         }
 
         const generatedTasks = await this.autoTaskGenerator.generateTasksForIdleAgents(agents);

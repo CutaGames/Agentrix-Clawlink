@@ -142,6 +142,24 @@ export class ReferralController {
   }
 
   @Public()
+  @Get('r/:shortCode/resolve')
+  @ApiOperation({ summary: '解析短链（返回目标URL，不重定向）' })
+  async resolveShortLink(@Param('shortCode') shortCode: string) {
+    const link = await this.linkService.getLinkByShortCode(shortCode);
+    if (!link || link.status !== ReferralLinkStatus.ACTIVE) {
+      return { fullUrl: null, targetId: null, targetType: null };
+    }
+    await this.linkService.recordClick(shortCode, true);
+    return {
+      fullUrl: link.fullUrl,
+      targetId: link.targetId,
+      targetType: link.targetType,
+      targetName: link.targetName,
+      type: link.type,
+    };
+  }
+
+  @Public()
   @Get('r/:shortCode')
   @ApiOperation({ summary: '短链重定向（公开，记录点击）' })
   async redirectShortLink(

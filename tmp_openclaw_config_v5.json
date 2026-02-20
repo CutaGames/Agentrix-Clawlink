@@ -1,0 +1,41 @@
+{
+  "gateway": {
+    "mode": "remote",
+    "port": 18789,
+    "bind": "auto"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google:gemini-2.0-flash-exp",
+        "fallbacks": [
+          "openai:gpt-4o"
+        ]
+      }
+    }
+  },
+  "keys": {
+    "google": {
+      "apiKey": "AIzaSyCi8Nf9n-H8W9M-...",
+      "model": "gemini-2.0-flash-exp"
+    },
+    "openai": {
+      "apiKey": "fk189286-B0LDeiL6RzS0vP5o65K5S2p91l32pB4c",
+      "baseURL": "https://api2d.net/v1"
+    }
+  },
+  "tools": {
+    "mcp": {
+      "agentrix": {
+        "url": "https://api.agentrix.top/api/mcp/sse",
+        "type": "sse"
+      }
+    },
+    "exec": {
+      "enabled": true
+    },
+    "browser": {
+      "enabled": true
+    }
+  }
+}

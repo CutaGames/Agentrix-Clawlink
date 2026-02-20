@@ -105,7 +105,7 @@ export class PayIntentService {
     // 生成支付链接和二维码
     // 优先使用 ConfigService 获取 FRONTEND_URL，确保在生产环境下正确
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || process.env.FRONTEND_URL || 'http://localhost:3000';
-    const payUrl = `${frontendUrl}/pay/intent/${savedPayIntent.id}?auto=true`;
+    const payUrl = `${frontendUrl}/pay/intent/${savedPayIntent.id}`;
     
     if (frontendUrl.includes('localhost') && process.env.NODE_ENV === 'production') {
       this.logger.warn(`⚠️ 生产环境下 FRONTEND_URL 仍为 localhost: ${frontendUrl}`);

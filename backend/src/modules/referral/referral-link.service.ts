@@ -116,12 +116,17 @@ export class ReferralLinkService {
     const shortCode = this.generateShortCode();
     const baseUrl = this.getBaseUrl();
 
-    let fullUrl = `${baseUrl}/r/${shortCode}`;
-    if (dto.targetId && dto.targetType) {
-      fullUrl += `?t=${dto.targetType}&id=${dto.targetId}`;
+    // fullUrl 指向实际目标页面，附带 ref 参数用于追踪
+    let fullUrl: string;
+    if (dto.targetId && dto.type === ReferralLinkType.SKILL) {
+      fullUrl = `${baseUrl}/skill/${dto.targetId}?ref=${ownerId}`;
+    } else if (dto.targetId && dto.type === ReferralLinkType.PRODUCT) {
+      fullUrl = `${baseUrl}/marketplace?product=${dto.targetId}&ref=${ownerId}`;
+    } else {
+      fullUrl = `${baseUrl}/marketplace?ref=${ownerId}`;
     }
     if (dto.channel) {
-      fullUrl += `${fullUrl.includes('?') ? '&' : '?'}ch=${dto.channel}`;
+      fullUrl += `&ch=${dto.channel}`;
     }
 
     const entity = this.linkRepository.create({

@@ -246,10 +246,69 @@ interface CreateSplitPlanModalProps {
   onSuccess: () => void;
 }
 
+// 预设场景模板
+const SCENE_TEMPLATES = [
+  {
+    id: 'skill_dev',
+    name: { zh: 'AI 技能开发者分润', en: 'AI Skill Developer Revenue Share' },
+    desc: { zh: '适用于在 Marketplace 发布 AI 技能，开发者获得 70% 收入，平台和推广者各得 20%/10%', en: 'For publishing AI skills on Marketplace. Developer gets 70%, platform 20%, referrer 10%' },
+    productType: 'skill' as ProductType,
+    rules: [
+      { role: 'executor', customRoleName: '技能开发者', shareBps: 7000, recipient: '', active: true },
+      { role: 'platform', customRoleName: '平台', shareBps: 2000, recipient: '', active: true },
+      { role: 'referrer', customRoleName: '推广者', shareBps: 1000, recipient: '', active: true },
+    ],
+  },
+  {
+    id: 'saas_service',
+    name: { zh: 'SaaS 服务订阅', en: 'SaaS Subscription' },
+    desc: { zh: '适用于 SaaS 订阅制产品，商家获得 80% 收入，平台收取 10% + 推广者 10%', en: 'For SaaS subscription products. Merchant 80%, platform 10%, referrer 10%' },
+    productType: 'service' as ProductType,
+    rules: [
+      { role: 'merchant', customRoleName: '商家', shareBps: 8000, recipient: '', active: true },
+      { role: 'platform', customRoleName: '平台', shareBps: 1000, recipient: '', active: true },
+      { role: 'referrer', customRoleName: '推广者', shareBps: 1000, recipient: '', active: true },
+    ],
+  },
+  {
+    id: 'marketplace_trade',
+    name: { zh: '市场交易（买卖双方）', en: 'Marketplace Trade' },
+    desc: { zh: '适用于 C2C 或 B2C 市场交易，卖方 85%，平台 10%，推广者 5%', en: 'For C2C/B2C marketplace trades. Seller 85%, platform 10%, referrer 5%' },
+    productType: 'virtual' as ProductType,
+    rules: [
+      { role: 'merchant', customRoleName: '卖方', shareBps: 8500, recipient: '', active: true },
+      { role: 'platform', customRoleName: '平台', shareBps: 1000, recipient: '', active: true },
+      { role: 'referrer', customRoleName: '推广者', shareBps: 500, recipient: '', active: true },
+    ],
+  },
+  {
+    id: 'bounty_task',
+    name: { zh: '悬赏任务', en: 'Bounty Task' },
+    desc: { zh: '适用于悬赏任务分账，任务执行者 70%，发布者 20%，平台 10%', en: 'For bounty tasks. Executor 70%, publisher 20%, platform 10%' },
+    productType: 'agent_task' as ProductType,
+    rules: [
+      { role: 'executor', customRoleName: '执行者', shareBps: 7000, recipient: '', active: true },
+      { role: 'merchant', customRoleName: '发布者', shareBps: 2000, recipient: '', active: true },
+      { role: 'platform', customRoleName: '平台', shareBps: 1000, recipient: '', active: true },
+    ],
+  },
+  {
+    id: 'custom',
+    name: { zh: '自定义方案', en: 'Custom Plan' },
+    desc: { zh: '完全自定义分账比例和参与方', en: 'Fully custom split ratios and participants' },
+    productType: 'service' as ProductType,
+    rules: [
+      { role: 'merchant', customRoleName: '商家', shareBps: 7000, recipient: '', active: true },
+      { role: 'platform', customRoleName: '平台', shareBps: 3000, recipient: '', active: true },
+    ],
+  },
+];
+
 const CreateSplitPlanModal: React.FC<CreateSplitPlanModalProps> = ({ onClose, onSuccess }) => {
   const { t } = useLocalization();
   const { success, error: showError } = useToast();
   
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [productType, setProductType] = useState<ProductType>('service');
@@ -267,6 +326,18 @@ const CreateSplitPlanModal: React.FC<CreateSplitPlanModalProps> = ({ onClose, on
     { role: 'merchant', customRoleName: '商家', shareBps: 7000, recipient: '', active: true },
     { role: 'platform', customRoleName: '平台', shareBps: 3000, recipient: '', active: true },
   ]);
+
+  const applyTemplate = (templateId: string) => {
+    const tmpl = SCENE_TEMPLATES.find(t => t.id === templateId);
+    if (!tmpl) return;
+    setSelectedTemplate(templateId);
+    setProductType(tmpl.productType);
+    setRules(tmpl.rules.map(r => ({ ...r })));
+    if (templateId !== 'custom') {
+      setName(t(tmpl.name));
+      setDescription(t(tmpl.desc));
+    }
+  };
 
   // 费率配置
   const [feeConfig, setFeeConfig] = useState({
@@ -347,6 +418,39 @@ const CreateSplitPlanModal: React.FC<CreateSplitPlanModalProps> = ({ onClose, on
         </div>
 
         <div className="space-y-4">
+          {/* 场景模板选择 */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+              {t({ zh: '选择场景模板', en: 'Choose a Scenario Template' })}
+            </label>
+            <div className="grid grid-cols-1 gap-2">
+              {SCENE_TEMPLATES.map(tmpl => (
+                <button
+                  key={tmpl.id}
+                  type="button"
+                  onClick={() => applyTemplate(tmpl.id)}
+                  className={`text-left p-3 rounded-lg border transition-all ${
+                    selectedTemplate === tmpl.id
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-white/10 bg-slate-800/50 hover:border-white/20'
+                  }`}
+                >
+                  <div className="font-medium text-sm text-white">{t(tmpl.name)}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{t(tmpl.desc)}</div>
+                  {selectedTemplate === tmpl.id && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {tmpl.rules.map((r, i) => (
+                        <span key={i} className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full">
+                          {r.customRoleName} {(r.shareBps / 100)}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
               {t({ zh: '计划名称', en: 'Plan Name' })} *

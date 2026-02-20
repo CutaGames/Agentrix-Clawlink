@@ -75,6 +75,7 @@ import { AgentSession } from '../../entities/agent-session.entity';
 import { OffRampCommissionService } from './off-ramp-commission.service';
 import { OnRampCommissionService } from './on-ramp-commission.service';
 import { BuyerFeeService } from './buyer-fee.service';
+import { Commission } from '../../entities/commission.entity';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { BuyerFeeService } from './buyer-fee.service';
       StripeSettlement,
       Escrow,
       Refund,
+      Commission,
     ]),
     ScheduleModule.forRoot(),
     forwardRef(() => CommissionModule),

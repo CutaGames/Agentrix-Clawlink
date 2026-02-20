@@ -13,7 +13,6 @@ import {
  */
 @Entity('mpc_wallets')
 @Index(['merchantId'])
-@Index(['workspaceId'])
 @Index(['userId'])
 @Index(['walletAddress'])
 export class MPCWallet {
@@ -24,12 +23,9 @@ export class MPCWallet {
   merchantId: string; // 商户ID (Legacy)
 
   @Column({ type: 'uuid', nullable: true })
-  workspaceId: string; // 工作空间ID
-
-  @Column({ type: 'uuid', nullable: true })
   userId: string; // 用户ID
 
-  @Column({ type: 'varchar', length: 50, default: 'execution' })
+  @Column({ type: 'varchar', length: 50, default: 'execution', nullable: true })
   purpose: string; // 钱包用途: execution | settlement | dev | test
 
   @Column({ type: 'varchar', length: 255, unique: true })

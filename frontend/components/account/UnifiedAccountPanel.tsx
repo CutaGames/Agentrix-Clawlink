@@ -24,6 +24,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useAccounts } from '../../contexts/AccountContext';
 import { useWeb3 } from '../../contexts/Web3Context';
 import { Account, Transaction, accountApi } from '../../lib/api/account.api';
+import { paymentApi } from '../../lib/api/payment.api';
 import { TransakWidget } from '../payment/TransakWidget';
 import { PayoutSettingsPanel } from './PayoutSettingsPanel';
 import { MPCWalletCard } from '../wallet/MPCWalletCard';
@@ -217,6 +218,7 @@ const DepositModal = ({ isOpen, onClose, walletAddress }: { isOpen: boolean; onC
                 orderId={`deposit-${Date.now()}`} 
                 walletAddress={walletAddress} 
                 amount={parseFloat(depositAmount)} 
+                isFiatAmount={true}  // DepositModal: 用户输入 USD 金额 → lock fiatAmount
                 onSuccess={() => onClose()} 
                 onClose={onClose} 
               />
@@ -280,6 +282,16 @@ const DepositModal = ({ isOpen, onClose, walletAddress }: { isOpen: boolean; onC
                   Continue
                 </button>
 
+                {/* Fee Explanation */}
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200">
+                  <div className="font-semibold mb-1">💡 为什么收到的USDC少于充值金额？</div>
+                  <div className="space-y-0.5 text-amber-200/80">
+                    <div>· Transak 服务费: ~1–5%（银行转账最低，信用卡最高）</div>
+                    <div>· 网络 Gas 费: ~$0.01–$1（Polygon 网络最低）</div>
+                    <div>· 例: 充值 $10 → 实际到账约 $8.50–$9.50 USDC</div>
+                  </div>
+                </div>
+
                 <p className="text-[10px] text-slate-600 text-center">
                   Powered by Transak • Cards, bank transfer & more
                 </p>
@@ -337,12 +349,14 @@ const DepositModal = ({ isOpen, onClose, walletAddress }: { isOpen: boolean; onC
 const WithdrawModal = ({ isOpen, onClose, selectedAccount }: { isOpen: boolean; onClose: () => void; selectedAccount?: Account }) => {
   const [amount, setAmount] = useState('');
   const [address, setAddress] = useState('');
+  const [withdrawMode, setWithdrawMode] = useState<'crypto' | 'fiat'>('fiat');
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [transakUrl, setTransakUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleWithdraw = async () => {
+  const handleWithdrawCrypto = async () => {
     if (!selectedAccount) return;
     setIsProcessing(true);
     try {
@@ -357,6 +371,35 @@ const WithdrawModal = ({ isOpen, onClose, selectedAccount }: { isOpen: boolean; 
         onClose();
         setSuccess(false);
       }, 2000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleWithdrawFiat = async () => {
+    if (!amount) return;
+    setIsProcessing(true);
+    try {
+      const session = await paymentApi.createTransakSession({
+        amount: parseFloat(amount),
+        fiatCurrency: 'USD',
+        cryptoCurrency: 'USDC',
+        network: 'polygon',
+        productType: 'SELL',
+        redirectURL: window.location.href,
+      });
+      if (session.widgetUrl) {
+        setTransakUrl(session.widgetUrl);
+        window.open(session.widgetUrl, '_blank');
+        setSuccess(true);
+        setTimeout(() => {
+          onClose();
+          setSuccess(false);
+          setTransakUrl(null);
+        }, 3000);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -381,45 +424,108 @@ const WithdrawModal = ({ isOpen, onClose, selectedAccount }: { isOpen: boolean; 
               <div className="w-14 h-14 bg-emerald-500/20 text-emerald-500 rounded-full mx-auto flex items-center justify-center">
                 <Check size={28} />
               </div>
-              <h4 className="text-base font-semibold text-white">Withdrawal Initiated</h4>
-              <p className="text-slate-400 text-sm">Funds will arrive shortly.</p>
+              <h4 className="text-base font-semibold text-white">
+                {withdrawMode === 'fiat' ? 'Offramp Session Created' : 'Withdrawal Initiated'}
+              </h4>
+              <p className="text-slate-400 text-sm">
+                {withdrawMode === 'fiat'
+                  ? 'Transak offramp page opened — complete your bank transfer there.'
+                  : 'Funds will arrive shortly.'}
+              </p>
+              {transakUrl && (
+                <a href={transakUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300">
+                  <ExternalLink size={14} /> Open Transak again
+                </a>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Mode selector */}
+              <div className="flex bg-slate-800/50 border border-white/5 rounded-xl p-1">
+                <button
+                  onClick={() => setWithdrawMode('fiat')}
+                  className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${withdrawMode === 'fiat' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Bank Transfer (Fiat)
+                </button>
+                <button
+                  onClick={() => setWithdrawMode('crypto')}
+                  className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${withdrawMode === 'crypto' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Crypto Wallet
+                </button>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-2">Source Account</label>
                 <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 text-white text-sm">
-                  {selectedAccount ? (selectedAccount.chainType || 'evm').toUpperCase() : 'Default Account'} - ${selectedAccount && selectedAccount.balances ? Object.values(selectedAccount.balances)[0] : '0'}
+                  {selectedAccount ? (selectedAccount.chainType || 'evm').toUpperCase() : 'Default Account'} — ${selectedAccount?.balances ? Object.values(selectedAccount.balances)[0] : '0'}
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-2">Destination Address</label>
-                <input 
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-2">Amount (USDC)</label>
-                <input 
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all"
-                />
-              </div>
-              <button 
-                onClick={handleWithdraw}
-                disabled={isProcessing || !amount || !address}
-                className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl transition-all mt-2 flex items-center justify-center gap-2"
-              >
-                {isProcessing ? <RefreshCw size={16} className="animate-spin" /> : <ArrowUpFromLine size={16} />}
-                {isProcessing ? 'Processing...' : 'Withdraw'}
-              </button>
+
+              {withdrawMode === 'fiat' ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-2">Amount (USDC → USD)</label>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                  {/* Offramp fee explanation */}
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200">
+                    <div className="font-semibold mb-1">💡 出金费用说明</div>
+                    <div className="space-y-0.5 text-amber-200/80">
+                      <div>· Transak 服务费: ~1–5%（银行转账费率更低）</div>
+                      <div>· 例: 出金 $100 USDC → 实际到账约 $95–$99 USD</div>
+                      <div>· 到账时间: 银行转账通常 1–3 个工作日</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">Powered by Transak — sells your USDC and sends USD to your bank account.</p>
+                  <button
+                    onClick={handleWithdrawFiat}
+                    disabled={isProcessing || !amount}
+                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl transition-all mt-2 flex items-center justify-center gap-2"
+                  >
+                    {isProcessing ? <RefreshCw size={16} className="animate-spin" /> : <ArrowUpFromLine size={16} />}
+                    {isProcessing ? 'Opening...' : 'Withdraw to Bank (Transak)'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-2">Destination Address</label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="0x..."
+                      className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-2">Amount (USDC)</label>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                  <button
+                    onClick={handleWithdrawCrypto}
+                    disabled={isProcessing || !amount || !address}
+                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl transition-all mt-2 flex items-center justify-center gap-2"
+                  >
+                    {isProcessing ? <RefreshCw size={16} className="animate-spin" /> : <ArrowUpFromLine size={16} />}
+                    {isProcessing ? 'Processing...' : 'Withdraw to Wallet'}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

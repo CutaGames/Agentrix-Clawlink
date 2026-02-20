@@ -86,6 +86,11 @@ export class HqAIService {
   private bedrockRegion: string = 'us-east-1';
   private proxyAgent: HttpsProxyAgent<string> | null = null;
   private relayUrl: string | null = null;
+
+  // Provider enable switches (default to FREE-first)
+  private readonly bedrockEnabled: boolean;
+  private readonly groqEnabled: boolean;
+  private readonly paidFallbackEnabled: boolean;
   
   private readonly defaultProvider: AIProvider;
   private readonly embeddingModel: string;
@@ -110,43 +115,42 @@ export class HqAIService {
 
   // Agent 到 AI 模型的映射表
   //
-  // 🆕 纯 Gemini 策略 — 3个API key × 4种可用模型，最大化免费配额
-  // ⚠️ 1.5系列已废弃(404)，仅使用2.0+模型
-  //
-  // 每个模型有独立的 RPD/RPM 配额 (per key):
-  //   gemini-2.0-flash:      1500 RPD, 15 RPM  → 主力模型（配额最大）
-  //   gemini-2.0-flash-lite: 1000 RPD, 15 RPM  → 轻量任务
-  //   gemini-2.5-flash:       250 RPD, 10 RPM  → 新一代，更智能
-  //   gemini-2.5-pro:         100 RPD,  5 RPM  → 复杂决策
-  //
-  // 3 keys × (1500+1000+250+100) = 8,550 次/天 总配额
-  //
-  // 分配策略: 主力用2.0-flash(配额最大)，分散到其他模型减压
-  //
+  // 🆕 FREE-first 策略：默认尽量使用 Gemini 免费配额。
+  // Bedrock/Groq 默认不启用（避免误扣费/额度浪费），仅在需要时通过 env 开关显式启用。
   private readonly agentAIMapping: Map<string, AgentAIMapping> = new Map([
-    // === gemini-2.5-pro (100×3=300次/天) — 仅用于最高级决策 ===
-    ['COMMANDER-01', { agentCode: 'COMMANDER-01', provider: 'gemini', model: 'gemini-2.5-pro', description: '首席指挥官 (CEO) - Gemini 2.5 Pro' }],
+    // 说明：Gemini 的模型/配额策略在 geminiChat() 内会做 key 轮换 + 多模型降级。
+    // 这里的 mapping 只用于“优先模型选择”，避免把稀缺的 2.5-pro/2.5-flash 用在高频任务上。
 
-    // === gemini-2.0-flash (1500×3=4500次/天) — 核心业务Agent (5个) ===
+    // === 指挥与调度 ===
+    ['COMMANDER-01', { agentCode: 'COMMANDER-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '首席指挥官 (CEO) - Gemini 2.0 Flash (高配额)' }],
+
+    // === 核心增长/BD/社媒（高频） ===
     ['ANALYST-01', { agentCode: 'ANALYST-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '业务分析师 - Gemini 2.0 Flash' }],
     ['REVENUE-01', { agentCode: 'REVENUE-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '营收与转化官 - Gemini 2.0 Flash' }],
     ['GROWTH-01', { agentCode: 'GROWTH-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '全球增长负责人 - Gemini 2.0 Flash' }],
     ['BD-01', { agentCode: 'BD-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '全球生态发展 - Gemini 2.0 Flash' }],
     ['SOCIAL-01', { agentCode: 'SOCIAL-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '社交媒体运营官 - Gemini 2.0 Flash' }],
 
-    // === gemini-2.5-flash (250×3=750次/天) — 内容创作Agent (3个) ===
-    ['CONTENT-01', { agentCode: 'CONTENT-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '内容创作官 - Gemini 2.5 Flash' }],
-    ['DEVREL-01', { agentCode: 'DEVREL-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '开发者关系 - Gemini 2.5 Flash' }],
-    ['SUPPORT-01', { agentCode: 'SUPPORT-01', provider: 'gemini', model: 'gemini-2.5-flash', description: '客户成功经理 - Gemini 2.5 Flash' }],
+    // === 内容与开发者关系（中频，尽量不用 2.5 系列） ===
+    ['CONTENT-01', { agentCode: 'CONTENT-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '内容创作官 - Gemini 2.0 Flash' }],
+    ['DEVREL-01', { agentCode: 'DEVREL-01', provider: 'gemini', model: 'gemini-2.0-flash', description: '开发者关系 - Gemini 2.0 Flash' }],
 
-    // === gemini-2.0-flash-lite (1000×3=3000次/天) — 合规与安全Agent (4个) ===
+    // === 客服/安全/法务（轻量，使用 lite） ===
+    ['SUPPORT-01', { agentCode: 'SUPPORT-01', provider: 'gemini', model: 'gemini-2.0-flash-lite', description: '客户成功经理 - Gemini 2.0 Flash-Lite' }],
     ['SECURITY-01', { agentCode: 'SECURITY-01', provider: 'gemini', model: 'gemini-2.0-flash-lite', description: '安全审计官 - Gemini 2.0 Flash-Lite' }],
     ['LEGAL-01', { agentCode: 'LEGAL-01', provider: 'gemini', model: 'gemini-2.0-flash-lite', description: '合规顾问 - Gemini 2.0 Flash-Lite' }],
+
+    // === 架构/研发（可通过 HQ_DISABLED_AGENT_CODES 禁用；此处保留映射以便随时开启） ===
     ['ARCHITECT-01', { agentCode: 'ARCHITECT-01', provider: 'gemini', model: 'gemini-2.0-flash-lite', description: '首席架构师 - Gemini 2.0 Flash-Lite' }],
     ['CODER-01', { agentCode: 'CODER-01', provider: 'gemini', model: 'gemini-2.0-flash-lite', description: '高级开发工程师 - Gemini 2.0 Flash-Lite' }],
   ]);
 
   constructor(private configService: ConfigService) {
+    // FREE-first: paid providers are opt-in
+    this.bedrockEnabled = this.configService.get<string>('HQ_BEDROCK_ENABLED', 'false') === 'true';
+    this.groqEnabled = this.configService.get<string>('HQ_GROQ_ENABLED', 'false') === 'true';
+    this.paidFallbackEnabled = this.configService.get<string>('HQ_ENABLE_PAID_FALLBACKS', 'false') === 'true';
+
     // 初始化代理配置
     const proxyUrl = this.configService.get<string>('HTTPS_PROXY') || this.configService.get<string>('HTTP_PROXY');
     if (proxyUrl) {
@@ -160,15 +164,19 @@ export class HqAIService {
       this.logger.log(`AI Relay configured: ${this.relayUrl}`);
     }
 
-    // 初始化 AWS Bedrock
-    this.bedrockToken = this.configService.get<string>('AWS_BEARER_TOKEN_BEDROCK');
+    // 初始化 AWS Bedrock（仅在 HQ_BEDROCK_ENABLED=true 时启用）
+    this.bedrockToken = this.bedrockEnabled ? this.configService.get<string>('AWS_BEARER_TOKEN_BEDROCK') : null;
     // 优先使用 BEDROCK_REGION，然后 AWS_REGION，默认 ap-northeast-1（支持 Claude 4）
     this.bedrockRegion = this.configService.get<string>('BEDROCK_REGION') || 
                          this.configService.get<string>('AWS_REGION') || 'ap-northeast-1';
-    if (this.bedrockToken) {
-      this.logger.log(`AWS Bedrock initialized (Region: ${this.bedrockRegion}, Token: ${this.bedrockToken.substring(0, 20)}...)`);
-    } else {
-      this.logger.warn('AWS Bedrock NOT configured - missing AWS_BEARER_TOKEN_BEDROCK');
+    if (this.bedrockEnabled) {
+      if (this.bedrockToken) {
+        this.logger.log(`AWS Bedrock initialized (Region: ${this.bedrockRegion})`);
+      } else {
+        this.logger.warn('AWS Bedrock enabled but NOT configured - missing AWS_BEARER_TOKEN_BEDROCK');
+      }
+    } else if (this.configService.get<string>('AWS_BEARER_TOKEN_BEDROCK')) {
+      this.logger.log('AWS Bedrock token detected but HQ_BEDROCK_ENABLED=false, skipping Bedrock initialization');
     }
 
     // 初始化 Gemini (支持多个API key)
@@ -220,14 +228,18 @@ export class HqAIService {
       this.logger.log('DeepSeek initialized (fallback)');
     }
 
-    // Groq (FREE tier: 14,400 req/day)
-    const groqKey = this.configService.get<string>('GROQ_API_KEY');
-    if (groqKey) {
-      this.groq = new OpenAI({
-        apiKey: groqKey,
-        baseURL: 'https://api.groq.com/openai/v1',
-      });
-      this.logger.log('Groq initialized (FREE: 14,400 req/day)');
+    // Groq（默认关闭：质量/额度不稳定时避免误用）
+    const groqKey = this.groqEnabled ? this.configService.get<string>('GROQ_API_KEY') : null;
+    if (this.groqEnabled) {
+      if (groqKey) {
+        this.groq = new OpenAI({
+          apiKey: groqKey,
+          baseURL: 'https://api.groq.com/openai/v1',
+        });
+        this.logger.log('Groq initialized');
+      } else {
+        this.logger.warn('Groq enabled but GROQ_API_KEY missing');
+      }
     }
 
     // 默认 provider
@@ -278,11 +290,11 @@ export class HqAIService {
     }
 
     // 按优先级自动选择: Bedrock > Gemini > Claude > OpenAI > DeepSeek
-    if (this.bedrockToken) return 'bedrock-sonnet';
+    if (this.bedrockEnabled && this.bedrockToken) return 'bedrock-sonnet';
     if (this.gemini) return 'gemini';
     if (this.anthropic) return 'claude';
     if (this.openai) return 'openai';
-    if (this.groq) return 'groq';
+    if (this.groqEnabled && this.groq) return 'groq';
     if (this.deepseek) return 'deepseek';
     
     throw new Error('No AI provider available. Please configure AWS_BEARER_TOKEN_BEDROCK, GEMINI_API_KEY, or other API keys');
@@ -307,8 +319,9 @@ export class HqAIService {
       return this.relayChatCompletion(messages, options);
     }
 
+    const provider = this.selectProvider(requestedProvider);
+
     try {
-      const provider = this.selectProvider(requestedProvider);
       switch (provider) {
         case 'bedrock-opus':
           return this.bedrockChat(messages, { ...options, model: options.model || 'arn:aws:bedrock:us-east-1:696737009512:inference-profile/us.anthropic.claude-opus-4-6-v1' });
@@ -329,11 +342,35 @@ export class HqAIService {
         default:
           throw new Error(`Unknown provider: ${provider}`);
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = `${error?.message || ''} ${JSON.stringify(error?.response?.data || {})}`;
+
+      // Gemini 免费配额打满时：可选降级（默认关闭，避免自动转付费/低质 Provider）
+      if (provider === 'gemini') {
+        const isQuotaError = /RESOURCE_EXHAUSTED|quota|429|Too Many Requests/i.test(errorMessage);
+        if (isQuotaError && this.paidFallbackEnabled) {
+          this.logger.warn('Gemini quota exhausted; HQ_ENABLE_PAID_FALLBACKS=true, attempting fallback provider');
+
+          if (this.bedrockEnabled && this.bedrockToken) {
+            const fallbackProvider: AIProvider = options.tools && options.tools.length > 0 ? 'bedrock-haiku' : 'bedrock-sonnet';
+            return this.chatCompletion(messages, { ...options, provider: fallbackProvider });
+          }
+
+          if (this.groqEnabled && this.groq) {
+            return this.chatCompletion(messages, { ...options, provider: 'groq' });
+          }
+
+          if (this.openai) {
+            return this.chatCompletion(messages, { ...options, provider: 'openai' });
+          }
+        }
+      }
+
       if (this.relayUrl) {
         this.logger.warn(`Direct provider failed, falling back to relay: ${(error as Error).message}`);
         return this.relayChatCompletion(messages, options);
       }
+
       throw error;
     }
   }
@@ -933,12 +970,12 @@ export class HqAIService {
     agentMappings: string[];
   } {
     return {
-      bedrockOpus: !!this.bedrockToken,
-      bedrockSonnet: !!this.bedrockToken,
+      bedrockOpus: this.bedrockEnabled && !!this.bedrockToken,
+      bedrockSonnet: this.bedrockEnabled && !!this.bedrockToken,
       gemini: !!this.gemini,
       openai: !!this.openai,
       claude: !!this.anthropic,
-      groq: !!this.groq,
+      groq: this.groqEnabled && !!this.groq,
       deepseek: !!this.deepseek,
       defaultProvider: this.defaultProvider,
       agentMappings: Array.from(this.agentAIMapping.keys()),

@@ -261,7 +261,7 @@ export class SkillExecutorService {
           category: skill.category,
           stock: 999,
           image: skill.imageUrl || skill.thumbnailUrl,
-          checkoutUrl: `https://agentrix.top/pay/checkout?skillId=${skill.id}`,
+          checkoutUrl: `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/pay/checkout?skillId=${skill.id}`,
           skillId: skill.id
         }));
         

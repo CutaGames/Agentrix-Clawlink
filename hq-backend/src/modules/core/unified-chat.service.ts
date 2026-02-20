@@ -48,6 +48,9 @@ export interface UnifiedChatResponse {
 export class UnifiedChatService {
   private readonly logger = new Logger(UnifiedChatService.name);
   private readonly defaultWorkingDir: string;
+  private readonly maxToolIterations: number;
+  private readonly maxTokens: number;
+  private readonly maxHistoryMessages: number;
 
   constructor(
     private readonly aiService: HqAIService,
@@ -62,6 +65,11 @@ export class UnifiedChatService {
       'HQ_DEFAULT_WORKING_DIR',
       '/home/ubuntu/Agentrix-independent-HQ',
     );
+
+    // FREE-tier protection defaults
+    this.maxToolIterations = Math.max(1, Number(this.configService.get<string>('HQ_MAX_TOOL_ITERATIONS', '3')) || 3);
+    this.maxTokens = Math.max(256, Number(this.configService.get<string>('HQ_MAX_TOKENS', '4096')) || 4096);
+    this.maxHistoryMessages = Math.max(4, Number(this.configService.get<string>('HQ_MAX_HISTORY_MESSAGES', '12')) || 12);
   }
 
   /**
@@ -99,9 +107,14 @@ export class UnifiedChatService {
     });
 
     // 3. 获取 Agent 工具列表
+    // 说明：当前工具执行循环依赖 Provider 的原生 tool calling（Bedrock/Gemini）。
+    // 对不支持原生 tool calling 的 Provider（如 Groq 文本模式），禁用 tools，避免无意义的大 token 开销。
     const agentRole = agentCode.split('-')[0].toLowerCase(); // CEO, SOCIAL, BD, etc.
-    const tools = this.toolService.getClaudeTools(agentRole);
-    this.logger.log(`🔧 Agent ${agentCode} has ${tools.length} tools available`);
+    const mapping = this.aiService.getAgentAIConfig(agentCode);
+    const provider = mapping?.provider;
+    const supportsNativeToolCalling = !!provider && (provider === 'gemini' || provider.startsWith('bedrock'));
+    const tools = supportsNativeToolCalling ? this.toolService.getClaudeTools(agentRole) : [];
+    this.logger.log(`🔧 Agent ${agentCode} provider=${provider || 'auto'} tools=${tools.length}`);
 
     // 4. 添加用户消息到历史
     const userMessage: ChatMessage = {
@@ -119,8 +132,8 @@ export class UnifiedChatService {
       content: message,
     });
 
-    // 5. 工具执行循环（最多5轮）
-    const maxIterations = 5;
+    // 5. 工具执行循环（默认 3 轮，避免免费配额被工具循环快速耗尽）
+    const maxIterations = this.maxToolIterations;
     let iterationCount = 0;
     let aiResult: any;
 
@@ -130,7 +143,7 @@ export class UnifiedChatService {
       // 5.1 构建 AI 请求消息
       const conversationMessages = [
         { role: 'system' as const, content: systemPrompt },
-        ...session.messages.slice(-20).map(m => ({
+        ...session.messages.slice(-this.maxHistoryMessages).map(m => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         })),
@@ -140,7 +153,7 @@ export class UnifiedChatService {
       aiResult = await this.aiService.chatForAgent(
         agentCode,
         conversationMessages,
-        { systemPrompt, maxTokens: 16384, tools },
+        { systemPrompt, maxTokens: this.maxTokens, tools },
       );
 
       // 5.3 检查是否需要调用工具
@@ -374,8 +387,8 @@ export class UnifiedChatService {
       role: ChatMessageRole.USER, content: message,
     });
 
-    // 5. 工具执行循环
-    const maxIterations = 5;
+    // 5. 工具执行循环（FREE-tier protection via env-configured limits）
+    const maxIterations = this.maxToolIterations;
     let iterationCount = 0;
     let aiResult: any;
 
@@ -385,7 +398,7 @@ export class UnifiedChatService {
 
         const conversationMessages = [
           { role: 'system' as const, content: systemPrompt },
-          ...session.messages.slice(-20).map(m => ({
+          ...session.messages.slice(-this.maxHistoryMessages).map(m => ({
             role: m.role as 'user' | 'assistant',
             content: m.content,
           })),
@@ -393,7 +406,7 @@ export class UnifiedChatService {
 
         aiResult = await this.aiService.chatForAgent(
           agentCode, conversationMessages,
-          { systemPrompt, maxTokens: 16384, tools },
+          { systemPrompt, maxTokens: this.maxTokens, tools },
         );
 
         if (aiResult.finishReason !== 'tool_use' || !aiResult.toolCalls || aiResult.toolCalls.length === 0) {

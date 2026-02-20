@@ -8,6 +8,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
 import {
   OpenClawInstance,
   OpenClawInstanceStatus,
@@ -23,6 +28,7 @@ export interface BindOpenClawDto {
 
 export interface ProvisionCloudDto {
   name: string;
+  llmProvider?: string;
   personality?: string;
 }
 
@@ -90,24 +96,115 @@ export class OpenClawConnectionService {
 
     const saved = await this.instanceRepo.save(instance);
 
-    // Async provisioning — simulate 30s completion
-    this.scheduleCloudProvisioning(saved.id, cloudInstanceId).catch((e) =>
+    // Async provisioning — fire SSH Docker deployment with LLM config injected
+    this.scheduleCloudProvisioning(saved.id, cloudInstanceId, dto.llmProvider).catch((e) =>
       this.logger.error(`Cloud provisioning failed: ${e.message}`),
     );
 
     return saved;
   }
 
-  private async scheduleCloudProvisioning(instanceId: string, cloudInstanceId: string) {
-    await new Promise((r) => setTimeout(r, 5000));
-    // In production, call the cloud orchestration API here.
-    // For now we mark it active with a placeholder URL.
-    await this.instanceRepo.update(instanceId, {
-      status: OpenClawInstanceStatus.ACTIVE,
-      instanceUrl: `https://cloud.agentrix.top/claw/${cloudInstanceId}`,
-      instanceToken: `cloud-token-${cloudInstanceId}`,
-    });
-    this.logger.log(`Cloud instance ${cloudInstanceId} provisioned.`);
+  private async scheduleCloudProvisioning(
+    instanceId: string,
+    cloudInstanceId: string,
+    llmProvider = 'deepseek',
+  ) {
+    try {
+      this.logger.log(`Starting cloud provisioning for ${cloudInstanceId}...`); 
+
+      // 1. SSH parameters from .env
+      const host = process.env.CLOUD_HOST || '18.139.157.116';
+      const user = process.env.CLOUD_USER || 'ubuntu';
+      const pemPath = process.env.CLOUD_PEM_PATH || '/root/.ssh/hq.pem';        
+
+      // 2. Map provider id → OpenClaw env var name and fetch platform API key
+      // The platform owns the API keys — users never need to configure them.
+      // 'default' maps to the platform-preferred provider (currently deepseek for cost efficiency,
+      //  or bedrock for internal team testing).
+      const resolvedProvider = llmProvider === 'default'
+        ? (process.env.PLATFORM_DEFAULT_LLM_PROVIDER || 'deepseek')
+        : llmProvider;
+
+      const providerEnvMap: Record<string, string[]> = {
+        openai:    ['PLATFORM_OPENAI_API_KEY', 'OPENAI_API_KEY'],
+        deepseek:  ['PLATFORM_DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY', 'deepseek_API_KEY'],
+        anthropic: ['PLATFORM_ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'],
+        gemini:    ['PLATFORM_GEMINI_API_KEY', 'GEMINI_API_KEY'],
+        bedrock:   ['AWS_ACCESS_KEY_ID'],  // Bedrock uses AWS IAM credentials
+      };
+
+      const providerTargetEnv: Record<string, string> = {
+        openai: 'OPENAI_API_KEY',
+        deepseek: 'DEEPSEEK_API_KEY',
+        anthropic: 'ANTHROPIC_API_KEY',
+        gemini: 'GEMINI_API_KEY',
+        bedrock: 'AWS_ACCESS_KEY_ID',
+      };
+      const targetEnvVar = providerTargetEnv[resolvedProvider] ?? 'OPENAI_API_KEY';
+
+      // Build LLM env flags — Bedrock needs extra AWS env vars
+      let llmEnvFlags: string;
+      if (resolvedProvider === 'bedrock') {
+        const accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
+        const secretKey = process.env.AWS_SECRET_ACCESS_KEY || '';
+        const region = process.env.AWS_BEDROCK_REGION || process.env.AWS_REGION || 'us-east-1';
+        const modelId = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+        if (!accessKeyId || !secretKey) {
+          this.logger.warn('AWS credentials missing for Bedrock provider. Container may not function.');
+        }
+        llmEnvFlags = `-e LLM_PROVIDER=bedrock -e AWS_ACCESS_KEY_ID=${accessKeyId} -e AWS_SECRET_ACCESS_KEY=${secretKey} -e AWS_REGION=${region} -e BEDROCK_MODEL_ID=${modelId}`;
+      } else {
+        const candidates = providerEnvMap[resolvedProvider] ?? ['OPENAI_API_KEY'];
+        const platformApiKey = candidates.map(k => process.env[k]).find(v => !!v) || '';
+        if (!platformApiKey) {
+          this.logger.warn(`No platform API key found for provider ${resolvedProvider}. Container will start without LLM key.`);
+        }
+        llmEnvFlags = platformApiKey
+          ? `-e LLM_PROVIDER=${resolvedProvider} -e ${targetEnvVar}=${platformApiKey}`
+          : `-e LLM_PROVIDER=${resolvedProvider}`;
+      }
+
+      // 3. Run container with LLM env vars injected; -p 0:3001 = random host port
+      const sshCmd = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped ${llmEnvFlags} openclaw/openclaw:latest"`;
+
+      this.logger.log(`Executing SSH deploy for ${cloudInstanceId} (provider: ${resolvedProvider})`);
+      const { stdout: containerId } = await execAsync(sshCmd);
+
+      // 4. Get assigned host port
+      const portCmd = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "docker port ${containerId.trim()} 3001"`;
+      const { stdout: portOutput } = await execAsync(portCmd);
+
+      // portOutput: "0.0.0.0:32768\n" or ":::32768\n"
+      const portMatch = portOutput.match(/:(\d+)/);
+      const assignedPort = portMatch ? portMatch[1] : '3001';
+      const instanceUrl = `http://${host}:${assignedPort}`;
+
+      // 5. Retrieve the API token OpenClaw generates on first start
+      // Wait briefly for container to initialize, then query its /api/token endpoint
+      await new Promise((r) => setTimeout(r, 5000));
+      let instanceToken = `cloud-token-${cloudInstanceId}`;
+      try {
+        const tokenResp = await fetch(`${instanceUrl}/api/token`, { signal: AbortSignal.timeout(8000) });
+        if (tokenResp.ok) {
+          const tokenData = await tokenResp.json() as { token?: string };
+          if (tokenData.token) instanceToken = tokenData.token;
+        }
+      } catch {
+        this.logger.warn(`Could not fetch auto-token from ${instanceUrl}, using generated token`);
+      }
+
+      await this.instanceRepo.update(instanceId, {
+        status: OpenClawInstanceStatus.ACTIVE,
+        instanceUrl,
+        instanceToken,
+      });
+      this.logger.log(`Cloud instance ${cloudInstanceId} live at ${instanceUrl} (LLM: ${llmProvider})`);
+    } catch (error: any) {
+      this.logger.error(`Failed to provision cloud instance: ${error.message}`);
+      await this.instanceRepo.update(instanceId, {
+        status: OpenClawInstanceStatus.ERROR,
+      });
+    }
   }
 
   async getInstancesByUser(userId: string): Promise<OpenClawInstance[]> {

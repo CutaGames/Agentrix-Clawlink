@@ -1,31 +1,24 @@
-// 认证服务 — 原生 App 优先 + Web OAuth 降级
-// 架构：
-//   所有社交登录: 先检测本机是否安装 App → 有则 Linking.openURL 唤起原生 App
-//                 → 无则 WebBrowser.openAuthSessionAsync 打开后端 OAuth 入口（网页授权）
-//   后端统一处理 OAuth code→token 交换，最终重定向到 agentrix://auth/callback?token=xxx
-//   Email: 验证码登录（注册+登录合一）
-//   Wallet: 检测 MetaMask/TokenPocket → 有则唤起签名 → 无则 WalletConnect
+// ClawLink Auth Service — OpenClaw + Social + Wallet Login
+// Primary path: OpenClaw bind (scan QR or enter address+token)
+// Secondary: Google/Apple/X/Discord/Telegram/Wallet/Email
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { Platform, Linking } from 'react-native';
 import { apiFetch, saveTokenToStorage, setApiConfig, getApiConfig } from './api';
-import { useAuthStore, AuthUser, AuthProvider } from '../stores/authStore';
+import { useAuthStore, AuthUser, AuthProvider, OpenClawInstance } from '../stores/authStore';
 import { ensureMPCWallet } from './mpcWallet';
+import { bindOpenClaw, BindPayload, pollBindSession, createBindSession } from './openclaw.service';
 
 WebBrowser.maybeCompleteAuthSession();
-
-// ========== 配置 ==========
 
 function getBackendBaseUrl(): string {
   return getApiConfig().baseUrl || 'https://api.agentrix.top/api';
 }
 
-// 使用 expo-auth-session 的 makeRedirectUri 自动处理不同环境:
-// - Expo Go 开发模式: exp://192.168.x.x:8081/--/auth/callback
-// - 独立构建: agentrix://auth/callback
+// ClawLink deep link scheme
 function getMobileCallbackUrl(): string {
   return AuthSession.makeRedirectUri({
-    scheme: 'agentrix',
+    scheme: 'clawlink',
     path: 'auth/callback',
   });
 }
@@ -315,6 +308,77 @@ export async function registerWithEmail(email: string, password: string): Promis
   return handleLoginResult(registerResult, 'email');
 }
 
+// ========== OpenClaw Binding & Login ==========
+
+export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser> {
+  const { setAuth } = useAuthStore.getState();
+  // Try to connect first to validate
+  const instance = await bindOpenClaw(payload);
+  // Bind also logs the user in (or creates account) — get the token
+  const loginResult = await apiFetch<{ access_token: string; user: any }>('/auth/openclaw/login', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  const user: AuthUser = {
+    id: loginResult.user.id,
+    agentrixId: loginResult.user.agentrixId,
+    email: loginResult.user.email,
+    nickname: loginResult.user.nickname ?? `OpenClaw User`,
+    avatarUrl: loginResult.user.avatarUrl,
+    walletAddress: loginResult.user.walletAddress,
+    roles: loginResult.user.roles || ['user'],
+    provider: 'openclaw',
+    openClawInstances: [instance],
+    activeInstanceId: instance.id,
+  };
+  setApiConfig({ token: loginResult.access_token });
+  await saveTokenToStorage(loginResult.access_token);
+  await setAuth(user, loginResult.access_token);
+  return user;
+}
+
+export async function bindOpenClawToCurrentUser(payload: BindPayload): Promise<OpenClawInstance> {
+  const { addInstance } = useAuthStore.getState();
+  const instance = await bindOpenClaw(payload);
+  const openclawInstance: OpenClawInstance = {
+    id: instance.id,
+    name: instance.name,
+    instanceUrl: instance.instanceUrl,
+    status: instance.status,
+    version: instance.version,
+    deployType: instance.deployType as 'cloud' | 'local' | 'server' | 'existing',
+    lastSyncAt: instance.lastSyncAt,
+  };
+  addInstance(openclawInstance);
+  return openclawInstance;
+}
+
+export async function startQrBindSession(): Promise<{
+  sessionId: string;
+  qrData: string;
+  expiresAt: number;
+}> {
+  return createBindSession();
+}
+
+export async function waitForQrBind(sessionId: string): Promise<OpenClawInstance | null> {
+  const result = await pollBindSession(sessionId);
+  if (result.status === 'confirmed' && result.instance) {
+    const { addInstance } = useAuthStore.getState();
+    const inst: OpenClawInstance = {
+      id: result.instance.id,
+      name: result.instance.name,
+      instanceUrl: result.instance.instanceUrl,
+      status: result.instance.status,
+      version: result.instance.version,
+      deployType: result.instance.deployType as 'cloud' | 'local' | 'server' | 'existing',
+    };
+    addInstance(inst);
+    return inst;
+  }
+  return null;
+}
+
 // ========== 获取当前用户 ==========
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
@@ -341,3 +405,64 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
 export async function getWalletNonce(address: string): Promise<{ nonce: string; message: string }> {
   return apiFetch(`/auth/wallet/nonce?address=${address}`);
 }
+
+// ========== Aliases & Missing Providers ==========
+
+/** loginWithX — alias for loginWithTwitter */
+export async function loginWithX(): Promise<AuthUser> {
+  return loginWithTwitter();
+}
+
+/** loginWithApple — OAuth via WebBrowser */
+export async function loginWithApple(): Promise<AuthUser> {
+  const redirectUri = getMobileCallbackUrl();
+  const apiBase = getBackendBaseUrl();
+  const result = await WebBrowser.openAuthSessionAsync(
+    `${apiBase}/auth/apple?redirect_uri=${encodeURIComponent(redirectUri)}`,
+    redirectUri,
+  );
+  if (result.type !== 'success') throw new Error('Apple login cancelled');
+  const params = new URL(result.url);
+  const token = params.searchParams.get('token');
+  if (!token) throw new Error('No token from Apple login');
+  const user = await fetchCurrentUserWithToken(token);
+  return { ...user, token } as any;
+}
+
+/** handleOAuthCallback — called from AuthCallbackScreen */
+export async function handleOAuthCallback(params: {
+  token?: string | null;
+  code?: string | null;
+  provider?: string | null;
+}): Promise<{ user: AuthUser; token: string } | null> {
+  try {
+    if (params.token) {
+      const user = await fetchCurrentUserWithToken(params.token);
+      return { user, token: params.token };
+    }
+    if (params.code && params.provider) {
+      const data = await apiFetch(`/auth/${params.provider}/callback?code=${params.code}`);
+      if (data?.token) {
+        const user = await fetchCurrentUserWithToken(data.token);
+        return { user, token: data.token };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCurrentUserWithToken(token: string): Promise<AuthUser> {
+  const data = await apiFetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+  return {
+    id: data.id,
+    agentrixId: data.agentrixId || data.paymindId || data.id,
+    email: data.email,
+    nickname: data.nickname || data.name || data.username,
+    avatarUrl: data.avatarUrl || data.avatar,
+    walletAddress: data.walletAddress,
+    roles: data.roles || ['user'],
+  };
+}
+

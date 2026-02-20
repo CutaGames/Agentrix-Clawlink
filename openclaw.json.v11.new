@@ -1,0 +1,41 @@
+{
+  "version": 11,
+  "bind": "0.0.0.0",
+  "port": 18789,
+  "token": "openclaw-test-token-2026",
+  "models": {
+    "providers": {
+      "google": {
+        "keys": ["AIzaSyDH6jHpd857EaxTXbFJaqXT4EgDxMib428"]
+      },
+      "openai": {
+        "keys": ["fk235761-wCrllyRS6SkvzeLZrs4tuqTqIzjBNgG3"],
+        "baseURL": "https://api.api2d.com/v1"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "provider": "google",
+        "id": "gemini-2.0-flash"
+      }
+    },
+    "list": [
+      {
+        "id": "molty",
+        "model": {
+          "provider": "google",
+          "id": "gemini-2.0-flash"
+        },
+        "persona": "/home/ubuntu/.openclaw/workspace/SOUL.md"
+      }
+    ]
+  },
+  "plugins": {
+    "telegram": {
+      "enabled": true,
+      "token": "8292177231:AAHNZcDloe9DjQhSSQdVcoeg5E2H83U8S0I"
+    }
+  }
+}
