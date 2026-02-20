@@ -148,8 +148,15 @@ jobs:
         id: paths
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
-             artifacts/ClawLink-build-${{ github.run_number }}.apk
+          # Expo may output app-release.apk (debug-signed) or app-release-unsigned.apk
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK found in android/app/build/outputs/apk/release/"
+            ls -la android/app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          echo "Found APK: $APK"
+          cp "$APK" artifacts/ClawLink-build-${{ github.run_number }}.apk
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
 
       - name: Upload APKs
