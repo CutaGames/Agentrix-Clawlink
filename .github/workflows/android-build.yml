@@ -1,9 +1,7 @@
 name: Android Build
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
-# 移除 paths 限制，确保任何 push 都能触发进行调试
+# Disabled auto-push trigger — use "Build → Test → Release APK" instead
 
 jobs:
   build:
