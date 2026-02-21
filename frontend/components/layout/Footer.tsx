@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { AgentrixLogo } from '../common/AgentrixLogo'
 import { useLocalization } from '../../contexts/LocalizationContext'
+import { Smartphone, Terminal, Download } from 'lucide-react'
 
 export function Footer() {
   const { t } = useLocalization()
@@ -8,14 +9,14 @@ export function Footer() {
   return (
     <footer className="bg-gray-900 text-gray-300">
       <div className="container mx-auto px-6 py-12">
-        <div className="grid md:grid-cols-4 gap-8">
+        <div className="grid md:grid-cols-5 gap-8">
           {/* 产品信息 */}
           <div>
             <div className="mb-4">
               <AgentrixLogo size="lg" showText={true} className="text-white" />
             </div>
             <p className="text-sm text-gray-400 mb-4">
-              {t({ zh: 'AI经济时代的支付协议层', en: 'Payment Protocol Layer for the AI Economy' })}
+              {t({ zh: 'AI Agent 操作系统 · 部署 · 技能 · 任务 · 支付', en: 'AI Agent OS · Deploy · Skills · Tasks · Payments' })}
             </p>
             <div className="flex space-x-4">
               <a
@@ -59,18 +60,23 @@ export function Footer() {
             <h4 className="text-white font-semibold mb-4">{t({ zh: '产品', en: 'Product' })}</h4>
             <ul className="space-y-2 text-sm">
               <li>
-                <Link href="/developers" className="hover:text-white transition-colors">
-                  {t({ zh: 'API文档', en: 'API Docs' })}
+                <Link href="/claw" className="hover:text-white transition-colors">
+                  {t({ zh: 'Agentrix Claw', en: 'Agentrix Claw' })}
+                </Link>
+              </li>
+              <li>
+                <Link href="/marketplace" className="hover:text-white transition-colors">
+                  {t({ zh: 'Skill 市场', en: 'Skill Market' })}
+                </Link>
+              </li>
+              <li>
+                <Link href="/marketplace?tab=tasks" className="hover:text-white transition-colors">
+                  {t({ zh: '任务集市', en: 'Task Market' })}
                 </Link>
               </li>
               <li>
                 <Link href="/developers" className="hover:text-white transition-colors">
-                  {t({ zh: 'SDK文档', en: 'SDK Docs' })}
-                </Link>
-              </li>
-              <li>
-                <Link href="/use-cases" className="hover:text-white transition-colors">
-                  {t({ zh: '应用场景', en: 'Use Cases' })}
+                  {t({ zh: '开发者文档', en: 'Developer Docs' })}
                 </Link>
               </li>
               <li>
@@ -79,6 +85,50 @@ export function Footer() {
                 </Link>
               </li>
             </ul>
+          </div>
+
+          {/* 下载 */}
+          <div>
+            <h4 className="text-white font-semibold mb-4 flex items-center gap-2">
+              <Download className="w-4 h-4 text-violet-400" />
+              {t({ zh: '下载 Claw', en: 'Download Claw' })}
+            </h4>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <a
+                  href="https://api.agentrix.top/downloads/clawlink-agent.apk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 hover:text-white transition-colors"
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-violet-400" />
+                  {t({ zh: 'Android APK', en: 'Android APK' })}
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://testflight.apple.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 hover:text-white transition-colors"
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                  {t({ zh: 'iOS TestFlight', en: 'iOS TestFlight' })}
+                </a>
+              </li>
+              <li>
+                <Link
+                  href="/claw/download?platform=cli"
+                  className="flex items-center gap-1.5 hover:text-white transition-colors"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                  {t({ zh: 'Desktop CLI', en: 'Desktop CLI' })}
+                </Link>
+              </li>
+            </ul>
+            <div className="mt-4 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs text-violet-300">
+              🎁 {t({ zh: '新用户免费 10 GB', en: 'New users: 10 GB free' })}
+            </div>
           </div>
 
           {/* 开发者资源 */}
@@ -137,7 +187,7 @@ export function Footer() {
         </div>
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-400">
-          <p>© {new Date().getFullYear()} Agentrix. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Agentrix · AI Agent OS · {t({ zh: '保留所有权利', en: 'All rights reserved' })}</p>
         </div>
       </div>
     </footer>

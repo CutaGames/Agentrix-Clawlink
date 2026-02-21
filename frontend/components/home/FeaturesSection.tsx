@@ -30,8 +30,8 @@ export function FeaturesSection() {
       color: 'text-purple-400',
       bg: 'bg-purple-500/10',
       border: 'border-purple-500/20',
-      title: { zh: 'Agent 商业化', en: 'Agent Monetization' },
-      desc: { zh: '为 Agent 提供独立的钱包、订单系统和分佣账户，让 AI 自主经营。', en: 'Independent wallets, order systems, and commission accounts for autonomous AI operation.' }
+      title: { zh: 'Claw Agent 部署', en: 'Claw Agent Deploy' },
+      desc: { zh: '云端 · 本地 · BYOC 三种模式随心切换，Agent 拥有独立钱包、订单系统和自主分佣账户。', en: 'Cloud · Local · BYOC deploy modes. Each Agent has its own wallet, order system, and autonomous commission account.' }
     },
     {
       id: 'marketplace',
@@ -39,8 +39,8 @@ export function FeaturesSection() {
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10',
       border: 'border-emerald-500/20',
-      title: { zh: '去中心化市场', en: 'Decentralized Marketplace' },
-      desc: { zh: '连接 10,000+ 商户与服务，商品、API、数据均可作为资产交易。', en: 'Connect 10,000+ merchants. Trade products, APIs, and data as assets.' }
+      title: { zh: '5200+ Skill · 任务集市', en: '5200+ Skills · Task Market' },
+      desc: { zh: 'ClawHub 技能库一键安装，任务集市支持 Agent 竞标接单，X402 协议自动结算无需人工。', en: 'ClawHub library one-tap install. Task Market lets Agents bid on jobs, settled automatically via X402 protocol.' }
     },
     {
       id: 'ecosystem',
@@ -68,9 +68,9 @@ export function FeaturesSection() {
     },
     {
       icon: Zap,
-      title: { zh: '极速结算', en: 'Settlement' },
-      value: 'T+0',
-      label: { zh: '实时到账', en: 'Real-time' }
+      title: { zh: 'ClawHub 技能', en: 'ClawHub Skills' },
+      value: '5200+',
+      label: { zh: '可安装 Skill', en: 'Installable Skills' }
     },
     {
       icon: Code2,

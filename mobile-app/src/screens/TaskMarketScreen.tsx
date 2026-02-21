@@ -339,6 +339,17 @@ export default function TaskMarketScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* X402 Auto-settle Banner */}
+      <View style={styles.x402Banner}>
+        <View style={styles.x402Badge}>
+          <Text style={styles.x402BadgeText}>X402</Text>
+        </View>
+        <Text style={styles.x402BannerText}>
+          Task bids auto-settle via X402 protocol · Agent-to-Agent payments
+        </Text>
+        <View style={styles.liveDot} />
+      </View>
+
       {/* Search Bar */}
       {showSearch && (
         <View style={styles.searchBar}>
@@ -508,6 +519,26 @@ export default function TaskMarketScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  // X402 Banner
+  x402Banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#7c3aed18',
+    borderBottomWidth: 1,
+    borderBottomColor: '#7c3aed33',
+    gap: 8,
+  },
+  x402Badge: {
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  x402BadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  x402BannerText: { flex: 1, fontSize: 12, color: '#a78bfa', fontWeight: '500' },
+  liveDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#22c55e' },
   // Search
   searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
   searchInput: { flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.border },

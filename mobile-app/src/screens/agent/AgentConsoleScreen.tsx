@@ -8,7 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { getInstanceSkills, restartInstance } from '../../services/openclaw.service';
+import { getInstanceSkills, restartInstance, getStorageInfo } from '../../services/openclaw.service';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 
@@ -32,6 +32,13 @@ export function AgentConsoleScreen() {
     queryKey: ['instance-skills', activeInstance?.id],
     queryFn: () => getInstanceSkills(activeInstance!.id),
     enabled: !!activeInstance,
+  });
+
+  const { data: storageInfo } = useQuery({
+    queryKey: ['storage-info'],
+    queryFn: getStorageInfo,
+    retry: 1,
+    staleTime: 60_000,
   });
 
   const handleRestart = async () => {
@@ -182,6 +189,38 @@ export function AgentConsoleScreen() {
               <Text style={styles.statLabel}>Type</Text>
             </View>
           </View>
+
+          {/* Storage Card */}
+          <TouchableOpacity
+            style={styles.storageCard}
+            onPress={() => navigation.navigate('StoragePlan')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.storageCardHeader}>
+              <Text style={styles.storageCardTitle}>
+                💾 {storageInfo
+                  ? `${storageInfo.usedGb.toFixed(1)} / ${storageInfo.totalGb} GB`
+                  : '10 GB'} Storage
+              </Text>
+              {storageInfo?.isGiftStorage && (
+                <View style={styles.giftBadge}>
+                  <Text style={styles.giftBadgeText}>🎁 Free</Text>
+                </View>
+              )}
+              <Text style={styles.storageCardArrow}>›</Text>
+            </View>
+            <View style={styles.storageBar}>
+              <View style={[styles.storageBarFill, {
+                width: `${Math.min(storageInfo?.usedPercent ?? 2, 100)}%` as any,
+                backgroundColor: (storageInfo?.usedPercent ?? 0) > 80 ? '#ef4444' : '#7c3aed',
+              }]} />
+            </View>
+            <Text style={styles.storageCardSub}>
+              {storageInfo
+                ? `${storageInfo.availableGb.toFixed(1)} GB available · Tap to manage`
+                : 'Upgrade for more storage'}
+            </Text>
+          </TouchableOpacity>
         </>
       )}
 
@@ -270,6 +309,32 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.border },
   statValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
   statLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase' },
+  storageCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#7c3aed33',
+    gap: 7,
+  },
+  storageCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storageCardTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, flex: 1 },
+  storageCardArrow: { fontSize: 18, color: colors.textMuted },
+  storageCardSub: { fontSize: 12, color: colors.textMuted },
+  storageBar: {
+    height: 6,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  storageBarFill: { height: '100%', borderRadius: 3 },
+  giftBadge: {
+    backgroundColor: '#22c55e22',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  giftBadgeText: { fontSize: 11, fontWeight: '700', color: '#22c55e' },
   skillsSection: { gap: 10 },
   emptySection: { alignItems: 'center', padding: 32, gap: 12 },
   emptySectionText: { fontSize: 15, color: colors.textSecondary },

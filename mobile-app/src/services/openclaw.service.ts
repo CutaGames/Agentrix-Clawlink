@@ -229,3 +229,40 @@ export function streamAgentChat(
 
   return () => ws.close();
 }
+
+// ── Storage / Plan ─────────────────────────────────────────────────────────────
+
+export type StorageTier = 'free' | 'starter' | 'pro';
+
+export interface StorageInfo {
+  tier: StorageTier;
+  totalGb: number;
+  usedGb: number;
+  availableGb: number;
+  usedPercent: number;
+  /** Is this the early-access free grant? */
+  isGiftStorage: boolean;
+  /** Plans user can upgrade to */
+  upgradePlans: StoragePlan[];
+}
+
+export interface StoragePlan {
+  tier: StorageTier;
+  storageGb: number;
+  priceUsdPerMonth: number;
+  label: string;
+  highlight: boolean;
+}
+
+/** Fetch current user's storage usage and available plans */
+export async function getStorageInfo(): Promise<StorageInfo> {
+  return apiFetch<StorageInfo>('/openclaw/storage/info');
+}
+
+/** Initiate plan upgrade (returns a Stripe/payment checkout URL) */
+export async function upgradeStoragePlan(tier: StorageTier): Promise<{ checkoutUrl: string }> {
+  return apiFetch('/openclaw/storage/upgrade', {
+    method: 'POST',
+    body: JSON.stringify({ tier }),
+  });
+}

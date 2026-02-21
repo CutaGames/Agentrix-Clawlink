@@ -6,6 +6,7 @@ import { AgentConsoleScreen } from '../screens/agent/AgentConsoleScreen';
 import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
 import { OpenClawBindScreen } from '../screens/agent/OpenClawBindScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
+import { StoragePlanScreen } from '../screens/agent/StoragePlanScreen';
 
 const Stack = createNativeStackNavigator<AgentStackParamList>();
 
@@ -23,6 +24,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: 'Chat' }} />
       <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: 'Connect OpenClaw' }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: 'Install Skill' }} />
+      <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: 'Storage Plans' }} />
     </Stack.Navigator>
   );
 }

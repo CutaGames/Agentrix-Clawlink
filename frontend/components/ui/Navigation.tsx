@@ -9,14 +9,15 @@ import { NotificationCenter } from '../notification/NotificationCenter'
 import { useLocalization } from '../../contexts/LocalizationContext'
 import { AgentrixLogo } from '../common/AgentrixLogo'
 import { LanguageSwitcher } from './LanguageSwitcher'
-import { Store, Briefcase, ChevronDown } from 'lucide-react'
+import { Store, Smartphone, Sparkles } from 'lucide-react'
 
 const mainNavItems = [
-  { href: '/agent-enhanced', label: { zh: 'AX Agent', en: 'AX Agent' } },
-  { href: '/ax-payment', label: { zh: 'AX 支付', en: 'AX Payment' } },
+  { href: '/claw', label: { zh: 'Agentrix Claw', en: 'Agentrix Claw' }, isClaw: true },
   { href: '/marketplace', label: { zh: '市场', en: 'Marketplace' }, highlight: true },
-  { href: '/alliance', label: { zh: '联盟', en: 'Alliance' } },
+  { href: '/agent-enhanced', label: { zh: 'Agent 工作台', en: 'Workspace' } },
+  { href: '/ax-payment', label: { zh: 'AX 支付', en: 'AX Payment' } },
   { href: '/developers', label: { zh: '开发者', en: 'Developers' } },
+  { href: '/alliance', label: { zh: '联盟', en: 'Alliance' } },
 ]
 
 export function Navigation() {
@@ -40,23 +41,32 @@ export function Navigation() {
 
           {/* Desktop Menu */}
           <div className="hidden flex-1 items-center justify-center md:flex">
-            <div className="ml-6 flex items-center space-x-8">
+            <div className="ml-6 flex items-center space-x-6">
               {mainNavItems.map((item) => {
                 const isHighlight = 'highlight' in item && item.highlight;
+                const isClaw = 'isClaw' in item && item.isClaw;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`text-sm font-semibold tracking-wide transition-all hover:text-cyan-400 flex items-center gap-1.5 ${
+                    className={`text-sm font-semibold tracking-wide transition-all flex items-center gap-1.5 ${
                       isActive(item.href)
                         ? 'text-cyan-400'
-                        : isHighlight
-                          ? 'text-white bg-gradient-to-r from-blue-600/20 to-purple-600/20 px-3 py-1.5 rounded-full border border-blue-500/30'
-                          : 'text-slate-300'
+                        : isClaw
+                          ? 'text-white bg-gradient-to-r from-violet-600/30 to-cyan-600/30 px-3 py-1.5 rounded-full border border-violet-500/40 hover:border-cyan-400/60 hover:text-cyan-300'
+                          : isHighlight
+                            ? 'text-white bg-gradient-to-r from-blue-600/20 to-purple-600/20 px-3 py-1.5 rounded-full border border-blue-500/30 hover:text-cyan-400'
+                            : 'text-slate-300 hover:text-cyan-400'
                     }`}
                   >
-                    {isHighlight && <Store size={14} />}
+                    {isClaw && <Smartphone size={13} className="text-violet-400" />}
+                    {isHighlight && !isClaw && <Store size={14} />}
                     {t(item.label)}
+                    {isClaw && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-gradient-to-r from-violet-500 to-cyan-500 text-white uppercase">
+                        NEW
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -69,10 +79,11 @@ export function Navigation() {
               <LanguageSwitcher />
             </div>
             <button
-              onClick={() => router.push('/agent-builder')}
-              className="hidden items-center rounded-full bg-white/5 border border-white/10 px-4 py-2 text-xs font-bold text-slate-300 transition-all hover:bg-white/10 hover:border-cyan-500/50 md:inline-flex uppercase tracking-widest"
+              onClick={() => router.push('/claw#download')}
+              className="hidden items-center rounded-full bg-gradient-to-r from-violet-600/20 to-cyan-600/20 border border-violet-500/30 px-4 py-2 text-xs font-bold text-slate-200 transition-all hover:border-cyan-400/60 hover:text-white md:inline-flex gap-1.5"
             >
-              ⚡ Builder
+              <Smartphone size={12} className="text-violet-400" />
+              Download Claw
             </button>
             {isAuthenticated && <NotificationCenter />}
             {isAuthenticated ? (

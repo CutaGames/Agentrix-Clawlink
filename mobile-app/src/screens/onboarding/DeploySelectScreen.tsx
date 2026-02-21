@@ -16,9 +16,9 @@ const OPTIONS = [
   {
     id: 'cloud',
     emoji: '☁️',
-    title: 'Agentrix Cloud',
-    subtitle: 'Fastest way. No setup, ready in 5 seconds.',
-    badge: 'FREE',
+    title: 'One-Tap Cloud Deploy',
+    subtitle: 'Fastest setup. Agent live in 30 seconds. 🎁 10 GB storage gifted free.',
+    badge: '10 GB FREE',
     badgeColor: colors.success,
     action: 'CloudDeploy' as const,
     highlight: true,
@@ -26,8 +26,8 @@ const OPTIONS = [
   {
     id: 'local',
     emoji: '💻',
-    title: 'Connect Local / Hub',
-    subtitle: 'Scan QR to connect your PC, NAS or Agentrix Hub.',
+    title: 'Local / Private Deploy',
+    subtitle: 'Scan QR to connect your PC, NAS or HomeLab. Data stays on-device.',
     badge: 'PRIVATE',
     badgeColor: colors.primary,
     action: 'LocalDeploy' as const,
@@ -36,9 +36,9 @@ const OPTIONS = [
   {
     id: 'existing',
     emoji: '⚙️',
-    title: 'Advanced Setup',
-    subtitle: 'I have my own OpenClaw instance or API Key.',
-    badge: 'GEEK',
+    title: 'BYOC · Bring Your Own',
+    subtitle: 'Already have an OpenClaw or private instance? Connect it here.',
+    badge: 'BYOC',
     badgeColor: colors.textMuted,
     action: 'ConnectExisting' as const,
     highlight: false,
@@ -50,9 +50,9 @@ export function DeploySelectScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Set up your AI Agent</Text>
+      <Text style={styles.title}>Agentrix Claw</Text>
       <Text style={styles.subtitle}>
-        ClawLink connects you to an OpenClaw instance—your personal AI agent server. Choose how to get started:
+        Deploy your personal AI Agent in three ways. Cloud, local-private, or bring your own instance — your Agent, your rules.
       </Text>
 
       <View style={styles.options}>
@@ -89,7 +89,7 @@ export function DeploySelectScreen() {
       </View>
 
       <Text style={styles.note}>
-        💡 Cloud instances are hosted by Agentrix. Your data is private and only you can access your agent.
+        🎁 Early access: New users who choose Cloud Deploy receive 10 GB cloud storage free. Upgrade to 40 GB or 100 GB anytime.
       </Text>
 
       <TouchableOpacity 

@@ -91,12 +91,16 @@ export function CloudDeployScreen() {
   if (wizardStep === 'done') {
     return (
       <View style={styles.centered}>
-        <Text style={styles.celebrateTitle}>Your agent is live!</Text>
+        <Text style={styles.celebrateTitle}>Your agent is live! 🎉</Text>
         <Text style={styles.celebrateSubtitle}>
           {agentName || 'Your agent'} is running at:
         </Text>
         <View style={styles.urlBox}>
           <Text style={styles.urlText} numberOfLines={1}>{instanceUrl}</Text>
+        </View>
+        <View style={[styles.featureBox, styles.storageGift, { width: '100%' }]}>
+          <Text style={styles.storageGiftTitle}>🎁 10 GB Storage Activated</Text>
+          <Text style={styles.storageGiftDesc}>Your free early-access storage is ready. Upgrade to 40 GB or 100 GB in Agent Console → Storage.</Text>
         </View>
         <TouchableOpacity style={styles.primaryBtn} onPress={handleFinish}>
           <Text style={styles.primaryBtnText}>Start Chatting</Text>
@@ -111,13 +115,19 @@ export function CloudDeployScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>1-Click Cloud Deploy</Text>
       <Text style={styles.subtitle}>
-        We handle everything for you — server, AI model, and configuration. New users get free trial credits!
+        We handle everything — server, AI model, and configuration.
       </Text>
 
+      <View style={[styles.featureBox, styles.storageGift]}>
+        <Text style={styles.storageGiftTitle}>🎁 Early Access Gift</Text>
+        <Text style={styles.storageGiftDesc}>New users receive <Text style={{ fontWeight: '800', color: '#a78bfa' }}>10 GB</Text> cloud storage free. Upgrade to 40 GB or 100 GB anytime.</Text>
+      </View>
+
       <View style={styles.featureBox}>
-        <Text style={styles.featureItem}>Free trial credits included</Text>
-        <Text style={styles.featureItem}>AI model auto-configured by platform</Text>
-        <Text style={styles.featureItem}>No API keys or setup needed</Text>
+        <Text style={styles.featureItem}>☁️  AI model auto-configured by platform</Text>
+        <Text style={styles.featureItem}>🔒  No API keys or setup required</Text>
+        <Text style={styles.featureItem}>⚡  Agent live in ~30 seconds</Text>
+        <Text style={styles.featureItem}>📦  5200+ ClawHub Skills ready to install</Text>
       </View>
 
       <Text style={styles.label}>Name your agent (optional)</Text>
@@ -165,6 +175,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  storageGift: {
+    borderColor: '#7c3aed55',
+    backgroundColor: '#7c3aed11',
+  },
+  storageGiftTitle: { fontSize: 15, fontWeight: '800', color: '#a78bfa' },
+  storageGiftDesc: { fontSize: 13, color: colors.textSecondary, lineHeight: 20 },
   featureItem: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
   primaryBtn: {
     backgroundColor: colors.primary,

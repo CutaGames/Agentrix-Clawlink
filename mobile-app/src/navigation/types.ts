@@ -18,6 +18,7 @@ export type AgentStackParamList = {
   AgentChat: { instanceId?: string; instanceName?: string };
   OpenClawBind: undefined;
   SkillInstall: { skillId: string; skillName: string };
+  StoragePlan: undefined;
 };
 
 export type MarketStackParamList = {
