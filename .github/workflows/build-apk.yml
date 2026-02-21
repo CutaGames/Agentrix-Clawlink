@@ -55,7 +55,7 @@ jobs:
             --sdk_root=${ANDROID_SDK_ROOT} 2>&1 | tail -5
 
       - name: npm install
-        run: cd mobile-app && npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
       # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
@@ -64,7 +64,7 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
-          filepath = 'mobile-app/node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
+          filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
           if not os.path.exists(filepath):
               print(f"[skip] {filepath} not found — expo-image may have been updated")
               sys.exit(0)
@@ -84,7 +84,7 @@ jobs:
           PYEOF
 
       - name: Expo prebuild
-        run: cd mobile-app && npx expo prebuild --platform android --clean --no-install
+        run: npx expo prebuild --platform android --clean --no-install
         env:
           CI: '1'
 
@@ -96,7 +96,7 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
-          filepath = 'mobile-app/android/app/build.gradle'
+          filepath = 'android/app/build.gradle'
           if not os.path.exists(filepath):
               print(f'[skip] {filepath} not found')
               sys.exit(0)
@@ -120,7 +120,7 @@ jobs:
           PYEOF
 
       - name: Grant Gradle execute permission
-        run: chmod +x mobile-app/android/gradlew
+        run: chmod +x android/gradlew
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -128,14 +128,14 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('mobile-app/android/**/*.gradle*', 'mobile-app/android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
       # Build a single release APK — used for both UI tests and the download link.
       # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
       # Unsigned release APK installs fine on any emulator or test device.
       - name: Build APK
-        working-directory: mobile-app/android
+        working-directory: android
         run: ./gradlew assembleRelease --no-daemon --parallel
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
@@ -149,10 +149,10 @@ jobs:
         run: |
           mkdir -p artifacts
           # Expo may output app-release.apk (debug-signed) or app-release-unsigned.apk
-          APK=$(find mobile-app/android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
           if [ -z "$APK" ]; then
-            echo "ERROR: No APK found in mobile-app/android/app/build/outputs/apk/release/"
-            ls -la mobile-app/android/app/build/outputs/apk/release/ || true
+            echo "ERROR: No APK found in android/app/build/outputs/apk/release/"
+            ls -la android/app/build/outputs/apk/release/ || true
             exit 1
           fi
           echo "Found APK: $APK"
