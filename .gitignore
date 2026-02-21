@@ -85,3 +85,6 @@ tsconfig.tsbuildinfo
 # Documentation directories (EXPLICITLY ALLOWED)
 !docs/
 !architecture/
+
+# nested mobile-app directory (should not exist)
+mobile-app/
