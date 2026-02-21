@@ -1002,3 +1002,11 @@ type PaymentType = 'crypto_direct' | 'onramp' | 'offramp' | 'mixed';
 | 产品负责人 | | | ☐ |
 | 技术负责人 | | | ☐ |
 | 设计负责人 | | | ☐ |
+
+---
+
+## 附录：Agentrix Claw 能力对齐与进展 (2026-02-21 更新)
+
+关于 Agentrix Claw 移动端作为物理触角的能力，与 Kimi Claw 和 OpenClaw 的详细对齐分析、当前开发进展（已完成多模式部署、存储商业化、X402 任务集市等）以及待开发的底层设备控制能力（Accessibility、MediaProjection 等），请参阅专门的 PRD 文档：
+
+ **[AGENTRIX_CLAW_PRD.md](./AGENTRIX_CLAW_PRD.md)**

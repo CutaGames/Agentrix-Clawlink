@@ -1,0 +1,447 @@
+ Agentrix Claw × Kimi Claw / OpenClaw / HeyLemon 完整能力对比分析
+
+**最后更新**: 2026-02-21  
+**版本**: V2.1
+
+---
+
+## 第〇步：2026-02-21 本轮更新摘要
+
+### 本轮新增/完善能力
+| 模块 | 更新内容 | 状态 |
+|---|---|---|
+| **部署架构** | DeploySelectScreen 重构：Cloud(10GB FREE) / Local(PRIVATE) / BYOC 三模式 | ✅ 已完成 |
+| **存储商业化** | StoragePlanScreen 新增：Free(10GB) → Starter(40GB,$4.9) → Pro(100GB,$12) + Stripe | ✅ 已完成 |
+| **Agent 仪表盘** | AgentConsoleScreen 增加存储用量卡片（进度条+🎁标记+跳转升级） | ✅ 已完成 |
+| **任务集市** | TaskMarketScreen 顶部 X402 横幅（实时结算状态+绿色呼吸灯） | ✅ 已完成 |
+| **类型定义** | openclaw.service.ts 新增 StorageTier/StorageInfo/StoragePlan 类型 + API | ✅ 已完成 |
+| **导航注册** | AgentStackNavigator 注册 StoragePlanScreen 路由 | ✅ 已完成 |
+
+### 🔍 后端模块逆查发现（V2.1 新增关键修订）
+> 对 `backend/src/modules/` 下 80+ 模块做了完整盘点，结论颠覆了原来对"基础缺口"的判断：
+
+| 原来认为"缺失"的功能 | 实际后端状态 | 修订结论 |
+|---|---|---|
+| BYOK / API Key 管理 | ✅ `api-key/` 模块完整 | **仅需前端 SettingsScreen Keys Tab，1 天** |
+| Token 用量 / 成本追踪 | ✅ `analytics/` 模块完整 | **仅需前端图表 UI，2 天** |
+| Agent 执行日志 | ✅ `execution/` 模块完整 | **仅需前端 LogScreen + SSE，2 天** |
+| Push 告警通知 | ✅ `notification/` 模块完整 | **仅需 FCM/APNs 注册，2 天** |
+| 持久记忆（RAG） | ✅ `ai-rag/` 模块完整 | **仅需前端记忆管理 UI，3 天** |
+| Workflow / Cron 调度 | ❌ **真正缺失** | **需后端 BullMQ + 前端 DAG 编排，3 周** |
+
+**结论：Layer 0（基础信任层）全部可在 2 周内完成，因为后端零工作量。Workflow/Cron 是唯一真正大型基础缺口。**
+
+---
+
+## 第一步：当前已实现功能清单
+
+### ✅ CloudHub / 云端实例管理
+| 功能 | 状态 | 实现位置 |
+|---|---|---|
+| 一键云端部署（30s 启动） | ✅ 已实现 | CloudDeployScreen.tsx + openclaw-connection.service.ts |
+| **🆕 10GB 早鸟存储赠送** | ✅ 已实现 | CloudDeployScreen.tsx `storageGift` 卡片 |
+| SSH 自动化云端 Provision（调用平台密钥+LLM配置） | ✅ 已实现 | `scheduleCloudProvisioning()` in service |
+| 多 LLM Provider 支持（OpenAI / DeepSeek / Anthropic / Gemini / Bedrock） | ✅ 已实现 | `providerEnvMap` 映射 |
+| 实例状态管理（active / paused / provisioning / error / unlinked） | ✅ 已实现 | openclaw-instance.entity.ts |
+| 多实例支持 + 设置主实例 | ✅ 已实现 | `setPrimaryInstance()` API |
+| 实例健康状态拉取（CPU / Memory / Uptime / Version） | ✅ 已实现 | `getInstanceStatus()` service |
+| Restart / Unbind 实例 | ✅ 已实现 | `restartInstance()` / `unbindInstance()` |
+| **🆕 存储用量实时展示** | ✅ 已实现 | AgentConsoleScreen.tsx `storageCard` 组件 |
+| **🆕 存储升级计划页** | ✅ 已实现 | StoragePlanScreen.tsx (Free/Starter/Pro 三档) |
+
+### ✅ 本地脚手架 CLI（Local Agent）
+| 功能 | 状态 |
+|---|---|
+| WebSocket Relay 中继穿透（无需公网IP） | ✅ 已实现 |
+| `~/.clawlink/config.json` 配置文件管理 | ✅ 已实现 |
+| 多环境变量支持（RELAY_TOKEN / LLM_ENDPOINT / MODEL） | ✅ 已实现 |
+| Win / Mac 二进制构建 + CDN 分发 | ✅ 已实现 |
+| 本地部署流程（扫码 → Token → 轮询 relay-status) | ✅ 已实现 |
+
+### ✅ 三种部署模式 (2026-02-21 重构完成)
+| 模式 | 状态 | 特点 |
+|---|---|---|
+| ☁️ **One-Tap Cloud Deploy** | ✅ 已实现 | 30秒启动 + 10GB 免费存储赠送 + 自动 LLM 配置 |
+| 💻 **Local/Private Deploy** | ✅ 已实现 | Relay 穿透无需公网 IP + 隐私数据本地保留 |
+| ⚙️ **BYOC (Bring Your Own Cloud)** | ✅ 已实现 | Manual URL + Token / QR 扫码接入自有实例 |
+
+### ✅ Skill 市场（ClawLink Market）
+| 功能 | 状态 |
+|---|---|
+| Skill 搜索 / 浏览 / 详情页 | ✅ 已实现 |
+| 一键安装 Skill 到 Agent 实例 | ✅ 已实现 |
+| 免费 / 付费 Skill（Buy & Install） | ✅ 已实现 |
+| Skill 启用/禁用 Toggle | ✅ 已实现 |
+| Skill UCP + X402 字段（ucpEnabled / x402Enabled / endpoint） | ✅ 已实现 |
+| X402 自主支付流程（Agent 自动 402 응답 → 签名支付） | ✅ 核心逻辑已实现 |
+| MCP Server 集成（SSE Transport + OAuth Discovery） | ✅ 已实现 |
+| 38+ MCP Tools（支付/分账/预算池/市场发布/A2A 委托） | ✅ 已实现 |
+| **🆕 5200+ Skills 生态接入** | ✅ 已实现 |
+
+### ✅ 任务集市（Task Market）(2026-02-21 强化)
+| 功能 | 状态 |
+|---|---|
+| 任务发布 / 任务列表 / 任务详情 | ✅ 已实现（TaskMarketScreen.tsx / PostTaskScreen.tsx） |
+| 任务竞标 / 接单 | ✅ 界面已实现 |
+| Agent 自动分配任务（Multi-Agent 协作检测） | ✅ 已实现（usage-pattern.service） |
+| A2A 任务委托（Agent-to-Agent） | ✅ 已实现（A2AService） |
+| 任务执行 Audit Proof 链 | ✅ 框架已实现 |
+| **🆕 X402 实时结算横幅（绿色呼吸灯）** | ✅ 已实现 |
+| **🆕 任务自动竞价 & 结算提示** | ✅ 已实现 |
+
+### ✅ 支付体系（独特优势）
+| 功能 | 状态 |
+|---|---|
+| UCP（Universal Commerce Protocol）集成 | ✅ 已实现 |
+| X402 协议（HTTP 402 自主支付） | ✅ 已实现 |
+| Stripe 法币支付 | ✅ 已实现 |
+| Transak 法币→加密上链 | ✅ 已实现 |
+| 链上分账（SplitPlan / BudgetPool / Milestone） | ✅ 已实现 |
+| EVM + Solana 钱包登录 | ✅ 已实现 |
+
+### ✅ 社交 / 身份层
+| 功能 | 状态 |
+|---|---|
+| Google / Twitter(X) / 钱包 登录 | ✅ 已实现 |
+| Telegram Bot 绑定 | ✅ 已实现 |
+| 社区 Feed / 分享卡片 | ✅ 已实现 |
+| 佣金邀请系统 | ✅ 已实现 |
+
+---
+
+## 第二步：Kimi Claw / OpenClaw 完整标准能力参照
+
+基于 Kimi Claw 发布信息及 OpenClaw/Claude.ai 云端 Agent 平台标准：
+
+| 能力域 | 标准功能 |
+|---|---|
+| **云端控制台** | Web Dashboard + 移动端 App；实例列表、状态、资源用量可视化 |
+| **存储空间** | 每用户赠送 40GB 云端持久存储（Kimi Claw 特色） |
+| **文件系统** | Agent 可读写云端文件系统；支持上传/下载附件 |
+| **项目/工作区管理** | 多项目隔离；成员协作；角色权限（Owner / Editor / Viewer） |
+| **构建 & 编排服务** | 容器化 Agent 运行时；自动伸缩；任务队列 |
+| **多云/多区域部署** | AWS / GCP / Azure 多云支持；区域选择（合规） |
+| **环境变量 & 密钥管理** | Vault 级别密钥存储；动态注入；Secret Rotation |
+| **持久记忆（Memory）** | 长期记忆存储（用户偏好 / 上下文 / 知识图谱） |
+| **工具调用编排（Tool-Use）** | 内置 Web 搜索、代码执行、网页抓取、邮件/日程等工具 |
+| **Skill / Plugin 市场** | 官方 + 社区 Skill 商店；一键安装；版本管理；沙箱执行 |
+| **Workflow / 自动化** | 可视化 Workflow 编排（DAG 流）；Cron 定时任务；事件触发 |
+| **日志 & 监控** | 结构化日志（realtime）；Token 用量统计；成本追踪 Dashboard |
+| **报警 & 告警** | Webhook / 邮件告警；SLA 保障；异常自动重启 |
+| **开放 API（REST/SSE）** | 完整 OpenAPI 文档；SDK（JS/Python）；速率限制管理 |
+| **用户权限 & IAM** | 细粒度 RBAC；API Key 管理；OAuth2 集成 |
+| **数据安全** | 数据加密（at-rest + in-transit）；GDPR 合规；审计日志 |
+| **Mobile App** | iOS + Android 控制端；Push 通知；Agent 对话 |
+| **本地部署** | Docker Compose 一键本地启动；无公网 IP 支持（Relay） |
+| **自有云接入** | BYOC（Bring Your Own Cloud）；API Key 接入方式 |
+| **协作 / 多人** | 团队空间；任务分配给 Sub-Agent；消息频道 |
+| **Agent 市场** | 发布 / 订阅 已配置好的 Agent 模板 |
+
+---
+
+## 第三步：差距清单 & 我们的优势
+
+### 差距清单（已标注后端实际状态）(2026-02-21 深度修订)
+
+> **图例**：🔴 真正缺失（需后端+前端）| 🟡 仅缺前端（后端已有模块）| 🟢 已完成
+
+#### CloudHub 能力差距
+
+| 缺口 | 重要度 | 后端状态 | 实际工作量 |
+|---|---|---|---|
+| **云端文件系统 / 存储** | 🟢 **已解决** | ✅ StoragePlan 上线 | **已完成** |
+| **持久化 Agent 记忆（Long-term Memory）** | 🟡 中等 | ✅ `ai-rag` 模块已存在 | **前端 UI，3 天** |
+| **可视化 Workflow 编排（DAG）** | 🔴 **真正缺失** | ❌ 无 scheduler/workflow 后端 | **后端+前端，3 周** |
+| **Cron / 事件触发任务** | 🔴 **真正缺失** | ❌ 无 cron/job 后端模块 | **后端 BullMQ，2 周** |
+| **Token 用量 / 成本 Dashboard（App内）** | 🟡 中等 | ✅ `analytics` 模块已存在 | **前端图表，2 天** |
+| **用户侧 API Key 管理（BYOK）** | 🟡 中等 | ✅ `api-key` 模块已存在 | **前端 Settings Tab，1 天** |
+| **结构化 Agent 执行日志** | 🟡 中等 | ✅ `execution` 模块已存在 | **前端 LogScreen，2 天** |
+| **告警 Push 通知** | 🟡 中等 | ✅ `notification` 模块已存在 | **FCM 注册，2 天** |
+| **多区域部署选择** | 🟡 低 | 需基础设施扩展 | 1 周 |
+| **团队协作 / 多成员实例共享** | 🟡 中等 | 部分（workspace 模块） | 2 周 |
+| **Agent 模板市场** | 🟡 中等 | 部分（Skill Market 可复用） | 2 周 |
+| **Web 搜索 / 代码沙箱内置工具** | 🟡 低 | 依赖 Skill 生态 | 逐步完善 |
+
+#### 本地脚手架差距
+
+| 缺口 | 重要度 | 后端状态 | 实际工作量 |
+|---|---|---|---|
+| **GUI 桌面客户端** | 🔴 高 | ✅ API 已就绪，不需改后端 | **Tauri 壳，2 周** |
+| **本地文件挂载** | 🔴 高 | 部分（upload 模块） | **CLI 暴露 MCP Tool，1 周** |
+| **本地工具注册** | 🟡 中 | 需 MCP Registry 扩展 | 1 周 |
+| **离线模式** | 🟡 低 | 架构改造，较复杂 | 2 周 |
+| **自动更新** | 🟡 低 | ✅ 无需后端 | Sparkle/自更新器，3 天 |
+| **Linux/ARM 二进制** | 🟢 低 | ✅ CLI 代码复用 | 交叉编译，1 周 |
+
+#### 部署能力差距
+
+| 缺口 | 重要度 | 工作量 |
+|---|---|---|
+| **Docker Compose 完整本地栈** | 🔴 高 | 编排 DB + Redis + OpenClaw，1 周 |
+| Kubernetes / Helm Chart | 🟡 中 | 企业需求，后期 |
+| 服务端 GPU 实例 | 🟡 低 | 基础设施工作 |
+
+---
+
+### ✅ 我们的核心优势（护城河）(2026-02-21 强化)
+
+| 优势维度 | 具体内容 |
+|---|---|
+| **存储商业化闭环** | **🆕 10GB 免费 + 40GB/100GB Stripe 付费升级**，直接对标并反超 Kimi Claw 40GB |
+| **支付基础设施领先** | 同时支持 UCP + X402 + Stripe + Transak + 链上分账。竞品只有法币支付，Agent 自主支付能力为空 |
+| **A2A 任务经济** | Agent-to-Agent 委托、分账、Milestone 释放——这是 Kimi Claw 完全没有的商业层 |
+| **任务集市（Task Market）** | 人类发布任务 → Agent 竞标接单 + **🆕 X402 实时结算横幅**。形成独特的"AI 劳动力市场"闭环 |
+| **资源型 Skill（X402）** | Skill 可以是一个带支付门槛的 API 资源，支持 Agent 自主按次付费调用，形成 API 经济 |
+| **5200+ Skills 生态** | **🆕** 已接入超过 5200 个 Skill，形成丰富的能力市场 |
+| **链上身份 + 钱包登录** | EVM + Solana；竞品全部是 Web2 账号体系 |
+| **佣金/分佣系统** | 完整的邀请→分销→结算链路；竞品无 |
+| **MCP 生态整合深度** | 38+ MCP Tools 覆盖商业层（支付/市场/协作）；竞品 MCP 主要覆盖工具调用层 |
+| **三端一体** | Mobile App（用户控制端） + CloudHub（云端中枢） + 本地脚手架（私有算力接入）完整闭环 |
+| **灵活部署架构** | **🆕 Cloud / Local / BYOC 三模式**，比 Kimi Claw 纯云端闭源更灵活 |
+
+---
+
+## 第四步：功能优先级重构 —— 三层地基论 (2026-02-21 深度修订)
+
+> **修订原因**：逆查后端模块后发现，大量"缺失功能"的后端已完整实现，只缺前端 UI。  
+> **核心结论**：先补地基（信任层+平台层），再建体验（交互层），最后延伸触角（控制层）。
+
+---
+
+### ⚠️ 重要发现：后端能力盘点
+
+| 表面上"缺失"的功能 | 后端模块 | 真实情况 |
+|---|---|---|
+| BYOK / API Key 管理 | `backend/modules/api-key/` ✅ | **只需补前端 SettingsScreen → Keys Tab，1 天** |
+| Token 用量 / 成本追踪 | `backend/modules/analytics/` ✅ | **只需补前端 Dashboard 图表 UI，2 天** |
+| Agent 执行日志 | `backend/modules/execution/` ✅ | **只需补前端 LogScreen + SSE 接收，2 天** |
+| Push 告警通知 | `backend/modules/notification/` ✅ | **只需接入 FCM/APNs Token 注册，2 天** |
+| 持久记忆 (Long-term Memory / RAG) | `backend/modules/ai-rag/` ✅ | **只需补前端记忆管理 UI，3 天** |
+| Workflow / Cron 调度 | ❌ **不存在** | **真正缺失，需后端+前端从零开发，3 周** |
+| Docker Compose 本地完整栈 | ❌ **不存在** | **纯基础设施工作，1 周** |
+| 本地文件挂载 | ❌ **不存在** | **CLI + 上传模块改造，1 周** |
+
+**结论：60% 以上的"基础缺口"后端已存在，补全所有基础信任层只需约 2 周，而非数月。**
+
+---
+
+### 🏗️ Layer 0 — 基础信任层（必须最先完成，否则用户无法留存）
+
+**核心逻辑**：用户注册后第一周，如果看不到 Agent 在做什么、不能用自己的 Key、出问题没有通知，必然流失。  
+**关键优势**：所有 Layer 0 项目的**后端均已存在**，纯前端工作，可以并行完成。
+
+| 优先级 | 功能 | 后端状态 | 前端工作 | 预估工时 |
+|---|---|---|---|---|
+| 🔴 P0 | **BYOK — 用户自带 API Key 管理** | ✅ `api-key` 模块完整 | SettingsScreen 增加 Keys Tab | **1 天** |
+| 🔴 P0 | **Token 用量 / 成本实时 Dashboard** | ✅ `analytics` 模块完整 | AgentConsoleScreen 增加 Usage 图表卡片 | **2 天** |
+| 🔴 P0 | **Agent 执行日志（App 内可查）** | ✅ `execution` 模块完整 | 新建 AgentLogsScreen + SSE 流接收 | **2 天** |
+| 🔴 P0 | **Push 告警通知（崩溃/超额预警）** | ✅ `notification` 模块完整 | FCM/APNs Token 注册 + 通知处理 | **2 天** |
+
+**Layer 0 小计：约 7 个工作日，后端零开发工作量。**
+
+---
+
+### 🏛️ Layer 1 — 平台能力层（从"聊天工具"升级为"自动化平台"）
+
+**核心逻辑**：没有定时任务、没有 Workflow，Agentrix Claw 只是一个对话 App，和普通 AI Chat 无异。这是平台价值所在。
+
+| 优先级 | 功能 | 后端状态 | 工作量 | 预估工时 |
+|---|---|---|---|---|
+| 🟠 P1 | **持久记忆层（Long-term Memory）** | ✅ `ai-rag` 模块完整 | 前端记忆管理 UI + 向量存储 API 接入 | **3 天** |
+| 🟠 P1 | **Workflow 可视化 + Cron 定时任务** | ❌ **真正缺失** | 后端 BullMQ 调度引擎 + 前端 Node 编排 UI | **3 周** |
+| 🟠 P1 | **Docker Compose 本地完整栈** | ❌ **需新建** | docker-compose.yml 编排 + Relay + DB + Redis | **1 周** |
+| 🟠 P1 | **本地文件挂载（Local Files Tool）** | 部分 (`upload` 模块) | CLI 暴露 `/files` MCP Tool + App 文件选择器 | **1 周** |
+| 🟡 P1 | **BYOK — 密钥 Vault / 轮换机制** | ✅ `api-key` 模块已有骨架 | 加密存储增强 + 轮换 UI | **3 天** |
+| 🟡 P1 | **Agent 模板市场** | 部分（Skill Market 可复用） | 模板发布/Fork/订阅流程 | **2 周** |
+| 🟡 P1 | **Agent 收益面板强化** | ✅ 后端完整，AutoEarnScreen 有骨架 | 深化收益图表 + 任务统计 | **3 天** |
+
+---
+
+### 🎨 Layer 2 — 交互体验层（提升留存和口碑）
+
+**核心逻辑**：地基稳固后，用 HeyLemon 式交互大幅提升日活和使用频次。
+
+| 优先级 | 功能 | 后端状态 | 工作量 | 预估工时 |
+|---|---|---|---|---|
+| 🔵 P2 | **全局悬浮窗 + 语音唤醒** | ✅ API 层无需改动 | Android 原生 Service + 悬浮球 UI | **2 周** |
+| 🔵 P2 | **"Hey Claw" 语音唤醒词** | ✅ Chat API 已就绪 | `SpeechRecognizer` + 唤醒词检测 | **1 周** |
+| 🔵 P2 | **桌面 GUI 客户端（Tauri）** | ✅ API 层无需改动 | Tauri 壳 + React 前端复用 | **2 周** |
+| 🔵 P2 | **团队/组织空间** | 部分（workspace 模块） | 成员邀请 + 实例共享 + RBAC | **2 周** |
+| 🔵 P2 | **多区域部署选择** | ❌ 需基础设施扩展 | 区域节点配置 + 选择 UI | **1 周** |
+
+---
+
+### 🔮 Layer 3 — 控制层（真正的"物理触角"，是未来护城河）
+
+**核心逻辑**：这是最难但最有价值的部分。需要 Layer 0-2 全部稳固后才值得投入。
+
+| 优先级 | 功能 | 后端状态 | 工作量 | 预估工时 |
+|---|---|---|---|---|
+| 🟣 P3 | **屏幕感知服务 (MediaProjection + AccessibilityService)** | ✅ API 接口无需改动 | Android 原生 + 权限申请 | **3 周** |
+| 🟣 P3 | **动作执行引擎 (dispatchGesture)** | ✅ Agent API 复用 | AccessibilityService 手势分发 | **2 周** |
+| 🟣 P3 | **跨 App 上下文感知** | ✅ 截屏+OCR 接口复用 | 上下文提取 + 注入 Agent Prompt | **2 周** |
+| 🟣 P3 | **Android 后台保活 (Foreground Service)** | ✅ WebSocket 已就绪 | 前台服务 + 心跳保活 | **1 周** |
+| 🟣 P3 | **Linux/ARM/NAS 二进制** | ✅ CLI 代码可复用 | 交叉编译 + 测试 | **1 周** |
+
+---
+
+### 📊 总优先级甘特视图（建议执行顺序）
+
+```
+Week 1-2:  Layer 0 全部完成（BYOK + Dashboard + Logs + Push）— 7天，全前端
+Week 3-4:  Layer 1a: 持久记忆 + Docker Compose — 后端部分最少
+Week 5-8:  Layer 1b: Workflow/Cron（唯一真正大型后端缺口）
+Week 9-10: Layer 1c: 本地文件挂载 + Agent 模板市场基础版
+Week 11-12: Layer 2: 悬浮窗 + 语音唤醒（HeyLemon 式体验正式上线）
+Week 13+:  Layer 3: 屏幕感知 + 动作执行（物理触角阶段）
+```
+
+**关键结论**：
+- **2 周内**可完成所有"用户信任"层（Layer 0），因为后端已存在
+- **Workflow/Cron** 是唯一需要大量后端投入的真正缺口（3 周）
+- **HeyLemon 式交互**放在 Layer 2，在地基稳固后做，不应抢跑
+- **设备控制**（屏幕+手势）是长期护城河，排在最后
+
+---
+
+### 总结：差异化护城河核心方向
+
+```
+竞品思路：  云存储 + 工具调用 + Workflow = "AI 助手平台"
+我们的路径：云端中枢 + 支付基础设施 + 任务经济 = "AI 劳动力市场 + Agent 商业操作系统"
+
+三层独特壁垒：
+① 协议层  ── UCP + X402 = Agent 能自主赚钱和花钱（竞品无）
+② 市场层  ── Task Market + Agent Template Market = AI 任务经济闭环（竞品无）
+③ 激励层  ── 佣金/分账/收益面板 = 让用户把 Agent 当"员工"而非"工具"
+```
+
+---
+
+## 第五步：HeyLemon.ai 交互形态分析与借鉴 (2026-02-21 新增)
+
+### 5.1 HeyLemon 核心交互范式
+
+HeyLemon.ai 代表了一种 **"无所不在、零摩擦、语音优先"** 的 AI Agent 交互形态：
+
+| 特性 | HeyLemon 实现方式 | 用户价值 |
+|---|---|---|
+| **全局唤醒** | 单一热键 (fn 键) 即可在任何 App 中唤出 Agent | 无需切换应用，思维不被打断 |
+| **语音优先** | "Say what you want. Watch it get done." | 输入速度提升 5x，减少键盘依赖 |
+| **覆盖层交互** | Agent 界面覆盖在当前应用之上，非独立窗口 | 保持上下文，所见即所得 |
+| **即时执行** | 回复邮件、撰写文档、搜索信息，一句话完成 | 从想法到行动的路径最短化 |
+| **后台无感** | Agent 持续监听但不干扰前台任务 | "Always-on"但不侵入 |
+
+**HeyLemon 的核心理念**：
+> "You're not unproductive. You're interrupted." — 平均知识工作者每天打字 3 小时、切换标签 1100 次。HeyLemon 的目标是消灭这种"微摩擦"。
+
+### 5.2 Agentrix Claw 当前交互模式 vs HeyLemon
+
+| 维度 | HeyLemon (Mac 桌面端) | Agentrix Claw (移动端当前) | 差距分析 |
+|---|---|---|---|
+| **唤醒方式** | fn 键全局热键 | 必须打开 App 进入 AgentConsole | ❌ 缺少全局唤醒入口 |
+| **交互位置** | 覆盖层 (Overlay) 悬浮于任何应用 | 独立 App 内全屏 Chat | ❌ 需离开当前应用 |
+| **输入模式** | 语音优先 + 键盘辅助 | 键盘打字为主，语音次要 | 🟡 语音能力弱 |
+| **上下文感知** | 自动获取当前屏幕/选中文本作为上下文 | 无法获取其他 App 内容 | ❌ 缺少跨 App 上下文 |
+| **执行反馈** | 实时在当前界面展示结果 (如回复邮件) | 结果仅在 App 内展示 | ❌ 无法写回外部应用 |
+
+### 5.3 Agentrix Claw 实现 HeyLemon 式交互的技术路径
+
+要在 **Android 移动端** 实现类似 HeyLemon 的"无所不在"交互体验，需要开发以下原生能力：
+
+#### 5.3.1 P0：全局悬浮窗 (Floating Window / Overlay)
+| 技术点 | 实现方案 | 说明 |
+|---|---|---|
+| **悬浮窗权限** | `SYSTEM_ALERT_WINDOW` 权限申请 | Android 6.0+ 需要用户手动授权 |
+| **悬浮球 UI** | React Native + `react-native-system-windows` 或原生 Service | 常驻屏幕边缘的可拖动小球 |
+| **点击展开** | 展开为迷你 Chat 面板 (类似微信悬浮窗) | 用户无需离开当前 App 即可与 Agent 对话 |
+| **语音唤醒** | 集成 `SpeechRecognizer` API，支持"Hey Claw"唤醒词 | 实现 HeyLemon fn 键的移动端等价 |
+
+#### 5.3.2 P0：屏幕感知 (Screen Perception)
+| 技术点 | 实现方案 | 说明 |
+|---|---|---|
+| **实时截屏** | `MediaProjection API` 获取屏幕内容流 | 需要用户授权屏幕录制 |
+| **视图树解析** | `AccessibilityService` 获取当前界面 View Hierarchy | 可提取文本、按钮位置等结构化信息 |
+| **OCR 增强** | 对截屏进行 OCR (云端 Vision API 或端侧 ML Kit) | 补充无障碍服务无法获取的图像内文字 |
+
+#### 5.3.3 P1：动作执行 (Action Actuator)
+| 技术点 | 实现方案 | 说明 |
+|---|---|---|
+| **模拟点击/滑动** | `AccessibilityService.dispatchGesture()` | 可精确模拟用户手势 |
+| **文本输入** | `AccessibilityNodeInfo.ACTION_SET_TEXT` | 自动填充输入框 |
+| **App 跳转** | `Intent` 深度链接唤起目标 App | 如"帮我在美团点杯咖啡"→ 唤起美团 |
+| **剪贴板交互** | `ClipboardManager` 读写 | 实现跨 App 文本传递 |
+
+#### 5.3.4 P1：后台保活 (Background Persistence)
+| 技术点 | 实现方案 | 说明 |
+|---|---|---|
+| **前台服务** | `Foreground Service` + 持久通知 | 防止系统杀死 Agent 进程 |
+| **状态栏指示** | 通知显示当前 Agent 状态 (如"正在执行任务...") | 用户感知 Agent 活跃状态 |
+| **电池白名单** | 引导用户关闭电池优化 | 保证后台长期运行 |
+
+### 5.4 分阶段实施路线图
+
+```
+Phase 1 (当前): ✅ App 内 Chat + 部署 + 存储 + 任务集市
+    └─ 用户必须打开 App 才能与 Agent 交互
+
+Phase 2 (Next): 🎯 悬浮窗 + 语音唤醒
+    ├─ 悬浮球常驻屏幕边缘
+    ├─ 点击展开迷你 Chat 面板
+    ├─ "Hey Claw" 语音唤醒
+    └─ 用户无需切换 App 即可下达指令
+
+Phase 3 (Future): 🔮 屏幕感知 + 动作执行
+    ├─ Agent 能"看"懂当前屏幕
+    ├─ Agent 能在其他 App 中"点击/输入"
+    ├─ 实现"帮我回复这条微信消息"的完整闭环
+    └─ 真正的 HeyLemon 式"无所不在"体验
+```
+
+### 5.5 HeyLemon 借鉴的产品设计原则
+
+1. **最小认知负担**：单一入口（悬浮球/语音），无需记忆复杂操作路径。
+2. **零上下文切换**：Agent 叠加在当前任务之上，而非带走用户。
+3. **渐进式能力展示**：从简单的"语音转文字"到复杂的"跨 App 自动化"，逐步建立用户信任。
+4. **可见的执行过程**：用户能看到 Agent 在做什么（类似看一个人在帮你操作手机），而非黑盒。
+
+---
+
+## 第六步：后续开发优先级汇总 (2026-02-21 修订)
+
+### 优先级重排（结合 HeyLemon 借鉴）
+
+| 优先级 | 功能 | 战略价值 | 预估工时 |
+|---|---|---|---|
+| **P0** | 全局悬浮窗 + 语音唤醒 | HeyLemon 核心体验，大幅提升交互效率 | 2 周 |
+| **P0** | BYOK (自带 API Key) 管理 | 用户首要关心的配置问题 | 3 天 |
+| **P0** | Token 用量 / 成本 Dashboard | 建立用户信任，防止意外消费 | 1 周 |
+| **P0** | Agent 执行日志可视化 | 用户需要知道 Agent 在做什么 | 1 周 |
+| **P1** | 屏幕感知 (MediaProjection + Accessibility) | 实现"看屏幕"能力，HeyLemon 进阶 | 3 周 |
+| **P1** | 动作执行 (dispatchGesture) | 实现"在其他 App 操作"能力 | 2 周 |
+| **P1** | Workflow 可视化 + Cron 调度 | Kimi Claw 对标必备 | 3 周 |
+| **P1** | Agent 模板市场 | 降低用户上手门槛，形成内容生态 | 2 周 |
+| **P2** | 持久记忆层 (Long-term Memory) | 跨会话知识积累 | 2 周 |
+| **P2** | 团队/组织空间 | 企业客户需求 | 2 周 |
+| **P2** | 桌面 GUI 客户端 (Tauri/Electron) | 覆盖非移动端用户 | 3 周 |
+
+---
+
+## 附录：核心竞争力矩阵更新
+
+```
+                      商业化闭环    生态深度    交互便捷性    设备控制
+                      (支付/分账)   (Skills)   (HeyLemon式)  (屏幕/手势)
+┌──────────────────┬────────────┬───────────┬─────────────┬───────────┐
+│ Agentrix Claw    │   ★★★★★    │  ★★★★★    │   ★★☆☆☆     │  ★☆☆☆☆    │
+├──────────────────┼────────────┼───────────┼─────────────┼───────────┤
+│ Kimi Claw        │   ★☆☆☆☆    │  ★★★☆☆    │   ★★★★☆     │  ★★★★★    │
+├──────────────────┼────────────┼───────────┼─────────────┼───────────┤
+│ OpenClaw         │   ★☆☆☆☆    │  ★★☆☆☆    │   ★★☆☆☆     │  ★★★★☆    │
+├──────────────────┼────────────┼───────────┼─────────────┼───────────┤
+│ HeyLemon (桌面)  │   ☆☆☆☆☆    │  ★★☆☆☆    │   ★★★★★     │  ★★★☆☆    │
+└──────────────────┴────────────┴───────────┴─────────────┴───────────┘
+
+当前定位：商业化+生态 领先，交互便捷性+设备控制 落后
+下一阶段目标：补齐悬浮窗交互，逐步追上 HeyLemon 式体验
+```
