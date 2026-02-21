@@ -9,6 +9,12 @@ import { CreateNotificationDto } from './dto/notification.dto';
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
+  /** In-memory push token registry.
+   * Key: userId, Value: { token, platform, deviceId, registeredAt }
+   * TODO: persist in a `device_tokens` table for durability across restarts.
+   */
+  private readonly pushTokens = new Map<string, { token: string; platform: string; deviceId?: string; registeredAt: Date }>();
+
   constructor(
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
@@ -132,6 +138,27 @@ export class NotificationService {
     await this.notificationRepository.remove(notification);
 
     return { message: '通知已删除' };
+  }
+
+  /**
+   * Register / update a device push token for the user.
+   * Persists in-memory; extend with DB in next iteration.
+   */
+  async registerPushToken(
+    userId: string,
+    token: string,
+    platform: string,
+    deviceId?: string,
+  ): Promise<void> {
+    this.pushTokens.set(userId, { token, platform, deviceId, registeredAt: new Date() });
+    this.logger.log(`Push token registered for user ${userId} (${platform})`);
+  }
+
+  /**
+   * Retrieve the registered push token for a user (for sending notifications).
+   */
+  getPushToken(userId: string) {
+    return this.pushTokens.get(userId) ?? null;
   }
 }
 

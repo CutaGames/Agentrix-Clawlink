@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { getInstanceSkills, restartInstance, getStorageInfo } from '../../services/openclaw.service';
+import { fetchQuotaStatus, PLAN_LABEL, PLAN_COLOR } from '../../services/token-quota.service';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 
@@ -37,6 +38,13 @@ export function AgentConsoleScreen() {
   const { data: storageInfo } = useQuery({
     queryKey: ['storage-info'],
     queryFn: getStorageInfo,
+    retry: 1,
+    staleTime: 60_000,
+  });
+
+  const { data: quota } = useQuery({
+    queryKey: ['token-quota'],
+    queryFn: fetchQuotaStatus,
     retry: 1,
     staleTime: 60_000,
   });
@@ -221,6 +229,57 @@ export function AgentConsoleScreen() {
                 : 'Upgrade for more storage'}
             </Text>
           </TouchableOpacity>
+
+          {/* ── Token Usage Card ── */}
+          {quota && (
+            <View style={styles.quotaCard}>
+              <View style={styles.quotaHeader}>
+                <Text style={styles.quotaTitle}>⚡ Token Usage</Text>
+                <View style={[styles.planBadge, { backgroundColor: PLAN_COLOR[quota.planType] + '22' }]}>
+                  <Text style={[styles.planBadgeText, { color: PLAN_COLOR[quota.planType] }]}>
+                    {PLAN_LABEL[quota.planType]}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.quotaBarBg}>
+                <View style={[styles.quotaBarFill, {
+                  width: `${Math.min(quota.usagePercent, 100)}%` as any,
+                  backgroundColor: quota.usagePercent > 85 ? '#ef4444' : quota.usagePercent > 60 ? '#f59e0b' : PLAN_COLOR[quota.planType],
+                }]} />
+              </View>
+              <View style={styles.quotaStats}>
+                <Text style={styles.quotaStat}>
+                  {(quota.usedTokens / 1000).toFixed(0)}k / {(quota.totalQuota / 1000000).toFixed(1)}M tokens
+                </Text>
+                <Text style={styles.quotaStat}>{quota.callCount} calls · {quota.usagePercent.toFixed(1)}% used</Text>
+              </View>
+              {quota.quotaExhausted && (
+                <View style={styles.quotaExhausted}>
+                  <Text style={styles.quotaExhaustedText}>⚠️ Quota exhausted — upgrade plan</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ── Quick Actions ── */}
+          <View style={styles.quickActions}>
+            {([
+              { icon: '📋', label: 'Activity Logs', route: 'AgentLogs' as const },
+              { icon: '🧠', label: 'Memory Hub', route: 'MemoryManagement' as const },
+              { icon: '⚙️', label: 'Workflows', route: 'WorkflowList' as const },
+            ]).map((item) => (
+              <TouchableOpacity
+                key={item.route}
+                style={styles.quickAction}
+                onPress={() => navigation.navigate(item.route)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.quickActionIcon}>{item.icon}</Text>
+                <Text style={styles.quickActionLabel}>{item.label}</Text>
+                <Text style={styles.quickActionArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </>
       )}
 
@@ -344,4 +403,31 @@ const styles = StyleSheet.create({
   skillName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   skillSub: { fontSize: 12, color: colors.textMuted },
   skillStatus: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.bgSecondary, borderRadius: 6 },
+  // ── Token Quota ──
+  quotaCard: {
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#2563eb33', gap: 8,
+  },
+  quotaHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  quotaTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  planBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
+  planBadgeText: { fontSize: 11, fontWeight: '700' },
+  quotaBarBg: { height: 6, backgroundColor: colors.bgSecondary, borderRadius: 3, overflow: 'hidden' },
+  quotaBarFill: { height: '100%', borderRadius: 3 },
+  quotaStats: { flexDirection: 'row', justifyContent: 'space-between' },
+  quotaStat: { fontSize: 11, color: colors.textMuted },
+  quotaExhausted: {
+    backgroundColor: '#ef444422', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#ef444440',
+  },
+  quotaExhaustedText: { fontSize: 12, color: '#ef4444', fontWeight: '600', textAlign: 'center' },
+  // ── Quick Actions ──
+  quickActions: { gap: 8 },
+  quickAction: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.bgCard, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: colors.border, gap: 12,
+  },
+  quickActionIcon: { fontSize: 20 },
+  quickActionLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  quickActionArrow: { fontSize: 20, color: colors.textMuted },
 });

@@ -7,6 +7,10 @@ import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
 import { OpenClawBindScreen } from '../screens/agent/OpenClawBindScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
 import { StoragePlanScreen } from '../screens/agent/StoragePlanScreen';
+import { AgentLogsScreen } from '../screens/agent/AgentLogsScreen';
+import { MemoryManagementScreen } from '../screens/agent/MemoryManagementScreen';
+import { WorkflowListScreen } from '../screens/agent/WorkflowListScreen';
+import { WorkflowDetailScreen } from '../screens/agent/WorkflowDetailScreen';
 
 const Stack = createNativeStackNavigator<AgentStackParamList>();
 
@@ -25,6 +29,10 @@ export function AgentStackNavigator() {
       <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: 'Connect OpenClaw' }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: 'Install Skill' }} />
       <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: 'Storage Plans' }} />
+      <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: 'Activity Logs' }} />
+      <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: 'Memory Hub' }} />
+      <Stack.Screen name="WorkflowList" component={WorkflowListScreen} options={{ title: 'Workflows' }} />
+      <Stack.Screen name="WorkflowDetail" component={WorkflowDetailScreen} options={{ title: 'Workflow' }} />
     </Stack.Navigator>
   );
 }

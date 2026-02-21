@@ -19,6 +19,10 @@ export type AgentStackParamList = {
   OpenClawBind: undefined;
   SkillInstall: { skillId: string; skillName: string };
   StoragePlan: undefined;
+  AgentLogs: undefined;
+  MemoryManagement: undefined;
+  WorkflowList: undefined;
+  WorkflowDetail: { workflowId?: string };
 };
 
 export type MarketStackParamList = {

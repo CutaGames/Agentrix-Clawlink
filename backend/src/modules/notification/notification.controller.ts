@@ -76,5 +76,27 @@ export class NotificationController {
   async deleteNotification(@Request() req, @Param('id') id: string) {
     return this.notificationService.deleteNotification(req.user.id, id);
   }
+
+  /**
+   * POST /api/notifications/register
+   * Register a device push token for the current user.
+   * Called by the mobile app on startup via notificationService.initialize().
+   */
+  @Post('register')
+  @ApiOperation({ summary: '注册设备推送 Token (FCM/Expo)' })
+  @ApiResponse({ status: 201, description: 'Token registered' })
+  async registerDevice(
+    @Request() req,
+    @Body() body: { token: string; platform: string; deviceId?: string },
+  ) {
+    // Store the push token on the user's profile (in-memory for now; extend with DB persistence in next iteration)
+    await this.notificationService.registerPushToken(
+      req.user.id,
+      body.token,
+      body.platform,
+      body.deviceId,
+    );
+    return { success: true, message: 'Push token registered' };
+  }
 }
 

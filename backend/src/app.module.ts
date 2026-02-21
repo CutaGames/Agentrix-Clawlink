@@ -89,6 +89,8 @@ import { TokenQuotaModule } from './modules/token-quota/token-quota.module';
 import { SocialModule } from './modules/social/social.module';
 // WebSocket 实时推送
 import { WebSocketModule } from './modules/websocket/websocket.module';
+// Workflow automation (Layer 1)
+import { WorkflowModule } from './modules/workflow/workflow.module';
 
 @Module({
   imports: [
@@ -185,6 +187,8 @@ import { WebSocketModule } from './modules/websocket/websocket.module';
     SocialModule,
     // WebSocket 实时推送
     WebSocketModule,
+    // Workflow automation & cron (Layer 1)
+    WorkflowModule,
   ],
   controllers: [AppController],
   providers: [AppService],
