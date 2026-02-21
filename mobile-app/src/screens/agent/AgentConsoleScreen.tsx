@@ -267,11 +267,13 @@ export function AgentConsoleScreen() {
               { icon: '📋', label: 'Activity Logs', route: 'AgentLogs' as const },
               { icon: '🧠', label: 'Memory Hub', route: 'MemoryManagement' as const },
               { icon: '⚙️', label: 'Workflows', route: 'WorkflowList' as const },
+              { icon: '🎤', label: 'Voice Chat', route: 'VoiceChat' as const },
+              { icon: '👥', label: 'Team Space', route: 'TeamSpace' as const },
             ]).map((item) => (
               <TouchableOpacity
                 key={item.route}
                 style={styles.quickAction}
-                onPress={() => navigation.navigate(item.route)}
+                onPress={() => navigation.navigate(item.route as any)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.quickActionIcon}>{item.icon}</Text>

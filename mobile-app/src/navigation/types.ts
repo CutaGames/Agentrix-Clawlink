@@ -23,6 +23,10 @@ export type AgentStackParamList = {
   MemoryManagement: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
+  // Layer 2
+  VoiceChat: { instanceId?: string };
+  TeamSpace: undefined;
+  TeamInvite: { workspaceId: string; workspaceName: string };
 };
 
 export type MarketStackParamList = {
