@@ -63,7 +63,7 @@ export async function pollBindSession(sessionId: string): Promise<{
 // Provision a new cloud-hosted OpenClaw instance
 export async function provisionCloudAgent(opts: {
   name: string;
-  personality: string;
+  llmProvider: string;
 }): Promise<OpenClawInstanceInfo> {
   return apiFetch<OpenClawInstanceInfo>('/openclaw/cloud/provision', {
     method: 'POST',
@@ -228,4 +228,41 @@ export function streamAgentChat(
   ws.onclose = (_e) => { /* cleanup */ };
 
   return () => ws.close();
+}
+
+// ── Storage / Plan ─────────────────────────────────────────────────────────────
+
+export type StorageTier = 'free' | 'starter' | 'pro';
+
+export interface StorageInfo {
+  tier: StorageTier;
+  totalGb: number;
+  usedGb: number;
+  availableGb: number;
+  usedPercent: number;
+  /** Is this the early-access free grant? */
+  isGiftStorage: boolean;
+  /** Plans user can upgrade to */
+  upgradePlans: StoragePlan[];
+}
+
+export interface StoragePlan {
+  tier: StorageTier;
+  storageGb: number;
+  priceUsdPerMonth: number;
+  label: string;
+  highlight: boolean;
+}
+
+/** Fetch current user's storage usage and available plans */
+export async function getStorageInfo(): Promise<StorageInfo> {
+  return apiFetch<StorageInfo>('/openclaw/storage/info');
+}
+
+/** Initiate plan upgrade (returns a Stripe/payment checkout URL) */
+export async function upgradeStoragePlan(tier: StorageTier): Promise<{ checkoutUrl: string }> {
+  return apiFetch('/openclaw/storage/upgrade', {
+    method: 'POST',
+    body: JSON.stringify({ tier }),
+  });
 }

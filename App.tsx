@@ -17,6 +17,8 @@ import { startNotificationPolling, stopNotificationPolling } from './src/service
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -157,7 +159,7 @@ const linking = {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer linking={linking as any}>
         <StatusBar style="light" />
         <AppNavigator />
       </NavigationContainer>

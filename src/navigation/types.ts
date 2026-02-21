@@ -18,6 +18,15 @@ export type AgentStackParamList = {
   AgentChat: { instanceId?: string; instanceName?: string };
   OpenClawBind: undefined;
   SkillInstall: { skillId: string; skillName: string };
+  StoragePlan: undefined;
+  AgentLogs: undefined;
+  MemoryManagement: undefined;
+  WorkflowList: undefined;
+  WorkflowDetail: { workflowId?: string };
+  // Layer 2
+  VoiceChat: { instanceId?: string };
+  TeamSpace: undefined;
+  TeamInvite: { workspaceId: string; workspaceName: string };
 };
 
 export type MarketStackParamList = {

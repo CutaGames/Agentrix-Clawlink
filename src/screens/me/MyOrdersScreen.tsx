@@ -14,7 +14,7 @@ const STATUS_COLOR: Record<string, string> = {
 export function MyOrdersScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ['my-orders'],
-    queryFn: () => apiFetch('/user/orders'),
+    queryFn: () => apiFetch<any>('/user/orders'),
   });
   const orders = data?.items || data?.data || data || [];
 

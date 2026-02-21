@@ -2,13 +2,13 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../App';
+import type { RootStackParamList } from '../navigation/types';
 import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
 import { useIdentityStore } from '../stores/identityStore';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'IdentityActivation'>;
+type Props = NativeStackScreenProps<any, any>;
 
 const identityConfig = {
   merchant: {
@@ -36,8 +36,9 @@ const identityConfig = {
 };
 
 export const IdentityActivationScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { identity } = route.params;
-  const config = identityConfig[identity];
+  const params = (route.params as any) || {};
+  const identity = params.identity || 'merchant';
+  const config = identityConfig[identity as keyof typeof identityConfig];
   const updateIdentityStatus = useIdentityStore((s) => s.updateIdentityStatus);
   
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -46,8 +47,8 @@ export const IdentityActivationScreen: React.FC<Props> = ({ route, navigation })
   const handleSubmit = async () => {
     // 验证必填字段
     const missingFields = config.fields
-      .filter(f => f.required && !formData[f.key]?.trim())
-      .map(f => f.label);
+      .filter((f: any) => f.required && !formData[f.key]?.trim())
+      .map((f: any) => f.label);
 
     if (missingFields.length > 0) {
       Alert.alert('请填写必填项', missingFields.join('、'));
@@ -83,7 +84,7 @@ export const IdentityActivationScreen: React.FC<Props> = ({ route, navigation })
       {/* 表单 */}
       <Card>
         <Text style={styles.formTitle}>填写资料</Text>
-        {config.fields.map((field) => (
+        {config.fields.map((field: any) => (
           <View key={field.key} style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>
               {field.label}

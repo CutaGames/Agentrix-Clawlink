@@ -7,6 +7,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import type { OnboardingStackParamList } from '../../navigation/types';
 
+import { useAuthStore } from '../../stores/authStore';
+
 const { width } = Dimensions.get('window');
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'DeploySelect'>;
 
@@ -14,31 +16,31 @@ const OPTIONS = [
   {
     id: 'cloud',
     emoji: '☁️',
-    title: 'Cloud (Recommended)',
-    subtitle: 'Ready in 30 seconds. No setup needed.',
-    badge: 'FREE',
+    title: 'One-Tap Cloud Deploy',
+    subtitle: 'Fastest setup. Agent live in 30 seconds. 🎁 10 GB storage gifted free.',
+    badge: '10 GB FREE',
     badgeColor: colors.success,
     action: 'CloudDeploy' as const,
     highlight: true,
   },
   {
-    id: 'existing',
-    emoji: '🔗',
-    title: 'Connect Existing',
-    subtitle: 'I already have an OpenClaw instance.',
-    badge: null,
-    badgeColor: null,
-    action: 'ConnectExisting' as const,
+    id: 'local',
+    emoji: '💻',
+    title: 'Local / Private Deploy',
+    subtitle: 'Scan QR to connect your PC, NAS or HomeLab. Data stays on-device.',
+    badge: 'PRIVATE',
+    badgeColor: colors.primary,
+    action: 'LocalDeploy' as const,
     highlight: false,
   },
   {
-    id: 'local',
-    emoji: '💻',
-    title: 'Local (Windows / Mac)',
-    subtitle: 'Download & run on your PC. Free, fully private.',
-    badge: 'FREE',
-    badgeColor: colors.success,
-    action: 'LocalDeploy' as const,
+    id: 'existing',
+    emoji: '⚙️',
+    title: 'BYOC · Bring Your Own',
+    subtitle: 'Already have an OpenClaw or private instance? Connect it here.',
+    badge: 'BYOC',
+    badgeColor: colors.textMuted,
+    action: 'ConnectExisting' as const,
     highlight: false,
   },
 ];
@@ -48,9 +50,9 @@ export function DeploySelectScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Set up your AI Agent</Text>
+      <Text style={styles.title}>Agentrix Claw</Text>
       <Text style={styles.subtitle}>
-        ClawLink connects you to an OpenClaw instance—your personal AI agent server. Choose how to get started:
+        Deploy your personal AI Agent in three ways. Cloud, local-private, or bring your own instance — your Agent, your rules.
       </Text>
 
       <View style={styles.options}>
@@ -87,8 +89,15 @@ export function DeploySelectScreen() {
       </View>
 
       <Text style={styles.note}>
-        💡 Cloud instances are hosted by Agentrix. Your data is private and only you can access your agent.
+        🎁 Early access: New users who choose Cloud Deploy receive 10 GB cloud storage free. Upgrade to 40 GB or 100 GB anytime.
       </Text>
+
+      <TouchableOpacity 
+        style={styles.skipButton} 
+        onPress={() => useAuthStore.getState().setOnboardingComplete()}
+      >
+        <Text style={styles.skipButtonText}>Skip for now</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -135,5 +144,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  skipButton: {
+    marginTop: 24,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  skipButtonText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

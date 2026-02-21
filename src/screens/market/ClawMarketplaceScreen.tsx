@@ -19,7 +19,7 @@ async function fetchSkills(category: string, search: string) {
   if (category !== 'All') params.set('category', category);
   if (search) params.set('search', search);
   params.set('limit', '20');
-  return apiFetch(`/skills?${params.toString()}`);
+  return apiFetch<any>(`/skills?${params.toString()}`);
 }
 
 export function ClawMarketplaceScreen() {

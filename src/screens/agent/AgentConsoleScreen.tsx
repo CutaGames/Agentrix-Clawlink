@@ -8,8 +8,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { getInstanceSkills, restartInstance } from '../../services/openclaw.service';
+import { getInstanceSkills, restartInstance, getStorageInfo } from '../../services/openclaw.service';
+import { fetchQuotaStatus, PLAN_LABEL, PLAN_COLOR } from '../../services/token-quota.service';
 import type { AgentStackParamList } from '../../navigation/types';
+import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
@@ -25,11 +27,26 @@ export function AgentConsoleScreen() {
   const instances = useAuthStore((s) => s.user?.openClawInstances ?? []);
   const { setActiveInstance } = useAuthStore.getState();
   const [tab, setTab] = useState<'overview' | 'skills' | 'tasks'>('overview');
+  const [selectedModel, setSelectedModel] = useState('DeepSeek-V3 (Official)');
 
   const { data: skills, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
     queryFn: () => getInstanceSkills(activeInstance!.id),
     enabled: !!activeInstance,
+  });
+
+  const { data: storageInfo } = useQuery({
+    queryKey: ['storage-info'],
+    queryFn: getStorageInfo,
+    retry: 1,
+    staleTime: 60_000,
+  });
+
+  const { data: quota } = useQuery({
+    queryKey: ['token-quota'],
+    queryFn: fetchQuotaStatus,
+    retry: 1,
+    staleTime: 60_000,
   });
 
   const handleRestart = async () => {
@@ -40,9 +57,9 @@ export function AgentConsoleScreen() {
         text: 'Restart', style: 'destructive', onPress: async () => {
           try {
             await restartInstance(activeInstance.id);
-            Alert.alert('', 'Agent restarting...');
+            Alert.alert('Success', 'Agent restarting...');
           } catch (e: any) {
-            Alert.alert('Error', e?.message || 'Failed to restart');
+            Alert.alert('Restart Failed', e?.message || 'The agent server might be offline. Please try again later.');
           }
         }
       },
@@ -74,7 +91,11 @@ export function AgentConsoleScreen() {
           <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[activeInstance.status] }]} />
           <View>
             <Text style={styles.instanceName}>{activeInstance.name}</Text>
-            <Text style={styles.instanceUrl} numberOfLines={1}>{activeInstance.instanceUrl}</Text>
+            <Text style={styles.instanceUrl} numberOfLines={1}>
+              {activeInstance.deployType === 'cloud' ? '☁️ Agentrix Cloud' : 
+               activeInstance.deployType === 'local' ? '💻 Local Device' : 
+               activeInstance.instanceUrl}
+            </Text>
           </View>
         </View>
         <View style={styles.statusActions}>
@@ -88,6 +109,28 @@ export function AgentConsoleScreen() {
             <Text style={styles.iconBtnText}>+ Add</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Token Energy Bar */}
+      <TokenEnergyBar />
+
+      {/* Model Switcher */}
+      <View style={styles.modelSwitcher}>
+        <Text style={styles.modelLabel}>Current Engine:</Text>
+        <TouchableOpacity 
+          style={styles.modelSelector}
+          onPress={() => {
+            Alert.alert('Select Engine', 'Choose the AI model for your agent', [
+              { text: 'DeepSeek-V3 (Official)', onPress: () => setSelectedModel('DeepSeek-V3 (Official)') },
+              { text: 'GPT-4o (Custom API)', onPress: () => setSelectedModel('GPT-4o (Custom API)') },
+              { text: 'Claude 3.5 (Custom API)', onPress: () => setSelectedModel('Claude 3.5 (Custom API)') },
+              { text: 'Cancel', style: 'cancel' }
+            ]);
+          }}
+        >
+          <Text style={styles.modelSelectorText}>{selectedModel}</Text>
+          <Text style={styles.modelSelectorArrow}>▼</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Multi-instance switcher */}
@@ -144,7 +187,7 @@ export function AgentConsoleScreen() {
               <Text style={styles.statLabel}>Skills</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue} style={{ color: STATUS_COLOR[activeInstance.status] }}>
+              <Text style={[styles.statValue, { color: STATUS_COLOR[activeInstance.status] }]}>
                 {activeInstance.status.toUpperCase()}
               </Text>
               <Text style={styles.statLabel}>Status</Text>
@@ -153,6 +196,91 @@ export function AgentConsoleScreen() {
               <Text style={styles.statValue}>{activeInstance.deployType}</Text>
               <Text style={styles.statLabel}>Type</Text>
             </View>
+          </View>
+
+          {/* Storage Card */}
+          <TouchableOpacity
+            style={styles.storageCard}
+            onPress={() => navigation.navigate('StoragePlan')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.storageCardHeader}>
+              <Text style={styles.storageCardTitle}>
+                💾 {storageInfo
+                  ? `${storageInfo.usedGb.toFixed(1)} / ${storageInfo.totalGb} GB`
+                  : '10 GB'} Storage
+              </Text>
+              {storageInfo?.isGiftStorage && (
+                <View style={styles.giftBadge}>
+                  <Text style={styles.giftBadgeText}>🎁 Free</Text>
+                </View>
+              )}
+              <Text style={styles.storageCardArrow}>›</Text>
+            </View>
+            <View style={styles.storageBar}>
+              <View style={[styles.storageBarFill, {
+                width: `${Math.min(storageInfo?.usedPercent ?? 2, 100)}%` as any,
+                backgroundColor: (storageInfo?.usedPercent ?? 0) > 80 ? '#ef4444' : '#7c3aed',
+              }]} />
+            </View>
+            <Text style={styles.storageCardSub}>
+              {storageInfo
+                ? `${storageInfo.availableGb.toFixed(1)} GB available · Tap to manage`
+                : 'Upgrade for more storage'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* ── Token Usage Card ── */}
+          {quota && (
+            <View style={styles.quotaCard}>
+              <View style={styles.quotaHeader}>
+                <Text style={styles.quotaTitle}>⚡ Token Usage</Text>
+                <View style={[styles.planBadge, { backgroundColor: PLAN_COLOR[quota.planType] + '22' }]}>
+                  <Text style={[styles.planBadgeText, { color: PLAN_COLOR[quota.planType] }]}>
+                    {PLAN_LABEL[quota.planType]}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.quotaBarBg}>
+                <View style={[styles.quotaBarFill, {
+                  width: `${Math.min(quota.usagePercent, 100)}%` as any,
+                  backgroundColor: quota.usagePercent > 85 ? '#ef4444' : quota.usagePercent > 60 ? '#f59e0b' : PLAN_COLOR[quota.planType],
+                }]} />
+              </View>
+              <View style={styles.quotaStats}>
+                <Text style={styles.quotaStat}>
+                  {(quota.usedTokens / 1000).toFixed(0)}k / {(quota.totalQuota / 1000000).toFixed(1)}M tokens
+                </Text>
+                <Text style={styles.quotaStat}>{quota.callCount} calls · {quota.usagePercent.toFixed(1)}% used</Text>
+              </View>
+              {quota.quotaExhausted && (
+                <View style={styles.quotaExhausted}>
+                  <Text style={styles.quotaExhaustedText}>⚠️ Quota exhausted — upgrade plan</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ── Quick Actions ── */}
+          <View style={styles.quickActions}>
+            {([
+              { icon: '📋', label: 'Activity Logs', route: 'AgentLogs' as const },
+              { icon: '🧠', label: 'Memory Hub', route: 'MemoryManagement' as const },
+              { icon: '⚙️', label: 'Workflows', route: 'WorkflowList' as const },
+              { icon: '🎤', label: 'Voice Chat', route: 'VoiceChat' as const },
+              { icon: '👥', label: 'Team Space', route: 'TeamSpace' as const },
+            ]).map((item) => (
+              <TouchableOpacity
+                key={item.route}
+                style={styles.quickAction}
+                onPress={() => navigation.navigate(item.route as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.quickActionIcon}>{item.icon}</Text>
+                <Text style={styles.quickActionLabel}>{item.label}</Text>
+                <Text style={styles.quickActionArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </>
       )}
@@ -218,6 +346,11 @@ const styles = StyleSheet.create({
   statusActions: { flexDirection: 'row', gap: 8 },
   iconBtn: { backgroundColor: colors.bgSecondary, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   iconBtnText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
+  modelSwitcher: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bgCard, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  modelLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  modelSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgSecondary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 6 },
+  modelSelectorText: { fontSize: 13, color: colors.textPrimary, fontWeight: '600' },
+  modelSelectorArrow: { fontSize: 10, color: colors.textMuted },
   instanceScroll: { marginHorizontal: -16, paddingHorizontal: 16 },
   instanceChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, marginRight: 8, borderWidth: 1, borderColor: colors.border, gap: 6 },
   instanceChipActive: { borderColor: colors.accent },
@@ -237,6 +370,32 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.border },
   statValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
   statLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase' },
+  storageCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#7c3aed33',
+    gap: 7,
+  },
+  storageCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storageCardTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, flex: 1 },
+  storageCardArrow: { fontSize: 18, color: colors.textMuted },
+  storageCardSub: { fontSize: 12, color: colors.textMuted },
+  storageBar: {
+    height: 6,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  storageBarFill: { height: '100%', borderRadius: 3 },
+  giftBadge: {
+    backgroundColor: '#22c55e22',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  giftBadgeText: { fontSize: 11, fontWeight: '700', color: '#22c55e' },
   skillsSection: { gap: 10 },
   emptySection: { alignItems: 'center', padding: 32, gap: 12 },
   emptySectionText: { fontSize: 15, color: colors.textSecondary },
@@ -246,4 +405,31 @@ const styles = StyleSheet.create({
   skillName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   skillSub: { fontSize: 12, color: colors.textMuted },
   skillStatus: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.bgSecondary, borderRadius: 6 },
+  // ── Token Quota ──
+  quotaCard: {
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#2563eb33', gap: 8,
+  },
+  quotaHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  quotaTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  planBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
+  planBadgeText: { fontSize: 11, fontWeight: '700' },
+  quotaBarBg: { height: 6, backgroundColor: colors.bgSecondary, borderRadius: 3, overflow: 'hidden' },
+  quotaBarFill: { height: '100%', borderRadius: 3 },
+  quotaStats: { flexDirection: 'row', justifyContent: 'space-between' },
+  quotaStat: { fontSize: 11, color: colors.textMuted },
+  quotaExhausted: {
+    backgroundColor: '#ef444422', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#ef444440',
+  },
+  quotaExhaustedText: { fontSize: 12, color: '#ef4444', fontWeight: '600', textAlign: 'center' },
+  // ── Quick Actions ──
+  quickActions: { gap: 8 },
+  quickAction: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.bgCard, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: colors.border, gap: 12,
+  },
+  quickActionIcon: { fontSize: 20 },
+  quickActionLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  quickActionArrow: { fontSize: 20, color: colors.textMuted },
 });

@@ -26,9 +26,9 @@ interface EnvConfig {
 const CONFIGS: Record<AppEnv, EnvConfig> = {
   development: {
     // Replace LAN_IP with the host machine's LAN IP when testing on a physical device
-    apiBase: 'http://LAN_IP:3001/api',
-    wsBase: 'ws://LAN_IP:3001',
-    appUrl: 'http://localhost:3000',
+    apiBase: 'http://192.168.1.3:3001/api',
+    wsBase: 'ws://192.168.1.3:3001',
+    appUrl: 'http://192.168.1.3:3000',
     shareBaseUrl: 'https://clawlink.app', // always prod share URL
   },
   staging: {

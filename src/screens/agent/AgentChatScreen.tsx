@@ -3,8 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native-stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { sendAgentMessage } from '../../services/openclaw.service';
@@ -22,7 +21,69 @@ interface Message {
   streaming?: boolean;
   error?: boolean;
   createdAt: number;
+  thoughts?: string[]; // Added for Thought Chain UI
 }
+
+const MessageBubble = ({ item }: { item: Message }) => {
+  const isUser = item.role === 'user';
+  const hasThoughts = item.thoughts && item.thoughts.length > 0;
+  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
+
+  return (
+    <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
+      {!isUser && (
+        <View style={styles.avatarBot}>
+          <Text style={styles.avatarBotText}>🤖</Text>
+        </View>
+      )}
+      <View style={{ flex: 1, maxWidth: '100%' }}>
+        {/* Thought Chain UI */}
+        {!isUser && hasThoughts && (
+          <View style={styles.thoughtContainer}>
+            <TouchableOpacity 
+              style={styles.thoughtHeader} 
+              onPress={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
+              activeOpacity={0.7}
+            >
+              {item.streaming ? (
+                <ActivityIndicator size="small" color={colors.textMuted} style={{ transform: [{ scale: 0.7 }] }} />
+              ) : (
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{isThoughtsExpanded ? '▼' : '▶'}</Text>
+              )}
+              <Text style={styles.thoughtHeaderText}>
+                {item.streaming ? 'Agent is thinking...' : `Thought process (${item.thoughts?.length} steps)`}
+              </Text>
+            </TouchableOpacity>
+            
+            {isThoughtsExpanded && item.thoughts?.map((thought, idx) => (
+              <Text key={idx} style={styles.thoughtItem}>
+                <Text style={{ color: colors.accent }}>›</Text> {thought}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        {/* Main Message Bubble */}
+        {(item.content || item.streaming) && (
+          <View
+            style={[
+              styles.bubble,
+              isUser ? styles.bubbleUser : styles.bubbleBot,
+              item.error && styles.bubbleError,
+            ]}
+          >
+            <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+              {item.content || (item.streaming && !hasThoughts ? ' ' : '')}
+            </Text>
+            {item.streaming && (
+              <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
@@ -92,9 +153,21 @@ export function AgentChatScreen() {
 
   const appendToStreamingMessage = (msgId: string, chunk: string) => {
     setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, content: m.content + chunk } : m
-      )
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        
+        // Simple heuristic to detect "thought" blocks (e.g., <thought>...</thought> or [Tool Call])
+        // In a real app, this would be parsed from structured SSE events
+        let newContent = m.content + chunk;
+        let newThoughts = m.thoughts || [];
+        
+        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
+           newThoughts = [...newThoughts, chunk.trim()];
+           return { ...m, thoughts: newThoughts };
+        }
+        
+        return { ...m, content: newContent };
+      })
     );
   };
 
@@ -116,6 +189,7 @@ export function AgentChatScreen() {
       content: '',
       streaming: true,
       createdAt: Date.now(),
+      thoughts: ['Analyzing request...'], // Initial thought
     };
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
@@ -197,30 +271,7 @@ export function AgentChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isUser = item.role === 'user';
-    return (
-      <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
-        {!isUser && (
-          <View style={styles.avatarBot}>
-            <Text style={styles.avatarBotText}>🤖</Text>
-          </View>
-        )}
-        <View
-          style={[
-            styles.bubble,
-            isUser ? styles.bubbleUser : styles.bubbleBot,
-            item.error && styles.bubbleError,
-          ]}
-        >
-          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-            {item.content || ' '}
-          </Text>
-          {item.streaming && (
-            <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
-          )}
-        </View>
-      </View>
-    );
+    return <MessageBubble item={item} />;
   };
 
   return (
@@ -357,4 +408,29 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
   sendIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  thoughtContainer: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  thoughtHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  thoughtHeaderText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  thoughtItem: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginLeft: 4,
+  },
 });

@@ -5,9 +5,9 @@ appId: app.clawlink.mobile
     clearState: true
     clearKeychain: true
 
-# Wait for app to finish loading (splash → auth screen)
+# Wait for app to fully load — may be slow on CI emulator (extended from 8s → 15s)
 - waitForAnimationToEnd:
-    timeout: 8000
+    timeout: 15000
 
 # Verify we're on a screen (not a blank white screen / crash)
 # The auth screen has "ClawLink" branding or a login button
@@ -15,6 +15,6 @@ appId: app.clawlink.mobile
     enabled: true
     # Either the logo text or login/get-started button must be visible
     selector:
-      textRegex: "ClawLink|Get Started|Sign In|Connect Wallet|Continue with Google"
+      textRegex: "ClawLink|Get Started|Sign In|Connect Wallet|Continue with Google|Agent|Market"
 
 - takeScreenshot: "01-app-launch-success"

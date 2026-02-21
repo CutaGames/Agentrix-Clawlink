@@ -14,14 +14,7 @@ import {
 } from '../types/identity';
 import * as SecureStore from 'expo-secure-store';
 
-// 根据环境自动选择 API 地址
-const getDefaultBaseUrl = () => {
-  // 真机无法访问 localhost，始终使用公网后端地址
-  // 如需本地调试，可在 Settings 页面手动修改
-  return 'https://api.agentrix.top/api';
-};
-
-const DEFAULT_BASE_URL = getDefaultBaseUrl();
+import { API_BASE } from '../config/env';
 
 export interface ApiConfig {
   baseUrl?: string;
@@ -29,7 +22,7 @@ export interface ApiConfig {
 }
 
 let config: ApiConfig = {
-  baseUrl: DEFAULT_BASE_URL,
+  baseUrl: API_BASE,
 };
 
 export const setApiConfig = (next: ApiConfig) => {
@@ -86,7 +79,19 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+    let errorMessage = `Request failed: ${res.status}`;
+    try {
+      const json = JSON.parse(text);
+      errorMessage = json.message || json.error || errorMessage;
+    } catch {
+      // If it's HTML (like 502 Bad Gateway), provide a friendly message
+      if (text.includes('<html') || res.status >= 500) {
+        errorMessage = `Server error (${res.status}). Please try again later.`;
+      } else {
+        errorMessage = text || errorMessage;
+      }
+    }
+    throw new Error(errorMessage);
   }
 
   return res.json();

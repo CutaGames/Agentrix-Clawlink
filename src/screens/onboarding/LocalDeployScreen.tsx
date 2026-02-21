@@ -1,354 +1,267 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Alert, Platform, Linking, Clipboard,
+  Alert, ActivityIndicator, Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { provisionLocalAgent, getRelayStatus } from '../../services/openclaw.service';
 import type { OnboardingStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'LocalDeploy'>;
 
-type Step = 'intro' | 'provisioning' | 'download' | 'waiting';
+// Wizard steps:
+// 'choose'    → user picks: novice (install) OR existing (scan)
+// 'install'   → guide novice user to download + run one-click installer
+// 'scanning'  → camera QR scan (for existing or post-install)
+// 'connecting'→ processing scanned data
+
+type Step = 'choose' | 'install' | 'scanning' | 'connecting';
+
+// OS-specific download URLs for our Agentrix desktop installer
+// The installer silently bundles Ollama runtime + auto-launches OpenClaw.
+// User experience: download → double-click → QR code appears in app window. Zero CLI.
+const INSTALLER_BASE = 'https://download.agentrix.app';
+const DOWNLOAD_URLS = {
+  windows: `${INSTALLER_BASE}/AgentrixSetup.exe`,
+  macos: `${INSTALLER_BASE}/Agentrix.dmg`,
+  linux: `${INSTALLER_BASE}/agentrix-setup.AppImage`,
+};
 
 export function LocalDeployScreen() {
   const navigation = useNavigation<Nav>();
-  const { addInstance, setActiveInstance, setOnboardingComplete } = useAuthStore.getState();
+  const { addInstance, setActiveInstance } = useAuthStore.getState();
 
-  const [step, setStep] = useState<Step>('intro');
-  const [instanceId, setInstanceId] = useState<string | null>(null);
-  const [relayToken, setRelayToken] = useState<string | null>(null);
-  const [downloadUrls, setDownloadUrls] = useState<{ win: string; mac: string } | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [polling, setPolling] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>('choose');
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
 
-  // ── Start provisioning ───────────────────────────────────────────────────────
-  const handleStart = async () => {
-    setStep('provisioning');
-    setErrorMsg(null);
-    try {
-      const result = await provisionLocalAgent({ name: 'My Local Agent', os: Platform.OS as 'android' | 'ios' });
-      setInstanceId(result.instanceId);
-      setRelayToken(result.relayToken);
-      setDownloadUrls(result.downloadUrls);
-      setStep('download');
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Provisioning failed. Please try again.');
-      setStep('intro');
-    }
-  };
-
-  // ── Poll relay status ────────────────────────────────────────────────────────
-  const pollStatus = useCallback(async () => {
-    if (!instanceId) return;
-    try {
-      const res = await getRelayStatus(instanceId);
-      if (res.connected) {
-        setConnected(true);
-        setPolling(false);
+  const openScanner = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to scan the QR code from your PC.');
+        return;
       }
-    } catch (_) {}
-  }, [instanceId]);
+    }
+    setStep('scanning');
+    setScanned(false);
+  };
 
-  useEffect(() => {
-    if (step !== 'waiting' || !instanceId) return;
-    setPolling(true);
-    const timer = setInterval(pollStatus, 3000);
-    return () => clearInterval(timer);
-  }, [step, instanceId, pollStatus]);
+  const handleBarCodeScanned = async ({ data }: { type: string; data: string }) => {
+    if (scanned) return;
+    setScanned(true);
+    setStep('connecting');
 
-  // ── On connected → navigate to social bind ──────────────────────────────────
-  useEffect(() => {
-    if (!connected || !instanceId) return;
-    // Add instance to store
-    addInstance?.({
-      id: instanceId,
-      name: 'My Local Agent',
-      instanceUrl: '',
-      status: 'active',
-      deployType: 'local',
-    });
-    setActiveInstance?.(instanceId);
-    navigation.navigate('SocialBind', { instanceId, platform: 'telegram' });
-  }, [connected, instanceId]);
+    try {
+      // Expected QR payload: {"url":"http://192.168.x.x:3001","token":"xxx"}
+      // Or plain URL fallback
+      let parsedData: { url: string; token?: string };
+      try {
+        parsedData = JSON.parse(data);
+      } catch {
+        if (data.startsWith('http')) {
+          parsedData = { url: data };
+        } else {
+          throw new Error('QR code format not recognized. Please try again.');
+        }
+      }
 
-  const copyToken = () => {
-    if (relayToken) {
-      Clipboard.setString(relayToken);
-      Alert.alert('Copied', 'Relay token copied to clipboard');
+      if (!parsedData.url) throw new Error('QR code missing URL field.');
+
+      const instanceId = `local-${Date.now()}`;
+      addInstance?.({
+        id: instanceId,
+        name: 'My Local Agent',
+        instanceUrl: parsedData.url,
+        status: 'active',
+        deployType: 'local',
+      });
+      setActiveInstance?.(instanceId);
+
+      navigation.navigate('SocialBind', { instanceId, platform: 'telegram' });
+    } catch (error: any) {
+      Alert.alert('Scan Error', error.message || 'Failed to parse QR code.');
+      setStep('scanning');
+      setScanned(false);
     }
   };
 
-  const openDownload = (url: string) => {
-    Linking.openURL(url).catch(() =>
-      Alert.alert('Error', 'Could not open link. Please try again.')
-    );
-  };
-
-  // ── Rendering ────────────────────────────────────────────────────────────────
-
-  if (step === 'provisioning') {
+  // ── connecting ────────────────────────────────────────────────────────────
+  if (step === 'connecting') {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={styles.loadingText}>Setting up your local agent...</Text>
+        <Text style={styles.loadingText}>Connecting to local agent...</Text>
       </View>
     );
   }
 
-  if (step === 'intro') {
+  // ── scanning ──────────────────────────────────────────────────────────────
+  if (step === 'scanning') {
+    return (
+      <View style={styles.container}>
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+        />
+        <View style={styles.overlay}>
+          <View style={styles.scanFrame} />
+          <Text style={styles.scanLabel}>Aim at the QR code on your PC screen</Text>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => setStep(step === 'scanning' ? 'install' : 'choose')}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ── install (novice guide) ────────────────────────────────────────────────
+  if (step === 'install') {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Local Agent</Text>
+        <Text style={styles.stepIndicator}>One-Click Install</Text>
+        <Text style={styles.title}>Install Agentrix on your PC</Text>
         <Text style={styles.subtitle}>
-          Run your AI agent on your own PC — fully private, zero cloud cost, connects via our
-          secure relay.
+          Download and run the installer — your local AI agent will be ready automatically. Fully private, zero configuration.
         </Text>
 
-        {errorMsg && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠ {errorMsg}</Text>
-          </View>
-        )}
+        <View style={styles.downloadRow}>
+          <TouchableOpacity style={[styles.dlBtn, styles.dlBtnWin]} onPress={() => Linking.openURL(DOWNLOAD_URLS.windows)}>
+            <Text style={styles.dlIcon}>🪟</Text>
+            <Text style={styles.dlLabel}>Windows</Text>
+            <Text style={styles.dlSub}>.exe · one click</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.dlBtn, styles.dlBtnMac]} onPress={() => Linking.openURL(DOWNLOAD_URLS.macos)}>
+            <Text style={styles.dlIcon}>🍎</Text>
+            <Text style={styles.dlLabel}>macOS</Text>
+            <Text style={styles.dlSub}>.dmg · Apple Silicon + Intel</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.dlBtnLinux} onPress={() => Linking.openURL(DOWNLOAD_URLS.linux)}>
+          <Text style={styles.dlIconSm}>🐧</Text>
+          <Text style={styles.dlLabelSm}>Linux AppImage</Text>
+        </TouchableOpacity>
 
-        <View style={styles.featureList}>
-          {FEATURES.map((f) => (
-            <View key={f.text} style={styles.featureRow}>
-              <Text style={styles.featureIcon}>{f.icon}</Text>
-              <Text style={styles.featureText}>{f.text}</Text>
+        <View style={styles.stepsCard}>
+          {INSTALL_STEPS.map((s, i) => (
+            <View key={i} style={styles.stepsRow}>
+              <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
+              <Text style={styles.stepsText}>{s}</Text>
             </View>
           ))}
         </View>
 
-        <View style={styles.requirementBox}>
-          <Text style={styles.requirementTitle}>Requirements</Text>
-          <Text style={styles.requirementItem}>• Windows 10+ or macOS 12+</Text>
-          <Text style={styles.requirementItem}>• Ollama (free) or any OpenAI-compatible LLM</Text>
-          <Text style={styles.requirementItem}>• Internet connection for relay</Text>
-        </View>
-
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleStart} activeOpacity={0.85}>
-          <Text style={styles.primaryBtnText}>Get Started →</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={openScanner} activeOpacity={0.85}>
+          <Text style={styles.primaryBtnText}>📷 I see the QR code — Scan Now</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
+        <TouchableOpacity onPress={() => setStep('choose')} style={styles.backLink}>
           <Text style={styles.backLinkText}>← Back</Text>
         </TouchableOpacity>
       </ScrollView>
     );
   }
 
-  if (step === 'download') {
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Download Agent</Text>
-        <Text style={styles.subtitle}>
-          Download and run the installer on your PC. It will connect automatically.
-        </Text>
-
-        {/* Download buttons */}
-        <View style={styles.downloadRow}>
-          <TouchableOpacity
-            style={[styles.downloadBtn, styles.downloadBtnWin]}
-            activeOpacity={0.85}
-            onPress={() => downloadUrls && openDownload(downloadUrls.win)}
-          >
-            <Text style={styles.downloadIcon}>🪟</Text>
-            <Text style={styles.downloadBtnText}>Windows</Text>
-            <Text style={styles.downloadBtnSub}>.exe — one click</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.downloadBtn, styles.downloadBtnMac]}
-            activeOpacity={0.85}
-            onPress={() => downloadUrls && openDownload(downloadUrls.mac)}
-          >
-            <Text style={styles.downloadIcon}>🍎</Text>
-            <Text style={styles.downloadBtnText}>macOS</Text>
-            <Text style={styles.downloadBtnSub}>Universal binary</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Token display */}
-        <View style={styles.tokenCard}>
-          <Text style={styles.tokenLabel}>Your Relay Token</Text>
-          <View style={styles.tokenRow}>
-            <Text style={styles.tokenValue} numberOfLines={1} ellipsizeMode="middle">
-              {relayToken}
-            </Text>
-            <TouchableOpacity onPress={copyToken} style={styles.copyBtn}>
-              <Text style={styles.copyBtnText}>Copy</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.tokenHint}>
-            The app will ask for this token on first launch.
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => setStep('waiting')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.primaryBtnText}>I've launched the app →</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    );
-  }
-
-  // step === 'waiting'
+  // ── choose (default / entry) ──────────────────────────────────────────────
   return (
-    <View style={styles.centered}>
-      <View style={styles.waitingCard}>
-        <Text style={styles.waitingEmoji}>{connected ? '✅' : '⏳'}</Text>
-        <Text style={styles.waitingTitle}>
-          {connected ? 'Agent Connected!' : 'Waiting for your agent...'}
-        </Text>
-        <Text style={styles.waitingSubtitle}>
-          {connected
-            ? 'Your local agent is online. Setting up social binding...'
-            : 'Launch the downloaded app on your PC. It will connect automatically.'}
-        </Text>
-        {!connected && (
-          <>
-            <ActivityIndicator
-              size="small"
-              color={colors.accent}
-              style={{ marginTop: 20, marginBottom: 8 }}
-            />
-            <Text style={styles.pollingText}>Checking every 3s...</Text>
-          </>
-        )}
-      </View>
-      {!connected && (
-        <TouchableOpacity onPress={() => setStep('download')} style={styles.backLink}>
-          <Text style={styles.backLinkText}>← Go back</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.title}>Local / Private Agent</Text>
+      <Text style={styles.subtitle}>
+        Run your AI agent on your own PC. Fully private, no monthly cloud fee.
+      </Text>
+
+      <TouchableOpacity style={styles.choiceCard} onPress={() => setStep('install')} activeOpacity={0.85}>
+        <Text style={styles.choiceEmoji}>🆕</Text>
+        <View style={styles.choiceBody}>
+          <Text style={styles.choiceTitle}>I'm new — install for me</Text>
+          <Text style={styles.choiceDesc}>Download our one-click installer — zero configuration, QR code appears automatically. ~2 min.</Text>
+        </View>
+        <Text style={styles.choiceArrow}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.choiceCard} onPress={openScanner} activeOpacity={0.85}>
+        <Text style={styles.choiceEmoji}>📷</Text>
+        <View style={styles.choiceBody}>
+          <Text style={styles.choiceTitle}>I already have OpenClaw running</Text>
+          <Text style={styles.choiceDesc}>Scan the QR code shown in your OpenClaw terminal to connect instantly.</Text>
+        </View>
+        <Text style={styles.choiceArrow}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
+        <Text style={styles.backLinkText}>← Back</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
-const FEATURES = [
-  { icon: '🔒', text: 'Fully private — messages stay on your PC' },
-  { icon: '💸', text: 'Free tier: no monthly cloud fee' },
-  { icon: '⚡', text: 'Use any local LLM (Ollama, LM Studio, etc.)' },
-  { icon: '📲', text: 'Connect via Telegram, WeChat and more' },
+const INSTALL_STEPS = [
+  'Download the installer for your OS above (send the link to your PC via copy/paste or AirDrop)',
+  'Double-click the installer — it sets up everything automatically',
+  'A QR code will appear in the Agentrix window when ready',
+  'Tap "Scan Now" below and point your phone at it',
 ];
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
-  content: { padding: 24, paddingTop: 56, paddingBottom: 48 },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.bgPrimary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  title: { fontSize: 28, fontWeight: '800', color: colors.textPrimary, marginBottom: 12 },
-  subtitle: { fontSize: 15, color: colors.textSecondary, lineHeight: 22, marginBottom: 28 },
+  content: { padding: 24, paddingTop: 56, paddingBottom: 48, gap: 16 },
+  centered: { flex: 1, backgroundColor: colors.bgPrimary, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  stepIndicator: { fontSize: 12, fontWeight: '600', color: colors.accent, textTransform: 'uppercase', letterSpacing: 1 },
+  title: { fontSize: 28, fontWeight: '800', color: colors.textPrimary },
+  subtitle: { fontSize: 15, color: colors.textSecondary, lineHeight: 22 },
   loadingText: { marginTop: 20, fontSize: 15, color: colors.textSecondary },
 
-  errorBox: {
-    backgroundColor: colors.error + '22',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: colors.error + '55',
-  },
-  errorText: { color: colors.error, fontSize: 14, lineHeight: 20 },
-
-  featureList: { gap: 12, marginBottom: 24 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  featureIcon: { fontSize: 22, width: 34, textAlign: 'center' },
-  featureText: { fontSize: 14, color: colors.textSecondary, flex: 1, lineHeight: 20 },
-
-  requirementBox: {
+  // Choice cards
+  choiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.bgCard,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 28,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 6,
+    gap: 12,
   },
-  requirementTitle: { fontSize: 13, fontWeight: '700', color: colors.accent, marginBottom: 6 },
-  requirementItem: { fontSize: 13, color: colors.textSecondary, lineHeight: 20 },
+  choiceEmoji: { fontSize: 28, width: 40, textAlign: 'center' },
+  choiceBody: { flex: 1, gap: 4 },
+  choiceTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  choiceDesc: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  choiceArrow: { fontSize: 22, color: colors.textMuted },
 
-  primaryBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  // Download buttons
+  downloadRow: { flexDirection: 'row', gap: 12 },
+  dlBtn: { flex: 1, borderRadius: 14, padding: 16, alignItems: 'center', gap: 4, borderWidth: 1 },
+  dlBtnWin: { backgroundColor: '#1a73e822', borderColor: '#1a73e8' },
+  dlBtnMac: { backgroundColor: colors.bgCard, borderColor: colors.border },
+  dlIcon: { fontSize: 28 },
+  dlLabel: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  dlSub: { fontSize: 11, color: colors.textMuted },
+  dlBtnLinux: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.bgCard, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  dlIconSm: { fontSize: 18 },
+  dlLabelSm: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
+
+  // Install steps card
+  stepsCard: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 12 },
+  stepsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  stepNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  stepNumText: { fontSize: 12, fontWeight: '800', color: colors.bgPrimary },
+  stepsText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 20 },
+
+  primaryBtn: { backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   primaryBtnText: { fontSize: 16, fontWeight: '700', color: colors.bgPrimary },
-
-  backLink: { alignItems: 'center', paddingVertical: 10, marginTop: 4 },
+  backLink: { alignItems: 'center', paddingVertical: 10 },
   backLinkText: { fontSize: 14, color: colors.textMuted },
 
-  downloadRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  downloadBtn: {
-    flex: 1,
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
-  },
-  downloadBtnWin: { borderColor: colors.primary + '88' },
-  downloadBtnMac: { borderColor: colors.textMuted + '88' },
-  downloadIcon: { fontSize: 32 },
-  downloadBtnText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  downloadBtnSub: { fontSize: 11, color: colors.textMuted },
-
-  tokenCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 28,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 8,
-  },
-  tokenLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.8 },
-  tokenRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tokenValue: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: 'monospace',
-    color: colors.accent,
-    letterSpacing: 0.5,
-  },
-  copyBtn: {
-    backgroundColor: colors.accent + '22',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  copyBtnText: { fontSize: 13, fontWeight: '700', color: colors.accent },
-  tokenHint: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
-
-  waitingCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    width: '100%',
-    maxWidth: 360,
-  },
-  waitingEmoji: { fontSize: 52, marginBottom: 16 },
-  waitingTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: 8, textAlign: 'center' },
-  waitingSubtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  pollingText: { fontSize: 12, color: colors.textMuted },
+  // Camera overlay
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' },
+  scanFrame: { width: 240, height: 240, borderWidth: 2, borderColor: colors.accent, borderRadius: 16, backgroundColor: 'transparent', marginBottom: 24 },
+  scanLabel: { color: '#fff', fontSize: 15, marginBottom: 40, textAlign: 'center', paddingHorizontal: 20 },
+  cancelBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 20 },
+  cancelBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
+

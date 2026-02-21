@@ -7,7 +7,7 @@ import { colors } from '../../theme/colors';
 export function MySkillsScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ['my-skills'],
-    queryFn: () => apiFetch('/user/skills'),
+    queryFn: () => apiFetch<any>('/user/skills'),
   });
   const skills = data?.items || data?.data || data || [];
 

@@ -4,7 +4,8 @@ import {
   ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import type { NativeStackNavigationProp, RouteProp } from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
@@ -25,7 +26,7 @@ export function ClawSkillDetailScreen() {
 
   const { data: skill, isLoading } = useQuery({
     queryKey: ['skill', skillId],
-    queryFn: () => apiFetch(`/skills/${skillId}`),
+    queryFn: () => apiFetch<any>(`/skills/${skillId}`),
     enabled: !!skillId,
   });
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import type { RouteProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import type { SocialStackParamList } from '../../navigation/types';
 

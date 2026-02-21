@@ -328,7 +328,7 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
     walletAddress: loginResult.user.walletAddress,
     roles: loginResult.user.roles || ['user'],
     provider: 'openclaw',
-    openClawInstances: [instance],
+    openClawInstances: [instance as any],
     activeInstanceId: instance.id,
   };
   setApiConfig({ token: loginResult.access_token });
@@ -415,7 +415,7 @@ export async function loginWithX(): Promise<AuthUser> {
 
 /** loginWithApple — OAuth via WebBrowser */
 export async function loginWithApple(): Promise<AuthUser> {
-  const redirectUri = Linking.createURL('/auth/callback');
+  const redirectUri = getMobileCallbackUrl();
   const apiBase = getBackendBaseUrl();
   const result = await WebBrowser.openAuthSessionAsync(
     `${apiBase}/auth/apple?redirect_uri=${encodeURIComponent(redirectUri)}`,
@@ -441,7 +441,7 @@ export async function handleOAuthCallback(params: {
       return { user, token: params.token };
     }
     if (params.code && params.provider) {
-      const data = await apiFetch(`/auth/${params.provider}/callback?code=${params.code}`);
+      const data = await apiFetch<any>(`/auth/${params.provider}/callback?code=${params.code}`);
       if (data?.token) {
         const user = await fetchCurrentUserWithToken(data.token);
         return { user, token: data.token };
@@ -454,7 +454,7 @@ export async function handleOAuthCallback(params: {
 }
 
 async function fetchCurrentUserWithToken(token: string): Promise<AuthUser> {
-  const data = await apiFetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+  const data = await apiFetch<any>('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
   return {
     id: data.id,
     agentrixId: data.agentrixId || data.paymindId || data.id,

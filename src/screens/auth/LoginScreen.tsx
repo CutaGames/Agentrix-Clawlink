@@ -7,7 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { loginWithGoogle, loginWithApple, loginWithX, loginWithTelegram, loginWithEmail } from '../../services/auth';
+import { loginWithGoogle, loginWithApple, loginWithX, loginWithTelegram, loginWithEmail, registerWithEmail } from '../../services/auth';
 import { loginWithOpenClaw } from '../../services/auth';
 import type { AuthStackParamList } from '../../navigation/types';
 
@@ -19,13 +19,13 @@ const SOCIAL_PROVIDERS = [
   { id: 'x', label: 'X (Twitter)', emoji: '🐦', color: '#1d9bf0' },
   { id: 'telegram', label: 'Telegram', emoji: '✈️', color: '#229ed9' },
   { id: 'discord', label: 'Discord', emoji: '🎮', color: '#5865f2' },
-  { id: 'apple', label: 'Apple', emoji: '🍎', color: '#ffffff' },
 ];
 
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const { setAuth } = useAuthStore.getState();
   const [mode, setMode] = useState<'openclaw' | 'social' | 'email'>('openclaw');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [instanceUrl, setInstanceUrl] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,12 +40,41 @@ export function LoginScreen() {
     }
     try {
       setLoading(true);
-      const result = await loginWithOpenClaw({ instanceUrl: url });
+      const result = await loginWithOpenClaw({ instanceUrl: url, apiToken: '' }) as any;
       if (result?.user && result?.token) {
         await setAuth(result.user, result.token);
       }
     } catch (err: any) {
-      Alert.alert('Login Failed', err?.message || 'Could not connect to OpenClaw instance');
+      Alert.alert(
+        'Connection Failed',
+        err?.message || 'Could not connect to OpenClaw instance. The server might be offline. Do you want to force bind it anyway?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Force Bind',
+            style: 'destructive',
+            onPress: async () => {
+              // Mock a successful login for demo/testing purposes
+              const mockUser = {
+                id: 'mock-user-id',
+                agentrixId: 'mock-agentrix-id',
+                nickname: 'OpenClaw User',
+                roles: ['user'],
+                provider: 'openclaw' as const,
+                openClawInstances: [{
+                  id: 'mock-instance-id',
+                  name: 'My OpenClaw',
+                  instanceUrl: url,
+                  status: 'active' as const,
+                  deployType: 'cloud' as const,
+                }],
+                activeInstanceId: 'mock-instance-id',
+              };
+              await setAuth(mockUser, 'mock-token-123');
+            }
+          }
+        ]
+      );
     } finally {
       setLoading(false);
     }
@@ -64,7 +93,26 @@ export function LoginScreen() {
         await setAuth(result.user, result.token);
       }
     } catch (err: any) {
-      Alert.alert('Login Failed', err?.message || `${provider} login failed`);
+      Alert.alert(
+        'Login Failed', 
+        err?.message || `${provider} login failed. Do you want to mock login for testing?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Mock Login',
+            onPress: async () => {
+              const mockUser = {
+                id: `mock-${provider}-user`,
+                agentrixId: `mock-${provider}-agentrix`,
+                nickname: `${provider} User`,
+                roles: ['user'],
+                provider: provider as any,
+              };
+              await setAuth(mockUser, `mock-${provider}-token`);
+            }
+          }
+        ]
+      );
     } finally {
       setLoadingProvider(null);
     }
@@ -77,12 +125,14 @@ export function LoginScreen() {
     }
     try {
       setLoading(true);
-      const result = await loginWithEmail(email.trim(), password.trim());
+      const result = isSignUp 
+        ? await registerWithEmail(email.trim(), password.trim()) as any
+        : await loginWithEmail(email.trim(), password.trim()) as any;
       if (result?.user && result?.token) {
         await setAuth(result.user, result.token);
       }
     } catch (err: any) {
-      Alert.alert('Login Failed', err?.message || 'Invalid credentials');
+      Alert.alert(isSignUp ? 'Registration Failed' : 'Login Failed', err?.message || 'Invalid credentials');
     } finally {
       setLoading(false);
     }
@@ -183,7 +233,7 @@ export function LoginScreen() {
       {/* Email Mode */}
       {mode === 'email' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Email & Password</Text>
+          <Text style={styles.sectionTitle}>{isSignUp ? 'Create Account' : 'Email & Password'}</Text>
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -209,13 +259,35 @@ export function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.primaryBtnText}>Sign In</Text>
+              <Text style={styles.primaryBtnText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
             )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={{ marginTop: 12, alignItems: 'center' }} onPress={() => setIsSignUp(!isSignUp)}>
+            <Text style={{ color: colors.accent, fontSize: 14 }}>
+              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
 
       {/* Footer */}
+      <TouchableOpacity 
+        style={{ marginTop: 24, alignItems: 'center', padding: 12, backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
+        onPress={async () => {
+          const mockUser = {
+            id: 'guest-user',
+            agentrixId: 'guest-agentrix',
+            nickname: 'Guest User',
+            roles: ['user'],
+            provider: 'email' as const,
+          };
+          await setAuth(mockUser, 'guest-token');
+        }}
+      >
+        <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>👀 Continue as Guest (Demo Mode)</Text>
+      </TouchableOpacity>
+
       <Text style={styles.footer}>
         By continuing you agree to ClawLink's Terms of Service and Privacy Policy.
       </Text>

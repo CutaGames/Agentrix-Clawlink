@@ -35,7 +35,7 @@ export function OpenClawBindScreen() {
     try {
       setQrLoading(true);
       const session = await startQrBindSession();
-      setQrCode(session.qrCode);
+      setQrCode(session.qrData);
       setQrSessionId(session.sessionId);
       setQrStatus('pending');
       pollQR(session.sessionId);
@@ -52,7 +52,7 @@ export function OpenClawBindScreen() {
       if (instance) {
         setQrStatus('scanned');
         addInstance(instance);
-        setActiveInstance(instance.id);
+        setActiveInstance(instance.id ?? '');
         navigation.goBack();
       }
     } catch {
@@ -65,9 +65,9 @@ export function OpenClawBindScreen() {
     if (!url) { Alert.alert('Required', 'Enter your OpenClaw instance URL'); return; }
     setLoading(true);
     try {
-      const result = await bindOpenClaw({ instanceUrl: url, apiToken: apiToken.trim() || undefined });
+      const result = await bindOpenClaw({ instanceUrl: url, apiToken: apiToken.trim() || '' });
       const instance = {
-        id: result.instanceId,
+        id: result.id,
         name: instanceName.trim() || result.name || `Instance ${Date.now()}`,
         instanceUrl: url,
         status: 'active' as const,
