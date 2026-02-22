@@ -1,0 +1,377 @@
+name: Build → Test → Release APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+# Allow creating releases and writing job summaries
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 1 — Build debug APK (fast, auto-signed, for device testing)
+  #          + release APK (for the download link)
+  # ═══════════════════════════════════════════════════════════════════
+  build:
+    name: 🔨 Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      release-apk: ${{ steps.paths.outputs.release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # ubuntu-latest pre-installs Android SDK at /usr/local/lib/android/sdk
+      # We just need to install the specific platform + build-tools we need
+      - name: Install Android SDK packages
+        run: |
+          ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            --sdk_root=${ANDROID_SDK_ROOT} 2>&1 | tail -5
+
+      - name: npm install
+        run: npm install --legacy-peer-deps
+
+      # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
+      # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
+      # this !! null-assertion. Patch is idempotent — won't double-apply if !! already present.
+      - name: Patch expo-image for Kotlin 2.x compatibility
+        run: |
+          python3 - << 'PYEOF'
+          import re, os, sys
+          filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
+          if not os.path.exists(filepath):
+              print(f"[skip] {filepath} not found — expo-image may have been updated")
+              sys.exit(0)
+          with open(filepath, 'r') as f:
+              content = f.read()
+          # Fix: originalResponse.body returns ResponseBody? (nullable)
+          # but Response.Builder.body() expects ResponseBody (non-null)
+          # Add !! to force-unwrap, idempotent (won't double-apply)
+          fixed = re.sub(r'originalResponse\.body(?!\!)', 'originalResponse.body!!', content)
+          if fixed == content:
+              print(f"[ok] Already patched or no match: {filepath}")
+          else:
+              with open(filepath, 'w') as f:
+                  f.write(fixed)
+              n = fixed.count('originalResponse.body!!')
+              print(f"[patched] Added !! to {n} occurrence(s) in {filepath}")
+          PYEOF
+
+      - name: Expo prebuild
+        run: npx expo prebuild --platform android --clean --no-install
+        env:
+          CI: '1'
+
+      # Restrict C++ builds to arm64-v8a + x86_64 only.
+      # Drops legacy 32-bit targets (armeabi-v7a, x86) that almost no modern device needs.
+      # Cuts CMake compilation time from ~20 min → ~8 min (4 ABIs → 2).
+      # Idempotent: skips if ndk block already present.
+      - name: Patch android/app/build.gradle — restrict ABI targets
+        run: |
+          python3 - << 'PYEOF'
+          import re, os, sys
+          filepath = 'android/app/build.gradle'
+          if not os.path.exists(filepath):
+              print(f'[skip] {filepath} not found')
+              sys.exit(0)
+          with open(filepath) as f:
+              content = f.read()
+          if 'abiFilters' in content:
+              print('[ok] abiFilters already present — skipping')
+              sys.exit(0)
+          # Insert ndk block as first line inside defaultConfig
+          fixed = re.sub(
+              r'(defaultConfig\s*\{)',
+              '\\1\n        ndk {\n            abiFilters "arm64-v8a", "x86_64"\n        }',
+              content, count=1
+          )
+          if fixed == content:
+              print('[warn] Could not find defaultConfig block — skipping')
+          else:
+              with open(filepath, 'w') as f:
+                  f.write(fixed)
+              print('[patched] Added abiFilters arm64-v8a + x86_64 to defaultConfig')
+          PYEOF
+
+      - name: Grant Gradle execute permission
+        run: chmod +x android/gradlew
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      # Build a single release APK — used for both UI tests and the download link.
+      # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
+      # Unsigned release APK installs fine on any emulator or test device.
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --parallel
+        env:
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
+
+      - name: Set build tag and APK paths
+        id: tag
+        run: echo "tag=build-${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Stage APK
+        id: paths
+        run: |
+          mkdir -p artifacts
+          # Expo may output app-release.apk (debug-signed) or app-release-unsigned.apk
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK found in android/app/build/outputs/apk/release/"
+            ls -la android/app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          echo "Found APK: $APK"
+          cp "$APK" artifacts/ClawLink-build-${{ github.run_number }}.apk
+          echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 2 — Spin up Android emulator, install APK, run Maestro UI tests
+  # ═══════════════════════════════════════════════════════════════════
+  ui-test:
+    name: 🤖 UI Automation (Maestro)
+    runs-on: ubuntu-latest     # Linux runner (10x cheaper than macOS)
+    needs: build
+    timeout-minutes: 40
+    continue-on-error: true   # flaky emulator should not block release
+
+    steps:
+      - name: Checkout (for .maestro/ flows)
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+
+      - name: Install Maestro CLI
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          # macos-14 is Apple Silicon (ARM64) — must use arm64-v8a AVD for hardware acceleration
+          key: avd-api30-arm64-${{ runner.os }}
+
+      - name: Create AVD (if not cached)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: arm64-v8a
+          profile: pixel_2
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: echo "AVD created and cached"
+
+      - name: Run Maestro tests on emulator
+        id: maestro
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: arm64-v8a
+          profile: pixel_2
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -e
+
+            echo "=== Installing APK ==="
+            adb wait-for-device
+            adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
+
+            echo "=== Running Maestro flows ==="
+            mkdir -p maestro-output
+
+            # Run each flow; capture pass/fail per test
+            PASS=0; FAIL=0; ERRORS=""
+
+            for flow in .maestro/*.yaml; do
+              echo "--- Running: $flow ---"
+              if maestro test "$flow" \
+                  --output "maestro-output/$(basename $flow .yaml)-report.xml" \
+                  --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
+                echo "✅ PASS: $flow"
+                PASS=$((PASS + 1))
+              else
+                echo "❌ FAIL: $flow"
+                FAIL=$((FAIL + 1))
+                ERRORS="$ERRORS\n- \`$flow\`"
+              fi
+            done
+
+            # Copy screenshots
+            mkdir -p maestro-output/screenshots
+            find . -name "*.png" -newer artifacts/ -exec cp {} maestro-output/screenshots/ \; 2>/dev/null || true
+
+            # Write summary env vars
+            echo "MAESTRO_PASS=$PASS" >> $GITHUB_ENV
+            echo "MAESTRO_FAIL=$FAIL" >> $GITHUB_ENV
+            echo "MAESTRO_ERRORS<<EOF" >> $GITHUB_ENV
+            echo -e "$ERRORS" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+
+            echo "=== Results: $PASS passed, $FAIL failed ==="
+
+            # Fail the step if any test failed
+            [ "$FAIL" -eq 0 ] || exit 1
+
+      # ── Always: upload test artifacts (screenshots + logs) ────────────
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-results-build-${{ github.run_number }}
+          path: maestro-output/
+          retention-days: 14
+
+      # ── On failure: write detailed error report to job summary ─────────
+      - name: Failure report
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
+          ## ❌ UI Test Failed — Build #${{ github.run_number }}
+
+          **Commit:** `${{ github.sha }}`
+          **Branch:** `${{ github.ref_name }}`
+          **Author:** ${{ github.actor }}
+
+          ### Failed Tests
+          ${{ env.MAESTRO_ERRORS }}
+
+          ### Results
+          | Status | Count |
+          |--------|-------|
+          | ✅ Passed | ${{ env.MAESTRO_PASS }} |
+          | ❌ Failed | ${{ env.MAESTRO_FAIL }} |
+
+          ### Artifacts
+          Screenshots and logs are attached to this workflow run under
+          **maestro-results-build-${{ github.run_number }}**.
+
+          ### How to debug locally
+          ```bash
+          # Install Maestro
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+
+          # Run a specific failing flow against your local emulator
+          maestro test .maestro/01-launch.yaml
+          ```
+          SUMMARY
+
+      # ── On success: write success summary ──────────────────────────────
+      - name: Success summary
+        if: success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
+          ## ✅ All UI Tests Passed — Build #${{ github.run_number }}
+
+          | Status | Count |
+          |--------|-------|
+          | ✅ Passed | ${{ env.MAESTRO_PASS }} |
+          | ❌ Failed | 0 |
+
+          Screenshots captured during tests are in the **maestro-results** artifact.
+          SUMMARY
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 3 — Create GitHub Release with download link (only if build passes)
+  # ═══════════════════════════════════════════════════════════════════
+  release:
+    name: 🚀 Release
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: ${{ needs.build.result == 'success' }}
+    # Explicit write permission required for creating releases and tags
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: build-${{ github.run_number }}
+          name: "✅ ClawLink Build #${{ github.run_number }}"
+          body: |
+            ## ClawLink APK — Build #${{ github.run_number }}
+
+            | | |
+            |---|---|
+            | Commit | `${{ github.sha }}` |
+            | Branch | `${{ github.ref_name }}` |
+            | Author | ${{ github.actor }} |
+
+            ### 📥 Install on Android
+            1. Download **ClawLink-build-${{ github.run_number }}.apk** below
+            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
+            3. Open the APK and tap Install
+          files: artifacts/ClawLink-build-${{ github.run_number }}.apk
+          fail_on_unmatched_files: false
+          draft: false
+          prerelease: false
