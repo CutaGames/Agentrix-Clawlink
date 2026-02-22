@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions,
 } from 'react-native';
@@ -47,6 +47,15 @@ const OPTIONS = [
 
 export function DeploySelectScreen() {
   const navigation = useNavigation<Nav>();
+  const setOnboardingComplete = useAuthStore((s) => s.setOnboardingComplete);
+
+  const handleSkip = useCallback(() => {
+    try {
+      setOnboardingComplete();
+    } catch (e) {
+      console.warn('Skip onboarding failed:', e);
+    }
+  }, [setOnboardingComplete]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -94,7 +103,7 @@ export function DeploySelectScreen() {
 
       <TouchableOpacity 
         style={styles.skipButton} 
-        onPress={() => useAuthStore.getState().setOnboardingComplete()}
+        onPress={handleSkip}
       >
         <Text style={styles.skipButtonText}>Skip for now</Text>
       </TouchableOpacity>

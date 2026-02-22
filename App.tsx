@@ -12,6 +12,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { colors } from './src/theme/colors';
 import { useNotificationStore } from './src/stores/notificationStore';
 import { startNotificationPolling, stopNotificationPolling } from './src/services/realtime.service';
+import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 
 // Configure how incoming notifications are handled while app is foregrounded
 Notifications.setNotificationHandler({
@@ -78,8 +79,21 @@ function AppNavigator() {
 
     const restoreSession = async () => {
       try {
+        // Load token from SecureStore (key: 'clawlink_token')
         const token = await loadTokenFromStorage();
-        if (!token) { setInitialized(true); return; }
+        if (!token) {
+          // No stored token — check if Zustand persist says user is authenticated
+          // (edge case: SecureStore was cleared but AsyncStorage persist wasn't)
+          const cachedStore = useAuthStore.getState();
+          if (!cachedStore.isAuthenticated) {
+            setInitialized(true);
+            return;
+          }
+          // isAuthenticated persisted but token gone → force re-login
+          await clearAuth();
+          setInitialized(true);
+          return;
+        }
         setApiConfig({ token });
         const cachedState = useAuthStore.getState();
         if (cachedState.user && !cachedState.isAuthenticated) {
@@ -104,8 +118,15 @@ function AppNavigator() {
         } catch (e: any) {
           const msg = e?.message || '';
           if (msg.includes('401') || msg.includes('Unauthorized')) {
+            // Token expired or revoked — force re-login
             await clearAuth();
             stopNotificationPolling();
+          } else {
+            // Network error or 5xx — keep user logged in with last cached session
+            console.warn('Session validation network error (using cached session):', msg);
+            if (cachedState.isAuthenticated && cachedState.user) {
+              startNotificationPolling(token);
+            }
           }
         }
       } catch (e) {
@@ -158,11 +179,13 @@ const linking = {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <NavigationContainer linking={linking as any}>
-        <StatusBar style="light" />
-        <AppNavigator />
-      </NavigationContainer>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <NavigationContainer linking={linking as any}>
+          <StatusBar style="light" />
+          <AppNavigator />
+        </NavigationContainer>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }

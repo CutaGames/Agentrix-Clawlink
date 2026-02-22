@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { setApiConfig } from '../services/api';
 
 export type AuthProvider = 'google' | 'apple' | 'x' | 'telegram' | 'discord' | 'wallet' | 'email' | 'openclaw';
 
@@ -65,6 +66,8 @@ export const useAuthStore = create<AuthState>()(
       activeInstance: null,
 
       setAuth: async (user, token) => {
+        // Sync token to api config immediately so apiFetch works in the same tick
+        setApiConfig({ token });
         try {
           await SecureStore.setItemAsync('clawlink_token', token);
         } catch (e) {
@@ -91,11 +94,15 @@ export const useAuthStore = create<AuthState>()(
 
       restoreSession: async () => {
         try {
-          const token = await SecureStore.getItemAsync('clawlink_token');
+          let token = await SecureStore.getItemAsync('clawlink_token');
+          if (!token) {
+            token = get().token;
+          }
           if (!token) {
             set({ isInitialized: true });
             return false;
           }
+          setApiConfig({ token });
           set({ token, isInitialized: true });
           return true;
         } catch (e) {
@@ -156,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         user: state.user,
+        token: state.token,
         isAuthenticated: state.isAuthenticated,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         activeInstance: state.activeInstance,

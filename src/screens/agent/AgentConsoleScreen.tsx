@@ -36,15 +36,17 @@ export function AgentConsoleScreen() {
   });
 
   const { data: storageInfo } = useQuery({
-    queryKey: ['storage-info'],
+    queryKey: ['storage-info', activeInstance?.id],
     queryFn: getStorageInfo,
+    enabled: !!activeInstance,
     retry: 1,
     staleTime: 60_000,
   });
 
   const { data: quota } = useQuery({
-    queryKey: ['token-quota'],
+    queryKey: ['token-quota', activeInstance?.id],
     queryFn: fetchQuotaStatus,
+    enabled: !!activeInstance,
     retry: 1,
     staleTime: 60_000,
   });

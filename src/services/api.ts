@@ -32,9 +32,10 @@ export const setApiConfig = (next: ApiConfig) => {
 export const getApiConfig = () => config;
 
 // 从 SecureStore 获取 token
+// KEY: 'clawlink_token' — must match authStore.setAuth SecureStore key
 export const loadTokenFromStorage = async () => {
   try {
-    const token = await SecureStore.getItemAsync('auth_token');
+    const token = await SecureStore.getItemAsync('clawlink_token');
     if (token) {
       config.token = token;
     }
@@ -48,7 +49,7 @@ export const loadTokenFromStorage = async () => {
 // 保存 token 到 SecureStore
 export const saveTokenToStorage = async (token: string) => {
   try {
-    await SecureStore.setItemAsync('auth_token', token);
+    await SecureStore.setItemAsync('clawlink_token', token);
     config.token = token;
   } catch (e) {
     console.warn('Failed to save token:', e);
@@ -58,7 +59,7 @@ export const saveTokenToStorage = async (token: string) => {
 // 清除 token
 export const clearToken = async () => {
   try {
-    await SecureStore.deleteItemAsync('auth_token');
+    await SecureStore.deleteItemAsync('clawlink_token');
     config.token = undefined;
   } catch (e) {
     console.warn('Failed to clear token:', e);

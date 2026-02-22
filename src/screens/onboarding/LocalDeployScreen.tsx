@@ -20,15 +20,9 @@ type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'LocalDeploy'>;
 
 type Step = 'choose' | 'install' | 'scanning' | 'connecting';
 
-// OS-specific download URLs for our Agentrix desktop installer
-// The installer silently bundles Ollama runtime + auto-launches OpenClaw.
-// User experience: download → double-click → QR code appears in app window. Zero CLI.
-const INSTALLER_BASE = 'https://download.agentrix.app';
-const DOWNLOAD_URLS = {
-  windows: `${INSTALLER_BASE}/AgentrixSetup.exe`,
-  macos: `${INSTALLER_BASE}/Agentrix.dmg`,
-  linux: `${INSTALLER_BASE}/agentrix-setup.AppImage`,
-};
+// Desktop installer is coming soon — download.agentrix.app is not yet live.
+// Once available, the installer will bundle Ollama runtime + auto-launch OpenClaw.
+// Users with existing OpenClaw can still use QR code scan directly.
 
 export function LocalDeployScreen() {
   const navigation = useNavigation<Nav>();
@@ -124,28 +118,19 @@ export function LocalDeployScreen() {
   if (step === 'install') {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.stepIndicator}>One-Click Install</Text>
-        <Text style={styles.title}>Install Agentrix on your PC</Text>
+        <Text style={styles.stepIndicator}>Local Agent Setup</Text>
+        <Text style={styles.title}>Desktop Installer</Text>
         <Text style={styles.subtitle}>
-          Download and run the installer — your local AI agent will be ready automatically. Fully private, zero configuration.
+          The one-click desktop installer is coming soon. Once available, it will automatically set up your local AI agent with zero configuration.
         </Text>
 
-        <View style={styles.downloadRow}>
-          <TouchableOpacity style={[styles.dlBtn, styles.dlBtnWin]} onPress={() => Linking.openURL(DOWNLOAD_URLS.windows)}>
-            <Text style={styles.dlIcon}>🪟</Text>
-            <Text style={styles.dlLabel}>Windows</Text>
-            <Text style={styles.dlSub}>.exe · one click</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.dlBtn, styles.dlBtnMac]} onPress={() => Linking.openURL(DOWNLOAD_URLS.macos)}>
-            <Text style={styles.dlIcon}>🍎</Text>
-            <Text style={styles.dlLabel}>macOS</Text>
-            <Text style={styles.dlSub}>.dmg · Apple Silicon + Intel</Text>
-          </TouchableOpacity>
+        <View style={styles.comingSoonBox}>
+          <Text style={styles.comingSoonIcon}>🚧</Text>
+          <Text style={styles.comingSoonTitle}>Coming Soon</Text>
+          <Text style={styles.comingSoonDesc}>
+            The Agentrix desktop installer (Windows, macOS, Linux) is currently in development. Join the waitlist at agentrix.app to be notified when it launches.
+          </Text>
         </View>
-        <TouchableOpacity style={styles.dlBtnLinux} onPress={() => Linking.openURL(DOWNLOAD_URLS.linux)}>
-          <Text style={styles.dlIconSm}>🐧</Text>
-          <Text style={styles.dlLabelSm}>Linux AppImage</Text>
-        </TouchableOpacity>
 
         <View style={styles.stepsCard}>
           {INSTALL_STEPS.map((s, i) => (
@@ -251,6 +236,12 @@ const styles = StyleSheet.create({
   stepNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   stepNumText: { fontSize: 12, fontWeight: '800', color: colors.bgPrimary },
   stepsText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 20 },
+
+  // Coming Soon card
+  comingSoonBox: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 24, borderWidth: 1, borderColor: colors.border, alignItems: 'center', gap: 12 },
+  comingSoonIcon: { fontSize: 40 },
+  comingSoonTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  comingSoonDesc: { fontSize: 13, color: colors.textSecondary, lineHeight: 20, textAlign: 'center' },
 
   primaryBtn: { backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   primaryBtnText: { fontSize: 16, fontWeight: '700', color: colors.bgPrimary },
