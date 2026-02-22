@@ -85,7 +85,7 @@ export function ClawSkillDetailScreen() {
       {/* Stats */}
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Text style={styles.statVal}>⭐ {skill.rating?.toFixed(1) || '—'}</Text>
+          <Text style={styles.statVal}>⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}</Text>
           <Text style={styles.statLbl}>Rating</Text>
         </View>
         <View style={styles.stat}>

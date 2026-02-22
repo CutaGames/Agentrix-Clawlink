@@ -106,7 +106,7 @@ export function ClawMarketplaceScreen() {
                   {skill.price === 0 ? 'Free' : `$${skill.price}`}
                 </Text>
                 <View style={styles.ratingRow}>
-                  <Text style={styles.ratingText}>⭐ {skill.rating?.toFixed(1) || '—'}</Text>
+                  <Text style={styles.ratingText}>⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}</Text>
                 </View>
               </View>
             </TouchableOpacity>

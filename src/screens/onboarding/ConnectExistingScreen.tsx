@@ -190,14 +190,13 @@ export function ConnectExistingScreen() {
 
   const handleFinish = useCallback(() => {
     setOnboardingComplete();
-    if (boundInstanceId) {
-      try {
-        navigation.navigate('SocialBind', { instanceId: boundInstanceId });
-        return;
-      } catch (_) { /* fall through */ }
+    // Navigate directly to AgentConsole — Telegram binding can be set up later
+    try {
+      navigation.navigate('AgentConsole');
+    } catch (_) {
+      // In onboarding context: setOnboardingComplete() triggers RootNavigator to show Main
     }
-    // fallback: RootNavigator will switch to Main since onboarding is complete
-  }, [navigation, setOnboardingComplete, boundInstanceId]);
+  }, [navigation, setOnboardingComplete]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

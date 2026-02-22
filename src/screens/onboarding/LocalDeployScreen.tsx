@@ -123,37 +123,50 @@ export function LocalDeployScreen() {
     );
   }
 
-  // ── install (novice guide) ────────────────────────────────────────────────
+  // ── install (novice guide — download Agentrix Setup) ─────────────────────
   if (step === 'install') {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.stepIndicator}>Local Agent Setup</Text>
-        <Text style={styles.title}>Install OpenClaw</Text>
+        <Text style={styles.title}>Install Agentrix</Text>
         <Text style={styles.subtitle}>
-          Run your AI agent on your own machine. Choose the method that suits you best.
+          One installer puts a full AI agent on your PC. Click Next until a QR code appears, then scan with your phone.
         </Text>
 
-        {/* Docker Method */}
-        <View style={styles.stepsCard}>
-          <Text style={styles.methodTitle}>🐳 Docker (Recommended)</Text>
-          {DOCKER_STEPS.map((s, i) => (
-            <View key={i} style={styles.stepsRow}>
-              <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
-              <Text style={styles.stepsText}>{s}</Text>
+        {/* Windows primary download */}
+        <TouchableOpacity
+          style={[styles.stepsCard, styles.dlCardPrimary]}
+          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/Agentrix-Setup.exe')}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Text style={{ fontSize: 36 }}>🪟</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Agentrix-Setup.exe</Text>
+              <Text style={styles.stepsText}>Windows 10 / 11 × 64-bit</Text>
             </View>
-          ))}
-          <TouchableOpacity
-            style={styles.linkBtn}
-            onPress={() => Linking.openURL('https://docs.docker.com/get-docker/')}
-          >
-            <Text style={styles.linkBtnText}>📖 Get Docker →</Text>
-          </TouchableOpacity>
-        </View>
+            <Text style={{ fontSize: 22, color: '#60a5fa' }}>⬇</Text>
+          </View>
+        </TouchableOpacity>
 
-        {/* NPM Method */}
+        {/* Linux secondary */}
+        <TouchableOpacity
+          style={[styles.stepsCard, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}
+          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/clawlink-agent-linux')}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 24 }}>🐧</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Linux binary</Text>
+            <Text style={styles.stepsText}>x86-64</Text>
+          </View>
+          <Text style={{ fontSize: 18, color: colors.textMuted }}>⬇</Text>
+        </TouchableOpacity>
+
+        {/* Steps after install */}
         <View style={styles.stepsCard}>
-          <Text style={styles.methodTitle}>📦 NPM (Node.js)</Text>
-          {NPM_STEPS.map((s, i) => (
+          <Text style={styles.methodTitle}>After installing:</Text>
+          {INSTALL_STEPS.map((s, i) => (
             <View key={i} style={styles.stepsRow}>
               <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
               <Text style={styles.stepsText}>{s}</Text>
@@ -183,8 +196,8 @@ export function LocalDeployScreen() {
       <TouchableOpacity style={styles.choiceCard} onPress={() => setStep('install')} activeOpacity={0.85}>
         <Text style={styles.choiceEmoji}>🆕</Text>
         <View style={styles.choiceBody}>
-          <Text style={styles.choiceTitle}>I'm new — show me how to install</Text>
-          <Text style={styles.choiceDesc}>Step-by-step Docker or NPM guide to run OpenClaw on your PC. ~5 min, QR code appears automatically.</Text>
+          <Text style={styles.choiceTitle}>I'm new — download the installer</Text>
+          <Text style={styles.choiceDesc}>Download Agentrix-Setup.exe, click Next through the installer, and a QR code appears automatically. ~2 min.</Text>
         </View>
         <Text style={styles.choiceArrow}>›</Text>
       </TouchableOpacity>
@@ -205,20 +218,10 @@ export function LocalDeployScreen() {
   );
 }
 
-const DOCKER_STEPS = [
-  'Install Docker Desktop on your PC (free at docker.com)',
-  'Open a terminal (PowerShell / Terminal / iTerm)',
-  'Run: docker run -d -p 3001:3001 openclaw/openclaw:latest',
-  'Open http://localhost:3001 in your browser — a QR code will appear',
-  'Tap "QR code is ready — Scan Now" above',
-];
-
-const NPM_STEPS = [
-  'Install Node.js 18+ from nodejs.org (nodejs.org)',
-  'Run: npm install -g clawlink-agent',
-  'Run: clawlink-agent  (enter your Agentrix API token when prompted)',
-  'A QR code will appear in your terminal',
-  'Tap "QR code is ready — Scan Now" above',
+const INSTALL_STEPS = [
+  'Run Agentrix-Setup.exe and click "Next" through the installer',
+  'The Agentrix tray icon appears — a QR code is displayed automatically',
+  'Tap "QR code is ready — Scan Now" above to connect your phone',
 ];
 
 const styles = StyleSheet.create({
@@ -261,6 +264,7 @@ const styles = StyleSheet.create({
 
   // Install steps card
   stepsCard: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 12 },
+  dlCardPrimary: { borderColor: '#3b82f6', backgroundColor: '#3b82f611' },
   stepsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   stepNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   stepNumText: { fontSize: 12, fontWeight: '800', color: colors.bgPrimary },
