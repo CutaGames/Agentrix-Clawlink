@@ -23,6 +23,12 @@ export type AgentStackParamList = {
   MemoryManagement: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
+  // Connect/Deploy
+  DeploySelect: undefined;
+  CloudDeploy: undefined;
+  ConnectExisting: undefined;
+  LocalDeploy: undefined;
+  SocialBind: { instanceId: string; platform?: 'telegram' };
   // Layer 2
   VoiceChat: { instanceId?: string };
   TeamSpace: undefined;

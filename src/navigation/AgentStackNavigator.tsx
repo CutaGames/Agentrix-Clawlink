@@ -14,6 +14,12 @@ import { WorkflowDetailScreen } from '../screens/agent/WorkflowDetailScreen';
 import { VoiceChatScreen } from '../screens/agent/VoiceChatScreen';
 import { TeamSpaceScreen } from '../screens/agent/TeamSpaceScreen';
 import { TeamInviteScreen } from '../screens/agent/TeamInviteScreen';
+// Deploy screens — reused from Onboarding in post-onboarding context
+import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
+import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
+import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScreen';
+import { LocalDeployScreen } from '../screens/onboarding/LocalDeployScreen';
+import { SocialBindScreen } from '../screens/onboarding/SocialBindScreen';
 
 const Stack = createNativeStackNavigator<AgentStackParamList>();
 
@@ -36,6 +42,12 @@ export function AgentStackNavigator() {
       <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: 'Memory Hub' }} />
       <Stack.Screen name="WorkflowList" component={WorkflowListScreen} options={{ title: 'Workflows' }} />
       <Stack.Screen name="WorkflowDetail" component={WorkflowDetailScreen} options={{ title: 'Workflow' }} />
+      {/* Deploy screens — accessible post-onboarding */}
+      <Stack.Screen name="DeploySelect" component={DeploySelectScreen} options={{ title: 'Connect Agent', headerShown: false }} />
+      <Stack.Screen name="CloudDeploy" component={CloudDeployScreen} options={{ title: 'Cloud Deploy', headerShown: false }} />
+      <Stack.Screen name="ConnectExisting" component={ConnectExistingScreen} options={{ title: 'Connect Existing', headerShown: false }} />
+      <Stack.Screen name="LocalDeploy" component={LocalDeployScreen} options={{ title: 'Local Deploy', headerShown: false }} />
+      <Stack.Screen name="SocialBind" component={SocialBindScreen} options={{ title: 'Link Social', headerShown: false }} />
       {/* Layer 2 */}
       <Stack.Screen name="VoiceChat" component={VoiceChatScreen} options={{ title: 'Voice Chat', headerShown: false }} />
       <Stack.Screen name="TeamSpace" component={TeamSpaceScreen} options={{ title: 'Team Spaces', headerShown: false }} />

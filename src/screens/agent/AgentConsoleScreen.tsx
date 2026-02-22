@@ -76,9 +76,12 @@ export function AgentConsoleScreen() {
       <View style={styles.empty}>
         <Text style={styles.emptyIcon}>🤖</Text>
         <Text style={styles.emptyTitle}>No Agent Connected</Text>
-        <Text style={styles.emptySub}>Connect or deploy an OpenClaw instance to get started.</Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('OpenClawBind')}>
-          <Text style={styles.primaryBtnText}>Connect OpenClaw →</Text>
+        <Text style={styles.emptySub}>Deploy or connect an OpenClaw instance to get started.</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('DeploySelect')}>
+          <Text style={styles.primaryBtnText}>🚀 Deploy / Connect Agent →</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border, marginTop: 8 }]} onPress={() => navigation.navigate('OpenClawBind')}>
+          <Text style={[styles.primaryBtnText, { color: colors.textSecondary }]}>Connect existing OpenClaw</Text>
         </TouchableOpacity>
       </View>
     );
@@ -109,7 +112,7 @@ export function AgentConsoleScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={() => navigation.navigate('OpenClawBind')}
+            onPress={() => navigation.navigate('DeploySelect')}
           >
             <Text style={styles.iconBtnText}>+ Add</Text>
           </TouchableOpacity>

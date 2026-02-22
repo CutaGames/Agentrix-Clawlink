@@ -3,14 +3,11 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
-import type { OnboardingStackParamList } from '../../navigation/types';
 
 import { useAuthStore } from '../../stores/authStore';
 
 const { width } = Dimensions.get('window');
-type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'DeploySelect'>;
 
 const OPTIONS = [
   {
@@ -46,16 +43,22 @@ const OPTIONS = [
 ];
 
 export function DeploySelectScreen() {
-  const navigation = useNavigation<Nav>();
+  const navigation = useNavigation<any>();
+  const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
   const setOnboardingComplete = useAuthStore((s) => s.setOnboardingComplete);
 
   const handleSkip = useCallback(() => {
     try {
-      setOnboardingComplete();
+      if (hasCompletedOnboarding) {
+        // Already onboarded — just go back to Agent Console
+        if (navigation.canGoBack()) navigation.goBack();
+      } else {
+        setOnboardingComplete();
+      }
     } catch (e) {
-      console.warn('Skip onboarding failed:', e);
+      console.warn('Skip failed:', e);
     }
-  }, [setOnboardingComplete]);
+  }, [hasCompletedOnboarding, setOnboardingComplete, navigation]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

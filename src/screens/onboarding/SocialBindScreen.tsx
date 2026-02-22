@@ -4,14 +4,14 @@ import {
   ActivityIndicator, Alert, Linking, Image,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { generateTelegramQr } from '../../services/openclaw.service';
 import type { OnboardingStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'SocialBind'>;
+// Use OnboardingStackParamList only for route params — navigation is typed as any
+// to allow this screen to work in both Onboarding and Agent stacks.
 type Route = RouteProp<OnboardingStackParamList, 'SocialBind'>;
 
 // ── Platform config ───────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ const PLATFORMS: PlatformOption[] = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SocialBindScreen() {
-  const navigation = useNavigation<Nav>();
+  const navigation = useNavigation<any>();
   const route = useRoute<Route>();
   const { instanceId } = route.params;
 

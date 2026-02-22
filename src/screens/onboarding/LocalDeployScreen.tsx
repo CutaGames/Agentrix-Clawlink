@@ -4,13 +4,9 @@ import {
   Alert, ActivityIndicator, Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import type { OnboardingStackParamList } from '../../navigation/types';
-
-type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'LocalDeploy'>;
 
 // Wizard steps:
 // 'choose'    → user picks: novice (install guide) OR existing (scan)
@@ -21,7 +17,7 @@ type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'LocalDeploy'>;
 type Step = 'choose' | 'install' | 'scanning' | 'connecting';
 
 export function LocalDeployScreen() {
-  const navigation = useNavigation<Nav>();
+  const navigation = useNavigation<any>();
   const { addInstance, setActiveInstance } = useAuthStore.getState();
 
   const [step, setStep] = useState<Step>('choose');

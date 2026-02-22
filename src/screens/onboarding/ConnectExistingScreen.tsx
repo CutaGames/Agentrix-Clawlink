@@ -20,7 +20,6 @@ import {
   Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { bindOpenClaw } from '../../services/openclaw.service';
@@ -33,16 +32,14 @@ import {
   type MigrationResult,
   type LanCandidate,
 } from '../../services/openclaw-bridge.service';
-import type { OnboardingStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'ConnectExisting'>;
 type WizardStep = 'discover' | 'verify' | 'migrate' | 'done';
 type DiscoverTab = 'manual' | 'lan';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ConnectExistingScreen() {
-  const navigation = useNavigation<Nav>();
+  const navigation = useNavigation<any>();
   const { addInstance, setActiveInstance, setOnboardingComplete } = useAuthStore.getState();
 
   // Wizard state

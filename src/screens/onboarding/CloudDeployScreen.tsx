@@ -4,18 +4,14 @@ import {
   ScrollView, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { provisionCloudAgent, getInstanceById } from '../../services/openclaw.service';
-import type { OnboardingStackParamList } from '../../navigation/types';
-
-type Nav = NativeStackNavigationProp<OnboardingStackParamList, 'CloudDeploy'>;
 
 type WizardStep = 'setup' | 'deploying' | 'done';
 
 export function CloudDeployScreen() {
-  const navigation = useNavigation<Nav>();
+  const navigation = useNavigation<any>();
   const { addInstance, setActiveInstance, setOnboardingComplete } = useAuthStore.getState();
 
   const [wizardStep, setWizardStep] = useState<WizardStep>('setup');

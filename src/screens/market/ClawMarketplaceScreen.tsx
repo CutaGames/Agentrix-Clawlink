@@ -19,7 +19,11 @@ async function fetchSkills(category: string, search: string) {
   if (category !== 'All') params.set('category', category);
   if (search) params.set('search', search);
   params.set('limit', '20');
-  return apiFetch<any>(`/skills?${params.toString()}`);
+  try {
+    return await apiFetch<any>(`/skills?${params.toString()}`);
+  } catch (e) {
+    return [];   // graceful fallback — avoid crashing the screen on network errors
+  }
 }
 
 export function ClawMarketplaceScreen() {
@@ -32,7 +36,9 @@ export function ClawMarketplaceScreen() {
     queryFn: () => fetchSkills(category, search),
   });
 
-  const skills = data?.items || data?.data || data || [];
+  // Normalise API response — backend may return {items:[...]}, {data:[...]}, or a bare array
+  const rawSkills = data?.items ?? data?.data ?? data;
+  const skills: any[] = Array.isArray(rawSkills) ? rawSkills : [];
 
   return (
     <View style={styles.container}>
@@ -72,7 +78,7 @@ export function ClawMarketplaceScreen() {
       ) : (
         <FlatList
           data={skills}
-          keyExtractor={(s: any) => s.id}
+          keyExtractor={(s: any) => String(s.id ?? s._id ?? Math.random())}
           numColumns={2}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={{ gap: 12 }}
@@ -87,7 +93,10 @@ export function ClawMarketplaceScreen() {
             <TouchableOpacity
               style={styles.skillCard}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('SkillDetail', { skillId: skill.id, skillName: skill.name })}
+              onPress={() => {
+                if (!skill.id && !skill._id) return;
+                navigation.navigate('SkillDetail', { skillId: String(skill.id ?? skill._id), skillName: skill.name ?? '' });
+              }}
             >
               <Text style={styles.skillIcon}>{skill.icon || '⚡'}</Text>
               <Text style={styles.skillName} numberOfLines={2}>{skill.name}</Text>
