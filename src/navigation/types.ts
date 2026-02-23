@@ -49,7 +49,7 @@ export type SocialStackParamList = {
   UserProfile: { userId: string };
   CreatePost: undefined;
   DMList: undefined;
-  DMChat: { partnerId: string; partnerName?: string };
+  DMChat: { userId: string; userName?: string; userAvatar?: string };
 };
 
 export type MeStackParamList = {

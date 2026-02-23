@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import {
+import React, { useState } from 'react';import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator,
 } from 'react-native';
@@ -49,6 +48,29 @@ export function FeedScreen() {
   const [feedTab, setFeedTab] = useState('Hot');
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
+  // Set header buttons for DM and CreatePost
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      title: 'Community',
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', gap: 4, marginRight: 4 }}>
+          <TouchableOpacity
+            style={{ padding: 6 }}
+            onPress={() => navigation.navigate('CreatePost')}
+          >
+            <Text style={{ fontSize: 20 }}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ padding: 6 }}
+            onPress={() => navigation.navigate('DMList')}
+          >
+            <Text style={{ fontSize: 20 }}>✉️</Text>
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation]);
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['feed', feedTab],
     queryFn: () => fetchFeed(feedTab),
@@ -64,11 +86,16 @@ export function FeedScreen() {
       onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
     >
       <View style={styles.postHeader}>
-        <Text style={styles.postAvatar}>{post.avatar || '👤'}</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.postAuthor}>{post.author}</Text>
-          <Text style={styles.postTime}>{post.time}</Text>
-        </View>
+        <TouchableOpacity
+          onPress={() => post.authorId && navigation.navigate('UserProfile', { userId: post.authorId || post.id })}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+        >
+          <Text style={styles.postAvatar}>{post.avatar || '👤'}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.postAuthor}>{post.author}</Text>
+            <Text style={styles.postTime}>{post.time}</Text>
+          </View>
+        </TouchableOpacity>
       </View>
       <Text style={styles.postContent}>{post.content}</Text>
       {post.tags?.length > 0 && (
