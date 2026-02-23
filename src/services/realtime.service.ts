@@ -14,6 +14,7 @@ interface StreamChatOptions {
   message: string;
   sessionId?: string;
   token: string;
+  model?: string;
   onChunk: ChunkCallback;
   onDone: DoneCallback;
   onError: ErrorCallback;
@@ -36,7 +37,7 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
           Authorization: `Bearer ${opts.token}`,
           Accept: 'text/event-stream',
         },
-        body: JSON.stringify({ message: opts.message, sessionId: opts.sessionId }),
+        body: JSON.stringify({ message: opts.message, sessionId: opts.sessionId, model: opts.model }),
         signal: ac.signal,
       });
 

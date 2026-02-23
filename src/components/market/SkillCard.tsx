@@ -1,4 +1,4 @@
-// 技能卡片组件 — 含评分/点赞/使用人数/🤖Agent标识/推广按钮
+// 技能卡片组件 — 含评分/点赞/使用人数/🤖Agent标识/推广按钮/分佣标识
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '../../theme/colors';
@@ -8,9 +8,11 @@ interface Props {
   skill: SkillItem;
   onPress: () => void;
   onPromote: () => void;
+  onInstallToAgent?: () => void;
+  showInstallBtn?: boolean;
 }
 
-export function SkillCard({ skill, onPress, onPromote }: Props) {
+export function SkillCard({ skill, onPress, onPromote, onInstallToAgent, showInstallBtn }: Props) {
   const [liked, setLiked] = useState(skill.isLiked || false);
   const [likeCount, setLikeCount] = useState(skill.likeCount);
 
@@ -71,16 +73,26 @@ export function SkillCard({ skill, onPress, onPromote }: Props) {
 
       {/* 底部行: 价格 + 操作按钮 */}
       <View style={styles.bottomRow}>
-        <Text style={styles.price}>
-          ${Number(skill.price) < 1 ? Number(skill.price || 0).toFixed(4) : Number(skill.price || 0).toFixed(2)}
-          <Text style={styles.priceUnit}>/{skill.priceUnit}</Text>
-        </Text>
+        <View>
+          <Text style={styles.price}>
+            {Number(skill.price) === 0 ? 'Free' : `$${Number(skill.price) < 1 ? Number(skill.price || 0).toFixed(4) : Number(skill.price || 0).toFixed(2)}`}
+            {Number(skill.price) > 0 && <Text style={styles.priceUnit}>/{skill.priceUnit}</Text>}
+          </Text>
+          {(skill as any).commissionPerCall > 0 && (
+            <Text style={styles.commission}>💸 ${Number((skill as any).commissionPerCall || 0).toFixed(4)}/call commission</Text>
+          )}
+        </View>
         <View style={styles.actions}>
+          {showInstallBtn && skill.agentCompatible && onInstallToAgent && (
+            <TouchableOpacity style={styles.installBtn} onPress={onInstallToAgent}>
+              <Text style={styles.installBtnText}>+ Agent</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.buyBtn} onPress={onPress}>
-            <Text style={styles.buyBtnText}>Buy</Text>
+            <Text style={styles.buyBtnText}>{Number(skill.price) === 0 ? 'Free' : 'Buy'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.promoteBtn} onPress={onPromote}>
-            <Text style={styles.promoteBtnText}>Promote</Text>
+            <Text style={styles.promoteBtnText}>Share</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -188,13 +200,29 @@ const styles = StyleSheet.create({
   },
   price: {
     color: colors.success,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   priceUnit: {
     color: colors.muted,
     fontSize: 12,
     fontWeight: '400',
+  },
+  commission: {
+    fontSize: 11, color: '#F97316', fontWeight: '500', marginTop: 1,
+  },
+  installBtn: {
+    backgroundColor: '#10b98120',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#10b98150',
+  },
+  installBtnText: {
+    color: '#10b981',
+    fontSize: 12,
+    fontWeight: '700',
   },
   actions: {
     flexDirection: 'row',

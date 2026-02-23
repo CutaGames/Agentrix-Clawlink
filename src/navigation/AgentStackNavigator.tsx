@@ -14,6 +14,7 @@ import { WorkflowDetailScreen } from '../screens/agent/WorkflowDetailScreen';
 import { VoiceChatScreen } from '../screens/agent/VoiceChatScreen';
 import { TeamSpaceScreen } from '../screens/agent/TeamSpaceScreen';
 import { TeamInviteScreen } from '../screens/agent/TeamInviteScreen';
+import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 // Deploy screens — reused from Onboarding in post-onboarding context
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
 import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
@@ -52,6 +53,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="VoiceChat" component={VoiceChatScreen} options={{ title: 'Voice Chat', headerShown: false }} />
       <Stack.Screen name="TeamSpace" component={TeamSpaceScreen} options={{ title: 'Team Spaces', headerShown: false }} />
       <Stack.Screen name="TeamInvite" component={TeamInviteScreen} options={{ title: 'Invite Members', headerShown: false }} />
+      <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: 'Agent Accounts' }} />
     </Stack.Navigator>
   );
 }

@@ -33,6 +33,8 @@ export type AgentStackParamList = {
   VoiceChat: { instanceId?: string };
   TeamSpace: undefined;
   TeamInvite: { workspaceId: string; workspaceName: string };
+  // Agent Accounts
+  AgentAccount: undefined;
 };
 
 export type MarketStackParamList = {
@@ -45,6 +47,9 @@ export type SocialStackParamList = {
   Feed: undefined;
   PostDetail: { postId: string };
   UserProfile: { userId: string };
+  CreatePost: undefined;
+  DMList: undefined;
+  DMChat: { partnerId: string; partnerName?: string };
 };
 
 export type MeStackParamList = {

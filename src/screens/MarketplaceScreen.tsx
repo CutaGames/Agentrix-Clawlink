@@ -9,13 +9,22 @@ import {
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
+  ScrollView,
+  Image,
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { marketplaceApi, SkillItem } from '../services/marketplace.api';
 import { SkillCard } from '../components/market/SkillCard';
 import { CategoryTabs } from '../components/market/CategoryTabs';
 
-type MarketCategory = 'resources' | 'skills' | 'tasks';
+type MarketCategory = 'resources' | 'skills' | 'tasks' | 'openclaw';
+
+// Banner data
+const BANNERS = [
+  { id: '1', emoji: '🤖', title: 'OpenClaw Skills', sub: '1-click install any skill to your agent', bg: '#2563eb', action: 'openclaw' },
+  { id: '2', emoji: '⚡', title: 'Top Weekly Skills', sub: 'Best rated tools of the week', bg: '#7c3aed', action: 'skills' },
+  { id: '3', emoji: '🏆', title: 'Task Bounties', sub: 'Earn by completing AI tasks', bg: '#059669', action: 'tasks' },
+];
 
 interface Props {
   navigation: any;
@@ -30,8 +39,11 @@ export function MarketplaceScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [activeBanner, setActiveBanner] = useState(0);
 
-  const subCategories = marketplaceApi.getSubCategories(category);
+  const subCategories = category === 'openclaw'
+    ? ['All', 'Automation', 'AI Tools', 'Data', 'Web', 'Files', 'Social', 'Dev', 'Finance']
+    : marketplaceApi.getSubCategories(category as any);
 
   const loadData = useCallback(async (reset: boolean = false) => {
     const currentPage = reset ? 1 : page;
@@ -41,11 +53,12 @@ export function MarketplaceScreen({ navigation }: Props) {
 
     try {
       const result = await marketplaceApi.search({
-        category,
+        category: category === 'openclaw' ? 'skills' : category,
         subCategory: subCategory === 'All' ? undefined : subCategory,
         q: search || undefined,
         page: currentPage,
         limit: 20,
+        ...(category === 'openclaw' ? { agentCompatible: true } : {}),
       });
 
       if (reset) {
@@ -109,11 +122,51 @@ export function MarketplaceScreen({ navigation }: Props) {
       skill={item}
       onPress={() => handleSkillPress(item)}
       onPromote={() => handlePromote(item)}
+      showInstallBtn={category === 'openclaw'}
+      onInstallToAgent={() => navigation.navigate('SkillInstall', { skillId: item.id, skillName: item.name })}
     />
-  ), [handleSkillPress, handlePromote]);
+  ), [handleSkillPress, handlePromote, category]);
 
   const renderHeader = () => (
     <View>
+      {/* Animated Banner Carousel */}
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        style={styles.bannerScroll}
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / 320);
+          setActiveBanner(idx);
+        }}
+      >
+        {BANNERS.map((b) => (
+          <TouchableOpacity
+            key={b.id}
+            style={[styles.bannerCard, { backgroundColor: b.bg }]}
+            onPress={() => {
+              if (b.action === 'tasks') { navigation.navigate('TaskMarket'); return; }
+              setCategory(b.action as MarketCategory);
+              setSubCategory('All');
+            }}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.bannerEmoji}>{b.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerTitle}>{b.title}</Text>
+              <Text style={styles.bannerSub}>{b.sub}</Text>
+            </View>
+            <Text style={styles.bannerArrow}>→</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      {/* Pagination dots */}
+      <View style={styles.bannerDots}>
+        {BANNERS.map((_, i) => (
+          <View key={i} style={[styles.bannerDot, i === activeBanner && styles.bannerDotActive]} />
+        ))}
+      </View>
+
       {/* 搜索栏 */}
       <View style={styles.searchContainer}>
         <Text style={styles.searchIcon}>🔍</Text>
@@ -132,19 +185,37 @@ export function MarketplaceScreen({ navigation }: Props) {
         )}
       </View>
 
-      {/* 三分类 Tab */}
-      <CategoryTabs
-        active={category}
-        onChange={(c: 'resources' | 'skills' | 'tasks') => {
-          if (c === 'tasks') {
-            // Navigate to dedicated Task Market (Bounty Board) screen
-            navigation.navigate('TaskMarket');
-            return;
-          }
-          setCategory(c);
-          setSubCategory('All');
-        }}
-      />
+      {/* 四分类 Tab — Resources / Skills / OpenClaw Skills / Tasks */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsRow}>
+        {([
+          { id: 'resources', label: '📦 Resources' },
+          { id: 'skills', label: '⚡ Skills' },
+          { id: 'openclaw', label: '🤖 OpenClaw' },
+          { id: 'tasks', label: '🎯 Tasks' },
+        ] as { id: MarketCategory; label: string }[]).map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[styles.categoryTab, category === tab.id && styles.categoryTabActive]}
+            onPress={() => {
+              if (tab.id === 'tasks') { navigation.navigate('TaskMarket'); return; }
+              setCategory(tab.id);
+              setSubCategory('All');
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.categoryTabText, category === tab.id && styles.categoryTabTextActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* OpenClaw category description */}
+      {category === 'openclaw' && (
+        <View style={styles.openclawBanner}>
+          <Text style={styles.openclawBannerText}>🤖 Install directly to your OpenClaw agent — 1-click compatible</Text>
+        </View>
+      )}
 
       {/* 子筛选 */}
       <View style={styles.subFilterRow}>
@@ -231,6 +302,33 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 20,
   },
+  // Banner Carousel
+  bannerScroll: { marginTop: 12 },
+  bannerCard: {
+    width: 320, marginHorizontal: 16, borderRadius: 16, padding: 18,
+    flexDirection: 'row', alignItems: 'center', gap: 12, height: 90,
+  },
+  bannerEmoji: { fontSize: 34 },
+  bannerTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  bannerSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  bannerArrow: { fontSize: 22, color: 'rgba(255,255,255,0.8)' },
+  bannerDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8, marginBottom: 4 },
+  bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.2)' },
+  bannerDotActive: { backgroundColor: colors.primary, width: 16 },
+  // Category tabs
+  categoryTabsRow: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, gap: 8 },
+  categoryTab: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+  },
+  categoryTabActive: { borderColor: colors.primary, backgroundColor: colors.primary + '15' },
+  categoryTabText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  categoryTabTextActive: { color: colors.primary },
+  openclawBanner: {
+    marginHorizontal: 16, marginBottom: 8, backgroundColor: '#2563eb15',
+    borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#2563eb33',
+  },
+  openclawBannerText: { fontSize: 12, color: '#2563eb', fontWeight: '600' },
   // Search
   searchContainer: {
     flexDirection: 'row',

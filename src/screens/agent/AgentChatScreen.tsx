@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  ScrollView,
 } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { sendAgentMessage } from '../../services/openclaw.service';
@@ -11,6 +13,19 @@ import { streamProxyChatSSE } from '../../services/realtime.service';
 import { API_BASE } from '../../config/env';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
+
+type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
+type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentChat'>;
+
+// Available models — all routed through OpenClaw proxy
+const MODELS = [
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', emoji: '⚡', provider: 'aws_bedrock' },
+  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet', emoji: '🤖', provider: 'aws_bedrock' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', emoji: '🟢', provider: 'openai' },
+  { id: 'gpt-4o', label: 'GPT-4o', emoji: '🟢', provider: 'openai' },
+  { id: 'gemini-2.0-flash', label: 'Gemini Flash', emoji: '🔵', provider: 'google' },
+  { id: 'deepseek-v3', label: 'DeepSeek V3', emoji: '🟣', provider: 'deepseek' },
+];
 
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
@@ -87,6 +102,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
+  const navigation = useNavigation<Nav>();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
@@ -94,6 +110,11 @@ export function AgentChatScreen() {
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const streamAbortRef = useRef<AbortController | null>(null);
+
+  // Model selection (default to Claude Haiku 4.5 via Bedrock)
+  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
+  // Session token tracking (estimated: ~4 chars per token)
+  const [sessionTokens, setSessionTokens] = useState(0);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -209,9 +230,12 @@ export function AgentChatScreen() {
           message: text,
           sessionId: sessionIdRef.current,
           token,
+          model: selectedModel,
           onChunk: (chunk) => {
             streamSucceeded = true;
             appendToStreamingMessage(assistantMsgId, chunk);
+            // Estimate token usage: ~4 chars per token
+            setSessionTokens((t) => t + Math.ceil(chunk.length / 4));
           },
           onDone: () => resolve(),
           onError: () => resolve(), // resolve so we can fall back
@@ -259,6 +283,7 @@ export function AgentChatScreen() {
         onPress: () => {
           streamAbortRef.current?.abort();
           sessionIdRef.current = `session-${Date.now()}`;
+          setSessionTokens(0);
           setMessages([{
             id: 'welcome',
             role: 'assistant',
@@ -283,9 +308,39 @@ export function AgentChatScreen() {
       {/* Chat toolbar */}
       <View style={styles.chatBar}>
         <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
-        <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
-          <Text style={styles.chatBarBtnText}>New session</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          {sessionTokens > 0 && (
+            <View style={styles.tokenBadge}>
+              <Text style={styles.tokenBadgeText}>⚡ {sessionTokens > 1000 ? `${(sessionTokens/1000).toFixed(1)}k` : sessionTokens} tkn</Text>
+            </View>
+          )}
+          <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
+            <Text style={styles.chatBarBtnText}>New session</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Model Selector */}
+      <View style={styles.modelSelectorRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
+          {MODELS.map((m) => (
+            <TouchableOpacity
+              key={m.id}
+              style={[styles.modelPill, selectedModel === m.id && styles.modelPillActive]}
+              onPress={() => setSelectedModel(m.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.modelPillText, selectedModel === m.id && styles.modelPillTextActive]}>
+                {m.emoji} {m.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {sessionTokens > 0 && (
+          <View style={styles.tokenBar}>
+            <View style={[styles.tokenBarFill, { width: `${Math.min((sessionTokens / 4000) * 100, 100)}%` as any }]} />
+          </View>
+        )}
       </View>
 
       {loadingHistory && (
@@ -307,6 +362,14 @@ export function AgentChatScreen() {
 
       {/* Input */}
       <View style={styles.inputRow}>
+        {/* Voice mic button */}
+        <TouchableOpacity
+          style={styles.micBtn}
+          onPress={() => navigation.navigate('VoiceChat', { instanceId })}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.micIcon}>🎤</Text>
+        </TouchableOpacity>
         <TextInput
           style={styles.input}
           placeholder={`Message ${instanceName}...`}
@@ -350,6 +413,18 @@ const styles = StyleSheet.create({
   chatBarTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 15 },
   chatBarBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.bgSecondary },
   chatBarBtnText: { color: colors.textMuted, fontSize: 12 },
+  tokenBadge: { backgroundColor: colors.accent + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  tokenBadgeText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
+  modelSelectorRow: { backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
+  modelPill: {
+    backgroundColor: colors.bgSecondary, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  modelPillActive: { borderColor: colors.accent, backgroundColor: colors.accent + '22' },
+  modelPillText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  modelPillTextActive: { color: colors.accent },
+  tokenBar: { height: 2, backgroundColor: colors.bgSecondary, marginHorizontal: 12, marginBottom: 6, borderRadius: 1, overflow: 'hidden' },
+  tokenBarFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 1 },
   historyLoader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, justifyContent: 'center' },
   historyLoaderText: { color: colors.textMuted, fontSize: 13 },
   messageList: { padding: 16, paddingBottom: 8, gap: 12 },
@@ -384,8 +459,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    gap: 10,
+    gap: 8,
   },
+  micBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: colors.bgCard, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border,
+  },
+  micIcon: { fontSize: 18 },
   input: {
     flex: 1,
     backgroundColor: colors.bgCard,

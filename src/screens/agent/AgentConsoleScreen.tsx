@@ -10,6 +10,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { getInstanceSkills, restartInstance, getStorageInfo } from '../../services/openclaw.service';
 import { fetchQuotaStatus, PLAN_LABEL, PLAN_COLOR } from '../../services/token-quota.service';
+import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 
@@ -32,11 +33,32 @@ export function AgentConsoleScreen() {
   const [tab, setTab] = useState<'overview' | 'skills' | 'tasks'>('overview');
   const [selectedModel, setSelectedModel] = useState('DeepSeek-V3 (Official)');
 
-  const { data: skills, refetch, isLoading } = useQuery({
+  const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
     queryFn: () => getInstanceSkills(activeInstance!.id),
     enabled: !!activeInstance,
   });
+
+  // Also fetch marketplace-installed skills from Agentrix DB
+  const { data: marketInstalledRaw } = useQuery({
+    queryKey: ['my-skills', activeInstance?.id],
+    queryFn: () => apiFetch<any>('/skills/installed'),
+    enabled: !!activeInstance,
+    staleTime: 60_000,
+  });
+
+  // Merge instance skills + marketplace installed skills (dedupe by id/name)
+  const skills = (() => {
+    const list: any[] = [];
+    const seen = new Set<string>();
+    for (const s of (instanceSkillsRaw || [])) { if (!seen.has(s.id)) { seen.add(s.id); list.push(s); } }
+    const mkt = marketInstalledRaw?.items || marketInstalledRaw?.data || marketInstalledRaw || [];
+    for (const s of mkt) {
+      const key = s.skill?.id || s.skillId || s.id;
+      if (!seen.has(key)) { seen.add(key); list.push({ ...s, id: key, name: s.skill?.name || s.name, description: s.skill?.description || s.description, icon: s.skill?.icon || s.icon, enabled: true, _source: 'marketplace' }); }
+    }
+    return list;
+  })();
 
   const { data: storageInfo } = useQuery({
     queryKey: ['storage-info', activeInstance?.id],
@@ -277,6 +299,7 @@ export function AgentConsoleScreen() {
               { icon: '⚙️', label: 'Workflows', route: 'WorkflowList' as const },
               { icon: '🎤', label: 'Voice Chat', route: 'VoiceChat' as const },
               { icon: '👥', label: 'Team Space', route: 'TeamSpace' as const },
+              { icon: '🤖', label: 'Agent Accounts', route: 'AgentAccount' as const },
             ]).map((item) => (
               <TouchableOpacity
                 key={item.route}
@@ -290,7 +313,29 @@ export function AgentConsoleScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </>
+        {/* ── Download Desktop App Banner ── */}
+        <TouchableOpacity
+          style={styles.downloadBanner}
+          onPress={() => {
+            Alert.alert(
+              '💻 Agentrix Desktop',
+              'Download the Agentrix Desktop app to control your computer with AI, run local agents, and sync with your mobile.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Download Standard (.exe)', onPress: () => {} },
+                { text: 'Download AIO (All-in-One)', onPress: () => {} },
+              ]
+            );
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.downloadBannerIcon}>💻</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.downloadBannerTitle}>Get Agentrix Desktop</Text>
+            <Text style={styles.downloadBannerSub}>Run AI agents on your computer — one-click AIO installer available</Text>
+          </View>
+          <Text style={styles.downloadBannerArrow}>↓</Text>
+        </TouchableOpacity>
       )}
 
       {/* Skills Tab */}
@@ -440,4 +485,15 @@ const styles = StyleSheet.create({
   quickActionIcon: { fontSize: 20 },
   quickActionLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   quickActionArrow: { fontSize: 20, color: colors.textMuted },
+  // ── Download Desktop Banner ──
+  downloadBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.accent + '44', gap: 12,
+    marginTop: 4,
+  },
+  downloadBannerIcon: { fontSize: 26 },
+  downloadBannerTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  downloadBannerSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  downloadBannerArrow: { fontSize: 22, color: colors.accent },
 });
