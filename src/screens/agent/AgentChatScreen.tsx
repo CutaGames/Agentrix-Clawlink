@@ -27,8 +27,6 @@ const MODELS = [
   { id: 'deepseek-v3', label: 'DeepSeek V3', emoji: '🟣', provider: 'deepseek' },
 ];
 
-type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
-
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
