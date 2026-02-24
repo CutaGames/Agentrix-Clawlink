@@ -7,15 +7,16 @@ import {
   Modal,
   Pressable,
   Share,
+  Dimensions,
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { socialShareService } from '../services/socialShare';
 
-interface ShareOption {
-  icon: string;
-  label: string;
-  onPress: () => void;
-}
+// QRCode — loaded lazily so the app doesn't crash if SVG isn't linked
+let QRCode: any = null;
+try { QRCode = require('react-native-qrcode-svg').default; } catch (_) {}
+
+const { width: SW } = Dimensions.get('window');
 
 interface ShareBottomSheetProps {
   visible: boolean;
@@ -48,18 +49,8 @@ export function ShareBottomSheet({
     onClose();
   };
 
-  const options: ShareOption[] = [
-    {
-      icon: '📤',
-      label: '分享',
-      onPress: handleShare,
-    },
-    {
-      icon: '📋',
-      label: '复制链接',
-      onPress: handleCopy,
-    },
-  ];
+  const qrValue = shareContent.url ||
+    `https://agentrix.top/r/${encodeURIComponent(shareContent.title || 'share')}`;
 
   return (
     <Modal
@@ -73,35 +64,59 @@ export function ShareBottomSheet({
           <View style={styles.handle} />
           <Text style={styles.title}>{title}</Text>
 
-          {/* 分享内容预览 */}
-          <View style={styles.preview}>
-            {shareContent.title && (
-              <Text style={styles.previewTitle}>{shareContent.title}</Text>
-            )}
-            <Text style={styles.previewMessage} numberOfLines={3}>
-              {shareContent.message}
-            </Text>
-            {shareContent.url && (
-              <Text style={styles.previewUrl} numberOfLines={1}>
-                {shareContent.url}
-              </Text>
-            )}
+          {/* === Referral Poster Card === */}
+          <View style={styles.poster}>
+            {/* Commission badge */}
+            <View style={styles.posterBadgeRow}>
+              <View style={styles.commissionBadge}>
+                <Text style={styles.commissionText}>💰 佣金追踪链接</Text>
+              </View>
+              <View style={styles.refBadge}>
+                <Text style={styles.refBadgeText}>• REFERRAL</Text>
+              </View>
+            </View>
+
+            {/* QR code + content */}
+            <View style={styles.posterBody}>
+              {QRCode ? (
+                <View style={styles.qrWrapper}>
+                  <QRCode
+                    value={qrValue}
+                    size={SW < 370 ? 88 : 100}
+                    backgroundColor="transparent"
+                    color={colors.text || '#fff'}
+                  />
+                  <Text style={styles.qrHint}>扫码加入</Text>
+                </View>
+              ) : null}
+              <View style={styles.posterContent}>
+                {shareContent.title ? (
+                  <Text style={styles.posterTitle} numberOfLines={2}>
+                    {shareContent.title}
+                  </Text>
+                ) : null}
+                <Text style={styles.posterMsg} numberOfLines={4}>
+                  {shareContent.message}
+                </Text>
+                {shareContent.url ? (
+                  <Text style={styles.posterUrl} numberOfLines={1}>
+                    {shareContent.url}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
           </View>
 
-          {/* 分享选项 */}
-          <View style={styles.optionsRow}>
-            {options.map((option, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.option}
-                onPress={option.onPress}
-              >
-                <View style={styles.optionIcon}>
-                  <Text style={styles.optionIconText}>{option.icon}</Text>
-                </View>
-                <Text style={styles.optionLabel}>{option.label}</Text>
-              </TouchableOpacity>
-            ))}
+          {/* Action buttons */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+              <Text style={styles.actionIcon}>📤</Text>
+              <Text style={styles.actionLabel}>分享</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleCopy}>
+              <Text style={styles.actionIcon}>📋</Text>
+              <Text style={styles.actionLabel}>复制链接</Text>
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -226,15 +241,15 @@ export function QuickShare({ type, data, children, buttonStyle }: QuickShareProp
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
   sheet: {
     backgroundColor: colors.cardBackground,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 20,
-    paddingBottom: 34,
+    paddingBottom: 36,
   },
   handle: {
     width: 40,
@@ -243,62 +258,70 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 12,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  preview: {
+  // === Poster card ===
+  poster: {
     backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  previewTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 6,
+  posterBadgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+    alignItems: 'center',
   },
-  previewMessage: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
+  commissionBadge: {
+    backgroundColor: '#f59e0b20',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#f59e0b55',
   },
-  previewUrl: {
-    fontSize: 13,
-    color: colors.primary,
-    marginTop: 8,
+  commissionText: { fontSize: 11, color: '#f59e0b', fontWeight: '700' },
+  refBadge: {
+    backgroundColor: '#22c55e15',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  optionsRow: {
+  refBadgeText: { fontSize: 10, color: '#22c55e', fontWeight: '800', letterSpacing: 0.5 },
+  posterBody: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  qrWrapper: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  qrHint: { fontSize: 9, color: colors.textSecondary, textAlign: 'center', marginTop: 2 },
+  posterContent: { flex: 1 },
+  posterTitle: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  posterMsg: { fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginBottom: 4 },
+  posterUrl: { fontSize: 11, color: colors.primary, marginTop: 2 },
+  // === Actions ===
+  actionsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 20,
+    gap: 24,
+    marginBottom: 16,
   },
-  option: {
-    alignItems: 'center',
-    marginHorizontal: 20,
-  },
-  optionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  optionIconText: {
-    fontSize: 24,
-  },
-  optionLabel: {
-    fontSize: 13,
-    color: colors.text,
-  },
+  actionBtn: { alignItems: 'center', gap: 4 },
+  actionIcon: { fontSize: 30 },
+  actionLabel: { fontSize: 12, color: colors.text, fontWeight: '500' },
   cancelButton: {
     backgroundColor: colors.background,
     paddingVertical: 14,

@@ -45,9 +45,9 @@ const SOCIAL_BUTTONS: {
   color: string;
 }[] = [
   { provider: 'google', label: 'Google', icon: 'G', color: '#EA4335' },
-  { provider: 'x', label: 'X / Twitter', icon: '饾晱', color: '#1A1A1A' },
+  { provider: 'x', label: 'X / Twitter', icon: '𝕏', color: '#1A1A1A' },
   { provider: 'discord', label: 'Discord', icon: 'D', color: '#5865F2' },
-  { provider: 'telegram', label: 'Telegram', icon: '鉁?, color: '#2AABEE' },
+  { provider: 'telegram', label: 'Telegram', icon: '✈', color: '#2AABEE' },
 ];
 
 export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
@@ -183,12 +183,12 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={StyleSheet.absoluteFillObject}
               />
-              <Text style={styles.walletPrimaryIcon}>馃敆</Text>
+              <Text style={styles.walletPrimaryIcon}>🔗</Text>
               <View style={styles.walletPrimaryText}>
                 <Text style={styles.walletPrimaryTitle}>Connect Wallet</Text>
-                <Text style={styles.walletPrimarySubtitle}>MetaMask 路 Trust 路 WalletConnect</Text>
+                <Text style={styles.walletPrimarySubtitle}>MetaMask · Trust · WalletConnect</Text>
               </View>
-              <Text style={styles.walletPrimaryArrow}>鈫?/Text>
+              <Text style={styles.walletPrimaryArrow}>→</Text>
             </TouchableOpacity>
 
             {/* 鈹€鈹€鈹€鈹€ Divider 鈹€鈹€鈹€鈹€ */}
@@ -225,7 +225,7 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
               activeOpacity={0.7}
             >
               <Text style={styles.emailToggleText}>
-                {showEmail ? '鈻?Hide email login' : '鉁?Continue with Email'}
+                {showEmail ? '▲ Hide email login' : '✉ Continue with Email'}
               </Text>
             </TouchableOpacity>
 
@@ -258,7 +258,7 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
                   <>
                     <TextInput
                       style={styles.otpInput}
-                      placeholder="鈥?鈥?鈥?鈥?鈥?鈥?
+                      placeholder="• • • • • •"
                       placeholderTextColor={colors.muted + '60'}
                       value={otpCode}
                       onChangeText={setOtpCode}
