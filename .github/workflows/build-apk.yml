@@ -88,6 +88,48 @@ jobs:
         env:
           CI: '1'
 
+      # Inject signingConfigs into build.gradle if signing secrets exist.
+      # This is needed because expo prebuild regenerates build.gradle and would wipe any manual edits.
+      - name: Patch build.gradle — add signingConfig (only when keystore is available)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          python3 - << 'PYEOF'
+          import os, re
+          keystore_b64 = os.environ.get('KEYSTORE_B64', '')
+          if not keystore_b64:
+              print('[skip] No keystore secret — skipping signingConfig patch')
+              exit(0)
+          filepath = 'android/app/build.gradle'
+          if not os.path.exists(filepath):
+              print(f'[skip] {filepath} not found')
+              exit(0)
+          with open(filepath) as f:
+              content = f.read()
+          if 'MYAPP_UPLOAD_STORE_FILE' in content:
+              print('[ok] signingConfig already patched')
+              exit(0)
+          signing_block = '''
+              release {
+                  if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                      storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                      storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                      keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                      keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+                  }
+              }'''
+          content = re.sub(r'(signingConfigs\s*\{)', r'\\1' + signing_block, content, count=1)
+          # Also wire up releaseConfig
+          content = re.sub(
+              r'(buildTypes\s*\{[^}]*release\s*\{)',
+              r'\\1\n            signingConfig signingConfigs.release',
+              content, count=1
+          )
+          with open(filepath, 'w') as f:
+              f.write(content)
+          print('[patched] Added signingConfig release block to build.gradle')
+          PYEOF
+
       # Restrict C++ builds to arm64-v8a + x86_64 only.
       # Drops legacy 32-bit targets (armeabi-v7a, x86) that almost no modern device needs.
       # Cuts CMake compilation time from ~20 min → ~8 min (4 ABIs → 2).
@@ -130,6 +172,35 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
+
+      # ── Keystore signing (requires 4 GitHub Secrets to be set) ──────────────
+      # To enable: go to Settings → Secrets → Actions and add:
+      #   ANDROID_KEYSTORE_BASE64  (base64 of your .keystore file)
+      #   KEY_ALIAS                (key alias used when creating the keystore)
+      #   KEY_PASSWORD             (key password)
+      #   STORE_PASSWORD           (keystore password)
+      # Generate keystore: keytool -genkeypair -v -keystore release.keystore -alias agentrix
+      #   -keyalg RSA -keysize 2048 -validity 10000
+      # Encode: base64 -w0 release.keystore
+      - name: Setup release signing (if keystore secrets are present)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
+            {
+              echo "MYAPP_UPLOAD_STORE_FILE=release.keystore"
+              echo "MYAPP_UPLOAD_KEY_ALIAS=${KEY_ALIAS}"
+              echo "MYAPP_UPLOAD_STORE_PASSWORD=${STORE_PASSWORD}"
+              echo "MYAPP_UPLOAD_KEY_PASSWORD=${KEY_PASSWORD}"
+            } >> android/gradle.properties
+            echo "[ci] Keystore decoded — APK will be signed"
+          else
+            echo "[ci] No ANDROID_KEYSTORE_BASE64 secret — building unsigned APK"
+          fi
 
       # Build a single release APK — used for both UI tests and the download link.
       # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
