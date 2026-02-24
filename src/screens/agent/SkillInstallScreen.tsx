@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -16,29 +16,53 @@ export function SkillInstallScreen() {
   const route = useRoute<RouteT>();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const { skillId, skillName } = route.params;
+  const [installing, setInstalling] = useState(false);
+  const [done, setDone] = useState(false);
 
   const handleInstall = async () => {
-    if (!activeInstance || !skillId) return;
+    if (!activeInstance) {
+      Alert.alert(
+        '未绑定 agent',
+        '请先在「Agent」页面绑定或部署一个 OpenClaw 实例，然后再安装 Skill。',
+        [{ text: '去绑定', onPress: () => navigation.navigate('AgentOnboarding' as any) }, { text: '取消', style: 'cancel' }]
+      );
+      return;
+    }
+    if (!skillId) return;
+    setInstalling(true);
     try {
       await installSkillToInstance(activeInstance.id, skillId);
-      navigation.goBack();
+      setDone(true);
+      setTimeout(() => navigation.goBack(), 1200);
     } catch (e: any) {
-      // Silent fail — handled by parent
+      Alert.alert('安装失败', e?.message || '请确认 Agent 实例在线后重试。');
+    } finally {
+      setInstalling(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.emoji}>⚡</Text>
-      <Text style={styles.title}>Install {skillName || 'Skill'}</Text>
+      <Text style={styles.emoji}>{done ? '✅' : '⚡'}</Text>
+      <Text style={styles.title}>{done ? '安装成功！' : `安装 ${skillName || 'Skill'}`}</Text>
       <Text style={styles.sub}>
-        This skill will be installed to: {activeInstance?.name || 'Active Instance'}
+        {activeInstance
+          ? `将安装到：${activeInstance.name}`
+          : '⚠️ 未绑定 Agent 实例'}
       </Text>
-      <TouchableOpacity style={styles.btn} onPress={handleInstall}>
-        <Text style={styles.btnText}>Install Now</Text>
-      </TouchableOpacity>
+      {!done && (
+        <TouchableOpacity
+          style={[styles.btn, installing && styles.btnLoading]}
+          onPress={handleInstall}
+          disabled={installing}
+        >
+          {installing
+            ? <ActivityIndicator color='#fff' />
+            : <Text style={styles.btnText}>立即安装</Text>}
+        </TouchableOpacity>
+      )}
       <TouchableOpacity onPress={() => navigation.goBack()}>
-        <Text style={styles.cancel}>Cancel</Text>
+        <Text style={styles.cancel}>{done ? '返回' : '取消'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -49,7 +73,11 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 56 },
   title: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   sub: { fontSize: 14, color: colors.textSecondary, textAlign: 'center' },
-  btn: { backgroundColor: colors.primary, borderRadius: 14, padding: 16, paddingHorizontal: 40 },
+  btn: { backgroundColor: colors.primary, borderRadius: 14, padding: 16, paddingHorizontal: 40, minWidth: 160, alignItems: 'center' },
+  btnLoading: { opacity: 0.6 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   cancel: { color: colors.textMuted, fontSize: 14, marginTop: 4 },
 });
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';

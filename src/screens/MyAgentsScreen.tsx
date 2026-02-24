@@ -12,65 +12,62 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
-import { agentApi } from '../services/api';
+import { getMyInstances } from '../services/openclaw.service';
+import { useAuthStore } from '../stores/authStore';
 import { Card } from '../components/Card';
 
 interface Agent {
-  id: string;
+  id: string;         // openclaw instance id
+  instanceId: string;
   name: string;
   description: string;
   avatar?: string;
   category: string;
   status: 'active' | 'idle' | 'offline';
   lastActiveAt?: string;
+  deployType?: string;
+  version?: string;
 }
-
-// Mock data for development
-const MOCK_AGENTS: Agent[] = [
-  {
-    id: '1',
-    name: '个人助理 Agent',
-    description: '帮你管理日常任务、发现空投、执行 AutoEarn 策略',
-    category: 'personal',
-    status: 'active',
-    lastActiveAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    name: '交易 Agent',
-    description: '自动执行交易策略、监控价格、管理投资组合',
-    category: 'trading',
-    status: 'idle',
-    lastActiveAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: '3',
-    name: '空投猎手',
-    description: '24/7 监控空投机会，自动完成任务并领取',
-    category: 'airdrop',
-    status: 'active',
-    lastActiveAt: new Date().toISOString(),
-  },
-];
 
 export default function MyAgentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const persistedInstances = useAuthStore((s) => s.user?.openClawInstances ?? []);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const mapInstance = (inst: any): Agent => ({
+    id: inst.id,
+    instanceId: inst.id,
+    name: inst.name || 'My Agent',
+    description: inst.instanceUrl
+      ? `${inst.deployType ?? 'custom'} · ${inst.instanceUrl}`
+      : (inst.deployType === 'cloud' ? 'Cloud-hosted OpenClaw agent' : 'OpenClaw Agent'),
+    category: inst.deployType === 'cloud' ? 'cloud' : 'custom',
+    status: inst.status === 'active' ? 'active' : inst.status === 'disconnected' ? 'offline' : 'idle',
+    lastActiveAt: inst.lastSyncAt,
+    deployType: inst.deployType,
+    version: inst.version,
+  });
+
   const fetchAgents = async () => {
     try {
-      const result = await agentApi.getMyAgents();
+      const result = await getMyInstances();
       if (result && result.length > 0) {
-        setAgents(result);
+        setAgents(result.map(mapInstance));
+      } else if (persistedInstances.length > 0) {
+        // Use persisted instances from auth store if server returns empty
+        setAgents(persistedInstances.map(mapInstance));
       } else {
-        // 使用 mock 数据
-        setAgents(MOCK_AGENTS);
+        setAgents([]);
       }
-    } catch (error) {
-      // 使用 mock 数据
-      setAgents(MOCK_AGENTS);
+    } catch {
+      // Fall back to persisted instances
+      if (persistedInstances.length > 0) {
+        setAgents(persistedInstances.map(mapInstance));
+      } else {
+        setAgents([]);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -108,33 +105,28 @@ export default function MyAgentsScreen() {
     }
   };
 
-  const getCategoryIcon = (category: string) => {
+  const getCategoryIcon = (category: string, deployType?: string) => {
+    if (deployType === 'cloud') return '☁️';
+    if (deployType === 'local') return '🖥️';
+    if (deployType === 'server') return '🖧';
     switch (category) {
-      case 'personal':
-        return '👤';
-      case 'trading':
-        return '📈';
-      case 'airdrop':
-        return '🎁';
-      case 'merchant':
-        return '🏪';
-      case 'developer':
-        return '💻';
-      default:
-        return '🤖';
+      case 'cloud': return '☁️';
+      case 'custom': return '⚙️';
+      default: return '🤖';
     }
   };
 
   const renderAgent = ({ item }: { item: Agent }) => (
     <TouchableOpacity
       style={styles.agentCard}
-      onPress={() => navigation.navigate('AgentChat', { 
-        agentId: item.id, 
-        agentName: item.name 
+      onPress={() => navigation.navigate('AgentChat', {
+        agentId: item.id,
+        agentName: item.name,
+        instanceId: item.instanceId,
       })}
     >
       <View style={styles.agentIcon}>
-        <Text style={styles.agentIconText}>{getCategoryIcon(item.category)}</Text>
+        <Text style={styles.agentIconText}>{getCategoryIcon(item.category, item.deployType)}</Text>
       </View>
       <View style={styles.agentInfo}>
         <View style={styles.agentHeader}>
@@ -211,10 +203,13 @@ export default function MyAgentsScreen() {
             <Text style={styles.emptyIcon}>🤖</Text>
             <Text style={styles.emptyTitle}>还没有 Agent</Text>
             <Text style={styles.emptyText}>
-              创建你的第一个 Agent，让 AI 帮你自动完成任务
+              绑定或部署一个 OpenClaw 实例，开始使用 AI Agent
             </Text>
-            <TouchableOpacity style={styles.createButton}>
-              <Text style={styles.createButtonText}>创建 Agent</Text>
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={() => navigation.navigate('AgentOnboarding')}
+            >
+              <Text style={styles.createButtonText}>绑定 / 新建 Agent</Text>
             </TouchableOpacity>
           </View>
         }

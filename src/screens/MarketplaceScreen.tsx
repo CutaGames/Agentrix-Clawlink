@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { marketplaceApi, SkillItem } from '../services/marketplace.api';
+import { searchOpenClawHub } from '../services/openclawHub.service';
 import { SkillCard } from '../components/market/SkillCard';
 import { CategoryTabs } from '../components/market/CategoryTabs';
 
@@ -21,7 +22,7 @@ type MarketCategory = 'resources' | 'skills' | 'tasks' | 'openclaw';
 
 // Banner data
 const BANNERS = [
-  { id: '1', emoji: '🤖', title: 'OpenClaw Skills', sub: '1-click install any skill to your agent', bg: '#2563eb', action: 'openclaw' },
+  { id: '1', emoji: '🤖', title: 'OpenClaw Skills', sub: '5200+ skills — 1-click install to your agent', bg: '#2563eb', action: 'openclaw' },
   { id: '2', emoji: '⚡', title: 'Top Weekly Skills', sub: 'Best rated tools of the week', bg: '#7c3aed', action: 'skills' },
   { id: '3', emoji: '🏆', title: 'Task Bounties', sub: 'Earn by completing AI tasks', bg: '#059669', action: 'tasks' },
 ];
@@ -52,14 +53,24 @@ export function MarketplaceScreen({ navigation }: Props) {
     }
 
     try {
-      const result = await marketplaceApi.search({
-        category: category === 'openclaw' ? 'skills' : category,
-        subCategory: subCategory === 'All' ? undefined : subCategory,
-        q: search || undefined,
-        page: currentPage,
-        limit: 20,
-        ...(category === 'openclaw' ? { agentCompatible: true } : {}),
-      });
+      let result;
+      if (category === 'openclaw') {
+        // Use dedicated OpenClaw skill hub (5200+ real skills)
+        result = await searchOpenClawHub({
+          q: search || undefined,
+          category: subCategory === 'All' ? undefined : subCategory,
+          page: currentPage,
+          limit: 20,
+        });
+      } else {
+        result = await marketplaceApi.search({
+          category: category as any,
+          subCategory: subCategory === 'All' ? undefined : subCategory,
+          q: search || undefined,
+          page: currentPage,
+          limit: 20,
+        });
+      }
 
       if (reset) {
         setItems(result.items);

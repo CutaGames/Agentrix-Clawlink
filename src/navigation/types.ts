@@ -62,6 +62,7 @@ export type MeStackParamList = {
   MySkills: undefined;
   MyOrders: undefined;
   WalletConnect: undefined;
+  WalletBackup: undefined;
   NotificationCenter: undefined;
   ShareCard: { shareUrl: string; title?: string; userName?: string };
 };

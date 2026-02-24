@@ -11,6 +11,7 @@ import { MyOrdersScreen } from '../screens/me/MyOrdersScreen';
 import { NotificationCenterScreen } from '../screens/notifications/NotificationCenterScreen';
 import { ShareCardScreen } from '../screens/ShareCardScreen';
 import { WalletConnectScreen } from '../screens/WalletConnectScreen';
+import { WalletBackupScreen } from '../screens/me/WalletBackupScreen';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
 
@@ -31,6 +32,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="MySkills" component={MySkillsScreen} options={{ title: 'My Skills' }} />
       <Stack.Screen name="MyOrders" component={MyOrdersScreen} options={{ title: 'My Orders' }} />
       <Stack.Screen name="WalletConnect" component={WalletConnectScreen} options={{ title: 'Wallet' }} />
+      <Stack.Screen name="WalletBackup" component={WalletBackupScreen} options={{ title: 'Wallet Backup' }} />
       <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} options={{ title: 'Notifications' }} />
       <Stack.Screen name="ShareCard" component={ShareCardScreen} options={{ title: 'Share' }} />
     </Stack.Navigator>

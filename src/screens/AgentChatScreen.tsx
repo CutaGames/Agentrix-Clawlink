@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
-import { agentApi } from '../services/api';
+import { sendAgentMessage, getAgentHistory } from '../services/openclaw.service';
+import { useAuthStore } from '../stores/authStore';
 
 type RootStackParamList = {
-  AgentChat: { agentId: string; agentName: string };
+  AgentChat: { agentId: string; agentName: string; instanceId?: string };
 };
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AgentChat'>;
@@ -29,7 +30,11 @@ interface Message {
 }
 
 export default function AgentChatScreen({ route }: Props) {
-  const { agentId, agentName } = route.params;
+  const { agentName, instanceId: routeInstanceId } = route.params;
+  const activeInstance = useAuthStore((s) => s.activeInstance);
+  // Prefer explicitly passed instanceId, else fall back to active instance
+  const instanceId = routeInstanceId || activeInstance?.id;
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -40,7 +45,23 @@ export default function AgentChatScreen({ route }: Props) {
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | undefined>();
   const flatListRef = useRef<FlatList>(null);
+
+  // Load chat history from openclaw instance on mount
+  useEffect(() => {
+    if (!instanceId) return;
+    getAgentHistory(instanceId, undefined, 30).then((history) => {
+      if (!history || history.length === 0) return;
+      const mapped: Message[] = history.map((m) => ({
+        id: m.id,
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content,
+        timestamp: new Date(m.timestamp),
+      }));
+      setMessages(mapped);
+    }).catch(() => {/* keep welcome message */});
+  }, [instanceId]);
 
   const sendMessage = useCallback(async () => {
     if (!inputText.trim() || isLoading) return;
@@ -57,43 +78,39 @@ export default function AgentChatScreen({ route }: Props) {
     setIsLoading(true);
 
     try {
-      const response = await agentApi.chat(agentId, userMessage.content);
-      
-      const assistantMessage: Message = {
+      if (instanceId) {
+        // Real OpenClaw instance — use proxy API
+        const result = await sendAgentMessage(instanceId, userMessage.content, sessionId);
+        if (result.sessionId) setSessionId(result.sessionId);
+        const assistantMessage: Message = {
+          id: result.reply.id || (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: result.reply.content,
+          timestamp: new Date(result.reply.timestamp),
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        // No instance bound — show helpful prompt
+        const noInstanceMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: '⚠️ 请先在「Agent」页面绑定或部署一个 OpenClaw 实例，才能与 Agent 进行真实对话。\n\n点击首页 → 「+ 新建 Agent」开始设置。',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, noInstanceMsg]);
+      }
+    } catch (error: any) {
+      const errMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.reply,
+        content: `连接失败：${error?.message || '请检查你的 OpenClaw 实例是否在线，或刷新重试。'}`,
         timestamp: new Date(),
       };
-      
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      // 模拟回复（后端可能未实现）
-      const mockReply: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: getMockReply(userMessage.content, agentName),
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, mockReply]);
+      setMessages(prev => [...prev, errMsg]);
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, isLoading, agentId, agentName]);
-
-  const getMockReply = (userInput: string, name: string): string => {
-    const lower = userInput.toLowerCase();
-    if (lower.includes('空投') || lower.includes('airdrop')) {
-      return '我发现了 3 个适合你的空投机会：\n\n1. **ARB Token** - 预估价值 $50\n2. **ZK Nation** - 预估价值 $30\n3. **LayerZero** - 预估价值 $80\n\n需要我帮你领取吗？';
-    }
-    if (lower.includes('收益') || lower.includes('earn')) {
-      return '你的 AutoEarn 当前运行状态：\n\n📈 总收益: $125.50\n💰 待领取: $12.30\n🔄 活跃策略: 3 个\n\n需要我调整策略配置吗？';
-    }
-    if (lower.includes('转账') || lower.includes('支付')) {
-      return '请告诉我转账详情：\n\n1. 收款地址\n2. 金额\n3. 代币类型\n\n我会帮你生成交易并预览费用。';
-    }
-    return `作为你的 ${name}，我可以帮你：\n\n• 发现和领取空投\n• 管理 AutoEarn 策略\n• 执行转账和支付\n• 查看资产和交易记录\n\n请告诉我你需要什么帮助？`;
-  };
+  }, [inputText, isLoading, instanceId, sessionId]);
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isUser = item.role === 'user';
