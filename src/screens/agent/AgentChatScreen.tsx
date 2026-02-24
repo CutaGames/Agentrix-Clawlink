@@ -29,6 +29,14 @@ interface Message {
   thoughts?: string[]; // Added for Thought Chain UI
 }
 
+// Strip basic markdown: **bold** -> bold, *italic* -> italic
+function renderContent(text: string) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+}
+
 const MessageBubble = ({ item }: { item: Message }) => {
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
@@ -78,7 +86,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
             ]}
           >
             <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-              {item.content || (item.streaming && !hasThoughts ? ' ' : '')}
+              {renderContent(item.content) || (item.streaming && !hasThoughts ? ' ' : '')}
             </Text>
             {item.streaming && (
               <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
@@ -102,6 +110,7 @@ export function AgentChatScreen() {
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const streamAbortRef = useRef<AbortController | null>(null);
   const recordingRef = useRef<any>(null);
+  const isRecordingRef = useRef(false);  // stable ref for press hold logic
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -115,6 +124,7 @@ export function AgentChatScreen() {
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);   // WeChat-style toggle
   const [showModelPicker, setShowModelPicker] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
@@ -243,7 +253,7 @@ export function AgentChatScreen() {
               appendToStreamingMessage(assistantMsgId, chunk);
             },
             onDone: () => resolve(),
-            onError: () => resolve(),
+            onError: (_err) => resolve(), // silently fall through to direct Claude
           });
           streamAbortRef.current = ac;
         });
@@ -258,16 +268,26 @@ export function AgentChatScreen() {
             token,
             model: selectedModelId,
             sessionId: sessionIdRef.current,
-            onChunk: (chunk) => appendToStreamingMessage(assistantMsgId, chunk),
+            onChunk: (chunk) => { streamSucceeded = true; appendToStreamingMessage(assistantMsgId, chunk); },
             onDone: () => resolve(),
-            onError: () => resolve(),
+            onError: (err) => {
+              appendToStreamingMessage(assistantMsgId, `⚠️ ${err || 'Could not reach AI service. Check your connection.'}`);
+              resolve();
+            },
           });
           streamAbortRef.current = ac;
         });
       }
 
+      // If stream ran but produced no content, show a friendly error
       setMessages((prev) =>
-        prev.map((m) => (m.id === assistantMsgId ? { ...m, streaming: false } : m))
+        prev.map((m) => {
+          if (m.id !== assistantMsgId) return m;
+          if (!m.content && !m.thoughts?.length) {
+            return { ...m, content: '⚠️ No response received. Please check your connection or try again.', streaming: false, error: true };
+          }
+          return { ...m, streaming: false };
+        })
       );
     } catch (err: any) {
       setMessages((prev) =>
@@ -283,15 +303,26 @@ export function AgentChatScreen() {
     }
   };
 
-  // Voice recording
+  // Voice recording — called on both onPressIn (start) and onPressOut (stop)
   const handleVoicePress = async () => {
     if (!Audio) {
-      Alert.alert('Not available', 'Voice input requires expo-av package.');
+      Alert.alert('Voice input', 'Install expo-av to enable voice input, or type your message.');
       return;
     }
     try {
-      if (isRecording) {
-        // Stop and transcribe
+      if (!isRecordingRef.current) {
+        // START recording
+        isRecordingRef.current = true;
+        await Audio.requestPermissionsAsync();
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        recordingRef.current = recording;
+        setIsRecording(true);
+      } else {
+        // STOP and transcribe
+        isRecordingRef.current = false;
         setIsRecording(false);
         if (recordingRef.current) {
           await recordingRef.current.stopAndUnloadAsync();
@@ -305,28 +336,27 @@ export function AgentChatScreen() {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,
+                signal: AbortSignal.timeout(20_000),
               });
               if (resp.ok) {
                 const data = await resp.json();
                 const transcript = data?.text || data?.transcript || '';
-                if (transcript) setInput((prev) => (prev ? prev + ' ' + transcript : transcript));
+                if (transcript) {
+                  // Auto-send voice message
+                  setInput(transcript);
+                  setTimeout(() => handleSend(), 100);
+                }
+              } else {
+                Alert.alert('Transcription failed', 'Could not convert audio to text. Try typing instead.');
               }
             } catch {
-              Alert.alert('Transcription failed', 'Could not convert audio to text.');
+              Alert.alert('Voice error', 'Could not reach transcription service. Try typing instead.');
             }
           }
         }
-      } else {
-        // Start recording
-        await Audio.requestPermissionsAsync();
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        recordingRef.current = recording;
-        setIsRecording(true);
       }
     } catch (e: any) {
+      isRecordingRef.current = false;
       setIsRecording(false);
       Alert.alert('Voice error', e?.message || 'Unknown error');
     }
@@ -402,30 +432,49 @@ export function AgentChatScreen() {
         onContentSizeChange={scrollToBottom}
       />
 
-      {/* Input row with voice button */}
+      {/* Input bar — WeChat / Doubao style */}
       <View style={styles.inputRow}>
+        {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
-          style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
-          onPress={handleVoicePress}
+          style={styles.modeToggleBtn}
+          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); }}
         >
-          <Text style={styles.voiceBtnIcon}>{isRecording ? '⏹' : '🎤'}</Text>
+          <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
         </TouchableOpacity>
-        <TextInput
-          style={styles.input}
-          placeholder={`Message ${instanceName}...`}
-          placeholderTextColor={colors.textMuted}
-          value={input}
-          onChangeText={setInput}
-          multiline
-          maxLength={4000}
-          returnKeyType="send"
-          onSubmitEditing={handleSend}
-          blurOnSubmit={false}
-        />
+
+        {voiceMode ? (
+          /* Voice mode: hold-to-talk button */
+          <TouchableOpacity
+            style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
+            onPressIn={handleVoicePress}
+            onPressOut={handleVoicePress}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.holdTalkText}>
+              {isRecording ? '🔴  Release to Send' : '🎙  Hold to Talk'}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          /* Text mode */
+          <TextInput
+            style={styles.input}
+            placeholder={`Message ${instanceName}...`}
+            placeholderTextColor={colors.textMuted}
+            value={input}
+            onChangeText={setInput}
+            multiline
+            maxLength={4000}
+            returnKeyType="send"
+            onSubmitEditing={handleSend}
+            blurOnSubmit={false}
+          />
+        )}
+
+        {/* Right: send button */}
         <TouchableOpacity
-          style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+          style={[styles.sendBtn, ((!input.trim() && !isRecording) || sending) && styles.sendBtnDisabled]}
           onPress={handleSend}
-          disabled={!input.trim() || sending}
+          disabled={(!input.trim() && !isRecording) || sending}
         >
           {sending ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -532,14 +581,28 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
   sendIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  voiceBtn: {
+  modeToggleBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: colors.bgCard,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: colors.border,
   },
-  voiceBtnActive: { backgroundColor: '#ef444433', borderColor: '#ef4444' },
-  voiceBtnIcon: { fontSize: 18 },
+  modeToggleIcon: { fontSize: 18 },
+  holdTalkBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  holdTalkBtnActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  holdTalkText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   tokenBar: {
     height: 18, backgroundColor: colors.bgSecondary,
     flexDirection: 'row', alignItems: 'center', overflow: 'hidden', position: 'relative',

@@ -5,7 +5,7 @@ import { colors } from '../theme/colors';
 import { ProfileScreen } from '../screens/me/ProfileScreen';
 import { ReferralDashboardScreen } from '../screens/me/ReferralDashboardScreen';
 import { ClawSettingsScreen } from '../screens/me/ClawSettingsScreen';
-import { AccountScreen } from '../screens/me/AccountScreen';
+import { AccountScreen } from '../screens/AccountScreen';
 import { MySkillsScreen } from '../screens/me/MySkillsScreen';
 import { MyOrdersScreen } from '../screens/me/MyOrdersScreen';
 import { NotificationCenterScreen } from '../screens/notifications/NotificationCenterScreen';

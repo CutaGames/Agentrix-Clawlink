@@ -33,6 +33,11 @@ export type MarketStackParamList = {
   Marketplace: undefined;
   SkillDetail: { skillId: string; skillName: string };
   Checkout: { skillId: string; skillName?: string };
+  TaskMarket: undefined;
+  TaskDetail: { taskId: string };
+  PublishTask: undefined;
+  CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };
+  SkillInstall: { skillId: string; skillName: string };
 };
 
 export type SocialStackParamList = {

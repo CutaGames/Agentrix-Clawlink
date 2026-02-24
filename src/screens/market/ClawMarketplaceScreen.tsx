@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import type { MarketStackParamList } from '../../navigation/types';
+import TaskMarketScreen from '../TaskMarketScreen';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Marketplace'>;
 
@@ -22,11 +23,11 @@ async function fetchSkills(category: string, search: string) {
   try {
     return await apiFetch<any>(`/skills?${params.toString()}`);
   } catch (e) {
-    return [];   // graceful fallback — avoid crashing the screen on network errors
+    return [];   // graceful fallback
   }
 }
 
-export function ClawMarketplaceScreen() {
+function SkillsTab({ isResource = false }: { isResource?: boolean }) {
   const navigation = useNavigation<Nav>();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
@@ -36,17 +37,21 @@ export function ClawMarketplaceScreen() {
     queryFn: () => fetchSkills(category, search),
   });
 
-  // Normalise API response — backend may return {items:[...]}, {data:[...]}, or a bare array
   const rawSkills = data?.items ?? data?.data ?? data;
-  const skills: any[] = Array.isArray(rawSkills) ? rawSkills : [];
+  let skills: any[] = Array.isArray(rawSkills) ? rawSkills : [];
+
+  if (isResource) {
+    // Filter for paid items for Resources & Goods tab
+    skills = skills.filter(s => (s.price != null && s.price > 0) || (s.tokenCost != null && s.tokenCost > 0));
+  }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.tabContainer}>
       {/* Search */}
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search skills..."
+          placeholder={isResource ? "Search resources & goods..." : "Search skills..."}
           placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={setSearch}
@@ -55,22 +60,24 @@ export function ClawMarketplaceScreen() {
       </View>
 
       {/* Categories */}
-      <FlatList
-        data={CATEGORIES}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(c) => c}
-        style={styles.catList}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.catChip, category === item && styles.catChipActive]}
-            onPress={() => setCategory(item)}
-          >
-            <Text style={[styles.catText, category === item && styles.catTextActive]}>{item}</Text>
-          </TouchableOpacity>
-        )}
-      />
+      <View>
+        <FlatList
+          data={CATEGORIES}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(c) => c}
+          style={styles.catList}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.catChip, category === item && styles.catChipActive]}
+              onPress={() => setCategory(item)}
+            >
+              <Text style={[styles.catText, category === item && styles.catTextActive]}>{item}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
 
       {/* Skills Grid */}
       {isLoading ? (
@@ -86,7 +93,7 @@ export function ClawMarketplaceScreen() {
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No skills found</Text>
+              <Text style={styles.emptyText}>{isResource ? "No paid resources found" : "No skills found"}</Text>
             </View>
           }
           renderItem={({ item: skill }: { item: any }) => (
@@ -121,8 +128,75 @@ export function ClawMarketplaceScreen() {
   );
 }
 
+export function ClawMarketplaceScreen() {
+  const [activeTab, setActiveTab] = useState<'skills' | 'tasks' | 'resources'>('skills');
+
+  return (
+    <View style={styles.container}>
+      {/* Custom Top Tab Bar */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'skills' && styles.tabItemActive]}
+          onPress={() => setActiveTab('skills')}
+        >
+          <Text style={[styles.tabText, activeTab === 'skills' && styles.tabTextActive]}>OpenClaw Skills</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'tasks' && styles.tabItemActive]}
+          onPress={() => setActiveTab('tasks')}
+        >
+          <Text style={[styles.tabText, activeTab === 'tasks' && styles.tabTextActive]}>Task Market</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'resources' && styles.tabItemActive]}
+          onPress={() => setActiveTab('resources')}
+        >
+          <Text style={[styles.tabText, activeTab === 'resources' && styles.tabTextActive]}>Resources & Goods</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Tab Content */}
+      <View style={styles.content}>
+        {activeTab === 'skills' && <SkillsTab />}
+        {activeTab === 'tasks' && <TaskMarketScreen />}
+        {activeTab === 'resources' && <SkillsTab isResource={true} />}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: colors.bgSecondary,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabItemActive: {
+    borderBottomColor: colors.accent,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  tabTextActive: {
+    color: colors.accent,
+  },
+  content: {
+    flex: 1,
+  },
+  tabContainer: { flex: 1 },
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   searchInput: {
     backgroundColor: colors.bgCard,
@@ -141,6 +215,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
+    marginRight: 8,
   },
   catChipActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
   catText: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
