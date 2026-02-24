@@ -55,6 +55,19 @@ export default function MyAgentsScreen() {
       const result = await getMyInstances();
       if (result && result.length > 0) {
         setAgents(result.map(mapInstance));
+        // Persist instances back to auth store so they survive logout/login
+        const { updateUser, activeInstance: currentActive } = useAuthStore.getState();
+        const storeInstances = result.map((inst: any) => ({
+          id: inst.id,
+          name: inst.name || 'My Agent',
+          instanceUrl: inst.instanceUrl || '',
+          status: inst.status as 'active' | 'disconnected' | 'error',
+          deployType: inst.deployType || 'custom',
+        }));
+        updateUser({ openClawInstances: storeInstances });
+        if (!currentActive) {
+          useAuthStore.setState({ activeInstance: storeInstances[0] ?? null });
+        }
       } else if (persistedInstances.length > 0) {
         // Use persisted instances from auth store if server returns empty
         setAgents(persistedInstances.map(mapInstance));

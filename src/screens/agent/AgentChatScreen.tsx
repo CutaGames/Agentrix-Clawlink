@@ -149,10 +149,17 @@ export function AgentChatScreen() {
     if (!instanceId || !token) return;
     try {
       setLoadingHistory(true);
-      const resp = await fetch(
-        `${API_BASE}/openclaw/proxy/${instanceId}/history?sessionId=${sessionIdRef.current}`,
-        { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) },
-      );
+      const _acH = new AbortController();
+      const _tH = setTimeout(() => _acH.abort(), 6000);
+      let resp: Response;
+      try {
+        resp = await fetch(
+          `${API_BASE}/openclaw/proxy/${instanceId}/history?sessionId=${sessionIdRef.current}`,
+          { headers: { Authorization: `Bearer ${token}` }, signal: _acH.signal },
+        );
+      } finally {
+        clearTimeout(_tH);
+      }
       if (!resp.ok) return;
       const data = await resp.json();
       const historyItems: any[] = Array.isArray(data) ? data : data.messages ?? [];
@@ -315,6 +322,10 @@ export function AgentChatScreen() {
         isRecordingRef.current = true;
         await Audio.requestPermissionsAsync();
         await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        if (recordingRef.current) {
+          try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
+          recordingRef.current = null;
+        }
         const { recording } = await Audio.Recording.createAsync(
           Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
@@ -336,7 +347,7 @@ export function AgentChatScreen() {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,
-                signal: AbortSignal.timeout(20_000),
+                signal: (() => { const _acV = new AbortController(); setTimeout(() => _acV.abort(), 20_000); return _acV.signal; })(),
               });
               if (resp.ok) {
                 const data = await resp.json();

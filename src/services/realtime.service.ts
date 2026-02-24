@@ -111,22 +111,29 @@ export interface DirectClaudeOptions {
  * who don't have an active OpenClaw instance yet.
  */
 export async function directClaudeChat(opts: DirectClaudeOptions): Promise<string> {
-  const resp = await fetch(`${API_BASE}/claude/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${opts.token}`,
-    },
-    body: JSON.stringify({
-      messages: opts.messages,
-      context: { sessionId: opts.sessionId },
-      options: {
-        model: opts.model || 'claude-haiku-4-5',
-        maxTokens: 2048,
+  const _ac = new AbortController();
+  const _t = setTimeout(() => _ac.abort(), 45_000);
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}/claude/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${opts.token}`,
       },
-    }),
-    signal: AbortSignal.timeout(45_000),
-  });
+      body: JSON.stringify({
+        messages: opts.messages,
+        context: { sessionId: opts.sessionId },
+        options: {
+          model: opts.model || 'claude-haiku-4-5',
+          maxTokens: 2048,
+        },
+      }),
+      signal: _ac.signal,
+    });
+  } finally {
+    clearTimeout(_t);
+  }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
@@ -198,10 +205,17 @@ export function stopNotificationPolling() {
 async function pollNotifications(token: string) {
   try {
     const since = lastPollTime > 0 ? `&since=${lastPollTime}` : '';
-    const resp = await fetch(`${API_BASE}/notifications/recent?limit=10${since}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(8000),
-    });
+    const _ac2 = new AbortController();
+    const _t2 = setTimeout(() => _ac2.abort(), 8000);
+    let resp: Response;
+    try {
+      resp = await fetch(`${API_BASE}/notifications/recent?limit=10${since}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: _ac2.signal,
+      });
+    } finally {
+      clearTimeout(_t2);
+    }
     if (!resp.ok) return;
     const data = await resp.json();
     const items: any[] = data.notifications ?? data ?? [];
