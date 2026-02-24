@@ -8,9 +8,14 @@ import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import type { SocialStackParamList } from '../../navigation/types';
+import type { SocialStackParamList, MainTabParamList } from '../../navigation/types';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { CompositeNavigationProp } from '@react-navigation/native';
 
-type Nav = NativeStackNavigationProp<SocialStackParamList, 'Feed'>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<SocialStackParamList, 'Feed'>,
+  BottomTabNavigationProp<MainTabParamList>
+>;
 
 const FEED_TABS = ['Hot', 'Latest', 'Following'];
 
@@ -62,7 +67,7 @@ export function FeedScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={{ padding: 6 }}
-            onPress={() => navigation.navigate('DMList')}
+            onPress={() => navigation.navigate('Chat')}
           >
             <Text style={{ fontSize: 20 }}>✉️</Text>
           </TouchableOpacity>

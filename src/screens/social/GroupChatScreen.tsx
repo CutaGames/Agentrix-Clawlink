@@ -12,10 +12,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import type { SocialStackParamList } from '../../navigation/types';
+import type { ChatStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<SocialStackParamList, 'GroupChat'>;
-type Route = RouteProp<SocialStackParamList, 'GroupChat'>;
+type Nav = NativeStackNavigationProp<ChatStackParamList, 'GroupChat'>;
+type Route = RouteProp<ChatStackParamList, 'GroupChat'>;
 
 type GroupMessage = {
   id: string;

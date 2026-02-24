@@ -4,10 +4,15 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
-import type { SocialStackParamList } from '../../navigation/types';
+import type { SocialStackParamList, MainTabParamList } from '../../navigation/types';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { CompositeNavigationProp } from '@react-navigation/native';
 
 type RouteT = RouteProp<SocialStackParamList, 'UserProfile'>;
-type Nav = NativeStackNavigationProp<SocialStackParamList>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<SocialStackParamList, 'UserProfile'>,
+  BottomTabNavigationProp<MainTabParamList>
+>;
 
 export function UserProfileScreen() {
   const route = useRoute<RouteT>();
@@ -21,7 +26,7 @@ export function UserProfileScreen() {
       <Text style={styles.note}>Full user profile — coming in Phase 2</Text>
       <TouchableOpacity
         style={styles.dmBtn}
-        onPress={() => navigation.navigate('DMChat', { userId, userName: userId })}
+        onPress={() => navigation.navigate('Chat', { screen: 'DirectMessage', params: { userId, userName: userId } })}
       >
         <Text style={styles.dmBtnText}>✉️ Send Message</Text>
       </TouchableOpacity>

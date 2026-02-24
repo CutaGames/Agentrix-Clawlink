@@ -45,6 +45,9 @@ export type SocialStackParamList = {
   Feed: undefined;
   PostDetail: { postId: string };
   UserProfile: { userId: string };
+};
+
+export type ChatStackParamList = {
   ChatList: undefined;
   DirectMessage: { userId: string; userName: string; userAvatar?: string };
   GroupChat: { groupId: string; groupName: string };
@@ -65,6 +68,7 @@ export type MeStackParamList = {
 export type MainTabParamList = {
   Agent: undefined;
   Market: undefined;
+  Chat: undefined;
   Social: undefined;
   Me: undefined;
 };

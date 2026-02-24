@@ -12,10 +12,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import type { SocialStackParamList } from '../../navigation/types';
+import type { ChatStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<SocialStackParamList, 'DirectMessage'>;
-type Route = RouteProp<SocialStackParamList, 'DirectMessage'>;
+type Nav = NativeStackNavigationProp<ChatStackParamList, 'DirectMessage'>;
+type Route = RouteProp<ChatStackParamList, 'DirectMessage'>;
 
 type Message = {
   id: string;
