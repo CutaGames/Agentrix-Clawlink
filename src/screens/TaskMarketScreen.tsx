@@ -10,7 +10,6 @@ import {
   RefreshControl,
   TextInput,
   ScrollView,
-  Share,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +22,8 @@ import {
   TASK_TYPE_CONFIG,
   TASK_STATUS_CONFIG,
 } from '../services/taskMarketplace.api';
+import { referralApi } from '../services/referral.api';
+import { ShareBottomSheet } from '../components/ShareComponents';
 
 type SortMode = 'latest' | 'budget_high' | 'budget_low' | 'deadline';
 
@@ -143,6 +144,8 @@ export default function TaskMarketScreen() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
+  const [shareVisible, setShareVisible] = useState(false);
+  const [shareContent, setShareContent] = useState<{ title: string; message: string; url: string }>({ title: '', message: '', url: '' });
 
   // 对种子数据做客户端过滤/排序
   const getFilteredSeedTasks = useCallback(() => {
@@ -248,12 +251,25 @@ export default function TaskMarketScreen() {
     try {
       const budget = formatBudget(task.budget, task.currency);
       const typeConf = TASK_TYPE_CONFIG[task.type] || TASK_TYPE_CONFIG.other;
-      await Share.share({
-        message: `${typeConf.icon} ${task.title}\n\n💰 Bounty: ${budget}\n📝 ${task.description.slice(0, 120)}...\n\n🔗 Apply now on Agentrix Bounty Board\nhttps://agentrix.top/marketplace?tab=tasks&taskId=${task.id}`,
+      let url = `https://agentrix.top/marketplace?tab=tasks&taskId=${task.id}`;
+      try {
+        const link = await referralApi.createLink({
+          name: task.title,
+          targetType: 'product',
+          targetId: task.id,
+        });
+        if (link?.shortUrl) url = link.shortUrl;
+      } catch {
+        // Use default URL if referral link creation fails
+      }
+      setShareContent({
         title: task.title,
+        message: `${typeConf.icon} ${task.title}\n\n💰 Bounty: ${budget}\n📝 ${task.description.slice(0, 120)}...\n\n🔗 Apply now on Agentrix Bounty Board`,
+        url,
       });
+      setShareVisible(true);
     } catch {
-      // User cancelled
+      // silently ignore
     }
   };
 
@@ -436,11 +452,22 @@ export default function TaskMarketScreen() {
               <TouchableOpacity
                 style={styles.viralBanner}
                 activeOpacity={0.8}
-                onPress={() => {
-                  Share.share({
-                    message: '🎯 Agentrix Bounty Board — Earn crypto by completing tasks!\n\n💰 $200-$2000 bounties for content, dev, design & more\n🔗 https://agentrix.top/marketplace?tab=tasks',
+                onPress={async () => {
+                  let url = 'https://agentrix.top/marketplace?tab=tasks';
+                  try {
+                    const link = await referralApi.createLink({
+                      name: 'Agentrix Bounty Board',
+                      targetType: 'product',
+                      targetId: 'task-market',
+                    });
+                    if (link?.shortUrl) url = link.shortUrl;
+                  } catch { /* use default */ }
+                  setShareContent({
                     title: 'Agentrix Bounty Board',
+                    message: '🎯 Agentrix Bounty Board — Earn crypto by completing tasks!\n\n💰 $200-$2000 bounties for content, dev, design & more',
+                    url,
                   });
+                  setShareVisible(true);
                 }}
               >
                 <View style={styles.viralBannerContent}>
@@ -513,6 +540,14 @@ export default function TaskMarketScreen() {
         <Text style={styles.fabIcon}>+</Text>
         <Text style={styles.fabText}>Post Task</Text>
       </TouchableOpacity>
+
+      {/* Commission-tracked Share Bottom Sheet */}
+      <ShareBottomSheet
+        visible={shareVisible}
+        onClose={() => setShareVisible(false)}
+        title="分享任务 · 赚取佣金"
+        shareContent={shareContent}
+      />
     </SafeAreaView>
   );
 }
