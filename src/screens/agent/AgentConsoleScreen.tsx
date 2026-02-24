@@ -336,6 +336,7 @@ export function AgentConsoleScreen() {
           </View>
           <Text style={styles.downloadBannerArrow}>↓</Text>
         </TouchableOpacity>
+        </>
       )}
 
       {/* Skills Tab */}
