@@ -145,7 +145,17 @@ export function ConnectExistingScreen() {
     const url = instanceUrl.trim();
     setLoading(true);
     try {
-      const result = await bindOpenClaw({ instanceUrl: url, apiToken: apiToken.trim() || '' });
+      // Derive a safe name from probe discovery; fallback to hostname so the
+      // backend never receives a null on the NOT-NULL `name` column.
+      const derivedName =
+        probeResult?.instanceName ||
+        `OpenClaw-${url.replace(/^https?:\/\//, '').split('/')[0].replace(/[^a-zA-Z0-9.-]/g, '-')}`;
+      const result = await bindOpenClaw({
+        instanceUrl: url,
+        apiToken: apiToken.trim() || '',
+        instanceName: derivedName,
+        deployType: 'existing',
+      });
       const instance = {
         id: result.id,
         name: result.name || probeResult?.instanceName || 'My OpenClaw',

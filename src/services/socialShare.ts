@@ -1,4 +1,5 @@
-import { Share, Platform, Clipboard, Alert } from 'react-native';
+import { Share, Platform, Alert } from 'react-native';
+import * as ExpoClipboard from 'expo-clipboard';
 
 export interface ShareContent {
   title?: string;
@@ -55,14 +56,7 @@ class SocialShareService {
    */
   async copyToClipboard(text: string, showAlert: boolean = true): Promise<boolean> {
     try {
-      // React Native 0.76+ 使用新的 Clipboard API
-      if (typeof Clipboard !== 'undefined' && Clipboard.setString) {
-        Clipboard.setString(text);
-      } else {
-        // Fallback: 使用 @react-native-clipboard/clipboard
-        const ClipboardModule = require('@react-native-clipboard/clipboard').default;
-        ClipboardModule.setString(text);
-      }
+      await ExpoClipboard.setStringAsync(text);
       
       if (showAlert) {
         Alert.alert('已复制', '内容已复制到剪贴板');

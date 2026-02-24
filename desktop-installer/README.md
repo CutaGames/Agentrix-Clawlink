@@ -1,8 +1,45 @@
-# Agentrix OpenClaw AIO Installer
+# Agentrix Desktop Installer
 
-One-click install for the OpenClaw local agent — no technical knowledge required.
+Two versions depending on your setup. Both put a local OpenClaw agent on your machine and generate a QR / deep-link for mobile connection.
 
-## Quick Start
+---
+
+## Version Comparison
+
+| Feature | **Standard** | **AIO (All-in-One)** |
+|---------|-------------|---------------------|
+| Target user | Developers (Node.js already installed) | Non-technical users / clean machines |
+| Installs Node.js | ❌ (requires Node ≥18 pre-installed) | ✅ via nvm / winget |
+| Auto-start service | ❌ (manual start via script) | ✅ systemd / LaunchAgent / Task Scheduler |
+| Relay QR code | ✅ | ✅ |
+| Install size | ~5 MB | ~80 MB |
+
+---
+
+## Standard Edition (for developers)
+
+> **Requires Node.js ≥18** — download at https://nodejs.org
+
+### Linux / macOS
+```bash
+curl -fsSL https://cdn.agentrix.io/install-standard.sh | bash
+# or from source:
+bash install-standard.sh
+```
+
+### Windows (PowerShell)
+```powershell
+irm https://cdn.agentrix.io/install-standard.ps1 | iex
+# or from source:
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\install-standard.ps1
+```
+
+---
+
+## AIO Edition (for everyone — no prerequisites)
+
+One-click: installs Node.js runtime, OpenClaw agent, and starts a local Agentrix relay that generates a QR code for mobile connection.
 
 ### Linux / macOS
 ```bash
@@ -19,13 +56,12 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 .\install-aio.ps1
 ```
 
-## What it does
-1. Checks for Node.js ≥18 (installs if missing)
-2. Downloads the OpenClaw agent binary
-3. Generates a unique instance ID + connection token
-4. Shows QR code / deep-link URL for mobile app scanning
-5. Creates auto-start service (systemd on Linux, LaunchAgent on macOS, Task Scheduler on Windows)
-6. Starts the agent immediately (port 7474)
+---
+
+## What both versions do
+1. Generate a unique instance ID + connection token
+2. Show QR code / deep-link URL for mobile app scanning
+3. Start the OpenClaw agent (port 7474 by default)
 
 ## Mobile Connection
 After running the installer:
@@ -34,17 +70,13 @@ After running the installer:
 3. Tap **Import via QR** and scan, or paste the `agentrix://connect?...` URL
 4. Your local agent will appear as a connected instance
 
-## Manual Connection
-If QR scanning doesn't work, you can also enter:
-- **Host**: `localhost` (or your LAN IP for remote connections)
-- **Port**: `7474`
-- **Token**: shown during install (also saved in `~/.agentrix/config.json`)
-
 ## Files
 | File | Description |
 |------|-------------|
-| `install-aio.sh` | Linux/macOS installer |
-| `install-aio.ps1` | Windows PowerShell installer |
+| `install-standard.sh` | Standard Linux/macOS installer |
+| `install-standard.ps1` | Standard Windows installer |
+| `install-aio.sh` | AIO Linux/macOS installer (bundles Node.js) |
+| `install-aio.ps1` | AIO Windows installer (bundles Node.js) |
 | `~/.agentrix/config.json` | Instance config (Linux/macOS) |
 | `%APPDATA%\Agentrix\config.json` | Instance config (Windows) |
 

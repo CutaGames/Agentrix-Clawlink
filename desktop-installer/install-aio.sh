@@ -7,7 +7,7 @@
 # ============================================================
 set -euo pipefail
 
-AGENTRIX_VERSION="1.0.0"
+AGENTRIX_VERSION="1.1.0"
 OPENCLAW_PORT=7474
 RELAY_PORT=7475
 INSTALL_DIR="$HOME/.agentrix"

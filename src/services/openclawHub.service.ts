@@ -6,6 +6,16 @@
 import { apiFetch } from './api';
 import type { SkillItem } from './marketplace.api';
 
+// Official OpenClaw Hub public registry endpoints (tried in order)
+const OFFICIAL_HUB_URLS = [
+  'https://hub.openclaw.ai/api/v1/skills',
+  'https://registry.openclaw.ai/v1/skills',
+];
+
+// Simple TTL cache: refreshes once per hour per session
+let _hubCache: { items: OpenClawHubSkill[]; fetchedAt: number } | null = null;
+const HUB_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
 export interface OpenClawHubSkill {
   id: string;
   name: string;
@@ -109,46 +119,89 @@ function mapHubSkillToSkillItem(s: OpenClawHubSkill): SkillItem {
   };
 }
 
-export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promise<OpenClawHubSearchResponse> {
-  try {
-    const qs = new URLSearchParams();
-    if (params.q) qs.set('q', params.q);
-    if (params.category && params.category !== 'All') qs.set('category', params.category);
-    qs.set('limit', String(params.limit || 20));
-    qs.set('page', String(params.page || 1));
-
-    const data = await apiFetch<any>(`/openclaw/bridge/skill-hub?${qs}`);
-    const raw: OpenClawHubSkill[] = data.skills || data.items || [];
-    const items = raw.map(mapHubSkillToSkillItem);
-    return {
-      items,
-      total: data.total || items.length,
-      page: params.page || 1,
-      totalPages: Math.ceil((data.total || items.length) / (params.limit || 20)),
-    };
-  } catch {
-    // Backend skill hub not yet available — use rich placeholder
-    let list = [...HUB_PLACEHOLDER];
-    if (params.q) {
-      const q = params.q.toLowerCase();
-      list = list.filter(s =>
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        (s.tags ?? []).some(t => t.toLowerCase().includes(q))
-      );
+/** Attempt to fetch skills from the official OpenClaw Hub registry directly */
+async function fetchFromOfficialHub(): Promise<OpenClawHubSkill[]> {
+  for (const url of OFFICIAL_HUB_URLS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch(`${url}?limit=200`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      clearTimeout(timer);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const raw: OpenClawHubSkill[] = data.skills || data.items || data.data || [];
+      if (raw.length > 0) return raw;
+    } catch {
+      // try next URL
     }
-    if (params.category && params.category !== 'All') {
-      list = list.filter(s => s.category === params.category);
-    }
-    const page = params.page || 1;
-    const limit = params.limit || 20;
-    const start = (page - 1) * limit;
-    const items = list.slice(start, start + limit).map(mapHubSkillToSkillItem);
-    return {
-      items,
-      total: list.length,
-      page,
-      totalPages: Math.ceil(list.length / limit),
-    };
   }
+  return [];
+}
+
+/** Get hub skills — use backend bridge, fallback to direct hub, fallback to placeholder */
+async function getHubSkills(): Promise<OpenClawHubSkill[]> {
+  // Return cached if fresh
+  if (_hubCache && Date.now() - _hubCache.fetchedAt < HUB_CACHE_TTL_MS) {
+    return _hubCache.items;
+  }
+
+  // 1. Try backend bridge (GET /openclaw/bridge/skill-hub?limit=200)
+  try {
+    const data = await apiFetch<any>('/openclaw/bridge/skill-hub?limit=200');
+    const raw: OpenClawHubSkill[] = data.skills || data.items || [];
+    if (raw.length > 0) {
+      _hubCache = { items: raw, fetchedAt: Date.now() };
+      return raw;
+    }
+  } catch { /* fall through */ }
+
+  // 2. Try official OpenClaw Hub directly
+  const direct = await fetchFromOfficialHub();
+  if (direct.length > 0) {
+    _hubCache = { items: direct, fetchedAt: Date.now() };
+    return direct;
+  }
+
+  // 3. Use placeholder (cached so we don't keep retrying this session)
+  _hubCache = { items: HUB_PLACEHOLDER, fetchedAt: Date.now() - HUB_CACHE_TTL_MS + 5 * 60 * 1000 };
+  return HUB_PLACEHOLDER;
+}
+
+export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promise<OpenClawHubSearchResponse> {
+  const allSkills = await getHubSkills();
+  let list = [...allSkills];
+
+  // Client-side filter (works whether data came from API or placeholder)
+  if (params.q) {
+    const q = params.q.toLowerCase();
+    list = list.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q) ||
+      (s.tags ?? []).some(t => t.toLowerCase().includes(q))
+    );
+  }
+  if (params.category && params.category !== 'All') {
+    list = list.filter(s => s.category === params.category);
+  }
+
+  // Paginate
+  const page = params.page || 1;
+  const limit = params.limit || 20;
+  const start = (page - 1) * limit;
+  const items = list.slice(start, start + limit).map(mapHubSkillToSkillItem);
+
+  return {
+    items,
+    total: list.length,
+    page,
+    totalPages: Math.ceil(list.length / limit),
+  };
+}
+
+/** Force refresh hub cache (e.g. on pull-to-refresh) */
+export function invalidateHubCache(): void {
+  _hubCache = null;
 }
