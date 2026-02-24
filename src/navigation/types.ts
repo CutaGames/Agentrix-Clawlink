@@ -36,6 +36,7 @@ export type MarketStackParamList = {
   TaskMarket: undefined;
   TaskDetail: { taskId: string };
   PublishTask: undefined;
+  PostTask: undefined;
   CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };
   SkillInstall: { skillId: string; skillName: string };
 };

@@ -15,7 +15,6 @@ import { colors } from '../theme/colors';
 import { useAuthStore } from '../stores/authStore';
 import { apiFetch } from '../services/api';
 import { checkMPCWallet, ensureMPCWallet } from '../services/mpcWallet';
-import { isAppInstalled } from '../services/auth';
 
 interface SocialAccount {
   id: string;
