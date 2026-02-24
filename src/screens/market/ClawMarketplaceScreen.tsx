@@ -103,7 +103,11 @@ export function ClawMarketplaceScreen() {
               <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
               <View style={styles.skillFooter}>
                 <Text style={styles.skillPrice}>
-                  {skill.price === 0 ? 'Free' : `$${skill.price}`}
+                  {skill.price == null
+                    ? skill.tokenCost == null
+                      ? 'Free'
+                      : skill.tokenCost === 0 ? 'Free' : `${skill.tokenCost} tokens`
+                    : skill.price === 0 ? 'Free' : `$${skill.price}`}
                 </Text>
                 <View style={styles.ratingRow}>
                   <Text style={styles.ratingText}>⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}</Text>

@@ -13,6 +13,7 @@ import { fetchQuotaStatus, PLAN_LABEL, PLAN_COLOR } from '../../services/token-q
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
+import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
@@ -31,7 +32,9 @@ export function AgentConsoleScreen() {
   const instances = rawInstances ?? [];
   const { setActiveInstance } = useAuthStore.getState();
   const [tab, setTab] = useState<'overview' | 'skills' | 'tasks'>('overview');
-  const [selectedModel, setSelectedModel] = useState('DeepSeek-V3 (Official)');
+  const selectedModelId = useSettingsStore((s) => s.selectedModelId);
+  const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const selectedModelLabel = SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId;
 
   const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
@@ -150,15 +153,15 @@ export function AgentConsoleScreen() {
         <TouchableOpacity 
           style={styles.modelSelector}
           onPress={() => {
-            Alert.alert('Select Engine', 'Choose the AI model for your agent', [
-              { text: 'DeepSeek-V3 (Official)', onPress: () => setSelectedModel('DeepSeek-V3 (Official)') },
-              { text: 'GPT-4o (Custom API)', onPress: () => setSelectedModel('GPT-4o (Custom API)') },
-              { text: 'Claude 3.5 (Custom API)', onPress: () => setSelectedModel('Claude 3.5 (Custom API)') },
-              { text: 'Cancel', style: 'cancel' }
-            ]);
+            Alert.alert('Select Engine', 'Choose the AI model for your agent',
+              [
+                ...SUPPORTED_MODELS.map((m) => ({ text: m.label, onPress: () => setSelectedModel(m.id) })),
+                { text: 'Cancel', style: 'cancel' as const },
+              ]
+            );
           }}
         >
-          <Text style={styles.modelSelectorText}>{selectedModel}</Text>
+          <Text style={styles.modelSelectorText}>{selectedModelLabel}</Text>
           <Text style={styles.modelSelectorArrow}>▼</Text>
         </TouchableOpacity>
       </View>

@@ -123,6 +123,14 @@ export function FeedScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header with Chat button */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Community</Text>
+        <TouchableOpacity style={styles.chatBtn} onPress={() => (navigation as any).navigate('ChatList')}>
+          <Text style={styles.chatBtnText}>💬 Chats</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Feed Tabs */}
       <View style={styles.tabs}>
         {FEED_TABS.map((t) => (
@@ -156,6 +164,10 @@ export function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
+  chatBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.accent + '22', borderRadius: 16, borderWidth: 1, borderColor: colors.accent },
+  chatBtnText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   tabs: { flexDirection: 'row', gap: 4, padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center', backgroundColor: colors.bgCard },
   tabActive: { backgroundColor: colors.accent + '22', borderWidth: 1, borderColor: colors.accent },

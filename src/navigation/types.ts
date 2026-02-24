@@ -23,18 +23,10 @@ export type AgentStackParamList = {
   MemoryManagement: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
-  // Connect/Deploy
-  DeploySelect: undefined;
-  CloudDeploy: undefined;
-  ConnectExisting: undefined;
-  LocalDeploy: undefined;
-  SocialBind: { instanceId: string; platform?: 'telegram' };
   // Layer 2
   VoiceChat: { instanceId?: string };
   TeamSpace: undefined;
   TeamInvite: { workspaceId: string; workspaceName: string };
-  // Agent Accounts
-  AgentAccount: undefined;
 };
 
 export type MarketStackParamList = {
@@ -47,9 +39,9 @@ export type SocialStackParamList = {
   Feed: undefined;
   PostDetail: { postId: string };
   UserProfile: { userId: string };
-  CreatePost: undefined;
-  DMList: undefined;
-  DMChat: { userId: string; userName?: string; userAvatar?: string };
+  ChatList: undefined;
+  DirectMessage: { userId: string; userName: string; userAvatar?: string };
+  GroupChat: { groupId: string; groupName: string };
 };
 
 export type MeStackParamList = {
@@ -59,6 +51,7 @@ export type MeStackParamList = {
   Account: undefined;
   MySkills: undefined;
   MyOrders: undefined;
+  WalletConnect: undefined;
   NotificationCenter: undefined;
   ShareCard: { shareUrl: string; title?: string; userName?: string };
 };

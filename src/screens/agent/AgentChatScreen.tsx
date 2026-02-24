@@ -1,31 +1,23 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
-  ScrollView,
+  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView,
 } from 'react-native';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { sendAgentMessage } from '../../services/openclaw.service';
-import { streamProxyChatSSE } from '../../services/realtime.service';
+import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
+import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { API_BASE } from '../../config/env';
+import { useTokenQuota } from '../../hooks/useTokenQuota';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
 
-type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
-type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentChat'>;
+// expo-av: graceful degrade if missing
+let Audio: any = null;
+try { Audio = require('expo-av').Audio; } catch (_) {}
 
-// Available models — all routed through OpenClaw proxy
-const MODELS = [
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', emoji: '⚡', provider: 'aws_bedrock' },
-  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet', emoji: '🤖', provider: 'aws_bedrock' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', emoji: '🟢', provider: 'openai' },
-  { id: 'gpt-4o', label: 'GPT-4o', emoji: '🟢', provider: 'openai' },
-  { id: 'gemini-2.0-flash', label: 'Gemini Flash', emoji: '🔵', provider: 'google' },
-  { id: 'deepseek-v3', label: 'DeepSeek V3', emoji: '🟣', provider: 'deepseek' },
-];
+type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
 interface Message {
   id: string;
@@ -100,19 +92,16 @@ const MessageBubble = ({ item }: { item: Message }) => {
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
-  const navigation = useNavigation<Nav>();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
   const token = useAuthStore.getState().token || '';
+  const selectedModelId = useSettingsStore((s) => s.selectedModelId);
+  const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const streamAbortRef = useRef<AbortController | null>(null);
-
-  // Model selection (default to Claude Haiku 4.5 via Bedrock)
-  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
-  // Session token tracking (estimated: ~4 chars per token)
-  const [sessionTokens, setSessionTokens] = useState(0);
+  const recordingRef = useRef<any>(null);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -125,7 +114,16 @@ export function AgentChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  // Token quota for energy bar
+  const { data: quota } = useTokenQuota();
+  const used = quota?.usedTokens ?? 0;
+  const total = quota?.totalQuota ?? 100000;
+  const tokenPct = quota?.energyLevel ?? (total > 0 ? Math.min(100, (used / total) * 100) : 0);
+  const tokenBarColor = tokenPct > 80 ? '#ef4444' : tokenPct > 50 ? '#f59e0b' : '#22c55e';
 
   // Load chat history on mount
   useEffect(() => {
@@ -190,6 +188,15 @@ export function AgentChatScreen() {
     );
   };
 
+  // Build conversation history for Claude direct fallback
+  const buildHistory = (msgs: Message[], newText: string) =>
+    [
+      ...msgs
+        .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      { role: 'user' as const, content: newText },
+    ];
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
@@ -208,56 +215,60 @@ export function AgentChatScreen() {
       content: '',
       streaming: true,
       createdAt: Date.now(),
-      thoughts: ['Analyzing request...'], // Initial thought
     };
 
+    // Capture current messages before state update for history
+    const currentMsgs = messages;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
     setSending(true);
-
-    // Abort any previous stream
     streamAbortRef.current?.abort();
 
     try {
       await Haptics.selectionAsync();
 
       let streamSucceeded = false;
-      await new Promise<void>((resolve) => {
-        const ac = streamProxyChatSSE({
-          instanceId,
-          message: text,
-          sessionId: sessionIdRef.current,
-          token,
-          model: selectedModel,
-          onChunk: (chunk) => {
-            streamSucceeded = true;
-            appendToStreamingMessage(assistantMsgId, chunk);
-            // Estimate token usage: ~4 chars per token
-            setSessionTokens((t) => t + Math.ceil(chunk.length / 4));
-          },
-          onDone: () => resolve(),
-          onError: () => resolve(), // resolve so we can fall back
+
+      // Try OpenClaw proxy first (requires active instance)
+      if (instanceId) {
+        await new Promise<void>((resolve) => {
+          const ac = streamProxyChatSSE({
+            instanceId,
+            message: text,
+            sessionId: sessionIdRef.current,
+            token,
+            model: selectedModelId,
+            onChunk: (chunk) => {
+              streamSucceeded = true;
+              appendToStreamingMessage(assistantMsgId, chunk);
+            },
+            onDone: () => resolve(),
+            onError: () => resolve(),
+          });
+          streamAbortRef.current = ac;
         });
-        streamAbortRef.current = ac;
-      });
+      }
 
       if (!streamSucceeded) {
-        // HTTP fallback via non-streaming endpoint
-        const result = await sendAgentMessage(instanceId, text);
-        const replyContent = (result as any)?.reply?.content
-          || (result as any)?.message
-          || (result as any)?.content
-          || 'Could not reach agent. Check your connection.';
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsgId ? { ...m, content: replyContent, streaming: false } : m
-          )
-        );
-      } else {
-        setMessages((prev) =>
-          prev.map((m) => m.id === assistantMsgId ? { ...m, streaming: false } : m)
-        );
+        // Fallback: direct Claude via backend Bedrock key (always available)
+        const history = buildHistory(currentMsgs, text);
+        await new Promise<void>((resolve) => {
+          const ac = streamDirectClaude({
+            messages: history,
+            token,
+            model: selectedModelId,
+            sessionId: sessionIdRef.current,
+            onChunk: (chunk) => appendToStreamingMessage(assistantMsgId, chunk),
+            onDone: () => resolve(),
+            onError: () => resolve(),
+          });
+          streamAbortRef.current = ac;
+        });
       }
+
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantMsgId ? { ...m, streaming: false } : m))
+      );
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -272,6 +283,57 @@ export function AgentChatScreen() {
     }
   };
 
+  // Voice recording
+  const handleVoicePress = async () => {
+    if (!Audio) {
+      Alert.alert('Not available', 'Voice input requires expo-av package.');
+      return;
+    }
+    try {
+      if (isRecording) {
+        // Stop and transcribe
+        setIsRecording(false);
+        if (recordingRef.current) {
+          await recordingRef.current.stopAndUnloadAsync();
+          const uri = recordingRef.current.getURI();
+          recordingRef.current = null;
+          if (uri) {
+            try {
+              const formData = new FormData();
+              formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+              const resp = await fetch(`${API_BASE}/voice/transcribe`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+              });
+              if (resp.ok) {
+                const data = await resp.json();
+                const transcript = data?.text || data?.transcript || '';
+                if (transcript) setInput((prev) => (prev ? prev + ' ' + transcript : transcript));
+              }
+            } catch {
+              Alert.alert('Transcription failed', 'Could not convert audio to text.');
+            }
+          }
+        }
+      } else {
+        // Start recording
+        await Audio.requestPermissionsAsync();
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        recordingRef.current = recording;
+        setIsRecording(true);
+      }
+    } catch (e: any) {
+      setIsRecording(false);
+      Alert.alert('Voice error', e?.message || 'Unknown error');
+    }
+  };
+
+  const openModelPicker = () => setShowModelPicker(true);
+
   const handleClearChat = () => {
     Alert.alert('Start new session?', 'Chat history will be cleared.', [
       { text: 'Cancel', style: 'cancel' },
@@ -281,7 +343,6 @@ export function AgentChatScreen() {
         onPress: () => {
           streamAbortRef.current?.abort();
           sessionIdRef.current = `session-${Date.now()}`;
-          setSessionTokens(0);
           setMessages([{
             id: 'welcome',
             role: 'assistant',
@@ -307,38 +368,21 @@ export function AgentChatScreen() {
       <View style={styles.chatBar}>
         <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          {sessionTokens > 0 && (
-            <View style={styles.tokenBadge}>
-              <Text style={styles.tokenBadgeText}>⚡ {sessionTokens > 1000 ? `${(sessionTokens/1000).toFixed(1)}k` : sessionTokens} tkn</Text>
-            </View>
-          )}
+          <TouchableOpacity onPress={openModelPicker} style={styles.modelBtn}>
+            <Text style={styles.modelBtnText} numberOfLines={1}>
+              {SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
-            <Text style={styles.chatBarBtnText}>New session</Text>
+            <Text style={styles.chatBarBtnText}>New</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Model Selector */}
-      <View style={styles.modelSelectorRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12, paddingVertical: 6 }}>
-          {MODELS.map((m) => (
-            <TouchableOpacity
-              key={m.id}
-              style={[styles.modelPill, selectedModel === m.id && styles.modelPillActive]}
-              onPress={() => setSelectedModel(m.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.modelPillText, selectedModel === m.id && styles.modelPillTextActive]}>
-                {m.emoji} {m.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        {sessionTokens > 0 && (
-          <View style={styles.tokenBar}>
-            <View style={[styles.tokenBarFill, { width: `${Math.min((sessionTokens / 4000) * 100, 100)}%` as any }]} />
-          </View>
-        )}
+      {/* Compact token energy bar */}
+      <View style={styles.tokenBar}>
+        <View style={[styles.tokenBarFill, { width: `${tokenPct}%` as any, backgroundColor: tokenBarColor }]} />
+        <Text style={styles.tokenBarLabel}>{used.toLocaleString()} / {total.toLocaleString()} tokens</Text>
       </View>
 
       {loadingHistory && (
@@ -358,15 +402,13 @@ export function AgentChatScreen() {
         onContentSizeChange={scrollToBottom}
       />
 
-      {/* Input */}
+      {/* Input row with voice button */}
       <View style={styles.inputRow}>
-        {/* Voice mic button */}
         <TouchableOpacity
-          style={styles.micBtn}
-          onPress={() => navigation.navigate('VoiceChat', { instanceId })}
-          activeOpacity={0.7}
+          style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
+          onPress={handleVoicePress}
         >
-          <Text style={styles.micIcon}>🎤</Text>
+          <Text style={styles.voiceBtnIcon}>{isRecording ? '⏹' : '🎤'}</Text>
         </TouchableOpacity>
         <TextInput
           style={styles.input}
@@ -392,6 +434,27 @@ export function AgentChatScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Model picker modal */}
+      <Modal visible={showModelPicker} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
+          <View style={styles.modelSheet}>
+            <Text style={styles.modelSheetTitle}>Select Model</Text>
+            <ScrollView>
+              {SUPPORTED_MODELS.map((m) => (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.modelOption, m.id === selectedModelId && styles.modelOptionActive]}
+                  onPress={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
+                >
+                  <Text style={styles.modelOptionLabel}>{m.label}</Text>
+                  {m.id === selectedModelId && <Text style={styles.modelOptionCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -411,18 +474,6 @@ const styles = StyleSheet.create({
   chatBarTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 15 },
   chatBarBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.bgSecondary },
   chatBarBtnText: { color: colors.textMuted, fontSize: 12 },
-  tokenBadge: { backgroundColor: colors.accent + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  tokenBadgeText: { color: colors.accent, fontSize: 11, fontWeight: '700' },
-  modelSelectorRow: { backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  modelPill: {
-    backgroundColor: colors.bgSecondary, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  modelPillActive: { borderColor: colors.accent, backgroundColor: colors.accent + '22' },
-  modelPillText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  modelPillTextActive: { color: colors.accent },
-  tokenBar: { height: 2, backgroundColor: colors.bgSecondary, marginHorizontal: 12, marginBottom: 6, borderRadius: 1, overflow: 'hidden' },
-  tokenBarFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 1 },
   historyLoader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, justifyContent: 'center' },
   historyLoaderText: { color: colors.textMuted, fontSize: 13 },
   messageList: { padding: 16, paddingBottom: 8, gap: 12 },
@@ -457,14 +508,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    gap: 8,
+    gap: 10,
   },
-  micBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: colors.bgCard, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border,
-  },
-  micIcon: { fontSize: 18 },
   input: {
     flex: 1,
     backgroundColor: colors.bgCard,
@@ -487,6 +532,40 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
   sendIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  voiceBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.bgCard,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border,
+  },
+  voiceBtnActive: { backgroundColor: '#ef444433', borderColor: '#ef4444' },
+  voiceBtnIcon: { fontSize: 18 },
+  tokenBar: {
+    height: 18, backgroundColor: colors.bgSecondary,
+    flexDirection: 'row', alignItems: 'center', overflow: 'hidden', position: 'relative',
+  },
+  tokenBarFill: { position: 'absolute', left: 0, top: 0, bottom: 0, opacity: 0.35 },
+  tokenBarLabel: { fontSize: 10, color: colors.textMuted, paddingHorizontal: 8, zIndex: 1 },
+  modelBtn: {
+    paddingVertical: 3, paddingHorizontal: 8, borderRadius: 8,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border,
+    maxWidth: 140,
+  },
+  modelBtnText: { color: colors.accent, fontSize: 11, fontWeight: '600' },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000077' },
+  modelSheet: {
+    backgroundColor: colors.bgCard, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    paddingTop: 16, paddingBottom: 32, maxHeight: '60%',
+  },
+  modelSheetTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 16, textAlign: 'center', marginBottom: 12 },
+  modelOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, paddingHorizontal: 20,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  modelOptionActive: { backgroundColor: colors.bgSecondary },
+  modelOptionLabel: { color: colors.textPrimary, fontSize: 15 },
+  modelOptionCheck: { color: colors.accent, fontSize: 16, fontWeight: '700' },
   thoughtContainer: {
     backgroundColor: colors.bgSecondary,
     borderRadius: 12,

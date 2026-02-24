@@ -13,6 +13,7 @@ type Nav = NativeStackNavigationProp<MeStackParamList, 'Profile'>;
 
 const MENU_ITEMS = [
   { id: 'referral', icon: '🎁', label: 'Referrals & Earnings', route: 'ReferralDashboard' },
+  { id: 'wallet', icon: '💰', label: 'Wallet & Assets', route: 'WalletConnect' },
   { id: 'skills', icon: '⚡', label: 'My Skills', route: 'MySkills' },
   { id: 'orders', icon: '📦', label: 'My Orders', route: 'MyOrders' },
   { id: 'account', icon: '🔐', label: 'Account', route: 'Account' },
