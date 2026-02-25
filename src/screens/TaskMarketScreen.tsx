@@ -494,25 +494,27 @@ export default function TaskMarketScreen() {
       )}
 
       {/* Type Filter Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterContent}
-      >
-        {TYPE_FILTERS.map(f => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterTab, typeFilter === f.key && styles.filterTabActive]}
-            onPress={() => setTypeFilter(f.key)}
-          >
-            <Text style={styles.filterIcon}>{f.icon}</Text>
-            <Text style={[styles.filterText, typeFilter === f.key && styles.filterTextActive]}>
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.filterScrollWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterContent}
+        >
+          {TYPE_FILTERS.map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterTab, typeFilter === f.key && styles.filterTabActive]}
+              onPress={() => setTypeFilter(f.key)}
+            >
+              <Text style={styles.filterIcon}>{f.icon}</Text>
+              <Text style={[styles.filterText, typeFilter === f.key && styles.filterTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* Sort + Search Toggle */}
       <View style={styles.sortRow}>
@@ -640,7 +642,8 @@ const styles = StyleSheet.create({
   searchBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   searchCancel: { color: colors.muted, fontSize: 14, paddingHorizontal: 4 },
   // Filters
-  filterScroll: { backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
+  filterScrollWrapper: { height: 48, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
+  filterScroll: { flexGrow: 0 },
   filterContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   filterTab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.bg, gap: 4, borderWidth: 1, borderColor: colors.border },
   filterTabActive: { backgroundColor: colors.primary + '20', borderColor: colors.primary },

@@ -6,6 +6,8 @@ import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { marketplaceApi } from '../../services/marketplace.api';
+import { getHubSkillDetail } from '../../services/openclawHub.service';
 import type { MarketStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Checkout'>;
@@ -17,9 +19,15 @@ export function CheckoutScreen() {
   const { skillId, skillName } = route.params;
   const [paying, setPaying] = useState(false);
 
-  const { data: skill } = useQuery({
+  const { data: skill } = useQuery<any>({
     queryKey: ['skill', skillId],
-    queryFn: () => apiFetch<any>(`/unified-marketplace/skills/${skillId}`),
+    queryFn: async () => {
+      if (skillId.startsWith('oc-') || skillId.startsWith('s')) {
+        const hubSkill = await getHubSkillDetail(skillId);
+        if (hubSkill) return hubSkill;
+      }
+      return marketplaceApi.getDetail(skillId);
+    },
     enabled: !!skillId,
   });
 
@@ -44,7 +52,7 @@ export function CheckoutScreen() {
   };
 
   const price = skill?.pricing?.pricePerCall ?? skill?.price ?? 0;
-  const currency = skill?.pricing?.currency ?? 'USD';
+  const currency = skill?.pricing?.currency ?? skill?.priceUnit ?? 'USD';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -52,7 +60,7 @@ export function CheckoutScreen() {
 
       {/* Order Summary */}
       <View style={styles.orderCard}>
-        <Text style={styles.orderIcon}>{skill?.icon || (skill?.layer === 'resource' ? '📦' : '⚡')}</Text>
+        <Text style={styles.orderIcon}>{skill?.icon || (skill?.category === 'resources' ? '📦' : '⚡')}</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.orderName}>{skillName || skill?.displayName || skill?.name}</Text>
           <Text style={styles.orderMeta}>One-time purchase / Subscribe</Text>

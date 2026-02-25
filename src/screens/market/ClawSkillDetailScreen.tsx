@@ -8,7 +8,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
-import { apiFetch } from '../../services/api';
+import { marketplaceApi } from '../../services/marketplace.api';
+import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
 import type { MarketStackParamList } from '../../navigation/types';
@@ -26,16 +27,23 @@ export function ClawSkillDetailScreen() {
 
   const { data: skill, isLoading } = useQuery({
     queryKey: ['skill', skillId],
-    queryFn: () => apiFetch<any>(`/unified-marketplace/skills/${skillId}`),
+    queryFn: async () => {
+      if (skillId.startsWith('oc-') || skillId.startsWith('s')) {
+        const hubSkill = await getHubSkillDetail(skillId);
+        if (hubSkill) return hubSkill;
+      }
+      return marketplaceApi.getDetail(skillId);
+    },
     enabled: !!skillId,
   });
 
   const handleShare = () => {
     if (!skill) return;
+    const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || 'ClawLink Creator';
     navigation.navigate('ShareCard', {
       shareUrl: `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
       title: skill.displayName || skill.name,
-      userName: skill.authorInfo?.name || 'ClawLink Creator'
+      userName: authorName
     });
   };
 
@@ -54,7 +62,7 @@ export function ClawSkillDetailScreen() {
       Alert.alert('✅ Installed!', `${skill?.name} has been installed to ${activeInstance.name}`);
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
-      if (msg.includes('payment') || msg.includes('balance')) {
+      if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {
         navigation.navigate('Checkout', { skillId, skillName: skill?.name });
       } else {
         Alert.alert('Install Failed', msg);
@@ -80,14 +88,17 @@ export function ClawSkillDetailScreen() {
     );
   }
 
+  const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || 'Unknown';
+  const isResource = skill.category === 'resources' || skill.category === 'resources'; // wait, it might be in subCategory
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Hero */}
       <View style={styles.hero}>
-        <Text style={styles.heroIcon}>{skill.icon || '⚡'}</Text>
+        <Text style={styles.heroIcon}>{skill.icon || (skill.category === 'resources' ? '📦' : '⚡')}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.heroName}>{skill.name}</Text>
-          <Text style={styles.heroAuthor}>by {skill.author?.nickname || skill.vendorName || 'Unknown'}</Text>
+          <Text style={styles.heroName}>{skill.name || skill.displayName}</Text>
+          <Text style={styles.heroAuthor}>by {authorName}</Text>
         </View>
       </View>
 
@@ -98,7 +109,7 @@ export function ClawSkillDetailScreen() {
           <Text style={styles.statLbl}>Rating</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statVal}>{skill.installCount || 0}</Text>
+          <Text style={styles.statVal}>{skill.installCount || skill.usageCount || 0}</Text>
           <Text style={styles.statLbl}>Installs</Text>
         </View>
         <View style={styles.stat}>
@@ -110,7 +121,7 @@ export function ClawSkillDetailScreen() {
       {/* Description */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>About</Text>
-        <Text style={styles.description}>{skill.description || 'No description available.'}</Text>
+        <Text style={styles.description}>{skill.longDescription || skill.description || 'No description available.'}</Text>
       </View>
 
       {/* What it does */}
@@ -146,12 +157,13 @@ export function ClawSkillDetailScreen() {
           ) : (
             <Text style={styles.installBtnText}>
               {!activeInstance ? '🔗 Connect Agent First' :
+               skill.category === 'resources' ? `💳 Buy Access ($${skill.price || 0})` :
                skill.price === 0 ? '⚡ Install to Agent (Free)' : `💳 Buy & Install ($${skill.price})`}
             </Text>
           )}
         </TouchableOpacity>
 
-        {activeInstance && (
+        {activeInstance && skill.category !== 'resources' && (
           <Text style={styles.installTarget}>
             → Will be installed to: {activeInstance.name}
           </Text>

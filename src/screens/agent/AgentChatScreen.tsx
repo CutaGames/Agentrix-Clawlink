@@ -232,8 +232,8 @@ export function AgentChatScreen() {
       { role: 'user' as const, content: newText },
     ];
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (overrideText?: string | any) => {
+    const text = (typeof overrideText === 'string' ? overrideText : input).trim();
     if (!text || sending) return;
 
     const userMsg: Message = {
@@ -329,7 +329,7 @@ export function AgentChatScreen() {
   };
 
   // Voice recording — called on both onPressIn (start) and onPressOut (stop)
-  const handleVoicePress = async () => {
+  const handleVoicePressIn = async () => {
     if (!Audio) {
       Alert.alert('Voice input', 'Install expo-av to enable voice input, or type your message.');
       return;
@@ -349,45 +349,54 @@ export function AgentChatScreen() {
         );
         recordingRef.current = recording;
         setIsRecording(true);
-      } else {
-        // STOP and transcribe
-        isRecordingRef.current = false;
-        setIsRecording(false);
-        if (recordingRef.current) {
-          await recordingRef.current.stopAndUnloadAsync();
-          const uri = recordingRef.current.getURI();
-          recordingRef.current = null;
-          if (uri) {
-            try {
-              const formData = new FormData();
-              formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
-              const resp = await fetch(`${API_BASE}/voice/transcribe`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
-                signal: (() => { const _acV = new AbortController(); setTimeout(() => _acV.abort(), 20_000); return _acV.signal; })(),
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                const transcript = data?.text || data?.transcript || '';
-                if (transcript) {
-                  // Auto-send voice message
-                  setInput(transcript);
-                  setTimeout(() => handleSend(), 100);
-                }
-              } else {
-                Alert.alert('Transcription failed', 'Could not convert audio to text. Try typing instead.');
+      }
+    } catch (e: any) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      Alert.alert('Voice error', e?.message || 'Unknown error starting recording');
+    }
+  };
+
+  const handleVoicePressOut = async () => {
+    if (!Audio || !isRecordingRef.current) return;
+    try {
+      // STOP and transcribe
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI();
+        recordingRef.current = null;
+        if (uri) {
+          try {
+            const formData = new FormData();
+            formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+            const resp = await fetch(`${API_BASE}/voice/transcribe`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: formData,
+              signal: (() => { const _acV = new AbortController(); setTimeout(() => _acV.abort(), 20_000); return _acV.signal; })(),
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              const transcript = data?.text || data?.transcript || '';
+              if (transcript) {
+                // Auto-send voice message
+                setInput(transcript);
+                setTimeout(() => handleSend(transcript), 100);
               }
-            } catch {
-              Alert.alert('Voice error', 'Could not reach transcription service. Try typing instead.');
+            } else {
+              Alert.alert('Transcription failed', 'Could not convert audio to text. Try typing instead.');
             }
+          } catch {
+            Alert.alert('Voice error', 'Could not reach transcription service. Try typing instead.');
           }
         }
       }
     } catch (e: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
-      Alert.alert('Voice error', e?.message || 'Unknown error');
+      Alert.alert('Voice error', e?.message || 'Unknown error stopping recording');
     }
   };
 
@@ -476,8 +485,8 @@ export function AgentChatScreen() {
           /* Voice mode: hold-to-talk button */
           <TouchableOpacity
             style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-            onPressIn={handleVoicePress}
-            onPressOut={handleVoicePress}
+            onPressIn={handleVoicePressIn}
+            onPressOut={handleVoicePressOut}
             activeOpacity={0.85}
           >
             <Text style={styles.holdTalkText}>
@@ -495,7 +504,7 @@ export function AgentChatScreen() {
             multiline
             maxLength={4000}
             returnKeyType="send"
-            onSubmitEditing={handleSend}
+            onSubmitEditing={() => handleSend()}
             blurOnSubmit={false}
           />
         )}
@@ -503,7 +512,7 @@ export function AgentChatScreen() {
         {/* Right: send button */}
         <TouchableOpacity
           style={[styles.sendBtn, ((!input.trim() && !isRecording) || sending) && styles.sendBtnDisabled]}
-          onPress={handleSend}
+          onPress={() => handleSend()}
           disabled={(!input.trim() && !isRecording) || sending}
         >
           {sending ? (

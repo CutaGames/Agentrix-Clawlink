@@ -151,8 +151,25 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
   const baseUrl = getBackendBaseUrl();
   const callbackUrl = getMobileCallbackUrl();
 
+  // Telegram native app override: Try deep linking to Telegram app for auth if installed
+  if (provider === 'telegram') {
+    try {
+      const tgScheme = 'tg://';
+      const isTgInstalled = await Linking.canOpenURL(tgScheme);
+      if (isTgInstalled) {
+        console.log('[Auth] Telegram app installed, attempting native auth flow...');
+        // Instead of opening WebBrowser first, we can ask the backend for the bot username
+        // or just let WebBrowser open the backend URL which immediately redirects to tg://resolve
+        // Expo WebBrowser supports redirecting to native apps if the server responds with a 302 to a custom scheme.
+      }
+    } catch (e) {
+      console.warn('[Auth] Failed to check Telegram installation', e);
+    }
+  }
+
   // 将 redirect_uri 传给后端，让后端知道 OAuth 完成后重定向到哪里
-  const entryUrl = `${baseUrl}/auth/mobile/${provider}?redirect_uri=${encodeURIComponent(callbackUrl)}`;
+  const isTgNative = provider === 'telegram' && await Linking.canOpenURL('tg://').catch(() => false);
+  const entryUrl = `${baseUrl}/auth/mobile/${provider}?redirect_uri=${encodeURIComponent(callbackUrl)}${isTgNative ? '&native=1' : ''}`;
 
   console.log(`[Auth] Starting ${providerName} login`);
   console.log(`[Auth] Entry URL: ${entryUrl}`);

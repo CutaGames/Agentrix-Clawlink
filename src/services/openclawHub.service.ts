@@ -193,6 +193,13 @@ export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promis
   };
 }
 
+export async function getHubSkillDetail(id: string): Promise<SkillItem | null> {
+  const allSkills = await getHubSkills();
+  const skill = allSkills.find(s => s.id === id);
+  if (!skill) return null;
+  return mapHubSkillToSkillItem(skill);
+}
+
 /** Force refresh hub cache (e.g. on pull-to-refresh) */
 export function invalidateHubCache(): void {
   _hubCache = null;
