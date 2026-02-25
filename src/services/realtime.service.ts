@@ -4,7 +4,7 @@
  *
  * Two chat paths:
  *  1. streamProxyChatSSE  — SSE via /openclaw/proxy/:id/stream (requires active OpenClaw instance)
- *  2. directClaudeChat    — POST /gemini/chat (backend Gemini API, always available)
+ *  2. directClaudeChat    — POST /claude/chat (backend AWS Bedrock fallback, always available)
  */
 import { API_BASE } from '../config/env';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -90,7 +90,7 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
   return ac;
 }
 
-// ─── Direct Gemini fallback (backend Gemini API, no OpenClaw needed) ────────────
+// ─── Direct Claude/Bedrock fallback (backend AWS Bedrock, no OpenClaw needed) ────────
 
 export interface DirectChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -100,22 +100,21 @@ export interface DirectChatMessage {
 export interface DirectClaudeOptions {
   messages: DirectChatMessage[];
   token: string;
-  /** Gemini model override, defaults to 'gemini-1.5-flash' */
+  /** Claude model override, defaults to 'claude-3-haiku' (Bedrock) */
   model?: string;
   sessionId?: string;
 }
 
 /**
- * Call POST /gemini/chat on the main backend.
- * Uses the server's own Gemini API key — always works for cloud/new users
- * who don't have an active OpenClaw instance yet.
+ * Call POST /claude/chat on the main backend.
+ * Uses AWS Bedrock (claude-3-haiku) — always available as fallback.
  */
 export async function directClaudeChat(opts: DirectClaudeOptions): Promise<string> {
   const _ac = new AbortController();
   const _t = setTimeout(() => _ac.abort(), 45_000);
   let resp: Response;
   try {
-    resp = await fetch(`${API_BASE}/gemini/chat`, {
+    resp = await fetch(`${API_BASE}/claude/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -125,7 +124,7 @@ export async function directClaudeChat(opts: DirectClaudeOptions): Promise<strin
         messages: opts.messages,
         context: { sessionId: opts.sessionId },
         options: {
-          model: opts.model || 'gemini-1.5-flash',
+          model: opts.model || 'claude-3-haiku',
           maxTokens: 2048,
         },
       }),
