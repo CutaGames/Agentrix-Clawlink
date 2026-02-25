@@ -141,31 +141,23 @@ async function fetchFromOfficialHub(): Promise<OpenClawHubSkill[]> {
   return [];
 }
 
-/** Get hub skills — use backend bridge, fallback to direct hub, fallback to placeholder */
+/** Get hub skills — try official hub directly first, fallback to curated placeholder */
 async function getHubSkills(): Promise<OpenClawHubSkill[]> {
   // Return cached if fresh
   if (_hubCache && Date.now() - _hubCache.fetchedAt < HUB_CACHE_TTL_MS) {
     return _hubCache.items;
   }
 
-  // 1. Try backend bridge (GET /openclaw/bridge/skill-hub?limit=200)
-  try {
-    const data = await apiFetch<any>('/openclaw/bridge/skill-hub?limit=200');
-    const raw: OpenClawHubSkill[] = data.skills || data.items || [];
-    if (raw.length > 0) {
-      _hubCache = { items: raw, fetchedAt: Date.now() };
-      return raw;
-    }
-  } catch { /* fall through */ }
-
-  // 2. Try official OpenClaw Hub directly
+  // 1. Try official OpenClaw Hub public registry directly
   const direct = await fetchFromOfficialHub();
   if (direct.length > 0) {
     _hubCache = { items: direct, fetchedAt: Date.now() };
     return direct;
   }
 
-  // 3. Use placeholder (cached so we don't keep retrying this session)
+  // 2. Use curated placeholder catalog (30 representative OpenClaw skills)
+  //    NOTE: We intentionally skip the backend bridge because it returns
+  //    internal Agentrix system tools (get_product_details etc.), not hub skills.
   _hubCache = { items: HUB_PLACEHOLDER, fetchedAt: Date.now() - HUB_CACHE_TTL_MS + 5 * 60 * 1000 };
   return HUB_PLACEHOLDER;
 }

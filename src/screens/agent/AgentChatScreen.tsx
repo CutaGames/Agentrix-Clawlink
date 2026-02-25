@@ -12,6 +12,7 @@ import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -108,6 +109,7 @@ export function AgentChatScreen() {
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
+  const storageKey = `chat_hist_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
   const recordingRef = useRef<any>(null);
   const isRecordingRef = useRef(false);  // stable ref for press hold logic
@@ -135,15 +137,31 @@ export function AgentChatScreen() {
   const tokenPct = quota?.energyLevel ?? (total > 0 ? Math.min(100, (used / total) * 100) : 0);
   const tokenBarColor = tokenPct > 80 ? '#ef4444' : tokenPct > 50 ? '#f59e0b' : '#22c55e';
 
-  // Load chat history on mount
+  // Load chat history on mount — first from local storage (instant), then try API
   useEffect(() => {
     if (!instanceId) return;
+    AsyncStorage.getItem(storageKey).then((raw) => {
+      if (raw) {
+        try {
+          const saved: Message[] = JSON.parse(raw);
+          if (Array.isArray(saved) && saved.length > 0) setMessages(saved);
+        } catch {}
+      }
+    });
     loadHistory();
     return () => {
       // Cancel any in-flight stream on unmount
       streamAbortRef.current?.abort();
     };
   }, [instanceId]);
+
+  // Persist messages to local storage whenever they change
+  useEffect(() => {
+    if (messages.length > 1) {
+      const toSave = messages.filter((m) => !m.streaming).slice(-80);
+      AsyncStorage.setItem(storageKey, JSON.stringify(toSave)).catch(() => {});
+    }
+  }, [messages]);
 
   const loadHistory = async () => {
     if (!instanceId || !token) return;
@@ -384,6 +402,7 @@ export function AgentChatScreen() {
         onPress: () => {
           streamAbortRef.current?.abort();
           sessionIdRef.current = `session-${Date.now()}`;
+          AsyncStorage.removeItem(storageKey).catch(() => {});
           setMessages([{
             id: 'welcome',
             role: 'assistant',
