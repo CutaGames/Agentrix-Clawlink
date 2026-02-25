@@ -29,30 +29,43 @@
 ---
 
 ## 阶段二：Agent (智能体操控与状态模块) 优化【目标：Build 53】
-**定位**：建立移动端与云端/本地 Agent 的极速、稳定连接，完善移动端的控制台体验。
+**定位**：建立移动端与云端/本地 Agent 的极速、稳定连接，完善移动端的控制台体验，并大幅提升执行透明度与反馈闭环。
 
 1. **核心通信层重构 (关键底座)**
    - 彻底废弃当前的 HTTP 轮询聊天模式，全面转为全双工 **WebSocket / Server-Sent Events (SSE)**。
    - 实现**流式对话 (Streaming Response)**，Agent 的回复与思维链 (Thought) 逐字输出，消灭等待空白期。
-2. **工作流与状态可视化**
-   - 移动端解析并渲染 Agent 的执行轨迹 (Trajectory)，可视化展示复杂 Workflow 的当前执行节点。
-3. **记忆库 (Memory) 管理面板**
+
+2. **执行透明度与视觉化信任 (Live Execution Log)**
+   - **微缩执行轨迹**：在对话框中增加微缩的“执行轨迹”（如 `Thinking` -> `Searching (Google)` -> `Analyzing`），实现类似 Manus 级别的“实时心智可视化”。
+   - 移动端解析并渲染 Agent 的执行轨迹 (Trajectory)，不仅展示结论，更要可视化展示复杂 Workflow 的当前执行节点、截屏与 DOM 操作日志。
+
+3. **连接与呈现优化 (无认证扫码登录)**
+   - **扫码连接**：引入类似 WhatsApp Web 或 Telegram Login API 的扫码机制。前端展示由后端生成的 Connection QR，用户扫码后后端持久化 Session，替代极差的 API Key 手动填写体验（摆脱纯 BYOK 模式）。
+   - **连接状态呈现**：在 Settings 界面清晰可视化展示已连接社交账号的权限级别（如：只读、可发推、可删帖）。
+
+4. **记忆库 (Memory) 管理面板**
    - 在移动端增加 Memory 控制台，允许用户随时查看、修改、删除 Agent 对自己的长期/短期记忆偏好。
-4. **端侧基础能力打通 (Device Bridging)**
+
+5. **端侧基础能力打通 (Device Bridging)**
    - 封装 Expo 基础插件，赋予 Agent 请求获取移动端 GPS、读取剪贴板、访问相册的基础能力，为后续多模态和自动化做铺垫。
 
 ---
 
 ## 阶段三：Social (社交与社区生态模块) 优化【目标：Build 54】
-**定位**：打造“人机混编”的智能体网络，通过社区内容反哺 Marketplace 的活跃与交易。
+**定位**：打造“人机混编”的智能体网络，通过社区内容反哺 Marketplace 的活跃与交易，并建立强大的社交反馈回路。
 
-1. **人机混编群聊 (Agent Social)**
+1. **社交媒体反馈回路 (双向闭环)**
+   - **Webhook 监听**：建立 `Social Listener` 服务（如新增 `social-callback.controller.ts`）。监听社交媒体（如 Twitter、Telegram）上 @Agent 或频道内的消息。
+   - **主动通知注入**：收到消息后，将其转化为 `System Message` 注入到 Agent 会话中（如：“用户 A 在 Twitter 上点赞了你的推文，是否需要回粉或自动回复？”）。
+   - **交互呈现**：在 StructuredResponseCard.tsx 中增加社交媒体实时统计卡片，展示点赞数、舆情趋势等，作为 Agent 工作成果的“信任证明”。
+
+2. **人机混编群聊 (Agent Social)**
    - 重构 `GroupChatScreen`，支持在人类聊天群组中 `@Agent` 呼叫智能体参与讨论或执行群管任务。
    - 优化聊天流中的 UI，区分“人类消息”与“智能体执行消息”。
-2. **Community Feed (社区瀑布流)**
+3. **Community Feed (社区瀑布流)**
    - 搭建动态社区信息流。用户在 Agent 聊天中得到优质结果后，一键生成 Record/Trajectory 并 Share 到大厅。
    - **一键复刻 (Fork & Install)**：用户在 Feed 刷到别人的优秀 Agent 组合或技能，点击即可拉起 Checkout 购买并挂载到自己的实例。
-3. **系统级消息推送 (Push Notifications)**
+4. **系统级消息推送 (Push Notifications)**
    - 接入 FCM / APNs。当云端 Agent 历时数小时的爬虫任务完成，或 Marketplace 中有佣金到账时，通过原生系统级推送通知移动端用户。
 
 ---
