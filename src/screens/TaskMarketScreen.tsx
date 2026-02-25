@@ -1,5 +1,5 @@
 // 任务集市（悬赏任务板）— 核心功能
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -25,7 +26,43 @@ import {
 import { referralApi } from '../services/referral.api';
 import { ShareBottomSheet } from '../components/ShareComponents';
 
+const { width: SCREEN_W } = Dimensions.get('window');
+
 type SortMode = 'latest' | 'budget_high' | 'budget_low' | 'deadline';
+
+// Compact banner carousel slides
+const BANNER_SLIDES = [
+  {
+    id: 'x402',
+    icon: '⚡',
+    color: '#a78bfa',
+    bg: '#7c3aed18',
+    borderColor: '#7c3aed33',
+    badge: 'X402',
+    title: 'On-chain Auto-settle',
+    sub: 'Escrowed bounties · Agent-to-agent payments · BSC',
+  },
+  {
+    id: 'share',
+    icon: '💰',
+    color: '#F59E0B',
+    bg: '#F59E0B12',
+    borderColor: '#F59E0B33',
+    badge: null,
+    title: 'Share & Earn 10%',
+    sub: 'Invite friends → they complete tasks → you earn referral reward',
+  },
+  {
+    id: 'how',
+    icon: '🎯',
+    color: '#6366f1',
+    bg: '#6366f118',
+    borderColor: '#6366f133',
+    badge: null,
+    title: 'Post → Bid → Accept → Pay',
+    sub: '3% fee · Dispute protection · Escrow release on delivery',
+  },
+] as const;
 
 // ========== 种子数据：Agentrix 官方悬赏任务 ==========
 const SEED_TASKS: TaskItem[] = [
@@ -353,17 +390,82 @@ export default function TaskMarketScreen() {
     );
   };
 
+  // ── Banner carousel state ──
+  const bannerScrollRef = useRef<ScrollView>(null);
+  const [bannerPage, setBannerPage] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBannerPage(prev => {
+        const next = (prev + 1) % BANNER_SLIDES.length;
+        bannerScrollRef.current?.scrollTo({ x: next * SCREEN_W, animated: true });
+        return next;
+      });
+    }, 3600);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleBannerPress = useCallback(async (id: string) => {
+    if (id !== 'share') return;
+    let url = 'https://agentrix.top/marketplace?tab=tasks';
+    try {
+      const link = await referralApi.createLink({
+        name: 'Agentrix Bounty Board',
+        targetType: 'product',
+        targetId: 'task-market',
+      });
+      if (link?.shortUrl) url = link.shortUrl;
+    } catch { /* use default */ }
+    setShareContent({
+      title: 'Agentrix Bounty Board',
+      message: '🎯 Agentrix Bounty Board — Earn crypto by completing tasks!\n\n💰 $200-$2000 bounties for content, dev, design & more',
+      url,
+    });
+    setShareVisible(true);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      {/* X402 Auto-settle Banner */}
-      <View style={styles.x402Banner}>
-        <View style={styles.x402Badge}>
-          <Text style={styles.x402BadgeText}>X402</Text>
+      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}
+      <View style={styles.bannerCarousel}>
+        <ScrollView
+          ref={bannerScrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onMomentumScrollEnd={ev => {
+            const idx = Math.round(ev.nativeEvent.contentOffset.x / SCREEN_W);
+            setBannerPage(idx);
+          }}
+        >
+          {BANNER_SLIDES.map(b => (
+            <TouchableOpacity
+              key={b.id}
+              activeOpacity={b.id === 'share' ? 0.75 : 1}
+              onPress={() => handleBannerPress(b.id)}
+              style={[styles.bannerSlide, { backgroundColor: b.bg, borderBottomColor: b.borderColor }]}
+            >
+              <Text style={styles.bannerSlideIcon}>{b.icon}</Text>
+              {b.badge ? (
+                <View style={[styles.bannerBadge, { borderColor: b.color }]}>
+                  <Text style={[styles.bannerBadgeText, { color: b.color }]}>{b.badge}</Text>
+                </View>
+              ) : null}
+              <View style={styles.bannerSlideTexts}>
+                <Text style={[styles.bannerSlideTitle, { color: b.color }]}>{b.title}</Text>
+                <Text style={styles.bannerSlideSub} numberOfLines={1}>{b.sub}</Text>
+              </View>
+              {b.id === 'x402' && <View style={styles.liveDot} />}
+              {b.id === 'share' && <Text style={[styles.bannerArrow, { color: b.color }]}>›</Text>}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={styles.bannerDots}>
+          {BANNER_SLIDES.map((_, i) => (
+            <View key={i} style={[styles.bannerDot, i === bannerPage && styles.bannerDotActive]} />
+          ))}
         </View>
-        <Text style={styles.x402BannerText}>
-          Task bids auto-settle via X402 protocol · Agent-to-Agent payments
-        </Text>
-        <View style={styles.liveDot} />
       </View>
 
       {/* Search Bar */}
@@ -446,70 +548,7 @@ export default function TaskMarketScreen() {
           }
           onEndReached={onEndReached}
           onEndReachedThreshold={0.3}
-          ListHeaderComponent={
-            <>
-              {/* Viral Share Banner */}
-              <TouchableOpacity
-                style={styles.viralBanner}
-                activeOpacity={0.8}
-                onPress={async () => {
-                  let url = 'https://agentrix.top/marketplace?tab=tasks';
-                  try {
-                    const link = await referralApi.createLink({
-                      name: 'Agentrix Bounty Board',
-                      targetType: 'product',
-                      targetId: 'task-market',
-                    });
-                    if (link?.shortUrl) url = link.shortUrl;
-                  } catch { /* use default */ }
-                  setShareContent({
-                    title: 'Agentrix Bounty Board',
-                    message: '🎯 Agentrix Bounty Board — Earn crypto by completing tasks!\n\n💰 $200-$2000 bounties for content, dev, design & more',
-                    url,
-                  });
-                  setShareVisible(true);
-                }}
-              >
-                <View style={styles.viralBannerContent}>
-                  <Text style={styles.viralBannerIcon}>💰</Text>
-                  <View style={styles.viralBannerText}>
-                    <Text style={styles.viralBannerTitle}>Share & Earn — Invite friends to bounties</Text>
-                    <Text style={styles.viralBannerDesc}>Earn 10% referral reward when your friend completes a task</Text>
-                  </View>
-                  <Text style={styles.viralBannerArrow}>→</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Gameplay Guide */}
-              <View style={styles.gameplayBanner}>
-                <Text style={styles.gameplayTitle}>🎯 Bounty Board — How It Works</Text>
-                <View style={styles.gameplaySteps}>
-                  <View style={styles.gameplayStep}>
-                    <Text style={styles.stepNum}>①</Text>
-                    <Text style={styles.stepText}>Post Task{'\n'}Set Bounty</Text>
-                  </View>
-                  <Text style={styles.stepArrow}>→</Text>
-                  <View style={styles.gameplayStep}>
-                    <Text style={styles.stepNum}>②</Text>
-                    <Text style={styles.stepText}>Devs Bid{'\n'}& Propose</Text>
-                  </View>
-                  <Text style={styles.stepArrow}>→</Text>
-                  <View style={styles.gameplayStep}>
-                    <Text style={styles.stepNum}>③</Text>
-                    <Text style={styles.stepText}>Accept{'\n'}& Execute</Text>
-                  </View>
-                  <Text style={styles.stepArrow}>→</Text>
-                  <View style={styles.gameplayStep}>
-                    <Text style={styles.stepNum}>④</Text>
-                    <Text style={styles.stepText}>Deliver{'\n'}& Get Paid</Text>
-                  </View>
-                </View>
-                <Text style={styles.gameplayHint}>
-                  💡 3% platform fee · On-chain settlement · Dispute protection
-                </Text>
-              </View>
-            </>
-          }
+          ListHeaderComponent={<View style={{ height: 8 }} />}
           ListFooterComponent={loadingMore ? (
             <ActivityIndicator color={colors.primary} style={{ paddingVertical: 16 }} />
           ) : tasks.length > 0 && tasks.length >= total ? (
@@ -554,26 +593,43 @@ export default function TaskMarketScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  // X402 Banner
-  x402Banner: {
+  // Compact Banner Carousel
+  bannerCarousel: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  bannerSlide: {
+    width: SCREEN_W,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    backgroundColor: '#7c3aed18',
+    paddingVertical: 10,
+    gap: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#7c3aed33',
-    gap: 8,
   },
-  x402Badge: {
-    backgroundColor: '#7c3aed',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  bannerSlideIcon: { fontSize: 20 },
+  bannerBadge: {
+    borderWidth: 1,
     borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
   },
-  x402BadgeText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  x402BannerText: { flex: 1, fontSize: 12, color: '#a78bfa', fontWeight: '500' },
+  bannerBadgeText: { fontSize: 11, fontWeight: '800' as const, letterSpacing: 0.5 },
+  bannerSlideTexts: { flex: 1 },
+  bannerSlideTitle: { fontSize: 12, fontWeight: '700' as const, marginBottom: 1 },
+  bannerSlideSub: { fontSize: 11, color: colors.muted },
+  bannerArrow: { fontSize: 20, fontWeight: '700' as const },
   liveDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#22c55e' },
+  bannerDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 5,
+    gap: 5,
+  },
+  bannerDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.muted + '50' },
+  bannerDotActive: { width: 14, height: 5, borderRadius: 2.5, backgroundColor: colors.primary },
   // Search
   searchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 8, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
   searchInput: { flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.border },
@@ -602,21 +658,6 @@ const styles = StyleSheet.create({
   // Share button on task card
   shareBtn: { padding: 4 },
   shareBtnText: { fontSize: 16 },
-  // Viral share banner
-  viralBanner: {
-    backgroundColor: '#F59E0B' + '15',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F59E0B' + '40',
-  },
-  viralBannerContent: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 },
-  viralBannerIcon: { fontSize: 28 },
-  viralBannerText: { flex: 1 },
-  viralBannerTitle: { color: colors.text, fontSize: 13, fontWeight: '700' as const, marginBottom: 2 },
-  viralBannerDesc: { color: colors.muted, fontSize: 11 },
-  viralBannerArrow: { color: '#F59E0B', fontSize: 18, fontWeight: '700' as const },
   // List
   listContent: { padding: 12, paddingBottom: 100 },
   endText: { textAlign: 'center', color: colors.muted, fontSize: 12, paddingVertical: 16 },
@@ -680,20 +721,4 @@ const styles = StyleSheet.create({
   },
   fabIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
   fabText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  // Gameplay banner
-  gameplayBanner: {
-    backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
-  },
-  gameplayTitle: { color: colors.text, fontSize: 14, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
-  gameplaySteps: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  gameplayStep: { alignItems: 'center', width: 60 },
-  stepNum: { fontSize: 18, color: colors.primary, fontWeight: '700', marginBottom: 2 },
-  stepText: { fontSize: 10, color: colors.muted, textAlign: 'center', lineHeight: 14 },
-  stepArrow: { color: colors.primary, fontSize: 16, fontWeight: '700', marginHorizontal: 4 },
-  gameplayHint: { color: colors.muted, fontSize: 11, textAlign: 'center', lineHeight: 16 },
 });

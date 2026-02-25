@@ -4,7 +4,7 @@
  *
  * Two chat paths:
  *  1. streamProxyChatSSE  — SSE via /openclaw/proxy/:id/stream (requires active OpenClaw instance)
- *  2. directClaudeChat    — POST /claude/chat (backend Bedrock fallback, always available)
+ *  2. directClaudeChat    — POST /gemini/chat (backend Gemini API, always available)
  */
 import { API_BASE } from '../config/env';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -90,7 +90,7 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
   return ac;
 }
 
-// ─── Direct Claude fallback (backend Bedrock, no OpenClaw needed) ─────────────
+// ─── Direct Gemini fallback (backend Gemini API, no OpenClaw needed) ────────────
 
 export interface DirectChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -100,14 +100,14 @@ export interface DirectChatMessage {
 export interface DirectClaudeOptions {
   messages: DirectChatMessage[];
   token: string;
-  /** e.g. 'claude-haiku-4-5', 'claude-sonnet-4-5'. Backend uses AWS Bedrock. */
+  /** Gemini model override, defaults to 'gemini-1.5-flash' */
   model?: string;
   sessionId?: string;
 }
 
 /**
- * Call POST /claude/chat on the main backend.
- * Uses the server's own AWS Bedrock credentials — always works for cloud/new users
+ * Call POST /gemini/chat on the main backend.
+ * Uses the server's own Gemini API key — always works for cloud/new users
  * who don't have an active OpenClaw instance yet.
  */
 export async function directClaudeChat(opts: DirectClaudeOptions): Promise<string> {
@@ -115,7 +115,7 @@ export async function directClaudeChat(opts: DirectClaudeOptions): Promise<strin
   const _t = setTimeout(() => _ac.abort(), 45_000);
   let resp: Response;
   try {
-    resp = await fetch(`${API_BASE}/claude/chat`, {
+    resp = await fetch(`${API_BASE}/gemini/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -125,7 +125,7 @@ export async function directClaudeChat(opts: DirectClaudeOptions): Promise<strin
         messages: opts.messages,
         context: { sessionId: opts.sessionId },
         options: {
-          model: opts.model || 'claude-haiku-4-5',
+          model: opts.model || 'gemini-1.5-flash',
           maxTokens: 2048,
         },
       }),
@@ -142,6 +142,7 @@ export async function directClaudeChat(opts: DirectClaudeOptions): Promise<strin
 
   const data = await resp.json();
   const content =
+    data?.text ??
     data?.content ??
     data?.reply?.content ??
     data?.message ??
