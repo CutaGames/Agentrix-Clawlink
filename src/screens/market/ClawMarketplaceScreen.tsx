@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   FlatList, ActivityIndicator, RefreshControl,
@@ -8,61 +8,76 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { searchOpenClawHub } from '../../services/openclawHub.service';
 import type { MarketStackParamList } from '../../navigation/types';
 import TaskMarketScreen from '../TaskMarketScreen';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Marketplace'>;
 
-const CATEGORIES = ['All', 'Productivity', 'Code', 'Research', 'Creative', 'Business', 'Finance'];
+const SKILL_CATEGORIES = ['All', 'Automation', 'AI Tools', 'Data', 'Web', 'Files', 'Social', 'Dev', 'Finance'];
+const RESOURCE_CATEGORIES = ['All', 'Productivity', 'Code', 'Research', 'Creative', 'Business', 'Finance'];
 
-async function fetchSkills(category: string, search: string) {
-  const params = new URLSearchParams();
-  if (category !== 'All') params.set('category', category);
-  if (search) params.set('search', search);
-  params.set('limit', '20');
-  try {
-    return await apiFetch<any>(`/skills?${params.toString()}`);
-  } catch (e) {
-    return [];   // graceful fallback
-  }
-}
+// Mock fallback resources shown when API returns no paid items
+const MOCK_RESOURCES = [
+  { id: 'r1', icon: '🗄️', name: 'Cloud Storage Adapter', description: 'Unified S3/GCS/Azure interface — store and retrieve files via a single API', price: 0.01, tokenCost: null, rating: 4.6 },
+  { id: 'r2', icon: '📊', name: 'Market Data API', description: 'Real-time stocks, crypto & forex data feed with historical support', price: 0.01, tokenCost: null, rating: 4.5 },
+  { id: 'r3', icon: '🖥️', name: 'Cloud GPU Compute', description: 'On-demand A100/H100 GPU — pay-per-second billing for ML workloads', price: 0.50, tokenCost: null, rating: 4.6 },
+  { id: 'r4', icon: '🔍', name: 'Web Search API', description: 'Programmatic web search with structured JSON results', price: 0.005, tokenCost: null, rating: 4.4 },
+  { id: 'r5', icon: '🗺️', name: 'Maps & Geocoding', description: 'Address lookup, distance matrix and reverse geocoding', price: 0.002, tokenCost: null, rating: 4.3 },
+  { id: 'r6', icon: '📧', name: 'Email Send API', description: 'Transactional email with templates, attachments and delivery tracking', price: 0.001, tokenCost: null, rating: 4.7 },
+];
 
-function SkillsTab({ isResource = false }: { isResource?: boolean }) {
+// OpenClaw Hub skills tab — uses the OpenClaw Hub search service
+function OpenClawSkillsTab() {
   const navigation = useNavigation<Nav>();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['skills', category, search],
-    queryFn: () => fetchSkills(category, search),
+    queryKey: ['openclawSkills', category, search],
+    queryFn: async () => {
+      try {
+        const result = await searchOpenClawHub({
+          q: search || undefined,
+          category: category !== 'All' ? category : undefined,
+          limit: 20,
+        });
+        const items = result?.items;
+        return Array.isArray(items) && items.length > 0 ? items : null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 60_000,
   });
 
-  const rawSkills = data?.items ?? data?.data ?? data;
-  let skills: any[] = Array.isArray(rawSkills) ? rawSkills : [];
+  // Fallback skills shown when hub is unreachable
+  const MOCK_SKILLS = [
+    { id: 's1', icon: '🌐', name: 'Web Search Agent', description: 'Real-time web search with cited results', price: 0, tokenCost: 1, rating: 4.8 },
+    { id: 's2', icon: '🖼️', name: 'Image Generator', description: 'Stable Diffusion XL, portrait / landscape / icon styles', price: 0, tokenCost: 10, rating: 4.9 },
+    { id: 's3', icon: '🤖', name: 'GPT Translator', description: 'Multilingual translation — 40+ language pairs', price: 0, tokenCost: 2, rating: 4.7 },
+    { id: 's4', icon: '📝', name: 'Code Review Bot', description: 'AI-powered code review, 20+ languages', price: 0, tokenCost: 3, rating: 4.4 },
+    { id: 's5', icon: '📊', name: 'Data Analyst', description: 'Upload CSV/JSON, get instant charts and insights', price: 0, tokenCost: 5, rating: 4.6 },
+    { id: 's6', icon: '🎙️', name: 'Voice Transcriber', description: 'High-accuracy speech-to-text, 30+ languages', price: 0, tokenCost: 4, rating: 4.5 },
+  ];
 
-  if (isResource) {
-    // Filter for paid items for Resources & Goods tab
-    skills = skills.filter(s => (s.price != null && s.price > 0) || (s.tokenCost != null && s.tokenCost > 0));
-  }
+  const skills: any[] = data ?? MOCK_SKILLS;
 
   return (
     <View style={styles.tabContainer}>
-      {/* Search */}
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
-          placeholder={isResource ? "Search resources & goods..." : "Search skills..."}
+          placeholder="Search OpenClaw skills..."
           placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
         />
       </View>
-
-      {/* Categories */}
       <View>
         <FlatList
-          data={CATEGORIES}
+          data={SKILL_CATEGORIES}
           horizontal
           showsHorizontalScrollIndicator={false}
           keyExtractor={(c) => c}
@@ -78,31 +93,25 @@ function SkillsTab({ isResource = false }: { isResource?: boolean }) {
           )}
         />
       </View>
-
-      {/* Skills Grid */}
       {isLoading ? (
         <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={skills}
-          keyExtractor={(s: any) => String(s.id ?? s._id ?? Math.random())}
+          keyExtractor={(s: any) => String(s.id ?? s._id ?? s.name)}
           numColumns={2}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={{ gap: 12 }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>{isResource ? "No paid resources found" : "No skills found"}</Text>
-            </View>
-          }
           renderItem={({ item: skill }: { item: any }) => (
             <TouchableOpacity
               style={styles.skillCard}
               activeOpacity={0.8}
               onPress={() => {
-                if (!skill.id && !skill._id) return;
-                navigation.navigate('SkillDetail', { skillId: String(skill.id ?? skill._id), skillName: skill.name ?? '' });
+                const id = skill.id ?? skill._id;
+                if (!id) return;
+                navigation.navigate('SkillDetail', { skillId: String(id), skillName: skill.name ?? '' });
               }}
             >
               <Text style={styles.skillIcon}>{skill.icon || '⚡'}</Text>
@@ -110,15 +119,105 @@ function SkillsTab({ isResource = false }: { isResource?: boolean }) {
               <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
               <View style={styles.skillFooter}>
                 <Text style={styles.skillPrice}>
-                  {skill.price == null
-                    ? skill.tokenCost == null
-                      ? 'Free'
-                      : skill.tokenCost === 0 ? 'Free' : `${skill.tokenCost} tokens`
-                    : skill.price === 0 ? 'Free' : `$${skill.price}`}
+                  {skill.tokenCost != null && skill.tokenCost > 0 ? `${skill.tokenCost} tokens` : 'Free'}
                 </Text>
-                <View style={styles.ratingRow}>
-                  <Text style={styles.ratingText}>⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}</Text>
-                </View>
+                <Text style={styles.ratingText}>⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
+// Resources & Goods tab — paid APIs/compute, falls back to mock data
+function ResourcesTab() {
+  const navigation = useNavigation<Nav>();
+  const [category, setCategory] = useState('All');
+  const [search, setSearch] = useState('');
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['resources', category, search],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (category !== 'All') params.set('category', category);
+      if (search) params.set('search', search);
+      params.set('limit', '20');
+      try {
+        const raw = await apiFetch<any>(`/skills?${params.toString()}`);
+        const items = raw?.items ?? raw?.data ?? raw;
+        const arr: any[] = Array.isArray(items) ? items : [];
+        const paid = arr.filter(s => (s.price != null && s.price > 0) || (s.tokenCost != null && s.tokenCost > 0));
+        return paid.length > 0 ? paid : null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 60_000,
+  });
+
+  const resources: any[] = data ?? MOCK_RESOURCES;
+
+  return (
+    <View style={styles.tabContainer}>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search resources & goods..."
+          placeholderTextColor={colors.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          returnKeyType="search"
+        />
+      </View>
+      <View>
+        <FlatList
+          data={RESOURCE_CATEGORIES}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(c) => c}
+          style={styles.catList}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.catChip, category === item && styles.catChipActive]}
+              onPress={() => setCategory(item)}
+            >
+              <Text style={[styles.catText, category === item && styles.catTextActive]}>{item}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+      {isLoading ? (
+        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={resources}
+          keyExtractor={(s: any) => String(s.id ?? s._id ?? s.name)}
+          numColumns={2}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={{ gap: 12 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
+          renderItem={({ item: res }: { item: any }) => (
+            <TouchableOpacity
+              style={styles.skillCard}
+              activeOpacity={0.8}
+              onPress={() => {
+                const id = res.id ?? res._id;
+                if (!id) return;
+                navigation.navigate('SkillDetail', { skillId: String(id), skillName: res.name ?? '' });
+              }}
+            >
+              <Text style={styles.skillIcon}>{res.icon || '📦'}</Text>
+              <Text style={styles.skillName} numberOfLines={2}>{res.name}</Text>
+              <Text style={styles.skillDesc} numberOfLines={2}>{res.description}</Text>
+              <View style={styles.skillFooter}>
+                <Text style={styles.skillPrice}>
+                  {res.price != null && res.price > 0 ? `$${res.price}` : `${res.tokenCost ?? 0} tokens`}
+                </Text>
+                <Text style={styles.ratingText}>⭐ {res.rating ? Number(res.rating).toFixed(1) : '—'}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -157,9 +256,9 @@ export function ClawMarketplaceScreen() {
 
       {/* Tab Content */}
       <View style={styles.content}>
-        {activeTab === 'skills' && <SkillsTab />}
+        {activeTab === 'skills' && <OpenClawSkillsTab />}
         {activeTab === 'tasks' && <TaskMarketScreen />}
-        {activeTab === 'resources' && <SkillsTab isResource={true} />}
+        {activeTab === 'resources' && <ResourcesTab />}
       </View>
     </View>
   );
@@ -235,8 +334,5 @@ const styles = StyleSheet.create({
   skillDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
   skillFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   skillPrice: { fontSize: 13, fontWeight: '700', color: colors.accent },
-  ratingRow: {},
   ratingText: { fontSize: 12, color: colors.textMuted },
-  empty: { alignItems: 'center', paddingTop: 60 },
-  emptyText: { color: colors.textMuted, fontSize: 15 },
 });
