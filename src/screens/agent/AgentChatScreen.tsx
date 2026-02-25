@@ -8,6 +8,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
+import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
 import type { AgentStackParamList } from '../../navigation/types';
@@ -65,15 +66,30 @@ const MessageBubble = ({ item }: { item: Message }) => {
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{isThoughtsExpanded ? '▼' : '▶'}</Text>
               )}
               <Text style={styles.thoughtHeaderText}>
-                {item.streaming ? 'Agent is thinking...' : `Thought process (${item.thoughts?.length} steps)`}
+                {item.streaming ? 'Agent is executing workflow...' : `Execution Log (${item.thoughts?.length} steps)`}
               </Text>
             </TouchableOpacity>
             
-            {isThoughtsExpanded && item.thoughts?.map((thought, idx) => (
-              <Text key={idx} style={styles.thoughtItem}>
-                <Text style={{ color: colors.accent }}>›</Text> {thought}
-              </Text>
-            ))}
+            {isThoughtsExpanded && (
+              <View style={styles.thoughtList}>
+                {item.thoughts?.map((thought, idx) => {
+                  // Try to parse structured tool calls or steps
+                  const isTool = thought.includes('[Tool Call]') || thought.includes('Using skill:') || thought.includes('Searching');
+                  const isError = thought.includes('Error') || thought.includes('Failed');
+                  
+                  return (
+                    <View key={idx} style={styles.thoughtItemRow}>
+                      <Text style={[styles.thoughtIcon, isTool && {color: colors.primary}, isError && {color: colors.error}]}>
+                        {isError ? '❌' : isTool ? '⚡' : '›'}
+                      </Text>
+                      <Text style={[styles.thoughtItemText, isError && {color: colors.error}]}>
+                        {thought.replace('[Tool Call]', '').trim()}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
 
@@ -402,6 +418,51 @@ export function AgentChatScreen() {
 
   const openModelPicker = () => setShowModelPicker(true);
 
+  const handleDeviceAction = () => {
+    Alert.alert('Device Tools', 'Provide local device data to the Agent', [
+      {
+        text: '📍 Send GPS Location',
+        onPress: async () => {
+          try {
+            const loc = await DeviceBridgingService.getCurrentLocation();
+            handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
+          } catch (e: any) {
+            Alert.alert('Location Error', e.message);
+          }
+        }
+      },
+      {
+        text: '📋 Paste Clipboard',
+        onPress: async () => {
+          try {
+            const text = await DeviceBridgingService.readClipboard();
+            if (!text) return Alert.alert('Clipboard Empty', 'Nothing to paste.');
+            setInput((prev) => prev ? `${prev}\n${text}` : text);
+          } catch (e: any) {
+            Alert.alert('Clipboard Error', e.message);
+          }
+        }
+      },
+      {
+        text: '🖼️ Analyze Photo',
+        onPress: async () => {
+          try {
+            const base64 = await DeviceBridgingService.pickImageAsBase64();
+            if (base64) {
+              // Note: Sending base64 directly might be too large for typical chat prompts.
+              // For a production app, you might upload it first and send a URL.
+              handleSend(`[System: User attached an image]\n${base64.substring(0, 50)}... (base64 truncated)`);
+              Alert.alert('Image Attached', 'Image data prepared for the agent.');
+            }
+          } catch (e: any) {
+            Alert.alert('Photo Error', e.message);
+          }
+        }
+      },
+      { text: 'Cancel', style: 'cancel' }
+    ]);
+  };
+
   const handleClearChat = () => {
     Alert.alert('Start new session?', 'Chat history will be cleared.', [
       { text: 'Cancel', style: 'cancel' },
@@ -502,25 +563,30 @@ export function AgentChatScreen() {
             value={input}
             onChangeText={setInput}
             multiline
-            maxLength={4000}
+            maxLength={2000}
             returnKeyType="send"
             onSubmitEditing={() => handleSend()}
-            blurOnSubmit={false}
           />
         )}
 
-        {/* Right: send button */}
-        <TouchableOpacity
-          style={[styles.sendBtn, ((!input.trim() && !isRecording) || sending) && styles.sendBtnDisabled]}
-          onPress={() => handleSend()}
-          disabled={(!input.trim() && !isRecording) || sending}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.sendIcon}>↑</Text>
-          )}
-        </TouchableOpacity>
+        {/* Right: Device Action or Send */}
+        {input.trim().length > 0 && !voiceMode ? (
+          <TouchableOpacity
+            style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
+            onPress={() => handleSend()}
+            disabled={sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.sendIcon}>⬆</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.deviceBtn} onPress={handleDeviceAction}>
+            <Text style={styles.deviceIcon}>⊕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Model picker modal */}
@@ -620,6 +686,17 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
   sendIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  deviceBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  deviceIcon: { color: colors.textPrimary, fontSize: 22, fontWeight: '400', marginTop: -2 },
   modeToggleBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: colors.bgCard,
@@ -668,29 +745,11 @@ const styles = StyleSheet.create({
   modelOptionActive: { backgroundColor: colors.bgSecondary },
   modelOptionLabel: { color: colors.textPrimary, fontSize: 15 },
   modelOptionCheck: { color: colors.accent, fontSize: 16, fontWeight: '700' },
-  thoughtContainer: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  thoughtHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  thoughtHeaderText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
-  thoughtItem: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginLeft: 4,
-  },
+  thoughtContainer: { backgroundColor: colors.bg, borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: colors.border },
+  thoughtHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  thoughtHeaderText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  thoughtList: { marginTop: 6, gap: 4 },
+  thoughtItemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  thoughtIcon: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  thoughtItemText: { fontSize: 12, color: colors.textMuted, flex: 1, lineHeight: 16 },
 });

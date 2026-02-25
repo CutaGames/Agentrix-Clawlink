@@ -98,7 +98,30 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   return res.json();
 }
 
-// ========== 认证 API ==========
+// ========== Memory API ==========
+
+export const memoryApi = {
+  // Get memory preferences
+  async getPreferences(): Promise<any[]> {
+    return apiFetch('/ai-rag/memory/preferences');
+  },
+
+  // Add memory preference
+  async addPreference(content: string): Promise<any> {
+    return apiFetch('/ai-rag/memory/preferences', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  // Delete memory preference
+  async deletePreference(id: string): Promise<void> {
+    return apiFetch(`/ai-rag/memory/preferences/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 
 export const authApi = {
   // 登录 (钱包签名)

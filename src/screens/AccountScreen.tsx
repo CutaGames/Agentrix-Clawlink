@@ -24,6 +24,7 @@ interface SocialAccount {
   displayName?: string;
   avatarUrl?: string;
   createdAt: string;
+  permissions?: string[]; // e.g. ['read', 'write', 'delete']
 }
 
 interface WalletConnection {
@@ -231,9 +232,16 @@ export function AccountScreen({ navigation }: { navigation: any }) {
               <View style={styles.socialInfo}>
                 <Text style={styles.socialLabel}>{provider.label}</Text>
                 {bound ? (
-                  <Text style={styles.socialBound}>
-                    {bound.displayName || bound.username || '已绑定'}
-                  </Text>
+                  <>
+                    <Text style={styles.socialBound}>
+                      {bound.displayName || bound.username || '已绑定'}
+                    </Text>
+                    {bound.permissions && bound.permissions.length > 0 && (
+                      <Text style={styles.socialPermissions}>
+                        权限: {bound.permissions.join(', ')}
+                      </Text>
+                    )}
+                  </>
                 ) : (
                   <Text style={styles.socialUnbound}>未绑定</Text>
                 )}
@@ -411,8 +419,9 @@ const styles = StyleSheet.create({
   socialIconText: { fontSize: 16, fontWeight: '800' },
   socialInfo: { flex: 1, marginLeft: 12 },
   socialLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  socialBound: { color: colors.success, fontSize: 12, marginTop: 1 },
-  socialUnbound: { color: colors.muted, fontSize: 12, marginTop: 1 },
+  socialBound: { fontSize: 13, color: colors.textPrimary },
+  socialPermissions: { fontSize: 11, color: colors.primary, marginTop: 2, fontWeight: '500' },
+  socialUnbound: { fontSize: 13, color: colors.textMuted },
   bindBtn: {
     backgroundColor: colors.primary + '15',
     borderRadius: 8,

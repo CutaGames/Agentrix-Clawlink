@@ -9,7 +9,7 @@ import {
   Alert, ActivityIndicator, RefreshControl, TextInput,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '../../services/api';
+import { apiFetch, memoryApi } from '../../services/api';
 import { colors } from '../../theme/colors';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -18,6 +18,12 @@ interface KnowledgeFile {
   fileName: string;
   sizeBytes: number;
   chunks: number;
+  createdAt: string;
+}
+
+interface MemoryPreference {
+  id: string;
+  content: string;
   createdAt: string;
 }
 
@@ -47,171 +53,7 @@ function timeAgo(iso: string) {
   return 'just now';
 }
 
-// ─── Add Knowledge Modal ───────────────────────────────────────
-function AddKnowledgeSheet({
-  onSubmit,
-  onClose,
-  loading,
-}: {
-  onSubmit: (name: string, content: string) => void;
-  onClose: () => void;
-  loading: boolean;
-}) {
-  const [name, setName] = useState('');
-  const [content, setContent] = useState('');
-  const valid = name.trim().length > 0 && content.trim().length > 0;
-
-  return (
-    <View style={sheet.container}>
-      <View style={sheet.header}>
-        <Text style={sheet.title}>Add Knowledge</Text>
-        <TouchableOpacity onPress={onClose}><Text style={sheet.close}>✕</Text></TouchableOpacity>
-      </View>
-      <Text style={sheet.label}>File name (e.g. product-docs.md)</Text>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="knowledge-file.md"
-        placeholderTextColor={colors.textMuted}
-        style={sheet.input}
-      />
-      <Text style={sheet.label}>Content (Markdown / plain text)</Text>
-      <TextInput
-        value={content}
-        onChangeText={setContent}
-        multiline
-        numberOfLines={8}
-        placeholder="Paste or type the knowledge content your agent should remember..."
-        placeholderTextColor={colors.textMuted}
-        style={[sheet.input, { height: 160, textAlignVertical: 'top' }]}
-      />
-      <TouchableOpacity
-        style={[sheet.submitBtn, !valid && { opacity: 0.5 }]}
-        onPress={() => valid && onSubmit(name.trim(), content.trim())}
-        disabled={!valid || loading}
-      >
-        {loading
-          ? <ActivityIndicator size="small" color="#fff" />
-          : <Text style={sheet.submitText}>Save to Memory</Text>
-        }
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ─── Main Screen ──────────────────────────────────────────────
-export function MemoryManagementScreen() {
-  const [showAdd, setShowAdd] = useState(false);
-  const queryClient = useQueryClient();
-
-  const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['knowledge-files'],
-    queryFn: fetchKnowledge,
-    retry: 1,
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: deleteKnowledge,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge-files'] }),
-    onError: (e: any) => Alert.alert('Error', e.message || 'Delete failed'),
-  });
-
-  const createMut = useMutation({
-    mutationFn: ({ fileName, content }: { fileName: string; content: string }) =>
-      createKnowledge(fileName, content),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['knowledge-files'] });
-      setShowAdd(false);
-    },
-    onError: (e: any) => Alert.alert('Error', e.message || 'Upload failed'),
-  });
-
-  const confirmDelete = (file: KnowledgeFile) => {
-    Alert.alert('Delete Knowledge', `Remove "${file.fileName}" from memory?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMut.mutate(file.id) },
-    ]);
-  };
-
-  const files = data ?? [];
-
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>🧠 Memory Hub</Text>
-          <Text style={styles.headerSub}>
-            {files.length} file{files.length !== 1 ? 's' : ''} · {files.reduce((a, f) => a + f.chunks, 0)} chunks indexed
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
-          <Text style={styles.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Info Banner */}
-      <View style={styles.infoBanner}>
-        <Text style={styles.infoBannerText}>
-          🔍 Knowledge files are chunked and vectorised. Your agent searches them automatically during conversations.
-        </Text>
-      </View>
-
-      {/* Add Sheet */}
-      {showAdd && (
-        <AddKnowledgeSheet
-          onSubmit={(n, c) => createMut.mutate({ fileName: n, content: c })}
-          onClose={() => setShowAdd(false)}
-          loading={createMut.isPending}
-        />
-      )}
-
-      {isLoading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={styles.loadingText}>Loading memory...</Text>
-        </View>
-      ) : files.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyIcon}>🧠</Text>
-          <Text style={styles.emptyTitle}>No knowledge files</Text>
-          <Text style={styles.emptySub}>
-            Add documents, FAQs, or context files. Your agent will reference them automatically.
-          </Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowAdd(true)}>
-            <Text style={styles.primaryBtnText}>Add First Knowledge File</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={files}
-          keyExtractor={(f) => f.id}
-          renderItem={({ item }) => (
-            <View style={styles.fileRow}>
-              <Text style={styles.fileIcon}>📄</Text>
-              <View style={styles.fileInfo}>
-                <Text style={styles.fileName}>{item.fileName}</Text>
-                <Text style={styles.fileMeta}>
-                  {formatBytes(item.sizeBytes)} · {item.chunks} chunks · {timeAgo(item.createdAt)}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => confirmDelete(item)} style={styles.deleteBtn}>
-                {deleteMut.isPending && deleteMut.variables === item.id
-                  ? <ActivityIndicator size="small" color="#ef4444" />
-                  : <Text style={styles.deleteBtnText}>×</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          )}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.accent} />}
-          contentContainerStyle={{ paddingBottom: 32 }}
-          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border, marginLeft: 56 }} />}
-        />
-      )}
-    </View>
-  );
-}
-
+// ─── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
@@ -223,6 +65,11 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   addBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  tabsRow: { flexDirection: 'row', backgroundColor: colors.bgCard, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabBtn: { paddingVertical: 12, marginRight: 24, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabBtnActive: { borderBottomColor: colors.primary },
+  tabText: { fontSize: 14, fontWeight: '600', color: colors.textMuted },
+  tabTextActive: { color: colors.primary },
   infoBanner: {
     backgroundColor: '#7c3aed11', borderBottomWidth: 1, borderBottomColor: '#7c3aed22',
     paddingHorizontal: 16, paddingVertical: 10,
@@ -264,3 +111,274 @@ const sheet = StyleSheet.create({
   submitBtn: { backgroundColor: colors.primary, borderRadius: 10, padding: 14, alignItems: 'center' },
   submitText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
+
+// ─── Add Knowledge Modal ───────────────────────────────────────
+function AddKnowledgeSheet({
+  onSubmit,
+  onClose,
+  loading,
+  isPref = false,
+}: {
+  onSubmit: (name: string, content: string) => void;
+  onClose: () => void;
+  loading: boolean;
+  isPref?: boolean;
+}) {
+  const [name, setName] = useState('');
+  const [content, setContent] = useState('');
+  const valid = isPref ? content.trim().length > 0 : (name.trim().length > 0 && content.trim().length > 0);
+
+  return (
+    <View style={sheet.container}>
+      <View style={sheet.header}>
+        <Text style={sheet.title}>{isPref ? 'Add Memory Preference' : 'Add Knowledge'}</Text>
+        <TouchableOpacity onPress={onClose}><Text style={sheet.close}>✕</Text></TouchableOpacity>
+      </View>
+      {!isPref && (
+        <>
+          <Text style={sheet.label}>File name (e.g. product-docs.md)</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="knowledge-file.md"
+            placeholderTextColor={colors.textMuted}
+            style={sheet.input}
+          />
+        </>
+      )}
+      <Text style={sheet.label}>{isPref ? 'Preference Content' : 'Content (Markdown / plain text)'}</Text>
+      <TextInput
+        value={content}
+        onChangeText={setContent}
+        multiline
+        numberOfLines={8}
+        placeholder={isPref ? "I always prefer code in TypeScript..." : "Paste or type the knowledge content your agent should remember..."}
+        placeholderTextColor={colors.textMuted}
+        style={[sheet.input, { height: 160, textAlignVertical: 'top' }]}
+      />
+      <TouchableOpacity
+        style={[sheet.submitBtn, !valid && { opacity: 0.5 }]}
+        onPress={() => valid && onSubmit(name.trim(), content.trim())}
+        disabled={!valid || loading}
+      >
+        {loading
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <Text style={sheet.submitText}>Save to Memory</Text>
+        }
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────
+export function MemoryManagementScreen() {
+  const [showAdd, setShowAdd] = useState(false);
+  const [tab, setTab] = useState<'knowledge' | 'preferences'>('knowledge');
+  const queryClient = useQueryClient();
+
+  const { data: knowledgeFiles, isLoading: knowledgeLoading, refetch: refetchKnowledge, isRefetching: isRefetchingKnowledge } = useQuery({
+    queryKey: ['knowledge-files'],
+    queryFn: fetchKnowledge,
+    retry: 1,
+  });
+
+  const { data: preferences, isLoading: prefsLoading, refetch: refetchPrefs, isRefetching: isRefetchingPrefs } = useQuery({
+    queryKey: ['memory-preferences'],
+    queryFn: memoryApi.getPreferences,
+    retry: 1,
+  });
+
+  const deleteKnowledgeMut = useMutation({
+    mutationFn: deleteKnowledge,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge-files'] }),
+    onError: (e: any) => Alert.alert('Error', e.message || 'Delete failed'),
+  });
+
+  const createKnowledgeMut = useMutation({
+    mutationFn: ({ fileName, content }: { fileName: string; content: string }) =>
+      createKnowledge(fileName, content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge-files'] });
+      setShowAdd(false);
+    },
+    onError: (e: any) => Alert.alert('Error', e.message || 'Upload failed'),
+  });
+
+  const deletePrefMut = useMutation({
+    mutationFn: memoryApi.deletePreference,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['memory-preferences'] }),
+    onError: (e: any) => Alert.alert('Error', e.message || 'Delete failed'),
+  });
+
+  const createPrefMut = useMutation({
+    mutationFn: (content: string) => memoryApi.addPreference(content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['memory-preferences'] });
+      setShowAdd(false);
+    },
+    onError: (e: any) => Alert.alert('Error', e.message || 'Add preference failed'),
+  });
+
+  const confirmDeleteKnowledge = (file: KnowledgeFile) => {
+    Alert.alert('Delete Knowledge', `Remove "${file.fileName}" from memory?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteKnowledgeMut.mutate(file.id) },
+    ]);
+  };
+
+  const confirmDeletePref = (pref: MemoryPreference) => {
+    Alert.alert('Delete Preference', `Remove this memory preference?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deletePrefMut.mutate(pref.id) },
+    ]);
+  };
+
+  const files = knowledgeFiles ?? [];
+  const prefs = preferences ?? [];
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>🧠 Memory Hub</Text>
+          <Text style={styles.headerSub}>
+            {tab === 'knowledge' ? `${files.length} files · ${files.reduce((a, f) => a + f.chunks, 0)} chunks indexed` : `${prefs.length} memory preferences`}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
+          <Text style={styles.addBtnText}>+ Add</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.tabsRow}>
+        <TouchableOpacity style={[styles.tabBtn, tab === 'knowledge' && styles.tabBtnActive]} onPress={() => setTab('knowledge')}>
+          <Text style={[styles.tabText, tab === 'knowledge' && styles.tabTextActive]}>Knowledge Base</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, tab === 'preferences' && styles.tabBtnActive]} onPress={() => setTab('preferences')}>
+          <Text style={[styles.tabText, tab === 'preferences' && styles.tabTextActive]}>Preferences</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Info Banner */}
+      <View style={styles.infoBanner}>
+        <Text style={styles.infoBannerText}>
+          {tab === 'knowledge' 
+            ? '🔍 Knowledge files are chunked and vectorised. Your agent searches them automatically during conversations.'
+            : '💡 Memory preferences tell your agent how to behave and what to remember about you.'}
+        </Text>
+      </View>
+
+      {/* Add Sheet */}
+      {showAdd && tab === 'knowledge' && (
+        <AddKnowledgeSheet
+          onSubmit={(n, c) => createKnowledgeMut.mutate({ fileName: n, content: c })}
+          onClose={() => setShowAdd(false)}
+          loading={createKnowledgeMut.isPending}
+        />
+      )}
+      
+      {showAdd && tab === 'preferences' && (
+        <AddKnowledgeSheet
+          onSubmit={(_, c) => createPrefMut.mutate(c)}
+          onClose={() => setShowAdd(false)}
+          loading={createPrefMut.isPending}
+          isPref={true}
+        />
+      )}
+
+      {tab === 'knowledge' && (
+        <>
+          {knowledgeLoading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={styles.loadingText}>Loading memory...</Text>
+            </View>
+          ) : files.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyIcon}>🧠</Text>
+              <Text style={styles.emptyTitle}>No knowledge files</Text>
+              <Text style={styles.emptySub}>
+                Add documents, FAQs, or context files. Your agent will reference them automatically.
+              </Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowAdd(true)}>
+                <Text style={styles.primaryBtnText}>Add First Knowledge File</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={files}
+              keyExtractor={(f) => f.id}
+              renderItem={({ item }) => (
+                <View style={styles.fileRow}>
+                  <Text style={styles.fileIcon}>📄</Text>
+                  <View style={styles.fileInfo}>
+                    <Text style={styles.fileName}>{item.fileName}</Text>
+                    <Text style={styles.fileMeta}>
+                      {formatBytes(item.sizeBytes)} · {item.chunks} chunks · {timeAgo(item.createdAt)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => confirmDeleteKnowledge(item)} style={styles.deleteBtn}>
+                    {deleteKnowledgeMut.isPending && deleteKnowledgeMut.variables === item.id
+                      ? <ActivityIndicator size="small" color="#ef4444" />
+                      : <Text style={styles.deleteBtnText}>×</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
+              refreshControl={<RefreshControl refreshing={isRefetchingKnowledge} onRefresh={refetchKnowledge} tintColor={colors.accent} />}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border, marginLeft: 56 }} />}
+            />
+          )}
+        </>
+      )}
+
+      {tab === 'preferences' && (
+        <>
+          {prefsLoading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={styles.loadingText}>Loading preferences...</Text>
+            </View>
+          ) : prefs.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyIcon}>💭</Text>
+              <Text style={styles.emptyTitle}>No preferences</Text>
+              <Text style={styles.emptySub}>
+                Add preferences for your agent to remember about you or your tasks.
+              </Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowAdd(true)}>
+                <Text style={styles.primaryBtnText}>Add Preference</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={prefs}
+              keyExtractor={(p) => p.id}
+              renderItem={({ item }) => (
+                <View style={styles.fileRow}>
+                  <Text style={styles.fileIcon}>💭</Text>
+                  <View style={styles.fileInfo}>
+                    <Text style={styles.fileName} numberOfLines={3}>{item.content}</Text>
+                    <Text style={styles.fileMeta}>{timeAgo(item.createdAt)}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => confirmDeletePref(item)} style={styles.deleteBtn}>
+                    {deletePrefMut.isPending && deletePrefMut.variables === item.id
+                      ? <ActivityIndicator size="small" color="#ef4444" />
+                      : <Text style={styles.deleteBtnText}>×</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
+              refreshControl={<RefreshControl refreshing={isRefetchingPrefs} onRefresh={refetchPrefs} tintColor={colors.accent} />}
+              contentContainerStyle={{ paddingBottom: 32 }}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.border, marginLeft: 56 }} />}
+            />
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+

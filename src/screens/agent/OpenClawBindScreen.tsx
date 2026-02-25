@@ -9,6 +9,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { bindOpenClaw, createBindSession, pollBindSession } from '../../services/openclaw.service';
 import { startQrBindSession, waitForQrBind } from '../../services/auth';
+import { QrCode } from '../../components/common/QrCode';
 import type { AgentStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'OpenClawBind'>;
@@ -151,10 +152,8 @@ export function OpenClawBindScreen() {
               <Text style={styles.qrInstructions}>
                 Open your OpenClaw instance → Settings → Mobile Bind → Scan this code
               </Text>
-              <View style={styles.qrBox}>
-                {/* QR code placeholder — in production use react-native-qrcode-svg */}
-                <Text style={styles.qrPlaceholder}>📱</Text>
-                <Text style={styles.qrCode}>{qrCode.substring(0, 20)}...</Text>
+              <View style={styles.qrContainer}>
+                <QrCode value={qrCode} size={200} bgColor={colors.bgCard} fgColor={colors.textPrimary} />
               </View>
               <Text style={[styles.qrStatus, qrStatus === 'scanned' && { color: colors.success }]}>
                 {qrStatus === 'pending' ? '⏳ Waiting for scan...' :
