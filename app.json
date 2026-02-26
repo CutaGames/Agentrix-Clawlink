@@ -79,7 +79,13 @@
           "sounds": []
         }
       ],
-      "expo-image-picker"
+      "expo-image-picker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Agentrix to access your location for AI context."
+        }
+      ]
     ],
     "extra": {
       "eas": {

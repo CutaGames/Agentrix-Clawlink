@@ -20,6 +20,8 @@ interface AgentAccount {
   agentType: string;
   status: string;
   creditScore?: number;
+  balance?: number;
+  balanceCurrency?: string;
   spendingLimits?: {
     singleTxLimit: number;
     dailyLimit: number;
@@ -70,6 +72,10 @@ async function openWalletForAgent(agentId: string): Promise<{ walletAddress: str
 
 async function suspendAgent(agentId: string): Promise<void> {
   await apiFetch(`/agent-accounts/${agentId}/suspend`, { method: 'PATCH' });
+}
+
+async function resumeAgent(agentId: string): Promise<void> {
+  await apiFetch(`/agent-accounts/${agentId}/resume`, { method: 'PATCH' });
 }
 
 // ──────────────────────────────────────────────
@@ -227,6 +233,7 @@ export function AgentAccountScreen() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [walletLoading, setWalletLoading] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const { data: agents = [], isLoading, refetch } = useQuery({
     queryKey: ['agent-accounts'],
@@ -305,6 +312,31 @@ export function AgentAccountScreen() {
     );
   };
 
+  const handleResume = (agent: AgentAccount) => {
+    Alert.alert(
+      'Resume Agent',
+      `Reactivate "${agent.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resume',
+          onPress: async () => {
+            setActionLoading(agent.id);
+            try {
+              await resumeAgent(agent.id);
+              queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+              Alert.alert('Agent Reactivated ✅', `${agent.name} is active again.`);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to resume agent.');
+            } finally {
+              setActionLoading(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const renderAgent = ({ item: agent }: { item: AgentAccount }) => (
     <View style={styles.card}>
       {/* Card header */}
@@ -359,6 +391,14 @@ export function AgentAccountScreen() {
           <Text style={styles.walletAddress} numberOfLines={1}>
             {agent.walletAddress.slice(0, 14)}...{agent.walletAddress.slice(-8)}
           </Text>
+          {/* Balance chip */}
+          {agent.balance != null && (
+            <View style={styles.balanceChip}>
+              <Text style={styles.balanceText}>
+                {agent.balance.toFixed(4)} {agent.balanceCurrency ?? 'USDT'}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
@@ -377,12 +417,45 @@ export function AgentAccountScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Actions */}
-      {(agent.status === 'active' || agent.status === 'draft') && (
-        <TouchableOpacity style={styles.suspendBtn} onPress={() => handleSuspend(agent)}>
-          <Text style={styles.suspendText}>⏸ Suspend</Text>
+      {/* Actions row */}
+      <View style={styles.actionsRow}>
+        {(agent.status === 'active' || agent.status === 'draft') && (
+          <TouchableOpacity style={styles.actionBtn} onPress={() => handleSuspend(agent)}>
+            <Text style={styles.actionBtnText}>⏸ Suspend</Text>
+          </TouchableOpacity>
+        )}
+        {agent.status === 'suspended' && (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnResume]}
+            onPress={() => handleResume(agent)}
+            disabled={actionLoading === agent.id}
+          >
+            {actionLoading === agent.id ? (
+              <ActivityIndicator color={colors.accent} size="small" />
+            ) : (
+              <Text style={[styles.actionBtnText, { color: colors.accent }]}>▶ Resume</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        {agent.walletAddress && (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnFund]}
+            onPress={() =>
+              Alert.alert('Fund Agent', `Top up agent wallet:\n${agent.walletAddress}\n\nSend USDT (BSC) to this address.`)
+            }
+          >
+            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>💰 Fund</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() =>
+            Alert.alert('Transactions', `Transaction history for ${agent.name} will open in the Orders tab.`)
+          }
+        >
+          <Text style={styles.actionBtnText}>📋 Txs</Text>
         </TouchableOpacity>
-      )}
+      </View>
     </View>
   );
 
@@ -504,8 +577,31 @@ const styles = StyleSheet.create({
   },
   openWalletIcon: { fontSize: 16 },
   openWalletText: { fontSize: 13, color: colors.accent, fontWeight: '600' },
-  suspendBtn: { alignItems: 'center', paddingVertical: 6 },
-  suspendText: { fontSize: 13, color: colors.textMuted },
+  // Actions row
+  actionsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  actionBtn: {
+    flex: 1,
+    minWidth: 70,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionBtnResume: { borderColor: colors.accent + '55', backgroundColor: colors.accent + '11' },
+  actionBtnFund: { borderColor: '#22c55e55', backgroundColor: '#22c55e11' },
+  actionBtnText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  // Balance chip
+  balanceChip: {
+    backgroundColor: colors.accent + '22',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: colors.accent + '55',
+  },
+  balanceText: { fontSize: 10, fontWeight: '700', color: colors.accent },
   // FAB
   fab: {
     position: 'absolute',

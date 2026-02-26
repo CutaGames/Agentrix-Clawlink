@@ -1,7 +1,13 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { apiFetch } from './api';
+
+// Actual EAS project ID (from app.json extra.eas.projectId)
+const EAS_PROJECT_ID =
+  (Constants.expoConfig?.extra?.eas?.projectId as string | undefined) ??
+  '96a641e0-ce03-45ff-9de7-2cd89c488236';
 
 // 配置通知处理行为
 Notifications.setNotificationHandler({
@@ -51,7 +57,7 @@ class NotificationService {
 
       // 获取 Expo Push Token
       const tokenResponse = await Notifications.getExpoPushTokenAsync({
-        projectId: 'your-project-id', // 替换为实际 projectId
+        projectId: EAS_PROJECT_ID,
       });
       this.expoPushToken = tokenResponse.data;
 
