@@ -25,6 +25,8 @@ type Post = {
   avatar?: string;
   content: string;
   tags?: string[];
+  skillId?: string;   // If present, "Fork & Install" is available
+  skillName?: string;
   likes: number;
   comments: number;
   time: string;
@@ -58,7 +60,10 @@ const PLACEHOLDER_POSTS: Post[] = [
     id: '3', authorId: 'u3', author: 'claw_dev', avatar: '💻',
     content: 'New MCP skill published: "GitHub Auto-Review". Installs in 1-click from ClawLink Market. Check it out!',
     likes: 120, comments: 23, time: '6h', isLiked: false,
-    tags: ['skill', 'github', 'dev'], badges: ['Genesis Node'],
+    tags: ['skill', 'github', 'dev'],
+    skillId: 'github-auto-review',
+    skillName: 'GitHub Auto-Review',
+    badges: ['Genesis Node'],
   },
   {
     id: '4', authorId: 'u4', author: 'skill_wizard', avatar: '⚡',
@@ -193,6 +198,34 @@ export function FeedScreen() {
         <TouchableOpacity style={styles.actionBtn}>
           <Text style={styles.actionText}>🔗 Share</Text>
         </TouchableOpacity>
+        {/* Fork & Install — shown when post has an associated skill */}
+        {post.skillId && (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.installBtn]}
+            onPress={(e) => {
+              e.stopPropagation();
+              Alert.alert(
+                '⚡ Fork & Install',
+                `Install "${post.skillName ?? post.skillId}" from the marketplace?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Install',
+                    onPress: () => {
+                      // Navigate to Market tab → Checkout for this skill
+                      (navigation as any).navigate('Market', {
+                        screen: 'Checkout',
+                        params: { skillId: post.skillId, skillName: post.skillName },
+                      });
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            <Text style={[styles.actionText, styles.installText]}>⚡ Install</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
   ), [navigation, activeTag, handleTagPress, likeMut]);
@@ -303,4 +336,6 @@ const styles = StyleSheet.create({
   actionBtn: { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: colors.bgSecondary, borderRadius: 16 },
   actionText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   actionLiked: { color: '#ef4444' },
+  installBtn: { backgroundColor: colors.accent + '22', borderWidth: 1, borderColor: colors.accent + '55' },
+  installText: { color: colors.accent },
 });

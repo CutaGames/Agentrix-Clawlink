@@ -17,6 +17,12 @@ import type { ChatStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<ChatStackParamList, 'GroupChat'>;
 type Route = RouteProp<ChatStackParamList, 'GroupChat'>;
 
+// @Agent mention regex — matches @Agent, @MyAgent, @agent-name etc.
+const AGENT_MENTION_RE = /@([A-Za-z][A-Za-z0-9_-]*)/g;
+
+type Nav = NativeStackNavigationProp<ChatStackParamList, 'GroupChat'>;
+type Route = RouteProp<ChatStackParamList, 'GroupChat'>;
+
 type GroupMessage = {
   id: string;
   senderId: string;
@@ -75,6 +81,7 @@ export function GroupChatScreen() {
   const [input, setInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [agentLoading, setAgentLoading] = useState(false);
   const listRef = useRef<FlatList>(null);
   const qc = useQueryClient();
 
@@ -123,13 +130,70 @@ export function GroupChatScreen() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['group-messages', groupId] }),
   });
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text) return;
     setInput('');
     sendMut.mutate(text);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [input, sendMut]);
+
+    // ── @Agent mention detection ──────────────────────────────────────────────
+    // If the message contains @agent or @AgentName, invoke the agent and
+    // inject its reply into the group chat as an "agent" system message.
+    const agentMentions = [...text.matchAll(AGENT_MENTION_RE)].map((m) => m[1]);
+    if (agentMentions.length > 0) {
+      const agentName = agentMentions[0]; // Use the first mentioned agent
+      setAgentLoading(true);
+      // Show a "typing" placeholder
+      const typingId = `agent-typing-${Date.now()}`;
+      const typingMsg: GroupMessage = {
+        id: typingId,
+        senderId: `agent_${agentName}`,
+        senderName: `🤖 @${agentName}`,
+        content: '• • •',
+        type: 'text',
+        createdAt: new Date().toISOString(),
+      };
+      qc.setQueryData(['group-messages', groupId], (old: GroupMessage[] | undefined) => [
+        ...(old ?? []),
+        typingMsg,
+      ]);
+      try {
+        // Call the agent via the HQ chat endpoint
+        const response = await apiFetch<any>('/hq/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            message: text.replace(AGENT_MENTION_RE, '').trim() || text,
+            context: `group_chat:${groupId}`,
+            agentName,
+          }),
+        });
+        const reply = response?.reply ?? response?.content ?? response?.message ??
+          `I'm @${agentName}. How can I help?`;
+
+        // Replace typing placeholder with actual agent reply
+        qc.setQueryData(['group-messages', groupId], (old: GroupMessage[] | undefined) =>
+          (old ?? []).map((m) =>
+            m.id === typingId
+              ? { ...m, id: `agent-${Date.now()}`, content: reply, senderName: `🤖 @${agentName}` }
+              : m
+          )
+        );
+      } catch (e: any) {
+        // Replace typing with error
+        qc.setQueryData(['group-messages', groupId], (old: GroupMessage[] | undefined) =>
+          (old ?? []).map((m) =>
+            m.id === typingId
+              ? { ...m, id: `agent-err-${Date.now()}`, content: `⚠️ @${agentName} is unavailable right now.`, type: 'system' as any }
+              : m
+          )
+        );
+      } finally {
+        setAgentLoading(false);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 150);
+      }
+    }
+  }, [input, sendMut, qc, groupId]);
 
   const renderMsg = ({ item }: { item: GroupMessage }) => {
     if (item.type === 'system') {
@@ -205,20 +269,24 @@ export function GroupChatScreen() {
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
-            placeholder={`Message ${groupName}...`}
+            placeholder={`Message ${groupName}… (use @agent to invoke)`}
             placeholderTextColor={colors.textMuted}
             value={input}
             onChangeText={setInput}
             multiline
             maxLength={2000}
           />
-          <TouchableOpacity
-            style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]}
-            onPress={handleSend}
-            disabled={!input.trim()}
-          >
-            <Text style={styles.sendBtnText}>➤</Text>
-          </TouchableOpacity>
+          {agentLoading ? (
+            <ActivityIndicator color={colors.accent} style={{ width: 44 }} />
+          ) : (
+            <TouchableOpacity
+              style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]}
+              onPress={handleSend}
+              disabled={!input.trim()}
+            >
+              <Text style={styles.sendBtnText}>➤</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
 
