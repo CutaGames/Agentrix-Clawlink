@@ -56,6 +56,8 @@ jobs:
 
       - name: npm install
         run: npm install --legacy-peer-deps
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
       # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without

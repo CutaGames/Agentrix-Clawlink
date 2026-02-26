@@ -20,9 +20,6 @@ type Route = RouteProp<ChatStackParamList, 'GroupChat'>;
 // @Agent mention regex — matches @Agent, @MyAgent, @agent-name etc.
 const AGENT_MENTION_RE = /@([A-Za-z][A-Za-z0-9_-]*)/g;
 
-type Nav = NativeStackNavigationProp<ChatStackParamList, 'GroupChat'>;
-type Route = RouteProp<ChatStackParamList, 'GroupChat'>;
-
 type GroupMessage = {
   id: string;
   senderId: string;

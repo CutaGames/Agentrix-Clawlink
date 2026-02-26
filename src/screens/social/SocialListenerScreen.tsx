@@ -13,8 +13,9 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Alert, ActivityIndicator, RefreshControl, Clipboard,
+  Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Linking } from 'react-native';
 import { colors } from '../../theme/colors';
@@ -46,7 +47,7 @@ const PLATFORM_META: Record<string, { icon: string; color: string; label: string
 };
 
 function copyToClipboard(text: string, label: string) {
-  Clipboard.setString(text);
+  Clipboard.setStringAsync(text).catch(() => {});
   Alert.alert('Copied!', `${label} copied to clipboard.`);
 }
 
