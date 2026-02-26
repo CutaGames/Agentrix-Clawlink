@@ -56,7 +56,7 @@ function QuickChatSheet({
     setMessages((prev) => [...prev, { role: 'user', text: userText }]);
     setLoading(true);
     try {
-      const data = await apiFetch<any>('/hq/chat', {
+      const data = await apiFetch<any>('/claude/chat', {
         method: 'POST',
         body: JSON.stringify({ message: userText }),
       });
