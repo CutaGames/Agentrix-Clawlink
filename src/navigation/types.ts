@@ -66,6 +66,7 @@ export type MeStackParamList = {
   WalletBackup: undefined;
   NotificationCenter: undefined;
   ShareCard: { shareUrl: string; title?: string; userName?: string };
+  SocialListener: undefined;
 };
 
 export type MainTabParamList = {

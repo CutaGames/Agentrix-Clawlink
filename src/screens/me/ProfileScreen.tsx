@@ -16,6 +16,7 @@ const MENU_ITEMS = [
   { id: 'account', icon: '🔐', label: 'Wallet & Account', route: 'Account' },
   { id: 'skills', icon: '⚡', label: 'My Skills', route: 'MySkills' },
   { id: 'orders', icon: '📦', label: 'My Orders', route: 'MyOrders' },
+  { id: 'social-listener', icon: '📡', label: 'Social Listener', route: 'SocialListener' },
   { id: 'settings', icon: '⚙️', label: 'Settings', route: 'Settings' },
 ];
 
