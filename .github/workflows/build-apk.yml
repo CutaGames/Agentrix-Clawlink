@@ -292,6 +292,44 @@ jobs:
           disable-animations: true
           script: echo "AVD created and cached"
 
+      - name: Prepare test script
+        run: |
+          cat << 'EOF' > run_tests.sh
+          set -e
+          echo "=== Installing APK ==="
+          adb wait-for-device
+          adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
+          
+          echo "=== Running Maestro flows ==="
+          mkdir -p maestro-output
+          PASS=0; FAIL=0; ERRORS=""
+          
+          for flow in .maestro/*.yaml; do
+            echo "--- Running: $flow ---"
+            if maestro test "$flow" --output "maestro-output/$(basename $flow .yaml)-report.xml" --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
+              echo "✅ PASS: $flow"
+              PASS=$((PASS + 1))
+            else
+              echo "❌ FAIL: $flow"
+              FAIL=$((FAIL + 1))
+              ERRORS="$ERRORS\n- \`$flow\`"
+            fi
+          done
+          
+          mkdir -p maestro-output/screenshots
+          find . -name "*.png" -newer artifacts/ -exec cp {} maestro-output/screenshots/ \; 2>/dev/null || true
+          
+          echo "MAESTRO_PASS=$PASS" >> $GITHUB_ENV
+          echo "MAESTRO_FAIL=$FAIL" >> $GITHUB_ENV
+          echo "MAESTRO_ERRORS<<INNER_EOF" >> $GITHUB_ENV
+          echo -e "$ERRORS" >> $GITHUB_ENV
+          echo "INNER_EOF" >> $GITHUB_ENV
+          
+          echo "=== Results: $PASS passed, $FAIL failed ==="
+          [ "$FAIL" -eq 0 ] || exit 1
+          EOF
+          chmod +x run_tests.sh
+
       - name: Run Maestro tests on emulator
         id: maestro
         uses: reactivecircus/android-emulator-runner@v2
@@ -302,48 +340,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            set -e
-
-            echo "=== Installing APK ==="
-            adb wait-for-device
-            adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
-
-            echo "=== Running Maestro flows ==="
-            mkdir -p maestro-output
-
-            # Run each flow; capture pass/fail per test
-            PASS=0; FAIL=0; ERRORS=""
-
-            for flow in .maestro/*.yaml; do
-              echo "--- Running: $flow ---"
-              if maestro test "$flow" \
-                  --output "maestro-output/$(basename $flow .yaml)-report.xml" \
-                  --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
-                echo "✅ PASS: $flow"
-                PASS=$((PASS + 1))
-              else
-                echo "❌ FAIL: $flow"
-                FAIL=$((FAIL + 1))
-                ERRORS="$ERRORS\n- \`$flow\`"
-              fi
-            done
-
-            # Copy screenshots
-            mkdir -p maestro-output/screenshots
-            find . -name "*.png" -newer artifacts/ -exec cp {} maestro-output/screenshots/ \; 2>/dev/null || true
-
-            # Write summary env vars
-            echo "MAESTRO_PASS=$PASS" >> $GITHUB_ENV
-            echo "MAESTRO_FAIL=$FAIL" >> $GITHUB_ENV
-            echo "MAESTRO_ERRORS<<EOF" >> $GITHUB_ENV
-            echo -e "$ERRORS" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-
-            echo "=== Results: $PASS passed, $FAIL failed ==="
-
-            # Fail the step if any test failed
-            [ "$FAIL" -eq 0 ] || exit 1
+          script: ./run_tests.sh
 
       # ── Always: upload test artifacts (screenshots + logs) ────────────
       - name: Upload test artifacts
