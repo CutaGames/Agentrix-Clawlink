@@ -239,7 +239,7 @@ export function FeedScreen() {
           <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('CreatePost' as any)}>
             <Text style={styles.headerIcon}>✏️</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('Chat')}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('ChatList' as any)}>
             <Text style={styles.headerIcon}>💬</Text>
           </TouchableOpacity>
         </View>

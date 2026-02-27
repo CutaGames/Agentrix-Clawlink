@@ -5,6 +5,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type Environment = 'sandbox' | 'production';
 
+/** Progressive UI complexity — controls which features are visible */
+export type UiComplexity = 'beginner' | 'advanced' | 'professional';
+
 export type ModelId =
   | 'claude-haiku-4-5'
   | 'claude-sonnet-4-5'
@@ -40,6 +43,14 @@ interface SettingsState {
   // AI Model
   selectedModelId: ModelId;
   
+  // Progressive UI complexity
+  uiComplexity: UiComplexity;
+
+  // Onboarding checklist flags
+  onboardingDeployedAgent: boolean;
+  onboardingInstalledSkill: boolean;
+  onboardingCreatedWorkflow: boolean;
+  
   // 通知设置
   notificationsEnabled: boolean;
   airdropNotifications: boolean;
@@ -53,6 +64,8 @@ interface SettingsState {
   setEnvironment: (env: Environment) => void;
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
+  setUiComplexity: (level: UiComplexity) => void;
+  markOnboardingStep: (step: 'deployedAgent' | 'installedSkill' | 'createdWorkflow') => void;
   toggleNotifications: (enabled: boolean) => void;
   toggleBiometric: (enabled: boolean) => void;
 }
@@ -70,6 +83,11 @@ export const useSettingsStore = create<SettingsState>()(
       apiBaseUrl: API_URLS.local, // 开发时使用本地
       
       selectedModelId: 'claude-haiku-4-5' as ModelId,
+
+      uiComplexity: 'beginner' as UiComplexity,
+      onboardingDeployedAgent: false,
+      onboardingInstalledSkill: false,
+      onboardingCreatedWorkflow: false,
       
       notificationsEnabled: true,
       airdropNotifications: true,
@@ -86,6 +104,17 @@ export const useSettingsStore = create<SettingsState>()(
       setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
       
       setSelectedModel: (modelId) => set({ selectedModelId: modelId }),
+
+      setUiComplexity: (level) => set({ uiComplexity: level }),
+
+      markOnboardingStep: (step) => {
+        const field = {
+          deployedAgent: 'onboardingDeployedAgent',
+          installedSkill: 'onboardingInstalledSkill',
+          createdWorkflow: 'onboardingCreatedWorkflow',
+        }[step] as keyof SettingsState;
+        set({ [field]: true } as any);
+      },
       
       toggleNotifications: (enabled) => set({ 
         notificationsEnabled: enabled,

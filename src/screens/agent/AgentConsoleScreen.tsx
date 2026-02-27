@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, RefreshControl,
@@ -23,6 +23,70 @@ const STATUS_COLOR = {
   error: colors.error,
 };
 
+// ── Onboarding Checklist Card ─────────────────────────────────────
+function OnboardingChecklist({ navigation }: { navigation: Nav }) {
+  const { onboardingDeployedAgent, onboardingInstalledSkill, onboardingCreatedWorkflow, markOnboardingStep, setUiComplexity } =
+    useSettingsStore();
+  const steps = [
+    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: 'Deploy your first Agent', action: undefined, actionLabel: '' },
+    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: 'Install your first Skill', action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: 'Browse Market →' },
+    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: 'Create your first Workflow', action: () => navigation.navigate('WorkflowList'), actionLabel: 'Create →' },
+  ];
+  const completedCount = steps.filter((s) => s.done).length;
+  if (completedCount === 3) return null; // all done, hide card
+
+  const handleComplete = (key: 'deployedAgent' | 'installedSkill' | 'createdWorkflow') => {
+    markOnboardingStep(key);
+    const newCount = completedCount + 1;
+    if (newCount >= 2) setUiComplexity('advanced');
+  };
+
+  return (
+    <View style={onboard.card}>
+      <Text style={onboard.title}>🎯 Complete these steps to unlock Agent full power</Text>
+      {steps.map((step, i) => (
+        <View key={step.key} style={onboard.row}>
+          <TouchableOpacity
+            onPress={() => !step.done && handleComplete(step.key)}
+            style={onboard.checkbox}
+          >
+            <Text style={{ fontSize: 16 }}>{step.done ? '✅' : '⬜'}</Text>
+          </TouchableOpacity>
+          <Text style={[onboard.stepLabel, step.done && onboard.stepDone]}>
+            {i + 1}. {step.label}
+          </Text>
+          {!step.done && step.action && (
+            <TouchableOpacity onPress={step.action} style={onboard.actionBtn}>
+              <Text style={onboard.actionBtnText}>{step.actionLabel}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+      <View style={onboard.progress}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={[onboard.dot, i < completedCount && onboard.dotFilled]} />
+        ))}
+        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? `${2 - completedCount} more to unlock Advanced mode` : 'Advanced mode unlocked! 🎉'}</Text>
+      </View>
+    </View>
+  );
+}
+
+const onboard = StyleSheet.create({
+  card: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.accent + '44', gap: 10 },
+  title: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  checkbox: { paddingVertical: 2 },
+  stepLabel: { flex: 1, fontSize: 14, color: colors.textPrimary },
+  stepDone: { textDecorationLine: 'line-through', color: colors.textMuted },
+  actionBtn: { backgroundColor: colors.primary + '22', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  actionBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  progress: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.bgSecondary },
+  dotFilled: { backgroundColor: colors.accent },
+  progressLabel: { fontSize: 12, color: colors.textMuted, flex: 1 },
+});
+
 export function AgentConsoleScreen() {
   const navigation = useNavigation<Nav>();
   const activeInstance = useAuthStore((s) => s.activeInstance);
@@ -31,10 +95,25 @@ export function AgentConsoleScreen() {
   const rawInstances = useAuthStore((s) => s.user?.openClawInstances);
   const instances = rawInstances ?? [];
   const { setActiveInstance } = useAuthStore.getState();
-  const [tab, setTab] = useState<'overview' | 'skills' | 'tasks'>('overview');
+  const [tab, setTab] = useState<'overview' | 'skills' | 'tasks' | 'permissions'>('overview');
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const selectedModelLabel = SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId;
+
+  // Auto-mark onboarding step 1 when user has an active instance
+  useEffect(() => {
+    if (activeInstance) {
+      useSettingsStore.getState().markOnboardingStep('deployedAgent');
+    }
+  }, [activeInstance?.id]);
+
+  // Auto-mark onboarding step 2 when user has at least one skill
+  useEffect(() => {
+    if (instanceSkillsRaw && instanceSkillsRaw.length > 0) {
+      useSettingsStore.getState().markOnboardingStep('installedSkill');
+    }
+  }, [instanceSkillsRaw?.length]);
 
   const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
@@ -197,11 +276,23 @@ export function AgentConsoleScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        {/* 4th tab: Permissions — visible in advanced/professional mode */}
+        {(uiComplexity === 'advanced' || uiComplexity === 'professional') && (
+          <TouchableOpacity
+            style={[styles.tabBtn, tab === 'permissions' && styles.tabBtnActive]}
+            onPress={() => setTab('permissions')}
+          >
+            <Text style={[styles.tabText, tab === 'permissions' && styles.tabTextActive]}>🔐 Perms</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Big Chat CTA */}
       {tab === 'overview' && (
         <>
+          {/* Onboarding Checklist */}
+          <OnboardingChecklist navigation={navigation} />
+
           <TouchableOpacity
             style={styles.chatCta}
             onPress={() => navigation.navigate('AgentChat', { instanceId: activeInstance.id, instanceName: activeInstance.name })}
@@ -380,6 +471,46 @@ export function AgentConsoleScreen() {
           <Text style={styles.emptySectionSub}>Tasks triggered by your agent will appear here.</Text>
         </View>
       )}
+
+      {/* Permissions Tab */}
+      {tab === 'permissions' && (
+        <View style={{ gap: 10 }}>
+          <TouchableOpacity
+            style={styles.permissionsCard}
+            onPress={() => navigation.navigate('AgentPermissions', {})}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.permissionsCardIcon}>🔐</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.permissionsCardTitle}>Permissions & Security</Text>
+              <Text style={styles.permissionsCardSub}>Manage payment limits, device access, network tools</Text>
+            </View>
+            <Text style={styles.permissionsCardArrow}>›</Text>
+          </TouchableOpacity>
+          {/* Quick summary rows */}
+          {[
+            { icon: '💳', label: 'Autonomous Payment', status: 'ON', color: colors.success },
+            { icon: '🔍', label: 'Web Search', status: 'ON', color: colors.success },
+            { icon: '📁', label: 'File Read', status: 'ON', color: colors.success },
+            { icon: '📸', label: 'Screenshot', status: 'OFF', color: colors.textMuted },
+            { icon: '📧', label: 'Email Send', status: 'OFF', color: colors.textMuted },
+          ].map((row) => (
+            <View key={row.label} style={styles.permSummaryRow}>
+              <Text style={styles.permSummaryIcon}>{row.icon}</Text>
+              <Text style={styles.permSummaryLabel}>{row.label}</Text>
+              <View style={[styles.permSummaryBadge, { backgroundColor: row.color + '22' }]}>
+                <Text style={[styles.permSummaryBadgeText, { color: row.color }]}>{row.status}</Text>
+              </View>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={[styles.primaryBtn, { marginTop: 4 }]}
+            onPress={() => navigation.navigate('AgentPermissions', {})}
+          >
+            <Text style={styles.primaryBtnText}>🔐 Open Full Permissions Manager →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -500,4 +631,23 @@ const styles = StyleSheet.create({
   downloadBannerTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   downloadBannerSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   downloadBannerArrow: { fontSize: 22, color: colors.accent },
+  // ── Permissions Tab ──
+  permissionsCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#7c3aed44',
+  },
+  permissionsCardIcon: { fontSize: 28 },
+  permissionsCardTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  permissionsCardSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  permissionsCardArrow: { fontSize: 22, color: colors.textMuted },
+  permSummaryRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.bgCard, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  permSummaryIcon: { fontSize: 18, width: 26 },
+  permSummaryLabel: { flex: 1, fontSize: 14, color: colors.textPrimary },
+  permSummaryBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6 },
+  permSummaryBadgeText: { fontSize: 11, fontWeight: '700' },
 });

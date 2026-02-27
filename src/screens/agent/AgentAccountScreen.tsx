@@ -243,10 +243,25 @@ export function AgentAccountScreen() {
 
   const { mutate: create, isPending: isCreating } = useMutation({
     mutationFn: createAgentAccount,
-    onSuccess: () => {
+    onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
       setShowCreate(false);
-      Alert.alert('Agent Created ✅', 'Your new agent account is ready.');
+      // Auto-trigger wallet creation immediately after agent is created
+      // No need for user to manually click "Open Wallet" — do it automatically
+      try {
+        const walletResult = await openWalletForAgent(result.id);
+        queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+        Alert.alert(
+          'Agent Ready ✅🔐',
+          `"${result.name}" has been created with an independent MPC wallet.\n\nWallet Address:\n${walletResult.walletAddress}\n\nYour agent now has autonomous payment capability within the spending limits you set.`,
+        );
+      } catch {
+        // Wallet creation failed, notify user (non-blocking — agent itself was created)
+        Alert.alert(
+          'Agent Created ✅',
+          `"${result.name}" is ready.\n\n⚠️ Wallet activation failed — tap "Open Wallet" on the agent card to try again.`,
+        );
+      }
     },
     onError: (err: any) => {
       Alert.alert('Error', err?.message || 'Failed to create agent account.');

@@ -12,10 +12,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import type { ChatStackParamList } from '../../navigation/types';
+import type { SocialStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<ChatStackParamList, 'GroupChat'>;
-type Route = RouteProp<ChatStackParamList, 'GroupChat'>;
+type Nav = NativeStackNavigationProp<SocialStackParamList, 'GroupChat'>;
+type Route = RouteProp<SocialStackParamList, 'GroupChat'>;
 
 // @Agent mention regex — matches @Agent, @MyAgent, @agent-name etc.
 const AGENT_MENTION_RE = /@([A-Za-z][A-Za-z0-9_-]*)/g;

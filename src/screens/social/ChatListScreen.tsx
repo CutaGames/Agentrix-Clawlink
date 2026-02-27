@@ -10,9 +10,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
-import type { ChatStackParamList } from '../../navigation/types';
+import type { SocialStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<ChatStackParamList, 'ChatList'>;
+type Nav = NativeStackNavigationProp<SocialStackParamList, 'ChatList'>;
 
 type ChatEntry = {
   id: string;

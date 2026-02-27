@@ -5,7 +5,6 @@ import { MainTabParamList } from './types';
 import { AgentStackNavigator } from './AgentStackNavigator';
 import { MarketStackNavigator } from './MarketStackNavigator';
 import { SocialStackNavigator } from './SocialStackNavigator';
-import { ChatStackNavigator } from './ChatStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -67,27 +66,19 @@ export function MainTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Market"
+        name="Explore"
         component={MarketStackNavigator}
         options={{
-          title: 'Market',
+          title: 'Explore',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Chat"
-        component={ChatStackNavigator}
-        options={{
-          title: 'Chats',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
         }}
       />
       <Tab.Screen
         name="Social"
         component={SocialStackNavigator}
         options={{
-          title: 'Community',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🌐" focused={focused} />,
+          title: 'Social',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
         }}
       />
       <Tab.Screen

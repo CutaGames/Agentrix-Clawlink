@@ -12,10 +12,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import type { ChatStackParamList } from '../../navigation/types';
+import type { SocialStackParamList } from '../../navigation/types';
 
-type Nav = NativeStackNavigationProp<ChatStackParamList, 'DirectMessage'>;
-type Route = RouteProp<ChatStackParamList, 'DirectMessage'>;
+type Nav = NativeStackNavigationProp<SocialStackParamList, 'DirectMessage'>;
+type Route = RouteProp<SocialStackParamList, 'DirectMessage'>;
 
 type SkillCard = { skillId: string; skillName: string; description: string; price: number; priceUnit: string };
 

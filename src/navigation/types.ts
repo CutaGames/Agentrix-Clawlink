@@ -23,6 +23,8 @@ export type AgentStackParamList = {
   MemoryManagement: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
+  AgentAccount: undefined;
+  AgentPermissions: { agentAccountId?: string } | undefined;
   // Layer 2
   VoiceChat: { instanceId?: string };
   TeamSpace: undefined;
@@ -43,10 +45,15 @@ export type MarketStackParamList = {
 };
 
 export type SocialStackParamList = {
+  // Feed
   Feed: undefined;
   PostDetail: { postId: string };
   UserProfile: { userId: string };
   CreatePost: undefined;
+  // Merged Chat (moved from standalone Chat tab)
+  ChatList: undefined;
+  DirectMessage: { userId: string; userName: string; userAvatar?: string };
+  GroupChat: { groupId: string; groupName: string };
 };
 
 export type ChatStackParamList = {
@@ -71,9 +78,8 @@ export type MeStackParamList = {
 
 export type MainTabParamList = {
   Agent: undefined;
-  Market: undefined;
-  Chat: undefined;
-  Social: undefined;
+  Explore: undefined;   // was: Market
+  Social: undefined;   // merged: Feed + Chat + Groups
   Me: undefined;
 };
 

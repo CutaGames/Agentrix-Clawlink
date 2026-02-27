@@ -159,7 +159,7 @@ export function UserProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.dmBtn}
-              onPress={() => navigation.navigate('Chat', { screen: 'DirectMessage', params: { userId, userName: profile.nickname } })}
+              onPress={() => navigation.navigate('DirectMessage' as any, { userId, userName: profile.nickname })}
             >
               <Text style={styles.dmBtnText}>✉️</Text>
             </TouchableOpacity>
