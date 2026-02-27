@@ -61,12 +61,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "newArchEnabled": true,
     "plugins": [
       [
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": true,
             "ndkVersion": "27.0.12077973"
           }
         }
