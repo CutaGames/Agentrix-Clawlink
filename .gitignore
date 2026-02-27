@@ -35,5 +35,15 @@ playwright-report/
 test-results/
 coverage/
 
+# Next.js build output
+.next/
+frontend/.next/
+
+# Developer helper scripts (may contain tokens)
+*.sh
+*.py
+*.cmd
+scripts/
+
 # Gradle
 mobile-app/

@@ -1,0 +1,58 @@
+[1mdiff --git a/.github/workflows/build-apk.yml b/.github/workflows/build-apk.yml[m
+[1mindex fa77934..126514a 100644[m
+[1m--- a/.github/workflows/build-apk.yml[m
+[1m+++ b/.github/workflows/build-apk.yml[m
+[36m@@ -331,13 +331,16 @@[m [mjobs:[m
+           SUMMARY[m
+ [m
+   # ═══════════════════════════════════════════════════════════════════[m
+[31m-  # JOB 3 — Create GitHub Release with download link (only if tests pass)[m
+[32m+[m[32m  # JOB 3 — Create GitHub Release with download link (only if build passes)[m[41m[m
+   # ═══════════════════════════════════════════════════════════════════[m
+   release:[m
+     name: 🚀 Release[m
+     runs-on: ubuntu-latest[m
+     needs: [build][m
+[31m-    if: needs.build.result == 'success'[m
+[32m+[m[32m    if: ${{ needs.build.result == 'success' }}[m[41m[m
+[32m+[m[32m    # Explicit write permission required for creating releases and tags[m[41m[m
+[32m+[m[32m    permissions:[m[41m[m
+[32m+[m[32m      contents: write[m[41m[m
+ [m
+     steps:[m
+       - name: Download APKs[m
+[36m@@ -346,16 +349,18 @@[m [mjobs:[m
+           name: apks-build-${{ github.run_number }}[m
+           path: artifacts/[m
+ [m
+[32m+[m[32m      - name: List artifacts[m[41m[m
+[32m+[m[32m        run: ls -la artifacts/[m[41m[m
+[32m+[m[41m[m
+       - name: Create GitHub Release[m
+         uses: softprops/action-gh-release@v2[m
+         with:[m
+[31m-          tag_name: ${{ needs.build.outputs.tag }}[m
+[32m+[m[32m          token: ${{ secrets.GITHUB_TOKEN }}[m[41m[m
+[32m+[m[32m          tag_name: build-${{ github.run_number }}[m[41m[m
+           name: "✅ ClawLink Build #${{ github.run_number }}"[m
+           body: |[m
+             ## ClawLink APK — Build #${{ github.run_number }}[m
+ [m
+[31m-            **All UI tests passed** ✅[m
+[31m-[m
+             | | |[m
+             |---|---|[m
+             | Commit | `${{ github.sha }}` |[m
+[36m@@ -366,10 +371,7 @@[m [mjobs:[m
+             1. Download **ClawLink-build-${{ github.run_number }}.apk** below[m
+             2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser[m
+             3. Open the APK and tap Install[m
+[31m-[m
+[31m-            ### Automated Tests[m
+[31m-            This build passed all Maestro UI automation flows before release.[m
+[31m-          files: |[m
+[31m-            artifacts/ClawLink-build-${{ github.run_number }}.apk[m
+[32m+[m[32m          files: artifacts/ClawLink-build-${{ github.run_number }}.apk[m[41m[m
+[32m+[m[32m          fail_on_unmatched_files: false[m[41m[m
+           draft: false[m
+           prerelease: false[m

@@ -6,7 +6,7 @@
 #Requires -Version 5.1
 
 $ErrorActionPreference = "Stop"
-$AGENTRIX_VERSION = "1.0.0"
+$AGENTRIX_VERSION = "1.1.0"
 $OPENCLAW_PORT    = 7474
 $INSTALL_DIR      = Join-Path $env:APPDATA "Agentrix"
 $LOG_FILE         = Join-Path $INSTALL_DIR "install.log"
@@ -101,18 +101,46 @@ $config | ConvertTo-Json | Set-Content -Path (Join-Path $INSTALL_DIR "config.jso
 Write-Ok "Instance ID: $INSTANCE_ID"
 Write-Ok "Token: $($TOKEN.Substring(0,8))..."
 
-# ── 4. Show connection URL & QR ───────────────────────────────────────────────
-$QR_URL = "agentrix://connect?id=$INSTANCE_ID&token=$TOKEN&host=localhost&port=$OPENCLAW_PORT"
+# ── 4. Detect LAN IP ─────────────────────────────────────────────────────────
+$LAN_IP = ""
+try {
+    $nics = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254)' } |
+            Select-Object -First 1
+    if ($nics) { $LAN_IP = $nics.IPAddress }
+} catch {}
+if ($LAN_IP) {
+    Write-Ok "LAN IP detected: $LAN_IP"
+} else {
+    Write-Warn "Could not detect LAN IP. Enter your PC's IP manually in the mobile app."
+    $LAN_IP = "<YOUR-PC-IP>"
+}
+
+# ── 5. Show connection QR ─────────────────────────────────────────────────────
+# Scheme: clawlink:// (registered in the mobile app)
+# Param:  instanceId (normalized across all installers)
+$QR_URL = "clawlink://connect?instanceId=$INSTANCE_ID&token=$TOKEN&host=$LAN_IP&port=$OPENCLAW_PORT"
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-Write-Host "  SCAN WITH AGENTRIX MOBILE APP TO CONNECT" -ForegroundColor Green
+Write-Host "  SCAN WITH CLAWLINK / AGENTRIX MOBILE APP" -ForegroundColor Green
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Connection URL:" -ForegroundColor Yellow
 Write-Host "  $QR_URL" -ForegroundColor White
 Write-Host ""
-Write-Host "  → Open Agentrix Mobile App" -ForegroundColor Cyan
-Write-Host "  → Tap Agent Tab → + New Instance → Import via QR / URL" -ForegroundColor Cyan
+# Try to show QR image via free API (works when online)
+try {
+    $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + [uri]::EscapeDataString($QR_URL)
+    $qrFile = Join-Path $env:TEMP "clawlink-qr.png"
+    Invoke-WebRequest -Uri $qrApiUrl -OutFile $qrFile -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+    Write-Info "QR code saved: $qrFile  (opening…)"
+    Start-Process $qrFile
+} catch {
+    Write-Info "(offline — scan the URL above manually)"
+}
+Write-Host ""
+Write-Host "  → Open ClawLink / Agentrix Mobile App" -ForegroundColor Cyan
+Write-Host "  → Tap Agent Tab → + New Instance → Scan QR or Import URL" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
 
@@ -162,11 +190,13 @@ Write-Host "  Agentrix OpenClaw AIO Setup Complete!" -ForegroundColor Green
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
 Write-Host ""
 Write-Host "  • OpenClaw listening: http://localhost:$OPENCLAW_PORT"
+Write-Host "  • LAN address:        http://${LAN_IP}:$OPENCLAW_PORT"
 Write-Host "  • Instance ID:        $INSTANCE_ID"
 Write-Host "  • Config file:        $(Join-Path $INSTALL_DIR 'config.json')"
 Write-Host "  • Log file:           $logPath"
 Write-Host ""
 Write-Host "  To manage: Task Scheduler → AgentrixOpenClaw"
+Write-Host "  Mobile connection URL: clawlink://connect?instanceId=$INSTANCE_ID&host=$LAN_IP&port=$OPENCLAW_PORT"
 Write-Host ""
 
 Stop-Transcript | Out-Null
