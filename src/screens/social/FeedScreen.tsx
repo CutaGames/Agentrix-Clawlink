@@ -212,8 +212,8 @@ export function FeedScreen() {
                   {
                     text: 'Install',
                     onPress: () => {
-                      // Navigate to Market tab → Checkout for this skill
-                      (navigation as any).navigate('Market', {
+                      // Navigate to Explore tab → Checkout for this skill
+                      (navigation as any).navigate('Explore', {
                         screen: 'Checkout',
                         params: { skillId: post.skillId, skillName: post.skillName },
                       });

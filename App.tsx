@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -68,7 +69,7 @@ function AppNavigator() {
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
-    // Foreground notification listener â€?adds to in-app notification store
+    // Foreground notification listener ï¿½?adds to in-app notification store
     notifSubRef.current = Notifications.addNotificationReceivedListener((notification) => {
       const { addNotification } = useNotificationStore.getState();
       addNotification({
@@ -84,14 +85,14 @@ function AppNavigator() {
         // Load token from SecureStore (key: 'clawlink_token')
         const token = await loadTokenFromStorage();
         if (!token) {
-          // No stored token â€?check if Zustand persist says user is authenticated
+          // No stored token ï¿½?check if Zustand persist says user is authenticated
           // (edge case: SecureStore was cleared but AsyncStorage persist wasn't)
           const cachedStore = useAuthStore.getState();
           if (!cachedStore.isAuthenticated) {
             setInitialized(true);
             return;
           }
-          // isAuthenticated persisted but token gone â†?force re-login
+          // isAuthenticated persisted but token gone ï¿½?force re-login
           await clearAuth();
           setInitialized(true);
           return;
@@ -120,11 +121,11 @@ function AppNavigator() {
         } catch (e: any) {
           const msg = e?.message || '';
           if (msg.includes('401') || msg.includes('Unauthorized')) {
-            // Token expired or revoked â€?force re-login
+            // Token expired or revoked ï¿½?force re-login
             await clearAuth();
             stopNotificationPolling();
           } else {
-            // Network error or 5xx â€?keep user logged in with last cached session
+            // Network error or 5xx ï¿½?keep user logged in with last cached session
             console.warn('Session validation network error (using cached session):', msg);
             if (cachedState.isAuthenticated && cachedState.user) {
               startNotificationPolling(token);
@@ -170,7 +171,7 @@ const linking = {
       Main: {
         screens: {
           Agent: { screens: { AgentConsole: 'agent', AgentChat: 'agent/chat', OpenClawBind: 'agent/bind' } },
-          Market: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
+          Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
           Social: { screens: { Feed: 'social' } },
           Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
         },
