@@ -27,7 +27,7 @@ const Stack = createNativeStackNavigator<AgentStackParamList>();
 
 export function AgentStackNavigator() {
   return (
-    <Stack.Navigator
+    <Stack.Navigator id={undefined}
       screenOptions={{
         headerStyle: { backgroundColor: colors.bgSecondary },
         headerTintColor: colors.textPrimary,

@@ -271,20 +271,37 @@ export function UserProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <FlatList
-        data={activeTab === 'posts' ? (posts ?? []) : (skills ?? [])}
-        keyExtractor={(item) => item.id}
-        renderItem={activeTab === 'posts' ? renderPost : renderSkill}
-        ListHeaderComponent={<ProfileHeader />}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>{activeTab === 'posts' ? '📝' : '⚡'}</Text>
-            <Text style={styles.emptyText}>No {activeTab} yet</Text>
-          </View>
-        }
-      />
+      {activeTab === 'posts' ? (
+        <FlatList
+          data={posts ?? []}
+          keyExtractor={(item) => item.id}
+          renderItem={renderPost}
+          ListHeaderComponent={<ProfileHeader />}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyIcon}>📝</Text>
+              <Text style={styles.emptyText}>No posts yet</Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={skills ?? []}
+          keyExtractor={(item) => item.id}
+          renderItem={renderSkill}
+          ListHeaderComponent={<ProfileHeader />}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyIcon}>⚡</Text>
+              <Text style={styles.emptyText}>No skills yet</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

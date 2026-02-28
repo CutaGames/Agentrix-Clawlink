@@ -152,7 +152,7 @@ export function OpenClawBindScreen() {
               <Text style={styles.qrInstructions}>
                 Open your OpenClaw instance → Settings → Mobile Bind → Scan this code
               </Text>
-              <View style={styles.qrContainer}>
+              <View style={styles.qrBox}>
                 <QrCode value={qrCode} size={200} bgColor={colors.bgCard} fgColor={colors.textPrimary} />
               </View>
               <Text style={[styles.qrStatus, qrStatus === 'scanned' && { color: colors.success }]}>
