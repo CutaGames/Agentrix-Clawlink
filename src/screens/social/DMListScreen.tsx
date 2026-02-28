@@ -51,7 +51,7 @@ export function DMListScreen() {
       style={styles.row}
       activeOpacity={0.75}
       onPress={() =>
-        navigation.navigate('DMChat', {
+        navigation.navigate('DirectMessage', {
           userId: item.partnerId,
           userName: item.partnerName,
           userAvatar: item.partnerAvatar,

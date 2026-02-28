@@ -25,7 +25,7 @@ export function ClawSkillDetailScreen() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [installing, setInstalling] = useState(false);
 
-  const { data: skill, isLoading } = useQuery({
+  const { data: skill, isLoading } = useQuery<any>({
     queryKey: ['skill', skillId],
     queryFn: async () => {
       if (skillId.startsWith('oc-') || skillId.startsWith('s')) {

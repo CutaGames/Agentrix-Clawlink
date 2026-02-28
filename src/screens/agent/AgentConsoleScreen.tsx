@@ -108,18 +108,18 @@ export function AgentConsoleScreen() {
     }
   }, [activeInstance?.id]);
 
+  const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
+    queryKey: ['instance-skills', activeInstance?.id],
+    queryFn: () => getInstanceSkills(activeInstance!.id),
+    enabled: !!activeInstance,
+  });
+
   // Auto-mark onboarding step 2 when user has at least one skill
   useEffect(() => {
     if (instanceSkillsRaw && instanceSkillsRaw.length > 0) {
       useSettingsStore.getState().markOnboardingStep('installedSkill');
     }
   }, [instanceSkillsRaw?.length]);
-
-  const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
-    queryKey: ['instance-skills', activeInstance?.id],
-    queryFn: () => getInstanceSkills(activeInstance!.id),
-    enabled: !!activeInstance,
-  });
 
   // Also fetch marketplace-installed skills from Agentrix DB
   const { data: marketInstalledRaw } = useQuery({

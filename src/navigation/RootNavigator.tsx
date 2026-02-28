@@ -17,7 +17,7 @@ const OnboardingStack = createNativeStackNavigator<OnboardingStackParamList>();
 
 function AuthNavigator() {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator id={undefined} screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="AuthCallback" component={AuthCallbackScreen} />
     </AuthStack.Navigator>
@@ -26,7 +26,7 @@ function AuthNavigator() {
 
 function OnboardingNavigator() {
   return (
-    <OnboardingStack.Navigator screenOptions={{ headerShown: false }}>
+    <OnboardingStack.Navigator id={undefined} screenOptions={{ headerShown: false }}>
       <OnboardingStack.Screen name="DeploySelect" component={DeploySelectScreen} />
       <OnboardingStack.Screen name="CloudDeploy" component={CloudDeployScreen} />
       <OnboardingStack.Screen name="ConnectExisting" component={ConnectExistingScreen} />
@@ -41,7 +41,7 @@ export function RootNavigator() {
   const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
 
   return (
-    <Root.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+    <Root.Navigator id={undefined} screenOptions={{ headerShown: false, animation: 'fade' }}>
       {!isAuthenticated ? (
         <Root.Screen name="Auth" component={AuthNavigator} />
       ) : !hasCompletedOnboarding ? (

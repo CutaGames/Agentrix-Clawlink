@@ -19,7 +19,7 @@ import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import type { SocialStackParamList } from '../../navigation/types';
 
-type DMChatRouteProp = RouteProp<SocialStackParamList, 'DMChat'>;
+type DMChatRouteProp = RouteProp<SocialStackParamList, 'DirectMessage'>;
 
 interface Message {
   id: string;

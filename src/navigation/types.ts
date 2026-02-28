@@ -29,6 +29,12 @@ export type AgentStackParamList = {
   VoiceChat: { instanceId?: string };
   TeamSpace: undefined;
   TeamInvite: { workspaceId: string; workspaceName: string };
+  // From Onboarding reuse
+  DeploySelect: undefined;
+  CloudDeploy: undefined;
+  ConnectExisting: undefined;
+  LocalDeploy: undefined;
+  SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
 export type MarketStackParamList = {

@@ -10,7 +10,7 @@ const Stack = createNativeStackNavigator<ChatStackParamList>();
 
 export function ChatStackNavigator() {
   return (
-    <Stack.Navigator
+    <Stack.Navigator id={undefined}
       screenOptions={{
         headerStyle: { backgroundColor: colors.bgSecondary },
         headerTintColor: colors.textPrimary,

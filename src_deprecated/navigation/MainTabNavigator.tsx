@@ -38,7 +38,7 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 export function MainTabNavigator() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   return (
-    <Tab.Navigator
+    <Tab.Navigator id={undefined}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {

@@ -88,17 +88,17 @@ class BiometricService {
         return true;
       }
 
-      if (result.error === 'user_cancel') {
+      if ('error' in result && ('error' in result ? result.error : 'unknown') === 'user_cancel') {
         // 用户取消，不显示错误
         return false;
       }
 
-      if (result.error === 'user_fallback') {
+      if ('error' in result && ('error' in result ? result.error : 'unknown') === 'user_fallback') {
         // 用户选择使用密码
         return false;
       }
 
-      console.log('Biometric auth failed:', result.error);
+      console.log('Biometric auth failed:', ('error' in result ? result.error : 'unknown'));
       return false;
     } catch (error) {
       console.error('Biometric authentication error:', error);

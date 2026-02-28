@@ -242,6 +242,8 @@ const styles = StyleSheet.create({
   mainStat: { alignItems: 'center', marginBottom: 16 },
   mainStatLabel: { color: colors.muted, fontSize: 13, marginBottom: 4 },
   mainStatValue: { color: colors.success, fontSize: 32, fontWeight: '800' },
+  withdrawBtn: { marginTop: 12, backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 },
+  withdrawBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   statsGrid: { flexDirection: 'row', gap: 8 },
   statItem: {
     flex: 1,
