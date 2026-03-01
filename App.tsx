@@ -1,5 +1,3 @@
-import 'react-native-gesture-handler';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -183,12 +181,10 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={{ flex: 1 }}>
         <NavigationContainer linking={linking as any}>
           <StatusBar style="light" />
           <AppNavigator />
         </NavigationContainer>
-      </GestureHandlerRootView>
       </QueryClientProvider>
     </AppErrorBoundary>
   );

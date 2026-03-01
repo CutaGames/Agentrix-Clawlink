@@ -45,6 +45,7 @@ frontend/.next/
 *.cmd
 scripts/
 !backend/build.sh
+!pre-push-validate.sh
 
 # Gradle
 mobile-app/
