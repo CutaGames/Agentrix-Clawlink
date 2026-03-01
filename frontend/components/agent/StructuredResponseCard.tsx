@@ -15,6 +15,7 @@ import { commissionApi } from '../../lib/api/commission.api';
 import { qrPaymentApi } from '../../lib/api/qr-payment.api';
 import { QRCodeSVG } from 'qrcode.react';
 import { paymentApi } from '../../lib/api/payment.api';
+import { apiClient } from '../../lib/api/client';
 import { useUser } from '../../contexts/UserContext';
 import type { ProductType, FundingSource, ApprovalType, Artifact } from '../../lib/api/commerce.api';
 
@@ -64,18 +65,8 @@ export function StructuredResponseCard({
   const [cancellingOrders, setCancellingOrders] = useState<Set<string>>(new Set());
   const [cartUpdateStatus, setCartUpdateStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [openCommerceForm, setOpenCommerceForm] = useState<string | null>(null);
-  const hasLoggedCommerceThreeTierRef = useRef(false);
-  const [showPublishFormInCollab, setShowPublishFormInCollab] = useState(true);
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  // Dashboard 实时数据
-  const [dashboardData, setDashboardData] = useState<{
-    totalEarnings?: number;
-    processingOrders?: number;
-    recentOrders?: any[];
-    pendingMilestones?: any[];
-    loaded?: boolean;
-  }>({});
   // 执行状态
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<{
@@ -150,7 +141,14 @@ export function StructuredResponseCard({
       { recipient: 'executor', shareBps: 7000, role: 'executor' as const, source: 'pool' as const, active: true, recipientAddress: '' },
       { recipient: 'referrer', shareBps: 2000, role: 'referrer' as const, source: 'pool' as const, active: true, recipientAddress: '' },
       { recipient: 'promoter', shareBps: 1000, role: 'promoter' as const, source: 'platform' as const, active: true, recipientAddress: '' },
-    ],
+    ] as (
+      | { recipient: string; shareBps: number; role: 'executor'; source: 'pool'; active: boolean; recipientAddress: string }
+      | { recipient: string; shareBps: number; role: 'referrer'; source: 'pool'; active: boolean; recipientAddress: string }
+      | { recipient: string; shareBps: number; role: 'promoter'; source: 'platform'; active: boolean; recipientAddress: string }
+      | { recipient: string; shareBps: number; role: 'l1'; source: 'pool'; active: boolean; recipientAddress: string }
+      | { recipient: string; shareBps: number; role: 'l2'; source: 'pool'; active: boolean; recipientAddress: string }
+    )[],
+    splitScenePreset: '',
     // 预算池子动作
     budgetSubAction: 'create',
     budgetFundAmount: '',
@@ -178,6 +176,18 @@ export function StructuredResponseCard({
     publishVersion: '1.0.0',
     publishVisibility: 'public',
     publishRequirements: '',
+    publishCommissionEnabled: false,
+    publishCommissionTotal: '10',
+    publishCommissionL1: '7',
+    publishCommissionL2: '3',
+    publishCustomCommission: '',
+    publishDeadlineDays: '',
+    publishMaxApplicants: '',
+    publishDigitalAssetType: 'api',
+    // 推广链接
+    referralTargetType: 'skill',
+    referralTargetId: '',
+    referralCommissionRate: '10',
     // 实物商品收货信息
     shippingName: '',
     shippingPhone: '',
@@ -190,12 +200,6 @@ export function StructuredResponseCard({
     // 步骤导航
     currentStep: 1,
   });
-
-  useEffect(() => {
-    if (type === 'commerce_categories' && (data as any)?.layout === 'three-tier') {
-      console.log('[StructuredResponseCard] openCommerceForm', openCommerceForm);
-    }
-  }, [type, (data as any)?.layout, openCommerceForm]);
 
   useEffect(() => {
     if (type === 'commerce_categories' && data?.openCategory) {
@@ -247,11 +251,13 @@ export function StructuredResponseCard({
     return '';
   };
 
-  const updateCommerceForm = (key: keyof typeof commerceForm, value: string) => {
+  const updateCommerceForm = (key: keyof typeof commerceForm, value: string | boolean | number) => {
     setCommerceForm(prev => ({ ...prev, [key]: value }));
-    // 实时校验
-    const error = validateField(key, value);
-    setFormErrors(prev => ({ ...prev, [key]: error }));
+    // 实时校验（仅对字符串值）
+    if (typeof value === 'string') {
+      const error = validateField(key, value);
+      setFormErrors(prev => ({ ...prev, [key]: error }));
+    }
   };
 
   // 校验分账比例总和
@@ -417,38 +423,6 @@ export function StructuredResponseCard({
       let resultType = categoryId;
 
       switch (categoryId) {
-        case 'dashboard_refresh': {
-          // 刷新 Dashboard 实时数据
-          const [ordersResult, commissionsResult] = await Promise.allSettled([
-            orderApi.getOrders({ status: 'pending' }),
-            commissionApi.getCommissions(),
-          ]);
-          const pendingOrders = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
-          const commissions = commissionsResult.status === 'fulfilled' ? commissionsResult.value : [];
-          const totalEarnings = Array.isArray(commissions)
-            ? commissions.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0)
-            : 0;
-          const allOrders = await orderApi.getOrders({}).catch(() => [] as any[]);
-          const processingCount = Array.isArray(allOrders)
-            ? allOrders.filter((o: any) => ['pending', 'paid', 'shipped'].includes(o.status)).length
-            : 0;
-          
-          setDashboardData({
-            totalEarnings,
-            processingOrders: processingCount,
-            recentOrders: Array.isArray(allOrders) ? allOrders.slice(0, 5) : [],
-            pendingMilestones: [],
-            loaded: true,
-          });
-          setExecutionResult({
-            success: true,
-            type: 'dashboard_refresh',
-            data: { totalEarnings, processingOrders: processingCount, orderCount: allOrders.length },
-            message: `📊 Dashboard 已刷新：${processingCount} 个处理中订单，累计收益 $${totalEarnings.toFixed(2)}`,
-          });
-          break;
-        }
-
         case 'payment': {
           // 创建支付意图 — 使用用户填写的金额（已通过校验）
           const amount = Number(commerceForm.amount);
@@ -457,6 +431,7 @@ export function StructuredResponseCard({
             amount,
             currency: commerceForm.currency,
             description: commerceForm.orderDescription || `支付给 ${commerceForm.counterparty || '商家'}`,
+            expiresIn: 86400,
             metadata: {
               counterparty: commerceForm.counterparty,
               returnUrl: commerceForm.callbackUrl || window.location.href,
@@ -464,15 +439,7 @@ export function StructuredResponseCard({
           });
           
           // 自动打开支付页面触发实际支付流程
-          // 将 payUrl 规范化为相对路径，避免本地测试时误跳转到生产环境 URL
-          const rawPayUrl = payIntent.metadata?.payUrl || `/pay/intent/${payIntent.id}?auto=true`;
-          let payUrl: string;
-          try {
-            const parsed = new URL(rawPayUrl);
-            payUrl = parsed.pathname + parsed.search;
-          } catch {
-            payUrl = rawPayUrl;
-          }
+          const payUrl = payIntent.metadata?.payUrl || `/pay/intent/${payIntent.id}`;
           window.open(payUrl, '_blank');
           
           result = payIntent;
@@ -493,36 +460,9 @@ export function StructuredResponseCard({
           break;
         }
 
-        case 'dashboard_refresh': {
-          // 获取真实的订单和佣金数据
-          const [ordersResult, commissionsResult] = await Promise.allSettled([
-            orderApi.getOrders({}),
-            commissionApi.getCommissions(),
-          ]);
-          const ordersRaw = ordersResult.status === 'fulfilled' ? ordersResult.value : [];
-          const commsRaw = commissionsResult.status === 'fulfilled' ? commissionsResult.value : [];
-          const orders: any[] = Array.isArray(ordersRaw) ? ordersRaw : ((ordersRaw as any)?.data || []);
-          const comms: any[] = Array.isArray(commsRaw) ? commsRaw : ((commsRaw as any)?.data || []);
-          const processingOrders = orders.filter((o: any) => ['pending', 'processing', 'paid'].includes(o.status)).length;
-          const totalEarnings = comms.reduce((sum: number, c: any) => sum + Number(c.agentAmount || c.commissionAmount || c.platformAmount || 0), 0);
-          setDashboardData({ totalEarnings, processingOrders, recentOrders: orders.slice(0, 5), loaded: true });
-          result = { totalEarnings, processingOrders, totalOrders: orders.length };
-          setExecutionResult({
-            success: true,
-            type: 'dashboard_refresh',
-            data: result,
-            message: `✅ 数据已刷新：总收益 $${totalEarnings.toFixed(2)}，共 ${orders.length} 笔订单，处理中 ${processingOrders} 笔`,
-          });
-          break;
-        }
-
         case 'onramp': {
           // 法币入金 - 调用 Transak Session API
           const onrampAmount = Number(commerceForm.fiatAmount);
-
-          // 提前同步打开空白窗口（避免浏览器在 await 之后拦截 window.open）
-          const transakPopupOnramp = window.open('', '_blank');
-
           const transakResult = await paymentApi.createTransakSession({
             amount: onrampAmount,
             fiatCurrency: commerceForm.fiatCurrency || 'USD',
@@ -530,19 +470,12 @@ export function StructuredResponseCard({
             network: commerceForm.onrampNetwork || 'polygon',
             walletAddress: commerceForm.onrampWalletAddress || undefined,
             redirectURL: window.location.href,
-            disableFiatAmountEditing: true,  // 锁定金额不可编辑
-            isFiatAmount: true,  // 入金表单: 用户输入的是法币金额(支出) → lock fiatAmount
+            disableFiatAmountEditing: false,
           });
           
-          // 自动打开 Transak 入金页面（使用预开窗口）
+          // 自动打开 Transak 入金页面
           if (transakResult.widgetUrl) {
-            if (transakPopupOnramp) {
-              transakPopupOnramp.location.href = transakResult.widgetUrl;
-            } else {
-              window.open(transakResult.widgetUrl, '_blank');
-            }
-          } else if (transakPopupOnramp) {
-            transakPopupOnramp.close();
+            window.open(transakResult.widgetUrl, '_blank');
           }
           
           result = transakResult;
@@ -558,74 +491,41 @@ export function StructuredResponseCard({
         }
 
         case 'offramp': {
-          // 加密资产出金 - 通过 Transak Off-ramp 将 USDC 换成法币
+          // 加密资产出金 - 先获取费率预览，然后提供提现信息
           const offrampAmount = Number(commerceForm.fiatAmount);
-          const offrampCrypto = commerceForm.cryptoCurrency || 'USDC';
-          const offrampFiat = commerceForm.offrampTargetCurrency || 'USD';
-
-          // 提前同步打开空白窗口（避免浏览器在 await 之后拦截 window.open）
-          const transakPopup = window.open('', '_blank');
-
-          // 获取费率预览（可选，用于信息展示）
-          let feePreview: any = null;
-          let rateInfo: any = null;
-          try {
-            feePreview = await commerceApi.previewAllocation({
-              amount: offrampAmount,
-              currency: offrampCrypto,
-              usesOfframp: true,
-            });
-          } catch { /* fee preview is optional */ }
-          try {
-            rateInfo = await paymentApi.getExchangeRate(offrampCrypto, offrampFiat);
-          } catch { /* rate is optional */ }
-
-          // 创建 Transak Off-ramp session (productType=SELL)
-          // amount = 要卖出的加密货币数量(USDC), isFiatAmount=false
-          const transakResult = await paymentApi.createTransakSession({
+          // 先预览费用
+          const feePreview = await commerceApi.previewAllocation({
             amount: offrampAmount,
-            fiatCurrency: offrampFiat,
-            cryptoCurrency: offrampCrypto,
-            network: commerceForm.onrampNetwork || 'polygon',
-            walletAddress: commerceForm.onrampWalletAddress || undefined,  // 出金来源钱包
-            redirectURL: window.location.href,
-            disableFiatAmountEditing: true,   // 锁定金额
-            isFiatAmount: false,              // amount = USDC 卖出数量
-            productType: 'SELL',
+            currency: commerceForm.cryptoCurrency || 'USDC',
+            usesOfframp: true,
           });
-
-          // 导航到 Transak 出金页面（使用提前打开的窗口，避免被浏览器拦截）
-          if (transakResult.widgetUrl) {
-            if (transakPopup) {
-              transakPopup.location.href = transakResult.widgetUrl;
-            } else {
-              window.open(transakResult.widgetUrl, '_blank');
-            }
-          } else if (transakPopup) {
-            transakPopup.close();
-          }
-
-          const estimatedReceive = rateInfo
-            ? (offrampAmount * rateInfo.rate - (feePreview?.fees?.totalFees || 0)).toFixed(2)
-            : 'N/A';
-
+          
+          // 获取当前汇率
+          let rateInfo = null;
+          try {
+            rateInfo = await paymentApi.getExchangeRate(
+              commerceForm.cryptoCurrency || 'USDC',
+              commerceForm.offrampTargetCurrency || 'USD'
+            );
+          } catch { /* rate is optional */ }
+          
           result = {
             feePreview,
             rateInfo,
             amount: offrampAmount,
-            fromCurrency: offrampCrypto,
-            toCurrency: offrampFiat,
-            estimatedReceive,
-            sessionId: transakResult.sessionId,
+            fromCurrency: commerceForm.cryptoCurrency || 'USDC',
+            toCurrency: commerceForm.offrampTargetCurrency || 'USD',
+            bankAccount: commerceForm.offrampBankAccount,
+            estimatedReceive: rateInfo 
+              ? (offrampAmount * rateInfo.rate - (feePreview.fees?.totalFees || 0)).toFixed(2)
+              : 'N/A',
           };
-
+          
           setExecutionResult({
             success: true,
             type: 'offramp',
-            id: transakResult.sessionId,
             data: result,
-            message: `✅ Transak 出金页面已打开：${offrampAmount} ${offrampCrypto} → ~${estimatedReceive} ${offrampFiat}`,
-            link: transakResult.widgetUrl,
+            message: `💱 出金预览：${offrampAmount} ${commerceForm.cryptoCurrency || 'USDC'} → ${result.estimatedReceive} ${commerceForm.offrampTargetCurrency || 'USD'}（含手续费 ${feePreview.fees?.totalFees || 0}）`,
           });
           break;
         }
@@ -1073,37 +973,6 @@ export function StructuredResponseCard({
           break;
         }
 
-        case 'earnings_detail': {
-          // 收益明细（合并分润 + 结算）
-          const [commissionsResult, settlementsResult] = await Promise.all([
-            commissionApi.getCommissions(),
-            commissionApi.getSettlements(),
-          ]);
-
-          const commissions = Array.isArray(commissionsResult) ? commissionsResult : [];
-          const settlements = Array.isArray(settlementsResult) ? settlementsResult : [];
-          const totalCommission = commissions.reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
-          const totalSettled = settlements.reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
-
-          result = {
-            commissions,
-            settlements,
-            summary: {
-              totalCommission,
-              totalSettled,
-              pending: Math.max(0, totalCommission - totalSettled),
-            },
-          };
-
-          setExecutionResult({
-            success: true,
-            type: 'earnings_detail',
-            data: result,
-            message: `💸 收益明细已更新：分润 ${commissions.length} 条，结算 ${settlements.length} 条`,
-          });
-          break;
-        }
-
         case 'settlement_execute': {
           // 执行结算
           result = await commissionApi.executeSettlement({
@@ -1118,6 +987,48 @@ export function StructuredResponseCard({
             data: result,
             message: `✅ 结算已执行，结算ID: ${result.id}，金额: ${result.amount} ${result.currency}`,
           });
+          break;
+        }
+
+        case 'referral_link': {
+          // 生成分佣推广链接
+          const targetType = commerceForm.referralTargetType || 'skill';
+          const targetId = commerceForm.referralTargetId;
+          if (!targetId) throw new Error('请填写目标 Skill/Task ID');
+          
+          const commissionRate = Number(commerceForm.referralCommissionRate) || 10;
+          
+          try {
+            const linkResult = await apiClient.post<any>('/referral/links', {
+              targetType,
+              targetId,
+              commissionRate,
+              metadata: { createdVia: 'commerce_panel' },
+            });
+            
+            result = linkResult;
+            setExecutionResult({
+              success: true,
+              type: 'referral_link',
+              id: linkResult.id || targetId,
+              data: linkResult,
+              message: `🔗 推广链接已生成！分佣比例 ${commissionRate}%`,
+              link: linkResult.shortUrl || linkResult.url,
+            });
+          } catch (e: any) {
+            // 降级：本地生成推广链接
+            const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://agentrix.app';
+            const referralUrl = `${baseUrl}/${targetType}/${targetId}?ref=${user?.id || 'me'}&commission=${commissionRate}`;
+            result = { url: referralUrl, shortUrl: referralUrl, commissionRate };
+            setExecutionResult({
+              success: true,
+              type: 'referral_link',
+              id: targetId,
+              data: result,
+              message: `🔗 推广链接已生成（本地）！分佣比例 ${commissionRate}%`,
+              link: referralUrl,
+            });
+          }
           break;
         }
 
@@ -1497,13 +1408,6 @@ export function StructuredResponseCard({
     
     // 三层结构渲染
     if (isThreeTier) {
-      if (!hasLoggedCommerceThreeTierRef.current) {
-        hasLoggedCommerceThreeTierRef.current = true;
-        console.log(
-          '[StructuredResponseCard] commerce_categories three-tier ' +
-            JSON.stringify({ categoryIds: categories.map((c: any) => c?.id) })
-        );
-      }
       return (
         <div className="mt-3 pt-3 border-t border-neutral-700/50">
           <div className="bg-gradient-to-br from-indigo-900/40 to-slate-900/60 border border-slate-800/60 rounded-xl p-4">
@@ -1518,11 +1422,7 @@ export function StructuredResponseCard({
             {/* 第一层：4 个场景入口 */}
             <div className="grid gap-3 sm:grid-cols-2">
               {categories.map((category: any) => (
-                <div
-                  key={category.id}
-                  data-testid={`commerce-category-${category.id}`}
-                  className={`rounded-lg border ${openCommerceForm === category.id ? 'border-indigo-500/50 bg-indigo-900/20' : 'border-slate-800/60 bg-slate-900/60'} p-3 flex flex-col gap-2 transition-all`}
-                >
+                <div key={category.id} className={`rounded-lg border ${openCommerceForm === category.id ? 'border-indigo-500/50 bg-indigo-900/20' : 'border-slate-800/60 bg-slate-900/60'} p-3 flex flex-col gap-2 transition-all`}>
                   {/* 场景标题 */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1549,7 +1449,7 @@ export function StructuredResponseCard({
                   
                   {/* 第二层：子功能列表 */}
                   {openCommerceForm === category.id && category.subCategories && (
-                    <div data-testid="commerce-subcategories" className="mt-2 space-y-2 border-t border-slate-800/50 pt-2">
+                    <div className="mt-2 space-y-2 border-t border-slate-800/50 pt-2">
                       {category.subCategories.map((sub: any) => (
                         <div key={sub.id} className={`rounded-md p-2 ${openSubCategory === sub.id ? 'bg-indigo-600/20 border border-indigo-500/30' : 'bg-slate-800/50 hover:bg-slate-800'}`}>
                           <div className="flex items-center justify-between">
@@ -1557,41 +1457,37 @@ export function StructuredResponseCard({
                             <button
                               onClick={() => {
                                 // 直接在当前卡片内设置对应子功能，而非发送消息创建新卡片
-                                const subIdMap: Record<string, () => void> = {
-                                  payment: () => updateCommerceForm('payExchangeAction', 'payment'),
-                                  receive: () => updateCommerceForm('payExchangeAction', 'receive'),
-                                  query: () => updateCommerceForm('payExchangeAction', 'query'),
-                                  onramp: () => updateCommerceForm('payExchangeAction', 'onramp'),
-                                  offramp: () => updateCommerceForm('payExchangeAction', 'offramp'),
-                                  rate: () => updateCommerceForm('payExchangeAction', 'rate'),
-                                  split: () => updateCommerceForm('collabAction', 'split'),
-                                  budget: () => updateCommerceForm('collabAction', 'budget'),
-                                  milestone: () => updateCommerceForm('collabAction', 'milestone'),
-                                  collaboration: () => updateCommerceForm('collabAction', 'collaboration'),
-                                  commissions: () => updateCommerceForm('commissionAction', 'commissions'),
-                                  settlements: () => updateCommerceForm('commissionAction', 'settlements'),
-                                  earnings_detail: () => updateCommerceForm('commissionAction', 'earnings_detail'),
-                                  settlement_execute: () => updateCommerceForm('commissionAction', 'settlement_execute'),
-                                  fees: () => updateCommerceForm('commissionAction', 'fees'),
-                                  rates: () => updateCommerceForm('commissionAction', 'rates'),
-                                  publish_task: () => {
-                                    updateCommerceForm('publishType', 'task');
-                                    setShowPublishFormInCollab(true);
+                                const subIdMap: Record<string, Record<string, () => void>> = {
+                                  pay_exchange: {
+                                    payment: () => updateCommerceForm('payExchangeAction', 'payment'),
+                                    receive: () => updateCommerceForm('payExchangeAction', 'receive'),
+                                    query: () => updateCommerceForm('payExchangeAction', 'query'),
+                                    onramp: () => updateCommerceForm('payExchangeAction', 'onramp'),
+                                    offramp: () => updateCommerceForm('payExchangeAction', 'offramp'),
+                                    rate: () => updateCommerceForm('payExchangeAction', 'rate'),
                                   },
-                                  publish_product: () => {
-                                    updateCommerceForm('publishType', 'product');
-                                    setShowPublishFormInCollab(true);
+                                  collab: {
+                                    split: () => updateCommerceForm('collabAction', 'split'),
+                                    referral_link: () => updateCommerceForm('collabAction', 'referral_link'),
+                                    budget: () => updateCommerceForm('collabAction', 'budget'),
+                                    milestone: () => updateCommerceForm('collabAction', 'milestone'),
+                                    collaboration: () => updateCommerceForm('collabAction', 'collaboration'),
                                   },
-                                  publish_skill: () => {
-                                    updateCommerceForm('publishType', 'skill');
-                                    setShowPublishFormInCollab(true);
+                                  commission: {
+                                    commissions: () => updateCommerceForm('commissionAction', 'commissions'),
+                                    settlements: () => updateCommerceForm('commissionAction', 'settlements'),
+                                    settlement_execute: () => updateCommerceForm('commissionAction', 'settlement_execute'),
+                                    fees: () => updateCommerceForm('commissionAction', 'fees'),
+                                    rates: () => updateCommerceForm('commissionAction', 'rates'),
                                   },
-                                  sync_external: () => {
-                                    updateCommerceForm('publishType', 'sync');
-                                    setShowPublishFormInCollab(true);
+                                  publish: {
+                                    publish_task: () => updateCommerceForm('publishType', 'task'),
+                                    publish_product: () => updateCommerceForm('publishType', 'product'),
+                                    publish_skill: () => updateCommerceForm('publishType', 'skill'),
+                                    sync_external: () => updateCommerceForm('publishType', 'sync'),
                                   },
                                 };
-                                const handler = subIdMap[sub.id];
+                                const handler = subIdMap[category.id]?.[sub.id];
                                 if (handler) {
                                   handler();
                                   // 清除之前的执行结果，准备新操作
@@ -1611,320 +1507,6 @@ export function StructuredResponseCard({
                       
                       {/* 第三层：表单输入区（根据父分类ID显示对应表单） */}
                       <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-2 text-xs">
-                        {/* 核心表单区域（保证展开后一定可见） */}
-                        {(
-                          category.title === '支付与钱包' ||
-                          category.id === 'pay_wallet' ||
-                          category.id === 'pay_exchange'
-                        ) && (
-                          <>
-                            <div className="text-slate-400 font-medium mb-2">💰 收付款与兑换</div>
-                            <select
-                              value={commerceForm.payExchangeAction}
-                              onChange={(e) => updateCommerceForm('payExchangeAction', e.target.value)}
-                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
-                            >
-                              <option value="payment">发起支付</option>
-                              <option value="receive">生成收款码</option>
-                              <option value="query">查询订单/支付状态</option>
-                              <option value="onramp">法币入金（On-ramp）</option>
-                              <option value="offramp">加密资产出金（Off-ramp）</option>
-                              <option value="rate">汇率查询</option>
-                            </select>
-                          </>
-                        )}
-
-                        {(
-                          category.title === '协作与任务' ||
-                          category.id === 'collaborate' ||
-                          category.id === 'collab'
-                        ) && (
-                          <>
-                            <div className="text-slate-400 font-medium mb-2">👥 协作分账</div>
-                            <select
-                              value={commerceForm.collabAction}
-                              onChange={(e) => updateCommerceForm('collabAction', e.target.value as any)}
-                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
-                            >
-                              <option value="split">创建分账方案</option>
-                              <option value="split_list">查看分账方案</option>
-                              <option value="split_template">获取默认模板</option>
-                              <option value="budget">管理预算池</option>
-                              <option value="milestone">里程碑管理</option>
-                              <option value="collaboration">协作全景</option>
-                            </select>
-
-                            {showPublishFormInCollab && (
-                              <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-2">
-                                <div className="text-slate-400 font-medium">🚀 发布表单</div>
-                                <select
-                                  value={commerceForm.publishType}
-                                  onChange={(e) => updateCommerceForm('publishType', e.target.value)}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
-                                >
-                                  <option value="task">发布协作任务</option>
-                                  <option value="product">发布商品</option>
-                                  <option value="skill">发布 Skill</option>
-                                  <option value="sync">同步到外部平台</option>
-                                </select>
-                                <input
-                                  value={commerceForm.publishTitle}
-                                  onChange={(e) => updateCommerceForm('publishTitle', e.target.value)}
-                                  placeholder="标题 *"
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                />
-                                {/* Task-specific fields */}
-                                {commerceForm.publishType === 'task' && (
-                                  <>
-                                    <input
-                                      value={commerceForm.publishBudget}
-                                      onChange={(e) => updateCommerceForm('publishBudget', e.target.value)}
-                                      placeholder="预算 (USD) *"
-                                      type="number"
-                                      min="0"
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                    />
-                                    <textarea
-                                      value={commerceForm.publishDescription}
-                                      onChange={(e) => updateCommerceForm('publishDescription', e.target.value)}
-                                      placeholder="任务描述（可选）"
-                                      rows={2}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 resize-none text-xs"
-                                    />
-                                    <select
-                                      value={commerceForm.publishCategory}
-                                      onChange={(e) => updateCommerceForm('publishCategory', e.target.value)}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                    >
-                                      <option value="custom_service">自定义服务</option>
-                                      <option value="data_analysis">数据分析</option>
-                                      <option value="content_creation">内容创作</option>
-                                      <option value="development">开发</option>
-                                      <option value="design">设计</option>
-                                      <option value="marketing">营销</option>
-                                      <option value="consulting">咨询</option>
-                                    </select>
-                                  </>
-                                )}
-                                {/* Skill / Product fields */}
-                                {(commerceForm.publishType === 'skill' || commerceForm.publishType === 'product') && (
-                                  <>
-                                    <select
-                                      value={commerceForm.publishPricingType || 'per_call'}
-                                      onChange={(e) => updateCommerceForm('publishPricingType', e.target.value)}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                    >
-                                      <option value="per_call">按次收费</option>
-                                      <option value="free">免费</option>
-                                      <option value="subscription">订阅制</option>
-                                      <option value="revenue_share">收益分成 (%)</option>
-                                    </select>
-                                    {(commerceForm.publishPricingType || 'per_call') !== 'free' && (
-                                      <input
-                                        value={commerceForm.publishPrice}
-                                        onChange={(e) => updateCommerceForm('publishPrice', e.target.value)}
-                                        placeholder={commerceForm.publishPricingType === 'revenue_share' ? '分成比例 (%)' : '价格 (USD) *'}
-                                        type="number"
-                                        min="0"
-                                        className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                      />
-                                    )}
-                                    <textarea
-                                      value={commerceForm.publishSkillDescription}
-                                      onChange={(e) => updateCommerceForm('publishSkillDescription', e.target.value)}
-                                      placeholder="描述（可选）"
-                                      rows={2}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 resize-none text-xs"
-                                    />
-                                    <select
-                                      value={commerceForm.publishSkillCategory}
-                                      onChange={(e) => updateCommerceForm('publishSkillCategory', e.target.value)}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                    >
-                                      <option value="utility">通用工具</option>
-                                      <option value="data">数据处理</option>
-                                      <option value="ai_model">AI 模型</option>
-                                      <option value="commerce">电商</option>
-                                      <option value="finance">金融</option>
-                                      <option value="social">社交</option>
-                                      <option value="productivity">生产力</option>
-                                    </select>
-                                  </>
-                                )}
-                                <button
-                                  onClick={() => handleCommerceSubmit(
-                                    commerceForm.publishType === 'task' ? 'publish_task' :
-                                    commerceForm.publishType === 'sync' ? 'sync_external' : 'publish_skill'
-                                  )}
-                                  disabled={isExecuting || !commerceForm.publishTitle}
-                                  className={`mt-1 w-full py-1.5 text-xs rounded-lg flex items-center justify-center gap-1 font-medium ${
-                                    isExecuting || !commerceForm.publishTitle
-                                      ? 'bg-slate-700 cursor-not-allowed text-slate-400'
-                                      : 'bg-indigo-600/80 hover:bg-indigo-500 text-white'
-                                  }`}
-                                >
-                                  {isExecuting ? '发布中...' : `🚀 发布${
-                                    commerceForm.publishType === 'task' ? '任务' :
-                                    commerceForm.publishType === 'product' ? '商品' :
-                                    commerceForm.publishType === 'sync' ? '同步' : ' Skill'
-                                  }`}
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        {/* 发布资源独立表单块 - 当 category.id 是 publish 相关时直接显示 */}
-                        {(
-                          category.id === 'publish' ||
-                          category.id === 'publish_task' ||
-                          category.id === 'publish_skill' ||
-                          category.id === 'publish_product' ||
-                          category.title === '发布' ||
-                          category.title === '发布资源' ||
-                          category.title === '发布 Skill' ||
-                          category.title === '发布任务'
-                        ) && (() => {
-                          // 根据 category.id 推断发布类型，允许用户通过下拉框覆盖
-                          const pt =
-                            category.id === 'publish_task' ? 'task' :
-                            category.id === 'publish_skill' ? 'skill' :
-                            category.id === 'publish_product' ? 'product' :
-                            commerceForm.publishType;
-                          return (
-                          <>
-                            <div className="text-slate-400 font-medium mb-2">🚀 发布资源</div>
-                            <select
-                              value={pt}
-                              onChange={(e) => updateCommerceForm('publishType', e.target.value)}
-                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
-                            >
-                              <option value="task">发布协作任务</option>
-                              <option value="skill">发布 Skill</option>
-                              <option value="product">发布商品</option>
-                              <option value="sync">同步到外部平台</option>
-                            </select>
-                            <input
-                              value={commerceForm.publishTitle}
-                              onChange={(e) => updateCommerceForm('publishTitle', e.target.value)}
-                              placeholder="标题 *"
-                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                            />
-                            {pt === 'task' && (
-                              <>
-                                <input
-                                  value={commerceForm.publishBudget}
-                                  onChange={(e) => updateCommerceForm('publishBudget', e.target.value)}
-                                  placeholder="预算 (USD) *"
-                                  type="number" min="0"
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                />
-                                <textarea
-                                  value={commerceForm.publishDescription}
-                                  onChange={(e) => updateCommerceForm('publishDescription', e.target.value)}
-                                  placeholder="任务描述（可选）"
-                                  rows={2}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 resize-none text-xs"
-                                />
-                                <select
-                                  value={commerceForm.publishCategory}
-                                  onChange={(e) => updateCommerceForm('publishCategory', e.target.value)}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                >
-                                  <option value="custom_service">自定义服务</option>
-                                  <option value="data_analysis">数据分析</option>
-                                  <option value="content_creation">内容创作</option>
-                                  <option value="development">开发</option>
-                                  <option value="design">设计</option>
-                                  <option value="marketing">营销</option>
-                                  <option value="consulting">咨询</option>
-                                </select>
-                              </>
-                            )}
-                            {(pt === 'skill' || pt === 'product') && (
-                              <>
-                                <select
-                                  value={commerceForm.publishPricingType || 'per_call'}
-                                  onChange={(e) => updateCommerceForm('publishPricingType', e.target.value)}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                >
-                                  <option value="per_call">按次收费</option>
-                                  <option value="free">免费</option>
-                                  <option value="subscription">订阅制</option>
-                                  <option value="revenue_share">收益分成 (%)</option>
-                                </select>
-                                {(commerceForm.publishPricingType || 'per_call') !== 'free' && (
-                                  <input
-                                    value={commerceForm.publishPrice}
-                                    onChange={(e) => updateCommerceForm('publishPrice', e.target.value)}
-                                    placeholder={commerceForm.publishPricingType === 'revenue_share' ? '分成比例 (%)' : '价格 (USD) *'}
-                                    type="number" min="0"
-                                    className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                  />
-                                )}
-                                <textarea
-                                  value={commerceForm.publishSkillDescription}
-                                  onChange={(e) => updateCommerceForm('publishSkillDescription', e.target.value)}
-                                  placeholder="描述（可选）"
-                                  rows={2}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 resize-none text-xs"
-                                />
-                                <select
-                                  value={commerceForm.publishSkillCategory}
-                                  onChange={(e) => updateCommerceForm('publishSkillCategory', e.target.value)}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                >
-                                  <option value="utility">通用工具</option>
-                                  <option value="data">数据处理</option>
-                                  <option value="ai_model">AI 模型</option>
-                                  <option value="commerce">电商</option>
-                                  <option value="finance">金融</option>
-                                  <option value="social">社交</option>
-                                  <option value="productivity">生产力</option>
-                                </select>
-                              </>
-                            )}
-                            <button
-                              onClick={() => handleCommerceSubmit(
-                                pt === 'task' ? 'publish_task' :
-                                pt === 'sync' ? 'sync_external' :
-                                pt === 'product' ? 'publish_product' : 'publish_skill'
-                              )}
-                              disabled={isExecuting || !commerceForm.publishTitle}
-                              className={`mt-1 w-full py-1.5 text-xs rounded-lg flex items-center justify-center gap-1 font-medium ${
-                                isExecuting || !commerceForm.publishTitle
-                                  ? 'bg-slate-700 cursor-not-allowed text-slate-400'
-                                  : 'bg-indigo-600/80 hover:bg-indigo-500 text-white'
-                              }`}
-                            >
-                              {isExecuting ? '发布中...' : `🚀 发布${
-                                pt === 'task' ? '任务' :
-                                pt === 'product' ? '商品' :
-                                pt === 'sync' ? '同步' : ' Skill'
-                              }`}
-                            </button>
-                          </>
-                          );
-                        })()}
-
-                        {(
-                          category.title === '收益' ||
-                          category.id === 'earnings' ||
-                          category.id === 'commission'
-                        ) && (
-                          <>
-                            <div className="text-slate-400 font-medium mb-2">💸 分佣结算</div>
-                            <select
-                              value={commerceForm.commissionAction}
-                              onChange={(e) => updateCommerceForm('commissionAction', e.target.value)}
-                              className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
-                            >
-                              <option value="earnings_detail">收益明细</option>
-                              <option value="settlement_execute">提取收益</option>
-                            </select>
-                          </>
-                        )}
-
                         {/* 执行状态反馈区 */}
                         {isExecuting && (
                           <div className="flex items-center gap-2 p-2 rounded-lg bg-indigo-600/20 border border-indigo-500/30">
@@ -1971,18 +1553,6 @@ export function StructuredResponseCard({
                                           target="_blank" 
                                           rel="noopener noreferrer" 
                                           className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium"
-                                          onClick={(e) => {
-                                            // 确保始终打开相对路径（当前域），避免跨环境跳转
-                                            const href = executionResult.link || `/pay/intent/${executionResult.id}`;
-                                            try {
-                                              const parsed = new URL(href, window.location.origin);
-                                              const relativePath = parsed.pathname + parsed.search;
-                                              if (parsed.origin !== window.location.origin) {
-                                                e.preventDefault();
-                                                window.open(relativePath, '_blank');
-                                              }
-                                            } catch {}
-                                          }}
                                         >
                                           <ExternalLink className="w-3 h-3" />
                                           进入支付页面完成支付
@@ -2101,10 +1671,7 @@ export function StructuredResponseCard({
                                     {/* Off-ramp 出金详情 */}
                                     {executionResult.type === 'offramp' && executionResult.data && (
                                       <div className="mt-2 p-2 bg-orange-900/30 rounded border border-orange-500/20">
-                                        <div className="font-medium mb-1 text-orange-300">Transak 出金 (Off-ramp)</div>
-                                        {executionResult.id && (
-                                          <div>Session ID: <code className="bg-slate-800 px-1 rounded text-xs">{executionResult.id}</code></div>
-                                        )}
+                                        <div className="font-medium mb-1 text-orange-300">出金预览</div>
                                         <div>出金金额: {executionResult.data.amount} {executionResult.data.fromCurrency}</div>
                                         <div>目标币种: {executionResult.data.toCurrency}</div>
                                         <div>预计到账: {executionResult.data.estimatedReceive} {executionResult.data.toCurrency}</div>
@@ -2113,12 +1680,6 @@ export function StructuredResponseCard({
                                           <div className="mt-1 pt-1 border-t border-slate-700/50">
                                             <div>手续费: {executionResult.data.feePreview.fees.totalFees} {executionResult.data.fromCurrency}</div>
                                           </div>
-                                        )}
-                                        {executionResult.link && (
-                                          <a href={executionResult.link} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-orange-400 hover:text-orange-300">
-                                            <ExternalLink className="w-3 h-3" />
-                                            <span>打开 Transak 出金页面</span>
-                                          </a>
                                         )}
                                       </div>
                                     )}
@@ -2304,6 +1865,25 @@ export function StructuredResponseCard({
                                   </div>
                                 )}
                                 
+                                {/* 推广链接结果 */}
+                                {executionResult.type === 'referral_link' && executionResult.data && (
+                                  <div className="mt-2 p-2 bg-indigo-900/30 rounded border border-indigo-500/20">
+                                    <div className="font-medium mb-1 text-indigo-300">🔗 推广链接</div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <code className="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-green-300 break-all flex-1">{executionResult.data.shortUrl || executionResult.data.url}</code>
+                                      <button onClick={() => {
+                                        navigator.clipboard.writeText(executionResult.data.shortUrl || executionResult.data.url);
+                                      }} className="p-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-300">
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    {executionResult.data.commissionRate && (
+                                      <div className="text-[10px] text-slate-400 mt-1">佣金比例: {executionResult.data.commissionRate}% · 分享此链接，购买者下单后你将获得佣金</div>
+                                    )}
+                                    <div className="text-[9px] text-slate-500 mt-1">💡 可将链接生成二维码用于线下推广</div>
+                                  </div>
+                                )}
+                                
                                 {/* 操作链接 */}
                                 {executionResult.link && (
                                   <a href={executionResult.link} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300">
@@ -2335,7 +1915,7 @@ export function StructuredResponseCard({
                           </div>
                         )}
                         
-                        {(openCommerceForm === 'dashboard' || category.id === 'dashboard' || category.title === 'Dashboard') && (
+                        {category.id === 'dashboard' && (
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <div className="text-slate-400 font-medium">🗓️ Commerce 实时概览</div>
@@ -2348,19 +1928,13 @@ export function StructuredResponseCard({
                             <div className="grid grid-cols-2 gap-2">
                               <div className="p-2 bg-slate-900/50 rounded-lg border border-slate-800">
                                 <div className="text-[10px] text-slate-500 uppercase">累计总收益</div>
-                                <div className="text-lg font-bold text-slate-200 mt-1">
-                                  {dashboardData.loaded ? `$${dashboardData.totalEarnings?.toFixed(2) ?? '0.00'}` : '—'}
-                                </div>
-                                <div className="text-[9px] text-green-500 mt-1">来自分佣记录</div>
+                                <div className="text-lg font-bold text-slate-200 mt-1">$ 1,284.50</div>
+                                <div className="text-[9px] text-green-500 mt-1">↑ 12% vs last month</div>
                               </div>
                               <div className="p-2 bg-slate-900/50 rounded-lg border border-slate-800">
                                 <div className="text-[10px] text-slate-500 uppercase">处理中订单</div>
-                                <div className="text-lg font-bold text-slate-200 mt-1">
-                                  {dashboardData.loaded ? (dashboardData.processingOrders ?? 0) : '—'}
-                                </div>
-                                <div className="text-[9px] text-indigo-400 mt-1">
-                                  {dashboardData.loaded ? '点击刷新更新数据' : '点击「刷新数据」加载'}
-                                </div>
+                                <div className="text-lg font-bold text-slate-200 mt-1">7</div>
+                                <div className="text-[9px] text-indigo-400 mt-1">3 待发货 / 4 待确认</div>
                               </div>
                             </div>
 
@@ -2368,31 +1942,36 @@ export function StructuredResponseCard({
                             <div className="bg-slate-900/40 rounded-lg border border-slate-800 overflow-hidden">
                               <div className="bg-slate-800/50 px-2 py-1.5 flex items-center justify-between">
                                 <span className="text-[10px] font-medium text-slate-300 flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-orange-400" /> 最近订单
+                                  <Clock className="w-3 h-3 text-orange-400" /> 待处理里程碑 (Critical)
                                 </span>
-                                {dashboardData.recentOrders && dashboardData.recentOrders.length > 0 && (
-                                  <span className="px-1.5 py-0.25 rounded-full bg-orange-500/20 text-orange-400 text-[8px] border border-orange-500/30">{dashboardData.recentOrders.length} 条</span>
-                                )}
+                                <span className="px-1.5 py-0.25 rounded-full bg-orange-500/20 text-orange-400 text-[8px] border border-orange-500/30">3 Urgent</span>
                               </div>
                               <div className="divide-y divide-slate-800/80">
-                                {dashboardData.loaded && dashboardData.recentOrders && dashboardData.recentOrders.length > 0 ? (
-                                  dashboardData.recentOrders.map((order: any, idx: number) => (
-                                    <div key={order.id || idx} className="p-2 hover:bg-slate-800/40 transition-colors flex items-center justify-between group">
-                                      <div>
-                                        <div className="text-[11px] text-slate-200 font-medium">{order.id?.slice(0, 8) || '-'}</div>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                          <span className="text-[9px] text-slate-500 uppercase tracking-tighter">{order.status || 'unknown'}</span>
-                                          <span className="text-[9px] text-indigo-400 font-mono">{order.amount} {order.currency}</span>
-                                        </div>
+                                {[
+                                  { id: 'ms-01', title: '智能合约 V1 代码交付', pool: 'Dev Pool', amount: '500 USDC', time: '2h ago' },
+                                  { id: 'ms-02', title: 'UI 设计稿终审', pool: 'Design Pool', amount: '200 USDC', time: '1d ago' },
+                                  { id: 'ms-03', title: '文案翻译包 (CN)', pool: 'Content Pool', amount: '50 USDC', time: '3d ago' },
+                                ].map((item) => (
+                                  <div key={item.id} className="p-2 hover:bg-slate-800/40 transition-colors flex items-center justify-between group">
+                                    <div>
+                                      <div className="text-[11px] text-slate-200 font-medium">{item.title}</div>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[9px] text-slate-500 uppercase tracking-tighter">Pool: {item.pool}</span>
+                                        <span className="text-[9px] text-indigo-400 font-mono">{item.amount}</span>
                                       </div>
-                                      <span className="text-[9px] text-slate-600 font-mono">{order.createdAt ? new Date(order.createdAt).toLocaleDateString('zh-CN') : ''}</span>
                                     </div>
-                                  ))
-                                ) : (
-                                  <div className="p-4 text-center text-[11px] text-slate-500">
-                                    {dashboardData.loaded ? '暂无订单记录' : '点击「刷新数据」查看最近订单'}
+                                    <div className="flex items-center gap-1">
+                                      <button onClick={() => {
+                                        updateCommerceForm('collabAction', 'milestone');
+                                        updateCommerceForm('milestoneSubAction', 'approve');
+                                        updateCommerceForm('milestoneId', item.id);
+                                      }} className="p-1 rounded bg-green-500/10 hover:bg-green-500/20 text-green-500 opacity-0 group-hover:opacity-100 transition-all">
+                                        <Check className="w-3 h-3" />
+                                      </button>
+                                      <span className="text-[9px] text-slate-600 font-mono">{item.time}</span>
+                                    </div>
                                   </div>
-                                )}
+                                ))}
                               </div>
                             </div>
 
@@ -2410,13 +1989,7 @@ export function StructuredResponseCard({
                           </div>
                         )}
 
-                        {(
-                          category.title === '支付与钱包' ||
-                          category.id === 'pay_wallet' ||
-                          category.id === 'pay_exchange' ||
-                          openCommerceForm === 'pay_wallet' ||
-                          openCommerceForm === 'pay_exchange'
-                        ) && (
+                        {category.id === 'pay_exchange' && (
                           <>
                             <div className="text-slate-400 font-medium mb-2">💰 收付款与兑换</div>
                             <select value={commerceForm.payExchangeAction} onChange={(e) => updateCommerceForm('payExchangeAction', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
@@ -2505,7 +2078,12 @@ export function StructuredResponseCard({
                                   </select>
                                 </div>
                                 <input value={commerceForm.onrampWalletAddress} onChange={(e) => updateCommerceForm('onrampWalletAddress', e.target.value)} placeholder="钱包地址（可选，留空使用默认）" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
-                                <div className="text-[10px] text-slate-500">通过 Transak 将法币兑换为加密资产，支持信用卡/银行转账</div>
+                                <div className="p-1.5 bg-slate-900/50 rounded border border-slate-800/50 text-[10px] text-slate-400 space-y-0.5">
+                                  <div>📋 费用说明:</div>
+                                  <div>· Transak 服务费: ~1-5%（根据支付方式）</div>
+                                  <div>· 平台手续费: 0.1%</div>
+                                  {commerceForm.fiatAmount && <div className="text-slate-300">· 预估平台费: ~{(Number(commerceForm.fiatAmount) * 0.001).toFixed(2)} {commerceForm.fiatCurrency}</div>}
+                                </div>
                                 <button onClick={() => handleCommerceSubmit('onramp')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-green-600/80 hover:bg-green-500'} text-white`}>
                                   {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '💵 开始入金'}
                                 </button>
@@ -2526,7 +2104,13 @@ export function StructuredResponseCard({
                                   <option value="CNY">CNY 人民币（需转为USD）</option>
                                 </select>
                                 <input value={commerceForm.offrampBankAccount} onChange={(e) => updateCommerceForm('offrampBankAccount', e.target.value)} placeholder="银行账户/收款信息（可选）" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
-                                <div className="text-[10px] text-slate-500">将加密资产提现为法币，包含汇率和手续费预览</div>
+                                <div className="p-1.5 bg-slate-900/50 rounded border border-slate-800/50 text-[10px] text-slate-400 space-y-0.5">
+                                  <div>📋 费用说明:</div>
+                                  <div>· Transak 服务费: ~1-5%（根据出金方式）</div>
+                                  <div>· 平台手续费: 0.1%</div>
+                                  {commerceForm.fiatAmount && <div className="text-slate-300">· 预估平台费: ~{(Number(commerceForm.fiatAmount) * 0.001).toFixed(4)} {commerceForm.cryptoCurrency}</div>}
+                                  {commerceForm.fiatAmount && <div className="text-orange-300">· 预估到账: ~{(Number(commerceForm.fiatAmount) * 0.94).toFixed(2)} {commerceForm.offrampTargetCurrency}</div>}
+                                </div>
                                 <button onClick={() => handleCommerceSubmit('offramp')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-orange-600/80 hover:bg-orange-500'} text-white`}>
                                   {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '💱 出金预览'}
                                 </button>
@@ -2547,145 +2131,53 @@ export function StructuredResponseCard({
                           </>
                         )}
                         
-                        {(
-                          category.title === '协作与任务' ||
-                          category.id === 'collaborate' ||
-                          category.id === 'collab' ||
-                          openCommerceForm === 'collaborate' ||
-                          openCommerceForm === 'collab'
-                        ) && (
+                        {category.id === 'collab' && (
                           <>
-                            <div data-testid="collab-render-marker" className="hidden">collab-render-marker</div>
                             <div className="text-slate-400 font-medium mb-2">👥 协作分账</div>
                             <select value={commerceForm.collabAction} onChange={(e) => updateCommerceForm('collabAction', e.target.value as any)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
                               <option value="split">创建分账方案</option>
+                              <option value="referral_link">🔗 分佣推广链接</option>
                               <option value="split_list">查看分账方案</option>
                               <option value="split_template">获取默认模板</option>
                               <option value="budget">管理预算池</option>
                               <option value="milestone">里程碑管理</option>
                               <option value="collaboration">协作全景</option>
                             </select>
-
-                            {showPublishFormInCollab && (
-                              <div className="mt-3 pt-3 border-t border-slate-700/50 space-y-2">
-                                <div className="text-slate-400 font-medium">🚀 发布表单</div>
-                                <select
-                                  value={commerceForm.publishType}
-                                  onChange={(e) => updateCommerceForm('publishType', e.target.value)}
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200"
-                                >
-                                  <option value="task">发布协作任务</option>
-                                  <option value="product">发布商品</option>
-                                  <option value="skill">发布 Skill</option>
-                                  <option value="sync">同步到外部平台</option>
-                                </select>
-                                <input
-                                  value={commerceForm.publishTitle}
-                                  onChange={(e) => updateCommerceForm('publishTitle', e.target.value)}
-                                  placeholder="标题 *"
-                                  className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                />
-                                {/* Task-specific fields */}
-                                {commerceForm.publishType === 'task' && (
-                                  <>
-                                    <input
-                                      value={commerceForm.publishBudget}
-                                      onChange={(e) => updateCommerceForm('publishBudget', e.target.value)}
-                                      placeholder="预算 (USD) *"
-                                      type="number"
-                                      min="0"
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                    />
-                                    <textarea
-                                      value={commerceForm.publishDescription}
-                                      onChange={(e) => updateCommerceForm('publishDescription', e.target.value)}
-                                      placeholder="任务描述（可选）"
-                                      rows={2}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 resize-none text-xs"
-                                    />
-                                    <select
-                                      value={commerceForm.publishCategory}
-                                      onChange={(e) => updateCommerceForm('publishCategory', e.target.value)}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                    >
-                                      <option value="custom_service">自定义服务</option>
-                                      <option value="data_analysis">数据分析</option>
-                                      <option value="content_creation">内容创作</option>
-                                      <option value="development">开发</option>
-                                      <option value="design">设计</option>
-                                      <option value="marketing">营销</option>
-                                      <option value="consulting">咨询</option>
-                                    </select>
-                                  </>
-                                )}
-                                {/* Skill / Product fields */}
-                                {(commerceForm.publishType === 'skill' || commerceForm.publishType === 'product') && (
-                                  <>
-                                    <select
-                                      value={commerceForm.publishPricingType || 'per_call'}
-                                      onChange={(e) => updateCommerceForm('publishPricingType', e.target.value)}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                    >
-                                      <option value="per_call">按次收费</option>
-                                      <option value="free">免费</option>
-                                      <option value="subscription">订阅制</option>
-                                      <option value="revenue_share">收益分成 (%)</option>
-                                    </select>
-                                    {(commerceForm.publishPricingType || 'per_call') !== 'free' && (
-                                      <input
-                                        value={commerceForm.publishPrice}
-                                        onChange={(e) => updateCommerceForm('publishPrice', e.target.value)}
-                                        placeholder={commerceForm.publishPricingType === 'revenue_share' ? '分成比例 (%)' : '价格 (USD) *'}
-                                        type="number"
-                                        min="0"
-                                        className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500"
-                                      />
-                                    )}
-                                    <textarea
-                                      value={commerceForm.publishSkillDescription}
-                                      onChange={(e) => updateCommerceForm('publishSkillDescription', e.target.value)}
-                                      placeholder="描述（可选）"
-                                      rows={2}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 resize-none text-xs"
-                                    />
-                                    <select
-                                      value={commerceForm.publishSkillCategory}
-                                      onChange={(e) => updateCommerceForm('publishSkillCategory', e.target.value)}
-                                      className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs"
-                                    >
-                                      <option value="utility">通用工具</option>
-                                      <option value="data">数据处理</option>
-                                      <option value="ai_model">AI 模型</option>
-                                      <option value="commerce">电商</option>
-                                      <option value="finance">金融</option>
-                                      <option value="social">社交</option>
-                                      <option value="productivity">生产力</option>
-                                    </select>
-                                  </>
-                                )}
-                                <button
-                                  onClick={() => handleCommerceSubmit(
-                                    commerceForm.publishType === 'task' ? 'publish_task' :
-                                    commerceForm.publishType === 'sync' ? 'sync_external' : 'publish_skill'
-                                  )}
-                                  disabled={isExecuting || !commerceForm.publishTitle}
-                                  className={`mt-1 w-full py-1.5 text-xs rounded-lg flex items-center justify-center gap-1 font-medium ${
-                                    isExecuting || !commerceForm.publishTitle
-                                      ? 'bg-slate-700 cursor-not-allowed text-slate-400'
-                                      : 'bg-indigo-600/80 hover:bg-indigo-500 text-white'
-                                  }`}
-                                >
-                                  {isExecuting ? '发布中...' : `🚀 发布${
-                                    commerceForm.publishType === 'task' ? '任务' :
-                                    commerceForm.publishType === 'product' ? '商品' :
-                                    commerceForm.publishType === 'sync' ? '同步' : ' Skill'
-                                  }`}
-                                </button>
-                              </div>
-                            )}
-
                             {commerceForm.collabAction === 'split' && (
                               <>
+                                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-tight">⚡ 场景化模板（一键填充）</div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {[
+                                    { id: 'ecommerce', label: '🛒 电商分销', desc: '商家85%+推广10%+平台5%', productType: 'physical' as const, rules: [
+                                      { recipient: 'executor', shareBps: 8500, role: 'executor' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'referrer', shareBps: 1000, role: 'referrer' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'platform', shareBps: 500, role: 'promoter' as const, source: 'platform' as const, active: true, recipientAddress: '' },
+                                    ]},
+                                    { id: 'saas', label: '💻 SaaS/Skill', desc: '开发70%+推荐20%+平台10%', productType: 'skill' as const, rules: [
+                                      { recipient: 'executor', shareBps: 7000, role: 'executor' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'referrer', shareBps: 2000, role: 'referrer' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'platform', shareBps: 1000, role: 'promoter' as const, source: 'platform' as const, active: true, recipientAddress: '' },
+                                    ]},
+                                    { id: 'affiliate', label: '🔗 分佣联盟', desc: 'L1=7%+L2=3%+商家85%+平台5%', productType: 'service' as const, rules: [
+                                      { recipient: 'executor', shareBps: 8500, role: 'executor' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'referrer', shareBps: 700, role: 'l1' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'promoter', shareBps: 300, role: 'l2' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'platform', shareBps: 500, role: 'promoter' as const, source: 'platform' as const, active: true, recipientAddress: '' },
+                                    ]},
+                                    { id: 'agent_task', label: '🤖 Agent任务', desc: '执行70%+推荐人15%+平台15%', productType: 'agent_task' as const, rules: [
+                                      { recipient: 'executor', shareBps: 7000, role: 'executor' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'referrer', shareBps: 1500, role: 'referrer' as const, source: 'pool' as const, active: true, recipientAddress: '' },
+                                      { recipient: 'platform', shareBps: 1500, role: 'promoter' as const, source: 'platform' as const, active: true, recipientAddress: '' },
+                                    ]},
+                                  ].map(preset => (
+                                    <button key={preset.id} onClick={() => {
+                                      setCommerceForm(prev => ({ ...prev, splitScenePreset: preset.id, splitProductType: preset.productType, splitRules: preset.rules, planName: prev.planName || preset.label.replace(/^[^\s]+\s/, '') }));
+                                    }} className={`p-1.5 rounded border text-left transition-all ${commerceForm.splitScenePreset === preset.id ? 'border-indigo-500 bg-indigo-900/20' : 'border-slate-800 bg-slate-900/30 hover:border-slate-600'}`}>
+                                      <div className="text-[11px] font-medium text-slate-200">{preset.label}</div>
+                                      <div className="text-[9px] text-slate-500">{preset.desc}</div>
+                                    </button>
+                                  ))}
+                                </div>
                                 <input value={commerceForm.planName} onChange={(e) => updateCommerceForm('planName', e.target.value)} placeholder="方案名称 *" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
                                 <select value={commerceForm.splitProductType} onChange={(e) => updateCommerceForm('splitProductType', e.target.value as any)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs">
                                   <option value="physical">实物商品 (physical)</option>
@@ -2935,43 +2427,42 @@ export function StructuredResponseCard({
                                 </button>
                               </>
                             )}
+                            {commerceForm.collabAction === 'referral_link' && (
+                              <>
+                                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-tight">🔗 生成带分佣的推广链接</div>
+                                <select value={commerceForm.referralTargetType} onChange={(e) => updateCommerceForm('referralTargetType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs">
+                                  <option value="skill">Skill</option>
+                                  <option value="task">Task</option>
+                                  <option value="product">Product</option>
+                                </select>
+                                <input value={commerceForm.referralTargetId} onChange={(e) => updateCommerceForm('referralTargetId', e.target.value)} placeholder="目标 ID (Skill/Task/Product ID) *" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                <div className="flex items-center gap-2">
+                                  <input value={commerceForm.referralCommissionRate} onChange={(e) => updateCommerceForm('referralCommissionRate', e.target.value)} placeholder="佣金比例 (%)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500 w-20" />
+                                  <span className="text-[10px] text-slate-500">% 佣金（推荐人获得）</span>
+                                </div>
+                                <button onClick={() => handleCommerceSubmit('referral_link')} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
+                                  {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 生成中...</> : '🔗 生成推广链接'}
+                                </button>
+                              </>
+                            )}
                           </>
                         )}
                         
-                        {(
-                          category.title === '收益' ||
-                          category.id === 'earnings' ||
-                          category.id === 'commission' ||
-                          openCommerceForm === 'earnings' ||
-                          openCommerceForm === 'commission'
-                        ) && (
+                        {category.id === 'commission' && (
                           <>
                             <div className="text-slate-400 font-medium mb-2">💸 分佣结算</div>
                             <select value={commerceForm.commissionAction} onChange={(e) => updateCommerceForm('commissionAction', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
-                              {category.title === '收益' ? (
-                                <>
-                                  <option value="earnings_detail">收益明细</option>
-                                  <option value="settlement_execute">提取收益</option>
-                                </>
-                              ) : (
-                                <>
-                                  <option value="commissions">查看分润记录</option>
-                                  <option value="settlements">查看结算记录</option>
-                                  <option value="settlement_execute">执行结算</option>
-                                  <option value="fees">费用计算/预览</option>
-                                  <option value="rates">查看费率结构</option>
-                                </>
-                              )}
+                              <option value="commissions">查看分润记录</option>
+                              <option value="settlements">查看结算记录</option>
+                              <option value="settlement_execute">执行结算</option>
+                              <option value="fees">费用计算/预览</option>
+                              <option value="rates">查看费率结构</option>
                             </select>
                             
-                            {(commerceForm.commissionAction === 'commissions' || commerceForm.commissionAction === 'settlements' || commerceForm.commissionAction === 'earnings_detail') && (
+                            {(commerceForm.commissionAction === 'commissions' || commerceForm.commissionAction === 'settlements') && (
                               <>
                                 <div className="text-[10px] text-slate-500">
-                                  {commerceForm.commissionAction === 'commissions'
-                                    ? '将获取您的所有分润记录'
-                                    : commerceForm.commissionAction === 'settlements'
-                                      ? '将获取您的所有结算记录'
-                                      : '将获取您的收益明细（分润 + 结算）'}
+                                  {commerceForm.commissionAction === 'commissions' ? '将获取您的所有分润记录' : '将获取您的所有结算记录'}
                                 </div>
                                 <button onClick={() => handleCommerceSubmit(commerceForm.commissionAction)} disabled={isExecuting} className={`mt-2 w-fit px-3 py-1.5 text-xs rounded-lg flex items-center gap-1 ${isExecuting ? 'bg-slate-600 cursor-not-allowed' : 'bg-indigo-600/80 hover:bg-indigo-500'} text-white`}>
                                   {isExecuting ? <><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</> : '查询记录'}
@@ -3036,7 +2527,7 @@ export function StructuredResponseCard({
                           </>
                         )}
                         
-                        {(category.id === 'publish' || category.id === 'collaborate' || category.id === 'collab' || category.title === '协作与任务') && (
+                        {category.id === 'publish' && (
                           <>
                             <div className="text-slate-400 font-medium mb-2 flex justify-between items-center">
                               <span>🚀 发布表单</span>
@@ -3052,14 +2543,19 @@ export function StructuredResponseCard({
                                 <select value={commerceForm.publishType} onChange={(e) => updateCommerceForm('publishType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200">
                                   <option value="task">发布协作任务</option>
                                   <option value="product">发布商品</option>
-                                  <option value="skill">发布 Skill</option>
+                                  <option value="skill">发布 Skill / 数字资产</option>
                                   <option value="sync">同步到外部平台</option>
                                 </select>
+                                {commerceForm.publishType === 'skill' && (
+                                  <div className="p-1.5 bg-indigo-900/20 border border-indigo-500/20 rounded text-[10px] text-indigo-300">
+                                    💡 可发布 API 服务、MCP 工具、数据集、模板、插件等数字资产到 Marketplace
+                                  </div>
+                                )}
                                 
                                 {commerceForm.publishType !== 'sync' && (
                                   <>
                                     <input value={commerceForm.publishTitle} onChange={(e) => updateCommerceForm('publishTitle', e.target.value)} placeholder="标题 *" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
-                                    <textarea value={commerceForm.publishType === 'task' ? commerceForm.publishDescription : commerceForm.publishSkillDescription} onChange={(e) => updateCommerceForm(commerceForm.publishType === 'task' ? 'publishDescription' : 'publishSkillDescription', e.target.value)} placeholder="详细描述..." rows={3} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 text-xs resize-none" />
+                                    <textarea value={commerceForm.publishType === 'task' ? commerceForm.publishDescription : commerceForm.publishSkillDescription} onChange={(e) => updateCommerceForm(commerceForm.publishType === 'task' ? 'publishDescription' : 'publishSkillDescription', e.target.value)} placeholder={commerceForm.publishType === 'task' ? '详细描述需求、目标和验收标准...' : '描述功能、使用场景和技术特点...'} rows={3} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 text-xs resize-none" />
                                   </>
                                 )}
                                 
@@ -3069,7 +2565,7 @@ export function StructuredResponseCard({
                                       {isExecuting ? <Loader2 className="w-3 h-3 animate-spin"/> : '🔗 获取同步信息'}
                                     </button>
                                   ) : (
-                                    <button onClick={() => updateCommerceForm('currentStep', '2')} className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white">下一步</button>
+                                    <button onClick={() => updateCommerceForm('currentStep', 2)} className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white">下一步 →</button>
                                   )}
                                 </div>
                               </div>
@@ -3085,15 +2581,33 @@ export function StructuredResponseCard({
                                         <option value="custom_service">定制服务</option>
                                         <option value="development">开发</option>
                                         <option value="design">设计</option>
+                                        <option value="translation">翻译</option>
+                                        <option value="content">内容创作</option>
+                                        <option value="data">数据标注/采集</option>
                                         <option value="other">其他</option>
                                       </select>
                                     </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <input value={commerceForm.publishDeadlineDays} onChange={(e) => updateCommerceForm('publishDeadlineDays', e.target.value)} placeholder="截止天数 (如 14)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                                      <input value={commerceForm.publishMaxApplicants} onChange={(e) => updateCommerceForm('publishMaxApplicants', e.target.value)} placeholder="最大申请人数" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                                    </div>
                                     <input value={commerceForm.publishTags} onChange={(e) => updateCommerceForm('publishTags', e.target.value)} placeholder="标签 (UI设计, React)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                    <textarea value={commerceForm.publishRequirements} onChange={(e) => updateCommerceForm('publishRequirements', e.target.value)} placeholder="验收标准 / 交付要求（每行一条）" rows={2} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500 text-xs resize-none" />
                                   </>
                                 )}
                                 
                                 {(commerceForm.publishType === 'product' || commerceForm.publishType === 'skill') && (
                                   <>
+                                    {commerceForm.publishType === 'skill' && (
+                                      <select value={commerceForm.publishDigitalAssetType} onChange={(e) => updateCommerceForm('publishDigitalAssetType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs">
+                                        <option value="api">API 服务</option>
+                                        <option value="mcp_tool">MCP 工具</option>
+                                        <option value="dataset">数据集</option>
+                                        <option value="template">模板</option>
+                                        <option value="plugin">插件</option>
+                                        <option value="agent_skill">Agent Skill</option>
+                                      </select>
+                                    )}
                                     <div className="grid grid-cols-2 gap-2">
                                       <select value={commerceForm.publishPricingType} onChange={(e) => updateCommerceForm('publishPricingType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 text-xs">
                                         <option value="free">免费</option>
@@ -3102,22 +2616,49 @@ export function StructuredResponseCard({
                                         <option value="revenue_share">收入分成</option>
                                       </select>
                                       {commerceForm.publishPricingType !== 'free' && (
-                                        <input value={commerceForm.publishPrice} onChange={(e) => updateCommerceForm('publishPrice', e.target.value)} placeholder={commerceForm.publishPricingType === 'revenue_share' ? '分成比例(%)' : '价格(USD) *'} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
+                                        <input value={commerceForm.publishPrice} onChange={(e) => updateCommerceForm('publishPrice', e.target.value)} placeholder={commerceForm.publishPricingType === 'revenue_share' ? '分成比例(%)' : '价格(USD/次) *'} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
                                       )}
                                     </div>
-                                    <input value={commerceForm.publishSkillTags} onChange={(e) => updateCommerceForm('publishSkillTags', e.target.value)} placeholder="标签 (工具, AI)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                    {commerceForm.publishPricingType !== 'free' && (
+                                      <input value={commerceForm.publishFreeQuota} onChange={(e) => updateCommerceForm('publishFreeQuota', e.target.value)} placeholder="免费试用次数 (0=不提供)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
+                                    )}
+                                    <input value={commerceForm.publishSkillTags} onChange={(e) => updateCommerceForm('publishSkillTags', e.target.value)} placeholder="标签 (AI, 工具, 数据)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 placeholder-slate-500" />
                                   </>
                                 )}
                                 
                                 <div className="flex justify-between gap-2 mt-2">
-                                  <button onClick={() => updateCommerceForm('currentStep', '1')} className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">上一步</button>
-                                  <button onClick={() => updateCommerceForm('currentStep', '3')} className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white">下一步</button>
+                                  <button onClick={() => updateCommerceForm('currentStep', 1)} className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">← 上一步</button>
+                                  <button onClick={() => updateCommerceForm('currentStep', 3)} className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white">下一步 →</button>
                                 </div>
                               </div>
                             )}
 
                             {commerceForm.currentStep === 3 && (
                               <div className="space-y-2">
+                                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-tight">佣金与分销设置</div>
+                                <label className="flex items-center gap-2 text-xs text-slate-300">
+                                  <input type="checkbox" checked={commerceForm.publishCommissionEnabled} onChange={(e) => updateCommerceForm('publishCommissionEnabled', e.target.checked)} className="w-3.5 h-3.5 rounded" />
+                                  启用分佣推广（推荐人/推广者可获得佣金）
+                                </label>
+                                {commerceForm.publishCommissionEnabled && (
+                                  <div className="p-1.5 bg-slate-900/40 rounded border border-slate-800 space-y-1.5">
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      <div>
+                                        <div className="text-[9px] text-slate-500 mb-0.5">总佣金率 %</div>
+                                        <input value={commerceForm.publishCommissionTotal} onChange={(e) => updateCommerceForm('publishCommissionTotal', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded px-1.5 py-0.5 text-slate-200 text-[10px] w-full" />
+                                      </div>
+                                      <div>
+                                        <div className="text-[9px] text-slate-500 mb-0.5">L1 推荐 %</div>
+                                        <input value={commerceForm.publishCommissionL1} onChange={(e) => updateCommerceForm('publishCommissionL1', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded px-1.5 py-0.5 text-slate-200 text-[10px] w-full" />
+                                      </div>
+                                      <div>
+                                        <div className="text-[9px] text-slate-500 mb-0.5">L2 推荐 %</div>
+                                        <input value={commerceForm.publishCommissionL2} onChange={(e) => updateCommerceForm('publishCommissionL2', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded px-1.5 py-0.5 text-slate-200 text-[10px] w-full" />
+                                      </div>
+                                    </div>
+                                    <div className="text-[9px] text-slate-500">平台佣金: {Math.max(0, Number(commerceForm.publishCommissionTotal || 0) - Number(commerceForm.publishCommissionL1 || 0) - Number(commerceForm.publishCommissionL2 || 0))}%</div>
+                                  </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-2">
                                   <select value={commerceForm.publishVisibility} onChange={(e) => updateCommerceForm('publishVisibility', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 text-xs">
                                     <option value="public">公开 (Public)</option>
@@ -3125,21 +2666,6 @@ export function StructuredResponseCard({
                                   </select>
                                   <input value={commerceForm.publishVersion} onChange={(e) => updateCommerceForm('publishVersion', e.target.value)} placeholder="版本 (1.0.0)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-slate-200 placeholder-slate-500" />
                                 </div>
-
-                                {commerceForm.publishType === 'product' && (
-                                  <div className="p-2 bg-slate-900/40 rounded border border-slate-800 space-y-2">
-                                    <div className="text-[10px] text-slate-400 font-medium">📦 实物属性 (规格与税务)</div>
-                                    <input value={commerceForm.productSpecs} onChange={(e) => updateCommerceForm('productSpecs', e.target.value)} placeholder="规格 (如 颜色:红; 尺寸:XL)" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-[10px] text-slate-200 placeholder-slate-500" />
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <input value={commerceForm.productStock} onChange={(e) => updateCommerceForm('productStock', e.target.value)} placeholder="库存数量" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-[10px] text-slate-200 placeholder-slate-500" />
-                                      <div className="relative">
-                                        <input value={commerceForm.productTaxRate} onChange={(e) => updateCommerceForm('productTaxRate', e.target.value)} placeholder="税率" className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-[10px] text-slate-200 placeholder-slate-500 w-full pr-4" />
-                                        <span className="absolute right-2 top-1 text-[10px] text-slate-500">%</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-
                                 {commerceForm.publishType === 'skill' && (
                                   <select value={commerceForm.publishExecutorType} onChange={(e) => updateCommerceForm('publishExecutorType', e.target.value)} className="bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 w-full text-slate-200 text-xs">
                                     <option value="internal">内置处理器 (Internal)</option>
@@ -3147,9 +2673,8 @@ export function StructuredResponseCard({
                                     <option value="mcp">MCP Server</option>
                                   </select>
                                 )}
-                                
                                 <div className="flex justify-between gap-2 mt-2">
-                                  <button onClick={() => updateCommerceForm('currentStep', '2')} className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">上一步</button>
+                                  <button onClick={() => updateCommerceForm('currentStep', 2)} className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">← 上一步</button>
                                   <button onClick={() => {
                                     handleCommerceSubmit(
                                       commerceForm.publishType === 'task' ? 'publish_task' : 

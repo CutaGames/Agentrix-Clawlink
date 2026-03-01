@@ -1,46 +1,58 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import * as fs from 'fs';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { Readable } from 'stream';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 @Injectable()
 export class VoiceService {
+  private readonly logger = new Logger(VoiceService.name);
   private openai: OpenAI;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    // Use OpenAI key if set; AWS Bedrock doesn't cover Whisper so we need OpenAI
+    // or fall back to a stub if no key provided
+    const apiKey = process.env.OPENAI_API_KEY || '';
+    this.openai = new OpenAI({ apiKey: apiKey || 'not-set' });
   }
 
-  async transcribeAudio(file: Express.Multer.File): Promise<string> {
-    try {
-      if (!process.env.OPENAI_API_KEY) {
-        // Fallback for demo if no API key is present
-        console.warn('OPENAI_API_KEY is not set. Returning dummy transcript.');
-        return 'This is a mocked transcription since OpenAI API key is missing.';
-      }
+  /**
+   * Transcribe audio buffer using OpenAI Whisper.
+   * Falls back to stub if no OPENAI_API_KEY is configured.
+   */
+  async transcribe(
+    buffer: Buffer,
+    mimetype: string,
+    originalName: string,
+  ): Promise<{ transcript: string }> {
+    if (!process.env.OPENAI_API_KEY) {
+      // Graceful stub — return empty so mobile shows manual-input prompt
+      this.logger.warn('OPENAI_API_KEY not set, returning empty transcript');
+      return { transcript: '' };
+    }
 
-      // We need a ReadStream for OpenAI's API
-      const fileStream = fs.createReadStream(file.path);
-      
+    // Write to temp file (OpenAI SDK requires a file path or ReadStream)
+    const ext = originalName.split('.').pop() || 'm4a';
+    const tmpPath = path.join(os.tmpdir(), `voice_${Date.now()}.${ext}`);
+    try {
+      fs.writeFileSync(tmpPath, buffer);
+      const fileStream = fs.createReadStream(tmpPath);
+
       const response = await this.openai.audio.transcriptions.create({
-        file: fileStream,
+        file: fileStream as any,
         model: 'whisper-1',
+        response_format: 'text',
       });
 
-      return response.text;
-    } catch (error) {
-      console.error('Transcription error:', error);
-      throw new InternalServerErrorException('Failed to transcribe audio');
+      const transcript =
+        typeof response === 'string' ? response : (response as any).text || '';
+      return { transcript };
+    } catch (err: any) {
+      this.logger.error('Whisper transcription failed', err?.message);
+      throw new BadRequestException(`Transcription failed: ${err?.message}`);
     } finally {
-      // Clean up the temporary file created by multer
-      if (file.path && fs.existsSync(file.path)) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (e) {
-          console.error('Error cleaning up audio file:', e);
-        }
-      }
+      try { fs.unlinkSync(tmpPath); } catch (_) {}
     }
   }
 }

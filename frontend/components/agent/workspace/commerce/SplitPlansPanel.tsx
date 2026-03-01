@@ -28,12 +28,6 @@ export const SplitPlansPanel: React.FC<SplitPlansPanelProps> = ({ onSelect }) =>
   const { t } = useLocalization();
   const { success, error: showError } = useToast();
   
-
-
-
-
-
-  
   const [plans, setPlans] = useState<SplitPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
