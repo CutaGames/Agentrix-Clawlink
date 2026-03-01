@@ -47,3 +47,17 @@ scripts/
 
 # Gradle
 mobile-app/
+
+# Web/backend directories — these belong to Agentrix web repo, not mobile
+backend/
+frontend/
+contract/
+sdk-js/
+desktop-installer/
+local-agent/
+docs/
+tests/
+src_deprecated/
+arn-protocol/
+logs/
+ci_logs/
