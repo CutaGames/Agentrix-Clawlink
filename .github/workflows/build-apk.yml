@@ -296,14 +296,40 @@ jobs:
         run: |
           cat << 'EOF' > run_tests.sh
           set -e
+          mkdir -p maestro-output
+
           echo "=== Installing APK ==="
           adb wait-for-device
           adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
-          
+
+          # ── Launch smoke test: detect immediate crash (flash-quit on tap) ──────
+          # Clear crash log buffer, launch app, wait 8 seconds, then check for FATAL
+          echo "=== Launch smoke test (crash detection) ==="
+          PACKAGE="app.clawlink.mobile"
+          adb logcat -c  # clear existing log
+          adb shell am start -n "${PACKAGE}/com.facebook.react.ReactActivity"
+          sleep 8
+          # Capture crash logs even if nothing crashed (empty = good)
+          adb logcat -b crash -d > maestro-output/crash.log 2>&1 || true
+          adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|Process.*${PACKAGE}" \
+            > maestro-output/runtime.log 2>&1 || true
+          # Check for fatal crash
+          if grep -qE "FATAL EXCEPTION|Process.*${PACKAGE}.*died|signal (6|11)" maestro-output/crash.log maestro-output/runtime.log 2>/dev/null; then
+            echo "❌ APP CRASHED ON LAUNCH (flash-crash detected)"
+            echo "── crash.log ──"
+            cat maestro-output/crash.log
+            echo "── runtime.log ──"
+            cat maestro-output/runtime.log
+            echo "LAUNCH_CRASH=true" >> $GITHUB_ENV
+            # Don't fail here — continue to upload logs, then fail at summary
+          else
+            echo "✅ App launched without immediate crash"
+            echo "LAUNCH_CRASH=false" >> $GITHUB_ENV
+          fi
+
           echo "=== Running Maestro flows ==="
-          mkdir -p maestro-output
           PASS=0; FAIL=0; ERRORS=""
-          
+
           for flow in .maestro/*.yaml; do
             echo "--- Running: $flow ---"
             if maestro test "$flow" --output "maestro-output/$(basename $flow .yaml)-report.xml" --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
@@ -315,17 +341,22 @@ jobs:
               ERRORS="$ERRORS\n- \`$flow\`"
             fi
           done
-          
+
           mkdir -p maestro-output/screenshots
           find . -name "*.png" -newer artifacts/ -exec cp {} maestro-output/screenshots/ \; 2>/dev/null || true
-          
+
           echo "MAESTRO_PASS=$PASS" >> $GITHUB_ENV
           echo "MAESTRO_FAIL=$FAIL" >> $GITHUB_ENV
           echo "MAESTRO_ERRORS<<INNER_EOF" >> $GITHUB_ENV
           echo -e "$ERRORS" >> $GITHUB_ENV
           echo "INNER_EOF" >> $GITHUB_ENV
-          
+
           echo "=== Results: $PASS passed, $FAIL failed ==="
+          # Fail if launch crash OR test failures
+          if [ "${LAUNCH_CRASH}" = "true" ]; then
+            echo "❌ Blocked by launch crash — see crash.log in maestro-results artifact"
+            exit 1
+          fi
           [ "$FAIL" -eq 0 ] || exit 1
           EOF
           chmod +x run_tests.sh

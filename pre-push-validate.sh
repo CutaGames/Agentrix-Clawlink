@@ -139,7 +139,43 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. SUMMARY
+# 5. CRASH LOG CAPTURE (if device is connected via ADB)
+#    Captures device crash log — the only reliable way to diagnose ARM64
+#    native crashes that x86_64 CI emulators cannot reproduce.
+# ---------------------------------------------------------------------------
+section "ADB crash log check (ARM64 device)"
+
+PACKAGE="app.clawlink.mobile"
+ADB_DEVICES=$(adb devices 2>/dev/null | tail -n +2 | grep -v "^$" | grep -v "List" | awk '{print $1}' || true)
+
+if [[ -z "$ADB_DEVICES" ]]; then
+  warn "No ADB device connected — skipping crash log check"
+  warn "To get device crash log after a flash-crash:"
+  warn "  1. adb devices             # verify connection"
+  warn "  2. adb logcat -c           # clear log"
+  warn "  3. Tap the app icon (it will crash)"
+  warn "  4. adb logcat -b crash -d  # show crash log"
+  warn "  5. adb logcat -d | grep -A10 'FATAL\\|AndroidRuntime\\|${PACKAGE}'"
+else
+  echo ""
+  echo "  Connected devices: $ADB_DEVICES"
+  # Clear the crash buffer and launch the app
+  adb logcat -c 2>/dev/null || true
+  adb shell am start -n "${PACKAGE}/com.facebook.react.ReactActivity" 2>/dev/null || true
+  sleep 6
+  CRASH_LOG=$(adb logcat -b crash -d 2>/dev/null || echo "")
+  RUNTIME_LOG=$(adb logcat -d 2>/dev/null | grep -E "FATAL EXCEPTION|AndroidRuntime|${PACKAGE}.*died|signal (6|11)" || true)
+  if echo "$CRASH_LOG$RUNTIME_LOG" | grep -qE "FATAL|died|signal"; then
+    echo "$CRASH_LOG"
+    echo "$RUNTIME_LOG"
+    fail "App CRASHED on ARM64 device — see log above"
+  else
+    pass "App launched without crash on connected device"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 6. SUMMARY
 # ---------------------------------------------------------------------------
 echo ""
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
