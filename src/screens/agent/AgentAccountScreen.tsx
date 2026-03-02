@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, Modal,
-  TextInput, ScrollView,
+  TextInput, ScrollView, Platform, StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
@@ -133,7 +134,7 @@ function CreateAgentModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={modal.root}>
+      <SafeAreaView style={modal.root} edges={['top']}>
         <View style={modal.header}>
           <TouchableOpacity onPress={step > 1 ? () => setStep(step - 1) : onClose}>
             <Text style={modal.cancel}>{step > 1 ? '← Back' : 'Cancel'}</Text>
@@ -308,7 +309,7 @@ function CreateAgentModal({
             </>
           )}
         </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }

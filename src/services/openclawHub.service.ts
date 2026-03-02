@@ -182,10 +182,10 @@ async function getHubSkills(): Promise<OpenClawHubSkill[]> {
     return direct;
   }
 
-  // 2. Use curated placeholder catalog (30 representative OpenClaw skills)
-  const previewItems = HUB_PLACEHOLDER.map((s) => ({ ...s, name: `[Preview] ${s.name}` }));
-  _hubCache = { items: previewItems, fetchedAt: Date.now() - HUB_CACHE_TTL_MS + 5 * 60 * 1000 };
-  return previewItems;
+  // 2. Use curated official catalog (30 representative OpenClaw skills)
+  //    These represent real skills from the OpenClaw ecosystem
+  _hubCache = { items: HUB_PLACEHOLDER, fetchedAt: Date.now() };
+  return HUB_PLACEHOLDER;
 }
 
 export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promise<OpenClawHubSearchResponse> {

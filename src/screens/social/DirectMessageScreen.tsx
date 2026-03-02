@@ -81,14 +81,7 @@ export function DirectMessageScreen() {
 
   const msgs: Message[] = (Array.isArray(data) && data.length > 0) ? data : PLACEHOLDER_MSGS;
 
-  // Simulate peer typing after initial load
-  useEffect(() => {
-    if (!isLoading) {
-      const t1 = setTimeout(() => setPeerTyping(true), 2000);
-      const t2 = setTimeout(() => setPeerTyping(false), 5000);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
-    }
-  }, [isLoading]);
+  // Typing state is driven by backend websocket events (no fake simulation)
 
   const sendMut = useMutation({
     mutationFn: (payload: { content: string; type: string; skillCard?: SkillCard }) =>
@@ -140,7 +133,15 @@ export function DirectMessageScreen() {
             </View>
             <Text style={styles.skillCardName}>{skill.skillName}</Text>
             <Text style={styles.skillCardDesc}>{skill.description}</Text>
-            <TouchableOpacity style={styles.skillCardInstallBtn}>
+            <TouchableOpacity
+              style={styles.skillCardInstallBtn}
+              onPress={() => {
+                (navigation as any).navigate('Explore', {
+                  screen: 'Checkout',
+                  params: { skillId: skill.skillId, skillName: skill.skillName },
+                });
+              }}
+            >
               <Text style={styles.skillCardInstallText}>Install Skill →</Text>
             </TouchableOpacity>
             <Text style={styles.msgTimeSC}>{formatTime(item.createdAt)}</Text>

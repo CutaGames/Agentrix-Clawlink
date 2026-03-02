@@ -136,10 +136,10 @@ export function AgentPermissionsScreen() {
     if (!activeAgent) return;
     (async () => {
       try {
-        const res = await apiFetch<{ data?: { permissions?: Partial<PermissionState> } }>(
+        const res = await apiFetch<{ data?: { metadata?: { permissions?: Partial<PermissionState> } } }>(
           `/agent-accounts/${activeAgent.id}`,
         );
-        const remote = res?.data?.permissions;
+        const remote = res?.data?.metadata?.permissions;
         if (remote && typeof remote === 'object') {
           setPerms((prev) => ({ ...prev, ...remote }));
           if (remote.confirmationThreshold != null) {
@@ -180,7 +180,7 @@ export function AgentPermissionsScreen() {
             monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
             currency: 'USD',
           },
-          permissions: perms,
+          metadata: { permissions: perms },
         }),
       });
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });

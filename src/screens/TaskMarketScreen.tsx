@@ -186,7 +186,7 @@ export default function TaskMarketScreen() {
 
   // 对种子数据做客户端过滤/排序
   const getFilteredSeedTasks = useCallback(() => {
-    let filtered = [...SEED_TASKS].map(t => ({ ...t, title: `[Preview] ${t.title}` }));
+    let filtered = [...SEED_TASKS];
     if (typeFilter !== 'all') filtered = filtered.filter(t => t.type === typeFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();

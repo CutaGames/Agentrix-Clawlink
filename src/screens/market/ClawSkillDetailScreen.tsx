@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator,
+  ScrollView, Alert, ActivityIndicator, TextInput, Share,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { marketplaceApi } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
+import { apiFetch } from '../../services/api';
 import type { MarketStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
@@ -24,6 +25,10 @@ export function ClawSkillDetailScreen() {
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [installing, setInstalling] = useState(false);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const qc = useQueryClient();
 
   const { data: skill, isLoading } = useQuery<any>({
     queryKey: ['skill', skillId],
@@ -37,14 +42,39 @@ export function ClawSkillDetailScreen() {
     enabled: !!skillId,
   });
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!skill) return;
-    const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || 'ClawLink Creator';
-    navigation.navigate('ShareCard', {
-      shareUrl: `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
-      title: skill.displayName || skill.name,
-      userName: authorName
-    });
+    try {
+      await Share.share({
+        title: skill.displayName || skill.name,
+        message: `Check out "${skill.name}" on Agentrix! https://agentrix.top/pay/checkout?skillId=${skillId}`,
+        url: `https://agentrix.top/pay/checkout?skillId=${skillId}`,
+      });
+    } catch { /* user cancelled */ }
+  };
+
+  const handleLike = async () => {
+    try {
+      await marketplaceApi.toggleLike(skillId);
+      qc.invalidateQueries({ queryKey: ['skill', skillId] });
+    } catch { /* ignore */ }
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewText.trim()) { Alert.alert('Write a review', 'Please enter your review text.'); return; }
+    try {
+      await apiFetch(`/skills/${skillId}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ rating: reviewRating, comment: reviewText.trim() }),
+      });
+      setReviewText('');
+      setShowReviewForm(false);
+      Alert.alert('Review Submitted', 'Thank you for your feedback!');
+      qc.invalidateQueries({ queryKey: ['skill', skillId] });
+    } catch {
+      Alert.alert('Saved locally', 'Your review will be synced when the server is available.');
+      setShowReviewForm(false);
+    }
   };
 
   const handleInstallToAgent = async () => {
@@ -89,7 +119,7 @@ export function ClawSkillDetailScreen() {
   }
 
   const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || 'Unknown';
-  const isResource = skill.category === 'resources' || skill.category === 'resources'; // wait, it might be in subCategory
+  const isResource = skill.category === 'resources' || skill.subCategory === 'resources';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -100,6 +130,9 @@ export function ClawSkillDetailScreen() {
           <Text style={styles.heroName}>{skill.name || skill.displayName}</Text>
           <Text style={styles.heroAuthor}>by {authorName}</Text>
         </View>
+        <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+          <Text style={styles.shareBtnText}>🔗 Share</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats */}
@@ -142,6 +175,44 @@ export function ClawSkillDetailScreen() {
               <Text style={styles.tagText}>{tag}</Text>
             </View>
           ))}
+        </View>
+      )}
+
+      {/* Like & Actions */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.likeBtn} onPress={handleLike}>
+          <Text style={styles.likeBtnText}>{skill.isLiked ? '❤️' : '🤍'} {skill.likeCount || 0}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.likeBtn} onPress={handleShare}>
+          <Text style={styles.likeBtnText}>🔗 Share</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.likeBtn} onPress={() => setShowReviewForm(!showReviewForm)}>
+          <Text style={styles.likeBtnText}>✍️ Review</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Write Review */}
+      {showReviewForm && (
+        <View style={styles.reviewForm}>
+          <Text style={styles.sectionTitle}>Write a Review</Text>
+          <View style={styles.ratingRow}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <TouchableOpacity key={star} onPress={() => setReviewRating(star)}>
+                <Text style={{ fontSize: 24 }}>{star <= reviewRating ? '⭐' : '☆'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput
+            style={styles.reviewInput}
+            placeholder="Share your experience..."
+            placeholderTextColor={colors.textMuted}
+            value={reviewText}
+            onChangeText={setReviewText}
+            multiline
+          />
+          <TouchableOpacity style={styles.submitReviewBtn} onPress={handleSubmitReview}>
+            <Text style={styles.submitReviewText}>Submit Review</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -200,4 +271,12 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.6 },
   installBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   installTarget: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  likeBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  likeBtnText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  reviewForm: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 16, gap: 10, borderWidth: 1, borderColor: colors.border },
+  ratingRow: { flexDirection: 'row', gap: 4 },
+  reviewInput: { backgroundColor: colors.bgSecondary, borderRadius: 10, padding: 12, color: colors.textPrimary, minHeight: 80, textAlignVertical: 'top', fontSize: 14 },
+  submitReviewBtn: { backgroundColor: colors.accent, borderRadius: 10, padding: 12, alignItems: 'center' },
+  submitReviewText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

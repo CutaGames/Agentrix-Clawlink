@@ -108,14 +108,7 @@ export function GroupChatScreen() {
 
   const msgs: GroupMessage[] = (Array.isArray(data) && data.length > 0) ? data : PLACEHOLDER_MSGS;
 
-  // Simulate typing indicator
-  useEffect(() => {
-    if (!isLoading) {
-      const t1 = setTimeout(() => setTypingUsers(['ai_builder']), 3000);
-      const t2 = setTimeout(() => setTypingUsers([]), 6000);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
-    }
-  }, [isLoading]);
+  // Typing state is driven by backend websocket events (no fake simulation)
 
   const sendMut = useMutation({
     mutationFn: (content: string) => sendGroupMessage(groupId, content),

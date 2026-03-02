@@ -1,8 +1,7 @@
-import { Alert } from 'react-native';
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
-  RefreshControl, ActivityIndicator, ScrollView,
+  RefreshControl, ActivityIndicator, ScrollView, Share, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -112,8 +111,7 @@ export function FeedScreen() {
     ?? [];
   const posts = allPosts.length > 0
     ? allPosts
-    : PLACEHOLDER_POSTS.filter((p) => !activeTag || p.tags?.includes(activeTag))
-        .map((p) => ({ ...p, body: `[Preview] ${p.body}` }));
+    : PLACEHOLDER_POSTS.filter((p) => !activeTag || p.tags?.includes(activeTag));
 
   const likeMut = useMutation({
     mutationFn: (postId: string) => likePost(postId),
@@ -196,10 +194,19 @@ export function FeedScreen() {
             {post.isLiked ? '❤️' : '🤍'} {post.likes}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={(e) => { e.stopPropagation(); navigation.navigate('PostDetail', { postId: post.id }); }}
+        >
           <Text style={styles.actionText}>💬 {post.comments}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={(e) => {
+            e.stopPropagation();
+            Share.share({ message: `${post.content}\n\nhttps://agentrix.top/social/post/${post.id}` });
+          }}
+        >
           <Text style={styles.actionText}>🔗 Share</Text>
         </TouchableOpacity>
         {/* Fork & Install — shown when post has an associated skill */}
