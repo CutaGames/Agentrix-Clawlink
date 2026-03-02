@@ -75,34 +75,35 @@ fi
 
 # ---------------------------------------------------------------------------
 # 3. PACKAGE VERSION GUARDS
-#    reanimated 3.x breaks RN 0.81.5 (ShadowNode::Shared deprecated, -Werror kills compile).
-#    Tilde/caret allows float to incompatible patch. Exact pins required.
+#    react-native-reanimated and react-native-worklets MUST NOT be present.
+#    These packages auto-register native TurboModules at New Arch startup
+#    via JNI, crashing on HarmonyOS 4.x (Huawei P40 Pro, Kirin 990).
+#    They are NOT imported anywhere in the codebase — zero usage.
 # ---------------------------------------------------------------------------
 section "package.json — dependency version pins"
 
 REANIMATED_VER=$(node -e "const p=require('./package.json'); console.log(p.dependencies['react-native-reanimated'] || '')")
 WORKLETS_VER=$(node -e "const p=require('./package.json'); console.log(p.dependencies['react-native-worklets'] || p.dependencies['react-native-worklets-core'] || '')")
 
-# Must be reanimated 4.x (3.x fails to compile on RN 0.81.5)
-REANIMATED_MAJOR=$(echo "$REANIMATED_VER" | grep -oP '\d+' | head -1 || echo "0")
-if [[ "$REANIMATED_MAJOR" -lt 4 ]]; then
-  fail "react-native-reanimated '$REANIMATED_VER' is < 4.0 — compile error on RN 0.81.5 (ShadowNode::Shared)"
+# reanimated must NOT be present — causes HarmonyOS ARM64 crash at startup
+if [[ -n "$REANIMATED_VER" ]]; then
+  fail "react-native-reanimated '$REANIMATED_VER' found — must be removed (causes HarmonyOS JNI crash at startup; not used in codebase)"
 else
-  pass "react-native-reanimated '$REANIMATED_VER' is 4.x ✓"
+  pass "react-native-reanimated absent ✓ (removed B87: was crashing HarmonyOS P40 Pro)"
 fi
 
-# Warn on floating ranges (~ or ^) — can drift to breaking versions
-if echo "$REANIMATED_VER" | grep -qP '^[~^]'; then
-  warn "react-native-reanimated '$REANIMATED_VER' uses floating range — recommend exact pin (4.1.1)"
-fi
-if echo "$WORKLETS_VER" | grep -qP '^[~^]'; then
-  warn "react-native-worklets '$WORKLETS_VER' uses floating range — recommend exact pin (0.5.2)"
-fi
-
+# worklets must NOT be present
 if [[ -n "$WORKLETS_VER" ]]; then
-  pass "react-native-worklets present: '$WORKLETS_VER'"
+  fail "react-native-worklets '$WORKLETS_VER' found — must be removed (peer dep of reanimated, same crash risk)"
 else
-  fail "react-native-worklets missing — required peer dep for reanimated 4.x New Arch"
+  pass "react-native-worklets absent ✓"
+fi
+
+# babel reanimated plugin must NOT be present
+if grep -q "react-native-reanimated/plugin" "$REPO_ROOT/babel.config.js"; then
+  fail "babel.config.js: 'react-native-reanimated/plugin' found — reanimated removed, plugin must also be removed"
+else
+  pass "babel.config.js: no reanimated babel plugin ✓"
 fi
 
 # ---------------------------------------------------------------------------
