@@ -106,6 +106,17 @@ else
   pass "babel.config.js: no reanimated babel plugin ✓"
 fi
 
+# newArchEnabled MUST be false — HarmonyOS 4.2 (Huawei P40 Pro) crashes on
+# New Architecture JNI/TurboModule registration. Fixed in B88 (B78/B80 also worked
+# by disabling it). No dependency requires New Arch now that reanimated is removed.
+NEW_ARCH_TOP=$(node -e "const a=require('./app.json'); console.log(a.expo.newArchEnabled)")
+NEW_ARCH_PLUGIN=$(node -e "const a=require('./app.json'); const p=a.expo.plugins||[]; const ep=p.find(x=>Array.isArray(x)&&x[0]==='expo-build-properties'); console.log(ep?ep[1]?.android?.newArchEnabled:'')")
+if [[ "$NEW_ARCH_TOP" == "true" || "$NEW_ARCH_PLUGIN" == "true" ]]; then
+  fail "app.json: newArchEnabled=true detected — must be false (HarmonyOS ARM64 crash; B78/B88 fix)"
+else
+  pass "app.json: newArchEnabled=false ✓ (HarmonyOS compatible)"
+fi
+
 # ---------------------------------------------------------------------------
 # 4. TYPESCRIPT CHECK
 #    Catches type errors that would surface in CI or at runtime.
