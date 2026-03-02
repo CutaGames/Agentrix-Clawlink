@@ -8,6 +8,7 @@ import { SocialStackNavigator } from './SocialStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
+import { FloatingChatButton } from '../components/FloatingChatButton';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -37,6 +38,7 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 export function MainTabNavigator() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   return (
+    <View style={{ flex: 1 }}>
     <Tab.Navigator id={undefined}
       screenOptions={{
         headerShown: false,
@@ -90,5 +92,7 @@ export function MainTabNavigator() {
         }}
       />
     </Tab.Navigator>
+    <FloatingChatButton />
+    </View>
   );
 }

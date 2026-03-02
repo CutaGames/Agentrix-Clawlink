@@ -25,6 +25,7 @@ export type AgentStackParamList = {
   WorkflowDetail: { workflowId?: string };
   AgentAccount: undefined;
   AgentPermissions: { agentAccountId?: string } | undefined;
+  LLMEngine: undefined;
   // Layer 2
   VoiceChat: { instanceId?: string };
   TeamSpace: undefined;
@@ -62,11 +63,7 @@ export type SocialStackParamList = {
   GroupChat: { groupId: string; groupName: string };
 };
 
-export type ChatStackParamList = {
-  ChatList: undefined;
-  DirectMessage: { userId: string; userName: string; userAvatar?: string };
-  GroupChat: { groupId: string; groupName: string };
-};
+// ChatStackParamList removed — DM/GroupChat routes are part of SocialStackParamList
 
 export type MeStackParamList = {
   Profile: undefined;

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Alert, RefreshControl,
+  Alert, RefreshControl, Linking, Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,7 +33,29 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
     { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: 'Create your first Workflow', action: () => navigation.navigate('WorkflowList'), actionLabel: 'Create →' },
   ];
   const completedCount = steps.filter((s) => s.done).length;
-  if (completedCount === 3) return null; // all done, hide card
+
+  // Celebration animation when all 3 steps done
+  const celebrateAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (completedCount === 3) {
+      Animated.sequence([
+        Animated.timing(celebrateAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.delay(2000),
+        Animated.timing(celebrateAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [completedCount]);
+
+  if (completedCount === 3) {
+    const opacity = celebrateAnim;
+    const scale = celebrateAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.1] });
+    return (
+      <Animated.View style={[onboard.card, { opacity, transform: [{ scale }], borderColor: colors.accent }]}>
+        <Text style={{ fontSize: 32, textAlign: 'center' }}>🎉🎊🥳</Text>
+        <Text style={[onboard.title, { textAlign: 'center' }]}>All steps complete! Advanced mode unlocked!</Text>
+      </Animated.View>
+    );
+  }
 
   const handleComplete = (key: 'deployedAgent' | 'installedSkill' | 'createdWorkflow') => {
     markOnboardingStep(key);
@@ -226,24 +248,19 @@ export function AgentConsoleScreen() {
       {/* Token Energy Bar */}
       <TokenEnergyBar />
 
-      {/* Model Switcher */}
+      {/* Model Switcher — hidden in beginner mode */}
+      {uiComplexity !== 'beginner' && (
       <View style={styles.modelSwitcher}>
         <Text style={styles.modelLabel}>Current Engine:</Text>
         <TouchableOpacity 
           style={styles.modelSelector}
-          onPress={() => {
-            Alert.alert('Select Engine', 'Choose the AI model for your agent',
-              [
-                ...SUPPORTED_MODELS.map((m) => ({ text: m.label, onPress: () => setSelectedModel(m.id) })),
-                { text: 'Cancel', style: 'cancel' as const },
-              ]
-            );
-          }}
+          onPress={() => navigation.navigate('LLMEngine' as any)}
         >
           <Text style={styles.modelSelectorText}>{selectedModelLabel}</Text>
           <Text style={styles.modelSelectorArrow}>▼</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* Multi-instance switcher */}
       {instances.length > 1 && (
@@ -306,19 +323,22 @@ export function AgentConsoleScreen() {
           </TouchableOpacity>
 
           <View style={styles.statsRow}>
-            <View style={styles.statCard}>
+            <View style={[styles.statCard, { borderLeftWidth: 3, borderLeftColor: colors.accent }]}>
+              <Text style={styles.statIcon}>⚡</Text>
               <Text style={styles.statValue}>{skills?.length ?? 0}</Text>
-              <Text style={styles.statLabel}>Skills</Text>
+              <Text style={styles.statLabel}>Skills Installed</Text>
             </View>
-            <View style={styles.statCard}>
+            <View style={[styles.statCard, { borderLeftWidth: 3, borderLeftColor: STATUS_COLOR[activeInstance.status] }]}>
+              <Text style={styles.statIcon}>{activeInstance.status === 'active' ? '🟢' : activeInstance.status === 'error' ? '🔴' : '⚪'}</Text>
               <Text style={[styles.statValue, { color: STATUS_COLOR[activeInstance.status] }]}>
                 {activeInstance.status.toUpperCase()}
               </Text>
-              <Text style={styles.statLabel}>Status</Text>
+              <Text style={styles.statLabel}>Agent Status</Text>
             </View>
-            <View style={styles.statCard}>
+            <View style={[styles.statCard, { borderLeftWidth: 3, borderLeftColor: '#7c3aed' }]}>
+              <Text style={styles.statIcon}>{activeInstance.deployType === 'cloud' ? '☁️' : activeInstance.deployType === 'local' ? '💻' : '🔗'}</Text>
               <Text style={styles.statValue}>{activeInstance.deployType}</Text>
-              <Text style={styles.statLabel}>Type</Text>
+              <Text style={styles.statLabel}>Deploy Type</Text>
             </View>
           </View>
 
@@ -388,13 +408,18 @@ export function AgentConsoleScreen() {
           {/* ── Quick Actions ── */}
           <View style={styles.quickActions}>
             {([
-              { icon: '📋', label: 'Activity Logs', route: 'AgentLogs' as const },
-              { icon: '🧠', label: 'Memory Hub', route: 'MemoryManagement' as const },
-              { icon: '⚙️', label: 'Workflows', route: 'WorkflowList' as const },
-              { icon: '🎤', label: 'Voice Chat', route: 'VoiceChat' as const },
-              { icon: '👥', label: 'Team Space', route: 'TeamSpace' as const },
-              { icon: '🤖', label: 'Agent Accounts', route: 'AgentAccount' as const },
-            ]).map((item) => (
+              { icon: '📋', label: 'Activity Logs', route: 'AgentLogs' as const, minLevel: 'beginner' as const },
+              { icon: '🧠', label: 'Memory Hub', route: 'MemoryManagement' as const, minLevel: 'advanced' as const },
+              { icon: '⚙️', label: 'Workflows', route: 'WorkflowList' as const, minLevel: 'advanced' as const },
+              { icon: '🎤', label: 'Voice Chat', route: 'VoiceChat' as const, minLevel: 'advanced' as const },
+              { icon: '👥', label: 'Team Space', route: 'TeamSpace' as const, minLevel: 'advanced' as const },
+              { icon: '🤖', label: 'Agent Accounts', route: 'AgentAccount' as const, minLevel: 'advanced' as const },
+            ])
+              .filter((item) => {
+                const levels = ['beginner', 'advanced', 'professional'] as const;
+                return levels.indexOf(uiComplexity) >= levels.indexOf(item.minLevel);
+              })
+              .map((item) => (
               <TouchableOpacity
                 key={item.route}
                 style={styles.quickAction}
@@ -416,8 +441,8 @@ export function AgentConsoleScreen() {
               'Download the Agentrix Desktop app to control your computer with AI, run local agents, and sync with your mobile.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Download Standard (.exe)', onPress: () => {} },
-                { text: 'Download AIO (All-in-One)', onPress: () => {} },
+                { text: 'Download Standard (.exe)', onPress: () => Linking.openURL('https://agentrix.top/downloads/desktop') },
+                { text: 'Download AIO (All-in-One)', onPress: () => Linking.openURL('https://agentrix.top/downloads/desktop-aio') },
               ]
             );
           }}
@@ -556,6 +581,7 @@ const styles = StyleSheet.create({
   chatCtaArrow: { fontSize: 24, color: colors.primary, marginLeft: 'auto' },
   statsRow: { flexDirection: 'row', gap: 10 },
   statCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.border },
+  statIcon: { fontSize: 18, marginBottom: 2 },
   statValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
   statLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase' },
   storageCard: {

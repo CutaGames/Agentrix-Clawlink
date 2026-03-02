@@ -121,6 +121,33 @@ function mapHubSkillToSkillItem(s: OpenClawHubSkill): SkillItem {
 
 /** Attempt to fetch skills from the official OpenClaw Hub registry directly */
 async function fetchFromOfficialHub(): Promise<OpenClawHubSkill[]> {
+  // 1. Try the Agentrix backend bridge first (Singapore server relay)
+  try {
+    const bridgeResp = await apiFetch<any>('/openclaw/bridge/skill-hub');
+    const bridgeSkills: any[] = bridgeResp?.items || bridgeResp?.skills || bridgeResp?.data || (Array.isArray(bridgeResp) ? bridgeResp : []);
+    if (bridgeSkills.length > 0) {
+      return bridgeSkills.map((s: any): OpenClawHubSkill => ({
+        id: s.id ?? s.key ?? `oc-${Math.random().toString(36).slice(2, 8)}`,
+        name: s.name ?? s.displayName ?? 'Unknown Skill',
+        description: s.description ?? 'OpenClaw community skill',
+        author: s.author ?? 'OpenClaw',
+        category: s.category ?? 'general',
+        subCategory: s.subCategory,
+        tags: s.tags ?? [],
+        version: s.version,
+        rating: s.rating ?? 4.5,
+        installCount: s.callCount ?? s.installCount ?? 0,
+        price: s.price ?? 0,
+        priceUnit: s.priceUnit ?? 'free',
+        package: s.package,
+        repoUrl: s.repoUrl,
+      }));
+    }
+  } catch {
+    // Bridge unavailable, try direct
+  }
+
+  // 2. Try official OpenClaw Hub public registry directly
   for (const url of OFFICIAL_HUB_URLS) {
     try {
       const controller = new AbortController();
@@ -156,10 +183,9 @@ async function getHubSkills(): Promise<OpenClawHubSkill[]> {
   }
 
   // 2. Use curated placeholder catalog (30 representative OpenClaw skills)
-  //    NOTE: We intentionally skip the backend bridge because it returns
-  //    internal Agentrix system tools (get_product_details etc.), not hub skills.
-  _hubCache = { items: HUB_PLACEHOLDER, fetchedAt: Date.now() - HUB_CACHE_TTL_MS + 5 * 60 * 1000 };
-  return HUB_PLACEHOLDER;
+  const previewItems = HUB_PLACEHOLDER.map((s) => ({ ...s, name: `[Preview] ${s.name}` }));
+  _hubCache = { items: previewItems, fetchedAt: Date.now() - HUB_CACHE_TTL_MS + 5 * 60 * 1000 };
+  return previewItems;
 }
 
 export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promise<OpenClawHubSearchResponse> {

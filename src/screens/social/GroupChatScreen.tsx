@@ -51,12 +51,15 @@ const PLACEHOLDER_MEMBERS: GroupMember[] = [
 
 async function fetchGroupMessages(groupId: string): Promise<GroupMessage[]> {
   if (groupId === 'new') return [];
-  try { return apiFetch<GroupMessage[]>(`/social/groups/${groupId}/messages`); }
+  try {
+    const res = await apiFetch<any>(`/messaging/groups/${groupId}/messages`);
+    return res?.data ?? res ?? [];
+  }
   catch { return []; }
 }
 
 async function sendGroupMessage(groupId: string, content: string) {
-  return apiFetch(`/social/groups/${groupId}/messages`, {
+  return apiFetch(`/messaging/groups/${groupId}/messages`, {
     method: 'POST', body: JSON.stringify({ content, type: 'text' }),
   });
 }

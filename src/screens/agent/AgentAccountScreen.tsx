@@ -71,11 +71,11 @@ async function openWalletForAgent(agentId: string): Promise<{ walletAddress: str
 }
 
 async function suspendAgent(agentId: string): Promise<void> {
-  await apiFetch(`/agent-accounts/${agentId}/suspend`, { method: 'PATCH' });
+  await apiFetch(`/agent-accounts/${agentId}/suspend`, { method: 'POST' });
 }
 
 async function resumeAgent(agentId: string): Promise<void> {
-  await apiFetch(`/agent-accounts/${agentId}/resume`, { method: 'PATCH' });
+  await apiFetch(`/agent-accounts/${agentId}/resume`, { method: 'POST' });
 }
 
 // ──────────────────────────────────────────────
@@ -95,12 +95,21 @@ function CreateAgentModal({
   onCreate: (dto: CreateAgentDto) => void;
   loading: boolean;
 }) {
+  const [step, setStep] = useState(1); // 3-step wizard
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [agentType, setAgentType] = useState('personal');
   const [singleTxLimit, setSingleTxLimit] = useState('100');
   const [dailyLimit, setDailyLimit] = useState('500');
   const [monthlyLimit, setMonthlyLimit] = useState('2000');
+  const [allowedCurrencies, setAllowedCurrencies] = useState(['USDT', 'ETH']);
+
+  const CURRENCY_OPTIONS = ['USDT', 'ETH', 'USD'];
+  const toggleCurrency = (c: string) => {
+    setAllowedCurrencies((prev) =>
+      prev.includes(c) ? (prev.length > 1 ? prev.filter((x) => x !== c) : prev) : [...prev, c],
+    );
+  };
 
   const handleCreate = () => {
     if (!name.trim()) {
@@ -120,98 +129,184 @@ function CreateAgentModal({
     });
   };
 
+  const canAdvance = step === 1 ? name.trim().length > 0 : true;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={modal.root}>
         <View style={modal.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={modal.cancel}>Cancel</Text>
+          <TouchableOpacity onPress={step > 1 ? () => setStep(step - 1) : onClose}>
+            <Text style={modal.cancel}>{step > 1 ? '← Back' : 'Cancel'}</Text>
           </TouchableOpacity>
-          <Text style={modal.title}>New Agent Account</Text>
-          <TouchableOpacity onPress={handleCreate} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color={colors.accent} />
-            ) : (
-              <Text style={modal.createBtn}>Create</Text>
-            )}
-          </TouchableOpacity>
+          <Text style={modal.title}>New Agent · Step {step}/3</Text>
+          {step < 3 ? (
+            <TouchableOpacity onPress={() => canAdvance && setStep(step + 1)} disabled={!canAdvance}>
+              <Text style={[modal.createBtn, !canAdvance && { opacity: 0.4 }]}>Next →</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={handleCreate} disabled={loading}>
+              {loading ? (
+                <ActivityIndicator color={colors.accent} />
+              ) : (
+                <Text style={modal.createBtn}>Create</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Step indicator */}
+        <View style={modal.stepBar}>
+          {[1, 2, 3].map((s) => (
+            <View key={s} style={[modal.stepDot, s <= step && modal.stepDotActive]} />
+          ))}
         </View>
 
         <ScrollView style={modal.body} keyboardShouldPersistTaps="handled">
-          <Text style={modal.label}>Agent Name *</Text>
-          <TextInput
-            style={modal.input}
-            placeholder="e.g. My Research Agent"
-            placeholderTextColor={colors.textMuted}
-            value={name}
-            onChangeText={setName}
-            autoFocus
-          />
+          {/* ── Step 1: Identity ── */}
+          {step === 1 && (
+            <>
+              <Text style={modal.stepTitle}>🤖 Configure Identity</Text>
+              <Text style={modal.stepSub}>Name your agent and define its purpose.</Text>
 
-          <Text style={modal.label}>Description</Text>
-          <TextInput
-            style={[modal.input, { minHeight: 70, textAlignVertical: 'top' }]}
-            placeholder="What does this agent do?"
-            placeholderTextColor={colors.textMuted}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-          />
+              <Text style={modal.label}>Agent Name *</Text>
+              <TextInput
+                style={modal.input}
+                placeholder="e.g. My Research Agent"
+                placeholderTextColor={colors.textMuted}
+                value={name}
+                onChangeText={setName}
+                autoFocus
+              />
 
-          <Text style={modal.label}>Agent Type</Text>
-          <View style={modal.typeRow}>
-            {AGENT_TYPES.map((t) => (
-              <TouchableOpacity
-                key={t}
-                style={[modal.typeChip, agentType === t && modal.typeChipActive]}
-                onPress={() => setAgentType(t)}
-              >
-                <Text style={[modal.typeText, agentType === t && modal.typeTextActive]}>
-                  {t}
+              <Text style={modal.label}>Description</Text>
+              <TextInput
+                style={[modal.input, { minHeight: 70, textAlignVertical: 'top' }]}
+                placeholder="What does this agent do?"
+                placeholderTextColor={colors.textMuted}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+              />
+
+              <Text style={modal.label}>Agent Type</Text>
+              <View style={modal.typeRow}>
+                {AGENT_TYPES.map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[modal.typeChip, agentType === t && modal.typeChipActive]}
+                    onPress={() => setAgentType(t)}
+                  >
+                    <Text style={[modal.typeText, agentType === t && modal.typeTextActive]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* ── Step 2: Spending Limits ── */}
+          {step === 2 && (
+            <>
+              <Text style={modal.stepTitle}>💳 Set Spending Limits</Text>
+              <Text style={modal.stepSub}>Control how much this agent can spend autonomously.</Text>
+
+              <View style={modal.limitsGrid}>
+                <View style={modal.limitItem}>
+                  <Text style={modal.limitLabel}>Single TX ($)</Text>
+                  <TextInput
+                    style={modal.limitInput}
+                    value={singleTxLimit}
+                    onChangeText={setSingleTxLimit}
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+                <View style={modal.limitItem}>
+                  <Text style={modal.limitLabel}>Daily ($)</Text>
+                  <TextInput
+                    style={modal.limitInput}
+                    value={dailyLimit}
+                    onChangeText={setDailyLimit}
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+                <View style={modal.limitItem}>
+                  <Text style={modal.limitLabel}>Monthly ($)</Text>
+                  <TextInput
+                    style={modal.limitInput}
+                    value={monthlyLimit}
+                    onChangeText={setMonthlyLimit}
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+              </View>
+
+              <Text style={modal.label}>Allowed Currencies</Text>
+              <View style={modal.typeRow}>
+                {CURRENCY_OPTIONS.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[modal.typeChip, allowedCurrencies.includes(c) && modal.typeChipActive]}
+                    onPress={() => toggleCurrency(c)}
+                  >
+                    <Text style={[modal.typeText, allowedCurrencies.includes(c) && modal.typeTextActive]}>{c}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={modal.infoBox}>
+                <Text style={modal.infoText}>
+                  💡 Spending limits protect you by capping how much this agent can pay autonomously.
+                  You can change these later in Permissions.
                 </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+              </View>
+            </>
+          )}
 
-          <Text style={modal.label}>Spending Limits (USD)</Text>
-          <View style={modal.limitsGrid}>
-            <View style={modal.limitItem}>
-              <Text style={modal.limitLabel}>Single TX</Text>
-              <TextInput
-                style={modal.limitInput}
-                value={singleTxLimit}
-                onChangeText={setSingleTxLimit}
-                keyboardType="decimal-pad"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-            <View style={modal.limitItem}>
-              <Text style={modal.limitLabel}>Daily</Text>
-              <TextInput
-                style={modal.limitInput}
-                value={dailyLimit}
-                onChangeText={setDailyLimit}
-                keyboardType="decimal-pad"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-            <View style={modal.limitItem}>
-              <Text style={modal.limitLabel}>Monthly</Text>
-              <TextInput
-                style={modal.limitInput}
-                value={monthlyLimit}
-                onChangeText={setMonthlyLimit}
-                keyboardType="decimal-pad"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-          </View>
+          {/* ── Step 3: Confirm & Activate Wallet ── */}
+          {step === 3 && (
+            <>
+              <Text style={modal.stepTitle}>🔐 Activate Wallet</Text>
+              <Text style={modal.stepSub}>Review and create. An MPC wallet will be generated automatically.</Text>
 
-          <View style={modal.infoBox}>
-            <Text style={modal.infoText}>
-              💡 Spending limits protect you by capping how much this agent can pay autonomously.
-            </Text>
-          </View>
+              <View style={modal.summaryCard}>
+                <View style={modal.summaryRow}>
+                  <Text style={modal.summaryLabel}>Name</Text>
+                  <Text style={modal.summaryValue}>{name || '—'}</Text>
+                </View>
+                <View style={modal.summaryRow}>
+                  <Text style={modal.summaryLabel}>Type</Text>
+                  <Text style={modal.summaryValue}>{agentType}</Text>
+                </View>
+                <View style={modal.summaryRow}>
+                  <Text style={modal.summaryLabel}>Single TX</Text>
+                  <Text style={modal.summaryValue}>${singleTxLimit}</Text>
+                </View>
+                <View style={modal.summaryRow}>
+                  <Text style={modal.summaryLabel}>Daily Limit</Text>
+                  <Text style={modal.summaryValue}>${dailyLimit}</Text>
+                </View>
+                <View style={modal.summaryRow}>
+                  <Text style={modal.summaryLabel}>Monthly Limit</Text>
+                  <Text style={modal.summaryValue}>${monthlyLimit}</Text>
+                </View>
+                <View style={modal.summaryRow}>
+                  <Text style={modal.summaryLabel}>Currencies</Text>
+                  <Text style={modal.summaryValue}>{allowedCurrencies.join(', ')}</Text>
+                </View>
+              </View>
+
+              <View style={modal.infoBox}>
+                <Text style={modal.infoText}>
+                  🔐 An independent MPC wallet will be created for this agent. The wallet is self-custody — only
+                  this agent can sign transactions within the limits above. Tap "Create" to proceed.
+                </Text>
+              </View>
+            </>
+          )}
         </ScrollView>
       </View>
     </Modal>
@@ -714,4 +809,14 @@ const modal = StyleSheet.create({
     borderColor: colors.border,
   },
   infoText: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  // Wizard additions
+  stepBar: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 10, backgroundColor: colors.bgSecondary },
+  stepDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
+  stepDotActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  stepTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginTop: 8 },
+  stepSub: { fontSize: 13, color: colors.textMuted, lineHeight: 20, marginBottom: 8 },
+  summaryCard: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, gap: 10, marginTop: 8 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  summaryLabel: { fontSize: 13, color: colors.textMuted },
+  summaryValue: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
 });

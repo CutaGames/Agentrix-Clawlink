@@ -387,7 +387,8 @@ export const marketplaceApi = {
       }));
       // If API returns empty results for this category, supplement with mock data
       if (items.length === 0) {
-        const mockFallback = MOCK_SKILLS.filter(s => !params.category || s.category === params.category);
+        const mockFallback = MOCK_SKILLS.filter(s => !params.category || s.category === params.category)
+          .map(s => ({ ...s, name: `[Preview] ${s.name}` }));
         return {
           items: mockFallback,
           total: mockFallback.length,
@@ -404,7 +405,7 @@ export const marketplaceApi = {
     } catch (e) {
       console.warn('Marketplace search fallback to mock:', e);
       // Fallback to mock data
-      let items = [...MOCK_SKILLS];
+      let items = [...MOCK_SKILLS].map(s => ({ ...s, name: `[Preview] ${s.name}` }));
       if (params.category) {
         items = items.filter(s => s.category === params.category);
       }

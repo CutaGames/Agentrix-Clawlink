@@ -110,7 +110,10 @@ export function FeedScreen() {
 
   const allPosts: Post[] = data?.pages?.flatMap((p) => (Array.isArray(p) && p.length > 0 ? p : []))
     ?? [];
-  const posts = allPosts.length > 0 ? allPosts : PLACEHOLDER_POSTS.filter((p) => !activeTag || p.tags?.includes(activeTag));
+  const posts = allPosts.length > 0
+    ? allPosts
+    : PLACEHOLDER_POSTS.filter((p) => !activeTag || p.tags?.includes(activeTag))
+        .map((p) => ({ ...p, body: `[Preview] ${p.body}` }));
 
   const likeMut = useMutation({
     mutationFn: (postId: string) => likePost(postId),

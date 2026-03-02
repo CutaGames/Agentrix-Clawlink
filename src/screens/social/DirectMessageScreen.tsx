@@ -48,12 +48,12 @@ const SAMPLE_SKILLS: SkillCard[] = [
 ];
 
 async function fetchMessages(userId: string): Promise<Message[]> {
-  try { return apiFetch<Message[]>(`/social/dm/${userId}/messages`); }
+  try { return apiFetch<Message[]>(`/messaging/dm/${userId}`); }
   catch { return []; }
 }
 
 async function sendMessage(userId: string, payload: { content: string; type: string; skillCard?: SkillCard }) {
-  return apiFetch(`/social/dm/${userId}/messages`, { method: 'POST', body: JSON.stringify(payload) });
+  return apiFetch(`/messaging/dm/${userId}`, { method: 'POST', body: JSON.stringify(payload) });
 }
 
 function formatTime(iso: string) {

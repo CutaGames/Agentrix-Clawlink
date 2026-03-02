@@ -16,6 +16,7 @@ import { TeamSpaceScreen } from '../screens/agent/TeamSpaceScreen';
 import { TeamInviteScreen } from '../screens/agent/TeamInviteScreen';
 import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 import { AgentPermissionsScreen } from '../screens/agent/AgentPermissionsScreen';
+import { LLMEngineScreen } from '../screens/agent/LLMEngineScreen';
 // Deploy screens — reused from Onboarding in post-onboarding context
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
 import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
@@ -56,6 +57,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="TeamInvite" component={TeamInviteScreen} options={{ title: 'Invite Members', headerShown: false }} />
       <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: 'Agent Accounts' }} />
       <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: 'Permissions & Security' }} />
+      <Stack.Screen name="LLMEngine" component={LLMEngineScreen} options={{ title: 'AI Engine Config' }} />
     </Stack.Navigator>
   );
 }

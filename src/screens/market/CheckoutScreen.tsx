@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Linking } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -31,6 +31,27 @@ export function CheckoutScreen() {
     enabled: !!skillId,
   });
 
+  // Poll order status after redirect to external payment page
+  const pollOrderStatus = useCallback(async (orderId: string) => {
+    const maxAttempts = 30; // 30 × 3s = 90s max
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const status = await apiFetch<any>(`/unified-marketplace/orders/${orderId}/status`);
+        if (status?.status === 'completed' || status?.status === 'paid') {
+          Alert.alert('✅ Payment Complete!', 'Skill purchased and ready to install!', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+          return;
+        }
+        if (status?.status === 'failed' || status?.status === 'cancelled') {
+          Alert.alert('Payment Cancelled', 'The payment was not completed.');
+          return;
+        }
+      } catch { /* retry */ }
+    }
+  }, [navigation]);
+
   const handlePay = async (method: 'stripe' | 'x402' | 'transak') => {
     setPaying(true);
     try {
@@ -38,8 +59,25 @@ export function CheckoutScreen() {
         method: 'POST',
         body: JSON.stringify({ skillId, quantity: 1, paymentMethod: method }),
       });
-      if (order?.checkoutUrl || order?.result?.checkoutUrl) {
-        Alert.alert('Payment', 'Redirecting to payment...');
+      const checkoutUrl = order?.checkoutUrl || order?.result?.checkoutUrl;
+      if (checkoutUrl) {
+        // Open external payment page in browser
+        const supported = await Linking.canOpenURL(checkoutUrl);
+        if (supported) {
+          await Linking.openURL(checkoutUrl);
+        } else {
+          Alert.alert('Payment', `Please open this URL to complete payment:\n${checkoutUrl}`);
+        }
+        // Start polling for order completion in background
+        const orderId = order?.orderId || order?.id || order?.result?.orderId;
+        if (orderId) {
+          pollOrderStatus(orderId);
+        } else {
+          // No orderId available — show manual confirmation
+          Alert.alert('Payment Initiated', 'After completing payment in your browser, return here. Your purchase will be reflected shortly.', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ]);
+        }
       } else if (order?.success !== false) {
         Alert.alert('✅ Success!', 'Skill purchased and ready to install!');
         navigation.goBack();
@@ -67,6 +105,23 @@ export function CheckoutScreen() {
         </View>
         <Text style={styles.orderPrice}>{price > 0 ? `$${price} ${currency}` : 'Free'}</Text>
       </View>
+
+      {/* BSC Testnet Badge in dev mode */}
+      {__DEV__ && (
+        <View style={styles.testnetBadge}>
+          <Text style={styles.testnetText}>🔶 BSC TESTNET — Transactions use test tokens</Text>
+        </View>
+      )}
+
+      {/* MPC QuickPay — agent wallet auto-detection */}
+      <TouchableOpacity style={[styles.payBtn, styles.quickPayBtn]} onPress={() => handlePay('x402')} disabled={paying}>
+        <Text style={styles.payBtnEmoji}>🦀</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.payBtnTitle}>QuickPay (MPC Wallet)</Text>
+          <Text style={styles.payBtnSub}>Pay instantly with your agent wallet balance</Text>
+        </View>
+        {paying ? <ActivityIndicator color={colors.accent} /> : <Text style={styles.arrow}>›</Text>}
+      </TouchableOpacity>
 
       {/* Payment Methods */}
       <Text style={styles.sectionTitle}>Choose Payment Method</Text>
@@ -122,4 +177,7 @@ const styles = StyleSheet.create({
   arrow: { fontSize: 22, color: colors.textMuted, marginLeft: 'auto' },
   cancelBtn: { alignItems: 'center', padding: 14 },
   cancelBtnText: { color: colors.textMuted, fontSize: 14 },
+  testnetBadge: { backgroundColor: '#f59e0b22', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#f59e0b55' },
+  testnetText: { fontSize: 12, color: '#f59e0b', fontWeight: '600', textAlign: 'center' },
+  quickPayBtn: { borderColor: colors.accent + '66', backgroundColor: colors.accent + '0D' },
 });
