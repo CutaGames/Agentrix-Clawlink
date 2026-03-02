@@ -80,6 +80,13 @@ export type MeStackParamList = {
   NotificationCenter: undefined;
   ShareCard: { shareUrl: string; title?: string; userName?: string };
   SocialListener: undefined;
+  Airdrop: undefined;
+  Assets: undefined;
+  AutoEarn: undefined;
+  BudgetPools: undefined;
+  Settlements: undefined;
+  SplitPlans: undefined;
+  QuickPay: { amount?: string };
 };
 
 export type MainTabParamList = {
