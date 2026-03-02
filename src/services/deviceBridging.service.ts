@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
-import * as ImagePicker from 'expo-image-picker';
+// expo-image-picker is required lazily (inside pickImageAsBase64) to avoid
+// loading the ExponentImagePicker native module at JS bundle evaluation time,
+// which crashes on HarmonyOS before the native bridge is fully initialised.
 
 export interface LocationData {
   latitude: number;
@@ -72,13 +74,17 @@ export class DeviceBridgingService {
    */
   static async pickImageAsBase64(): Promise<string | null> {
     try {
+      // Lazy require: only load expo-image-picker native module when this
+      // function is actually called (not at startup), preventing HarmonyOS crash.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ImagePicker = require('expo-image-picker');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         throw new Error('Photo album permission denied by user.');
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.8,
         base64: true, 

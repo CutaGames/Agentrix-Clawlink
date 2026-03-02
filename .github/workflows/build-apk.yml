@@ -205,8 +205,6 @@ jobs:
           fi
 
       # Build a single release APK — used for both UI tests and the download link.
-      # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
-      # Unsigned release APK installs fine on any emulator or test device.
       - name: Build APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --parallel
