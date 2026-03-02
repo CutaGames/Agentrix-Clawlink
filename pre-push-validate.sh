@@ -48,11 +48,13 @@ else
   pass "App.tsx: no bare reanimated side-effect import"
 fi
 
-# GestureHandlerRootView wrapper (signals gesture-handler side-effect was also added)
+# GestureHandlerRootView wrapper — REQUIRED by React Navigation v7.
+# This is a named import, NOT a bare side-effect import. It does not trigger
+# the early JNI init that caused ARM64 crashes. Keep it.
 if grep -q "GestureHandlerRootView" "$REPO_ROOT/App.tsx"; then
-  fail "App.tsx: GestureHandlerRootView found — only needed when gesture-handler is a listed peer; verify this is intentional"
+  pass "App.tsx: GestureHandlerRootView wrapper present (required by React Navigation v7)"
 else
-  pass "App.tsx: no GestureHandlerRootView wrapper"
+  warn "App.tsx: GestureHandlerRootView not found — recommended for React Navigation v7 gesture support"
 fi
 
 # ---------------------------------------------------------------------------
