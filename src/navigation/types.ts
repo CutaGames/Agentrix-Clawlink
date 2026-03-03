@@ -42,6 +42,15 @@ export type MarketStackParamList = {
   Marketplace: undefined;
   SkillDetail: { skillId: string; skillName: string };
   Checkout: { skillId: string; skillName?: string };
+  PaymentSuccess: {
+    skillId: string;
+    skillName?: string;
+    orderId?: string;
+    paymentId?: string;
+    amount?: number;
+    currency?: string;
+    paymentMethod?: string;
+  };
   TaskMarket: undefined;
   TaskDetail: { taskId: string };
   PublishTask: undefined;
@@ -63,7 +72,9 @@ export type SocialStackParamList = {
   GroupChat: { groupId: string; groupName: string };
 };
 
-// ChatStackParamList removed — DM/GroupChat routes are part of SocialStackParamList
+// ChatStackParamList — Chat screens are a subset of SocialStackParamList
+// Kept for backwards compatibility with ChatStackNavigator
+export type ChatStackParamList = Pick<SocialStackParamList, 'ChatList' | 'DirectMessage' | 'GroupChat'>;
 
 export type MeStackParamList = {
   Profile: undefined;

@@ -87,6 +87,8 @@ async function handleLoginResult(
 
   // 异步创建 MPC 钱包（不阻塞登录）
   if (provider !== 'wallet' && socialId) {
+    const { setMpcInitializing } = useAuthStore.getState();
+    setMpcInitializing(true);
     ensureMPCWallet(socialId)
       .then((walletAddress) => {
         if (walletAddress && !user.walletAddress) {
@@ -101,6 +103,9 @@ async function handleLoginResult(
       })
       .catch((err) => {
         console.warn('MPC wallet auto-creation failed (non-blocking):', err.message);
+      })
+      .finally(() => {
+        setMpcInitializing(false);
       });
   }
 
@@ -432,18 +437,7 @@ export async function loginWithX(): Promise<AuthUser> {
 
 /** loginWithApple — OAuth via WebBrowser */
 export async function loginWithApple(): Promise<AuthUser> {
-  const redirectUri = getMobileCallbackUrl();
-  const apiBase = getBackendBaseUrl();
-  const result = await WebBrowser.openAuthSessionAsync(
-    `${apiBase}/auth/apple?redirect_uri=${encodeURIComponent(redirectUri)}`,
-    redirectUri,
-  );
-  if (result.type !== 'success') throw new Error('Apple login cancelled');
-  const params = new URL(result.url);
-  const token = params.searchParams.get('token');
-  if (!token) throw new Error('No token from Apple login');
-  const user = await fetchCurrentUserWithToken(token);
-  return { ...user, token } as any;
+  return socialLogin('apple', 'Apple');
 }
 
 /** handleOAuthCallback — called from AuthCallbackScreen */

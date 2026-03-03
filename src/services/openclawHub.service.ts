@@ -31,6 +31,7 @@ export interface OpenClawHubSkill {
   priceUnit?: string;
   package?: string;   // npm/pip package name for installation
   repoUrl?: string;
+  icon?: string;
 }
 
 export interface OpenClawHubSearchParams {
@@ -97,11 +98,11 @@ const HUB_PLACEHOLDER: OpenClawHubSkill[] = [
 function mapHubSkillToSkillItem(s: OpenClawHubSkill): SkillItem {
   return {
     id: s.id,
-    name: s.name,
+    name: s.icon ? `${s.icon} ${s.name}` : s.name,
     description: s.description,
     author: s.author || '@openclaw-hub',
     authorId: 'openclaw',
-    category: 'skills',
+    category: (s.category === 'tasks' || s.category === 'resources') ? s.category as 'tasks' | 'resources' : 'skills',
     subCategory: s.subCategory,
     price: s.price ?? 0,
     priceUnit: s.priceUnit || 'free',
@@ -121,30 +122,30 @@ function mapHubSkillToSkillItem(s: OpenClawHubSkill): SkillItem {
 
 /** Attempt to fetch skills from the official OpenClaw Hub registry directly */
 async function fetchFromOfficialHub(): Promise<OpenClawHubSkill[]> {
-  // 1. Try the Agentrix backend bridge first (Singapore server relay)
+  // 1. Try the Agentrix backend bridge (correct endpoint)
   try {
-    const bridgeResp = await apiFetch<any>('/openclaw/bridge/skill-hub');
+    const bridgeResp = await apiFetch<any>('/openclaw/bridge/skill-hub/search?limit=200&sortBy=callCount&sortOrder=DESC');
     const bridgeSkills: any[] = bridgeResp?.items || bridgeResp?.skills || bridgeResp?.data || (Array.isArray(bridgeResp) ? bridgeResp : []);
     if (bridgeSkills.length > 0) {
       return bridgeSkills.map((s: any): OpenClawHubSkill => ({
         id: s.id ?? s.key ?? `oc-${Math.random().toString(36).slice(2, 8)}`,
-        name: s.name ?? s.displayName ?? 'Unknown Skill',
+        name: s.displayName ?? s.name ?? 'Unknown Skill',
         description: s.description ?? 'OpenClaw community skill',
         author: s.author ?? 'OpenClaw',
         category: s.category ?? 'general',
         subCategory: s.subCategory,
         tags: s.tags ?? [],
         version: s.version,
-        rating: s.rating ?? 4.5,
+        rating: typeof s.rating === 'number' ? s.rating : parseFloat(s.rating) || 4.5,
         installCount: s.callCount ?? s.installCount ?? 0,
         price: s.price ?? 0,
         priceUnit: s.priceUnit ?? 'free',
-        package: s.package,
+        package: s.package ?? s.key,
         repoUrl: s.repoUrl,
       }));
     }
   } catch {
-    // Bridge unavailable, try direct
+    // Bridge unavailable, try direct public registry
   }
 
   // 2. Try official OpenClaw Hub public registry directly
@@ -220,8 +221,15 @@ export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promis
 }
 
 export async function getHubSkillDetail(id: string): Promise<SkillItem | null> {
+  // Try fetching directly from backend by id (includes full schema)
+  try {
+    const detail = await apiFetch<any>(`/openclaw/bridge/skill-hub/search?limit=1&query=${encodeURIComponent(id)}`);
+    const items: any[] = detail?.items || [];
+    const found = items.find((s: any) => s.id === id || s.key === id);
+    if (found) return mapHubSkillToSkillItem(found);
+  } catch { /* fallback to cache */ }
   const allSkills = await getHubSkills();
-  const skill = allSkills.find(s => s.id === id);
+  const skill = allSkills.find(s => s.id === id || s.package === id);
   if (!skill) return null;
   return mapHubSkillToSkillItem(skill);
 }

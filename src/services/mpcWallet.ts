@@ -1,6 +1,7 @@
 // MPC 钱包服务 — 自动创建 + 分片 A 安全存储
 import * as SecureStore from 'expo-secure-store';
 import { apiFetch } from './api';
+import { biometricService } from './biometric';
 
 const MPC_SHARD_A_KEY = 'mpc_shard_a';
 const MPC_RECOVERY_CODE_KEY = 'mpc_recovery_code';
@@ -55,12 +56,18 @@ export async function createMPCWalletForSocialLogin(
 }
 
 /**
- * 存储分片 A 到 SecureStore（加密存储）
+ * 存储分片 A 到 SecureStore（加密存储 + 生物识别）
  */
 export async function storeShardA(encryptedShardA: string): Promise<void> {
   if (!encryptedShardA) return;
   try {
-    await SecureStore.setItemAsync(MPC_SHARD_A_KEY, encryptedShardA);
+    const biometricStatus = await biometricService.checkAvailability();
+    const canUseBiometrics = biometricStatus.isAvailable && biometricStatus.isEnrolled && 
+      (SecureStore.canUseBiometricAuthentication ? SecureStore.canUseBiometricAuthentication() : false);
+
+    await SecureStore.setItemAsync(MPC_SHARD_A_KEY, encryptedShardA, {
+      requireAuthentication: canUseBiometrics,
+    });
   } catch (e) {
     console.warn('Failed to store MPC shard A (non-fatal):', e);
   }
@@ -71,9 +78,11 @@ export async function storeShardA(encryptedShardA: string): Promise<void> {
  */
 export async function getStoredShardA(): Promise<string | null> {
   try {
-    return await SecureStore.getItemAsync(MPC_SHARD_A_KEY);
+    return await SecureStore.getItemAsync(MPC_SHARD_A_KEY, {
+      authenticationPrompt: 'Unlock your secure identity',
+    });
   } catch (e) {
-    console.warn('Failed to retrieve MPC shard A:', e);
+    console.warn('Failed to retrieve MPC shard A (biometric cancelled or missing):', e);
     return null;
   }
 }

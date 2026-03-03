@@ -63,12 +63,53 @@ async function createAgentAccount(dto: CreateAgentDto): Promise<AgentAccount> {
 }
 
 async function openWalletForAgent(agentId: string): Promise<{ walletAddress: string }> {
-  // Creates or retrieves the MPC wallet associated with this agent
-  const res = await apiFetch<{ walletAddress: string }>('/mpc-wallet/create', {
+  // Step 1: Check if the user already has an MPC wallet (avoid duplicate creation error)
+  try {
+    const check = await apiFetch<{
+      hasWallet: boolean;
+      wallet: { walletAddress: string; chain: string; isActive: boolean } | null;
+    }>('/mpc-wallet/check');
+
+    if (check?.hasWallet && check.wallet?.walletAddress) {
+      // User already has an MPC wallet — return it directly
+      return { walletAddress: check.wallet.walletAddress };
+    }
+  } catch {
+    // check endpoint unavailable — proceed to creation
+  }
+
+  // Step 2: Create a new MPC wallet for this user
+  // Note: backend uses req.user.id as owner; agentId is context only (used in password derivation)
+  const res = await apiFetch<{
+    walletAddress: string;
+    encryptedShardA?: string;
+    encryptedShardC?: string;
+    message?: string;
+  }>('/mpc-wallet/create', {
     method: 'POST',
-    body: JSON.stringify({ agentAccountId: agentId, password: `agent_${agentId}_v1` }),
+    body: JSON.stringify({
+      password: `agent_${agentId}_v1`,
+    }),
   });
-  return res;
+
+  if (!res?.walletAddress) {
+    throw new Error('Wallet creation succeeded but no address returned');
+  }
+
+  // Step 3: Store shard A in SecureStore for wallet recovery (best-effort)
+  if (res.encryptedShardA) {
+    try {
+      const SecureStore = await import('expo-secure-store');
+      await SecureStore.setItemAsync('mpc_shard_a', res.encryptedShardA);
+      if (res.encryptedShardC) {
+        await SecureStore.setItemAsync('mpc_recovery_code', res.encryptedShardC);
+      }
+    } catch {
+      // SecureStore unavailable (simulator) — non-fatal
+    }
+  }
+
+  return { walletAddress: res.walletAddress };
 }
 
 async function suspendAgent(agentId: string): Promise<void> {

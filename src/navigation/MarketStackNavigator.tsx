@@ -5,6 +5,7 @@ import { colors } from '../theme/colors';
 import { ClawMarketplaceScreen } from '../screens/market/ClawMarketplaceScreen';
 import { ClawSkillDetailScreen } from '../screens/market/ClawSkillDetailScreen';
 import { CheckoutScreen } from '../screens/market/CheckoutScreen';
+import { PaymentSuccessScreen } from '../screens/market/PaymentSuccessScreen';
 import TaskMarketScreen from '../screens/TaskMarketScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { PostTaskScreen } from '../screens/PostTaskScreen';
@@ -25,7 +26,8 @@ export function MarketStackNavigator() {
     >
       <Stack.Screen name="Marketplace" component={ClawMarketplaceScreen} options={{ title: 'Market' }} />
       <Stack.Screen name="SkillDetail" component={ClawSkillDetailScreen} options={({ route }) => ({ title: route.params.skillName })} />
-      <Stack.Screen name="Checkout" component={CheckoutScreen} options={{ title: 'Checkout' }} />
+      <Stack.Screen name="Checkout" component={CheckoutScreen} options={{ title: 'Checkout', headerShown: false }} />
+      <Stack.Screen name="PaymentSuccess" component={PaymentSuccessScreen} options={{ title: 'Payment Complete', headerLeft: () => null, gestureEnabled: false }} />
       <Stack.Screen name="TaskMarket" component={TaskMarketScreen} options={{ title: 'Task Market' }} />
       <Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ title: 'Task Detail' }} />
       <Stack.Screen name="PostTask" component={PostTaskScreen} options={{ title: 'Post Task' }} />

@@ -20,6 +20,7 @@ import { colors } from '../theme/colors';
 import { useAuthStore } from '../stores/authStore';
 import {
   loginWithGoogle,
+  loginWithApple,
   loginWithTwitter,
   loginWithDiscord,
   loginWithTelegram,
@@ -29,7 +30,7 @@ import {
 
 const { width } = Dimensions.get('window');
 
-type LoginProvider = 'google' | 'x' | 'telegram' | 'discord' | 'wallet' | 'email';
+type LoginProvider = 'google' | 'apple' | 'x' | 'telegram' | 'discord' | 'wallet' | 'email';
 
 // Wallet apps and their deep-link schemes (app-first principle)
 const WALLET_APPS = [
@@ -38,16 +39,25 @@ const WALLET_APPS = [
   { name: 'Coinbase Wallet', scheme: 'cbwallet://', storeUrl: 'https://www.coinbase.com/wallet' },
 ];
 
-const SOCIAL_BUTTONS: {
+const PRIMARY_SOCIALS: {
   provider: LoginProvider;
   label: string;
   icon: string;
   color: string;
 }[] = [
   { provider: 'google', label: 'Google', icon: 'G', color: '#EA4335' },
-  { provider: 'x', label: 'X / Twitter', icon: '𝕏', color: '#1A1A1A' },
+  ...(Platform.OS === 'ios' ? [{ provider: 'apple' as LoginProvider, label: 'Apple', icon: '', color: '#000000' }] : []),
+];
+
+const SECONDARY_SOCIALS: {
+  provider: LoginProvider;
+  label: string;
+  icon: string;
+  color: string;
+}[] = [
+  { provider: 'x', label: 'X', icon: '𝕏', color: '#1A1A1A' },
+  { provider: 'telegram', label: 'TG', icon: '✈', color: '#2AABEE' },
   { provider: 'discord', label: 'Discord', icon: 'D', color: '#5865F2' },
-  { provider: 'telegram', label: 'Telegram', icon: '✈', color: '#2AABEE' },
 ];
 
 export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
@@ -126,6 +136,7 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     try {
       switch (provider) {
         case 'google': await loginWithGoogle(); break;
+        case 'apple': await loginWithApple(); break;
         case 'x': await loginWithTwitter(); break;
         case 'discord': await loginWithDiscord(); break;
         case 'telegram': await loginWithTelegram(); break;
@@ -168,7 +179,7 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
                 </View>
               </View>
               <Text style={styles.title}>Agentrix</Text>
-              <Text style={styles.tagline}>AI Agent Marketplace</Text>
+              <Text style={styles.tagline}>Your AI Intelligence Hub</Text>
             </View>
 
             {/* 鈹€鈹€鈹€鈹€ Primary: Wallet Login 鈹€鈹€鈹€鈹€ */}
@@ -183,35 +194,57 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={StyleSheet.absoluteFillObject}
               />
-              <Text style={styles.walletPrimaryIcon}>🔗</Text>
+              <View style={styles.walletIconCircle}>
+                <Text style={styles.walletPrimaryIcon}>🔗</Text>
+              </View>
               <View style={styles.walletPrimaryText}>
                 <Text style={styles.walletPrimaryTitle}>Connect Wallet</Text>
-                <Text style={styles.walletPrimarySubtitle}>MetaMask · Trust · WalletConnect</Text>
+                <Text style={styles.walletPrimarySubtitle}>MetaMask · Trust · OKX</Text>
               </View>
               <Text style={styles.walletPrimaryArrow}>→</Text>
             </TouchableOpacity>
 
+            {/* 鈹€鈹€鈹€鈹€ Quick Socials (Google / Apple) 鈹€鈹€鈹€鈹€ */}
+            <View style={styles.quickSocialRow}>
+              {PRIMARY_SOCIALS.map(btn => (
+                <TouchableOpacity
+                  key={btn.provider}
+                  style={[styles.quickSocialBtn, isDisabled && styles.btnDisabled]}
+                  onPress={() => handleSocialLogin(btn.provider)}
+                  disabled={isDisabled}
+                  activeOpacity={0.7}
+                >
+                  {loadingProvider === btn.provider
+                    ? <ActivityIndicator size="small" color={colors.text} />
+                    : <>
+                        <Text style={[styles.quickSocialIcon, { color: btn.color }]}>{btn.icon}</Text>
+                        <Text style={styles.quickSocialLabel}>{btn.label}</Text>
+                      </>}
+                </TouchableOpacity>
+              ))}
+            </View>
+
             {/* 鈹€鈹€鈹€鈹€ Divider 鈹€鈹€鈹€鈹€ */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
+              <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            {/* 鈹€鈹€鈹€鈹€ Social Grid (2 脳 2) 鈹€鈹€鈹€鈹€ */}
+            {/* 鈹€鈹€鈹€鈹€ Secondary Socials 鈹€鈹€鈹€鈹€ */}
             <View style={styles.socialGrid}>
-              {SOCIAL_BUTTONS.map(btn => (
+              {SECONDARY_SOCIALS.map(btn => (
                 <TouchableOpacity
                   key={btn.provider}
-                  style={[styles.socialBtn, isDisabled && styles.btnDisabled]}
+                  style={[styles.socialCircleBtn, isDisabled && styles.btnDisabled]}
                   onPress={() => handleSocialLogin(btn.provider)}
                   disabled={isDisabled}
                   activeOpacity={0.75}
                 >
-                  <View style={[styles.socialIconCircle, { backgroundColor: btn.color }]}>
+                  <View style={[styles.socialIconCircle, { backgroundColor: btn.color + '15', borderColor: btn.color + '40' }]}>
                     {loadingProvider === btn.provider
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Text style={styles.socialIconText}>{btn.icon}</Text>}
+                      ? <ActivityIndicator size="small" color={btn.color} />
+                      : <Text style={[styles.socialIconText, { color: btn.color }]}>{btn.icon}</Text>}
                   </View>
                   <Text style={styles.socialLabel}>{btn.label}</Text>
                 </TouchableOpacity>
@@ -341,46 +374,56 @@ const styles = StyleSheet.create({
   walletPrimaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 4,
-    gap: 12,
-    elevation: 4,
-    shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 12,
+    marginBottom: 16,
+    gap: 14,
+    elevation: 8,
+    shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4, shadowRadius: 12,
   },
-  walletPrimaryIcon: { fontSize: 24 },
-  walletPrimaryText: { flex: 1 },
-  walletPrimaryTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  walletPrimarySubtitle: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  walletPrimaryArrow: { fontSize: 18, color: 'rgba(255,255,255,0.8)', fontWeight: '700' },
-
-  // Divider
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 18 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { color: colors.muted, fontSize: 11, marginHorizontal: 14, fontWeight: '700', letterSpacing: 2 },
-
-  // Social grid
-  socialGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  socialBtn: {
-    width: (width - 48 - 10) / 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
-  },
-  socialIconCircle: {
-    width: 30, height: 30, borderRadius: 15,
+  walletIconCircle: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
-  socialIconText: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  socialLabel: { fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 },
+  walletPrimaryIcon: { fontSize: 24, color: '#fff' },
+  walletPrimaryText: { flex: 1 },
+  walletPrimaryTitle: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
+  walletPrimarySubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  walletPrimaryArrow: { fontSize: 18, color: 'rgba(255,255,255,0.8)', fontWeight: '700' },
+
+  // Quick Auth (Google/Apple)
+  quickSocialRow: { flexDirection: 'row', gap: 12, marginBottom: 8 },
+  quickSocialBtn: {
+    flex: 1, height: 52, borderRadius: 16,
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+  },
+  quickSocialIcon: { fontSize: 18, fontWeight: '800' },
+  quickSocialLabel: { fontSize: 15, fontWeight: '700', color: colors.text },
+
+  // Divider
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border, opacity: 0.6 },
+  dividerText: { color: colors.muted, fontSize: 10, marginHorizontal: 16, fontWeight: '800', letterSpacing: 1.5 },
+
+  // Social grid optimization
+  socialGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  socialCircleBtn: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  socialIconCircle: {
+    width: 58, height: 58, borderRadius: 29,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  socialIconText: { fontSize: 24, fontWeight: '800' },
+  socialLabel: { fontSize: 12, fontWeight: '600', color: colors.muted },
   btnDisabled: { opacity: 0.4 },
 
   // Email section

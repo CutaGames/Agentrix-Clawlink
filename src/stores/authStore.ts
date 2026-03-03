@@ -39,6 +39,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   isInitialized: boolean;
+  isMpcInitializing: boolean;
   hasCompletedOnboarding: boolean;
   activeInstance: OpenClawInstance | null;
 
@@ -46,6 +47,7 @@ interface AuthState {
   setAuth: (user: AuthUser, token: string) => Promise<void>;
   clearAuth: () => Promise<void>;
   setLoading: (loading: boolean) => void;
+  setMpcInitializing: (loading: boolean) => void;
   setInitialized: (initialized: boolean) => void;
   restoreSession: () => Promise<boolean>;
   setOnboardingComplete: () => void;
@@ -64,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       isInitialized: false,
+      isMpcInitializing: false,
       hasCompletedOnboarding: false,
       activeInstance: null,
 
@@ -91,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setLoading: (loading) => set({ isLoading: loading }),
+      setMpcInitializing: (loading) => set({ isMpcInitializing: loading }),
       setInitialized: (initialized) => set({ isInitialized: initialized }),
       setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
 
