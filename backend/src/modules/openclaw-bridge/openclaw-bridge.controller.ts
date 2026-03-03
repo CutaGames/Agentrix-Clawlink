@@ -136,4 +136,47 @@ export class OpenClawBridgeController {
   ) {
     return this.bridge.installHubSkillToInstance(req.user.id, instanceId, skillId);
   }
+
+  /* ================================================================ */
+  /*  ClawHub Sync endpoints (admin / diagnostic)                      */
+  /* ================================================================ */
+
+  /**
+   * Trigger a full sync from ClawHub → DB.
+   * Can be called manually or via cron for initial population.
+   */
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('skill-hub/sync')
+  @ApiOperation({ summary: 'Trigger full sync of ClawHub skills to local DB' })
+  async triggerHubSync() {
+    return this.skillHub.triggerFullSync();
+  }
+
+  /**
+   * Get a single skill by slug from ClawHub (with live fallback)
+   */
+  @Get('skill-hub/skills/:slug')
+  @ApiOperation({ summary: 'Get ClawHub skill detail by slug' })
+  async getHubSkillBySlug(@Param('slug') slug: string) {
+    const skill = await this.skillHub.getSkillBySlug(slug);
+    if (!skill) {
+      return { error: 'Skill not found', slug };
+    }
+    return skill;
+  }
+
+  /**
+   * Check hub health / connectivity
+   */
+  @Get('skill-hub/status')
+  @ApiOperation({ summary: 'Check ClawHub connectivity and cache status' })
+  async getHubStatus() {
+    const reachable = await this.skillHub.isHubReachable();
+    return {
+      hubUrl: 'https://www.clawhub.ai/api/v1',
+      reachable,
+      cachedSkills: this.skillHub.totalSkills,
+    };
+  }
 }

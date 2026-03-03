@@ -8,13 +8,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
-import { searchOpenClawHub } from '../../services/openclawHub.service';
+import { searchOpenClawHub, invalidateHubCache } from '../../services/openclawHub.service';
 import type { MarketStackParamList } from '../../navigation/types';
 import TaskMarketScreen from '../TaskMarketScreen';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Marketplace'>;
 
-const SKILL_CATEGORIES = ['All', 'Automation', 'AI Tools', 'Data', 'Web', 'Files', 'Social', 'Dev', 'Finance'];
+const SKILL_CATEGORIES = ['All', 'Dev Tools', 'AI Tools', 'Data', 'Integration', 'Commerce', 'Creative', 'Automation', 'Finance'];
 const RESOURCE_CATEGORIES = ['All', 'Productivity', 'Code', 'Research', 'Creative', 'Business', 'Finance'];
 
 // Mock fallback resources shown when API returns no paid items
@@ -40,7 +40,7 @@ function OpenClawSkillsTab() {
         const result = await searchOpenClawHub({
           q: search || undefined,
           category: category !== 'All' ? category : undefined,
-          limit: 20,
+          limit: 30,
         });
         const items = result?.items;
         return Array.isArray(items) && items.length > 0 ? items : null;
@@ -53,12 +53,12 @@ function OpenClawSkillsTab() {
 
   // Fallback skills shown when hub is unreachable
   const MOCK_SKILLS = [
-    { id: 's1', icon: '🌐', name: 'Web Search Agent', description: 'Real-time web search with cited results', price: 0, tokenCost: 1, rating: 4.8 },
-    { id: 's2', icon: '🖼️', name: 'Image Generator', description: 'Stable Diffusion XL, portrait / landscape / icon styles', price: 0, tokenCost: 10, rating: 4.9 },
-    { id: 's3', icon: '🤖', name: 'GPT Translator', description: 'Multilingual translation — 40+ language pairs', price: 0, tokenCost: 2, rating: 4.7 },
-    { id: 's4', icon: '📝', name: 'Code Review Bot', description: 'AI-powered code review, 20+ languages', price: 0, tokenCost: 3, rating: 4.4 },
-    { id: 's5', icon: '📊', name: 'Data Analyst', description: 'Upload CSV/JSON, get instant charts and insights', price: 0, tokenCost: 5, rating: 4.6 },
-    { id: 's6', icon: '🎙️', name: 'Voice Transcriber', description: 'High-accuracy speech-to-text, 30+ languages', price: 0, tokenCost: 4, rating: 4.5 },
+    { id: 's1', icon: '🔍', name: 'Web Search', description: 'AI-powered web search with relevance ranking', price: 0, tokenCost: 0, rating: 4.7 },
+    { id: 's2', icon: '💻', name: 'Code Sandbox', description: 'Execute Python and JavaScript safely in sandbox', price: 0, tokenCost: 0, rating: 4.8 },
+    { id: 's3', icon: '🧠', name: 'Long-Term Memory', description: 'Persistent memory across agent conversations', price: 0, tokenCost: 0, rating: 4.9 },
+    { id: 's4', icon: '📊', name: 'Data Analysis', description: 'Analyse datasets and generate charts', price: 0, tokenCost: 0, rating: 4.6 },
+    { id: 's5', icon: '🎨', name: 'Image Generator', description: 'Generate images from text prompts', price: 0, tokenCost: 0, rating: 4.3 },
+    { id: 's6', icon: '🔌', name: 'API Connector', description: 'Connect to any REST or GraphQL API', price: 0, tokenCost: 0, rating: 4.5 },
   ];
 
   const skills: any[] = data ?? MOCK_SKILLS;
@@ -121,7 +121,10 @@ function OpenClawSkillsTab() {
                 <Text style={styles.skillPrice}>
                   {skill.tokenCost != null && skill.tokenCost > 0 ? `${skill.tokenCost} tokens` : 'Free'}
                 </Text>
-                <Text style={styles.ratingText}>⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}</Text>
+                <Text style={styles.ratingText}>
+                  {skill.installCount > 0 ? `${skill.installCount > 999 ? `${(skill.installCount/1000).toFixed(1)}k` : skill.installCount} ↓  ` : ''}
+                  ⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}
+                </Text>
               </View>
             </TouchableOpacity>
           )}

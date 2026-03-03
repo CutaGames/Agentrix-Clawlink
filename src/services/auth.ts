@@ -7,7 +7,7 @@ import { Platform, Linking } from 'react-native';
 import { apiFetch, saveTokenToStorage, setApiConfig, getApiConfig } from './api';
 import { useAuthStore, AuthUser, AuthProvider, OpenClawInstance } from '../stores/authStore';
 import { ensureMPCWallet } from './mpcWallet';
-import { bindOpenClaw, BindPayload, pollBindSession, createBindSession } from './openclaw.service';
+import { bindOpenClaw, BindPayload, pollBindSession, createBindSession, getMyInstances } from './openclaw.service';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -110,6 +110,29 @@ async function handleLoginResult(
       const currentState = useAuthStore.getState();
       if (currentState.token) {
         currentState.setAuth(fullUser, currentState.token);
+      }
+    }
+  }).catch(() => {});
+
+  // 异步恢复 OpenClaw 实例列表（登录后立即拉取）
+  getMyInstances().then((instances) => {
+    if (instances && instances.length > 0) {
+      const currentState = useAuthStore.getState();
+      if (currentState.user && currentState.token) {
+        const storeInstances = instances.map((inst: any) => ({
+          id: inst.id,
+          name: inst.name || 'My Agent',
+          instanceUrl: inst.instanceUrl || '',
+          status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
+          deployType: (inst.deployType || 'custom') as 'cloud' | 'local' | 'server' | 'existing',
+          version: inst.version,
+          lastSyncAt: inst.lastSyncAt,
+        }));
+        currentState.updateUser({ openClawInstances: storeInstances });
+        // Restore first active instance if none set
+        if (!currentState.activeInstance && storeInstances.length > 0) {
+          useAuthStore.setState({ activeInstance: storeInstances[0] ?? null });
+        }
       }
     }
   }).catch(() => {});

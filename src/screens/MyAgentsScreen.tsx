@@ -32,6 +32,7 @@ interface Agent {
 export default function MyAgentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const persistedInstances = useAuthStore((s) => s.user?.openClawInstances ?? []);
+  const userId = useAuthStore((s) => s.user?.id);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -89,7 +90,7 @@ export default function MyAgentsScreen() {
 
   useEffect(() => {
     fetchAgents();
-  }, []);
+  }, [userId]);   // re-fetch when user changes (login/logout/switch account)
 
   const onRefresh = () => {
     setRefreshing(true);

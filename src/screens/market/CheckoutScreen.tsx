@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import * as WebBrowser from 'expo-web-browser';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
-import { apiFetch } from '../../services/api';
+import { apiFetch, getApiConfig } from '../../services/api';
 import { marketplaceApi } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import type { MarketStackParamList } from '../../navigation/types';
@@ -32,6 +33,28 @@ export function CheckoutScreen() {
   });
 
   const handlePay = async (method: 'stripe' | 'x402' | 'transak') => {
+    // Sync session to Web if using Stripe or Transak (Web-based checkouts)
+    if (method === 'stripe' || method === 'transak') {
+      const { token } = getApiConfig();
+      if (!token) {
+        Alert.alert('Session Expired', 'Please login again to continue.');
+        return;
+      }
+
+      // Base URL for the frontend checkout page
+      // In production: https://agentrix.top/pay/checkout
+      const checkoutBaseUrl = 'https://agentrix.top/pay/checkout';
+      const checkoutUrl = `${checkoutBaseUrl}?skillId=${skillId}&mobileToken=${token}&method=${method}`;
+      
+      try {
+        await WebBrowser.openBrowserAsync(checkoutUrl);
+        return;
+      } catch (e) {
+        Alert.alert('Error', 'Could not open payment page.');
+        return;
+      }
+    }
+
     setPaying(true);
     try {
       const order = await apiFetch<any>('/unified-marketplace/purchase', {
@@ -39,7 +62,9 @@ export function CheckoutScreen() {
         body: JSON.stringify({ skillId, quantity: 1, paymentMethod: method }),
       });
       if (order?.checkoutUrl || order?.result?.checkoutUrl) {
-        Alert.alert('Payment', 'Redirecting to payment...');
+        // Fallback for generic checkout URLs
+        const urlWithToken = `${order.checkoutUrl}${order.checkoutUrl.includes('?') ? '&' : '?'}mobileToken=${getApiConfig().token}`;
+        await WebBrowser.openBrowserAsync(urlWithToken);
       } else if (order?.success !== false) {
         Alert.alert('✅ Success!', 'Skill purchased and ready to install!');
         navigation.goBack();

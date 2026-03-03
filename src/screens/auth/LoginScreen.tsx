@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, Dimensions, ActivityIndicator,
+  ScrollView, Alert, Dimensions, ActivityIndicator, Linking, Platform, Image, Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,6 +14,15 @@ import type { AuthStackParamList } from '../../navigation/types';
 const { width } = Dimensions.get('window');
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
+const WALLET_PROVIDERS = [
+  { id: 'metamask', label: 'MetaMask', emoji: '🦊', scheme: 'metamask://' },
+  { id: 'okx', label: 'OKX Wallet', emoji: '🖤', scheme: 'okx://' },
+  { id: 'okex', label: 'OKEx (Legacy)', emoji: '🔳', scheme: 'okex://' },
+  { id: 'imtoken', label: 'imToken', emoji: '💎', scheme: 'imtokenv2://' },
+  { id: 'bitget', label: 'Bitget Wallet', emoji: '📈', scheme: 'bitkeep://' },
+  { id: 'tp', label: 'TokenPocket', emoji: '🔵', scheme: 'tpoutside://' },
+];
+
 const SOCIAL_PROVIDERS = [
   { id: 'google', label: 'Google', emoji: '🌐', color: '#4285f4' },
   { id: 'x', label: 'X (Twitter)', emoji: '🐦', color: '#1d9bf0' },
@@ -24,13 +33,49 @@ const SOCIAL_PROVIDERS = [
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const { setAuth } = useAuthStore.getState();
-  const [mode, setMode] = useState<'openclaw' | 'social' | 'email'>('openclaw');
+  const [mode, setMode] = useState<'web25' | 'openclaw' | 'email'>('web25');
   const [isSignUp, setIsSignUp] = useState(false);
   const [instanceUrl, setInstanceUrl] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  
+  // Wallet detection
+  const [detectedWallets, setDetectedWallets] = useState<typeof WALLET_PROVIDERS>([]);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+
+  useEffect(() => {
+    checkWallets();
+  }, []);
+
+  const checkWallets = async () => {
+    const detected = [];
+    for (const w of WALLET_PROVIDERS) {
+      try {
+        const canOpen = await Linking.canOpenURL(w.scheme);
+        if (canOpen) detected.push(w);
+      } catch (e) {}
+    }
+    setDetectedWallets(detected);
+  };
+
+  const handleWalletLogin = async (wallet?: typeof WALLET_PROVIDERS[0]) => {
+    if (!wallet && detectedWallets.length > 1) {
+      setShowWalletModal(true);
+      return;
+    }
+    
+    const target = wallet || detectedWallets[0];
+    if (target) {
+      Linking.openURL(`${target.scheme}wc?uri=...`).catch(() => {
+        Alert.alert('Connect Failed', `Please make sure ${target.label} is installed.`);
+      });
+    } else {
+      // Fallback to WalletConnect modal or standard message
+      Alert.alert('No Wallet Found', 'Please install OKX or MetaMask, or use Social Login.');
+    }
+  };
 
   const handleOpenClawLogin = async () => {
     const url = instanceUrl.trim();
@@ -140,37 +185,84 @@ export function LoginScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {/* Logo */}
+      {/* Brand Header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>🦀 ClawLink</Text>
-        <Text style={styles.tagline}>Your OpenClaw companion app</Text>
+        <View style={styles.logoCircle}>
+          <Text style={styles.logoEmoji}>🌀</Text>
+        </View>
+        <Text style={styles.logoText}>Agentrix</Text>
+        <Text style={styles.tagline}>Intelligent Agents at your Fingertips</Text>
       </View>
 
-      {/* Mode Tabs */}
-      <View style={styles.modeTabs}>
-        {(['openclaw', 'social', 'email'] as const).map((m) => (
-          <TouchableOpacity
-            key={m}
-            style={[styles.modeTab, mode === m && styles.modeTabActive]}
-            onPress={() => setMode(m)}
+      {/* Web2.5 Main Login Area */}
+      {mode === 'web25' && (
+        <View style={styles.section}>
+          <Text style={styles.web25Title}>Welcome Back</Text>
+          <Text style={styles.web25Sub}>Choose your preferred sign-in method</Text>
+
+          {/* Primary Wallet Login */}
+          <TouchableOpacity 
+            style={styles.walletMainBtn} 
+            onPress={() => handleWalletLogin()}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.modeTabText, mode === m && styles.modeTabTextActive]}>
-              {m === 'openclaw' ? '🤖 OpenClaw' : m === 'social' ? '🌐 Social' : '📧 Email'}
+            <View style={styles.walletIconRow}>
+              {detectedWallets.slice(0, 3).map(w => (
+                <Text key={w.id} style={styles.walletBadge}>{w.emoji}</Text>
+              ))}
+              {detectedWallets.length === 0 && <Text style={styles.walletBadge}>💼</Text>}
+            </View>
+            <Text style={styles.walletMainText}>
+              {detectedWallets.length > 0 ? 'Connect Wallet' : 'Connect Crypto Wallet'}
             </Text>
+            {detectedWallets.length > 0 && (
+              <Text style={styles.walletDetectedText}>Detected: {detectedWallets.map(w => w.label).join(', ')}</Text>
+            )}
           </TouchableOpacity>
-        ))}
-      </View>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or social sign-in</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Social Grid */}
+          <View style={styles.socialGridWide}>
+            {SOCIAL_PROVIDERS.map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.socialBtnWide, loadingProvider === p.id && styles.btnDisabled]}
+                onPress={() => handleSocialLogin(p.id)}
+                disabled={!!loadingProvider}
+              >
+                {loadingProvider === p.id ? (
+                  <ActivityIndicator color={colors.accent} size="small" />
+                ) : (
+                  <>
+                    <Text style={[styles.socialEmoji, { color: p.color }]}>{p.emoji}</Text>
+                    <Text style={styles.socialLabelWide}>{p.label}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity style={styles.linkRow} onPress={() => setMode('email')}>
+            <Text style={styles.linkText}>Use Email Address instead →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* OpenClaw Mode */}
       {mode === 'openclaw' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Connect your OpenClaw instance</Text>
+          <Text style={styles.sectionTitle}>Connect OpenClaw Instance</Text>
           <Text style={styles.sectionSub}>
-            Have an OpenClaw instance? Enter its URL to sign in directly.
+            Enter your instance URL to sign in directly.
           </Text>
           <TextInput
             style={styles.input}
-            placeholder="http://localhost:3001  or  https://my-openclaw.xyz"
+            placeholder="https://my-openclaw.xyz"
             placeholderTextColor={colors.textMuted}
             value={instanceUrl}
             onChangeText={setInstanceUrl}
@@ -189,51 +281,16 @@ export function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>Don't have one?</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setMode('social')}>
-            <Text style={styles.secondaryBtnText}>Register with social account →</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setMode('web25')}>
+            <Text style={styles.backBtnText}>← Back to Web2.5 Login</Text>
           </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Social Mode */}
-      {mode === 'social' && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sign in with social account</Text>
-          <Text style={styles.sectionSub}>
-            Create a ClawLink account and set up your agent after login.
-          </Text>
-          <View style={styles.socialGrid}>
-            {SOCIAL_PROVIDERS.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                style={[styles.socialBtn, loadingProvider === p.id && styles.btnDisabled]}
-                onPress={() => handleSocialLogin(p.id)}
-                disabled={!!loadingProvider}
-              >
-                {loadingProvider === p.id ? (
-                  <ActivityIndicator color={colors.accent} size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.socialEmoji}>{p.emoji}</Text>
-                    <Text style={styles.socialLabel}>{p.label}</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
       )}
 
       {/* Email Mode */}
       {mode === 'email' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{isSignUp ? 'Create Account' : 'Email & Password'}</Text>
+          <Text style={styles.sectionTitle}>{isSignUp ? 'Create Account' : 'Sign In with Email'}</Text>
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -259,7 +316,7 @@ export function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.primaryBtnText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
+              <Text style={styles.primaryBtnText}>{isSignUp ? 'Create Account' : 'Sign In'}</Text>
             )}
           </TouchableOpacity>
           
@@ -268,28 +325,44 @@ export function LoginScreen() {
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.backBtn} onPress={() => setMode('web25')}>
+            <Text style={styles.backBtnText}>← Back to Web2.5 Login</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Footer */}
+      <Modal visible={showWalletModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Wallet</Text>
+            <View style={styles.modalGrid}>
+              {detectedWallets.map(w => (
+                <TouchableOpacity key={w.id} style={styles.modalItem} onPress={() => { setShowWalletModal(false); handleWalletLogin(w); }}>
+                  <Text style={styles.modalEmoji}>{w.emoji}</Text>
+                  <Text style={styles.modalLabel}>{w.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setShowWalletModal(false)}>
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Instance Bind Link - Hidden for regular users */}
       <TouchableOpacity 
-        style={{ marginTop: 24, alignItems: 'center', padding: 12, backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
-        onPress={async () => {
-          const mockUser = {
-            id: 'guest-user',
-            agentrixId: 'guest-agentrix',
-            nickname: 'Guest User',
-            roles: ['user'],
-            provider: 'email' as const,
-          };
-          await setAuth(mockUser, 'guest-token');
-        }}
+        style={{ marginTop: 40, alignSelf: 'center' }} 
+        onPress={() => setMode('openclaw')}
       >
-        <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>👀 Continue as Guest (Demo Mode)</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12, textDecorationLine: 'underline' }}>
+          Legacy OpenClaw Login
+        </Text>
       </TouchableOpacity>
 
       <Text style={styles.footer}>
-        By continuing you agree to ClawLink's Terms of Service and Privacy Policy.
+        By continuing you agree to Agentrix Terms of Service and Privacy Policy.
       </Text>
     </ScrollView>
   );
@@ -297,61 +370,77 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
-  content: { padding: 24, paddingTop: 60, paddingBottom: 40 },
-  header: { alignItems: 'center', marginBottom: 32 },
-  logo: { fontSize: 36, fontWeight: '800', color: colors.textPrimary, letterSpacing: -1 },
-  tagline: { fontSize: 14, color: colors.textMuted, marginTop: 6 },
-  modeTabs: { flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: 12, padding: 4, marginBottom: 24 },
-  modeTab: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  modeTabActive: { backgroundColor: colors.bgSecondary },
-  modeTabText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  modeTabTextActive: { color: colors.accent },
-  section: { gap: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
-  sectionSub: { fontSize: 13, color: colors.textSecondary, lineHeight: 20, marginBottom: 8 },
-  input: {
+  content: { padding: 24, paddingTop: 80, paddingBottom: 40 },
+  header: { alignItems: 'center', marginBottom: 48 },
+  logoCircle: { width: 80, height: 80, borderRadius: 24, backgroundColor: colors.bgCard, justifyContent: 'center', alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: colors.border },
+  logoEmoji: { fontSize: 40 },
+  logoText: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, letterSpacing: -1 },
+  tagline: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
+  
+  web25Title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
+  web25Sub: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginBottom: 32 },
+  
+  walletMainBtn: { backgroundColor: colors.primary, borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
+  walletIconRow: { flexDirection: 'row', gap: -8, marginBottom: 12 },
+  walletBadge: { fontSize: 24, backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden', padding: 4, borderWidth: 2, borderColor: colors.primary },
+  walletMainText: { color: '#fff', fontWeight: '800', fontSize: 18 },
+  walletDetectedText: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 4 },
+
+  socialGridWide: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 },
+  socialBtnWide: {
+    width: (width - 48 - 12) / 2,
     backgroundColor: colors.bgCard,
-    borderRadius: 12,
-    padding: 14,
-    color: colors.textPrimary,
-    fontSize: 15,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  socialEmoji: { fontSize: 24, marginBottom: 8 },
+  socialLabelWide: { color: colors.textPrimary, fontWeight: '600', fontSize: 14 },
+  
+  linkRow: { alignItems: 'center', marginTop: 24 },
+  linkText: { color: colors.accent, fontWeight: '600', fontSize: 15 },
+  
+  section: { width: '100%' },
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 },
+  sectionSub: { fontSize: 14, color: colors.textSecondary, marginBottom: 20 },
+  
+  input: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    color: colors.textPrimary,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
   },
   primaryBtn: {
     backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
     alignItems: 'center',
-    marginTop: 4,
   },
   btnDisabled: { opacity: 0.6 },
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondaryBtn: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryBtnText: { color: colors.accent, fontWeight: '600', fontSize: 15 },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 8 },
+  backBtn: { marginTop: 20, padding: 12, alignItems: 'center' },
+  backBtnText: { color: colors.textSecondary, fontSize: 15 },
+  
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 32 },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { fontSize: 12, color: colors.textMuted },
-  socialGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  socialBtn: {
-    width: (width - 48 - 20) / 2,
-    backgroundColor: colors.bgCard,
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  socialEmoji: { fontSize: 18 },
-  socialLabel: { color: colors.textPrimary, fontWeight: '600', fontSize: 14 },
-  footer: { marginTop: 32, textAlign: 'center', fontSize: 11, color: colors.textMuted, lineHeight: 18 },
+  dividerText: { fontSize: 13, color: colors.textMuted },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: colors.bgSecondary, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 48 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 24 },
+  modalGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, justifyContent: 'center' },
+  modalItem: { width: (width - 64 - 32) / 3, alignItems: 'center', gap: 8 },
+  modalEmoji: { fontSize: 32 },
+  modalLabel: { color: colors.textPrimary, fontSize: 12, textAlign: 'center' },
+  modalClose: { marginTop: 32, padding: 16, borderRadius: 16, backgroundColor: colors.bgCard, alignItems: 'center' },
+  modalCloseText: { color: colors.textSecondary, fontWeight: '600' },
+
+  footer: { marginTop: 40, textAlign: 'center', fontSize: 12, color: colors.textMuted, lineHeight: 20 },
 });
+

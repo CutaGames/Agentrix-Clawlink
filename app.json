@@ -22,13 +22,19 @@
         "LSApplicationQueriesSchemes": [
           "metamask",
           "okx",
+          "okex",
           "trust",
           "rainbow",
           "twitter",
           "twitterauth",
           "discord",
           "tg",
-          "telegram"
+          "telegram",
+          "imtokenv2",
+          "tpoutside",
+          "bitkeep",
+          "ledgerlive",
+          "bnc"
         ],
         "NSCameraUsageDescription": "ClawLink uses the camera to scan QR codes for binding your OpenClaw instance.",
         "NSMicrophoneUsageDescription": "ClawLink uses the microphone for voice commands to your AI agent.",
