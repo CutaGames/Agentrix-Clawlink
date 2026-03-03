@@ -13,6 +13,7 @@ import { colors } from './src/theme/colors';
 import { useNotificationStore } from './src/stores/notificationStore';
 import { startNotificationPolling, stopNotificationPolling } from './src/services/realtime.service';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import { checkAndPromptUpdate, silentBackgroundUpdate } from './src/services/appUpdate.service';
 
 // Configure how incoming notifications are handled while app is foregrounded
 Notifications.setNotificationHandler({
@@ -137,9 +138,21 @@ function AppNavigator() {
     };
     restoreSession();
 
+    // Check for OTA updates after session restore
+    checkAndPromptUpdate().catch(() => {});
+
+    // Silent update check when app returns to foreground
+    const handleAppStateChange = (state: AppStateStatus) => {
+      if (state === 'active') {
+        silentBackgroundUpdate().catch(() => {});
+      }
+    };
+    const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+
     return () => {
       notifSubRef.current?.remove();
       stopNotificationPolling();
+      appStateSub.remove();
     };
   }, []);
 

@@ -278,3 +278,117 @@ export async function upgradeStoragePlan(tier: StorageTier): Promise<{ checkoutU
     body: JSON.stringify({ tier }),
   });
 }
+
+// ═══════════════════════════════════════════════════════════
+// Platform Tools — Agentrix platform capabilities for claws
+// ═══════════════════════════════════════════════════════════
+
+export interface PlatformTool {
+  name: string;
+  displayName: string;
+  description: string;
+  category: string;
+  enabledByDefault: boolean;
+  icon: string;
+  type: 'platform';
+}
+
+export interface PlatformToolResult {
+  success: boolean;
+  tool: string;
+  result?: any;
+  error?: string;
+  executionTime?: number;
+}
+
+/** Get available platform tools for a claw instance */
+export async function getPlatformTools(instanceId: string): Promise<{
+  tools: PlatformTool[];
+  total: number;
+  defaultEnabled: string[];
+}> {
+  return apiFetch(`/openclaw/proxy/${instanceId}/platform-tools`);
+}
+
+/** Execute a single platform tool */
+export async function executePlatformTool(
+  instanceId: string,
+  tool: string,
+  params: Record<string, any> = {},
+): Promise<PlatformToolResult> {
+  return apiFetch<PlatformToolResult>(`/openclaw/proxy/${instanceId}/platform-tools/execute`, {
+    method: 'POST',
+    body: JSON.stringify({ tool, params }),
+  });
+}
+
+/** Batch-execute multiple platform tools */
+export async function executePlatformToolBatch(
+  instanceId: string,
+  calls: Array<{ tool: string; params: Record<string, any> }>,
+): Promise<{ results: PlatformToolResult[]; total: number; succeeded: number; failed: number }> {
+  return apiFetch(`/openclaw/proxy/${instanceId}/platform-tools/batch`, {
+    method: 'POST',
+    body: JSON.stringify({ calls }),
+  });
+}
+
+// Convenience wrappers for common platform tools
+
+/** Search marketplace + ClawHub skills via platform tool */
+export async function agentSkillSearch(
+  instanceId: string,
+  query: string,
+  category?: string,
+  limit = 10,
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'skill_search', { query, category, limit });
+}
+
+/** Install a skill via platform tool */
+export async function agentSkillInstall(
+  instanceId: string,
+  skillId: string,
+  config?: Record<string, any>,
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'skill_install', { skillId, config });
+}
+
+/** Get AI skill recommendations via platform tool */
+export async function agentSkillRecommend(
+  instanceId: string,
+  intent?: string,
+  category?: string,
+  limit = 5,
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'skill_recommend', { intent, category, limit });
+}
+
+/** Purchase a skill from marketplace via platform tool */
+export async function agentMarketplacePurchase(
+  instanceId: string,
+  skillId: string,
+  paymentMethod: 'wallet' | 'x402' = 'wallet',
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'marketplace_purchase', { skillId, paymentMethod });
+}
+
+/** Post a task/bounty via platform tool */
+export async function agentTaskPost(
+  instanceId: string,
+  title: string,
+  description: string,
+  budget: number,
+  currency = 'USDC',
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'task_post', { title, description, budget, currency });
+}
+
+/** Search tasks on marketplace via platform tool */
+export async function agentTaskSearch(
+  instanceId: string,
+  query?: string,
+  limit = 10,
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'task_search', { query, limit });
+}
