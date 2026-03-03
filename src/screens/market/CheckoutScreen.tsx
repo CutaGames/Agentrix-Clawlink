@@ -57,6 +57,7 @@ async function createOrder(params: {
   const order = await apiFetch<any>('/orders', {
     method: 'POST',
     body: JSON.stringify({
+      productId: params.skillId,
       amount: params.amount,
       currency: params.currency,
       merchantId: params.merchantId || undefined,

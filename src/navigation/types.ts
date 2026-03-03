@@ -41,7 +41,7 @@ export type AgentStackParamList = {
 export type MarketStackParamList = {
   Marketplace: undefined;
   SkillDetail: { skillId: string; skillName: string };
-  Checkout: { skillId: string; skillName?: string };
+  Checkout: { skillId: string; skillName?: string; amount?: number; currency?: string; merchantId?: string };
   PaymentSuccess: {
     skillId: string;
     skillName?: string;

@@ -86,17 +86,27 @@ export function ClawSkillDetailScreen() {
       Alert.alert('Sign in required', 'Please sign in to install skills.');
       return;
     }
+
+    // Paid skills → go to checkout first; free skills → install directly
+    const skillPrice = skill?.price ?? 0;
+    if (skillPrice > 0) {
+      navigation.navigate('Checkout', {
+        skillId,
+        skillName: skill?.name || skill?.displayName || skillId,
+        amount: skillPrice,
+        currency: skill?.currency || 'USDT',
+        merchantId: skill?.vendorId || skill?.merchantId || undefined,
+      });
+      return;
+    }
+
     setInstalling(true);
     try {
       await installSkillToInstance(activeInstance.id, skillId);
       Alert.alert('✅ Installed!', `${skill?.name} has been installed to ${activeInstance.name}`);
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
-      if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {
-        navigation.navigate('Checkout', { skillId, skillName: skill?.name });
-      } else {
-        Alert.alert('Install Failed', msg);
-      }
+      Alert.alert('Install Failed', msg);
     } finally {
       setInstalling(false);
     }
