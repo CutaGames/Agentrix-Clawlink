@@ -8,13 +8,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
-import { searchOpenClawHub } from '../../services/openclawHub.service';
+import { searchOpenClawHub, invalidateHubCache } from '../../services/openclawHub.service';
 import type { MarketStackParamList } from '../../navigation/types';
 import TaskMarketScreen from '../TaskMarketScreen';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Marketplace'>;
 
-const SKILL_CATEGORIES = ['All', 'Automation', 'AI Tools', 'Data', 'Web', 'Files', 'Social', 'Dev', 'Finance'];
+const SKILL_CATEGORIES = ['All', 'Automation', 'AI Tools', 'Data', 'Dev', 'Social', 'Finance', 'Files', 'Productivity'];
 const RESOURCE_CATEGORIES = ['All', 'Productivity', 'Code', 'Research', 'Creative', 'Business', 'Finance'];
 
 // Mock fallback resources shown when API returns no paid items

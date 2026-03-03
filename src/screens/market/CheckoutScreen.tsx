@@ -32,7 +32,7 @@ import type { MarketStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Checkout'>;
 type RouteT = RouteProp<MarketStackParamList, 'Checkout'>;
 
-type PayMethod = 'quick_pay' | 'wallet' | 'qr' | 'stripe' | 'transak';
+type PayMethod = 'quick_pay' | 'wallet' | 'qr' | 'stripe' | 'transak' | 'web_checkout';
 
 // Valid AssetType values for the backend
 const ASSET_TYPE = 'virtual';
@@ -89,6 +89,27 @@ async function pollOrderPaid(orderId: string, maxMs = 90_000): Promise<boolean> 
     await new Promise((r) => setTimeout(r, 3000));
   }
   return false;
+}
+
+// ─── Contract address helper (cached)  ──────────────────────────────────────
+let _cachedAddrs: { commission: string; usdc: string } | null = null;
+async function getContractAddresses(): Promise<{ commission: string; usdc: string }> {
+  if (_cachedAddrs) return _cachedAddrs;
+  try {
+    const r = await apiFetch<any>('/payments/contract-address');
+    _cachedAddrs = {
+      commission: r?.commissionContractAddress || '',
+      usdc: r?.usdcAddress || USDT_BSC_TESTNET,
+    };
+    return _cachedAddrs;
+  } catch {
+    return { commission: '', usdc: USDT_BSC_TESTNET };
+  }
+}
+
+// ─── Build EIP-681 URI for ERC-20 transfer  ─────────────────────────────────
+function buildEip681(tokenAddr: string, chainId: number, to: string, amountWei: string): string {
+  return `ethereum:${tokenAddr}@${chainId}/transfer?address=${to}&uint256=${amountWei}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +221,15 @@ export function CheckoutScreen() {
     }
   }, [token, skillId, displayName, price, currency, merchantId]);
 
+  // ─── Open web checkout in browser (universal fallback) ──────────────────
+
+  const openWebCheckout = useCallback(async () => {
+    const authToken = token || getApiConfig().token || '';
+    let url = `${WEB_CHECKOUT_BASE}?skillId=${encodeURIComponent(skillId)}&mobile=1`;
+    if (authToken) url += `&token=${encodeURIComponent(authToken)}`;
+    await WebBrowser.openBrowserAsync(url);
+  }, [skillId, token]);
+
   // ─── QuickPay (MPC Wallet auto-pay) ────────────────────────────────────
 
   const handleQuickPay = useCallback(async () => {
@@ -231,32 +261,44 @@ export function CheckoutScreen() {
       if (url) {
         setPayState('polling');
         await WebBrowser.openBrowserAsync(url);
-        // After browser closes, check order
         const paid = await pollOrderPaid(orderId, 60_000);
         if (!cancelRef.current) {
           if (paid) {
             goToSuccess({ orderId, paymentMethod: 'quick_pay' });
           } else {
             setPayState('idle');
-            Alert.alert(
-              'QuickPay Setup',
-              'Complete the QuickPay setup in the browser, then tap Pay again.',
-            );
+            Alert.alert('QuickPay Setup', 'Complete the QuickPay setup in the browser, then tap Pay again.');
           }
         }
       } else {
-        // Assume free skill or instant grant
         goToSuccess({ orderId, paymentMethod: 'quick_pay' });
       }
-    } catch (e: any) {
+    } catch {
+      // QuickPay not available — fall back to web checkout
       if (!cancelRef.current) {
-        setErrorMsg(e?.message || 'QuickPay failed');
-        setPayState('error');
+        try {
+          await openWebCheckout();
+          setPayState('polling');
+          const paid = await pollOrderPaid(orderId, 60_000);
+          if (!cancelRef.current) {
+            if (paid) goToSuccess({ orderId, paymentMethod: 'quick_pay' });
+            else {
+              setPayState('idle');
+              Alert.alert('Payment', 'If you completed the payment, check My Orders.', [
+                { text: 'OK' },
+                { text: 'My Orders', onPress: () => (navigation as any).navigate('Me', { screen: 'MyOrders' }) },
+              ]);
+            }
+          }
+        } catch (e2: any) {
+          setErrorMsg(e2?.message || 'QuickPay failed');
+          setPayState('error');
+        }
       }
     }
-  }, [prepareOrder, skillId, goToSuccess]);
+  }, [prepareOrder, skillId, goToSuccess, openWebCheckout, navigation]);
 
-  // ─── Wallet Pay (EIP-681 deep link) ────────────────────────────────────
+  // ─── Wallet Pay (EIP-681 deep link → wallet app → web fallback) ──────────
 
   const handleWalletPay = useCallback(async () => {
     const orderId = await prepareOrder('wallet');
@@ -265,76 +307,48 @@ export function CheckoutScreen() {
     cancelRef.current = false;
 
     try {
-      // Build payment transaction info from backend
-      let recipientAddress = '';
-      let payAmount = price;
-      let payCurrency = currency;
+      // 1. Get commission contract address from backend
+      const addrs = await getContractAddresses();
+      const recipientAddress = addrs.commission;
+      const tokenAddress = addrs.usdc || USDT_BSC_TESTNET;
 
-      try {
-        // Get payment address from contract-address endpoint
-        const addrs = await apiFetch<any>('/payments/contract-address');
-        recipientAddress = addrs?.commissionContract || addrs?.erc8004 || '';
-      } catch { /* use fallback */ }
+      // 2. Build EIP-681 URI for ERC-20 USDT transfer
+      const amountWei = BigInt(Math.round(price * 1e18)).toString();
+      const eip681Uri = recipientAddress
+        ? buildEip681(tokenAddress, BSC_TESTNET_CHAIN_ID, recipientAddress, amountWei)
+        : '';
 
-      if (!recipientAddress) {
-        // Fallback: use purchase endpoint which returns payment address
-        const pResult = await apiFetch<any>('/unified-marketplace/purchase', {
-          method: 'POST',
-          body: JSON.stringify({ skillId, quantity: 1, paymentMethod: 'walletconnect', orderId }),
-        });
-        recipientAddress = pResult?.paymentAddress || pResult?.to || pResult?.result?.to || '';
-        payAmount = pResult?.amount || payAmount;
-        payCurrency = pResult?.currency || payCurrency;
-
-        if (pResult?.success) {
-          goToSuccess({ orderId, paymentMethod: 'wallet' });
-          return;
+      // 3. Try wallet deep links (correct mobile formats)
+      let opened = false;
+      if (eip681Uri) {
+        const walletLinks = [
+          // MetaMask universal link (official format)
+          { url: `https://metamask.app.link/send/${eip681Uri}` },
+          // Trust Wallet
+          { url: `trust://open_url?coin_id=20000714&url=${encodeURIComponent(eip681Uri)}` },
+          // OKX Wallet
+          { url: `okx://wallet/dapp/url?dappUrl=${encodeURIComponent(eip681Uri)}` },
+          // Try raw ethereum: scheme (many Android wallets register for this)
+          { url: eip681Uri },
+        ];
+        for (const link of walletLinks) {
+          try {
+            const canOpen = await Linking.canOpenURL(link.url);
+            if (canOpen) {
+              await Linking.openURL(link.url);
+              opened = true;
+              break;
+            }
+          } catch { /* try next */ }
         }
       }
 
-      // Build EIP-681 URI for ERC-20 USDT payment on BSC testnet
-      // Format: ethereum:<TOKEN_ADDRESS>@<CHAIN_ID>/transfer?address=<RECIPIENT>&uint256=<AMOUNT*1e18>
-      const amountWei = BigInt(Math.round(payAmount * 1e18)).toString();
-      const eip681Uri = recipientAddress
-        ? `ethereum:${USDT_BSC_TESTNET}@${BSC_TESTNET_CHAIN_ID}/transfer?address=${recipientAddress}&uint256=${amountWei}`
-        : '';
-
-      // Try wallet deep links in order of likelihood
-      const walletLinks: Array<{ name: string; url: string }> = [
-        ...(eip681Uri ? [
-          { name: 'MetaMask', url: `metamask://send?data=${encodeURIComponent(eip681Uri)}` },
-          { name: 'Trust Wallet', url: `trust://send?data=${encodeURIComponent(eip681Uri)}` },
-          // WalletConnect universal link
-          { name: 'WalletConnect', url: `wc:?uri=${encodeURIComponent(eip681Uri)}` },
-        ] : []),
-        // Fallback: open web checkout with wallet option
-        {
-          name: 'Web Checkout',
-          url: `${WEB_CHECKOUT_BASE}?skillId=${skillId}&mobile=1&token=${token}&paymentMethod=walletconnect`,
-        },
-      ];
-
-      // Try to open the first working wallet link
-      let opened = false;
-      for (const link of walletLinks.slice(0, 3)) {
-        try {
-          const canOpen = await Linking.canOpenURL(link.url);
-          if (canOpen) {
-            await Linking.openURL(link.url);
-            opened = true;
-            break;
-          }
-        } catch { /* try next */ }
-      }
-
+      // 4. Fallback: open web checkout (full SmartCheckout with WalletConnect)
       if (!opened) {
-        // Fall back to web checkout with walletconnect mode
-        await WebBrowser.openBrowserAsync(
-          `${WEB_CHECKOUT_BASE}?skillId=${skillId}&mobile=1${token ? `&token=${token}` : ''}`,
-        );
+        await openWebCheckout();
       }
 
-      // Poll order after user returns
+      // 5. Poll order after user returns from wallet/browser
       setPayState('polling');
       const paid = await pollOrderPaid(orderId, 120_000);
       if (!cancelRef.current) {
@@ -345,19 +359,30 @@ export function CheckoutScreen() {
           Alert.alert(
             'Wallet Pay',
             'Payment not detected yet. Complete the transaction in your wallet, then check My Orders.',
-            [{ text: 'OK' }, { text: 'Check Orders', onPress: () => (navigation as any).navigate('Me', { screen: 'MyOrders' }) }],
+            [{ text: 'OK' }, { text: 'My Orders', onPress: () => (navigation as any).navigate('Me', { screen: 'MyOrders' }) }],
           );
         }
       }
     } catch (e: any) {
       if (!cancelRef.current) {
-        setErrorMsg(e?.message || 'Wallet pay failed');
-        setPayState('error');
+        // Fall back to web checkout on any error
+        try {
+          await openWebCheckout();
+          setPayState('polling');
+          const paid = await pollOrderPaid(orderId, 60_000);
+          if (!cancelRef.current) {
+            if (paid) goToSuccess({ orderId, paymentMethod: 'wallet' });
+            else setPayState('idle');
+          }
+        } catch {
+          setErrorMsg(e?.message || 'Wallet pay failed');
+          setPayState('error');
+        }
       }
     }
-  }, [prepareOrder, skillId, price, currency, token, goToSuccess, navigation]);
+  }, [prepareOrder, price, openWebCheckout, goToSuccess, navigation]);
 
-  // ─── Scan to Pay (QR Code) ───────────────────────────────────────────────
+  // ─── Scan to Pay (QR Code — builds EIP-681 URI from contract address) ────
 
   const handleQrPay = useCallback(async () => {
     const orderId = await prepareOrder('qr');
@@ -366,145 +391,157 @@ export function CheckoutScreen() {
     cancelRef.current = false;
 
     try {
-      // Generate QR code from backend
-      const qrResult = await apiFetch<any>('/qr/generate', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'fixed_amount',
-          amount: price > 0 ? price : 1,
-          currency,
-          description: `Buy "${displayName}"`,
-          orderId,
-          merchantId: merchantId || undefined,
-        }),
-      });
+      // 1. Get contract addresses from backend
+      const addrs = await getContractAddresses();
+      const recipientAddress = addrs.commission;
+      const tokenAddress = addrs.usdc || USDT_BSC_TESTNET;
 
-      const generatedQrId = qrResult?.qrId || qrResult?.id || qrResult?.data?.qrId;
-      const qrData: string =
-        qrResult?.qrImageUrl ||      // backend-served QR image URL
-        qrResult?.qrDataUrl ||       // data: URL
-        qrResult?.paymentUri ||      // EIP/ETH URI
-        qrResult?.data ||
-        generatedQrId ||
-        `${WEB_CHECKOUT_BASE}?skillId=${skillId}&orderId=${orderId}`;
+      let qrPayload: string;
+      let payIntentId: string | undefined;
 
-      const isImageUrl = qrData.startsWith('http') || qrData.startsWith('data:');
+      if (recipientAddress) {
+        // 2a. Try creating a pay-intent (backend monitors blockchain for matching tx)
+        try {
+          const pi = await apiFetch<any>('/pay-intents', {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'order_payment',
+              orderId,
+              merchantId: merchantId || undefined,
+              amount: price > 0 ? price : 1,
+              currency: 'USDT',
+              paymentMethod: { type: 'qrcode' },
+              recipientAddress,
+            }),
+          });
+          payIntentId = pi?.id || pi?.payIntentId;
+          // Use backend-provided paymentUri if available
+          qrPayload = pi?.paymentUri || '';
+        } catch { /* pay-intent optional, build locally */ }
 
-      // Use qrserver.com to render non-image data as QR
+        // 2b. Build EIP-681 locally if pay-intent didn't provide a URI
+        if (!qrPayload!) {
+          const amountWei = BigInt(Math.round(price * 1e18)).toString();
+          qrPayload = buildEip681(tokenAddress, BSC_TESTNET_CHAIN_ID, recipientAddress, amountWei);
+        }
+      } else {
+        // 2c. No contract address — use web checkout URL as QR data
+        const authToken = token || getApiConfig().token || '';
+        qrPayload = `${WEB_CHECKOUT_BASE}?skillId=${encodeURIComponent(skillId)}&mobile=1${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+      }
+
+      // 3. Generate QR image via qrserver.com
+      const isImageUrl = qrPayload.startsWith('http') && !qrPayload.startsWith('https://agentrix');
       const imageUrl = isImageUrl
-        ? qrData
-        : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`;
+        ? qrPayload
+        : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrPayload)}`;
 
-      setQrId(generatedQrId || orderId);
+      setQrId(payIntentId || orderId);
       setQrImageUrl(imageUrl);
-      setQrHintText(`Amount: ${price > 0 ? `$${price} ${currency}` : 'Free'}`);
+      setQrHintText(`Amount: ${price > 0 ? `$${price} ${currency}` : 'Free'}\nNetwork: BSC ${BSC_TESTNET_CHAIN_ID === 97 ? 'Testnet' : 'Mainnet'}`);
       setQrVisible(true);
       setPayState('qr-open');
 
-      // Long-poll QR status in background
-      if (generatedQrId) {
-        pollQrStatus(generatedQrId, orderId);
-      } else {
-        // Fallback: poll order directly
-        const paid = await pollOrderPaid(orderId, 120_000);
+      // 4. Poll order status (backend auto-detects on-chain payment via pay-intent)
+      const pollPaymentCompletion = async () => {
+        const deadline = Date.now() + 180_000; // 3 minutes
+        while (Date.now() < deadline && !cancelRef.current) {
+          // Try pay-intent status first
+          if (payIntentId) {
+            try {
+              const pi = await apiFetch<any>(`/pay-intents/${payIntentId}`);
+              const s = pi?.status;
+              if (s === 'paid' || s === 'completed' || s === 'executed') {
+                setQrVisible(false);
+                goToSuccess({ orderId, paymentId: payIntentId, paymentMethod: 'qr' });
+                return;
+              }
+              if (s === 'expired' || s === 'cancelled') {
+                setQrVisible(false);
+                setPayState('idle');
+                Alert.alert('QR Expired', 'The payment QR has expired. Please try again.');
+                return;
+              }
+            } catch { /* fallback to order poll */ }
+          }
+          // Also check order status
+          try {
+            const o = await apiFetch<any>(`/orders/${orderId}`);
+            const s = o?.status || o?.data?.status;
+            if (s === 'paid' || s === 'completed') {
+              setQrVisible(false);
+              goToSuccess({ orderId, paymentMethod: 'qr' });
+              return;
+            }
+          } catch { /* retry */ }
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+        // Timeout
         if (!cancelRef.current) {
           setQrVisible(false);
-          if (paid) {
-            goToSuccess({ orderId, paymentMethod: 'qr' });
-          } else {
-            setPayState('idle');
-          }
+          setPayState('idle');
+          Alert.alert('QR Expired', 'Payment window expired. Please try again.');
         }
-      }
+      };
+      pollPaymentCompletion();
     } catch (e: any) {
       if (!cancelRef.current) {
         setErrorMsg(e?.message || 'QR generation failed');
         setPayState('error');
       }
     }
-  }, [prepareOrder, skillId, displayName, price, currency, merchantId, goToSuccess]);
-
-  const pollQrStatus = async (qrIdParam: string, orderId: string) => {
-    const deadline = Date.now() + 120_000;
-    while (Date.now() < deadline && !cancelRef.current) {
-      try {
-        // Backend /qr/:qrId/poll is long-poll (up to 30s each call)
-        const result = await apiFetch<any>(`/qr/${qrIdParam}/poll`);
-        const status = result?.status;
-        if (status === 'paid' || status === 'completed') {
-          if (!cancelRef.current) {
-            setQrVisible(false);
-            goToSuccess({ orderId, paymentId: result?.payIntentId, paymentMethod: 'qr' });
-            return;
-          }
-        }
-        if (status === 'expired' || status === 'cancelled') {
-          if (!cancelRef.current) {
-            setQrVisible(false);
-            setPayState('idle');
-            Alert.alert('QR Expired', 'The payment QR code has expired. Please try again.');
-            return;
-          }
-        }
-        // timeout:true means the long-poll timed out (no change), retry
-        if (!result?.timeout) {
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-      } catch {
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-    }
-    // After deadline, check order
-    if (!cancelRef.current) {
-      try {
-        const paid = await pollOrderPaid(orderId, 5000);
-        setQrVisible(false);
-        if (paid) {
-          goToSuccess({ orderId, paymentMethod: 'qr' });
-        } else {
-          setPayState('idle');
-          Alert.alert('QR Expired', 'Payment window expired. Please try again.');
-        }
-      } catch {
-        setQrVisible(false);
-        setPayState('idle');
-      }
-    }
-  };
+  }, [prepareOrder, skillId, displayName, price, currency, merchantId, token, goToSuccess]);
 
   // ─── Stripe (Web checkout via WebBrowser) ────────────────────────────────
 
   const handleStripe = useCallback(async () => {
-    const orderId = await prepareOrder('stripe');
-    if (!orderId) return;
+    if (!token) {
+      Alert.alert('Login Required', 'Please log in to make a purchase.');
+      return;
+    }
+    setActiveMethod('stripe');
     setPayState('processing');
     cancelRef.current = false;
 
     try {
-      const authToken = token || getApiConfig().token || '';
-      // Build checkout URL — web supports ?mobile=1&token=JWT for embedded mode
-      const checkoutUrl = `${WEB_CHECKOUT_BASE}?skillId=${skillId}&mobile=1${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
+      // Open web checkout — it auto-authenticates with ?token=JWT&mobile=1
+      // and auto-starts the SmartCheckout flow (Stripe Elements + Apple Pay + Google Pay)
+      await openWebCheckout();
 
-      // Open web checkout in browser (Stripe Elements lives in the web page)
-      await WebBrowser.openBrowserAsync(checkoutUrl);
-
-      // After browser is closed (user tapped "Done"/back), poll order status
+      // After browser is closed, try to find a paid order for this skill
       setPayState('polling');
-      const paid = await pollOrderPaid(orderId, 30_000);
-      if (!cancelRef.current) {
-        if (paid) {
-          goToSuccess({ orderId, paymentMethod: 'stripe' });
-        } else {
-          setPayState('idle');
-          Alert.alert(
-            'Stripe Payment',
-            'Payment not confirmed yet. If you completed the payment, check My Orders.',
-            [
-              { text: 'Check Later', style: 'cancel' },
-              { text: 'View Orders', onPress: () => (navigation as any).navigate('Me', { screen: 'MyOrders' }) },
-            ],
-          );
-        }
+      // Check recent orders for this skillId
+      let paid = false;
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline && !cancelRef.current) {
+        try {
+          const resp = await apiFetch<any>('/orders?limit=5&sort=-createdAt');
+          const items: any[] = resp?.items || resp?.data || (Array.isArray(resp) ? resp : []);
+          const match = items.find((o: any) => {
+            const isSkill = o.skillId === skillId || o.productId === skillId ||
+                            o.metadata?.skillId === skillId;
+            const isPaid = o.status === 'paid' || o.status === 'completed';
+            return isSkill && isPaid;
+          });
+          if (match) {
+            paid = true;
+            goToSuccess({ orderId: match.id, paymentMethod: 'stripe' });
+            break;
+          }
+        } catch { /* retry */ }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      if (!paid && !cancelRef.current) {
+        setPayState('idle');
+        Alert.alert(
+          'Stripe Payment',
+          'Payment not confirmed yet. If you completed the payment, check My Orders.',
+          [
+            { text: 'Check Later', style: 'cancel' },
+            { text: 'View Orders', onPress: () => (navigation as any).navigate('Me', { screen: 'MyOrders' }) },
+          ],
+        );
       }
     } catch (e: any) {
       if (!cancelRef.current) {
@@ -512,7 +549,55 @@ export function CheckoutScreen() {
         setPayState('error');
       }
     }
-  }, [prepareOrder, skillId, token, goToSuccess, navigation]);
+  }, [token, skillId, openWebCheckout, goToSuccess, navigation]);
+
+  // ─── Pay in Browser (universal fallback) ──────────────────────────────────
+
+  const handleWebCheckout = useCallback(async () => {
+    if (!token) {
+      Alert.alert('Login Required', 'Please log in to make a purchase.');
+      return;
+    }
+    setActiveMethod('web_checkout');
+    setPayState('processing');
+    cancelRef.current = false;
+
+    try {
+      await openWebCheckout();
+
+      // Poll for paid orders after browser closes
+      setPayState('polling');
+      let paid = false;
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline && !cancelRef.current) {
+        try {
+          const resp = await apiFetch<any>('/orders?limit=5&sort=-createdAt');
+          const items: any[] = resp?.items || resp?.data || (Array.isArray(resp) ? resp : []);
+          const match = items.find((o: any) => {
+            const isSkill = o.skillId === skillId || o.productId === skillId ||
+                            o.metadata?.skillId === skillId;
+            const isPaid = o.status === 'paid' || o.status === 'completed';
+            return isSkill && isPaid;
+          });
+          if (match) {
+            paid = true;
+            goToSuccess({ orderId: match.id, paymentMethod: 'web' });
+            break;
+          }
+        } catch { /* retry */ }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      if (!paid && !cancelRef.current) {
+        setPayState('idle');
+      }
+    } catch (e: any) {
+      if (!cancelRef.current) {
+        setErrorMsg(e?.message || 'Payment failed');
+        setPayState('error');
+      }
+    }
+  }, [token, skillId, openWebCheckout, goToSuccess]);
 
   // ─── Transak (Fiat on-ramp) ──────────────────────────────────────────────
 
@@ -769,6 +854,20 @@ export function CheckoutScreen() {
           <Text style={styles.trustItem}>⚡ Instant</Text>
           <Text style={styles.trustItem}>✅ Verified</Text>
         </View>
+
+        {/* ── Universal "Pay in Browser" fallback ────────────────────── */}
+        <TouchableOpacity
+          style={styles.webCheckoutBtn}
+          onPress={handleWebCheckout}
+          disabled={isBusy}
+          activeOpacity={0.85}
+        >
+          {isActiveMethod('web_checkout') ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Text style={styles.webCheckoutBtnText}>🌐 Open Full Checkout in Browser</Text>
+          )}
+        </TouchableOpacity>
       </ScrollView>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -933,6 +1032,14 @@ const styles = StyleSheet.create({
   // Trust row
   trustRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 6 },
   trustItem: { fontSize: 12, color: '#999', fontWeight: '500' },
+
+  // "Pay in Browser" universal fallback
+  webCheckoutBtn: {
+    backgroundColor: '#fff', borderRadius: 13, padding: 15, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.accent + '44', borderStyle: 'dashed' as any,
+    marginTop: 2,
+  },
+  webCheckoutBtnText: { color: colors.accent, fontWeight: '600', fontSize: 14 },
 
   // Loading overlay (full-screen used during creation)
   loadingOverlay: {
