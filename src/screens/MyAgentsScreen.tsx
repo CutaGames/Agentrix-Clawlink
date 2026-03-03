@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
-import { getMyInstances } from '../services/openclaw.service';
+import { getMyInstances, batchCleanupInstances } from '../services/openclaw.service';
 import { useAuthStore } from '../stores/authStore';
 import { Card } from '../components/Card';
 
@@ -23,7 +24,7 @@ interface Agent {
   description: string;
   avatar?: string;
   category: string;
-  status: 'active' | 'idle' | 'offline';
+  status: 'active' | 'idle' | 'offline' | 'error';
   lastActiveAt?: string;
   deployType?: string;
   version?: string;
@@ -45,7 +46,7 @@ export default function MyAgentsScreen() {
       ? `${inst.deployType ?? 'custom'} · ${inst.instanceUrl}`
       : (inst.deployType === 'cloud' ? 'Cloud-hosted OpenClaw agent' : 'OpenClaw Agent'),
     category: inst.deployType === 'cloud' ? 'cloud' : 'custom',
-    status: inst.status === 'active' ? 'active' : inst.status === 'disconnected' ? 'offline' : 'idle',
+    status: inst.status === 'active' ? 'active' : inst.status === 'error' ? 'error' : inst.status === 'disconnected' ? 'offline' : 'idle',
     lastActiveAt: inst.lastSyncAt,
     deployType: inst.deployType,
     version: inst.version,
@@ -101,6 +102,8 @@ export default function MyAgentsScreen() {
     switch (status) {
       case 'active':
         return colors.success;
+      case 'error':
+        return colors.error ?? '#FF4444';
       case 'idle':
         return colors.warning;
       default:
@@ -112,11 +115,38 @@ export default function MyAgentsScreen() {
     switch (status) {
       case 'active':
         return '运行中';
+      case 'error':
+        return '错误';
       case 'idle':
         return '空闲';
       default:
         return '离线';
     }
+  };
+
+  const handleCleanupErrors = () => {
+    const errorCount = agents.filter(a => a.status === 'error').length;
+    if (errorCount === 0) return;
+    Alert.alert(
+      '清理错误实例',
+      `确认删除 ${errorCount} 个错误状态的 Agent 实例？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await batchCleanupInstances('error');
+              Alert.alert('完成', `已删除 ${result.deleted} 个错误实例`);
+              fetchAgents();
+            } catch (err) {
+              Alert.alert('失败', '清理失败，请稍后重试');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const getCategoryIcon = (category: string, deployType?: string) => {
@@ -209,7 +239,20 @@ export default function MyAgentsScreen() {
                 </Text>
                 <Text style={styles.statLabel}>空闲</Text>
               </View>
+              {agents.filter(a => a.status === 'error').length > 0 && (
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: colors.error ?? '#FF4444' }]}>
+                    {agents.filter(a => a.status === 'error').length}
+                  </Text>
+                  <Text style={styles.statLabel}>错误</Text>
+                </View>
+              )}
             </View>
+            {agents.filter(a => a.status === 'error').length > 0 && (
+              <TouchableOpacity style={styles.cleanupButton} onPress={handleCleanupErrors}>
+                <Text style={styles.cleanupButtonText}>🗑️ 清理错误实例</Text>
+              </TouchableOpacity>
+            )}
           </Card>
         }
         ListEmptyComponent={
@@ -370,5 +413,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  cleanupButton: {
+    marginTop: 12,
+    backgroundColor: (colors.error ?? '#FF4444') + '15',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: (colors.error ?? '#FF4444') + '40',
+  },
+  cleanupButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.error ?? '#FF4444',
   },
 });

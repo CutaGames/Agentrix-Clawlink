@@ -3,6 +3,7 @@
 export type AuthStackParamList = {
   Login: undefined;
   AuthCallback: { code?: string; token?: string; provider?: string };
+  WalletConnect: { walletId?: string } | undefined;
 };
 
 export type OnboardingStackParamList = {

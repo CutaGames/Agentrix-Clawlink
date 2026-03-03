@@ -243,6 +243,19 @@ export class OpenClawConnectionService {
     await this.instanceRepo.delete(instance.id);
   }
 
+  async batchCleanupByStatus(userId: string, status: string): Promise<{ deleted: number }> {
+    const validStatuses = Object.values(OpenClawInstanceStatus);
+    if (!validStatuses.includes(status as OpenClawInstanceStatus)) {
+      return { deleted: 0 };
+    }
+    const result = await this.instanceRepo.delete({
+      userId,
+      status: status as OpenClawInstanceStatus,
+    });
+    this.logger.log(`Batch cleanup: deleted ${result.affected ?? 0} ${status} instances for user ${userId}`);
+    return { deleted: result.affected ?? 0 };
+  }
+
   async updateInstanceStatus(instanceId: string, status: OpenClawInstanceStatus): Promise<void> {
     await this.instanceRepo.update(instanceId, { status });
   }

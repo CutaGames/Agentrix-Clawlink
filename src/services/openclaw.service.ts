@@ -153,6 +153,11 @@ export async function unbindInstance(instanceId: string): Promise<void> {
   return apiFetch(`/openclaw/instances/${instanceId}`, { method: 'DELETE' });
 }
 
+// Batch delete instances by status (e.g. 'error')
+export async function batchCleanupInstances(status: string = 'error'): Promise<{ deleted: number }> {
+  return apiFetch(`/openclaw/instances?status=${encodeURIComponent(status)}`, { method: 'DELETE' });
+}
+
 // ── Local Agent ────────────────────────────────────────────────────────────────
 
 export interface ProvisionLocalResult {

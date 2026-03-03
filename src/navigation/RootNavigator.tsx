@@ -5,6 +5,7 @@ import { AuthStackParamList, OnboardingStackParamList, RootStackParamList } from
 import { MainTabNavigator } from './MainTabNavigator';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
+import { WalletConnectScreen } from '../screens/WalletConnectScreen';
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
 import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
 import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScreen';
@@ -20,6 +21,7 @@ function AuthNavigator() {
     <AuthStack.Navigator id={undefined} screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="AuthCallback" component={AuthCallbackScreen} />
+      <AuthStack.Screen name="WalletConnect" component={WalletConnectScreen} />
     </AuthStack.Navigator>
   );
 }

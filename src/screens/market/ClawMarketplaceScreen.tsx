@@ -53,12 +53,18 @@ function OpenClawSkillsTab() {
 
   // Fallback skills shown when hub is unreachable
   const MOCK_SKILLS = [
-    { id: 's1', icon: '🔍', name: 'Web Search', description: 'AI-powered web search with relevance ranking', price: 0, tokenCost: 0, rating: 4.7 },
-    { id: 's2', icon: '💻', name: 'Code Sandbox', description: 'Execute Python and JavaScript safely in sandbox', price: 0, tokenCost: 0, rating: 4.8 },
-    { id: 's3', icon: '🧠', name: 'Long-Term Memory', description: 'Persistent memory across agent conversations', price: 0, tokenCost: 0, rating: 4.9 },
-    { id: 's4', icon: '📊', name: 'Data Analysis', description: 'Analyse datasets and generate charts', price: 0, tokenCost: 0, rating: 4.6 },
-    { id: 's5', icon: '🎨', name: 'Image Generator', description: 'Generate images from text prompts', price: 0, tokenCost: 0, rating: 4.3 },
-    { id: 's6', icon: '🔌', name: 'API Connector', description: 'Connect to any REST or GraphQL API', price: 0, tokenCost: 0, rating: 4.5 },
+    { id: 's1', icon: '🧠', name: 'Long-Term Memory', description: 'Persistent memory across agent conversations', price: 0, tokenCost: 0, rating: 4.9, installCount: 18200 },
+    { id: 's2', icon: '🔍', name: 'Web Search', description: 'AI-powered web search with relevance ranking', price: 0, tokenCost: 0, rating: 4.7, installCount: 15420 },
+    { id: 's3', icon: '💻', name: 'Code Sandbox', description: 'Execute Python and JavaScript safely in sandbox', price: 0, tokenCost: 0, rating: 4.8, installCount: 12300 },
+    { id: 's4', icon: '📁', name: 'File Manager', description: 'Read, write and manage files', price: 0, tokenCost: 0, rating: 4.5, installCount: 9800 },
+    { id: 's5', icon: '📰', name: 'News', description: 'Search real-time news from global sources', price: 0, tokenCost: 0, rating: 4.5, installCount: 9200 },
+    { id: 's6', icon: '🌐', name: 'Translation', description: 'Translate text between 100+ languages', price: 0, tokenCost: 0, rating: 4.7, installCount: 8900 },
+    { id: 's7', icon: '🐙', name: 'Git', description: 'Clone, commit, push and manage GitHub repos', price: 0, tokenCost: 0, rating: 4.6, installCount: 8100 },
+    { id: 's8', icon: '🎨', name: 'Image Generator', description: 'Generate images from text prompts', price: 0, tokenCost: 0, rating: 4.3, installCount: 7650 },
+    { id: 's9', icon: '💰', name: 'Crypto Prices', description: 'Real-time crypto prices and market cap', price: 0, tokenCost: 0, rating: 4.6, installCount: 6800 },
+    { id: 's10', icon: '📊', name: 'Data Analysis', description: 'Analyse datasets and generate charts', price: 0, tokenCost: 0, rating: 4.6, installCount: 6100 },
+    { id: 's11', icon: '🌤️', name: 'Weather', description: 'Real-time weather data for any location', price: 0, tokenCost: 0, rating: 4.6, installCount: 5500 },
+    { id: 's12', icon: '🔌', name: 'API Connector', description: 'Connect to any REST or GraphQL API', price: 0, tokenCost: 0, rating: 4.5, installCount: 4500 },
   ];
 
   const skills: any[] = data ?? MOCK_SKILLS;

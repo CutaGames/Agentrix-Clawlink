@@ -176,7 +176,7 @@ export class OpenClawBridgeController {
     return {
       hubUrl: 'https://www.clawhub.ai/api/v1',
       reachable,
-      cachedSkills: this.skillHub.totalSkills,
+      ...this.skillHub.hubSyncStatus,
     };
   }
 }

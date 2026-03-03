@@ -133,6 +133,8 @@ export class OpenClawSkillHubService {
   private lastCacheAt: Date | null = null;
   private lastDbSyncAt: Date | null = null;
   private syncInProgress = false;
+  private rateLimitBackoffUntil: number = 0;
+  private rateLimitConsecutiveFails = 0;
 
   constructor(
     @InjectRepository(Skill)
@@ -218,6 +220,18 @@ export class OpenClawSkillHubService {
 
   get totalSkills(): number { return this.cachedSkills.length; }
 
+  get hubSyncStatus() {
+    return {
+      cachedSkills: this.cachedSkills.length,
+      lastCacheAt: this.lastCacheAt?.toISOString() ?? null,
+      lastDbSyncAt: this.lastDbSyncAt?.toISOString() ?? null,
+      syncInProgress: this.syncInProgress,
+      rateLimited: this.isRateLimited(),
+      rateLimitBackoffUntil: this.rateLimitBackoffUntil > 0 ? new Date(this.rateLimitBackoffUntil).toISOString() : null,
+      rateLimitConsecutiveFails: this.rateLimitConsecutiveFails,
+    };
+  }
+
   async isHubReachable(): Promise<boolean> {
     try {
       await axios.get(`${CLAWHUB_API}/skills?per_page=1`, { timeout: 5_000 });
@@ -238,15 +252,29 @@ export class OpenClawSkillHubService {
         Date.now() - this.lastCacheAt.getTime() < CACHE_TTL_MS) {
       return;
     }
-    if (this.cachedSkills.length === 0) {
-      await this.loadFromDb();
+
+    // Cache expired or cold start — try DB first
+    const dbSkills = await this.loadFromDbRaw();
+    if (dbSkills.length > 0) {
+      this.cachedSkills = dbSkills;
+      this.lastCacheAt = new Date();
+      return;
     }
-    if (this.cachedSkills.length === 0) {
+
+    // DB empty — try ClawHub live API
+    if (!this.isRateLimited()) {
       await this.refreshFromClawHub();
+    }
+
+    // Final fallback: built-in skills
+    if (this.cachedSkills.length === 0) {
+      this.cachedSkills = this.getBuiltInSkills();
+      this.lastCacheAt = new Date();
+      this.logger.warn(`Using ${this.cachedSkills.length} built-in fallback skills`);
     }
   }
 
-  private async loadFromDb(): Promise<void> {
+  private async loadFromDbRaw(): Promise<OpenClawHubSkill[]> {
     try {
       const rows = await this.skillRepo.find({
         where: {
@@ -257,13 +285,38 @@ export class OpenClawSkillHubService {
         order: { callCount: 'DESC' },
       });
       if (rows.length > 0) {
-        this.cachedSkills = rows.map(r => this.skillEntityToHubSkill(r));
-        this.lastCacheAt = new Date();
         this.logger.log(`Loaded ${rows.length} OpenClaw skills from DB`);
+        return rows.map(r => this.skillEntityToHubSkill(r));
       }
     } catch (err: any) {
       this.logger.warn(`Failed to load OpenClaw skills from DB: ${err.message}`);
     }
+    return [];
+  }
+
+  private async loadFromDb(): Promise<void> {
+    const skills = await this.loadFromDbRaw();
+    if (skills.length > 0) {
+      this.cachedSkills = skills;
+      this.lastCacheAt = new Date();
+    }
+  }
+
+  private isRateLimited(): boolean {
+    return Date.now() < this.rateLimitBackoffUntil;
+  }
+
+  private markRateLimited(): void {
+    this.rateLimitConsecutiveFails++;
+    // Exponential backoff: 5m, 10m, 20m, 40m, 60m (max)
+    const backoffMs = Math.min(5 * 60_000 * Math.pow(2, this.rateLimitConsecutiveFails - 1), 60 * 60_000);
+    this.rateLimitBackoffUntil = Date.now() + backoffMs;
+    this.logger.warn(`ClawHub rate-limited, backing off for ${Math.round(backoffMs / 60_000)}min (consecutive fails: ${this.rateLimitConsecutiveFails})`);
+  }
+
+  private resetRateLimit(): void {
+    this.rateLimitConsecutiveFails = 0;
+    this.rateLimitBackoffUntil = 0;
   }
 
   /* ================================================================ */
@@ -287,6 +340,11 @@ export class OpenClawSkillHubService {
   }
 
   private async fetchAllFromClawHub(): Promise<OpenClawHubSkill[]> {
+    if (this.isRateLimited()) {
+      this.logger.debug(`Skipping ClawHub fetch — rate-limited until ${new Date(this.rateLimitBackoffUntil).toISOString()}`);
+      return [];
+    }
+
     const all: OpenClawHubSkill[] = [];
     let cursor: string | undefined;
     let pageNum = 0;
@@ -297,10 +355,23 @@ export class OpenClawSkillHubService {
         let url = `${CLAWHUB_API}/skills?per_page=${PER_PAGE}`;
         if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
 
-        const { data } = await axios.get(url, {
+        const { data, status, headers } = await axios.get(url, {
           timeout: 15_000,
           headers: { 'User-Agent': 'Agentrix/2.0', Accept: 'application/json' },
+          validateStatus: (s) => s < 500, // don't throw on 4xx
         });
+
+        // Handle rate limiting
+        if (status === 429) {
+          this.markRateLimited();
+          this.logger.warn(`ClawHub 429 Rate Limited after ${all.length} skills (page ${pageNum})`);
+          break;
+        }
+
+        if (status !== 200) {
+          this.logger.warn(`ClawHub returned ${status} on page ${pageNum}`);
+          break;
+        }
 
         const items: ClawHubRawSkill[] = data?.items ?? [];
         if (items.length === 0) break;
@@ -312,9 +383,21 @@ export class OpenClawSkillHubService {
         const nextCursor: string | undefined = data?.nextCursor;
         if (!nextCursor) break;
         cursor = nextCursor;
+
+        // Small delay between pages to respect rate limits
+        if (pageNum % 5 === 0) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      if (all.length > 0) {
+        this.resetRateLimit();
       }
       this.logger.log(`Fetched ${all.length} skills from ClawHub in ${pageNum} pages`);
     } catch (err: any) {
+      if (err.response?.status === 429 || err.message?.includes('rate limit') || err.message?.includes('Rate limit')) {
+        this.markRateLimited();
+      }
       this.logger.error(`ClawHub fetch error after ${all.length} skills (page ${pageNum}): ${err.message}`);
     }
     return all;
@@ -505,18 +588,26 @@ export class OpenClawSkillHubService {
   /*  Cron jobs                                                        */
   /* ================================================================ */
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  @Cron(CronExpression.EVERY_30_MINUTES)
   async handleCacheRefresh() {
+    if (this.isRateLimited()) {
+      this.logger.debug('Skipping cache refresh — rate-limited');
+      return;
+    }
     try { await this.refreshFromClawHub(); }
     catch (err: any) { this.logger.error(`Cache refresh cron failed: ${err.message}`); }
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron('0 0 */2 * * *') // Every 2 hours (less aggressive)
   async handleDbSync() {
+    if (this.isRateLimited()) {
+      this.logger.debug('Skipping DB sync — rate-limited');
+      return;
+    }
     if (this.lastDbSyncAt && Date.now() - this.lastDbSyncAt.getTime() < FULL_SYNC_INTERVAL_MS) return;
     try {
       const result = await this.fullSync();
-      this.logger.log(`Hourly DB sync: ${result.fetched} fetched, ${result.persisted} saved`);
+      this.logger.log(`DB sync: ${result.fetched} fetched, ${result.persisted} saved`);
     } catch (err: any) { this.logger.error(`DB sync cron failed: ${err.message}`); }
   }
 
@@ -530,6 +621,7 @@ export class OpenClawSkillHubService {
       author: 'OpenClaw', callCount: count, rating, source: 'openclaw_hub',
     });
     return [
+      // Core AI
       s('oc-web-search','web_search','Web Search','Web Search','Search the web with AI-powered relevance ranking','search','🔍',['search','web'],15420,4.7),
       s('oc-news-search','news_search','News Search','News','Search real-time news from global sources','search','📰',['news','realtime'],9200,4.5),
       s('oc-code-exec','code_execution','Code Execution','Code Sandbox','Execute Python, JavaScript safely','developer','💻',['code','python'],12300,4.8),
@@ -542,6 +634,57 @@ export class OpenClawSkillHubService {
       s('oc-translation','translation','Translation','Translation','Translate text between 100+ languages','language','🌐',['translate','language'],8900,4.7),
       s('oc-browser','browser_automation','Browser Automation','Browser','Control a headless browser','automation','🌐',['browser','automation'],5100,4.5),
       s('oc-file-manager','file_manager','File Manager','File Manager','Read, write and manage files','utility','📁',['files','storage'],9800,4.5),
+      // Developer tools
+      s('oc-docker','docker_manager','Docker Manager','Docker','Build, run and manage Docker containers','developer','🐋',['docker','container'],4800,4.4),
+      s('oc-ssh','ssh_commander','SSH Commander','SSH','Execute commands on remote servers via SSH','developer','🔒',['ssh','remote'],3900,4.3),
+      s('oc-debugger','code_debugger','Code Debugger','Debugger','AI-assisted debugging with stack trace analysis','developer','🔧',['debug','error'],3200,4.5),
+      s('oc-test-gen','test_generator','Test Generator','Test Gen','Auto-generate unit and integration tests','developer','🧪',['test','coverage'],2800,4.2),
+      s('oc-lint','code_linter','Code Linter','Linter','Lint and auto-fix code style issues','developer','✨',['lint','format'],2400,4.1),
+      s('oc-docs-gen','docs_generator','Documentation Generator','Doc Gen','Generate API docs from code','developer','📝',['docs','api'],2100,4.3),
+      // Data & analytics
+      s('oc-csv','csv_processor','CSV Processor','CSV Tool','Parse, transform and analyze CSV data','data','📋',['csv','data'],3600,4.4),
+      s('oc-pdf','pdf_reader','PDF Reader','PDF','Extract text and data from PDF documents','data','📄',['pdf','document'],4200,4.5),
+      s('oc-ocr','ocr_engine','OCR Engine','OCR','Extract text from images & scanned documents','data','👁️',['ocr','image'],3100,4.3),
+      s('oc-charts','chart_builder','Chart Builder','Charts','Generate interactive charts from data','analytics','📈',['chart','visualization'],2900,4.4),
+      s('oc-sql','sql_agent','SQL Agent','SQL','Query databases with natural language','data','🗃️',['sql','database'],5200,4.6),
+      s('oc-json','json_transformer','JSON Transformer','JSON Tool','Parse, query and transform JSON data','data','📦',['json','transform'],2600,4.2),
+      // Integration
+      s('oc-slack','slack_bot','Slack Bot','Slack','Send messages and manage Slack channels','integration','💬',['slack','messaging'],4100,4.5),
+      s('oc-notion','notion_assistant','Notion Assistant','Notion','Create and manage Notion pages and databases','integration','📓',['notion','workspace'],3800,4.4),
+      s('oc-email','email_sender','Email Sender','Email','Send and read emails via SMTP/IMAP','integration','📧',['email','smtp'],4400,4.5),
+      s('oc-webhook','webhook_handler','Webhook Handler','Webhooks','Create and manage HTTP webhooks','integration','🔗',['webhook','http'],2700,4.2),
+      s('oc-zapier','zapier_trigger','Zapier Trigger','Zapier','Trigger and manage Zapier workflows','integration','⚡',['zapier','automation'],2300,4.1),
+      s('oc-calendar','calendar_manager','Calendar Manager','Calendar','Manage Google/Outlook calendar events','integration','📅',['calendar','schedule'],3200,4.4),
+      s('oc-sheets','spreadsheet','Spreadsheet','Sheets','Read and write Google Sheets','integration','📊',['sheets','spreadsheet'],2800,4.3),
+      // Commerce & finance
+      s('oc-crypto-price','crypto_price','Crypto Price','Crypto Prices','Real-time crypto prices and market cap','commerce','💰',['crypto','price'],6800,4.6),
+      s('oc-dex-swap','dex_swap','DEX Swap','DEX Swap','Execute token swaps on decentralized exchanges','commerce','🔄',['dex','swap'],3400,4.3),
+      s('oc-portfolio','portfolio_tracker','Portfolio Tracker','Portfolio','Track crypto and stock portfolio value','commerce','📊',['portfolio','tracking'],2900,4.4),
+      s('oc-stock','stock_data','Stock Data','Stocks','Real-time stock quotes, charts and analysis','commerce','📈',['stock','market'],4600,4.5),
+      s('oc-nft','nft_tools','NFT Tools','NFT','Mint, list and browse NFTs across chains','commerce','🖼️',['nft','mint'],2200,4.1),
+      s('oc-payment','payment_gateway','Payment Gateway','Payments','Accept crypto and fiat payments','payment','💳',['payment','checkout'],3100,4.4),
+      // Creative
+      s('oc-music','music_generator','Music Generator','Music Gen','Generate music tracks from text descriptions','creative','🎵',['music','audio'],2400,4.2),
+      s('oc-video','video_editor','Video Editor','Video','Edit and process video clips with AI','creative','🎬',['video','edit'],1800,4.0),
+      s('oc-tts','text_to_speech','Text to Speech','TTS','Convert text to natural-sounding speech','creative','🔊',['tts','speech'],3500,4.5),
+      s('oc-stt','speech_to_text','Speech to Text','STT','Transcribe audio to text with high accuracy','creative','🎤',['stt','transcription'],3200,4.4),
+      s('oc-caption','caption_generator','Caption Generator','Captions','Generate social media captions and hashtags','creative','✍️',['caption','social'],2100,4.2),
+      // Automation
+      s('oc-scheduler','task_scheduler','Task Scheduler','Scheduler','Schedule recurring tasks and reminders','automation','⏰',['schedule','cron'],3700,4.5),
+      s('oc-workflow','workflow_engine','Workflow Engine','Workflows','Build and execute multi-step workflows','automation','🔀',['workflow','pipeline'],3100,4.4),
+      s('oc-monitor','site_monitor','Site Monitor','Monitor','Monitor website uptime and performance','automation','📡',['monitor','uptime'],2500,4.3),
+      s('oc-scrape-auto','auto_scraper','Auto Scraper','Scraper','Automated web scraping with scheduling','automation','🤖',['scrape','schedule'],2200,4.2),
+      // Utility
+      s('oc-weather','weather_forecast','Weather Forecast','Weather','Real-time weather data for any location','utility','🌤️',['weather','forecast'],5500,4.6),
+      s('oc-maps','maps_geocoding','Maps & Geocoding','Maps','Address lookup, directions and distance','utility','🗺️',['maps','geocode'],3800,4.4),
+      s('oc-qr','qr_generator','QR Generator','QR Code','Generate and scan QR codes','utility','🔳',['qr','barcode'],2100,4.2),
+      s('oc-calculator','calculator','Calculator','Calculator','Advanced math, unit conversion and formulas','utility','🔢',['math','convert'],4200,4.5),
+      s('oc-password','password_generator','Password Generator','Passwords','Generate secure passwords and manage secrets','utility','🔑',['password','security'],1900,4.3),
+      // Social & gaming
+      s('oc-twitter','twitter_agent','Twitter Agent','Twitter/X','Post, search and analyze tweets','integration','🐦',['twitter','social'],4800,4.4),
+      s('oc-reddit','reddit_reader','Reddit Reader','Reddit','Browse and analyze Reddit posts','integration','📱',['reddit','social'],2600,4.2),
+      s('oc-discord','discord_bot','Discord Bot','Discord','Manage Discord servers and channels','integration','🎮',['discord','gaming'],3500,4.4),
+      s('oc-game-arena','game_arena','Game Arena','Battle Arena','AI agent battle arena and competitions','custom','⚔️',['game','battle'],1800,4.1),
     ];
   }
 }

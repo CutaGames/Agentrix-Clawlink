@@ -68,13 +68,13 @@ export function LoginScreen() {
     
     const target = wallet || detectedWallets[0];
     if (target) {
-      Linking.openURL(`${target.scheme}wc?uri=...`).catch(() => {
-        Alert.alert('Connect Failed', `Please make sure ${target.label} is installed.`);
-      });
+      // Navigate to WalletConnect screen which handles the full nonce→sign→verify flow
+      (navigation as any).navigate('WalletConnect', { walletId: target.id });
     } else {
-      // Fallback to WalletConnect modal or standard message
-      Alert.alert('No Wallet Found', 'Please install OKX or MetaMask, or use Social Login.');
+      // No wallet detected — show WalletConnect screen for manual entry
+      (navigation as any).navigate('WalletConnect');
     }
+    setShowWalletModal(false);
   };
 
   const handleOpenClawLogin = async () => {
