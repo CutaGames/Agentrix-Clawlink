@@ -203,7 +203,8 @@ export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promis
     );
   }
   if (params.category && params.category !== 'All') {
-    list = list.filter(s => s.category === params.category);
+    const cat = params.category.toLowerCase();
+    list = list.filter(s => (s.category ?? '').toLowerCase() === cat);
   }
 
   // Paginate
@@ -223,7 +224,7 @@ export async function searchOpenClawHub(params: OpenClawHubSearchParams): Promis
 export async function getHubSkillDetail(id: string): Promise<SkillItem | null> {
   // Try fetching directly from backend by id (includes full schema)
   try {
-    const detail = await apiFetch<any>(`/openclaw/bridge/skill-hub/search?limit=1&query=${encodeURIComponent(id)}`);
+    const detail = await apiFetch<any>(`/openclaw/bridge/skill-hub/search?limit=1&q=${encodeURIComponent(id)}`);
     const items: any[] = detail?.items || [];
     const found = items.find((s: any) => s.id === id || s.key === id);
     if (found) return mapHubSkillToSkillItem(found);
