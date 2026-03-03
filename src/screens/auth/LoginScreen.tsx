@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, Platform, KeyboardAvoidingView,
-  Modal, TextInput, Linking,
+  View, Text, TouchableOpacity, StyleSheet, Image, Modal,
+  ScrollView, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Linking,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -13,8 +11,7 @@ import {
   loginWithApple,
   loginWithTwitter,
   loginWithTelegram,
-  loginWithWallet,
-  getWalletNonce,
+  loginWithWalletWeb,
 } from '../../services/auth';
 
 /**
@@ -25,11 +22,7 @@ import {
 export function LoginScreen() {
   const navigation = useNavigation<any>();
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [showSiweModal, setShowSiweModal] = useState(false);
-  const [siweStep, setSiweStep] = useState<'address' | 'sign'>('address');
-  const [siweAddress, setSiweAddress] = useState('');
-  const [siweMessage, setSiweMessage] = useState('');
-  const [siweSignature, setSiweSignature] = useState('');
+  const [showWalletFallback, setShowWalletFallback] = useState(false);
 
   const handleProviderLogin = async (provider: string, loginFn: () => Promise<any>) => {
     try {
@@ -71,70 +64,31 @@ export function LoginScreen() {
     await setAuth(mockUser, 'guest-token');
   };
 
-  // SIWE (Sign-In With Ethereum) wallet login flow
-  const handleWalletLogin = () => {
-    setSiweStep('address');
-    setSiweAddress('');
-    setSiweMessage('');
-    setSiweSignature('');
-    setShowSiweModal(true);
-  };
-
-  const handleSiweGetNonce = async () => {
-    const addr = siweAddress.trim();
-    if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
-      Alert.alert('Invalid Address', 'Please enter a valid Ethereum address (0x + 40 hex chars).');
-      return;
-    }
-    try {
-      setLoadingProvider('wallet-nonce');
-      const { message } = await getWalletNonce(addr);
-      setSiweMessage(message);
-      await Clipboard.setStringAsync(message);
-      setSiweStep('sign');
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not get sign message from server.');
-    } finally {
-      setLoadingProvider(null);
-    }
-  };
-
-  const handleOpenWalletForSign = async () => {
-    await Clipboard.setStringAsync(siweMessage).catch(() => {});
-    const schemes = ['metamask://', 'tpoutside://', 'okx://'];
-    for (const scheme of schemes) {
-      try {
-        if (await Linking.canOpenURL(scheme)) { await Linking.openURL(scheme); return; }
-      } catch {}
-    }
-    Alert.alert(
-      'Message Copied',
-      'Sign message copied to clipboard. Open your wallet, sign it, then come back and paste the signature.',
-    );
-  };
-
-  const handleSiweSubmit = async () => {
-    const sig = siweSignature.trim();
-    if (!sig.startsWith('0x') || sig.length < 100) {
-      Alert.alert('Invalid Signature', 'Please paste the full hex signature returned by your wallet.');
-      return;
-    }
+  const handleWalletLogin = async () => {
     try {
       setLoadingProvider('wallet');
-      await loginWithWallet({
-        address: siweAddress.trim(),
-        signature: sig,
-        message: siweMessage,
-        chainType: 'evm',
-      });
-      setShowSiweModal(false);
+      // Native App Check Heuristic
+      const hasMetaMask = await Linking.canOpenURL('metamask://');
+      const hasOKX = await Linking.canOpenURL('okex://'); // okx scheme
+      const hasTrust = await Linking.canOpenURL('trust://');
+
+      if (!hasMetaMask && !hasOKX && !hasTrust) {
+        // Fallback Route: Show Web3Modal style Bottom Sheet
+        setLoadingProvider(null);
+        setShowWalletFallback(true);
+        return; 
+      }
+
+      // If wallets exist, happy path: proceed with the browser bridge which WalletConnect natively intercepts
+      await loginWithWalletWeb();
     } catch (err: any) {
-      Alert.alert(
-        'Verification Failed',
-        err.message || 'Signature mismatch. Make sure you signed with the correct wallet address.',
-      );
+      if (!err?.message?.includes('cancel')) {
+        Alert.alert('Wallet Login Failed', err?.message || 'Could not connect wallet. Try a social login instead.');
+      }
     } finally {
-      setLoadingProvider(null);
+      if (loadingProvider === 'wallet') { 
+        setLoadingProvider(null);
+      }
     }
   };
 
@@ -156,7 +110,11 @@ export function LoginScreen() {
         {/* Brand Area */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Text style={styles.logoIcon}>🦀</Text>
+            <Image 
+              source={require('../../../assets/icon.png')} 
+              style={styles.logoImage} 
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.headline}>Agentrix</Text>
           <Text style={styles.subHeadline}>Your Personal AI Agent Portal</Text>
@@ -265,93 +223,51 @@ export function LoginScreen() {
 
       </ScrollView>
 
-      {/* SIWE Wallet Login Modal */}
+      {/* Fallback Bottom Sheet for Missing Wallet */}
       <Modal
-        visible={showSiweModal}
-        transparent
+        visible={showWalletFallback}
         animationType="slide"
-        onRequestClose={() => setShowSiweModal(false)}
+        transparent={true}
+        onRequestClose={() => setShowWalletFallback(false)}
       >
-        <View style={styles.siweOverlay}>
-          <View style={styles.siweSheet}>
-            <View style={styles.siweDragBar} />
+        <View style={styles.modalOverlay}>
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>WalletConnect</Text>
+            <Text style={styles.sheetSubtitle}>Scan to connect with your desktop wallet or an alternative device.</Text>
+            
+            <View style={styles.qrContainer}>
+              <Text style={{color: '#fff', fontSize: 48}}>📱</Text>
+              {/* Note: This is an illustrative placeholder. A real QR should be pulled via bridging to agentrix.top/auth/login?method=walletconnect */}
+              <Text style={{color: '#888', marginTop: 12, textAlign: 'center'}}>Use another device to scan</Text>
+            </View>
 
-            <TouchableOpacity style={styles.siweCloseBtn} onPress={() => setShowSiweModal(false)}>
-              <Text style={styles.siweCloseBtnText}>✕</Text>
+            <TouchableOpacity 
+              style={styles.sheetWebButton}
+              onPress={async () => {
+                setShowWalletFallback(false);
+                await loginWithWalletWeb();
+              }}
+            >
+              <Text style={styles.sheetWebButtonText}>Or Open Web Connect Interface</Text>
             </TouchableOpacity>
 
-            <Text style={styles.siweTitle}>🔗 Connect Crypto Wallet</Text>
+            <View style={styles.web2AdContainer}>
+              <Text style={styles.web2AdText}>
+                No wallet? {"\n"}Close this sheet and choose <Text style={{fontWeight: 'bold', color: colors.accent}}>Google Login</Text>, we will bind a cloud MPC wallet automatically for you!
+              </Text>
+            </View>
 
-            {siweStep === 'address' ? (
-              <>
-                <Text style={styles.siweSubtitle}>
-                  Enter your Ethereum wallet address. We'll generate a one-time message for you to sign — no password needed.
-                </Text>
-                <TextInput
-                  style={styles.siweInput}
-                  placeholder="0x... wallet address"
-                  placeholderTextColor={colors.textMuted}
-                  value={siweAddress}
-                  onChangeText={setSiweAddress}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  onSubmitEditing={handleSiweGetNonce}
-                />
-                <TouchableOpacity
-                  style={[styles.siwePrimaryBtn, !siweAddress.trim() && styles.siweDisabledBtn]}
-                  onPress={handleSiweGetNonce}
-                  disabled={!siweAddress.trim() || loadingProvider === 'wallet-nonce'}
-                >
-                  {loadingProvider === 'wallet-nonce' ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.siwePrimaryBtnText}>Get Sign Message →</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.siweSubtitle}>
-                  Open your wallet, sign this message, then paste the signature below.
-                </Text>
-                <View style={styles.siweMessageBox}>
-                  <Text style={styles.siweMessageText} numberOfLines={5} selectable>
-                    {siweMessage}
-                  </Text>
-                </View>
-                <TouchableOpacity style={styles.siweSecondaryBtn} onPress={handleOpenWalletForSign}>
-                  <Text style={styles.siweSecondaryBtnText}>📋 Copy Message & Open Wallet</Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.siweInput, { height: 72, textAlignVertical: 'top' }]}
-                  placeholder="0x... paste wallet signature here"
-                  placeholderTextColor={colors.textMuted}
-                  value={siweSignature}
-                  onChangeText={setSiweSignature}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  multiline
-                />
-                <TouchableOpacity
-                  style={[styles.siwePrimaryBtn, !siweSignature.trim() && styles.siweDisabledBtn]}
-                  onPress={handleSiweSubmit}
-                  disabled={!siweSignature.trim() || loadingProvider === 'wallet'}
-                >
-                  {loadingProvider === 'wallet' ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.siwePrimaryBtnText}>Verify & Login ✓</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setSiweStep('address')} style={{ marginTop: 12, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 14 }}>← Back to address</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity 
+              style={styles.sheetCloseButton}
+              onPress={() => setShowWalletFallback(false)}
+            >
+              <Text style={styles.sheetCloseButtonText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
     </KeyboardAvoidingView>
   );
 }
@@ -385,18 +301,17 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   logoContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: colors.card,
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  logoIcon: {
-    fontSize: 32,
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   headline: {
     fontSize: 32,
@@ -410,19 +325,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionGrid: {
-    gap: 16,
+    gap: 12,
   },
   socialBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
   },
   btnIcon: {
-    fontSize: 20,
-    marginRight: 10,
+    fontSize: 18,
+    marginRight: 8,
   },
   appleBtn: {
     backgroundColor: '#FFFFFF',
@@ -510,104 +425,82 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  // SIWE Wallet Login Modal styles
-  siweOverlay: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  siweSheet: {
-    backgroundColor: colors.bgCard,
+  bottomSheet: {
+    backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 40,
+    padding: 24,
+    alignItems: 'center',
   },
-  siweDragBar: {
+  sheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: colors.border,
+    backgroundColor: '#333',
     borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  siweCloseBtn: {
-    position: 'absolute',
-    top: 16,
-    right: 20,
-    padding: 4,
-  },
-  siweCloseBtnText: {
-    color: colors.textMuted,
-    fontSize: 18,
-  },
-  siweTitle: {
+  sheetTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.textPrimary,
     marginBottom: 8,
-    marginTop: 8,
   },
-  siweSubtitle: {
+  sheetSubtitle: {
     fontSize: 14,
     color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 20,
+    textAlign: 'center',
+    marginBottom: 24,
   },
-  siweInput: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 12,
+  qrContainer: {
+    width: 200,
+    height: 200,
+    backgroundColor: '#1E2330',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    marginBottom: 16,
-  },
-  siweMessageBox: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    marginBottom: 12,
-  },
-  siweMessageText: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    lineHeight: 18,
-  },
-  siwePrimaryBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 14,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 24,
   },
-  siwePrimaryBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  siweDisabledBtn: {
-    opacity: 0.45,
-  },
-  siweSecondaryBtn: {
-    backgroundColor: 'transparent',
+  sheetWebButton: {
+    backgroundColor: colors.accent + '20', // slight tint
     paddingVertical: 12,
+    paddingHorizontal: 20,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
-  siweSecondaryBtnText: {
+  sheetWebButtonText: {
     color: colors.accent,
-    fontSize: 14,
     fontWeight: '600',
+    fontSize: 14,
+  },
+  web2AdContainer: {
+    backgroundColor: '#162b1f',
+    padding: 16,
+    borderRadius: 12,
+    width: '100%',
+    marginBottom: 24,
+    borderLeftWidth: 4,
+    borderLeftColor: '#34d399',
+  },
+  web2AdText: {
+    color: '#a7f3d0',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  sheetCloseButton: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  sheetCloseButtonText: {
+    color: colors.textSecondary,
+    fontSize: 16,
   },
 });
