@@ -34,6 +34,9 @@ const getApiBaseUrl = () => {
     if (hostname.includes('agentrix.io')) {
       return 'https://api.agentrix.io/api';
     }
+
+    // 直接 IP 访问或未知域名：使用相对路径，由 Nginx / Next.js rewrite 转发
+    return `${window.location.protocol}//${window.location.host}/api`;
   }
 
   // 服务端渲染或默认情况：根据 NODE_ENV 判断
