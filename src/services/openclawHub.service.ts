@@ -1,17 +1,19 @@
 /**
- * OpenClaw Skill Hub — V2 (Real ClawHub Integration)
+ * OpenClaw Skill Hub — V3 (Real ClawHub Integration)
  *
- * Queries the Agentrix backend which now fetches 4500+ real skills from the
- * official ClawHub API (https://www.clawhub.ai/api/v1) with cursor-paginated
- * syncing, DB persistence and in-memory caching.
+ * Queries the Agentrix backend which fetches 5000+ real skills from the
+ * official ClawHub API (https://clawhub.ai/api/v1) via incremental sync.
  *
- * Endpoint: GET /api/openclaw/bridge/skill-hub/search
+ * The backend:
+ *  - Seeds from a committed snapshot JSON on cold start
+ *  - Incrementally fetches new skills every 2 min (3 pages/cycle)
+ *  - Persists ALL skills to DB
+ *  - Serves them via /api/openclaw/bridge/skill-hub/search (paginated)
  *
- * Data flow:
- *   1. fetchFromBridge() → GET /openclaw/bridge/skill-hub/search?limit=500
- *      (backend returns real ClawHub skills with SkillCategory enum values)
- *   2. Client-side filter + paginate → return items[] for rendering
- *   3. Fallback: 6 built-in skills if backend is unreachable
+ * This client-side service:
+ *  - Fetches the first page from backend for display
+ *  - Delegates search/filter/pagination to the backend
+ *  - No more client-side caching of full catalog (too large)
  */
 import { apiFetch } from './api';
 import type { SkillItem } from './marketplace.api';
@@ -98,39 +100,7 @@ const FALLBACK_CATEGORY_ICON: Record<string, string> = {
   General: '⚡',
 };
 
-// ── Minimal fallback (backend has 55+ built-ins + ClawHub real skills) ─────────
-const HUB_PLACEHOLDER: OpenClawHubSkill[] = [
-  { id: 'oc-memory', name: 'Long-Term Memory', icon: '🧠', description: 'Persistent memory across conversations', category: 'AI Tools', tags: ['memory', 'context'], rating: 4.9, installCount: 18200, price: 0 },
-  { id: 'oc-web-search', name: 'Web Search', icon: '🔍', description: 'Search the web with AI-powered relevance ranking', category: 'AI Tools', tags: ['search', 'web'], rating: 4.7, installCount: 15420, price: 0 },
-  { id: 'oc-code-exec', name: 'Code Sandbox', icon: '💻', description: 'Execute Python, JavaScript safely in sandbox', category: 'Dev Tools', tags: ['code', 'python'], rating: 4.8, installCount: 12300, price: 0 },
-  { id: 'oc-file-manager', name: 'File Manager', icon: '📁', description: 'Read, write and manage files', category: 'Automation', tags: ['files', 'storage'], rating: 4.5, installCount: 9800, price: 0 },
-  { id: 'oc-news-search', name: 'News', icon: '📰', description: 'Search real-time news from global sources', category: 'AI Tools', tags: ['news', 'realtime'], rating: 4.5, installCount: 9200, price: 0 },
-  { id: 'oc-translation', name: 'Translation', icon: '🌐', description: 'Translate text between 100+ languages', category: 'AI Tools', tags: ['translate', 'language'], rating: 4.7, installCount: 8900, price: 0 },
-  { id: 'oc-git', name: 'Git Operations', icon: '🐙', description: 'Clone, commit, push and manage GitHub repos', category: 'Dev Tools', tags: ['git', 'github'], rating: 4.6, installCount: 8100, price: 0 },
-  { id: 'oc-image-gen', name: 'Image Generator', icon: '🎨', description: 'Generate images from text prompts', category: 'Creative', tags: ['image', 'generation'], rating: 4.3, installCount: 7650, price: 0 },
-  { id: 'oc-crypto-price', name: 'Crypto Prices', icon: '💰', description: 'Real-time crypto prices and market cap', category: 'Finance', tags: ['crypto', 'price'], rating: 4.6, installCount: 6800, price: 0 },
-  { id: 'oc-data-analysis', name: 'Data Analysis', icon: '📊', description: 'Analyse datasets, generate charts', category: 'Data', tags: ['data', 'analytics'], rating: 4.6, installCount: 6100, price: 0 },
-  { id: 'oc-weather', name: 'Weather', icon: '🌤️', description: 'Real-time weather data for any location', category: 'General', tags: ['weather', 'forecast'], rating: 4.6, installCount: 5500, price: 0 },
-  { id: 'oc-web-scrape', name: 'Web Scraper', icon: '🕷️', description: 'Extract content from web pages', category: 'Data', tags: ['scrape', 'web'], rating: 4.4, installCount: 5400, price: 0 },
-  { id: 'oc-sql', name: 'SQL Agent', icon: '🗃️', description: 'Query databases with natural language', category: 'Data', tags: ['sql', 'database'], rating: 4.6, installCount: 5200, price: 0 },
-  { id: 'oc-browser', name: 'Browser Automation', icon: '🌐', description: 'Control a headless browser', category: 'Automation', tags: ['browser', 'automation'], rating: 4.5, installCount: 5100, price: 0 },
-  { id: 'oc-twitter', name: 'Twitter/X Agent', icon: '🐦', description: 'Post, search and analyze tweets', category: 'Integration', tags: ['twitter', 'social'], rating: 4.4, installCount: 4800, price: 0 },
-  { id: 'oc-docker', name: 'Docker Manager', icon: '🐋', description: 'Build, run and manage Docker containers', category: 'Dev Tools', tags: ['docker', 'container'], rating: 4.4, installCount: 4800, price: 0 },
-  { id: 'oc-stock', name: 'Stock Data', icon: '📈', description: 'Real-time stock quotes, charts and analysis', category: 'Finance', tags: ['stock', 'market'], rating: 4.5, installCount: 4600, price: 0 },
-  { id: 'oc-api-connector', name: 'API Connector', icon: '🔌', description: 'Connect to any REST or GraphQL API', category: 'Integration', tags: ['api', 'rest'], rating: 4.5, installCount: 4500, price: 0 },
-  { id: 'oc-email', name: 'Email Sender', icon: '📧', description: 'Send and read emails via SMTP/IMAP', category: 'Integration', tags: ['email', 'smtp'], rating: 4.5, installCount: 4400, price: 0 },
-  { id: 'oc-calculator', name: 'Calculator', icon: '🔢', description: 'Advanced math, unit conversion and formulas', category: 'General', tags: ['math', 'convert'], rating: 4.5, installCount: 4200, price: 0 },
-  { id: 'oc-pdf', name: 'PDF Reader', icon: '📄', description: 'Extract text and data from PDF documents', category: 'Data', tags: ['pdf', 'document'], rating: 4.5, installCount: 4200, price: 0 },
-  { id: 'oc-slack', name: 'Slack Bot', icon: '💬', description: 'Send messages and manage Slack channels', category: 'Integration', tags: ['slack', 'messaging'], rating: 4.5, installCount: 4100, price: 0 },
-  { id: 'oc-scheduler', name: 'Task Scheduler', icon: '⏰', description: 'Schedule recurring tasks and reminders', category: 'Automation', tags: ['schedule', 'cron'], rating: 4.5, installCount: 3700, price: 0 },
-  { id: 'oc-csv', name: 'CSV Tool', icon: '📋', description: 'Parse, transform and analyze CSV data', category: 'Data', tags: ['csv', 'data'], rating: 4.4, installCount: 3600, price: 0 },
-  { id: 'oc-tts', name: 'Text to Speech', icon: '🔊', description: 'Convert text to natural-sounding speech', category: 'Creative', tags: ['tts', 'speech'], rating: 4.5, installCount: 3500, price: 0 },
-  { id: 'oc-discord', name: 'Discord Bot', icon: '🎮', description: 'Manage Discord servers and channels', category: 'Integration', tags: ['discord', 'gaming'], rating: 4.4, installCount: 3500, price: 0 },
-  { id: 'oc-dex-swap', name: 'DEX Swap', icon: '🔄', description: 'Execute token swaps on decentralized exchanges', category: 'Finance', tags: ['dex', 'swap'], rating: 4.3, installCount: 3400, price: 0 },
-  { id: 'oc-stt', name: 'Speech to Text', icon: '🎤', description: 'Transcribe audio to text with high accuracy', category: 'Creative', tags: ['stt', 'transcription'], rating: 4.4, installCount: 3200, price: 0 },
-  { id: 'oc-debugger', name: 'AI Debugger', icon: '🔧', description: 'AI-assisted debugging with stack trace analysis', category: 'Dev Tools', tags: ['debug', 'error'], rating: 4.5, installCount: 3200, price: 0 },
-  { id: 'oc-workflow', name: 'Workflows', icon: '🔀', description: 'Build and execute multi-step workflows', category: 'Automation', tags: ['workflow', 'pipeline'], rating: 4.4, installCount: 3100, price: 0 },
-];
+// ── No more client-side placeholder — backend serves real data from DB ────────
 
 // ── Mapping: OpenClawHubSkill → enriched item for rendering ───────────────────
 function toDisplayItem(s: OpenClawHubSkill): any {
@@ -167,65 +137,93 @@ function toDisplayItem(s: OpenClawHubSkill): any {
   };
 }
 
-// ── Fetch from Agentrix backend bridge (now returns 4500+ real ClawHub skills)
-async function fetchFromBridge(): Promise<OpenClawHubSkill[]> {
-  try {
-    const resp = await apiFetch<any>(
-      '/openclaw/bridge/skill-hub/search?limit=500&sortBy=callCount&sortOrder=DESC',
-    );
-    const raw: any[] =
-      resp?.items || resp?.skills || resp?.data || (Array.isArray(resp) ? resp : []);
-    if (raw.length === 0) {
-      console.warn('[OpenClawHub] Bridge returned 0 skills');
-      return [];
-    }
-    console.log(`[OpenClawHub] Bridge returned ${raw.length} skills`);
-    return raw.map((s: any): OpenClawHubSkill => ({
-      id: s.id ?? s.key ?? `oc-${Math.random().toString(36).slice(2, 8)}`,
-      name: s.name ?? s.displayName ?? 'Unknown Skill',
-      displayName: s.displayName ?? s.name,
-      description: s.description ?? 'OpenClaw community skill',
-      author: s.author ?? 'OpenClaw Community',
-      category: s.category ?? 'utility',
-      subCategory: s.subCategory,
-      tags: s.tags ?? [],
-      version: s.version,
-      rating: typeof s.rating === 'number' ? s.rating : parseFloat(s.rating) || 0,
-      installCount: s.callCount ?? s.installCount ?? 0,
-      price: s.price ?? 0,
-      priceUnit: s.priceUnit ?? 'free',
-      package: s.hubSlug ?? s.key ?? s.name,
-      repoUrl: s.repoUrl,
-      icon: s.icon,
-    }));
-  } catch (err) {
-    console.error('[OpenClawHub] fetchFromBridge failed:', err instanceof Error ? err.message : String(err));
-    return [];
-  }
-}
+// ── Fetch from Agentrix backend bridge (server-side pagination) ───────────────
+// The backend now has real ClawHub skills in its DB, served via paginated endpoint.
+// We delegate ALL search/filter/pagination to the server.
 
 // ── Get hub skills (cached, with progressive loading) ─────────────────────────
+// Light cache for the "all skills" quick browse (first 100 by downloads)
 async function getHubSkills(): Promise<OpenClawHubSkill[]> {
   if (_hubCache && Date.now() - _hubCache.fetchedAt < HUB_CACHE_TTL_MS) {
     return _hubCache.items;
   }
 
-  const bridgeSkills = await fetchFromBridge();
-  if (bridgeSkills.length > 0) {
-    _hubCache = { items: bridgeSkills, fetchedAt: Date.now() };
-    return bridgeSkills;
+  try {
+    const resp = await apiFetch<any>(
+      '/openclaw/bridge/skill-hub/search?limit=100&sortBy=callCount&sortOrder=DESC',
+    );
+    const raw: any[] =
+      resp?.items || resp?.skills || resp?.data || (Array.isArray(resp) ? resp : []);
+    if (raw.length > 0) {
+      const skills = raw.map(mapRawToSkill);
+      console.log(`[OpenClawHub] Loaded ${skills.length} of ${resp?.total ?? '?'} total skills`);
+      _hubCache = { items: skills, fetchedAt: Date.now() };
+      return skills;
+    }
+    console.warn('[OpenClawHub] Bridge returned 0 skills');
+  } catch (err) {
+    console.error('[OpenClawHub] getHubSkills failed:', err instanceof Error ? err.message : String(err));
   }
 
-  // Fallback: minimal placeholder catalog
-  _hubCache = { items: HUB_PLACEHOLDER, fetchedAt: Date.now() };
-  return HUB_PLACEHOLDER;
+  return [];
 }
 
+function mapRawToSkill(s: any): OpenClawHubSkill {
+  return {
+    id: s.id ?? s.key ?? `oc-${Math.random().toString(36).slice(2, 8)}`,
+    name: s.name ?? s.displayName ?? 'Unknown Skill',
+    displayName: s.displayName ?? s.name,
+    description: s.description ?? 'OpenClaw community skill',
+    author: s.author ?? 'OpenClaw Community',
+    category: s.category ?? 'utility',
+    subCategory: s.subCategory,
+    tags: s.tags ?? [],
+    version: s.version,
+    rating: typeof s.rating === 'number' ? s.rating : parseFloat(s.rating) || 0,
+    installCount: s.callCount ?? s.installCount ?? 0,
+    price: s.price ?? 0,
+    priceUnit: s.priceUnit ?? 'free',
+    package: s.hubSlug ?? s.key ?? s.name,
+    repoUrl: s.repoUrl,
+    icon: s.icon,
+  };
+}
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function searchOpenClawHub(
   params: OpenClawHubSearchParams,
 ): Promise<OpenClawHubSearchResponse> {
+  // Delegate search to backend for server-side filtering + pagination
+  try {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    if (params.category && params.category !== 'All') {
+      // Map display category back to backend enum
+      const backendCat = Object.entries(CATEGORY_MAP).find(([, v]) => v === params.category)?.[0];
+      if (backendCat) qs.set('category', backendCat);
+    }
+    qs.set('page', String(params.page || 1));
+    qs.set('limit', String(params.limit || 30));
+    qs.set('sortBy', 'callCount');
+    qs.set('sortOrder', 'DESC');
+
+    const resp = await apiFetch<any>(`/openclaw/bridge/skill-hub/search?${qs.toString()}`);
+    const raw: any[] = resp?.items ?? [];
+    const total = resp?.total ?? raw.length;
+    const page = resp?.page ?? params.page ?? 1;
+    const limit = params.limit || 30;
+
+    return {
+      items: raw.map(s => toDisplayItem(mapRawToSkill(s))),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  } catch (err) {
+    console.error('[OpenClawHub] searchOpenClawHub backend call failed:', err instanceof Error ? err.message : String(err));
+  }
+
+  // Fallback: use cached top skills
   const allSkills = await getHubSkills();
   let list = [...allSkills];
 
