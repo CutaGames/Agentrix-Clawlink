@@ -117,10 +117,11 @@ export class OpenClawConnectionService {
     try {
       this.logger.log(`Starting cloud provisioning for ${cloudInstanceId}...`); 
 
-      // 1. SSH parameters from .env
+      // 1. SSH parameters from .env (default PEM path under ubuntu home)
       const host = process.env.CLOUD_HOST || '18.139.157.116';
       const user = process.env.CLOUD_USER || 'ubuntu';
-      const pemPath = process.env.CLOUD_PEM_PATH || '/root/.ssh/hq.pem';        
+      const pemPath = process.env.CLOUD_PEM_PATH || '/home/ubuntu/.ssh/hq.pem';
+      const isLocalHost = host === '127.0.0.1' || host === 'localhost' || host === process.env.HOSTNAME;
 
       // 2. Map provider id → OpenClaw env var name and fetch platform API key
       // The platform owns the API keys — users never need to configure them.
@@ -170,13 +171,20 @@ export class OpenClawConnectionService {
       }
 
       // 3. Run container with LLM env vars injected; -p 0:3001 = random host port
-      const sshCmd = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped ${llmEnvFlags} openclaw/openclaw:latest"`;
+      // When running on the same host, skip SSH and execute docker directly
+      const dockerRunCmd = `docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped ${llmEnvFlags} openclaw/openclaw:latest`;
+      const sshCmd = isLocalHost
+        ? dockerRunCmd
+        : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${dockerRunCmd}"`;
 
-      this.logger.log(`Executing SSH deploy for ${cloudInstanceId} (provider: ${resolvedProvider})`);
+      this.logger.log(`Executing deploy for ${cloudInstanceId} (provider: ${resolvedProvider}, local: ${isLocalHost})`);
       const { stdout: containerId } = await execAsync(sshCmd);
 
       // 4. Get assigned host port
-      const portCmd = `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "docker port ${containerId.trim()} 3001"`;
+      const portQuery = `docker port ${containerId.trim()} 3001`;
+      const portCmd = isLocalHost
+        ? portQuery
+        : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${portQuery}"`;
       const { stdout: portOutput } = await execAsync(portCmd);
 
       // portOutput: "0.0.0.0:32768\n" or ":::32768\n"

@@ -42,6 +42,7 @@ export class UnifiedMarketplaceController {
   @ApiQuery({ name: 'category', required: false, enum: SkillCategory, isArray: true })
   @ApiQuery({ name: 'resourceType', required: false, enum: SkillResourceType, isArray: true })
   @ApiQuery({ name: 'source', required: false, enum: SkillSource, isArray: true })
+  @ApiQuery({ name: 'excludeOriginalPlatform', required: false, type: String, isArray: true, description: '排除指定原始平台（如 openclaw）' })
   @ApiQuery({ name: 'priceMin', required: false, type: Number })
   @ApiQuery({ name: 'priceMax', required: false, type: Number })
   @ApiQuery({ name: 'rating', required: false, type: Number })
@@ -57,6 +58,7 @@ export class UnifiedMarketplaceController {
     @Query('category') category?: SkillCategory | SkillCategory[],
     @Query('resourceType') resourceType?: SkillResourceType | SkillResourceType[],
     @Query('source') source?: SkillSource | SkillSource[],
+    @Query('excludeOriginalPlatform') excludeOriginalPlatform?: string | string[],
     @Query('priceMin') priceMin?: number,
     @Query('priceMax') priceMax?: number,
     @Query('rating') rating?: number,
@@ -74,6 +76,7 @@ export class UnifiedMarketplaceController {
       category: Array.isArray(category) ? category : category ? [category] : undefined,
       resourceType: Array.isArray(resourceType) ? resourceType : resourceType ? [resourceType] : undefined,
       source: Array.isArray(source) ? source : source ? [source] : undefined,
+      excludeOriginalPlatform: Array.isArray(excludeOriginalPlatform) ? excludeOriginalPlatform : excludeOriginalPlatform ? [excludeOriginalPlatform] : undefined,
       priceMin: priceMin ? Number(priceMin) : undefined,
       priceMax: priceMax ? Number(priceMax) : undefined,
       rating: rating ? Number(rating) : undefined,

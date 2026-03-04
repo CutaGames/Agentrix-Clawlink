@@ -69,7 +69,7 @@ export default function MarketplacePage() {
   const router = useRouter();
   const { t } = useLocalization();
   const { isAuthenticated } = useUser();
-  const [viewMode, setViewMode] = useState<ViewMode>('openclaw');
+  const [viewMode, setViewMode] = useState<ViewMode>('resources');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -99,37 +99,21 @@ export default function MarketplacePage() {
   const fetchSkills = useCallback(async (reset = true) => {
     if (viewMode === 'tasks') return;
     if (viewMode === 'openclaw') {
-            // OpenClaw skills: call the skill-hub API (returns built-in + live hub skills)
+      // OpenClaw skills: agentCompatible=true filter
       if (reset) { setLoading(true); pgRef.current = 1; } else setLoadingMore(true);
       try {
         const p = new URLSearchParams();
         if (debouncedQ) p.set('q', debouncedQ);
+        p.append('layer', 'infra'); p.append('layer', 'logic'); p.append('layer', 'composite');
         if (selCat !== 'all') p.set('category', selCat);
-        p.set('limit', '20');
+        p.set('humanAccessible', 'true'); p.set('limit', '12');
         p.set('page', reset ? '1' : String(pgRef.current + 1));
-        p.set('sortBy', sortBy === 'callCount' ? 'callCount' : 'name');
-        p.set('sortOrder', 'DESC');
-        const res = await fetch('/api/openclaw/bridge/skill-hub/search?' + p.toString());
+        p.set('sortBy', sortBy); p.set('sortOrder', 'DESC');
+        const res = await fetch('/api/unified-marketplace/search?' + p.toString());
         const data = await res.json();
-        // Normalize skill-hub items to match Skill shape
-        const items: Skill[] = (data.items || []).map((s: any) => ({
-          id: s.id ?? s.key,
-          name: s.name,
-          displayName: s.displayName ?? s.name,
-          description: s.description,
-          category: s.category ?? 'general',
-          layer: 'logic',
-          valueType: 'service',
-          pricing: { type: 'free', currency: 'USD' },
-          tags: s.tags ?? [],
-          callCount: s.callCount ?? 0,
-          rating: s.rating ?? 4.5,
-          imageUrl: s.icon && s.icon.length > 2 ? s.icon : undefined,
-          humanAccessible: true,
-          source: 'openclaw_hub',
-        }));
+        const items: Skill[] = data.items || [];
         if (reset) { setSkills(items); pgRef.current = 1; } else { setSkills(prev => [...prev, ...items]); pgRef.current += 1; }
-        setTotal(data.total || items.length); setHasMore(data.hasMore ?? items.length >= 20);
+        setTotal(data.total || items.length); setHasMore(items.length >= 12);
       } catch (e) { console.error('OpenClaw fetch error:', e); }
       finally { setLoading(false); setLoadingMore(false); }
       return;

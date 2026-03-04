@@ -26,6 +26,7 @@ export interface UnifiedSearchParams {
   category?: SkillCategory[];
   resourceType?: SkillResourceType[];
   source?: SkillSource[];
+  excludeOriginalPlatform?: string[];  // 排除指定原始平台的 skills（如 'openclaw'）
   priceMin?: number;
   priceMax?: number;
   rating?: number;
@@ -97,6 +98,7 @@ export class UnifiedMarketplaceService {
       category,
       resourceType,
       source,
+      excludeOriginalPlatform,
       priceMin,
       priceMax,
       rating,
@@ -139,6 +141,14 @@ export class UnifiedMarketplaceService {
     // 来源过滤
     if (source?.length) {
       queryBuilder.andWhere('skill.source IN (:...sources)', { sources: source });
+    }
+
+    // 排除指定原始平台（如排除 OpenClaw Hub 同步的 skills）
+    if (excludeOriginalPlatform?.length) {
+      queryBuilder.andWhere(
+        '(skill.original_platform IS NULL OR skill.original_platform NOT IN (:...excludePlatforms))',
+        { excludePlatforms: excludeOriginalPlatform },
+      );
     }
 
     // 价格过滤
