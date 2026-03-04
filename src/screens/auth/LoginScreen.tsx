@@ -188,7 +188,7 @@ export function LoginScreen() {
       {/* Brand Header */}
       <View style={styles.header}>
         <View style={styles.logoCircle}>
-          <Text style={styles.logoEmoji}>🌀</Text>
+          <Text style={styles.logoInitials}>AX</Text>
         </View>
         <Text style={styles.logoText}>Agentrix</Text>
         <Text style={styles.tagline}>Intelligent Agents at your Fingertips</Text>
@@ -372,9 +372,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, paddingTop: 80, paddingBottom: 40 },
   header: { alignItems: 'center', marginBottom: 48 },
-  logoCircle: { width: 80, height: 80, borderRadius: 24, backgroundColor: colors.bgCard, justifyContent: 'center', alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: colors.border },
-  logoEmoji: { fontSize: 40 },
-  logoText: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, letterSpacing: -1 },
+  logoCircle: { width: 72, height: 72, borderRadius: 20, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
+  logoInitials: { fontSize: 30, fontWeight: '900', color: '#fff', letterSpacing: -1 },
+  logoText: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, letterSpacing: -0.5 },
   tagline: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
   
   web25Title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },

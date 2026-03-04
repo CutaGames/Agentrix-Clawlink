@@ -1,0 +1,23 @@
+﻿2026-02-28T02:39:59.8233455Z ##[group]Run npx expo prebuild --platform android --clean --no-install
+2026-02-28T02:39:59.8233982Z [36;1mnpx expo prebuild --platform android --clean --no-install[0m
+2026-02-28T02:39:59.8284647Z shell: /usr/bin/bash -e {0}
+2026-02-28T02:39:59.8285158Z env:
+2026-02-28T02:39:59.8285458Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.18-8/x64
+2026-02-28T02:39:59.8285947Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.18-8/x64
+2026-02-28T02:39:59.8286344Z   ANDROID_HOME: /usr/local/lib/android/sdk
+2026-02-28T02:39:59.8286627Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+2026-02-28T02:39:59.8286874Z   CI: 1
+2026-02-28T02:39:59.8287027Z ##[endgroup]
+2026-02-28T02:40:00.5572129Z ! Git branch has uncommitted file changes
+2026-02-28T02:40:00.5577603Z › It's recommended to commit all changes before proceeding in case you want to revert generated changes.
+2026-02-28T02:40:00.5579361Z Git status is dirty but the command will continue because the terminal is not interactive.
+2026-02-28T02:40:00.5750940Z - Clearing android
+2026-02-28T02:40:00.5784645Z ✔ Cleared android code
+2026-02-28T02:40:00.6563624Z - Creating native directory (./android)
+2026-02-28T02:40:01.1036572Z ✔ Created native directory
+2026-02-28T02:40:01.1041862Z - Updating package.json
+2026-02-28T02:40:01.1192353Z ✔ Updated package.json | no changes
+2026-02-28T02:40:01.1193176Z - Running prebuild
+2026-02-28T02:40:04.5213231Z » android: userInterfaceStyle: Install expo-system-ui in your project to enable this feature.
+2026-02-28T02:40:04.5214693Z - Running prebuild
+2026-02-28T02:40:04.5293405Z ✔ Finished prebuild

@@ -68,6 +68,15 @@
       "favicon": "./assets/favicon.png"
     },
     "newArchEnabled": false,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 5000,
+      "url": "https://u.expo.dev/96a641e0-ce03-45ff-9de7-2cd89c488236"
+    },
     "plugins": [
       [
         "expo-build-properties",
@@ -86,6 +95,7 @@
           "sounds": []
         }
       ],
+      "expo-updates",
       "expo-image-picker",
       [
         "expo-location",

@@ -34,6 +34,7 @@ import {
   Animated,
   Platform,
   Linking,
+  Share,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
@@ -92,7 +93,7 @@ export function CheckoutScreen() {
   const [stripeOpen, setStripeOpen] = useState(false);
   const [transakOpen, setTransakOpen] = useState(false);
   const [scanData, setScanData] = useState<PayIntentResult | null>(null);
-  const [scanPolling, setScanPolling] = useState(false);
+  const [paySuccess, setPaySuccess] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Animated chevrons
@@ -171,13 +172,39 @@ export function CheckoutScreen() {
     try {
       const order = await createOrder('quick_pay');
       if (order?.success !== false) {
-        // If backend already processed (session key auto-pay), show success
+        // If backend already processed (session key auto-pay), show success in-app
         if (order?.status === 'completed' || order?.status === 'paid') {
-          Alert.alert('⚡ Payment Complete', 'QuickPay processed instantly!');
-          navigation.goBack();
+          haptic();
+          setPaySuccess(true);
           return;
         }
-        // Otherwise open web for session key setup/approval
+        // If order requires session-key approval, try to complete in-app via polling
+        if (order?.payIntentId || order?.orderId) {
+          const intentId = order.payIntentId || order.orderId;
+          let attempts = 0;
+          const maxAttempts = 20;
+          const poll = setInterval(async () => {
+            attempts++;
+            try {
+              const status = await apiFetch<any>(`/payments/pay-intent/${intentId}/status`);
+              if (status?.status === 'completed' || status?.status === 'paid') {
+                clearInterval(poll);
+                haptic();
+                setPaySuccess(true);
+                setPaying(false);
+                setActiveMethod(null);
+              }
+            } catch {}
+            if (attempts >= maxAttempts) {
+              clearInterval(poll);
+              Alert.alert('⏳ Payment Pending', 'Your payment is being processed. You\'ll receive a notification when it completes.');
+              setPaying(false);
+              setActiveMethod(null);
+            }
+          }, 3000);
+          return;
+        }
+        // Fallback: open web for session key setup/approval
         if (order?.checkoutUrl) {
           const token = ensureToken();
           if (token) {
@@ -185,7 +212,6 @@ export function CheckoutScreen() {
             await WebBrowser.openBrowserAsync(url);
           }
         } else {
-          // Fallback: open web checkout with quickpay method
           await openWebCheckout('quickpay');
         }
       }
@@ -209,9 +235,38 @@ export function CheckoutScreen() {
         if (canOpen) {
           await Linking.openURL(order.walletConnectUri);
         } else {
-          // Fallback: open web checkout
-          await openWebCheckout('wallet');
+          // Try common wallet deeplinks
+          const deepLinks = [
+            { scheme: 'metamask://wc?uri=', name: 'MetaMask' },
+            { scheme: 'trust://wc?uri=', name: 'Trust Wallet' },
+            { scheme: 'okex://wc?uri=', name: 'OKX Wallet' },
+          ];
+          let opened = false;
+          for (const dl of deepLinks) {
+            try {
+              const url = `${dl.scheme}${encodeURIComponent(order.walletConnectUri)}`;
+              const can = await Linking.canOpenURL(url);
+              if (can) {
+                await Linking.openURL(url);
+                opened = true;
+                break;
+              }
+            } catch {}
+          }
+          if (!opened) {
+            Alert.alert(
+              'No Wallet Found',
+              'Please install MetaMask, Trust Wallet, or OKX Wallet to pay with crypto.\n\nAlternatively, use Scan to Pay with any existing wallet.',
+              [
+                { text: 'Use QR Pay', onPress: () => { setPaying(false); setActiveMethod(null); handleScanToPay(); } },
+                { text: 'OK' },
+              ],
+            );
+          }
         }
+      } else if (order?.eip681Uri) {
+        // EIP-681 URI — try to open in wallet
+        await Linking.openURL(order.eip681Uri);
       } else if (order?.checkoutUrl) {
         const token = ensureToken();
         if (token) {
@@ -227,7 +282,7 @@ export function CheckoutScreen() {
       setPaying(false);
       setActiveMethod(null);
     }
-  }, [haptic, createOrder, ensureToken, openWebCheckout]);
+  }, [haptic, createOrder, ensureToken, openWebCheckout, handleScanToPay]);
 
   const handleScanToPay = useCallback(async () => {
     haptic();
@@ -264,8 +319,7 @@ export function CheckoutScreen() {
               stopPolling();
               setScanData(null);
               haptic();
-              Alert.alert('✅ Payment Received!', 'Your purchase has been confirmed.');
-              navigation.goBack();
+              setPaySuccess(true);
             }
           } catch { /* keep polling */ }
         }, POLL_INTERVAL);
@@ -399,6 +453,48 @@ export function CheckoutScreen() {
       )}
     </TouchableOpacity>
   );
+
+  // ── Share after payment ──
+  const handleShareAfterPay = useCallback(() => {
+    try {
+      navigation.navigate('ShareCard' as any, {
+        shareUrl: `https://clawlink.app/skill/${skillId}?ref=purchase`,
+        title: skillName || skill?.displayName || skill?.name || 'Skill',
+        userName: 'ClawLink User',
+      });
+    } catch {
+      Share.share({
+        message: `I just purchased "${skillName || skill?.name}" on ClawLink! 🎉\nhttps://clawlink.app/skill/${skillId}`,
+      });
+    }
+  }, [skillId, skillName, skill, navigation]);
+
+  // ── Payment Success View ──
+  if (paySuccess) {
+    return (
+      <View style={styles.successContainer}>
+        <Text style={styles.successEmoji}>🎉</Text>
+        <Text style={styles.successTitle}>Payment Complete!</Text>
+        <Text style={styles.successSub}>
+          You now have access to {skillName || skill?.displayName || skill?.name || 'this skill'}
+        </Text>
+        <View style={styles.successActions}>
+          <TouchableOpacity style={styles.sharePayBtn} onPress={handleShareAfterPay}>
+            <Text style={styles.sharePayBtnText}>🔗 Share with Friends</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sharePosterBtn} onPress={handleShareAfterPay}>
+            <Text style={styles.sharePosterBtnText}>📸 Share Poster</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity
+          style={styles.successDoneBtn}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.successDoneBtnText}>Done</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   // Chevron rotation interpolation
   const stripeRotate = stripeChevron.interpolate({
@@ -749,4 +845,44 @@ const styles = StyleSheet.create({
   // Cancel
   cancelBtn: { alignItems: 'center', padding: 16, marginTop: 8 },
   cancelText: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
+
+  // Payment Success
+  successContainer: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 16,
+  },
+  successEmoji: { fontSize: 64 },
+  successTitle: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
+  successSub: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  successActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  sharePayBtn: {
+    backgroundColor: colors.primary + '18',
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: colors.primary + '44',
+  },
+  sharePayBtnText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  sharePosterBtn: {
+    backgroundColor: '#f97316' + '18',
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#f97316' + '44',
+  },
+  sharePosterBtnText: { color: '#fb923c', fontWeight: '700', fontSize: 14 },
+  successDoneBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingHorizontal: 48,
+    paddingVertical: 16,
+    marginTop: 12,
+  },
+  successDoneBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

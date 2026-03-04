@@ -17,10 +17,18 @@ import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
-const STATUS_COLOR = {
+const STATUS_COLOR: Record<string, string> = {
   active: colors.success,
   disconnected: colors.textMuted,
-  error: colors.error,
+  error: colors.error ?? '#ef4444',
+  unknown: '#6b7280',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  active: 'ACTIVE',
+  disconnected: 'OFFLINE',
+  error: 'ERROR',
+  unknown: 'UNKNOWN',
 };
 
 // ── Onboarding Checklist Card ─────────────────────────────────────
@@ -311,16 +319,28 @@ export function AgentConsoleScreen() {
               <Text style={styles.statLabel}>Skills</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={[styles.statValue, { color: STATUS_COLOR[activeInstance.status] }]}>
-                {activeInstance.status.toUpperCase()}
+              <Text style={[styles.statValue, { color: STATUS_COLOR[activeInstance.status] ?? '#6b7280' }]}>
+                {STATUS_LABEL[activeInstance.status] ?? activeInstance.status.toUpperCase()}
               </Text>
               <Text style={styles.statLabel}>Status</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{activeInstance.deployType}</Text>
+              <Text style={styles.statValue}>{activeInstance.deployType || '—'}</Text>
               <Text style={styles.statLabel}>Type</Text>
             </View>
           </View>
+
+          {/* Error instance hint */}
+          {activeInstance.status === 'error' && (
+            <View style={{ backgroundColor: '#ef444418', borderRadius: 12, padding: 12, marginTop: -8 }}>
+              <Text style={{ color: '#f87171', fontSize: 13, fontWeight: '600', marginBottom: 4 }}>
+                ⚠️ This instance encountered an error during provisioning.
+              </Text>
+              <Text style={{ color: '#94a3b8', fontSize: 12, lineHeight: 18 }}>
+                Go to My Agents to clean up error instances, then deploy a new one.
+              </Text>
+            </View>
+          )}
 
           {/* Storage Card */}
           <TouchableOpacity

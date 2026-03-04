@@ -17,16 +17,6 @@ type Nav = NativeStackNavigationProp<MarketStackParamList, 'Marketplace'>;
 const SKILL_CATEGORIES = ['All', 'Dev Tools', 'AI Tools', 'Data', 'Integration', 'Commerce', 'Creative', 'Automation', 'Finance'];
 const RESOURCE_CATEGORIES = ['All', 'Productivity', 'Code', 'Research', 'Creative', 'Business', 'Finance'];
 
-// Mock fallback resources shown when API returns no paid items
-const MOCK_RESOURCES = [
-  { id: 'r1', icon: '🗄️', name: 'Cloud Storage Adapter', description: 'Unified S3/GCS/Azure interface — store and retrieve files via a single API', price: 0.01, tokenCost: null, rating: 4.6 },
-  { id: 'r2', icon: '📊', name: 'Market Data API', description: 'Real-time stocks, crypto & forex data feed with historical support', price: 0.01, tokenCost: null, rating: 4.5 },
-  { id: 'r3', icon: '🖥️', name: 'Cloud GPU Compute', description: 'On-demand A100/H100 GPU — pay-per-second billing for ML workloads', price: 0.50, tokenCost: null, rating: 4.6 },
-  { id: 'r4', icon: '🔍', name: 'Web Search API', description: 'Programmatic web search with structured JSON results', price: 0.005, tokenCost: null, rating: 4.4 },
-  { id: 'r5', icon: '🗺️', name: 'Maps & Geocoding', description: 'Address lookup, distance matrix and reverse geocoding', price: 0.002, tokenCost: null, rating: 4.3 },
-  { id: 'r6', icon: '📧', name: 'Email Send API', description: 'Transactional email with templates, attachments and delivery tracking', price: 0.001, tokenCost: null, rating: 4.7 },
-];
-
 // OpenClaw Hub skills tab — uses the OpenClaw Hub search service
 function OpenClawSkillsTab() {
   const navigation = useNavigation<Nav>();
@@ -51,23 +41,9 @@ function OpenClawSkillsTab() {
     staleTime: 60_000,
   });
 
-  // Fallback skills shown when hub is unreachable
-  const MOCK_SKILLS = [
-    { id: 's1', icon: '🧠', name: 'Long-Term Memory', description: 'Persistent memory across agent conversations', price: 0, tokenCost: 0, rating: 4.9, installCount: 18200 },
-    { id: 's2', icon: '🔍', name: 'Web Search', description: 'AI-powered web search with relevance ranking', price: 0, tokenCost: 0, rating: 4.7, installCount: 15420 },
-    { id: 's3', icon: '💻', name: 'Code Sandbox', description: 'Execute Python and JavaScript safely in sandbox', price: 0, tokenCost: 0, rating: 4.8, installCount: 12300 },
-    { id: 's4', icon: '📁', name: 'File Manager', description: 'Read, write and manage files', price: 0, tokenCost: 0, rating: 4.5, installCount: 9800 },
-    { id: 's5', icon: '📰', name: 'News', description: 'Search real-time news from global sources', price: 0, tokenCost: 0, rating: 4.5, installCount: 9200 },
-    { id: 's6', icon: '🌐', name: 'Translation', description: 'Translate text between 100+ languages', price: 0, tokenCost: 0, rating: 4.7, installCount: 8900 },
-    { id: 's7', icon: '🐙', name: 'Git', description: 'Clone, commit, push and manage GitHub repos', price: 0, tokenCost: 0, rating: 4.6, installCount: 8100 },
-    { id: 's8', icon: '🎨', name: 'Image Generator', description: 'Generate images from text prompts', price: 0, tokenCost: 0, rating: 4.3, installCount: 7650 },
-    { id: 's9', icon: '💰', name: 'Crypto Prices', description: 'Real-time crypto prices and market cap', price: 0, tokenCost: 0, rating: 4.6, installCount: 6800 },
-    { id: 's10', icon: '📊', name: 'Data Analysis', description: 'Analyse datasets and generate charts', price: 0, tokenCost: 0, rating: 4.6, installCount: 6100 },
-    { id: 's11', icon: '🌤️', name: 'Weather', description: 'Real-time weather data for any location', price: 0, tokenCost: 0, rating: 4.6, installCount: 5500 },
-    { id: 's12', icon: '🔌', name: 'API Connector', description: 'Connect to any REST or GraphQL API', price: 0, tokenCost: 0, rating: 4.5, installCount: 4500 },
-  ];
-
-  const skills: any[] = data ?? MOCK_SKILLS;
+  // Real data comes from backend (4700+ real ClawHub skills).
+  // Show empty state if backend is unreachable instead of fake mock data.
+  const skills: any[] = data ?? [];
 
   return (
     <View style={styles.tabContainer}>
@@ -176,7 +152,7 @@ function ResourcesTab() {
     staleTime: 60_000,
   });
 
-  const resources: any[] = data ?? MOCK_RESOURCES;
+  const resources: any[] = data ?? [];
 
   return (
     <View style={styles.tabContainer}>

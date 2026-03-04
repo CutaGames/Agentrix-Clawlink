@@ -227,6 +227,8 @@ const STATUS_COLOR: Record<string, string> = {
   draft: '#6366f1',
   suspended: '#f59e0b',
   terminated: '#ef4444',
+  error: '#ef4444',
+  disconnected: '#6b7280',
 };
 
 export function AgentAccountScreen() {

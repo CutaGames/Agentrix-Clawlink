@@ -36,8 +36,11 @@ const queryClient = new QueryClient({
 function SplashScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: -1 }}>AX</Text>
+      </View>
       <ActivityIndicator size="large" color={colors.accent} />
-      <Text style={{ color: colors.textMuted, marginTop: 16, fontSize: 14 }}>ClawLink</Text>
+      <Text style={{ color: colors.textMuted, marginTop: 16, fontSize: 14 }}>Agentrix</Text>
     </View>
   );
 }

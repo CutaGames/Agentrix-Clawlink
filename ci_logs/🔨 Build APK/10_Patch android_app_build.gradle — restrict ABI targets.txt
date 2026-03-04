@@ -1,0 +1,33 @@
+﻿2026-02-28T02:40:04.6072123Z ##[group]Run python3 - << 'PYEOF'
+2026-02-28T02:40:04.6072514Z [36;1mpython3 - << 'PYEOF'[0m
+2026-02-28T02:40:04.6072746Z [36;1mimport re, os, sys[0m
+2026-02-28T02:40:04.6072996Z [36;1mfilepath = 'android/app/build.gradle'[0m
+2026-02-28T02:40:04.6073283Z [36;1mif not os.path.exists(filepath):[0m
+2026-02-28T02:40:04.6073570Z [36;1m    print(f'[skip] {filepath} not found')[0m
+2026-02-28T02:40:04.6073852Z [36;1m    sys.exit(0)[0m
+2026-02-28T02:40:04.6074064Z [36;1mwith open(filepath) as f:[0m
+2026-02-28T02:40:04.6074301Z [36;1m    content = f.read()[0m
+2026-02-28T02:40:04.6074523Z [36;1mif 'abiFilters' in content:[0m
+2026-02-28T02:40:04.6075086Z [36;1m    print('[ok] abiFilters already present — skipping')[0m
+2026-02-28T02:40:04.6075394Z [36;1m    sys.exit(0)[0m
+2026-02-28T02:40:04.6075660Z [36;1m# Insert ndk block as first line inside defaultConfig[0m
+2026-02-28T02:40:04.6075954Z [36;1mfixed = re.sub([0m
+2026-02-28T02:40:04.6076155Z [36;1m    r'(defaultConfig\s*\{)',[0m
+2026-02-28T02:40:04.6076519Z [36;1m    '\\1\n        ndk {\n            abiFilters "arm64-v8a", "x86_64"\n        }',[0m
+2026-02-28T02:40:04.6076862Z [36;1m    content, count=1[0m
+2026-02-28T02:40:04.6077166Z [36;1m)[0m
+2026-02-28T02:40:04.6077360Z [36;1mif fixed == content:[0m
+2026-02-28T02:40:04.6077663Z [36;1m    print('[warn] Could not find defaultConfig block — skipping')[0m
+2026-02-28T02:40:04.6077985Z [36;1melse:[0m
+2026-02-28T02:40:04.6078372Z [36;1m    with open(filepath, 'w') as f:[0m
+2026-02-28T02:40:04.6078625Z [36;1m        f.write(fixed)[0m
+2026-02-28T02:40:04.6078957Z [36;1m    print('[patched] Added abiFilters arm64-v8a + x86_64 to defaultConfig')[0m
+2026-02-28T02:40:04.6079317Z [36;1mPYEOF[0m
+2026-02-28T02:40:04.6129308Z shell: /usr/bin/bash -e {0}
+2026-02-28T02:40:04.6129561Z env:
+2026-02-28T02:40:04.6129853Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.18-8/x64
+2026-02-28T02:40:04.6130334Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.18-8/x64
+2026-02-28T02:40:04.6130735Z   ANDROID_HOME: /usr/local/lib/android/sdk
+2026-02-28T02:40:04.6131019Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+2026-02-28T02:40:04.6131270Z ##[endgroup]
+2026-02-28T02:40:04.6420563Z [patched] Added abiFilters arm64-v8a + x86_64 to defaultConfig
