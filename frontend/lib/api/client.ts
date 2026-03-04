@@ -258,7 +258,7 @@ class ApiClient {
       // 网络错误特殊处理
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         const networkError = new Error(
-          `无法连接到服务器。请确认后端服务已启动（${this.baseURL.replace('/api', '')}）`
+          `无法连接到服务器。请确认后端服务已启动（${this.baseURL.replace(/\/api$/, '')}）`
         );
         networkError.name = 'NetworkError';
         throw networkError;
