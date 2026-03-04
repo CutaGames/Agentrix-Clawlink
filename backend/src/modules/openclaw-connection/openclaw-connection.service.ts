@@ -206,7 +206,7 @@ export class OpenClawConnectionService {
           platformTools: getDefaultSkillHandlerNames(),
           provisionedAt: new Date().toISOString(),
           llmProvider: llmProvider,
-        },
+        } as any,
       });
       this.logger.log(`Cloud instance ${cloudInstanceId} live at ${instanceUrl} (LLM: ${llmProvider})`);
     } catch (error: any) {

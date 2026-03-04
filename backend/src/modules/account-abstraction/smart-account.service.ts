@@ -76,7 +76,7 @@ export class SmartAccountService {
 
     const provider = new JsonRpcProvider(this.rpcUrl);
     const factory = new Contract(this.factoryAddress, FACTORY_ABI, provider);
-    const address = await factory.getAddress(ownerAddress, salt);
+    const address = await factory.getFunction('getAddress')(ownerAddress, salt);
     return address as string;
   }
 

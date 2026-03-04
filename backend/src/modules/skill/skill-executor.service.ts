@@ -767,7 +767,7 @@ export class SkillExecutorService {
       const currency = skill.pricing.currency || 'USDC';
 
       try {
-        const balanceResult = await this.walletService.getBalance(context.userId);
+        const balanceResult = await this.walletService.getWalletBalance(context.userId);
         const available = Number(balanceResult?.balance || 0);
 
         if (available < price) {
@@ -829,10 +829,9 @@ export class SkillExecutorService {
           outputSchema: { type: 'object', properties: { result: { type: 'string' } } },
           executor: executor || { type: 'http', endpoint: '' },
           pricing: pricing || { type: SkillPricingType.FREE },
-          creatorId: context.userId,
           version: '1.0.0',
           tags: params.tags || [],
-        });
+        }, context.userId);
 
         return {
           success: true,
