@@ -94,6 +94,8 @@ import { MessagingModule } from './modules/messaging/messaging.module';
 import { WebSocketModule } from './modules/websocket/websocket.module';
 // Workflow automation (Layer 1)
 import { WorkflowModule } from './modules/workflow/workflow.module';
+// ERC-4337 Account Abstraction (gasless txns)
+import { AccountAbstractionModule } from './modules/account-abstraction/account-abstraction.module';
 
 @Module({
   imports: [
@@ -196,6 +198,8 @@ import { WorkflowModule } from './modules/workflow/workflow.module';
     WebSocketModule,
     // Workflow automation & cron (Layer 1)
     WorkflowModule,
+    // ERC-4337: Account Abstraction (gasless txns, smart accounts)
+    AccountAbstractionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
