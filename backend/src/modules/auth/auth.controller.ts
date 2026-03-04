@@ -1,5 +1,7 @@
 import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AuthService } from './auth.service';
 import { SocialAccountService } from './social-account.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -9,6 +11,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { SocialAccountType } from '../../entities/social-account.entity';
+import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -18,6 +21,8 @@ export class AuthController {
     private authService: AuthService,
     private socialAccountService: SocialAccountService,
     private configService: ConfigService,
+    @InjectRepository(OpenClawInstance)
+    private readonly instanceRepo: Repository<OpenClawInstance>,
   ) {}
 
   @Post('register')
@@ -907,6 +912,14 @@ export class AuthController {
     if (!user) {
       throw new BadRequestException('用户不存在');
     }
+
+    // Always return the user's OpenClaw instances — this is the single source of truth
+    // so that every code path (login, session restore, OAuth callback) gets instances.
+    const instances = await this.instanceRepo.find({
+      where: { userId: req.user.id },
+      order: { isPrimary: 'DESC', updatedAt: 'DESC' },
+    });
+
     return {
       id: user.id,
       agentrixId: user.agentrixId,
@@ -915,6 +928,18 @@ export class AuthController {
       avatarUrl: user.avatarUrl,
       roles: user.roles,
       walletAddress: (user as any).walletAddress || null,
+      openClawInstances: instances.map(i => ({
+        id: i.id,
+        name: i.name,
+        instanceUrl: i.instanceUrl || '',
+        status: i.status,
+        instanceType: i.instanceType,
+        isPrimary: i.isPrimary,
+        relayToken: i.relayToken || undefined,
+        relayConnected: i.relayConnected || false,
+        capabilities: i.capabilities || undefined,
+        updatedAt: i.updatedAt,
+      })),
     };
   }
 

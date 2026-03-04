@@ -39,6 +39,24 @@ export function AuthCallbackScreen() {
         const result = await handleOAuthCallback({ token, code, provider });
         if (result?.user && result?.token) {
           await setAuth(result.user, result.token);
+
+          // handleOAuthCallback calls fetchCurrentUserWithToken which now
+          // returns openClawInstances from /auth/me. But the returned user
+          // needs to be set properly. Re-fetch to ensure instances are loaded.
+          try {
+            const { fetchCurrentUser } = await import('../../services/auth');
+            const fullUser = await fetchCurrentUser();
+            if (fullUser) {
+              const state = useAuthStore.getState();
+              if (state.token) {
+                await state.setAuth(fullUser, state.token);
+                if (!state.activeInstance && fullUser.openClawInstances?.length) {
+                  useAuthStore.setState({ activeInstance: fullUser.openClawInstances[0] });
+                }
+              }
+            }
+          } catch { /* non-blocking */ }
+
           setStatus('success');
           setMessage('Authentication successful!');
           // RootNavigator will handle redirect to Main/Onboarding

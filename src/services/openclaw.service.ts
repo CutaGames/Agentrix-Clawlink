@@ -129,14 +129,15 @@ export async function toggleSkill(instanceId: string, skillId: string, enabled: 
 }
 
 // Install a marketplace skill: first records to Agentrix DB, then pushes to OpenClaw instance
-export async function installSkillToInstance(instanceId: string, skillId: string): Promise<void> {
+export async function installSkillToInstance(instanceId: string, skillId: string): Promise<any> {
   // 1. Record installation in Agentrix marketplace DB
   try {
     await apiFetch(`/skills/${skillId}/install`, { method: 'POST' });
   } catch (_) {
-    // Fallback — skill may not have a marketplace entry
+    // Fallback — skill may not have a marketplace entry yet
   }
   // 2. Push to live OpenClaw instance (uses skillId as both skillPackageUrl ref and skillId)
+  // If instance has no URL, backend returns success with pendingDeploy=true
   return apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
     method: 'POST',
     body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),

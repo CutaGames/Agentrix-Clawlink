@@ -49,7 +49,7 @@ function OpenClawSkillsTab() {
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['openclawSkills', category, search],
     queryFn: async () => {
       try {
@@ -107,10 +107,11 @@ function OpenClawSkillsTab() {
           data={skills}
           keyExtractor={(s: any) => String(s.id ?? s._id ?? s.name)}
           numColumns={2}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={{ gap: 12 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} tintColor={colors.accent} />}
           renderItem={({ item: skill }: { item: any }) => (
             <TouchableOpacity
               style={styles.skillCard}
@@ -147,7 +148,7 @@ function ResourcesTab() {
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['resources', category, search],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -215,10 +216,11 @@ function ResourcesTab() {
           data={resources}
           keyExtractor={(s: any) => String(s.id ?? s._id ?? s.name)}
           numColumns={2}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={{ gap: 12 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} tintColor={colors.accent} />}
           renderItem={({ item: res }: { item: any }) => (
             <TouchableOpacity
               style={styles.skillCard}

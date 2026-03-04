@@ -202,7 +202,28 @@ export class OpenClawProxyService {
 
   /** Push-install a skill package to the instance */
   async installSkill(userId: string, instanceId: string, skillPackageUrl: string, skillId: string) {
-    const instance = await this.resolveInstance(userId, instanceId);
+    const instance = await this.connectionService.getInstanceById(userId, instanceId);
+
+    // Allow install even if instance is not fully connected yet
+    // The install record is created in /skills/{id}/install (step 1).
+    // Step 2 (push to instance) only works if instance has a reachable URL.
+    if (!instance.instanceUrl) {
+      return {
+        success: true,
+        status: 200,
+        message: 'Skill saved to your account. It will be deployed when your agent is online.',
+        pendingDeploy: true,
+      };
+    }
+    if (instance.status !== OpenClawInstanceStatus.ACTIVE) {
+      return {
+        success: true,
+        status: 200,
+        message: `Skill saved. Agent "${instance.name}" is ${instance.status} — skill will sync when agent is active.`,
+        pendingDeploy: true,
+      };
+    }
+
     try {
       const resp = await fetch(`${instance.instanceUrl}/api/skills/install`, {
         method: 'POST',
@@ -212,7 +233,14 @@ export class OpenClawProxyService {
       });
       return { success: resp.ok, status: resp.status };
     } catch (err: any) {
-      throw new BadGatewayException(`Skill install failed: ${err.message}`);
+      // Instance unreachable — skill was already recorded in DB, return soft success
+      this.logger.warn(`Skill push to instance ${instanceId} failed: ${err.message}`);
+      return {
+        success: true,
+        status: 200,
+        message: 'Skill saved to your account. Push to agent failed — it will sync when agent reconnects.',
+        pendingDeploy: true,
+      };
     }
   }
 

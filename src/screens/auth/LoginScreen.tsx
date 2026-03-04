@@ -134,9 +134,8 @@ export function LoginScreen() {
       else if (provider === 'telegram') result = await loginWithTelegram();
       else if (provider === 'apple') result = await loginWithApple();
       else return;
-      if (result?.user && result?.token) {
-        await setAuth(result.user, result.token);
-      }
+      // handleLoginResult (inside loginWith*) already calls setAuth + fetches instances.
+      // Do NOT call setAuth again here — it would overwrite instances.
     } catch (err: any) {
       Alert.alert(
         'Login Failed', 
@@ -173,9 +172,8 @@ export function LoginScreen() {
       const result = isSignUp 
         ? await registerWithEmail(email.trim(), password.trim()) as any
         : await loginWithEmail(email.trim(), password.trim()) as any;
-      if (result?.user && result?.token) {
-        await setAuth(result.user, result.token);
-      }
+      // handleLoginResult (inside loginWithEmail/registerWithEmail) already calls setAuth.
+      // Do NOT call setAuth again here — it would overwrite instances.
     } catch (err: any) {
       Alert.alert(isSignUp ? 'Registration Failed' : 'Login Failed', err?.message || 'Invalid credentials');
     } finally {

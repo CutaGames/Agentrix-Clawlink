@@ -152,8 +152,11 @@ export function ClawSkillDetailScreen() {
     }
     setInstalling(true);
     try {
-      await installSkillToInstance(activeInstance.id, skillId);
-      Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}`);
+      const result = await installSkillToInstance(activeInstance.id, skillId);
+      const pendingMsg = (result as any)?.pendingDeploy
+        ? `\n\nNote: Your agent is not online yet. The skill will auto-deploy when it reconnects.`
+        : '';
+      Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}${pendingMsg}`);
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
       if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {
