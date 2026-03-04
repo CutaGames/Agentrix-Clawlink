@@ -464,7 +464,39 @@ export class PaymentController {
         paymentMethod: 'x402' as any,
         metadata: body.metadata,
       },
+      req.user.id,
     );
+  }
+
+  @Get('autonomy/capabilities')
+  @ApiOperation({ summary: '获取主网前自治能力开关（前端适配）' })
+  @ApiResponse({ status: 200, description: '返回自治支付与授权能力状态' })
+  getAutonomyCapabilities() {
+    const erc8004Address = this.configService.get<string>('ERC8004_CONTRACT_ADDRESS');
+    const commissionAddress = this.configService.get<string>('COMMISSION_CONTRACT_ADDRESS');
+    const relayerKeyConfigured = !!this.configService.get<string>('RELAYER_PRIVATE_KEY');
+
+    return {
+      erc8004: {
+        enabled: !!erc8004Address,
+        contractAddress: erc8004Address || null,
+      },
+      x402: {
+        enabled: true,
+        routeThroughCommission: !!commissionAddress,
+        commissionContractAddress: commissionAddress || null,
+      },
+      relayer: {
+        enabled: relayerKeyConfigured,
+        gasSponsoredByPlatform: relayerKeyConfigured,
+      },
+      frontendRequiredChanges: {
+        showAgentAuthorizationEntry: true,
+        requireSessionBeforeQuickPay: true,
+        showCommissionRouteHint: true,
+        showGasPolicyDisclosure: true,
+      },
+    };
   }
 
   @Post('x402/session/:sessionId/execute')

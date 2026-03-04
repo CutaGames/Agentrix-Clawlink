@@ -108,6 +108,55 @@ export class AgentAuthorizationService {
       return this.authorizationRepository.save(auth);
   }
 
+  async ensureErc8004Authorization(params: {
+    userId: string;
+    agentId: string;
+    walletAddress: string;
+    sessionId: string;
+    singleLimit: number;
+    dailyLimit: number;
+    expiry: Date;
+  }): Promise<AgentAuthorization> {
+    const existing = await this.authorizationRepository.findOne({
+      where: {
+        userId: params.userId,
+        agentId: params.agentId,
+        sessionId: params.sessionId,
+        isActive: true,
+      },
+      relations: ['strategyPermissions'],
+      order: { createdAt: 'DESC' },
+    });
+
+    if (existing) {
+      if (existing.expiry && existing.expiry < new Date()) {
+        existing.isActive = false;
+        await this.authorizationRepository.save(existing);
+      } else {
+        return existing;
+      }
+    }
+
+    const authorization = this.authorizationRepository.create({
+      userId: params.userId,
+      agentId: params.agentId,
+      walletAddress: params.walletAddress,
+      authorizationType: 'erc8004',
+      sessionId: params.sessionId,
+      singleLimit: params.singleLimit,
+      dailyLimit: params.dailyLimit,
+      totalLimit: params.dailyLimit * 30,
+      usedToday: 0,
+      usedTotal: 0,
+      expiry: params.expiry,
+      isActive: true,
+      lastResetDate: new Date(),
+    });
+
+    const saved = await this.authorizationRepository.save(authorization);
+    return this.getAuthorizationById(saved.id);
+  }
+
   /**
    * 获取Agent授权详情
    */

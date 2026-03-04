@@ -631,6 +631,18 @@ export class OpenClawSkillHubService implements OnModuleInit {
   /* ================================================================ */
 
   private applyHubSkillToEntity(entity: Skill, hs: OpenClawHubSkill): void {
+    const tagList = (hs.tags ?? []).map((tag) => tag.toLowerCase());
+    const text = `${hs.displayName ?? hs.name ?? ''} ${hs.description ?? ''}`.toLowerCase();
+    const x402TagHit = tagList.some((tag) =>
+      tag.includes('x402') ||
+      tag.includes('payment') ||
+      tag.includes('checkout') ||
+      tag.includes('wallet') ||
+      tag.includes('crypto'),
+    );
+    const x402TextHit = /x402|payment|checkout|wallet|crypto|onchain/i.test(text);
+    const shouldEnableX402 = x402TagHit || x402TextHit;
+
     entity.name = hs.key;
     entity.displayName = hs.displayName ?? hs.name;
     entity.description = (hs.description ?? '').slice(0, 500);
@@ -646,7 +658,7 @@ export class OpenClawSkillHubService implements OnModuleInit {
     entity.tags = hs.tags ?? [];
     entity.humanAccessible = true;
     entity.ucpEnabled = false;
-    entity.x402Enabled = false;
+    entity.x402Enabled = shouldEnableX402;
     entity.imageUrl = hs.icon ?? '⚡';
     entity.pricing = { type: SkillPricingType.FREE };
     entity.inputSchema = hs.inputSchema as any ?? {

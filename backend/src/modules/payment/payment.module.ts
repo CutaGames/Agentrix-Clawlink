@@ -64,6 +64,8 @@ import { TaxModule } from '../tax/tax.module';
 import { WebhookModule } from '../webhook/webhook.module';
 import { RelayerModule } from '../relayer/relayer.module';
 import { UserAgentModule } from '../user-agent/user-agent.module';
+import { SessionModule } from '../session/session.module';
+import { AgentAuthorizationModule } from '../agent-authorization/agent-authorization.module';
 import { FeeEstimationService } from './fee-estimation.service';
 import { RiskAssessmentService } from './risk-assessment.service';
 import { RiskAssessment } from '../../entities/risk-assessment.entity';
@@ -101,6 +103,8 @@ import { Commission } from '../../entities/commission.entity';
     forwardRef(() => ReferralModule),
     forwardRef(() => RelayerModule),
     forwardRef(() => UserAgentModule),
+    forwardRef(() => SessionModule),
+    forwardRef(() => AgentAuthorizationModule),
     PricingModule,
     TaxModule,
     WebhookModule,

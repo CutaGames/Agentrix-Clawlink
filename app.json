@@ -68,6 +68,12 @@
       "favicon": "./assets/favicon.png"
     },
     "newArchEnabled": false,
+    "autolinking": {
+      "exclude": [
+        "react-native-reanimated",
+        "react-native-worklets"
+      ]
+    },
     "runtimeVersion": {
       "policy": "appVersion"
     },

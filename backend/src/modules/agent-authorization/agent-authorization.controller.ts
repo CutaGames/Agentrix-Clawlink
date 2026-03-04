@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AgentAuthorizationService } from './agent-authorization.service';
 import { StrategyPermissionEngine } from './strategy-permission-engine.service';
 import { CreateAgentAuthorizationDto } from './dto/create-agent-authorization.dto';
+import { SessionService } from '../session/session.service';
 
 /**
  * Agent授权控制器
@@ -25,6 +26,7 @@ export class AgentAuthorizationController {
   constructor(
     private readonly agentAuthorizationService: AgentAuthorizationService,
     private readonly strategyPermissionEngine: StrategyPermissionEngine,
+    private readonly sessionService: SessionService,
   ) {}
 
   /**
@@ -39,6 +41,37 @@ export class AgentAuthorizationController {
     // 确保userId来自认证用户
     dto.userId = req.user.id;
     return await this.agentAuthorizationService.createAgentAuthorization(dto);
+  }
+
+  @Post('bootstrap/erc8004')
+  @HttpCode(HttpStatus.CREATED)
+  async bootstrapFromActiveSession(
+    @Body() body: { agentId: string; walletAddress?: string },
+    @Request() req: any,
+  ) {
+    const activeSession = await this.sessionService.getActiveSession(req.user.id);
+    if (!activeSession?.sessionId) {
+      return {
+        success: false,
+        message: 'No active ERC8004 session found',
+      };
+    }
+
+    const authorization = await this.agentAuthorizationService.ensureErc8004Authorization({
+      userId: req.user.id,
+      agentId: body.agentId,
+      walletAddress: body.walletAddress || activeSession.signer,
+      sessionId: activeSession.sessionId,
+      singleLimit: Number(activeSession.singleLimit || 0),
+      dailyLimit: Number(activeSession.dailyLimit || 0),
+      expiry: activeSession.expiry ? new Date(activeSession.expiry) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+
+    return {
+      success: true,
+      authorization,
+      session: activeSession,
+    };
   }
 
   /**

@@ -59,6 +59,18 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
+      - name: Enforce no-reanimated policy (build stability)
+        run: |
+          if [ -d node_modules/react-native-reanimated ]; then
+            echo "[ci] Removing node_modules/react-native-reanimated to prevent Gradle eval failures"
+            rm -rf node_modules/react-native-reanimated
+          fi
+          if [ -d node_modules/react-native-worklets ]; then
+            echo "[ci] Removing node_modules/react-native-worklets to prevent Gradle eval failures"
+            rm -rf node_modules/react-native-worklets
+          fi
+          node -e "const p=require('./package.json'); if (p.dependencies && p.dependencies['react-native-reanimated']) { process.exit(1) }"
+
       # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
       # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
       # this !! null-assertion. Patch is idempotent — won't double-apply if !! already present.

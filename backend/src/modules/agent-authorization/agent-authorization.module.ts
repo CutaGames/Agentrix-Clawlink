@@ -8,6 +8,7 @@ import { StrategyPermissionEngine } from './strategy-permission-engine.service';
 import { AgentAuthorizationController } from './agent-authorization.controller';
 import { StrategyGraph } from '../trading/entities/strategy-graph.entity';
 import { StrategyNode } from '../trading/entities/strategy-node.entity';
+import { SessionModule } from '../session/session.module';
 
 /**
  * Agent授权模块
@@ -15,6 +16,7 @@ import { StrategyNode } from '../trading/entities/strategy-node.entity';
  */
 @Module({
   imports: [
+    SessionModule,
     TypeOrmModule.forFeature([
       AgentAuthorization,
       AgentStrategyPermission,
