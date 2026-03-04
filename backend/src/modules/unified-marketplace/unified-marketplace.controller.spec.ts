@@ -119,6 +119,7 @@ describe('UnifiedMarketplaceController', () => {
         SkillCategory.UTILITY,
         undefined,
         SkillSource.NATIVE,
+        undefined,
         0,
         100,
         4,
@@ -153,6 +154,7 @@ describe('UnifiedMarketplaceController', () => {
       await controller.search(
         undefined,
         [SkillLayer.LOGIC, SkillLayer.RESOURCE],
+        undefined,
         undefined,
         undefined,
         undefined,
