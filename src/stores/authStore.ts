@@ -75,9 +75,11 @@ export const useAuthStore = create<AuthState>()(
         } catch (e) {
           console.warn('Failed to save token to SecureStore:', e);
         }
-        // Set active instance if user has instances
+        // Set active instance if user has instances; preserve existing if user object has none
+        const currentActive = get().activeInstance;
         const firstInstance = user.openClawInstances?.[0] ?? null;
-        set({ user, token, isAuthenticated: true, isLoading: false, activeInstance: firstInstance });
+        const activeInstance = firstInstance ?? currentActive;
+        set({ user, token, isAuthenticated: true, isLoading: false, activeInstance });
       },
 
       clearAuth: async () => {

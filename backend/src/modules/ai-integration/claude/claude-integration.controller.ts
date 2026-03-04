@@ -107,6 +107,10 @@ export class ClaudeIntegrationController {
   ) {
     const { messages, anthropicApiKey, context = {}, options } = body;
 
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return { error: 'messages array is required and must not be empty' };
+    }
+
     // If the client already provides a system message, use it as-is.
     // Otherwise inject the default personal agent system prompt.
     const hasClientSystemMessage = messages.some(m => m.role === 'system');

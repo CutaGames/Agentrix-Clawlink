@@ -393,13 +393,21 @@ export class ClaudeIntegrationService {
   ): Promise<any> {
         if (!this.anthropic && !options?.userApiKey) {
       // Fallback to AWS Bedrock (uses AWS_BEARER_TOKEN_BEDROCK)
-      const modelId = (options && options.model) ? options.model : 'claude-3-haiku';
-      this.logger.log('Bedrock fallback model: ' + modelId);
-      const bedrockResult = await this.bedrockService.chatWithFunctions(messages, {
-        model: modelId,
-        tools: options?.additionalTools,
-      });
-      return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
+      try {
+        const modelId = (options && options.model) ? options.model : 'claude-3-haiku';
+        this.logger.log('Bedrock fallback model: ' + modelId);
+        const bedrockResult = await this.bedrockService.chatWithFunctions(messages, {
+          model: modelId,
+          tools: options?.additionalTools,
+        });
+        return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
+      } catch (bedrockErr: any) {
+        this.logger.error(`Bedrock fallback failed: ${bedrockErr.message}`);
+        throw new Error(
+          'AI service unavailable: Neither ANTHROPIC_API_KEY nor AWS_BEARER_TOKEN_BEDROCK is configured. ' +
+          'Please contact the administrator.',
+        );
+      }
     }
 
     // 如果用户提供了 API Key，创建新的 Anthropic 实例
