@@ -53,8 +53,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
             setUser(updatedUser)
             localStorage.setItem('agentrix_user', JSON.stringify(updatedUser))
           }
-        } catch (err) {
-          console.warn('Failed to sync user info from backend, using cached data:', err)
+        } catch (err: any) {
+          // If token is expired/invalid (401), clear cached auth but don't force redirect
+          // The user will be prompted to login again on next protected action
+          if (err?.status === 401 || err?.statusCode === 401) {
+            console.warn('🔒 Token expired/invalid, clearing cached auth')
+            localStorage.removeItem('access_token')
+            // Keep cached user data for display but mark as unauthenticated
+            // User can still browse public pages
+          } else {
+            console.warn('Failed to sync user info from backend, using cached data:', err)
+          }
         }
       }
       setIsLoading(false)

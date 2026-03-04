@@ -1,5 +1,16 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { ViewMode } from '../types/agent';
+
+/* ── localStorage helpers (SSR-safe) ── */
+const STORAGE_PREFIX = 'agentrix_wb_';
+function loadItem<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try { const v = localStorage.getItem(STORAGE_PREFIX + key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+function saveItem<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch { /* quota */ }
+}
 
 interface WorkbenchContextType {
   viewMode: ViewMode;
@@ -15,10 +26,14 @@ interface WorkbenchContextType {
 const WorkbenchContext = createContext<WorkbenchContextType | undefined>(undefined);
 
 export const WorkbenchProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('chat');
+  const [viewMode, _setViewMode] = useState<ViewMode>(() => loadItem<ViewMode>('viewMode', 'chat'));
   const [selection, setSelection] = useState<string[]>([]);
   const [workspaceData, setWorkspaceData] = useState<any>(null);
-  const [isChatExpanded, setIsChatExpanded] = useState<boolean>(true);
+  const [isChatExpanded, _setIsChatExpanded] = useState<boolean>(() => loadItem<boolean>('chatExpanded', true));
+
+  // Persist viewMode & isChatExpanded changes to localStorage
+  const setViewMode = useCallback((m: ViewMode) => { _setViewMode(m); saveItem('viewMode', m); }, []);
+  const setIsChatExpanded = useCallback((v: boolean) => { _setIsChatExpanded(v); saveItem('chatExpanded', v); }, []);
 
   return (
     <WorkbenchContext.Provider

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { usePayment } from '../../contexts/PaymentContext';
 import { useWorkbench } from '../../contexts/WorkbenchContext';
@@ -12,7 +12,32 @@ import { StructuredResponseCard } from './StructuredResponseCard';
 import { QuickActionCards } from './QuickActionCards';
 import { VoiceInput } from './voice/VoiceInput';
 import { VoiceOutput } from './voice/VoiceOutput';
-import { Plus, Send, Search, Eye } from 'lucide-react';
+import { Plus, Send, Search, Eye, RotateCcw } from 'lucide-react';
+
+/* ── Session persistence helpers (SSR-safe) ── */
+const SESSION_KEY = 'agentrix_agent_session';
+const MESSAGES_KEY = 'agentrix_agent_messages';
+const MAX_PERSISTED_MSGS = 50; // keep last N messages to avoid quota issues
+
+function loadPersistedSession(): { sessionId?: string; messages: ChatMessage[] } {
+  if (typeof window === 'undefined') return { messages: [] };
+  try {
+    const sid = localStorage.getItem(SESSION_KEY) || undefined;
+    const raw = localStorage.getItem(MESSAGES_KEY);
+    const msgs: ChatMessage[] = raw ? JSON.parse(raw).map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })) : [];
+    return { sessionId: sid, messages: msgs };
+  } catch { return { messages: [] }; }
+}
+
+function persistSession(sessionId: string | undefined, messages: ChatMessage[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
+    // Only keep the last N messages
+    const trimmed = messages.slice(-MAX_PERSISTED_MSGS);
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(trimmed));
+  } catch { /* quota */ }
+}
 
 export type AgentMode = 'user' | 'merchant' | 'developer' | 'shopping' | 'expert' | 'data';
 
@@ -60,6 +85,7 @@ export function UnifiedAgentChat({
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const restoredRef = useRef(false); // track if we already restored from storage
 
   // Commerce 上下文延续 - 记住当前会话创建的资源 ID
   const [commerceContext, setCommerceContext] = useState<{
@@ -83,6 +109,25 @@ export function UnifiedAgentChat({
       loadActiveSession().catch(err => console.warn('Failed to pre-load active session:', err));
     }
   }, [user]);
+
+  // 🔄 Restore previous session from localStorage on mount (once)
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const saved = loadPersistedSession();
+    if (saved.sessionId && saved.messages.length > 0) {
+      console.log('🔄 Restoring agent session:', saved.sessionId, 'msgs:', saved.messages.length);
+      setSessionId(saved.sessionId);
+      setMessages(saved.messages);
+    }
+  }, []);
+
+  // 💾 Persist session whenever sessionId or messages change
+  useEffect(() => {
+    if (restoredRef.current && (sessionId || messages.length > 0)) {
+      persistSession(sessionId, messages);
+    }
+  }, [sessionId, messages]);
 
   // 监听外部触发消息事件
   useEffect(() => {
@@ -204,6 +249,9 @@ export function UnifiedAgentChat({
 请告诉我您需要什么帮助？`,
     };
 
+    // Only show welcome if we don't have restored session messages
+    if (messages.length > 0 && messages[0].id !== '1') return; // already has real messages from restore
+    
     setMessages([
       {
         id: '1',
@@ -212,7 +260,7 @@ export function UnifiedAgentChat({
         timestamp: new Date(),
       },
     ]);
-  }, [mode]);
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -244,6 +292,19 @@ export function UnifiedAgentChat({
     setMode(newMode);
     onModeChange?.(newMode);
   };
+
+  /** Clear persisted session and start fresh */
+  const handleNewChat = useCallback(() => {
+    setSessionId(undefined);
+    setMessages([]);
+    setCommerceContext({});
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(MESSAGES_KEY);
+    }
+    // Re-trigger welcome message by forcing mode change
+    setMode(m => m);
+  }, []);
 
   // Commerce模块分类定义（仪表盘、收付款与兑换、协作分账、分佣结算、发布）
   const getCommerceCategories = () => [
@@ -1160,6 +1221,13 @@ export function UnifiedAgentChat({
         <div className="relative group">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
           <div className="relative flex items-end gap-2 bg-[#161b22] p-2 rounded-xl border border-slate-800 shadow-2xl">
+            <button
+              onClick={handleNewChat}
+              title="New Chat"
+              className="p-3 text-slate-400 hover:text-green-400 hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              <RotateCcw size={18} />
+            </button>
             <button
               onClick={() => handleSend('/skills')}
               title="Skills"

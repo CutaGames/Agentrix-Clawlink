@@ -72,9 +72,7 @@ export function L1PersonaNav({
         <div className="bg-slate-900 border-b border-slate-800 h-12 flex items-center px-4">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 mr-6">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-sm font-bold">A</span>
-            </div>
+            <img src="/brand/logo-icon.png" alt="Agentrix" className="w-8 h-8 rounded-lg" />
             <span className="text-white font-bold">Agentrix</span>
           </Link>
 
@@ -162,9 +160,7 @@ export function L1PersonaNav({
           </button>
 
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-sm font-bold">A</span>
-            </div>
+            <img src="/brand/logo-icon.png" alt="Agentrix" className="w-7 h-7 rounded-lg" />
             <span className="text-white font-bold text-sm">Agentrix</span>
           </Link>
 

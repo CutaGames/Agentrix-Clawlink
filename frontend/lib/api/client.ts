@@ -171,6 +171,12 @@ class ApiClient {
         throw new Error('未授权，请重新登录');
       }
 
+      // 处理 503 / 502 during restart — don't throw, return null to let caller retry
+      if (response.status === 502 || response.status === 503) {
+        console.warn('⚠️ Backend temporarily unavailable (restart in progress?):', response.status);
+        return null;
+      }
+
       // 处理402需要支付错误 (X402 V2)
       if (response.status === 402) {
         const authHeader = response.headers.get('WWW-Authenticate');

@@ -33,7 +33,7 @@ import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET', 'default-secret'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '7d'),
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '30d'),
         },
       }),
       inject: [ConfigService],

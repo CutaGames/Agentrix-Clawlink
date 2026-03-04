@@ -69,7 +69,7 @@ export default function MarketplacePage() {
   const router = useRouter();
   const { t } = useLocalization();
   const { isAuthenticated } = useUser();
-  const [viewMode, setViewMode] = useState<ViewMode>('resources');
+  const [viewMode, setViewMode] = useState<ViewMode>('openclaw');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [skills, setSkills] = useState<Skill[]>([]);
