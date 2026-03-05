@@ -47,7 +47,7 @@ const FALLBACK_RESOURCES = [
 // OpenClaw Hub skills tab — uses the OpenClaw Hub search service
 function OpenClawSkillsTab() {
   const navigation = useNavigation<Nav>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
@@ -147,7 +147,7 @@ function OpenClawSkillsTab() {
 // Resources & Goods tab — paid APIs/compute, falls back to mock data
 function ResourcesTab() {
   const navigation = useNavigation<Nav>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
@@ -259,7 +259,7 @@ function ResourcesTab() {
 }
 
 export function ClawMarketplaceScreen() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [activeTab, setActiveTab] = useState<'skills' | 'tasks' | 'resources'>('skills');
 
   return (

@@ -9,7 +9,7 @@ import { useI18n } from '../stores/i18nStore';
 
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const user = useIdentityStore((s) => s.user);
   const logout = useIdentityStore((s) => s.logout);
 

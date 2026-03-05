@@ -42,7 +42,7 @@ async function fetchChatList() {
 
 export function ChatListScreen() {
   const navigation = useNavigation<Nav>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'all' | 'dm' | 'group'>('all');
 

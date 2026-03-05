@@ -59,6 +59,16 @@ export class TokenQuotaService {
       });
       await this.quotaRepo.save(quota);
       this.logger.log(`Created free-trial quota for user ${userId}: ${FREE_TRIAL_TOKENS.toLocaleString()} tokens`);
+    } else if (
+      quota.planType === TokenPlanType.FREE_TRIAL &&
+      Number(quota.totalQuota) !== FREE_TRIAL_TOKENS
+    ) {
+      // Recalibrate free-trial quota to the current configured limit
+      this.logger.log(
+        `Recalibrating free-trial quota for user ${userId}: ${Number(quota.totalQuota).toLocaleString()} → ${FREE_TRIAL_TOKENS.toLocaleString()} tokens`,
+      );
+      quota.totalQuota = FREE_TRIAL_TOKENS;
+      await this.quotaRepo.save(quota);
     }
 
     return quota;

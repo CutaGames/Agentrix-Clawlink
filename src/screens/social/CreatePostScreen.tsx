@@ -24,7 +24,7 @@ async function createPost(body: { content: string; tags: string[] }) {
 
 export function CreatePostScreen() {
   const navigation = useNavigation<Nav>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const queryClient = useQueryClient();
   const [content, setContent] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);

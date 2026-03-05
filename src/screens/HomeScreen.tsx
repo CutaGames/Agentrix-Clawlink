@@ -5,6 +5,7 @@ import { Card } from '../components/Card';
 import { colors } from '../theme/colors';
 import { useIdentityStore, useCurrentIdentity, useIdentitySwitch } from '../stores/identityStore';
 import { IdentityType } from '../types/identity';
+import { useI18n } from '../stores/i18nStore';
 
 // 身份内容组件
 import { PersonalHomeContent } from '../components/identity/PersonalHomeContent';
@@ -16,11 +17,12 @@ import { LockedIdentityContent } from '../components/identity/LockedIdentityCont
 const IdentityTabs: React.FC = () => {
   const activeIdentity = useIdentityStore((s) => s.activeIdentity);
   const { switchTo, canSwitchTo, identities } = useIdentitySwitch();
+  const { t, language } = useI18n();
 
   const tabs: { type: IdentityType; label: string; icon: string }[] = [
-    { type: 'personal', label: 'Personal', icon: '👤' },
-    { type: 'merchant', label: 'Merchant', icon: '🏪' },
-    { type: 'developer', label: 'Developer', icon: '💻' },
+    { type: 'personal', label: t({ en: 'Personal', zh: '个人' }), icon: '👤' },
+    { type: 'merchant', label: t({ en: 'Merchant', zh: '商家' }), icon: '🏪' },
+    { type: 'developer', label: t({ en: 'Developer', zh: '开发者' }), icon: '💻' },
   ];
 
   return (
@@ -45,7 +47,7 @@ const IdentityTabs: React.FC = () => {
               {tab.label}
             </Text>
             {isLocked && <Text style={styles.lockIcon}>🔒</Text>}
-            {isPending && <Text style={styles.pendingBadge}>Pending</Text>}
+            {isPending && <Text style={styles.pendingBadge}>{t({ en: 'Pending', zh: '审核中' })}</Text>}
           </TouchableOpacity>
         );
       })}

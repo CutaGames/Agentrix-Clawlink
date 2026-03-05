@@ -34,7 +34,7 @@ const SOCIAL_PROVIDERS = [
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const { setAuth } = useAuthStore.getState();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [mode, setMode] = useState<'web25' | 'openclaw' | 'email'>('web25');
   const [isSignUp, setIsSignUp] = useState(false);
   const [instanceUrl, setInstanceUrl] = useState('');
@@ -369,16 +369,26 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
-  content: { padding: 24, paddingTop: 80, paddingBottom: 40 },
-  header: { alignItems: 'center', marginBottom: 48 },
-  logoCircle: { width: 72, height: 72, borderRadius: 20, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
-  logoInitials: { fontSize: 30, fontWeight: '900', color: '#fff', letterSpacing: -1 },
-  logoText: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, letterSpacing: -0.5 },
-  tagline: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
+  container: { flex: 1, backgroundColor: '#000000' },
+  content: { padding: 24, paddingTop: 100, paddingBottom: 40 },
+  header: { alignItems: 'center', marginBottom: 56 },
+  logoCircle: { 
+    width: 64, 
+    height: 64, 
+    backgroundColor: '#000000', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#333333',
+    borderRadius: 16
+  },
+  logoInitials: { fontSize: 28, fontWeight: '900', color: '#ffffff', letterSpacing: -1, fontFamily: 'monospace' },
+  logoText: { fontSize: 26, fontWeight: '800', color: '#ffffff', letterSpacing: 2, textTransform: 'uppercase' },
+  tagline: { fontSize: 13, color: '#888888', marginTop: 10, letterSpacing: 0.5 },
   
-  web25Title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
-  web25Sub: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginBottom: 32 },
+  web25Title: { fontSize: 24, fontWeight: '700', color: '#ffffff', textAlign: 'center', marginBottom: 8 },
+  web25Sub: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 32 },
   
   walletMainBtn: { backgroundColor: colors.primary, borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
   walletIconRow: { flexDirection: 'row', gap: -8, marginBottom: 12 },

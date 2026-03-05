@@ -23,7 +23,7 @@ export function InvitationGateScreen() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const setInvitationValid = useAuthStore((s) => s.setInvitationValid);
   const clearAuth = useAuthStore((s) => s.clearAuth);
 

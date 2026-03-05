@@ -436,7 +436,7 @@ export default function TaskMarketScreen() {
         </View>
         <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>This is a test area — task features are under development</Text>
       </View>
-      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}}
+      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}
       <View style={styles.bannerCarousel}>
         <ScrollView
           ref={bannerScrollRef}

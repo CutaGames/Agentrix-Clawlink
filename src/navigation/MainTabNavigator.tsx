@@ -8,6 +8,7 @@ import { SocialStackNavigator } from './SocialStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useI18n } from '../stores/i18nStore';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -35,6 +36,7 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 }
 
 export function MainTabNavigator() {
+  const { t, language } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   return (
     <Tab.Navigator id={undefined}
@@ -61,7 +63,7 @@ export function MainTabNavigator() {
         name="Agent"
         component={AgentStackNavigator}
         options={{
-          title: 'Agent',
+          title: t({ en: 'Agent', zh: '智能体' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="🤖" focused={focused} />,
         }}
       />
@@ -69,7 +71,7 @@ export function MainTabNavigator() {
         name="Explore"
         component={MarketStackNavigator}
         options={{
-          title: 'Explore',
+          title: t({ en: 'Explore', zh: '探索' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} />,
         }}
       />
@@ -77,7 +79,7 @@ export function MainTabNavigator() {
         name="Social"
         component={SocialStackNavigator}
         options={{
-          title: 'Social',
+          title: t({ en: 'Social', zh: '社区' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
         }}
       />
@@ -85,7 +87,7 @@ export function MainTabNavigator() {
         name="Me"
         component={MeStackNavigator}
         options={{
-          title: 'Me',
+          title: t({ en: 'Me', zh: '我的' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} badge={unreadCount} />,
         }}
       />

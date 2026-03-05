@@ -77,7 +77,7 @@ export function PostDetailScreen() {
   const { postId } = route.params;
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [comment, setComment] = useState('');
   const inputRef = useRef<TextInput>(null);
 

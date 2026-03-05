@@ -15,6 +15,7 @@ import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { switchInstanceModel } from '../../services/openclaw.service';
+import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
@@ -34,12 +35,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 // ── Onboarding Checklist Card ─────────────────────────────────────
 function OnboardingChecklist({ navigation }: { navigation: Nav }) {
+  const { t, language } = useI18n();
   const { onboardingDeployedAgent, onboardingInstalledSkill, onboardingCreatedWorkflow, markOnboardingStep, setUiComplexity } =
     useSettingsStore();
   const steps = [
-    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: 'Deploy your first Agent', action: undefined, actionLabel: '' },
-    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: 'Install your first Skill', action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: 'Browse Market →' },
-    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: 'Create your first Workflow', action: () => navigation.navigate('WorkflowList'), actionLabel: 'Create →' },
+    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: t({ en: 'Deploy your first Agent', zh: '部署你的第一个智能体' }), action: undefined, actionLabel: '' },
+    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: t({ en: 'Install your first Skill', zh: '安装第一个技能' }), action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: t({ en: 'Browse Market →', zh: '浏览市场 →' }) },
+    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: t({ en: 'Create your first Workflow', zh: '创建第一个工作流' }), action: () => navigation.navigate('WorkflowList'), actionLabel: t({ en: 'Create →', zh: '创建 →' }) },
   ];
   const completedCount = steps.filter((s) => s.done).length;
   if (completedCount === 3) return null; // all done, hide card
@@ -52,7 +54,7 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
 
   return (
     <View style={onboard.card}>
-      <Text style={onboard.title}>🎯 Complete these steps to unlock Agent full power</Text>
+      <Text style={onboard.title}>{t({ en: '🎯 Complete these steps to unlock Agent full power', zh: '🎯 完成以下步骤解锁智能体全部功能' })}</Text>
       {steps.map((step, i) => (
         <View key={step.key} style={onboard.row}>
           <TouchableOpacity
@@ -75,7 +77,7 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
         {[0, 1, 2].map((i) => (
           <View key={i} style={[onboard.dot, i < completedCount && onboard.dotFilled]} />
         ))}
-        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? `${2 - completedCount} more to unlock Advanced mode` : 'Advanced mode unlocked! 🎉'}</Text>
+        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? t({ en: `${2 - completedCount} more to unlock Advanced mode`, zh: `还差${2 - completedCount}步解锁高级模式` }) : t({ en: 'Advanced mode unlocked! 🎉', zh: '高级模式已解锁！🎉' })}</Text>
       </View>
     </View>
   );

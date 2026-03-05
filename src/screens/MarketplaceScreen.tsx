@@ -33,7 +33,7 @@ interface Props {
 }
 
 export function MarketplaceScreen({ navigation }: Props) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [category, setCategory] = useState<MarketCategory>('skills');
   const [subCategory, setSubCategory] = useState('All');
   const [search, setSearch] = useState('');

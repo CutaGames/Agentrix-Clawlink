@@ -30,7 +30,7 @@ const STEPS = [
 ];
 
 export default function AllianceScreen({ navigation }: Props) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   return (
     <ScrollView style={s.container} showsVerticalScrollIndicator={false}>

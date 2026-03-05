@@ -101,7 +101,7 @@ async function likePost(postId: string) {
 
 export function FeedScreen() {
   const navigation = useNavigation<Nav>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [feedTab, setFeedTab] = useState('Hot');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const qc = useQueryClient();
