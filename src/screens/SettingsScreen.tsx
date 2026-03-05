@@ -35,7 +35,7 @@ export const SettingsScreen: React.FC = () => {
   const [newKeyName, setNewKeyName] = useState('');
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
-  const { language, setLanguage } = useI18n();
+  const { language, setLanguage, t } = useI18n();
   const queryClient = useQueryClient();
 
   // ── API Keys ──
@@ -65,25 +65,25 @@ export const SettingsScreen: React.FC = () => {
   });
 
   const confirmDelete = (key: ApiKey) => {
-    Alert.alert('Delete API Key', `Delete "${key.name}" (${key.keyPrefix}...)?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate(key.id) },
+    Alert.alert(t({ en: 'Delete API Key', zh: '删除 API 密鑅' }), `${t({ en: 'Delete', zh: '删除' })} "${key.name}" (${key.keyPrefix}...)?`, [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+      { text: t({ en: 'Delete', zh: '删除' }), style: 'destructive', onPress: () => deleteMutation.mutate(key.id) },
     ]);
   };
 
   const save = () => {
     setApiConfig({ baseUrl, token: token || undefined });
-    Alert.alert('Saved', 'API configuration updated');
+    Alert.alert(t({ en: 'Saved', zh: '已保存' }), t({ en: 'API configuration updated', zh: 'API 配置已更新' }));
   };
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to sign out?',
+      t({ en: 'Logout', zh: '退出登录' }),
+      t({ en: 'Are you sure you want to sign out?', zh: '确定要退出登录吗？' }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: t({ en: 'Sign Out', zh: '退出登录' }),
           style: 'destructive',
           onPress: async () => {
             await clearAuth();
@@ -97,7 +97,7 @@ export const SettingsScreen: React.FC = () => {
     <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
       {user && (
         <Card>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>Account</Text>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>{t({ en: 'Account', zh: '账号' })}</Text>
           <View style={{ marginTop: 12, gap: 6 }}>
             <Text style={{ color: colors.muted, fontSize: 13 }}>
               Agentrix ID: <Text style={{ color: colors.text }}>{user.agentrixId || '-'}</Text>
@@ -122,13 +122,13 @@ export const SettingsScreen: React.FC = () => {
       )}
 
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>API Settings</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>{t({ en: 'API Settings', zh: 'API 设置' })}</Text>
         <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12 }}>
-          Configure API connection for development/testing.
+          {t({ en: 'Configure API connection for development/testing.', zh: '配置开发/测试环境的 API 连接。' })}
         </Text>
 
         <View style={{ height: 12 }} />
-        <Text style={{ color: colors.muted, marginBottom: 6 }}>API Base URL</Text>
+        <Text style={{ color: colors.muted, marginBottom: 6 }}>{t({ en: 'API Base URL', zh: 'API 基础地址' })}</Text>
         <TextInput
           value={baseUrl}
           onChangeText={setBaseUrl}
@@ -144,13 +144,13 @@ export const SettingsScreen: React.FC = () => {
         />
 
         <View style={{ height: 10 }} />
-        <Text style={{ color: colors.muted, marginBottom: 6 }}>Bearer Token (override)</Text>
+        <Text style={{ color: colors.muted, marginBottom: 6 }}>{t({ en: 'Bearer Token (override)', zh: 'Bearer Token（覆盖）' })}</Text>
         <TextInput
           value={token}
           onChangeText={setToken}
           autoCapitalize="none"
           secureTextEntry
-          placeholder="Leave empty to use current session"
+          placeholder={t({ en: 'Leave empty to use current session', zh: '留空则使用当前会话' })}
           placeholderTextColor={colors.muted}
           style={{
             backgroundColor: colors.cardAlt,
@@ -163,12 +163,12 @@ export const SettingsScreen: React.FC = () => {
         />
 
         <View style={{ height: 12 }} />
-        <PrimaryButton title="Save" onPress={save} />
+        <PrimaryButton title={t({ en: 'Save', zh: '保存' })} onPress={save} />
       </Card>
 
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>Language</Text>
-        <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12 }}>Choose your preferred language</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>{t({ en: 'Language', zh: '语言' })}</Text>
+        <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12 }}>{t({ en: 'Choose your preferred language', zh: '选择你的偏好语言' })}</Text>
         <View style={settingsStyles.langRow}>
           {([{ code: 'en' as Language, label: 'English', flag: '🇺🇸' }, { code: 'zh' as Language, label: '中文', flag: '🇨🇳' }]).map(lang => (
             <TouchableOpacity
@@ -187,9 +187,9 @@ export const SettingsScreen: React.FC = () => {
 
       {/* Developer API Keys (BYOK) */}
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>🔑 API Keys</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>🔑 {t({ en: 'API Keys', zh: 'API 密鑅' })}</Text>
         <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12 }}>
-          Create API keys to integrate Agentrix into your own apps.
+          {t({ en: 'Create API keys to integrate Agentrix into your own apps.', zh: '创建 API 密鑅以将 Agentrix 集成到你的应用中。' })}
         </Text>
 
         {/* Create new key */}
@@ -197,7 +197,7 @@ export const SettingsScreen: React.FC = () => {
           <TextInput
             value={newKeyName}
             onChangeText={setNewKeyName}
-            placeholder="Key name (e.g. My App)"
+            placeholder={t({ en: 'Key name (e.g. My App)', zh: '密鑅名称（如：我的应用）' })}
             placeholderTextColor={colors.muted}
             style={{
               flex: 1,
@@ -223,7 +223,7 @@ export const SettingsScreen: React.FC = () => {
           >
             {createMutation.isPending
               ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>+ Create</Text>
+              : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t({ en: '+ Create', zh: '+ 创建' })}</Text>
             }
           </TouchableOpacity>
         </View>
@@ -250,7 +250,7 @@ export const SettingsScreen: React.FC = () => {
             ))}
           </View>
         ) : (
-          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 10 }}>No API keys yet.</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 10 }}>{t({ en: 'No API keys yet.', zh: '暂无 API 密鑅。' })}</Text>
         )}
       </Card>
 
@@ -259,7 +259,7 @@ export const SettingsScreen: React.FC = () => {
         onPress={handleLogout}
         activeOpacity={0.7}
       >
-        <Text style={settingsStyles.logoutText}>Sign Out</Text>
+        <Text style={settingsStyles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
 
       <View style={{ height: 20 }} />

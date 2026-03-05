@@ -10,6 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<SocialStackParamList, 'ChatList'>;
@@ -25,12 +26,13 @@ type ChatEntry = {
   memberCount?: number;
 };
 
+// Pre-populated Claw community groups
 const PLACEHOLDER_CHATS: ChatEntry[] = [
-  { id: 'dm-1', type: 'dm', name: 'openclaw_fan', avatar: '🦀', lastMessage: 'Your agent script looks great!', lastTime: '2m', unread: 2 },
-  { id: 'dm-2', type: 'dm', name: 'ai_builder', avatar: '🤖', lastMessage: 'Did you try the new MCP skill?', lastTime: '15m', unread: 0 },
-  { id: 'grp-1', type: 'group', name: 'Agentrix Builders', avatar: '🏗️', lastMessage: 'claw_dev: Build 38 is live 🎉', lastTime: '1h', unread: 5, memberCount: 128 },
-  { id: 'grp-2', type: 'group', name: 'Skill Creators', avatar: '⚡', lastMessage: 'New SDK docs are up', lastTime: '3h', unread: 0, memberCount: 64 },
-  { id: 'grp-3', type: 'group', name: 'Task Hunters', avatar: '🎯', lastMessage: 'Bounty #23 has been claimed', lastTime: '1d', unread: 0, memberCount: 312 },
+  { id: 'grp-claw-install', type: 'group', name: '🦀 Claw 安装帮助', avatar: '🦀', lastMessage: 'Agentrix-claw: 安装遇到问题请看置顶教程 👆', lastTime: '刚刚', unread: 3, memberCount: 428 },
+  { id: 'grp-claw-discuss', type: 'group', name: '💬 Claw 使用讨论', avatar: '💬', lastMessage: '有人试过 Web Search + 邮件自动摘要组合吗？', lastTime: '5m', unread: 12, memberCount: 316 },
+  { id: 'grp-skills', type: 'group', name: '⚡ 技能分享交流', avatar: '⚡', lastMessage: 'workflow_pro: 分享一个 GitHub PR 自动审查技能', lastTime: '1h', unread: 7, memberCount: 195 },
+  { id: 'grp-advanced', type: 'group', name: '🚀 进阶玩家圈', avatar: '🚀', lastMessage: 'claw_dev: MCP SDK 最新版本更新说明', lastTime: '3h', unread: 0, memberCount: 89 },
+  { id: 'grp-newbie', type: 'group', name: '🌱 新手答疑群', avatar: '🌱', lastMessage: 'Agentrix-claw: 欢迎新同学，先看置顶新手教程！', lastTime: '2h', unread: 0, memberCount: 612 },
 ];
 
 async function fetchChatList() {
@@ -40,6 +42,7 @@ async function fetchChatList() {
 
 export function ChatListScreen() {
   const navigation = useNavigation<Nav>();
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'all' | 'dm' | 'group'>('all');
 
@@ -88,7 +91,7 @@ export function ChatListScreen() {
           )}
         </View>
         {item.memberCount && (
-          <Text style={styles.memberCount}>{item.memberCount} members</Text>
+          <Text style={styles.memberCount}>{item.memberCount} {t({ en: 'members', zh: '成员' })}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -101,7 +104,7 @@ export function ChatListScreen() {
         <View style={styles.searchRow}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search chats..."
+            placeholder={t({ en: 'Search chats...', zh: '搜索聊天...' })}
             placeholderTextColor={colors.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -110,14 +113,14 @@ export function ChatListScreen() {
 
         {/* Tabs */}
         <View style={styles.tabs}>
-          {(['all', 'dm', 'group'] as const).map((t) => (
+          {(['all', 'dm', 'group'] as const).map((tabKey) => (
             <TouchableOpacity
-              key={t}
-              style={[styles.tab, tab === t && styles.tabActive]}
-              onPress={() => setTab(t)}
+              key={tabKey}
+              style={[styles.tab, tab === tabKey && styles.tabActive]}
+              onPress={() => setTab(tabKey)}
             >
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                {t === 'all' ? 'All' : t === 'dm' ? '💬 Direct' : '👥 Groups'}
+              <Text style={[styles.tabText, tab === tabKey && styles.tabTextActive]}>
+                {tabKey === 'all' ? t({ en: 'All', zh: '全部' }) : tabKey === 'dm' ? `💬 ${t({ en: 'Direct', zh: '私信' })}` : `👥 ${t({ en: 'Groups', zh: '群组' })}`}
               </Text>
             </TouchableOpacity>
           ))}
@@ -135,7 +138,7 @@ export function ChatListScreen() {
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyIcon}>💬</Text>
-                <Text style={styles.emptyText}>No chats yet</Text>
+                <Text style={styles.emptyText}>{t({ en: 'No chats yet', zh: '暂无聊天' })}</Text>
               </View>
             }
           />

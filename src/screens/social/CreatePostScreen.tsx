@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<SocialStackParamList>;
@@ -23,6 +24,7 @@ async function createPost(body: { content: string; tags: string[] }) {
 
 export function CreatePostScreen() {
   const navigation = useNavigation<Nav>();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [content, setContent] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -32,31 +34,31 @@ export function CreatePostScreen() {
     mutationFn: createPost,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      Alert.alert('Posted!', 'Your post is now live in the community.');
+      Alert.alert(t({ en: 'Posted!', zh: '发布成功！' }), t({ en: 'Your post is now live in the community.', zh: '你的帖子已在社区中公开。' }));
       navigation.goBack();
     },
     onError: (err: any) => {
-      Alert.alert('Error', err?.message || 'Failed to post. Please try again.');
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to post. Please try again.', zh: '发布失败，请重试。' }));
     },
   });
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+      prev.includes(tag) ? prev.filter((tg) => tg !== tag) : [...prev, tag]
     );
   };
 
   const addCustomTag = () => {
-    const t = customTag.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (t && !selectedTags.includes(t)) {
-      setSelectedTags((prev) => [...prev, t]);
+    const trimmed = customTag.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (trimmed && !selectedTags.includes(trimmed)) {
+      setSelectedTags((prev) => [...prev, trimmed]);
     }
     setCustomTag('');
   };
 
   const handlePost = () => {
     if (!content.trim()) {
-      Alert.alert('Empty Post', 'Please write something before posting.');
+      Alert.alert(t({ en: 'Empty Post', zh: '内容为空' }), t({ en: 'Please write something before posting.', zh: '请先写内容再发布。' }));
       return;
     }
     submit({ content: content.trim(), tags: selectedTags });
@@ -68,9 +70,9 @@ export function CreatePostScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cancelBtn}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>{t({ en: 'Cancel', zh: '取消' })}</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>New Post</Text>
+          <Text style={styles.title}>{t({ en: 'New Post', zh: '发新帖' })}</Text>
           <TouchableOpacity
             onPress={handlePost}
             disabled={isPending || !content.trim()}
@@ -79,17 +81,17 @@ export function CreatePostScreen() {
             {isPending ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.postBtnText}>Post</Text>
+              <Text style={styles.postBtnText}>{t({ en: 'Post', zh: '发布' })}</Text>
             )}
           </TouchableOpacity>
         </View>
 
         {/* Content Input */}
         <View style={styles.inputWrapper}>
-          <Text style={styles.inputLabel}>What are you building?</Text>
+          <Text style={styles.inputLabel}>{t({ en: "What are you building?", zh: '你在开发什么？' })}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Share your agent workflow, skill, or discovery with the community..."
+            placeholder={t({ en: 'Share your agent workflow, skill, or discovery with the community...', zh: '与社区分享你的 agent 工作流、技能或发现...' })}
             placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={6}
@@ -103,7 +105,7 @@ export function CreatePostScreen() {
 
         {/* Tags */}
         <View style={styles.tagsSection}>
-          <Text style={styles.inputLabel}>Tags (optional)</Text>
+          <Text style={styles.inputLabel}>{t({ en: 'Tags (optional)', zh: '标签（可选）' })}</Text>
           <View style={styles.tagGrid}>
             {PRESET_TAGS.map((tag) => (
               <TouchableOpacity
@@ -122,7 +124,7 @@ export function CreatePostScreen() {
           <View style={styles.customTagRow}>
             <TextInput
               style={styles.customTagInput}
-              placeholder="Add custom tag..."
+              placeholder={t({ en: 'Add custom tag...', zh: '添加自定义标签...' })}
               placeholderTextColor={colors.textMuted}
               value={customTag}
               onChangeText={setCustomTag}
@@ -131,7 +133,7 @@ export function CreatePostScreen() {
               autoCapitalize="none"
             />
             <TouchableOpacity onPress={addCustomTag} style={styles.addTagBtn}>
-              <Text style={styles.addTagText}>Add</Text>
+              <Text style={styles.addTagText}>{t({ en: 'Add', zh: '添加' })}</Text>
             </TouchableOpacity>
           </View>
 
@@ -155,11 +157,11 @@ export function CreatePostScreen() {
 
         {/* Tips */}
         <View style={styles.tips}>
-          <Text style={styles.tipsTitle}>💡 Post Ideas</Text>
-          <Text style={styles.tipsText}>• Share a workflow or skill you built</Text>
-          <Text style={styles.tipsText}>• Show off your agent running live</Text>
-          <Text style={styles.tipsText}>• Ask for help with an automation</Text>
-          <Text style={styles.tipsText}>• Celebrate a milestone 🎉</Text>
+          <Text style={styles.tipsTitle}>💡 {t({ en: 'Post Ideas', zh: '发帖灵感' })}</Text>
+          <Text style={styles.tipsText}>• {t({ en: 'Share a workflow or skill you built', zh: '分享你制作的工作流或技能' })}</Text>
+          <Text style={styles.tipsText}>• {t({ en: 'Show off your agent running live', zh: '展示你的 agent 实时运行效果' })}</Text>
+          <Text style={styles.tipsText}>• {t({ en: 'Ask for help with an automation', zh: '寻求自动化方面的帮助' })}</Text>
+          <Text style={styles.tipsText}>• {t({ en: 'Celebrate a milestone 🎉', zh: '庆祝里程碑 🎉' })}</Text>
         </View>
       </ScrollView>
     </KeyboardAvancingView>

@@ -10,6 +10,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList, MainTabParamList } from '../../navigation/types';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -36,41 +37,53 @@ type Post = {
 };
 
 const FEED_TABS = ['Hot', 'Latest', 'Following'];
-const TRENDING_TAGS = ['showcase', 'skill', 'productivity', 'dev', 'ai', 'workflow', 'agent', 'github'];
+// Claw-focused trending tags
+const TRENDING_TAGS = ['claw安装', 'claw技巧', '技能分享', '新手入门', '进阶技巧', '一键安装', 'MCP教程', '工作流'];
 
 const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
+  '官方': { icon: '🦀', color: '#00C2FF' },
   'Top Creator': { icon: '⭐', color: '#F59E0B' },
   'Genesis Node': { icon: '⚡', color: '#00d4ff' },
-  'Skill Wizard': { icon: '🔮', color: '#7c3aed' },
+  '进阶玩家': { icon: '🔮', color: '#7c3aed' },
 };
 
+// Placeholder posts focused on Claw installation and usage tutorials
 const PLACEHOLDER_POSTS: Post[] = [
   {
-    id: '1', authorId: 'u1', author: 'openclaw_fan', avatar: '🦀',
-    content: 'Just deployed my first cloud agent via ClawLink! Running a research agent 24/7 now 🚀',
-    likes: 42, comments: 7, time: '2h', isLiked: false,
-    tags: ['showcase', 'cloud'], badges: ['Top Creator'],
+    id: 'pin-1', authorId: 'official', author: 'Agentrix-claw', avatar: '🦀',
+    content: '【新手必读】OpenClaw 完整安装教程\n\n1. 访问 agentrix.top 注册账号\n2. 在「我的实例」中一键开通云端 Claw\n3. 复制安装脚本，在本地终端执行\n4. 安装完成后绑定到 App 即可使用\n\n有任何问题欢迎在评论区提问 👇',
+    likes: 318, comments: 52, time: '官方置顶', isLiked: false,
+    tags: ['新手入门', 'claw安装', '一键安装'], badges: ['官方'],
   },
   {
-    id: '2', authorId: 'u2', author: 'ai_builder', avatar: '🤖',
-    content: 'Built a custom skill that auto-summarizes my emails every morning. 10/10 would recommend OpenClaw for productivity workflows.',
-    likes: 87, comments: 15, time: '4h', isLiked: false,
-    tags: ['skill', 'productivity'], badges: [],
+    id: 'pin-2', authorId: 'official', author: 'Agentrix-claw', avatar: '🦀',
+    content: '【进阶指南】如何给你的 Claw 安装 MCP 技能包\n\n MCP（Model Context Protocol）技能是扩展 Claw 能力的核心方式。\n\n✅ 一键安装：打开市场 → 「OpenClaw」标签 → 点击安装\n✅ 手动安装：编辑 claw_config.json 添加技能包路径\n✅ 推荐技能：Web Search、Code Executor、GitHub Review\n\n安装完成后重启实例即可生效。',
+    likes: 245, comments: 38, time: '1d', isLiked: false,
+    tags: ['进阶技巧', 'MCP教程', '技能分享'], badges: ['官方'],
   },
   {
     id: '3', authorId: 'u3', author: 'claw_dev', avatar: '💻',
-    content: 'New MCP skill published: "GitHub Auto-Review". Installs in 1-click from ClawLink Market. Check it out!',
-    likes: 120, comments: 23, time: '6h', isLiked: false,
-    tags: ['skill', 'github', 'dev'],
-    skillId: 'github-auto-review',
-    skillName: 'GitHub Auto-Review',
-    badges: ['Genesis Node'],
+    content: '折腾了一晚上终于把 Claw 本地版跑起来了！关键是要先装好 Node.js 18+ 和 Docker，然后用 App 里的安装脚本一键搞定。\n\n本地版比云端版延迟低不少，推荐有服务器的朋友试试 🎉',
+    likes: 127, comments: 31, time: '3h', isLiked: false,
+    tags: ['claw安装', 'claw技巧', '新手入门'], badges: ['Genesis Node'],
   },
   {
-    id: '4', authorId: 'u4', author: 'skill_wizard', avatar: '⚡',
-    content: 'Hot take: the best agent workflow is one you set and forget. Here\'s my zero-maintenance research pipeline →',
-    likes: 64, comments: 9, time: '8h', isLiked: false,
-    tags: ['workflow', 'ai'], badges: ['Skill Wizard'],
+    id: 'pin-3', authorId: 'official', author: 'Agentrix-claw', avatar: '🦀',
+    content: '【高阶玩法】自己写 MCP Skill 并发布到市场\n\n1. 克隆 OpenClaw SDK：git clone https://github.com/openclaw/sdk\n2. 实现 execute() 方法，处理工具调用\n3. 在 skill.json 中定义技能元数据\n4. 提交到社区市场供大家安装\n\n目前社区已有 5200+ 技能，欢迎贡献！',
+    likes: 189, comments: 27, time: '2d', isLiked: false,
+    tags: ['进阶技巧', 'MCP教程', '技能分享'], badges: ['官方'],
+  },
+  {
+    id: '5', authorId: 'u5', author: 'workflow_pro', avatar: '⚡',
+    content: '分享我的每日自动化工作流：\n早上 8 点 → Claw 自动爬取行业新闻 + AI 摘要推送微信\n下午 → 自动整理邮件、生成日报\n晚上 → GitHub PR 自动审查提醒\n\n全程无需人工干预，效率提升 300%！',
+    likes: 203, comments: 44, time: '5h', isLiked: false,
+    tags: ['工作流', '进阶技巧', 'claw技巧'], badges: ['进阶玩家'],
+  },
+  {
+    id: '6', authorId: 'u6', author: 'newbie_claw', avatar: '🌱',
+    content: '第一次用 Claw，照着官方教程安装成功啦！\n感觉 Web Search 这个技能真的很好用，搜索出来的结果还会自动摘要，比直接用搜索引擎方便多了 👍\n大佬们有没有推荐的进阶技能？',
+    likes: 56, comments: 18, time: '1h', isLiked: false,
+    tags: ['新手入门', '技能分享'], badges: [],
   },
 ];
 
@@ -88,6 +101,7 @@ async function likePost(postId: string) {
 
 export function FeedScreen() {
   const navigation = useNavigation<Nav>();
+  const { t } = useI18n();
   const [feedTab, setFeedTab] = useState('Hot');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -171,13 +185,13 @@ export function FeedScreen() {
       {/* Tags */}
       {post.tags && post.tags.length > 0 && (
         <View style={styles.tagsRow}>
-          {post.tags.map((t) => (
+          {post.tags.map((tag) => (
             <TouchableOpacity
-              key={t}
-              style={[styles.tag, activeTag === t && styles.tagActive]}
-              onPress={() => handleTagPress(t)}
+              key={tag}
+              style={[styles.tag, activeTag === tag && styles.tagActive]}
+              onPress={() => handleTagPress(tag)}
             >
-              <Text style={[styles.tagText, activeTag === t && styles.tagTextActive]}>#{t}</Text>
+              <Text style={[styles.tagText, activeTag === tag && styles.tagTextActive]}>#{tag}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -197,7 +211,7 @@ export function FeedScreen() {
           <Text style={styles.actionText}>💬 {post.comments}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn}>
-          <Text style={styles.actionText}>🔗 Share</Text>
+          <Text style={styles.actionText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
         </TouchableOpacity>
         {/* Fork & Install — shown when post has an associated skill */}
         {post.skillId && (
@@ -206,12 +220,12 @@ export function FeedScreen() {
             onPress={(e) => {
               e.stopPropagation();
               Alert.alert(
-                '⚡ Fork & Install',
-                `Install "${post.skillName ?? post.skillId}" from the marketplace?`,
+                t({ en: '⚡ Fork & Install', zh: '⚡ Fork & 安装' }),
+                `${t({ en: 'Install', zh: '安装' })} "${post.skillName ?? post.skillId}" ${t({ en: 'from the marketplace?', zh: '从市场中安装？' })}`,
                 [
-                  { text: 'Cancel', style: 'cancel' },
+                  { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
                   {
-                    text: 'Install',
+                    text: t({ en: 'Install', zh: '安装' }),
                     onPress: () => {
                       // Navigate to Explore tab → Checkout for this skill
                       (navigation as any).navigate('Explore', {
@@ -224,7 +238,7 @@ export function FeedScreen() {
               );
             }}
           >
-            <Text style={[styles.actionText, styles.installText]}>⚡ Install</Text>
+            <Text style={[styles.actionText, styles.installText]}>⚡ {t({ en: 'Install', zh: '安装' })}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -235,7 +249,10 @@ export function FeedScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Community</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>🦀 {t({ en: 'Claw Community', zh: 'Claw 社区' })}</Text>
+          <Text style={styles.headerSubtitle}>{t({ en: 'Install · Use · Share skills', zh: '安装 · 使用 · 分享技能' })}</Text>
+        </View>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('CreatePost' as any)}>
             <Text style={styles.headerIcon}>✏️</Text>
@@ -248,14 +265,14 @@ export function FeedScreen() {
 
       {/* Feed Tabs */}
       <View style={styles.tabs}>
-        {FEED_TABS.map((t) => (
+        {FEED_TABS.map((tabLabel) => (
           <TouchableOpacity
-            key={t}
-            style={[styles.tab, feedTab === t && styles.tabActive]}
-            onPress={() => { setFeedTab(t); setActiveTag(null); }}
+            key={tabLabel}
+            style={[styles.tab, feedTab === tabLabel && styles.tabActive]}
+            onPress={() => { setFeedTab(tabLabel); setActiveTag(null); }}
           >
-            <Text style={[styles.tabText, feedTab === t && styles.tabTextActive]}>
-              {t === 'Hot' ? '🔥 Hot' : t === 'Latest' ? '🆕 Latest' : '👥 Following'}
+            <Text style={[styles.tabText, feedTab === tabLabel && styles.tabTextActive]}>
+              {tabLabel === 'Hot' ? `🔥 ${t({ en: 'Hot', zh: '热门' })}` : tabLabel === 'Latest' ? `🆕 ${t({ en: 'Latest', zh: '最新' })}` : `👥 ${t({ en: 'Following', zh: '关注' })}`}
             </Text>
           </TouchableOpacity>
         ))}
@@ -268,13 +285,13 @@ export function FeedScreen() {
         style={styles.tagScroll}
         contentContainerStyle={styles.tagScrollContent}
       >
-        {TRENDING_TAGS.map((t) => (
+        {TRENDING_TAGS.map((tag) => (
           <TouchableOpacity
-            key={t}
-            style={[styles.trendingTag, activeTag === t && styles.trendingTagActive]}
-            onPress={() => handleTagPress(t)}
+            key={tag}
+            style={[styles.trendingTag, activeTag === tag && styles.trendingTagActive]}
+            onPress={() => handleTagPress(tag)}
           >
-            <Text style={[styles.trendingTagText, activeTag === t && styles.trendingTagTextActive]}>#{t}</Text>
+            <Text style={[styles.trendingTagText, activeTag === tag && styles.trendingTagTextActive]}>#{tag}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -303,7 +320,8 @@ export function FeedScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 52, paddingBottom: 8 },
-  headerTitle: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
+  headerSubtitle: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
   headerRight: { flexDirection: 'row', gap: 4 },
   headerIconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bgCard, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
   headerIcon: { fontSize: 16 },

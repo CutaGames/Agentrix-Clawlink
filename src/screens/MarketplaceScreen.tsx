@@ -17,6 +17,7 @@ import { marketplaceApi, SkillItem } from '../services/marketplace.api';
 import { searchOpenClawHub } from '../services/openclawHub.service';
 import { SkillCard } from '../components/market/SkillCard';
 import { CategoryTabs } from '../components/market/CategoryTabs';
+import { useI18n } from '../stores/i18nStore';
 
 type MarketCategory = 'resources' | 'skills' | 'tasks' | 'openclaw';
 
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function MarketplaceScreen({ navigation }: Props) {
+  const { t } = useI18n();
   const [category, setCategory] = useState<MarketCategory>('skills');
   const [subCategory, setSubCategory] = useState('All');
   const [search, setSearch] = useState('');
@@ -183,7 +185,7 @@ export function MarketplaceScreen({ navigation }: Props) {
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search skills, resources or tasks..."
+          placeholder={t({ en: 'Search skills, resources or tasks...', zh: '搜索技能、资源或任务...' })}
           placeholderTextColor={colors.muted}
           value={search}
           onChangeText={setSearch}
@@ -198,12 +200,15 @@ export function MarketplaceScreen({ navigation }: Props) {
 
       {/* 四分类 Tab — Resources / Skills / OpenClaw Skills / Tasks */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsRow}>
-        {([
-          { id: 'resources', label: '📦 Resources' },
-          { id: 'skills', label: '⚡ Skills' },
-          { id: 'openclaw', label: '🤖 OpenClaw' },
-          { id: 'tasks', label: '🎯 Tasks' },
-        ] as { id: MarketCategory; label: string }[]).map((tab) => (
+        {([{
+          id: 'resources', label: `📦 ${t({ en: 'Resources', zh: '资源' })}`, test: true,
+        }, {
+          id: 'skills', label: `⚡ ${t({ en: 'Skills', zh: '技能' })}`, test: false,
+        }, {
+          id: 'openclaw', label: `🤖 OpenClaw`, test: false,
+        }, {
+          id: 'tasks', label: `🎯 ${t({ en: 'Tasks', zh: '任务' })}`, test: true,
+        }] as { id: MarketCategory; label: string; test: boolean }[]).map((tab) => (
           <TouchableOpacity
             key={tab.id}
             style={[styles.categoryTab, category === tab.id && styles.categoryTabActive]}
@@ -214,9 +219,16 @@ export function MarketplaceScreen({ navigation }: Props) {
             }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.categoryTabText, category === tab.id && styles.categoryTabTextActive]}>
-              {tab.label}
-            </Text>
+            <View style={{ position: 'relative' }}>
+              <Text style={[styles.categoryTabText, category === tab.id && styles.categoryTabTextActive]}>
+                {tab.label}
+              </Text>
+              {tab.test && (
+                <View style={styles.testBadge}>
+                  <Text style={styles.testBadgeText}>TEST</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -224,7 +236,7 @@ export function MarketplaceScreen({ navigation }: Props) {
       {/* OpenClaw category description */}
       {category === 'openclaw' && (
         <View style={styles.openclawBanner}>
-          <Text style={styles.openclawBannerText}>🤖 Install directly to your OpenClaw agent — 1-click compatible</Text>
+          <Text style={styles.openclawBannerText}>🤖 {t({ en: 'Install directly to your OpenClaw agent — 1-click compatible', zh: '直接安装到你的 OpenClaw agent —一键兼容' })}</Text>
         </View>
       )}
 
@@ -256,8 +268,8 @@ export function MarketplaceScreen({ navigation }: Props) {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyIcon}>🔍</Text>
-        <Text style={styles.emptyText}>No results</Text>
-        <Text style={styles.emptySubtext}>Try different keywords or categories</Text>
+        <Text style={styles.emptyText}>{t({ en: 'No results', zh: '暂无结果' })}</Text>
+        <Text style={styles.emptySubtext}>{t({ en: 'Try different keywords or categories', zh: '尝试其他关键词或分类' })}</Text>
       </View>
     );
   };
@@ -266,7 +278,7 @@ export function MarketplaceScreen({ navigation }: Props) {
     if (!hasMore && items.length > 0) {
       return (
         <View style={styles.footerContainer}>
-          <Text style={styles.footerText}>— All loaded —</Text>
+          <Text style={styles.footerText}>— {t({ en: 'All loaded', zh: '已全部加载' })} —</Text>
         </View>
       );
     }
@@ -335,6 +347,22 @@ const styles = StyleSheet.create({
   categoryTabActive: { borderColor: colors.primary, backgroundColor: colors.primary + '15' },
   categoryTabText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
   categoryTabTextActive: { color: colors.primary },
+  // TEST badge overlay
+  testBadge: {
+    position: 'absolute',
+    top: -10,
+    right: -14,
+    backgroundColor: '#ef4444',
+    borderRadius: 4,
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+  },
+  testBadgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   openclawBanner: {
     marginHorizontal: 16, marginBottom: 8, backgroundColor: '#2563eb15',
     borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#2563eb33',

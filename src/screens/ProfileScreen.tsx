@@ -5,9 +5,11 @@ import { useNavigation } from '@react-navigation/native';
 import { Card } from '../components/Card';
 import { colors } from '../theme/colors';
 import { useIdentityStore } from '../stores/identityStore';
+import { useI18n } from '../stores/i18nStore';
 
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const { t } = useI18n();
   const user = useIdentityStore((s) => s.user);
   const logout = useIdentityStore((s) => s.logout);
 
@@ -20,12 +22,12 @@ export const ProfileScreen: React.FC = () => {
   };
 
   const menuItems = [
-    { icon: '🔔', title: '通知设置', screen: 'Settings' },
-    { icon: '🔐', title: '安全设置', screen: 'Settings' },
-    { icon: '🌐', title: '环境切换', screen: 'Settings' },
-    { icon: '💳', title: '钱包管理', screen: 'Settings' },
-    { icon: '📖', title: '帮助中心', screen: null },
-    { icon: '📝', title: '关于我们', screen: null },
+    { icon: '🔔', title: t({ en: 'Notification Settings', zh: '通知设置' }), screen: 'Settings' },
+    { icon: '🔐', title: t({ en: 'Security Settings', zh: '安全设置' }), screen: 'Settings' },
+    { icon: '🌐', title: t({ en: 'Environment Switch', zh: '环境切换' }), screen: 'Settings' },
+    { icon: '💳', title: t({ en: 'Wallet Management', zh: '钉包管理' }), screen: 'Settings' },
+    { icon: '📖', title: t({ en: 'Help Center', zh: '帮助中心' }), screen: null },
+    { icon: '📝', title: t({ en: 'About Us', zh: '关于我们' }), screen: null },
   ];
 
   return (
@@ -51,30 +53,30 @@ export const ProfileScreen: React.FC = () => {
 
       {/* 身份状态 */}
       <Card>
-        <Text style={styles.sectionTitle}>我的身份</Text>
+        <Text style={styles.sectionTitle}>{t({ en: 'My Identity', zh: '我的身份' })}</Text>
         <View style={styles.identityList}>
           <View style={styles.identityItem}>
             <Text style={styles.identityIcon}>👤</Text>
-            <Text style={styles.identityName}>个人</Text>
+            <Text style={styles.identityName}>{t({ en: 'Personal', zh: '个人' })}</Text>
             <View style={[styles.identityStatus, styles.statusActive]}>
-              <Text style={styles.statusText}>已激活</Text>
+              <Text style={styles.statusText}>{t({ en: 'Active', zh: '已激活' })}</Text>
             </View>
           </View>
           <View style={styles.identityItem}>
             <Text style={styles.identityIcon}>🏪</Text>
-            <Text style={styles.identityName}>商户</Text>
+            <Text style={styles.identityName}>{t({ en: 'Merchant', zh: '商户' })}</Text>
             <View style={[styles.identityStatus, styles.statusActive]}>
-              <Text style={styles.statusText}>已激活</Text>
+              <Text style={styles.statusText}>{t({ en: 'Active', zh: '已激活' })}</Text>
             </View>
           </View>
           <View style={styles.identityItem}>
             <Text style={styles.identityIcon}>💻</Text>
-            <Text style={styles.identityName}>开发者</Text>
+            <Text style={styles.identityName}>{t({ en: 'Developer', zh: '开发者' })}</Text>
             <TouchableOpacity 
               style={[styles.identityStatus, styles.statusLocked]}
               onPress={() => navigation.navigate('IdentityActivation', { identity: 'developer' })}
             >
-              <Text style={styles.statusTextLocked}>申请激活</Text>
+              <Text style={styles.statusTextLocked}>{t({ en: 'Apply', zh: '申请激活' })}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -99,7 +101,7 @@ export const ProfileScreen: React.FC = () => {
 
       {/* 退出登录 */}
       <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-        <Text style={styles.logoutText}>退出登录</Text>
+        <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
 
       {/* 版本信息 */}

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
 import {
   validateInvitationCode,
   redeemInvitationCode,
@@ -22,6 +23,7 @@ export function InvitationGateScreen() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
+  const { t } = useI18n();
   const setInvitationValid = useAuthStore((s) => s.setInvitationValid);
   const clearAuth = useAuthStore((s) => s.clearAuth);
 
@@ -46,7 +48,7 @@ export function InvitationGateScreen() {
   async function handleSubmit() {
     const trimmed = code.trim();
     if (trimmed.length < 3) {
-      Alert.alert('Invalid Code', 'Please enter a valid invitation code.');
+      Alert.alert(t({ en: 'Invalid Code', zh: '无效邀请码' }), t({ en: 'Please enter a valid invitation code.', zh: '请输入有效的邀请码。' }));
       return;
     }
 
@@ -55,7 +57,7 @@ export function InvitationGateScreen() {
       // Step 1: Validate
       const validation = await validateInvitationCode(trimmed);
       if (!validation.valid) {
-        Alert.alert('Invalid Code', validation.message);
+        Alert.alert(t({ en: 'Invalid Code', zh: '无效邀请码' }), validation.message);
         return;
       }
 
@@ -64,10 +66,10 @@ export function InvitationGateScreen() {
       if (result.success) {
         setInvitationValid();
       } else {
-        Alert.alert('Error', result.message);
+        Alert.alert(t({ en: 'Error', zh: '错误' }), result.message);
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to redeem invitation code');
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err.message || t({ en: 'Failed to redeem invitation code', zh: '兑换邀请码失败' }));
     } finally {
       setLoading(false);
     }
@@ -81,7 +83,7 @@ export function InvitationGateScreen() {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={styles.checkingText}>Checking invitation status...</Text>
+        <Text style={styles.checkingText}>{t({ en: 'Checking invitation status...', zh: '正在检查邀请状态...' })}</Text>
       </View>
     );
   }
@@ -94,10 +96,9 @@ export function InvitationGateScreen() {
       <View style={styles.content}>
         {/* Logo area */}
         <Text style={styles.logo}>🤖</Text>
-        <Text style={styles.title}>Welcome to ClawLink</Text>
+        <Text style={styles.title}>{t({ en: 'Welcome to ClawLink', zh: '欢迎来到 ClawLink' })}</Text>
         <Text style={styles.subtitle}>
-          ClawLink is currently in private beta.{'\n'}
-          Enter your invitation code to get started.
+          {t({ en: "ClawLink is currently in private beta.\nEnter your invitation code to get started.", zh: 'ClawLink 目前处于私测阶段。\n请输入邀请码以开始使用。' })}
         </Text>
 
         {/* Code input */}
@@ -126,19 +127,18 @@ export function InvitationGateScreen() {
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Text style={styles.submitBtnText}>Activate</Text>
+              <Text style={styles.submitBtnText}>{t({ en: 'Activate', zh: '激活' })}</Text>
           )}
         </TouchableOpacity>
 
         {/* Info */}
         <Text style={styles.info}>
-          Don't have a code? Follow us on social media for{'\n'}
-          invitation code giveaways.
+          {t({ en: "Don't have a code? Follow us on social media for invitation code giveaways.", zh: '没有邀请码？关注我们的社交媒体获取邀请码。' })}
         </Text>
 
         {/* Logout link */}
         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-          <Text style={styles.logoutText}>Sign out</Text>
+          <Text style={styles.logoutText}>{t({ en: 'Sign out', zh: '退出登录' })}</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

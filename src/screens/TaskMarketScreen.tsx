@@ -429,7 +429,14 @@ export default function TaskMarketScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}
+      {/* TEST zone banner */}
+      <View style={{ backgroundColor: '#ef444418', borderBottomWidth: 1, borderBottomColor: '#ef444433', paddingVertical: 6, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ backgroundColor: '#ef4444', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>TEST</Text>
+        </View>
+        <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>This is a test area — task features are under development</Text>
+      </View>
+      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}}
       <View style={styles.bannerCarousel}>
         <ScrollView
           ref={bannerScrollRef}

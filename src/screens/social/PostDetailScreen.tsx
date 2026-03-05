@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
 
 type RouteT = RouteProp<SocialStackParamList, 'PostDetail'>;
@@ -76,6 +77,7 @@ export function PostDetailScreen() {
   const { postId } = route.params;
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
+  const { t } = useI18n();
   const [comment, setComment] = useState('');
   const inputRef = useRef<TextInput>(null);
 
@@ -157,9 +159,9 @@ export function PostDetailScreen() {
         {/* Tags */}
         {post.tags && post.tags.length > 0 && (
           <View style={styles.tagsRow}>
-            {post.tags.map((t) => (
-              <View key={t} style={styles.tag}>
-                <Text style={styles.tagText}>#{t}</Text>
+            {post.tags.map((tag) => (
+              <View key={tag} style={styles.tag}>
+                <Text style={styles.tagText}>#{tag}</Text>
               </View>
             ))}
           </View>
@@ -176,12 +178,12 @@ export function PostDetailScreen() {
             <Text style={styles.actionText}>💬 {post.comments}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn}>
-            <Text style={styles.actionText}>🔗 Share</Text>
+            <Text style={styles.actionText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.divider} />
-        <Text style={styles.commentsTitle}>Comments</Text>
+        <Text style={styles.commentsTitle}>{t({ en: 'Comments', zh: '评论' })}</Text>
       </View>
     );
   };
@@ -227,7 +229,7 @@ export function PostDetailScreen() {
           <TextInput
             ref={inputRef}
             style={styles.input}
-            placeholder="Write a comment..."
+            placeholder={t({ en: 'Write a comment...', zh: '写下你的评论...' })}
             placeholderTextColor={colors.textMuted}
             value={comment}
             onChangeText={setComment}
