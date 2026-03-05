@@ -30,7 +30,7 @@ export function ReferralDashboardScreen() {
   };
 
   const handleCopy = async () => {
-    const link = `https://clawlink.app/i/${user?.agentrixId}`;
+    const link = `https://agentrix.top/i/${user?.agentrixId}`;
     await Clipboard.setStringAsync(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -69,14 +69,14 @@ export function ReferralDashboardScreen() {
         <Text style={styles.sectionTitle}>Your Referral Link</Text>
         <View style={styles.linkBox}>
           <Text style={styles.linkText} numberOfLines={1}>
-            https://clawlink.app/i/{user?.agentrixId}
+            https://agentrix.top/i/{user?.agentrixId}
           </Text>
           <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
             <Text style={styles.copyBtnText}>{copied ? '✅ Copied' : '📋 Copy'}</Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-          <Text style={styles.shareBtnText}>🦀 Share ClawLink (Earn 30%)</Text>
+          <Text style={styles.shareBtnText}>🦀 Share Agentrix Claw (Earn 30%)</Text>
         </TouchableOpacity>
       </View>
 

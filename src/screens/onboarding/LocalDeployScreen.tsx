@@ -43,7 +43,7 @@ export function LocalDeployScreen() {
 
     try {
       // QR payload formats:
-      //   Relay mode (ClawLink Agent): {relayToken, wsRelayUrl, mode:'relay'}
+      //   Relay mode (Agentrix Agent): {relayToken, wsRelayUrl, mode:'relay'}
       //   Direct LAN (OpenClaw):       {url:'http://ip:port', token?:'xxx'}
       //   Plain URL fallback:          'http://...'
       let parsedData: { url?: string; token?: string; relayToken?: string; wsRelayUrl?: string; mode?: string };
@@ -60,11 +60,11 @@ export function LocalDeployScreen() {
       const instanceId = `local-${Date.now()}`;
 
       if (parsedData.mode === 'relay' || parsedData.relayToken) {
-        // Relay mode — ClawLink Agent is running on PC, we connect via relay
+        // Relay mode — Agentrix Agent is running on PC, we connect via relay
         if (!parsedData.relayToken) throw new Error('Relay QR missing relayToken.');
         addInstance?.({
           id: instanceId,
-          name: 'My PC (ClawLink Relay)',
+          name: 'My PC (Agentrix Relay)',
           instanceUrl: parsedData.wsRelayUrl || 'wss://api.agentrix.top/relay',
           status: 'active',
           deployType: 'local',

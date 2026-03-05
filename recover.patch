@@ -1,0 +1,1320 @@
+commit 2c390f9ca61b0728ae6b1a62c4dc1957e53f6aba
+Author: Agentrix Dev <dev@agentrix.top>
+Date:   Thu Mar 5 18:32:15 2026 +0800
+
+    fix(mobile,backend): resolve task market bracket error, switch i18n everywhere, token limits, black logo style
+
+diff --git a/app.json b/app.json
+index e990c15..83f990b 100755
+--- a/app.json
++++ b/app.json
+@@ -10,7 +10,7 @@
+     "splash": {
+       "image": "./assets/splash.png",
+       "resizeMode": "contain",
+-      "backgroundColor": "#0B1220"
++      "backgroundColor": "#000000"
+     },
+     "assetBundlePatterns": [
+       "**/*"
+@@ -45,7 +45,7 @@
+     "android": {
+       "adaptiveIcon": {
+         "foregroundImage": "./assets/adaptive-icon.png",
+-        "backgroundColor": "#0B1220"
++        "backgroundColor": "#000000"
+       },
+       "package": "app.clawlink.mobile",
+       "permissions": [
+diff --git a/backend/src/modules/token-quota/token-quota.service.ts b/backend/src/modules/token-quota/token-quota.service.ts
+index a887c82..2db9290 100644
+--- a/backend/src/modules/token-quota/token-quota.service.ts
++++ b/backend/src/modules/token-quota/token-quota.service.ts
+@@ -59,6 +59,16 @@ export class TokenQuotaService {
+       });
+       await this.quotaRepo.save(quota);
+       this.logger.log(`Created free-trial quota for user ${userId}: ${FREE_TRIAL_TOKENS.toLocaleString()} tokens`);
++    } else if (
++      quota.planType === TokenPlanType.FREE_TRIAL &&
++      Number(quota.totalQuota) !== FREE_TRIAL_TOKENS
++    ) {
++      // Recalibrate free-trial quota to the current configured limit
++      this.logger.log(
++        `Recalibrating free-trial quota for user ${userId}: ${Number(quota.totalQuota).toLocaleString()} → ${FREE_TRIAL_TOKENS.toLocaleString()} tokens`,
++      );
++      quota.totalQuota = FREE_TRIAL_TOKENS;
++      await this.quotaRepo.save(quota);
+     }
+ 
+     return quota;
+diff --git a/src/navigation/MainTabNavigator.tsx b/src/navigation/MainTabNavigator.tsx
+index 9bd4632..c171c99 100755
+--- a/src/navigation/MainTabNavigator.tsx
++++ b/src/navigation/MainTabNavigator.tsx
+@@ -8,6 +8,7 @@ import { SocialStackNavigator } from './SocialStackNavigator';
+ import { MeStackNavigator } from './MeStackNavigator';
+ import { colors } from '../theme/colors';
+ import { useNotificationStore } from '../stores/notificationStore';
++import { useI18n } from '../stores/i18nStore';
+ 
+ const Tab = createBottomTabNavigator<MainTabParamList>();
+ 
+@@ -35,6 +36,7 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
+ }
+ 
+ export function MainTabNavigator() {
++  const { t, language } = useI18n();
+   const unreadCount = useNotificationStore((s) => s.unreadCount);
+   return (
+     <Tab.Navigator id={undefined}
+@@ -61,7 +63,7 @@ export function MainTabNavigator() {
+         name="Agent"
+         component={AgentStackNavigator}
+         options={{
+-          title: 'Agent',
++          title: t({ en: 'Agent', zh: '智能�? }),
+           tabBarIcon: ({ focused }) => <TabIcon emoji="🤖" focused={focused} />,
+         }}
+       />
+@@ -69,7 +71,7 @@ export function MainTabNavigator() {
+         name="Explore"
+         component={MarketStackNavigator}
+         options={{
+-          title: 'Explore',
++          title: t({ en: 'Explore', zh: '探索' }),
+           tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} />,
+         }}
+       />
+@@ -77,7 +79,7 @@ export function MainTabNavigator() {
+         name="Social"
+         component={SocialStackNavigator}
+         options={{
+-          title: 'Social',
++          title: t({ en: 'Social', zh: '社区' }),
+           tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
+         }}
+       />
+@@ -85,7 +87,7 @@ export function MainTabNavigator() {
+         name="Me"
+         component={MeStackNavigator}
+         options={{
+-          title: 'Me',
++          title: t({ en: 'Me', zh: '我的' }),
+           tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} badge={unreadCount} />,
+         }}
+       />
+diff --git a/src/screens/AllianceScreen.tsx b/src/screens/AllianceScreen.tsx
+index a872ec2..52b92ab 100755
+--- a/src/screens/AllianceScreen.tsx
++++ b/src/screens/AllianceScreen.tsx
+@@ -1,4 +1,4 @@
+-// Alliance Intro Screen — mobile version of web /alliance page
++// Alliance Intro Screen �?mobile version of web /alliance page
+ import React from 'react';
+ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+ import { colors } from '../theme/colors';
+@@ -9,42 +9,42 @@ interface Props { navigation: any; }
+ const T = (en: string, zh: string): TranslationDescriptor => ({ en, zh });
+ 
+ const ROLES = [
+-  { icon: '🧑‍🚀', title: T('Personal / Auto-Earn', '个人用户 / Auto-Earn'), desc: T('Create Agent, auto-execute tasks, earn commission', '一键生成 Agent，自动执行任务，获得联盟返佣'), points: [T('Create Agent in 1 min', '1 分钟创建 Agent'), T('Bind wallet or fiat account', '绑定钱包/法币'), T('Share to earn 0.5% lifetime', '分享获终身 0.5% 分成')] },
+-  { icon: '🤖', title: T('Agent Developer', 'Agent 开发者'), desc: T('Embed payment & alliance via SDK/API', '通过 SDK/API 嵌入支付与联盟能力'), points: [T('Unified payment + routing', '统一支付+智能路由'), T('Full API & Webhook docs', 'API/Webhook 完整文档'), T('2-3% auto commission', 'Agent 订单 2-3% 自动分润')] },
+-  { icon: '🏪', title: T('Merchant / Brand', '商户 / 品牌'), desc: T('Agents find customers, collect & settle payments', 'Agent 帮你找客、收款、结算'), points: [T('Unified collection + escrow', '统一收款+托管'), T('Omnichannel tracking', '全渠道订单跟踪'), T('Pay per sale promotion', '联盟推广按成交付费')] },
+-  { icon: '🧑‍💻', title: T('Plugin Developer', '插件开发者'), desc: T('Promote merchants, earn 0.5% lifetime commission', '推广商户获 0.5% 永久分成'), points: [T('Open SDK & CLI', '开放 SDK & CLI'), T('Marketplace listing rewards', 'Marketplace 上架奖励'), T('Sell subscriptions & API credits', '可售卖订阅/API Credit')] },
++  { icon: '🧑‍🚀', title: T('Personal / Auto-Earn', '个人用户 / Auto-Earn'), desc: T('Create Agent, auto-execute tasks, earn commission', '一键生�?Agent，自动执行任务，获得联盟返佣'), points: [T('Create Agent in 1 min', '1 分钟创建 Agent'), T('Bind wallet or fiat account', '绑定钱包/法币'), T('Share to earn 0.5% lifetime', '分享获终�?0.5% 分成')] },
++  { icon: '🤖', title: T('Agent Developer', 'Agent 开发�?), desc: T('Embed payment & alliance via SDK/API', '通过 SDK/API 嵌入支付与联盟能�?), points: [T('Unified payment + routing', '统一支付+智能路由'), T('Full API & Webhook docs', 'API/Webhook 完整文档'), T('2-3% auto commission', 'Agent 订单 2-3% 自动分润')] },
++  { icon: '🏪', title: T('Merchant / Brand', '商户 / 品牌'), desc: T('Agents find customers, collect & settle payments', 'Agent 帮你找客、收款、结�?), points: [T('Unified collection + escrow', '统一收款+托管'), T('Omnichannel tracking', '全渠道订单跟�?), T('Pay per sale promotion', '联盟推广按成交付�?)] },
++  { icon: '🧑‍�?, title: T('Plugin Developer', '插件开发�?), desc: T('Promote merchants, earn 0.5% lifetime commission', '推广商户�?0.5% 永久分成'), points: [T('Open SDK & CLI', '开�?SDK & CLI'), T('Marketplace listing rewards', 'Marketplace 上架奖励'), T('Sell subscriptions & API credits', '可售卖订�?API Credit')] },
+ ];
+ 
+ const INCENTIVES = [
+-  { title: T('Agent Commission', 'Agent 分润'), detail: T('2% (physical) / 3% (services & digital), instant settlement', '2%（实物）/3%（服务&数字），即时到账') },
++  { title: T('Agent Commission', 'Agent 分润'), detail: T('2% (physical) / 3% (services & digital), instant settlement', '2%（实物）/3%（服�?数字），即时到账') },
+   { title: T('Platform Fee', '平台分润'), detail: T('0.5% (physical) / 1% (other) per transaction for ops & ecosystem', '每笔 0.5%（实物）/1%（其他）用于运营') },
+-  { title: T('Alliance Referral', '联盟返佣'), detail: T('0.5% lifetime commission for promoting merchants, agents & plugins', '推广商户/Agent/插件获 0.5% 永久分佣') },
+-  { title: T('Bounty Tasks', '任务 / Bounty'), detail: T('Earn rewards for asset listings, data integration, SDK examples', '资产上架、数据接入、SDK 示例可领取奖励') },
++  { title: T('Alliance Referral', '联盟返佣'), detail: T('0.5% lifetime commission for promoting merchants, agents & plugins', '推广商户/Agent/插件�?0.5% 永久分佣') },
++  { title: T('Bounty Tasks', '任务 / Bounty'), detail: T('Earn rewards for asset listings, data integration, SDK examples', '资产上架、数据接入、SDK 示例可领取奖�?) },
+ ];
+ 
+ const STEPS = [
+   T('Sign up & complete basic KYC', '注册并完成基础 KYC'),
+-  T('Choose role & create Agent', '选择角色并开通 Agent'),
+-  T('Configure payment & referral links', '配置收款与推广链接'),
++  T('Choose role & create Agent', '选择角色并开�?Agent'),
++  T('Configure payment & referral links', '配置收款与推广链�?),
+   T('Start earning in real-time', '开始执行，实时查看收益'),
+ ];
+ 
+ export default function AllianceScreen({ navigation }: Props) {
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+ 
+   return (
+     <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
+       {/* Hero */}
+       <View style={s.hero}>
+         <Text style={s.badge}>🤝 {t(T('Agentrix Alliance', 'Agentrix 联盟'))}</Text>
+-        <Text style={s.heroTitle}>{t(T('Join the Alliance,\nEarn Forever', '加入联盟，获得永久收益'))}</Text>
+-        <Text style={s.heroDesc}>{t(T('Promote merchants for 0.5% lifetime commission. All earnings auto-calculated via smart contracts.', '推广商户获 0.5% 永久分佣，所有收益通过智能合约自动计算结算。'))}</Text>
++        <Text style={s.heroTitle}>{t(T('Join the Alliance,\nEarn Forever', '加入联盟，获得永久收�?))}</Text>
++        <Text style={s.heroDesc}>{t(T('Promote merchants for 0.5% lifetime commission. All earnings auto-calculated via smart contracts.', '推广商户�?0.5% 永久分佣，所有收益通过智能合约自动计算结算�?))}</Text>
+       </View>
+ 
+       {/* Roles */}
+       <View style={s.section}>
+         <Text style={s.sectionTitle}>{t(T('Four Alliance Roles', '四类联盟角色'))}</Text>
+-        <Text style={s.sectionSub}>{t(T('One account can hold multiple roles', '同一账户可同时扮演多个角色'))}</Text>
++        <Text style={s.sectionSub}>{t(T('One account can hold multiple roles', '同一账户可同时扮演多个角�?))}</Text>
+         {ROLES.map((role, i) => (
+           <View key={i} style={s.roleCard}>
+             <View style={s.roleHeader}>
+@@ -55,7 +55,7 @@ export default function AllianceScreen({ navigation }: Props) {
+               </View>
+             </View>
+             {role.points.map((p, j) => (
+-              <Text key={j} style={s.rolePoint}>  • {t(p)}</Text>
++              <Text key={j} style={s.rolePoint}>  �?{t(p)}</Text>
+             ))}
+           </View>
+         ))}
+@@ -75,7 +75,7 @@ export default function AllianceScreen({ navigation }: Props) {
+ 
+       {/* Steps */}
+       <View style={s.section}>
+-        <Text style={s.sectionTitle}>{t(T('4 Steps to Join', '4 步加入'))}</Text>
++        <Text style={s.sectionTitle}>{t(T('4 Steps to Join', '4 步加�?))}</Text>
+         <View style={s.stepsRow}>
+           {STEPS.map((step, i) => (
+             <View key={i} style={s.stepCard}>
+@@ -88,7 +88,7 @@ export default function AllianceScreen({ navigation }: Props) {
+ 
+       {/* CTA */}
+       <View style={s.cta}>
+-        <Text style={s.ctaTitle}>{t(T('Build the AI Economy Together', '一起共建 AI 经济联盟'))}</Text>
++        <Text style={s.ctaTitle}>{t(T('Build the AI Economy Together', '一起共�?AI 经济联盟'))}</Text>
+         <TouchableOpacity style={s.ctaBtn} onPress={() => navigation.navigate('Main')}>
+           <Text style={s.ctaBtnText}>{t(T('Get Started', '立即加入'))}</Text>
+         </TouchableOpacity>
+diff --git a/src/screens/HomeScreen.tsx b/src/screens/HomeScreen.tsx
+index 7068f49..b1fe35d 100755
+--- a/src/screens/HomeScreen.tsx
++++ b/src/screens/HomeScreen.tsx
+@@ -5,6 +5,7 @@ import { Card } from '../components/Card';
+ import { colors } from '../theme/colors';
+ import { useIdentityStore, useCurrentIdentity, useIdentitySwitch } from '../stores/identityStore';
+ import { IdentityType } from '../types/identity';
++import { useI18n } from '../stores/i18nStore';
+ 
+ // 身份内容组件
+ import { PersonalHomeContent } from '../components/identity/PersonalHomeContent';
+@@ -16,11 +17,12 @@ import { LockedIdentityContent } from '../components/identity/LockedIdentityCont
+ const IdentityTabs: React.FC = () => {
+   const activeIdentity = useIdentityStore((s) => s.activeIdentity);
+   const { switchTo, canSwitchTo, identities } = useIdentitySwitch();
++  const { t, language } = useI18n();
+ 
+   const tabs: { type: IdentityType; label: string; icon: string }[] = [
+-    { type: 'personal', label: 'Personal', icon: '👤' },
+-    { type: 'merchant', label: 'Merchant', icon: '🏪' },
+-    { type: 'developer', label: 'Developer', icon: '💻' },
++    { type: 'personal', label: t({ en: 'Personal', zh: '个人' }), icon: '👤' },
++    { type: 'merchant', label: t({ en: 'Merchant', zh: '商家' }), icon: '🏪' },
++    { type: 'developer', label: t({ en: 'Developer', zh: '开发�? }), icon: '💻' },
+   ];
+ 
+   return (
+@@ -45,7 +47,7 @@ const IdentityTabs: React.FC = () => {
+               {tab.label}
+             </Text>
+             {isLocked && <Text style={styles.lockIcon}>🔒</Text>}
+-            {isPending && <Text style={styles.pendingBadge}>Pending</Text>}
++            {isPending && <Text style={styles.pendingBadge}>{t({ en: 'Pending', zh: '审核�? })}</Text>}
+           </TouchableOpacity>
+         );
+       })}
+@@ -58,7 +60,7 @@ const IdentityContent: React.FC = () => {
+   const { type, status } = useCurrentIdentity();
+   const navigation = useNavigation<any>();
+ 
+-  // 未激活身份显示锁定页面
++  // 未激活身份显示锁定页�?
+   if (type !== 'personal' && !status?.activated) {
+     return (
+       <LockedIdentityContent 
+@@ -156,4 +158,4 @@ const styles = StyleSheet.create({
+     color: colors.warning,
+     marginLeft: 4,
+   },
+-});
+\ No newline at end of file
++});
+diff --git a/src/screens/MarketplaceScreen.tsx b/src/screens/MarketplaceScreen.tsx
+index 600107a..e6a761c 100755
+--- a/src/screens/MarketplaceScreen.tsx
++++ b/src/screens/MarketplaceScreen.tsx
+@@ -1,4 +1,4 @@
+-// 技能市场首页
++// 技能市场首�?
+ import React, { useState, useEffect, useCallback } from 'react';
+ import {
+   View,
+@@ -23,8 +23,8 @@ type MarketCategory = 'resources' | 'skills' | 'tasks' | 'openclaw';
+ 
+ // Banner data
+ const BANNERS = [
+-  { id: '1', emoji: '🤖', title: 'OpenClaw Skills', sub: '5200+ skills — 1-click install to your agent', bg: '#2563eb', action: 'openclaw' },
+-  { id: '2', emoji: '⚡', title: 'Top Weekly Skills', sub: 'Best rated tools of the week', bg: '#7c3aed', action: 'skills' },
++  { id: '1', emoji: '🤖', title: 'OpenClaw Skills', sub: '5200+ skills �?1-click install to your agent', bg: '#2563eb', action: 'openclaw' },
++  { id: '2', emoji: '�?, title: 'Top Weekly Skills', sub: 'Best rated tools of the week', bg: '#7c3aed', action: 'skills' },
+   { id: '3', emoji: '🏆', title: 'Task Bounties', sub: 'Earn by completing AI tasks', bg: '#059669', action: 'tasks' },
+ ];
+ 
+@@ -33,7 +33,7 @@ interface Props {
+ }
+ 
+ export function MarketplaceScreen({ navigation }: Props) {
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [category, setCategory] = useState<MarketCategory>('skills');
+   const [subCategory, setSubCategory] = useState('All');
+   const [search, setSearch] = useState('');
+@@ -169,7 +169,7 @@ export function MarketplaceScreen({ navigation }: Props) {
+               <Text style={styles.bannerTitle}>{b.title}</Text>
+               <Text style={styles.bannerSub}>{b.sub}</Text>
+             </View>
+-            <Text style={styles.bannerArrow}>→</Text>
++            <Text style={styles.bannerArrow}>�?/Text>
+           </TouchableOpacity>
+         ))}
+       </ScrollView>
+@@ -180,7 +180,7 @@ export function MarketplaceScreen({ navigation }: Props) {
+         ))}
+       </View>
+ 
+-      {/* 搜索栏 */}
++      {/* 搜索�?*/}
+       <View style={styles.searchContainer}>
+         <Text style={styles.searchIcon}>🔍</Text>
+         <TextInput
+@@ -193,17 +193,17 @@ export function MarketplaceScreen({ navigation }: Props) {
+         />
+         {search.length > 0 && (
+           <TouchableOpacity onPress={() => setSearch('')}>
+-            <Text style={styles.clearBtn}>✕</Text>
++            <Text style={styles.clearBtn}>�?/Text>
+           </TouchableOpacity>
+         )}
+       </View>
+ 
+-      {/* 四分类 Tab — Resources / Skills / OpenClaw Skills / Tasks */}
++      {/* 四分�?Tab �?Resources / Skills / OpenClaw Skills / Tasks */}
+       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsRow}>
+         {([{
+           id: 'resources', label: `📦 ${t({ en: 'Resources', zh: '资源' })}`, test: true,
+         }, {
+-          id: 'skills', label: `⚡ ${t({ en: 'Skills', zh: '技能' })}`, test: false,
++          id: 'skills', label: `�?${t({ en: 'Skills', zh: '技�? })}`, test: false,
+         }, {
+           id: 'openclaw', label: `🤖 OpenClaw`, test: false,
+         }, {
+@@ -236,11 +236,11 @@ export function MarketplaceScreen({ navigation }: Props) {
+       {/* OpenClaw category description */}
+       {category === 'openclaw' && (
+         <View style={styles.openclawBanner}>
+-          <Text style={styles.openclawBannerText}>🤖 {t({ en: 'Install directly to your OpenClaw agent — 1-click compatible', zh: '直接安装到你的 OpenClaw agent —一键兼容' })}</Text>
++          <Text style={styles.openclawBannerText}>🤖 {t({ en: 'Install directly to your OpenClaw agent �?1-click compatible', zh: '直接安装到你�?OpenClaw agent —一键兼�? })}</Text>
+         </View>
+       )}
+ 
+-      {/* 子筛选 */}
++      {/* 子筛�?*/}
+       <View style={styles.subFilterRow}>
+         {subCategories.map(sub => (
+           <TouchableOpacity
+@@ -278,7 +278,7 @@ export function MarketplaceScreen({ navigation }: Props) {
+     if (!hasMore && items.length > 0) {
+       return (
+         <View style={styles.footerContainer}>
+-          <Text style={styles.footerText}>— {t({ en: 'All loaded', zh: '已全部加载' })} —</Text>
++          <Text style={styles.footerText}>�?{t({ en: 'All loaded', zh: '已全部加�? })} �?/Text>
+         </View>
+       );
+     }
+diff --git a/src/screens/ProfileScreen.tsx b/src/screens/ProfileScreen.tsx
+index b0dcc1a..88e6f01 100755
+--- a/src/screens/ProfileScreen.tsx
++++ b/src/screens/ProfileScreen.tsx
+@@ -9,7 +9,7 @@ import { useI18n } from '../stores/i18nStore';
+ 
+ export const ProfileScreen: React.FC = () => {
+   const navigation = useNavigation<any>();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const user = useIdentityStore((s) => s.user);
+   const logout = useIdentityStore((s) => s.logout);
+ 
+@@ -51,7 +51,7 @@ export const ProfileScreen: React.FC = () => {
+         </View>
+       </Card>
+ 
+-      {/* 身份状态 */}
++      {/* 身份状�?*/}
+       <Card>
+         <Text style={styles.sectionTitle}>{t({ en: 'My Identity', zh: '我的身份' })}</Text>
+         <View style={styles.identityList}>
+@@ -59,24 +59,24 @@ export const ProfileScreen: React.FC = () => {
+             <Text style={styles.identityIcon}>👤</Text>
+             <Text style={styles.identityName}>{t({ en: 'Personal', zh: '个人' })}</Text>
+             <View style={[styles.identityStatus, styles.statusActive]}>
+-              <Text style={styles.statusText}>{t({ en: 'Active', zh: '已激活' })}</Text>
++              <Text style={styles.statusText}>{t({ en: 'Active', zh: '已激�? })}</Text>
+             </View>
+           </View>
+           <View style={styles.identityItem}>
+             <Text style={styles.identityIcon}>🏪</Text>
+             <Text style={styles.identityName}>{t({ en: 'Merchant', zh: '商户' })}</Text>
+             <View style={[styles.identityStatus, styles.statusActive]}>
+-              <Text style={styles.statusText}>{t({ en: 'Active', zh: '已激活' })}</Text>
++              <Text style={styles.statusText}>{t({ en: 'Active', zh: '已激�? })}</Text>
+             </View>
+           </View>
+           <View style={styles.identityItem}>
+             <Text style={styles.identityIcon}>💻</Text>
+-            <Text style={styles.identityName}>{t({ en: 'Developer', zh: '开发者' })}</Text>
++            <Text style={styles.identityName}>{t({ en: 'Developer', zh: '开发�? })}</Text>
+             <TouchableOpacity 
+               style={[styles.identityStatus, styles.statusLocked]}
+               onPress={() => navigation.navigate('IdentityActivation', { identity: 'developer' })}
+             >
+-              <Text style={styles.statusTextLocked}>{t({ en: 'Apply', zh: '申请激活' })}</Text>
++              <Text style={styles.statusTextLocked}>{t({ en: 'Apply', zh: '申请激�? })}</Text>
+             </TouchableOpacity>
+           </View>
+         </View>
+@@ -93,15 +93,15 @@ export const ProfileScreen: React.FC = () => {
+             >
+               <Text style={styles.menuIcon}>{item.icon}</Text>
+               <Text style={styles.menuTitle}>{item.title}</Text>
+-              <Text style={styles.menuArrow}>›</Text>
++              <Text style={styles.menuArrow}>�?/Text>
+             </TouchableOpacity>
+           ))}
+         </View>
+       </Card>
+ 
+-      {/* 退出登录 */}
++      {/* 退出登�?*/}
+       <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+-        <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
++        <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '退出登�? })}</Text>
+       </TouchableOpacity>
+ 
+       {/* 版本信息 */}
+@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
+   editIcon: {
+     fontSize: 16,
+   },
+-  // 身份状态
++  // 身份状�?
+   sectionTitle: {
+     color: colors.text,
+     fontSize: 16,
+@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
+     color: colors.muted,
+     fontSize: 18,
+   },
+-  // 退出登录
++  // 退出登�?
+   logoutBtn: {
+     backgroundColor: colors.card,
+     borderRadius: 12,
+diff --git a/src/screens/TaskMarketScreen.tsx b/src/screens/TaskMarketScreen.tsx
+index 76cf1f0..fed43b4 100755
+--- a/src/screens/TaskMarketScreen.tsx
++++ b/src/screens/TaskMarketScreen.tsx
+@@ -436,7 +436,7 @@ export default function TaskMarketScreen() {
+         </View>
+         <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>This is a test area — task features are under development</Text>
+       </View>
+-      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}}
++      {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}
+       <View style={styles.bannerCarousel}>
+         <ScrollView
+           ref={bannerScrollRef}
+diff --git a/src/screens/agent/AgentConsoleScreen.tsx b/src/screens/agent/AgentConsoleScreen.tsx
+index 75df360..a53b5ba 100755
+--- a/src/screens/agent/AgentConsoleScreen.tsx
++++ b/src/screens/agent/AgentConsoleScreen.tsx
+@@ -15,6 +15,7 @@ import type { AgentStackParamList } from '../../navigation/types';
+ import { TokenEnergyBar } from '../../components/TokenEnergyBar';
+ import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
+ import { switchInstanceModel } from '../../services/openclaw.service';
++import { useI18n } from '../../stores/i18nStore';
+ 
+ type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
+ 
+@@ -34,12 +35,13 @@ const STATUS_LABEL: Record<string, string> = {
+ 
+ // ── Onboarding Checklist Card ─────────────────────────────────────
+ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
++  const { t, language } = useI18n();
+   const { onboardingDeployedAgent, onboardingInstalledSkill, onboardingCreatedWorkflow, markOnboardingStep, setUiComplexity } =
+     useSettingsStore();
+   const steps = [
+-    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: 'Deploy your first Agent', action: undefined, actionLabel: '' },
+-    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: 'Install your first Skill', action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: 'Browse Market →' },
+-    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: 'Create your first Workflow', action: () => navigation.navigate('WorkflowList'), actionLabel: 'Create →' },
++    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: t({ en: 'Deploy your first Agent', zh: '部署你的第一个智能体' }), action: undefined, actionLabel: '' },
++    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: t({ en: 'Install your first Skill', zh: '安装第一个技�? }), action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: t({ en: 'Browse Market �?, zh: '浏览市场 �? }) },
++    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: t({ en: 'Create your first Workflow', zh: '创建第一个工作流' }), action: () => navigation.navigate('WorkflowList'), actionLabel: t({ en: 'Create �?, zh: '创建 �? }) },
+   ];
+   const completedCount = steps.filter((s) => s.done).length;
+   if (completedCount === 3) return null; // all done, hide card
+@@ -52,14 +54,14 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
+ 
+   return (
+     <View style={onboard.card}>
+-      <Text style={onboard.title}>🎯 Complete these steps to unlock Agent full power</Text>
++      <Text style={onboard.title}>{t({ en: '🎯 Complete these steps to unlock Agent full power', zh: '🎯 完成以下步骤解锁智能体全部功�? })}</Text>
+       {steps.map((step, i) => (
+         <View key={step.key} style={onboard.row}>
+           <TouchableOpacity
+             onPress={() => !step.done && handleComplete(step.key)}
+             style={onboard.checkbox}
+           >
+-            <Text style={{ fontSize: 16 }}>{step.done ? '✅' : '⬜'}</Text>
++            <Text style={{ fontSize: 16 }}>{step.done ? '�? : '�?}</Text>
+           </TouchableOpacity>
+           <Text style={[onboard.stepLabel, step.done && onboard.stepDone]}>
+             {i + 1}. {step.label}
+@@ -75,7 +77,7 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
+         {[0, 1, 2].map((i) => (
+           <View key={i} style={[onboard.dot, i < completedCount && onboard.dotFilled]} />
+         ))}
+-        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? `${2 - completedCount} more to unlock Advanced mode` : 'Advanced mode unlocked! 🎉'}</Text>
++        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? t({ en: `${2 - completedCount} more to unlock Advanced mode`, zh: `还差${2 - completedCount}步解锁高级模式` }) : t({ en: 'Advanced mode unlocked! 🎉', zh: '高级模式已解锁！🎉' })}</Text>
+       </View>
+     </View>
+   );
+@@ -98,8 +100,9 @@ const onboard = StyleSheet.create({
+ 
+ export function AgentConsoleScreen() {
+   const navigation = useNavigation<Nav>();
++  const { t, language } = useI18n();
+   const activeInstance = useAuthStore((s) => s.activeInstance);
+-  // NOTE: do NOT use `?? []` inside the selector — it creates a new array reference
++  // NOTE: do NOT use `?? []` inside the selector �?it creates a new array reference
+   // every render and triggers an infinite re-render loop.
+   const rawInstances = useAuthStore((s) => s.user?.openClawInstances);
+   const instances = rawInstances ?? [];
+@@ -191,7 +194,7 @@ export function AgentConsoleScreen() {
+         <Text style={styles.emptyTitle}>No Agent Connected</Text>
+         <Text style={styles.emptySub}>Deploy or connect an OpenClaw instance to get started.</Text>
+         <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('DeploySelect')}>
+-          <Text style={styles.primaryBtnText}>🚀 Deploy / Connect Agent →</Text>
++          <Text style={styles.primaryBtnText}>🚀 Deploy / Connect Agent �?/Text>
+         </TouchableOpacity>
+         <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border, marginTop: 8 }]} onPress={() => navigation.navigate('OpenClawBind')}>
+           <Text style={[styles.primaryBtnText, { color: colors.textSecondary }]}>Connect existing OpenClaw</Text>
+@@ -259,7 +262,7 @@ export function AgentConsoleScreen() {
+           }}
+         >
+           <Text style={styles.modelSelectorText}>{selectedModelLabel}</Text>
+-          <Text style={styles.modelSelectorArrow}>▼</Text>
++          <Text style={styles.modelSelectorArrow}>�?/Text>
+         </TouchableOpacity>
+       </View>
+ 
+@@ -290,11 +293,11 @@ export function AgentConsoleScreen() {
+             onPress={() => setTab(t)}
+           >
+             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+-              {t === 'overview' ? '📊 Overview' : t === 'skills' ? '⚡ Skills' : '📋 Tasks'}
++              {t === 'overview' ? '📊 Overview' : t === 'skills' ? '�?Skills' : '📋 Tasks'}
+             </Text>
+           </TouchableOpacity>
+         ))}
+-        {/* 4th tab: Permissions — visible in advanced/professional mode */}
++        {/* 4th tab: Permissions �?visible in advanced/professional mode */}
+         {(uiComplexity === 'advanced' || uiComplexity === 'professional') && (
+           <TouchableOpacity
+             style={[styles.tabBtn, tab === 'permissions' && styles.tabBtnActive]}
+@@ -320,7 +323,7 @@ export function AgentConsoleScreen() {
+               <Text style={styles.chatCtaTitle}>Chat with {activeInstance.name}</Text>
+               <Text style={styles.chatCtaSub}>Start a conversation with your agent</Text>
+             </View>
+-            <Text style={styles.chatCtaArrow}>›</Text>
++            <Text style={styles.chatCtaArrow}>�?/Text>
+           </TouchableOpacity>
+ 
+           <View style={styles.statsRow}>
+@@ -335,7 +338,7 @@ export function AgentConsoleScreen() {
+               <Text style={styles.statLabel}>Status</Text>
+             </View>
+             <View style={styles.statCard}>
+-              <Text style={styles.statValue}>{activeInstance.deployType || '—'}</Text>
++              <Text style={styles.statValue}>{activeInstance.deployType || '�?}</Text>
+               <Text style={styles.statLabel}>Type</Text>
+             </View>
+           </View>
+@@ -369,7 +372,7 @@ export function AgentConsoleScreen() {
+                   <Text style={styles.giftBadgeText}>🎁 Free</Text>
+                 </View>
+               )}
+-              <Text style={styles.storageCardArrow}>›</Text>
++              <Text style={styles.storageCardArrow}>�?/Text>
+             </View>
+             <View style={styles.storageBar}>
+               <View style={[styles.storageBarFill, {
+@@ -388,7 +391,7 @@ export function AgentConsoleScreen() {
+           {quota && (
+             <View style={styles.quotaCard}>
+               <View style={styles.quotaHeader}>
+-                <Text style={styles.quotaTitle}>⚡ Token Usage</Text>
++                <Text style={styles.quotaTitle}>�?Token Usage</Text>
+                 <View style={[styles.planBadge, { backgroundColor: PLAN_COLOR[quota.planType] + '22' }]}>
+                   <Text style={[styles.planBadgeText, { color: PLAN_COLOR[quota.planType] }]}>
+                     {PLAN_LABEL[quota.planType]}
+@@ -409,7 +412,7 @@ export function AgentConsoleScreen() {
+               </View>
+               {quota.quotaExhausted && (
+                 <View style={styles.quotaExhausted}>
+-                  <Text style={styles.quotaExhaustedText}>⚠️ Quota exhausted — upgrade plan</Text>
++                  <Text style={styles.quotaExhaustedText}>⚠️ Quota exhausted �?upgrade plan</Text>
+                 </View>
+               )}
+             </View>
+@@ -433,7 +436,7 @@ export function AgentConsoleScreen() {
+               >
+                 <Text style={styles.quickActionIcon}>{item.icon}</Text>
+                 <Text style={styles.quickActionLabel}>{item.label}</Text>
+-                <Text style={styles.quickActionArrow}>›</Text>
++                <Text style={styles.quickActionArrow}>�?/Text>
+               </TouchableOpacity>
+             ))}
+           </View>
+@@ -456,9 +459,9 @@ export function AgentConsoleScreen() {
+           <Text style={styles.downloadBannerIcon}>💻</Text>
+           <View style={{ flex: 1 }}>
+             <Text style={styles.downloadBannerTitle}>Get Agentrix Desktop</Text>
+-            <Text style={styles.downloadBannerSub}>Run AI agents on your computer — one-click AIO installer available</Text>
++            <Text style={styles.downloadBannerSub}>Run AI agents on your computer �?one-click AIO installer available</Text>
+           </View>
+-          <Text style={styles.downloadBannerArrow}>↓</Text>
++          <Text style={styles.downloadBannerArrow}>�?/Text>
+         </TouchableOpacity>
+         </>
+       )}
+@@ -473,13 +476,13 @@ export function AgentConsoleScreen() {
+                 style={styles.secondaryBtn}
+                 onPress={() => navigation.navigate('SkillInstall', { skillId: '', skillName: '' })}
+               >
+-                <Text style={styles.secondaryBtnText}>Browse Skill Market →</Text>
++                <Text style={styles.secondaryBtnText}>Browse Skill Market �?/Text>
+               </TouchableOpacity>
+             </View>
+           ) : (
+             skills.map((skill: any) => (
+               <View key={skill.id} style={styles.skillRow}>
+-                <Text style={styles.skillEmoji}>{skill.icon || '⚡'}</Text>
++                <Text style={styles.skillEmoji}>{skill.icon || '�?}</Text>
+                 <View style={{ flex: 1 }}>
+                   <Text style={styles.skillName}>{skill.name}</Text>
+                   <Text style={styles.skillSub}>{skill.description}</Text>
+@@ -515,7 +518,7 @@ export function AgentConsoleScreen() {
+               <Text style={styles.permissionsCardTitle}>Permissions & Security</Text>
+               <Text style={styles.permissionsCardSub}>Manage payment limits, device access, network tools</Text>
+             </View>
+-            <Text style={styles.permissionsCardArrow}>›</Text>
++            <Text style={styles.permissionsCardArrow}>�?/Text>
+           </TouchableOpacity>
+           {/* Quick summary rows */}
+           {[
+@@ -537,7 +540,7 @@ export function AgentConsoleScreen() {
+             style={[styles.primaryBtn, { marginTop: 4 }]}
+             onPress={() => navigation.navigate('AgentPermissions', {})}
+           >
+-            <Text style={styles.primaryBtnText}>🔐 Open Full Permissions Manager →</Text>
++            <Text style={styles.primaryBtnText}>🔐 Open Full Permissions Manager �?/Text>
+           </TouchableOpacity>
+         </View>
+       )}
+diff --git a/src/screens/auth/InvitationGateScreen.tsx b/src/screens/auth/InvitationGateScreen.tsx
+index ad27cc6..311a8b3 100644
+--- a/src/screens/auth/InvitationGateScreen.tsx
++++ b/src/screens/auth/InvitationGateScreen.tsx
+@@ -23,7 +23,7 @@ export function InvitationGateScreen() {
+   const [code, setCode] = useState('');
+   const [loading, setLoading] = useState(false);
+   const [checking, setChecking] = useState(true);
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const setInvitationValid = useAuthStore((s) => s.setInvitationValid);
+   const clearAuth = useAuthStore((s) => s.clearAuth);
+ 
+@@ -39,7 +39,7 @@ export function InvitationGateScreen() {
+         setInvitationValid();
+       }
+     } catch {
+-      // Not yet invited — show the gate
++      // Not yet invited �?show the gate
+     } finally {
+       setChecking(false);
+     }
+@@ -48,7 +48,7 @@ export function InvitationGateScreen() {
+   async function handleSubmit() {
+     const trimmed = code.trim();
+     if (trimmed.length < 3) {
+-      Alert.alert(t({ en: 'Invalid Code', zh: '无效邀请码' }), t({ en: 'Please enter a valid invitation code.', zh: '请输入有效的邀请码。' }));
++      Alert.alert(t({ en: 'Invalid Code', zh: '无效邀请码' }), t({ en: 'Please enter a valid invitation code.', zh: '请输入有效的邀请码�? }));
+       return;
+     }
+ 
+@@ -83,7 +83,7 @@ export function InvitationGateScreen() {
+     return (
+       <View style={styles.container}>
+         <ActivityIndicator size="large" color={colors.accent} />
+-        <Text style={styles.checkingText}>{t({ en: 'Checking invitation status...', zh: '正在检查邀请状态...' })}</Text>
++        <Text style={styles.checkingText}>{t({ en: 'Checking invitation status...', zh: '正在检查邀请状�?..' })}</Text>
+       </View>
+     );
+   }
+@@ -98,7 +98,7 @@ export function InvitationGateScreen() {
+         <Text style={styles.logo}>🤖</Text>
+         <Text style={styles.title}>{t({ en: 'Welcome to ClawLink', zh: '欢迎来到 ClawLink' })}</Text>
+         <Text style={styles.subtitle}>
+-          {t({ en: "ClawLink is currently in private beta.\nEnter your invitation code to get started.", zh: 'ClawLink 目前处于私测阶段。\n请输入邀请码以开始使用。' })}
++          {t({ en: "ClawLink is currently in private beta.\nEnter your invitation code to get started.", zh: 'ClawLink 目前处于私测阶段。\n请输入邀请码以开始使用�? })}
+         </Text>
+ 
+         {/* Code input */}
+@@ -127,18 +127,18 @@ export function InvitationGateScreen() {
+           {loading ? (
+             <ActivityIndicator color="#fff" size="small" />
+           ) : (
+-              <Text style={styles.submitBtnText}>{t({ en: 'Activate', zh: '激活' })}</Text>
++              <Text style={styles.submitBtnText}>{t({ en: 'Activate', zh: '激�? })}</Text>
+           )}
+         </TouchableOpacity>
+ 
+         {/* Info */}
+         <Text style={styles.info}>
+-          {t({ en: "Don't have a code? Follow us on social media for invitation code giveaways.", zh: '没有邀请码？关注我们的社交媒体获取邀请码。' })}
++          {t({ en: "Don't have a code? Follow us on social media for invitation code giveaways.", zh: '没有邀请码？关注我们的社交媒体获取邀请码�? })}
+         </Text>
+ 
+         {/* Logout link */}
+         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+-          <Text style={styles.logoutText}>{t({ en: 'Sign out', zh: '退出登录' })}</Text>
++          <Text style={styles.logoutText}>{t({ en: 'Sign out', zh: '退出登�? })}</Text>
+         </TouchableOpacity>
+       </View>
+     </KeyboardAvoidingView>
+diff --git a/src/screens/auth/LoginScreen.tsx b/src/screens/auth/LoginScreen.tsx
+index cde5f84..09ed0d2 100755
+--- a/src/screens/auth/LoginScreen.tsx
++++ b/src/screens/auth/LoginScreen.tsx
+@@ -34,7 +34,7 @@ const SOCIAL_PROVIDERS = [
+ export function LoginScreen() {
+   const navigation = useNavigation<Nav>();
+   const { setAuth } = useAuthStore.getState();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [mode, setMode] = useState<'web25' | 'openclaw' | 'email'>('web25');
+   const [isSignUp, setIsSignUp] = useState(false);
+   const [instanceUrl, setInstanceUrl] = useState('');
+@@ -73,7 +73,7 @@ export function LoginScreen() {
+       // Navigate to WalletConnect screen which handles the full nonce→sign→verify flow
+       (navigation as any).navigate('WalletConnect', { walletId: target.id });
+     } else {
+-      // No wallet detected — show WalletConnect screen for manual entry
++      // No wallet detected �?show WalletConnect screen for manual entry
+       (navigation as any).navigate('WalletConnect');
+     }
+     setShowWalletModal(false);
+@@ -82,7 +82,7 @@ export function LoginScreen() {
+   const handleOpenClawLogin = async () => {
+     const url = instanceUrl.trim();
+     if (!url) {
+-      Alert.alert(t({ en: 'OpenClaw URL required', zh: '请输入 OpenClaw URL' }), t({ en: 'Enter your OpenClaw instance URL (e.g. http://localhost:3001)', zh: '请输入你的 OpenClaw 实例地址（如 http://localhost:3001）' }));
++      Alert.alert(t({ en: 'OpenClaw URL required', zh: '请输�?OpenClaw URL' }), t({ en: 'Enter your OpenClaw instance URL (e.g. http://localhost:3001)', zh: '请输入你�?OpenClaw 实例地址（如 http://localhost:3001�? }));
+       return;
+     }
+     try {
+@@ -94,7 +94,7 @@ export function LoginScreen() {
+     } catch (err: any) {
+       Alert.alert(
+         t({ en: 'Connection Failed', zh: '连接失败' }),
+-        err?.message || t({ en: 'Could not connect to OpenClaw instance. The server might be offline. Do you want to force bind it anyway?', zh: '无法连接到 OpenClaw 实例，服务器可能离线。是否强制绑定？' }),
++        err?.message || t({ en: 'Could not connect to OpenClaw instance. The server might be offline. Do you want to force bind it anyway?', zh: '无法连接�?OpenClaw 实例，服务器可能离线。是否强制绑定？' }),
+         [
+           { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+           {
+@@ -137,7 +137,7 @@ export function LoginScreen() {
+       else if (provider === 'apple') result = await loginWithApple();
+       else return;
+       // handleLoginResult (inside loginWith*) already calls setAuth + fetches instances.
+-      // Do NOT call setAuth again here — it would overwrite instances.
++      // Do NOT call setAuth again here �?it would overwrite instances.
+     } catch (err: any) {
+       Alert.alert(
+         t({ en: 'Login Failed', zh: '登录失败' }), 
+@@ -166,7 +166,7 @@ export function LoginScreen() {
+ 
+   const handleEmailLogin = async () => {
+     if (!email.trim() || !password.trim()) {
+-      Alert.alert(t({ en: 'Missing Fields', zh: '请填写完整' }), t({ en: 'Enter your email and password', zh: '请输入邮筱和密码' }));
++      Alert.alert(t({ en: 'Missing Fields', zh: '请填写完�? }), t({ en: 'Enter your email and password', zh: '请输入邮筱和密码' }));
+       return;
+     }
+     try {
+@@ -175,9 +175,9 @@ export function LoginScreen() {
+         ? await registerWithEmail(email.trim(), password.trim()) as any
+         : await loginWithEmail(email.trim(), password.trim()) as any;
+       // handleLoginResult (inside loginWithEmail/registerWithEmail) already calls setAuth.
+-      // Do NOT call setAuth again here — it would overwrite instances.
++      // Do NOT call setAuth again here �?it would overwrite instances.
+     } catch (err: any) {
+-      Alert.alert(isSignUp ? t({ en: 'Registration Failed', zh: '注册失败' }) : t({ en: 'Login Failed', zh: '登录失败' }), err?.message || t({ en: 'Invalid credentials', zh: '账号或密码错误' }));
++      Alert.alert(isSignUp ? t({ en: 'Registration Failed', zh: '注册失败' }) : t({ en: 'Login Failed', zh: '登录失败' }), err?.message || t({ en: 'Invalid credentials', zh: '账号或密码错�? }));
+     } finally {
+       setLoading(false);
+     }
+@@ -222,7 +222,7 @@ export function LoginScreen() {
+ 
+           <View style={styles.divider}>
+             <View style={styles.dividerLine} />
+-            <Text style={styles.dividerText}>{t({ en: 'or social sign-in', zh: '或社交账号登录' })}</Text>
++            <Text style={styles.dividerText}>{t({ en: 'or social sign-in', zh: '或社交账号登�? })}</Text>
+             <View style={styles.dividerLine} />
+           </View>
+ 
+@@ -248,7 +248,7 @@ export function LoginScreen() {
+           </View>
+ 
+           <TouchableOpacity style={styles.linkRow} onPress={() => setMode('email')}>
+-            <Text style={styles.linkText}>{t({ en: 'Use Email Address instead →', zh: '使用邮筱登录 →' })}</Text>
++            <Text style={styles.linkText}>{t({ en: 'Use Email Address instead �?, zh: '使用邮筱登录 �? })}</Text>
+           </TouchableOpacity>
+         </View>
+       )}
+@@ -258,7 +258,7 @@ export function LoginScreen() {
+         <View style={styles.section}>
+           <Text style={styles.sectionTitle}>{t({ en: 'Connect OpenClaw Instance', zh: '连接 OpenClaw 实例' })}</Text>
+           <Text style={styles.sectionSub}>
+-            {t({ en: 'Enter your instance URL to sign in directly.', zh: '输入你的实例地址直接登录。' })}
++            {t({ en: 'Enter your instance URL to sign in directly.', zh: '输入你的实例地址直接登录�? })}
+           </Text>
+           <TextInput
+             style={styles.input}
+@@ -277,12 +277,12 @@ export function LoginScreen() {
+             {loading ? (
+               <ActivityIndicator color="#fff" size="small" />
+             ) : (
+-              <Text style={styles.primaryBtnText}>{t({ en: 'Connect & Sign In', zh: '连接并登录' })}</Text>
++              <Text style={styles.primaryBtnText}>{t({ en: 'Connect & Sign In', zh: '连接并登�? })}</Text>
+             )}
+           </TouchableOpacity>
+ 
+           <TouchableOpacity style={styles.backBtn} onPress={() => setMode('web25')}>
+-            <Text style={styles.backBtnText}>← {t({ en: 'Back to Web2.5 Login', zh: '返回 Web2.5 登录' })}</Text>
++            <Text style={styles.backBtnText}>�?{t({ en: 'Back to Web2.5 Login', zh: '返回 Web2.5 登录' })}</Text>
+           </TouchableOpacity>
+         </View>
+       )}
+@@ -322,12 +322,12 @@ export function LoginScreen() {
+           
+           <TouchableOpacity style={{ marginTop: 12, alignItems: 'center' }} onPress={() => setIsSignUp(!isSignUp)}>
+             <Text style={{ color: colors.accent, fontSize: 14 }}>
+-              {isSignUp ? t({ en: 'Already have an account? Sign In', zh: '已有账号？登录' }) : t({ en: "Don't have an account? Sign Up", zh: '没有账号？注册' })}
++              {isSignUp ? t({ en: 'Already have an account? Sign In', zh: '已有账号？登�? }) : t({ en: "Don't have an account? Sign Up", zh: '没有账号？注�? })}
+             </Text>
+           </TouchableOpacity>
+ 
+           <TouchableOpacity style={styles.backBtn} onPress={() => setMode('web25')}>
+-            <Text style={styles.backBtnText}>← {t({ en: 'Back to Web2.5 Login', zh: '返回 Web2.5 登录' })}</Text>
++            <Text style={styles.backBtnText}>�?{t({ en: 'Back to Web2.5 Login', zh: '返回 Web2.5 登录' })}</Text>
+           </TouchableOpacity>
+         </View>
+       )}
+@@ -362,24 +362,34 @@ export function LoginScreen() {
+       </TouchableOpacity>
+ 
+       <Text style={styles.footer}>
+-        {t({ en: 'By continuing you agree to Agentrix Terms of Service and Privacy Policy.', zh: '继续即表示你同意 Agentrix 服务条款和隐私政策。' })}
++        {t({ en: 'By continuing you agree to Agentrix Terms of Service and Privacy Policy.', zh: '继续即表示你同意 Agentrix 服务条款和隐私政策�? })}
+       </Text>
+     </ScrollView>
+   );
+ }
+ 
+ const styles = StyleSheet.create({
+-  container: { flex: 1, backgroundColor: colors.bgPrimary },
+-  content: { padding: 24, paddingTop: 80, paddingBottom: 40 },
+-  header: { alignItems: 'center', marginBottom: 48 },
+-  logoCircle: { width: 72, height: 72, borderRadius: 20, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
+-  logoInitials: { fontSize: 30, fontWeight: '900', color: '#fff', letterSpacing: -1 },
+-  logoText: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, letterSpacing: -0.5 },
+-  tagline: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
+-  
+-  web25Title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
+-  web25Sub: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginBottom: 32 },
+-  
++  container: { flex: 1, backgroundColor: '#000000' },
++  content: { padding: 24, paddingTop: 100, paddingBottom: 40 },
++  header: { alignItems: 'center', marginBottom: 56 },
++  logoCircle: { 
++    width: 64, 
++    height: 64, 
++    backgroundColor: '#000000', 
++    justifyContent: 'center', 
++    alignItems: 'center', 
++    marginBottom: 16,
++    borderWidth: 2,
++    borderColor: '#333333',
++    borderRadius: 16
++  },
++  logoInitials: { fontSize: 28, fontWeight: '900', color: '#ffffff', letterSpacing: -1, fontFamily: 'monospace' },
++  logoText: { fontSize: 26, fontWeight: '800', color: '#ffffff', letterSpacing: 2, textTransform: 'uppercase' },
++  tagline: { fontSize: 13, color: '#888888', marginTop: 10, letterSpacing: 0.5 },
++
++  web25Title: { fontSize: 24, fontWeight: '700', color: '#ffffff', textAlign: 'center', marginBottom: 8 },
++  web25Sub: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 32 },
++
+   walletMainBtn: { backgroundColor: colors.primary, borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
+   walletIconRow: { flexDirection: 'row', gap: -8, marginBottom: 12 },
+   walletBadge: { fontSize: 24, backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden', padding: 4, borderWidth: 2, borderColor: colors.primary },
+diff --git a/src/screens/market/ClawMarketplaceScreen.tsx b/src/screens/market/ClawMarketplaceScreen.tsx
+index c2d0433..3e3f81f 100755
+--- a/src/screens/market/ClawMarketplaceScreen.tsx
++++ b/src/screens/market/ClawMarketplaceScreen.tsx
+@@ -27,9 +27,9 @@ const FALLBACK_SKILLS = [
+   { id: 'fb-translate', name: 'Translator', description: 'Translate text between 100+ languages instantly.', icon: '🌐', category: 'AI Tools', rating: 4.9, installCount: 15000, tokenCost: 0 },
+   { id: 'fb-csv-parse', name: 'CSV Analyzer', description: 'Parse and analyze CSV files, generate charts.', icon: '📊', category: 'Data', rating: 4.5, installCount: 5400, tokenCost: 0 },
+   { id: 'fb-github-pr', name: 'GitHub PR Review', description: 'Auto-review pull requests and suggest improvements.', icon: '🐙', category: 'Dev Tools', rating: 4.6, installCount: 6700, tokenCost: 0 },
+-  { id: 'fb-weather', name: 'Weather API', description: 'Get real-time and forecast weather worldwide.', icon: '⛅', category: 'Data', rating: 4.8, installCount: 11000, tokenCost: 0 },
++  { id: 'fb-weather', name: 'Weather API', description: 'Get real-time and forecast weather worldwide.', icon: '�?, category: 'Data', rating: 4.8, installCount: 11000, tokenCost: 0 },
+   { id: 'fb-send-email', name: 'Email Sender', description: 'Compose and send emails to contacts programmatically.', icon: '📧', category: 'Integration', rating: 4.4, installCount: 4900, tokenCost: 0 },
+-  { id: 'fb-crypto', name: 'Crypto Price Feed', description: 'Live prices, charts and market caps for 500+ coins.', icon: '₿', category: 'Finance', rating: 4.7, installCount: 9200, tokenCost: 0 },
++  { id: 'fb-crypto', name: 'Crypto Price Feed', description: 'Live prices, charts and market caps for 500+ coins.', icon: '�?, category: 'Finance', rating: 4.7, installCount: 9200, tokenCost: 0 },
+   { id: 'fb-notion', name: 'Notion Connector', description: 'Read and write Notion pages and databases.', icon: '📓', category: 'Integration', rating: 4.5, installCount: 5800, tokenCost: 0 },
+   { id: 'fb-slack', name: 'Slack Bot', description: 'Post messages and manage Slack channels via API.', icon: '💬', category: 'Integration', rating: 4.6, installCount: 7100, tokenCost: 0 },
+ ];
+@@ -37,17 +37,17 @@ const FALLBACK_SKILLS = [
+ // Built-in fallback resources shown when DB has no resource-layer items
+ const FALLBACK_RESOURCES = [
+   { id: 'fr-gpt4', name: 'GPT-4o API Access', description: 'Premium OpenAI GPT-4o access via Agentrix gateway.', icon: '🤖', price: 0.002, tokenCost: 0, rating: 4.9 },
+-  { id: 'fr-claude', name: 'Claude 3.5 Sonnet', description: 'Anthropic Claude 3.5 Sonnet — reasoning & coding.', icon: '🧠', price: 0.003, tokenCost: 0, rating: 4.8 },
+-  { id: 'fr-sd3', name: 'Stable Diffusion 3', description: 'High-quality image generation at scale.', icon: '🖼️', price: 0.01, tokenCost: 0, rating: 4.7 },
+-  { id: 'fr-gpu', name: 'GPU Compute (H100)', description: 'On-demand H100 GPU for AI model training & inference.', icon: '⚡', price: 2.5, tokenCost: 0, rating: 4.8 },
+-  { id: 'fr-vector-db', name: 'Vector DB Storage', description: '1GB vector DB hosted — Pinecone-compatible.', icon: '🗄️', price: 0.05, tokenCost: 0, rating: 4.6 },
+-  { id: 'fr-tts', name: 'Voice Synthesis (ElevenLabs)', description: 'Ultra-realistic TTS in 30+ languages.', icon: '🎙️', price: 0.005, tokenCost: 0, rating: 4.7 },
++  { id: 'fr-claude', name: 'Claude 3.5 Sonnet', description: 'Anthropic Claude 3.5 Sonnet �?reasoning & coding.', icon: '🧠', price: 0.003, tokenCost: 0, rating: 4.8 },
++  { id: 'fr-sd3', name: 'Stable Diffusion 3', description: 'High-quality image generation at scale.', icon: '🖼�?, price: 0.01, tokenCost: 0, rating: 4.7 },
++  { id: 'fr-gpu', name: 'GPU Compute (H100)', description: 'On-demand H100 GPU for AI model training & inference.', icon: '�?, price: 2.5, tokenCost: 0, rating: 4.8 },
++  { id: 'fr-vector-db', name: 'Vector DB Storage', description: '1GB vector DB hosted �?Pinecone-compatible.', icon: '🗄�?, price: 0.05, tokenCost: 0, rating: 4.6 },
++  { id: 'fr-tts', name: 'Voice Synthesis (ElevenLabs)', description: 'Ultra-realistic TTS in 30+ languages.', icon: '🎙�?, price: 0.005, tokenCost: 0, rating: 4.7 },
+ ];
+ 
+-// OpenClaw Hub skills tab — uses the OpenClaw Hub search service
++// OpenClaw Hub skills tab �?uses the OpenClaw Hub search service
+ function OpenClawSkillsTab() {
+   const navigation = useNavigation<Nav>();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [category, setCategory] = useState('All');
+   const [search, setSearch] = useState('');
+ 
+@@ -77,7 +77,7 @@ function OpenClawSkillsTab() {
+       <View style={styles.searchRow}>
+         <TextInput
+           style={styles.searchInput}
+-          placeholder={t({ en: 'Search OpenClaw skills...', zh: '搜索 OpenClaw 技能...' })}
++          placeholder={t({ en: 'Search OpenClaw skills...', zh: '搜索 OpenClaw 技�?..' })}
+           placeholderTextColor={colors.textMuted}
+           value={search}
+           onChangeText={setSearch}
+@@ -124,7 +124,7 @@ function OpenClawSkillsTab() {
+                 navigation.navigate('SkillDetail', { skillId: String(id), skillName: skill.name ?? '' });
+               }}
+             >
+-              <Text style={styles.skillIcon}>{skill.icon || '⚡'}</Text>
++              <Text style={styles.skillIcon}>{skill.icon || '�?}</Text>
+               <Text style={styles.skillName} numberOfLines={2}>{skill.name}</Text>
+               <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
+               <View style={styles.skillFooter}>
+@@ -132,8 +132,8 @@ function OpenClawSkillsTab() {
+                   {skill.tokenCost != null && skill.tokenCost > 0 ? `${skill.tokenCost} tokens` : 'Free'}
+                 </Text>
+                 <Text style={styles.ratingText}>
+-                  {skill.installCount > 0 ? `${skill.installCount > 999 ? `${(skill.installCount/1000).toFixed(1)}k` : skill.installCount} ↓  ` : ''}
+-                  ⭐ {skill.rating ? Number(skill.rating).toFixed(1) : '—'}
++                  {skill.installCount > 0 ? `${skill.installCount > 999 ? `${(skill.installCount/1000).toFixed(1)}k` : skill.installCount} �? ` : ''}
++                  �?{skill.rating ? Number(skill.rating).toFixed(1) : '�?}
+                 </Text>
+               </View>
+             </TouchableOpacity>
+@@ -144,10 +144,10 @@ function OpenClawSkillsTab() {
+   );
+ }
+ 
+-// Resources & Goods tab — paid APIs/compute, falls back to mock data
++// Resources & Goods tab �?paid APIs/compute, falls back to mock data
+ function ResourcesTab() {
+   const navigation = useNavigation<Nav>();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [category, setCategory] = useState('All');
+   const [search, setSearch] = useState('');
+ 
+@@ -167,7 +167,7 @@ function ResourcesTab() {
+           id: s.id,
+           name: s.displayName || s.name,
+           description: s.description,
+-          icon: s.layer === 'resource' ? '📦' : '⚡',
++          icon: s.layer === 'resource' ? '📦' : '�?,
+           price: s.pricing?.pricePerCall ?? 0,
+           tokenCost: 0,
+           rating: s.rating ?? 0,
+@@ -194,7 +194,7 @@ function ResourcesTab() {
+       <View style={styles.searchRow}>
+           <TextInput
+           style={styles.searchInput}
+-          placeholder={t({ en: 'Search resources & goods...', zh: '搜索资源和商品...' })}
++          placeholder={t({ en: 'Search resources & goods...', zh: '搜索资源和商�?..' })}
+           placeholderTextColor={colors.textMuted}
+           value={search}
+           onChangeText={setSearch}
+@@ -248,7 +248,7 @@ function ResourcesTab() {
+                 <Text style={styles.skillPrice}>
+                   {res.price != null && res.price > 0 ? `$${res.price}` : `${res.tokenCost ?? 0} tokens`}
+                 </Text>
+-                <Text style={styles.ratingText}>⭐ {res.rating ? Number(res.rating).toFixed(1) : '—'}</Text>
++                <Text style={styles.ratingText}>�?{res.rating ? Number(res.rating).toFixed(1) : '�?}</Text>
+               </View>
+             </TouchableOpacity>
+           )}
+@@ -259,7 +259,7 @@ function ResourcesTab() {
+ }
+ 
+ export function ClawMarketplaceScreen() {
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [activeTab, setActiveTab] = useState<'skills' | 'tasks' | 'resources'>('skills');
+ 
+   return (
+@@ -270,7 +270,7 @@ export function ClawMarketplaceScreen() {
+           style={[styles.tabItem, activeTab === 'skills' && styles.tabItemActive]}
+           onPress={() => setActiveTab('skills')}
+         >
+-          <Text style={[styles.tabText, activeTab === 'skills' && styles.tabTextActive]}>{t({ en: 'OpenClaw Skills', zh: 'OpenClaw 技能' })}</Text>
++          <Text style={[styles.tabText, activeTab === 'skills' && styles.tabTextActive]}>{t({ en: 'OpenClaw Skills', zh: 'OpenClaw 技�? })}</Text>
+         </TouchableOpacity>
+         <TouchableOpacity
+           style={[styles.tabItem, activeTab === 'tasks' && styles.tabItemActive]}
+@@ -282,7 +282,7 @@ export function ClawMarketplaceScreen() {
+           style={[styles.tabItem, activeTab === 'resources' && styles.tabItemActive]}
+           onPress={() => setActiveTab('resources')}
+         >
+-          <Text style={[styles.tabText, activeTab === 'resources' && styles.tabTextActive]}>{t({ en: 'Resources & Goods', zh: '资源与商品' })}</Text>
++          <Text style={[styles.tabText, activeTab === 'resources' && styles.tabTextActive]}>{t({ en: 'Resources & Goods', zh: '资源与商�? })}</Text>
+         </TouchableOpacity>
+       </View>
+ 
+diff --git a/src/screens/social/ChatListScreen.tsx b/src/screens/social/ChatListScreen.tsx
+index 9df21fb..6682274 100644
+--- a/src/screens/social/ChatListScreen.tsx
++++ b/src/screens/social/ChatListScreen.tsx
+@@ -1,4 +1,4 @@
+-// 聊天列表 — 私信 + 群组入口
++// 聊天列表 �?私信 + 群组入口
+ import React, { useState } from 'react';
+ import {
+   View, Text, TouchableOpacity, StyleSheet, FlatList,
+@@ -30,9 +30,9 @@ type ChatEntry = {
+ const PLACEHOLDER_CHATS: ChatEntry[] = [
+   { id: 'grp-claw-install', type: 'group', name: '🦀 Claw 安装帮助', avatar: '🦀', lastMessage: 'Agentrix-claw: 安装遇到问题请看置顶教程 👆', lastTime: '刚刚', unread: 3, memberCount: 428 },
+   { id: 'grp-claw-discuss', type: 'group', name: '💬 Claw 使用讨论', avatar: '💬', lastMessage: '有人试过 Web Search + 邮件自动摘要组合吗？', lastTime: '5m', unread: 12, memberCount: 316 },
+-  { id: 'grp-skills', type: 'group', name: '⚡ 技能分享交流', avatar: '⚡', lastMessage: 'workflow_pro: 分享一个 GitHub PR 自动审查技能', lastTime: '1h', unread: 7, memberCount: 195 },
+-  { id: 'grp-advanced', type: 'group', name: '🚀 进阶玩家圈', avatar: '🚀', lastMessage: 'claw_dev: MCP SDK 最新版本更新说明', lastTime: '3h', unread: 0, memberCount: 89 },
+-  { id: 'grp-newbie', type: 'group', name: '🌱 新手答疑群', avatar: '🌱', lastMessage: 'Agentrix-claw: 欢迎新同学，先看置顶新手教程！', lastTime: '2h', unread: 0, memberCount: 612 },
++  { id: 'grp-skills', type: 'group', name: '�?技能分享交�?, avatar: '�?, lastMessage: 'workflow_pro: 分享一�?GitHub PR 自动审查技�?, lastTime: '1h', unread: 7, memberCount: 195 },
++  { id: 'grp-advanced', type: 'group', name: '🚀 进阶玩家�?, avatar: '🚀', lastMessage: 'claw_dev: MCP SDK 最新版本更新说�?, lastTime: '3h', unread: 0, memberCount: 89 },
++  { id: 'grp-newbie', type: 'group', name: '🌱 新手答疑�?, avatar: '🌱', lastMessage: 'Agentrix-claw: 欢迎新同学，先看置顶新手教程�?, lastTime: '2h', unread: 0, memberCount: 612 },
+ ];
+ 
+ async function fetchChatList() {
+@@ -42,7 +42,7 @@ async function fetchChatList() {
+ 
+ export function ChatListScreen() {
+   const navigation = useNavigation<Nav>();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [search, setSearch] = useState('');
+   const [tab, setTab] = useState<'all' | 'dm' | 'group'>('all');
+ 
+diff --git a/src/screens/social/CreatePostScreen.tsx b/src/screens/social/CreatePostScreen.tsx
+index a8e9a1a..96999b3 100644
+--- a/src/screens/social/CreatePostScreen.tsx
++++ b/src/screens/social/CreatePostScreen.tsx
+@@ -24,7 +24,7 @@ async function createPost(body: { content: string; tags: string[] }) {
+ 
+ export function CreatePostScreen() {
+   const navigation = useNavigation<Nav>();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const queryClient = useQueryClient();
+   const [content, setContent] = useState('');
+   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+@@ -34,11 +34,11 @@ export function CreatePostScreen() {
+     mutationFn: createPost,
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ['feed'] });
+-      Alert.alert(t({ en: 'Posted!', zh: '发布成功！' }), t({ en: 'Your post is now live in the community.', zh: '你的帖子已在社区中公开。' }));
++      Alert.alert(t({ en: 'Posted!', zh: '发布成功�? }), t({ en: 'Your post is now live in the community.', zh: '你的帖子已在社区中公开�? }));
+       navigation.goBack();
+     },
+     onError: (err: any) => {
+-      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to post. Please try again.', zh: '发布失败，请重试。' }));
++      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to post. Please try again.', zh: '发布失败，请重试�? }));
+     },
+   });
+ 
+@@ -58,7 +58,7 @@ export function CreatePostScreen() {
+ 
+   const handlePost = () => {
+     if (!content.trim()) {
+-      Alert.alert(t({ en: 'Empty Post', zh: '内容为空' }), t({ en: 'Please write something before posting.', zh: '请先写内容再发布。' }));
++      Alert.alert(t({ en: 'Empty Post', zh: '内容为空' }), t({ en: 'Please write something before posting.', zh: '请先写内容再发布�? }));
+       return;
+     }
+     submit({ content: content.trim(), tags: selectedTags });
+@@ -72,7 +72,7 @@ export function CreatePostScreen() {
+           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cancelBtn}>
+             <Text style={styles.cancelText}>{t({ en: 'Cancel', zh: '取消' })}</Text>
+           </TouchableOpacity>
+-          <Text style={styles.title}>{t({ en: 'New Post', zh: '发新帖' })}</Text>
++          <Text style={styles.title}>{t({ en: 'New Post', zh: '发新�? })}</Text>
+           <TouchableOpacity
+             onPress={handlePost}
+             disabled={isPending || !content.trim()}
+@@ -91,7 +91,7 @@ export function CreatePostScreen() {
+           <Text style={styles.inputLabel}>{t({ en: "What are you building?", zh: '你在开发什么？' })}</Text>
+           <TextInput
+             style={styles.input}
+-            placeholder={t({ en: 'Share your agent workflow, skill, or discovery with the community...', zh: '与社区分享你的 agent 工作流、技能或发现...' })}
++            placeholder={t({ en: 'Share your agent workflow, skill, or discovery with the community...', zh: '与社区分享你�?agent 工作流、技能或发现...' })}
+             placeholderTextColor={colors.textMuted}
+             multiline
+             numberOfLines={6}
+@@ -124,7 +124,7 @@ export function CreatePostScreen() {
+           <View style={styles.customTagRow}>
+             <TextInput
+               style={styles.customTagInput}
+-              placeholder={t({ en: 'Add custom tag...', zh: '添加自定义标签...' })}
++              placeholder={t({ en: 'Add custom tag...', zh: '添加自定义标�?..' })}
+               placeholderTextColor={colors.textMuted}
+               value={customTag}
+               onChangeText={setCustomTag}
+@@ -148,7 +148,7 @@ export function CreatePostScreen() {
+                     style={styles.tagChipActive}
+                     onPress={() => toggleTag(t)}
+                   >
+-                    <Text style={styles.tagChipTextActive}>#{t} ✕</Text>
++                    <Text style={styles.tagChipTextActive}>#{t} �?/Text>
+                   </TouchableOpacity>
+                 ))}
+             </View>
+@@ -158,10 +158,10 @@ export function CreatePostScreen() {
+         {/* Tips */}
+         <View style={styles.tips}>
+           <Text style={styles.tipsTitle}>💡 {t({ en: 'Post Ideas', zh: '发帖灵感' })}</Text>
+-          <Text style={styles.tipsText}>• {t({ en: 'Share a workflow or skill you built', zh: '分享你制作的工作流或技能' })}</Text>
+-          <Text style={styles.tipsText}>• {t({ en: 'Show off your agent running live', zh: '展示你的 agent 实时运行效果' })}</Text>
+-          <Text style={styles.tipsText}>• {t({ en: 'Ask for help with an automation', zh: '寻求自动化方面的帮助' })}</Text>
+-          <Text style={styles.tipsText}>• {t({ en: 'Celebrate a milestone 🎉', zh: '庆祝里程碑 🎉' })}</Text>
++          <Text style={styles.tipsText}>�?{t({ en: 'Share a workflow or skill you built', zh: '分享你制作的工作流或技�? })}</Text>
++          <Text style={styles.tipsText}>�?{t({ en: 'Show off your agent running live', zh: '展示你的 agent 实时运行效果' })}</Text>
++          <Text style={styles.tipsText}>�?{t({ en: 'Ask for help with an automation', zh: '寻求自动化方面的帮助' })}</Text>
++          <Text style={styles.tipsText}>�?{t({ en: 'Celebrate a milestone 🎉', zh: '庆祝里程�?🎉' })}</Text>
+         </View>
+       </ScrollView>
+     </KeyboardAvancingView>
+diff --git a/src/screens/social/FeedScreen.tsx b/src/screens/social/FeedScreen.tsx
+index a2c1ee7..1a3affb 100755
+--- a/src/screens/social/FeedScreen.tsx
++++ b/src/screens/social/FeedScreen.tsx
+@@ -38,12 +38,12 @@ type Post = {
+ 
+ const FEED_TABS = ['Hot', 'Latest', 'Following'];
+ // Claw-focused trending tags
+-const TRENDING_TAGS = ['claw安装', 'claw技巧', '技能分享', '新手入门', '进阶技巧', '一键安装', 'MCP教程', '工作流'];
++const TRENDING_TAGS = ['claw安装', 'claw技�?, '技能分�?, '新手入门', '进阶技�?, '一键安�?, 'MCP教程', '工作�?];
+ 
+ const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
+   '官方': { icon: '🦀', color: '#00C2FF' },
+-  'Top Creator': { icon: '⭐', color: '#F59E0B' },
+-  'Genesis Node': { icon: '⚡', color: '#00d4ff' },
++  'Top Creator': { icon: '�?, color: '#F59E0B' },
++  'Genesis Node': { icon: '�?, color: '#00d4ff' },
+   '进阶玩家': { icon: '🔮', color: '#7c3aed' },
+ };
+ 
+@@ -51,39 +51,39 @@ const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
+ const PLACEHOLDER_POSTS: Post[] = [
+   {
+     id: 'pin-1', authorId: 'official', author: 'Agentrix-claw', avatar: '🦀',
+-    content: '【新手必读】OpenClaw 完整安装教程\n\n1. 访问 agentrix.top 注册账号\n2. 在「我的实例」中一键开通云端 Claw\n3. 复制安装脚本，在本地终端执行\n4. 安装完成后绑定到 App 即可使用\n\n有任何问题欢迎在评论区提问 👇',
++    content: '【新手必读】OpenClaw 完整安装教程\n\n1. 访问 agentrix.top 注册账号\n2. 在「我的实例」中一键开通云�?Claw\n3. 复制安装脚本，在本地终端执行\n4. 安装完成后绑定到 App 即可使用\n\n有任何问题欢迎在评论区提�?👇',
+     likes: 318, comments: 52, time: '官方置顶', isLiked: false,
+-    tags: ['新手入门', 'claw安装', '一键安装'], badges: ['官方'],
++    tags: ['新手入门', 'claw安装', '一键安�?], badges: ['官方'],
+   },
+   {
+     id: 'pin-2', authorId: 'official', author: 'Agentrix-claw', avatar: '🦀',
+-    content: '【进阶指南】如何给你的 Claw 安装 MCP 技能包\n\n MCP（Model Context Protocol）技能是扩展 Claw 能力的核心方式。\n\n✅ 一键安装：打开市场 → 「OpenClaw」标签 → 点击安装\n✅ 手动安装：编辑 claw_config.json 添加技能包路径\n✅ 推荐技能：Web Search、Code Executor、GitHub Review\n\n安装完成后重启实例即可生效。',
++    content: '【进阶指南】如何给你的 Claw 安装 MCP 技能包\n\n MCP（Model Context Protocol）技能是扩展 Claw 能力的核心方式。\n\n�?一键安装：打开市场 �?「OpenClaw」标�?�?点击安装\n�?手动安装：编�?claw_config.json 添加技能包路径\n�?推荐技能：Web Search、Code Executor、GitHub Review\n\n安装完成后重启实例即可生效�?,
+     likes: 245, comments: 38, time: '1d', isLiked: false,
+-    tags: ['进阶技巧', 'MCP教程', '技能分享'], badges: ['官方'],
++    tags: ['进阶技�?, 'MCP教程', '技能分�?], badges: ['官方'],
+   },
+   {
+     id: '3', authorId: 'u3', author: 'claw_dev', avatar: '💻',
+-    content: '折腾了一晚上终于把 Claw 本地版跑起来了！关键是要先装好 Node.js 18+ 和 Docker，然后用 App 里的安装脚本一键搞定。\n\n本地版比云端版延迟低不少，推荐有服务器的朋友试试 🎉',
++    content: '折腾了一晚上终于�?Claw 本地版跑起来了！关键是要先装�?Node.js 18+ �?Docker，然后用 App 里的安装脚本一键搞定。\n\n本地版比云端版延迟低不少，推荐有服务器的朋友试试 🎉',
+     likes: 127, comments: 31, time: '3h', isLiked: false,
+-    tags: ['claw安装', 'claw技巧', '新手入门'], badges: ['Genesis Node'],
++    tags: ['claw安装', 'claw技�?, '新手入门'], badges: ['Genesis Node'],
+   },
+   {
+     id: 'pin-3', authorId: 'official', author: 'Agentrix-claw', avatar: '🦀',
+-    content: '【高阶玩法】自己写 MCP Skill 并发布到市场\n\n1. 克隆 OpenClaw SDK：git clone https://github.com/openclaw/sdk\n2. 实现 execute() 方法，处理工具调用\n3. 在 skill.json 中定义技能元数据\n4. 提交到社区市场供大家安装\n\n目前社区已有 5200+ 技能，欢迎贡献！',
++    content: '【高阶玩法】自己写 MCP Skill 并发布到市场\n\n1. 克隆 OpenClaw SDK：git clone https://github.com/openclaw/sdk\n2. 实现 execute() 方法，处理工具调用\n3. �?skill.json 中定义技能元数据\n4. 提交到社区市场供大家安装\n\n目前社区已有 5200+ 技能，欢迎贡献�?,
+     likes: 189, comments: 27, time: '2d', isLiked: false,
+-    tags: ['进阶技巧', 'MCP教程', '技能分享'], badges: ['官方'],
++    tags: ['进阶技�?, 'MCP教程', '技能分�?], badges: ['官方'],
+   },
+   {
+-    id: '5', authorId: 'u5', author: 'workflow_pro', avatar: '⚡',
+-    content: '分享我的每日自动化工作流：\n早上 8 点 → Claw 自动爬取行业新闻 + AI 摘要推送微信\n下午 → 自动整理邮件、生成日报\n晚上 → GitHub PR 自动审查提醒\n\n全程无需人工干预，效率提升 300%！',
++    id: '5', authorId: 'u5', author: 'workflow_pro', avatar: '�?,
++    content: '分享我的每日自动化工作流：\n早上 8 �?�?Claw 自动爬取行业新闻 + AI 摘要推送微信\n下午 �?自动整理邮件、生成日报\n晚上 �?GitHub PR 自动审查提醒\n\n全程无需人工干预，效率提�?300%�?,
+     likes: 203, comments: 44, time: '5h', isLiked: false,
+-    tags: ['工作流', '进阶技巧', 'claw技巧'], badges: ['进阶玩家'],
++    tags: ['工作�?, '进阶技�?, 'claw技�?], badges: ['进阶玩家'],
+   },
+   {
+     id: '6', authorId: 'u6', author: 'newbie_claw', avatar: '🌱',
+-    content: '第一次用 Claw，照着官方教程安装成功啦！\n感觉 Web Search 这个技能真的很好用，搜索出来的结果还会自动摘要，比直接用搜索引擎方便多了 👍\n大佬们有没有推荐的进阶技能？',
++    content: '第一次用 Claw，照着官方教程安装成功啦！\n感觉 Web Search 这个技能真的很好用，搜索出来的结果还会自动摘要，比直接用搜索引擎方便多�?👍\n大佬们有没有推荐的进阶技能？',
+     likes: 56, comments: 18, time: '1h', isLiked: false,
+-    tags: ['新手入门', '技能分享'], badges: [],
++    tags: ['新手入门', '技能分�?], badges: [],
+   },
+ ];
+ 
+@@ -101,7 +101,7 @@ async function likePost(postId: string) {
+ 
+ export function FeedScreen() {
+   const navigation = useNavigation<Nav>();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [feedTab, setFeedTab] = useState('Hot');
+   const [activeTag, setActiveTag] = useState<string | null>(null);
+   const qc = useQueryClient();
+@@ -213,21 +213,21 @@ export function FeedScreen() {
+         <TouchableOpacity style={styles.actionBtn}>
+           <Text style={styles.actionText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
+         </TouchableOpacity>
+-        {/* Fork & Install — shown when post has an associated skill */}
++        {/* Fork & Install �?shown when post has an associated skill */}
+         {post.skillId && (
+           <TouchableOpacity
+             style={[styles.actionBtn, styles.installBtn]}
+             onPress={(e) => {
+               e.stopPropagation();
+               Alert.alert(
+-                t({ en: '⚡ Fork & Install', zh: '⚡ Fork & 安装' }),
+-                `${t({ en: 'Install', zh: '安装' })} "${post.skillName ?? post.skillId}" ${t({ en: 'from the marketplace?', zh: '从市场中安装？' })}`,
++                t({ en: '�?Fork & Install', zh: '�?Fork & 安装' }),
++                `${t({ en: 'Install', zh: '安装' })} "${post.skillName ?? post.skillId}" ${t({ en: 'from the marketplace?', zh: '从市场中安装�? })}`,
+                 [
+                   { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+                   {
+                     text: t({ en: 'Install', zh: '安装' }),
+                     onPress: () => {
+-                      // Navigate to Explore tab → Checkout for this skill
++                      // Navigate to Explore tab �?Checkout for this skill
+                       (navigation as any).navigate('Explore', {
+                         screen: 'Checkout',
+                         params: { skillId: post.skillId, skillName: post.skillName },
+@@ -238,7 +238,7 @@ export function FeedScreen() {
+               );
+             }}
+           >
+-            <Text style={[styles.actionText, styles.installText]}>⚡ {t({ en: 'Install', zh: '安装' })}</Text>
++            <Text style={[styles.actionText, styles.installText]}>�?{t({ en: 'Install', zh: '安装' })}</Text>
+           </TouchableOpacity>
+         )}
+       </View>
+@@ -251,7 +251,7 @@ export function FeedScreen() {
+       <View style={styles.header}>
+         <View style={{ flex: 1 }}>
+           <Text style={styles.headerTitle}>🦀 {t({ en: 'Claw Community', zh: 'Claw 社区' })}</Text>
+-          <Text style={styles.headerSubtitle}>{t({ en: 'Install · Use · Share skills', zh: '安装 · 使用 · 分享技能' })}</Text>
++          <Text style={styles.headerSubtitle}>{t({ en: 'Install · Use · Share skills', zh: '安装 · 使用 · 分享技�? })}</Text>
+         </View>
+         <View style={styles.headerRight}>
+           <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('CreatePost' as any)}>
+@@ -272,7 +272,7 @@ export function FeedScreen() {
+             onPress={() => { setFeedTab(tabLabel); setActiveTag(null); }}
+           >
+             <Text style={[styles.tabText, feedTab === tabLabel && styles.tabTextActive]}>
+-              {tabLabel === 'Hot' ? `🔥 ${t({ en: 'Hot', zh: '热门' })}` : tabLabel === 'Latest' ? `🆕 ${t({ en: 'Latest', zh: '最新' })}` : `👥 ${t({ en: 'Following', zh: '关注' })}`}
++              {tabLabel === 'Hot' ? `🔥 ${t({ en: 'Hot', zh: '热门' })}` : tabLabel === 'Latest' ? `🆕 ${t({ en: 'Latest', zh: '最�? })}` : `👥 ${t({ en: 'Following', zh: '关注' })}`}
+             </Text>
+           </TouchableOpacity>
+         ))}
+diff --git a/src/screens/social/PostDetailScreen.tsx b/src/screens/social/PostDetailScreen.tsx
+index c2b6d58..1990270 100755
+--- a/src/screens/social/PostDetailScreen.tsx
++++ b/src/screens/social/PostDetailScreen.tsx
+@@ -52,8 +52,8 @@ const PLACEHOLDER_POST: PostDetail = {
+ 
+ const PLACEHOLDER_COMMENTS: Comment[] = [
+   { id: 'c1', authorId: 'u2', author: 'ai_builder', avatar: '🤖', content: 'That\'s a great setup! Which Web Search skill did you use?', likes: 5, time: '1h' },
+-  { id: 'c2', authorId: 'u3', author: 'claw_dev', avatar: '💻', content: 'Try the "Exa Search" skill — way better for research queries.', likes: 8, time: '45m' },
+-  { id: 'c3', authorId: 'u4', author: 'skill_wizard', avatar: '⚡', content: 'Followed! Would love to see your workflow diagram.', likes: 2, time: '20m' },
++  { id: 'c2', authorId: 'u3', author: 'claw_dev', avatar: '💻', content: 'Try the "Exa Search" skill �?way better for research queries.', likes: 8, time: '45m' },
++  { id: 'c3', authorId: 'u4', author: 'skill_wizard', avatar: '�?, content: 'Followed! Would love to see your workflow diagram.', likes: 2, time: '20m' },
+ ];
+ 
+ async function fetchPost(postId: string): Promise<PostDetail | null> {
+@@ -77,7 +77,7 @@ export function PostDetailScreen() {
+   const { postId } = route.params;
+   const me = useAuthStore((s) => s.user);
+   const qc = useQueryClient();
+-  const { t } = useI18n();
++  const { t, language } = useI18n();
+   const [comment, setComment] = useState('');
+   const inputRef = useRef<TextInput>(null);
+ 
+@@ -145,7 +145,7 @@ export function PostDetailScreen() {
+               <Text style={styles.authorName}>{post.author}</Text>
+               {post.badges?.map((b) => (
+                 <View key={b} style={styles.badge}>
+-                  <Text style={styles.badgeText}>{b === 'Top Creator' ? '⭐' : b === 'Genesis Node' ? '⚡' : '🏅'} {b}</Text>
++                  <Text style={styles.badgeText}>{b === 'Top Creator' ? '�? : b === 'Genesis Node' ? '�? : '🏅'} {b}</Text>
+                 </View>
+               ))}
+             </View>
+@@ -241,7 +241,7 @@ export function PostDetailScreen() {
+             onPress={handleComment}
+             disabled={!comment.trim()}
+           >
+-            <Text style={styles.sendIcon}>➤</Text>
++            <Text style={styles.sendIcon}>�?/Text>
+           </TouchableOpacity>
+         </View>
+       </KeyboardAvoidingView>

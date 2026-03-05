@@ -13,6 +13,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { useSettingsStore } from '../../stores/settingsStore';
 import type { AgentStackParamList } from '../../navigation/types';
 import type { Workflow } from './WorkflowListScreen';
 
@@ -84,6 +85,9 @@ export function WorkflowDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      if (!isEdit) {
+        useSettingsStore.getState().markOnboardingStep('createdWorkflow');
+      }
       navigation.goBack();
     },
     onError: (e: any) => Alert.alert('Error', e.message || 'Save failed'),

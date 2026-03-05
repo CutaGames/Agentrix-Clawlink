@@ -458,13 +458,13 @@ export function CheckoutScreen() {
   const handleShareAfterPay = useCallback(() => {
     try {
       navigation.navigate('ShareCard' as any, {
-        shareUrl: `https://clawlink.app/skill/${skillId}?ref=purchase`,
+        shareUrl: `https://agentrix.top/skill/${skillId}?ref=purchase`,
         title: skillName || skill?.displayName || skill?.name || 'Skill',
-        userName: 'ClawLink User',
+        userName: 'Agentrix User',
       });
     } catch {
       Share.share({
-        message: `I just purchased "${skillName || skill?.name}" on ClawLink! 🎉\nhttps://clawlink.app/skill/${skillId}`,
+        message: `I just purchased "${skillName || skill?.name}" on Agentrix Claw! 🎉\nhttps://agentrix.top/skill/${skillId}`,
       });
     }
   }, [skillId, skillName, skill, navigation]);

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "ClawLink",
-    "slug": "clawlink",
-    "scheme": "clawlink",
+    "name": "Agentrix Claw",
+    "slug": "agentrix-claw",
+    "scheme": "agentrix",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.clawlink.mobile",
+      "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "metamask",
@@ -36,10 +36,10 @@
           "ledgerlive",
           "bnc"
         ],
-        "NSCameraUsageDescription": "ClawLink uses the camera to scan QR codes for binding your OpenClaw instance.",
-        "NSMicrophoneUsageDescription": "ClawLink uses the microphone for voice commands to your AI agent.",
-        "NSPhotoLibraryAddUsageDescription": "ClawLink saves share cards to your photo library.",
-        "NSPhotoLibraryUsageDescription": "ClawLink reads the photo library to select images."
+        "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
+        "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
+        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images."
       }
     },
     "android": {
@@ -47,7 +47,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "app.clawlink.mobile",
+      "package": "app.agentrix.claw",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -59,7 +59,7 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "clawlink" }, { "scheme": "https", "host": "clawlink.app" }],
+          "data": [{ "scheme": "agentrix" }, { "scheme": "https", "host": "agentrix.top" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]

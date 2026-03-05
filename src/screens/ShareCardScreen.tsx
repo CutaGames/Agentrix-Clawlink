@@ -19,7 +19,7 @@ export function ShareCardScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <ShareCardView
           shareUrl={shareUrl}
-          title={title ?? 'ClawLink'}
+          title={title ?? 'Agentrix Claw'}
           userName={userName ?? user?.nickname ?? user?.email}
         />
       </ScrollView>

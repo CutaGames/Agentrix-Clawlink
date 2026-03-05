@@ -38,7 +38,7 @@ export function WalletBackupScreen() {
     if (!recoveryCode) return;
     try {
       await Share.share({
-        message: `ClawLink MPC Wallet Recovery Code\n\n${recoveryCode}\n\n⚠️ KEEP THIS PRIVATE — never share it publicly.`,
+        message: `Agentrix MPC Wallet Recovery Code\n\n${recoveryCode}\n\n⚠️ KEEP THIS PRIVATE — never share it publicly.`,
         title: 'Wallet Recovery Code',
       });
     } catch {}

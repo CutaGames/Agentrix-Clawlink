@@ -23,6 +23,7 @@ import { marketplaceApi, ReviewItem } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import type { MarketStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
@@ -100,17 +101,17 @@ export function ClawSkillDetailScreen() {
     if (!skill) return;
     const authorName = typeof skill.author === 'string'
       ? skill.author
-      : skill.author?.nickname || skill.vendorName || 'ClawLink Creator';
+      : skill.author?.nickname || skill.vendorName || 'Agentrix Creator';
     try {
       navigation.navigate('ShareCard' as any, {
-        shareUrl: `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
+        shareUrl: `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
         title: skill.displayName || skill.name,
         userName: authorName,
       });
     } catch {
       // Fallback to native share
       Share.share({
-        message: `Check out "${skill.displayName || skill.name}" on ClawLink!\nhttps://clawlink.app/skill/${skillId}`,
+        message: `Check out "${skill.displayName || skill.name}" on Agentrix Claw!\nhttps://agentrix.top/skill/${skillId}`,
       });
     }
   }, [skill, skillId, activeInstance, navigation]);
@@ -157,6 +158,7 @@ export function ClawSkillDetailScreen() {
         ? `\n\nNote: Your agent is not online yet. The skill will auto-deploy when it reconnects.`
         : '';
       Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}${pendingMsg}`);
+      useSettingsStore.getState().markOnboardingStep('installedSkill');
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
       if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {
@@ -176,7 +178,7 @@ export function ClawSkillDetailScreen() {
 
   const handlePromote = useCallback(async () => {
     if (!skill) return;
-    const shareUrl = `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
+    const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
     const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || '';
     try {
       navigation.navigate('ShareCard' as any, {
@@ -186,7 +188,7 @@ export function ClawSkillDetailScreen() {
       });
     } catch {
       await Share.share({
-        message: `🔥 Promote & Earn commission!\n"${skill.displayName || skill.name}" on ClawLink\n${shareUrl}`,
+        message: `🔥 Promote & Earn commission!\n"${skill.displayName || skill.name}" on Agentrix Claw\n${shareUrl}`,
       });
     }
   }, [skill, skillId, activeInstance, navigation]);
