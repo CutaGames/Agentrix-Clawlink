@@ -552,7 +552,7 @@ export class OpenClawConnectionService implements OnModuleInit {
 
     // Update capabilities with the active model
     const caps = { ...(instance.capabilities || {}), activeModel: modelId };
-    await this.instanceRepo.update(instance.id, { capabilities: caps });
+    await this.instanceRepo.update(instance.id, { capabilities: caps as any });
 
     // Try pushing the model change to the running OpenClaw instance
     let pushed = false;
