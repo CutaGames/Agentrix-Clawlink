@@ -9,8 +9,9 @@
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-// Backend URL is resolved server-side — never exposes env secrets to client
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Backend URL — always http://localhost:3001 on production server (same machine)
+// NEVER use NEXT_PUBLIC_API_URL here: it contains /api suffix which would cause double /api/api/ paths
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {

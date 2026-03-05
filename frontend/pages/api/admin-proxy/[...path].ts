@@ -8,6 +8,7 @@
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+// NEVER fall back to NEXT_PUBLIC_API_URL — it has /api suffix causing double /api/ paths
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
