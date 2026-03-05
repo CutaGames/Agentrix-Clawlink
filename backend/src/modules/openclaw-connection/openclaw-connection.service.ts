@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -116,13 +117,27 @@ export const PLATFORM_MODELS: AvailableModel[] = [
 ];
 
 @Injectable()
-export class OpenClawConnectionService {
+export class OpenClawConnectionService implements OnModuleInit {
   private readonly logger = new Logger(OpenClawConnectionService.name);
 
   constructor(
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
   ) {}
+
+  /** Pre-pull docker image on startup so the first deploy is fast (fire-and-forget). */
+  onModuleInit() {
+    const host = process.env.CLOUD_HOST || '18.139.157.116';
+    const user = process.env.CLOUD_USER || 'ubuntu';
+    const pemPath = process.env.CLOUD_PEM_PATH || '/home/ubuntu/.ssh/hq.pem';
+    const isLocalHost = host === '127.0.0.1' || host === 'localhost' || host === process.env.HOSTNAME;
+    const pullCmd = isLocalHost
+      ? 'docker pull openclaw/openclaw:latest'
+      : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "docker pull openclaw/openclaw:latest"`;
+    execAsync(pullCmd)
+      .then(() => this.logger.log('openclaw/openclaw:latest pre-pull complete'))
+      .catch((e) => this.logger.warn(`Pre-pull skipped: ${e.message}`));
+  }
 
   async bindInstance(userId: string, dto: BindOpenClawDto): Promise<OpenClawInstance> {
     // Basic connectivity check
@@ -267,37 +282,47 @@ export class OpenClawConnectionService {
           : `-e LLM_PROVIDER=${resolvedProvider}`;
       }
 
-      // 3. Run container with LLM env vars injected; -p 0:3001 = random host port
+      // 3. Run container and get assigned port in a single SSH round-trip.
+      // Combined command: run container, then immediately query the port — saves ~2-3s SSH overhead.
       // Resource limits to prevent any single container from starving the host
       const memLimit = process.env.CLOUD_CONTAINER_MEMORY || '512m';
       const cpuLimit = process.env.CLOUD_CONTAINER_CPUS || '0.5';
-      // When running on the same host, skip SSH and execute docker directly
-      const dockerRunCmd = `docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped --memory=${memLimit} --cpus=${cpuLimit} ${llmEnvFlags} openclaw/openclaw:latest`;
+      const dockerCombinedCmd = [
+        `CID=$(docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped`,
+        `--memory=${memLimit} --cpus=${cpuLimit} ${llmEnvFlags} openclaw/openclaw:latest)`,
+        `&& docker port $CID 3001`,
+      ].join(' ');
       const sshCmd = isLocalHost
-        ? dockerRunCmd
-        : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${dockerRunCmd}"`;
+        ? `bash -c '${dockerCombinedCmd}'`
+        : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${dockerCombinedCmd}"`;
 
       this.logger.log(`Executing deploy for ${cloudInstanceId} (provider: ${resolvedProvider}, local: ${isLocalHost})`);
-      const { stdout: containerId } = await execAsync(sshCmd);
-
-      // 4. Get assigned host port
-      const portQuery = `docker port ${containerId.trim()} 3001`;
-      const portCmd = isLocalHost
-        ? portQuery
-        : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${portQuery}"`;
-      const { stdout: portOutput } = await execAsync(portCmd);
+      const { stdout: portOutput } = await execAsync(sshCmd);
 
       // portOutput: "0.0.0.0:32768\n" or ":::32768\n"
       const portMatch = portOutput.match(/:(\d+)/);
       const assignedPort = portMatch ? portMatch[1] : '3001';
       const instanceUrl = `http://${host}:${assignedPort}`;
 
+      // 4. Wait for container health — poll /api/health every 500ms (max 20s) instead of fixed 5s sleep.
+      // Exits early the moment the container is ready, avg 2-4s with pre-pulled image.
+      this.logger.log(`Waiting for ${cloudInstanceId} at ${instanceUrl}...`);
+      let containerReady = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const hc = await fetch(`${instanceUrl}/api/health`, { signal: AbortSignal.timeout(1500) });
+          if (hc.ok) { containerReady = true; break; }
+        } catch { /* still starting */ }
+      }
+      if (!containerReady) {
+        this.logger.warn(`Container ${cloudInstanceId} health check timed out after 20s; proceeding anyway`);
+      }
+
       // 5. Retrieve the API token OpenClaw generates on first start
-      // Wait briefly for container to initialize, then query its /api/token endpoint
-      await new Promise((r) => setTimeout(r, 5000));
       let instanceToken = `cloud-token-${cloudInstanceId}`;
       try {
-        const tokenResp = await fetch(`${instanceUrl}/api/token`, { signal: AbortSignal.timeout(8000) });
+        const tokenResp = await fetch(`${instanceUrl}/api/token`, { signal: AbortSignal.timeout(4000) });
         if (tokenResp.ok) {
           const tokenData = await tokenResp.json() as { token?: string };
           if (tokenData.token) instanceToken = tokenData.token;

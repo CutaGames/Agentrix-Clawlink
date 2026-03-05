@@ -27,17 +27,18 @@ export function CloudDeployScreen() {
 
     const interval = setInterval(() => {
       setProgress((p) => Math.min(p + Math.random() * 15, 90));
-    }, 600);
+    }, 400);
 
     try {
       // llmProvider is determined by platform backend — user doesn't choose
       const result = await provisionCloudAgent({ name, llmProvider: 'default' });
 
-      // SSH provisioning is async — poll up to 60 s for instanceUrl to be ready
+      // SSH provisioning is async — poll up to 30 s for instanceUrl to be ready
+      // 1s interval × 30 polls = 30s max wait (vs 3s × 20 = 60s previously)
       let finalUrl = result.instanceUrl;
       if (!finalUrl) {
-        for (let i = 0; i < 20; i++) {
-          await new Promise((r) => setTimeout(r, 3000));
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 1000));
           setProgress((p) => Math.min(p + 2, 95));
           try {
             const info = await getInstanceById(result.id);

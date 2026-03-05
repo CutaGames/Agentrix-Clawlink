@@ -4,15 +4,17 @@
  */
 
 // 获取API基础URL
+// Browser requests use the Next.js proxy at /api/admin-proxy to avoid cross-origin & DNS issues.
+// Server-side (SSR) calls go directly to BACKEND_URL.
 export const getAdminApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:3001/api';
-    }
-    return 'https://api.agentrix.top/api';
+    // Always use same-origin proxy in the browser — avoids CORS/DNS/GFW issues with api.agentrix.top
+    return '/api/admin-proxy';
   }
-  return 'http://localhost:3001/api';
+  // Server-side: direct backend call (no CORS needed)
+  return process.env.BACKEND_URL
+    ? `${process.env.BACKEND_URL}/api`
+    : 'http://localhost:3001/api';
 };
 
 // 获取admin token
