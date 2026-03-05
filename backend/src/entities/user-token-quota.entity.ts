@@ -40,8 +40,8 @@ export class UserTokenQuota {
   @Column({ name: 'plan_type', type: 'enum', enum: TokenPlanType, default: TokenPlanType.FREE_TRIAL })
   planType: TokenPlanType;
 
-  /** Total allocated tokens for this period (default: 5_000_000 free trial) */
-  @Column({ name: 'total_quota', type: 'bigint', default: 5_000_000 })
+  /** Total allocated tokens for this period (default: 1_000_000 free trial) */
+  @Column({ name: 'total_quota', type: 'bigint', default: 1_000_000 })
   totalQuota: number;
 
   /** Tokens consumed: input + output combined */

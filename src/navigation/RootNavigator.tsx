@@ -5,6 +5,7 @@ import { AuthStackParamList, OnboardingStackParamList, RootStackParamList } from
 import { MainTabNavigator } from './MainTabNavigator';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
+import { InvitationGateScreen } from '../screens/auth/InvitationGateScreen';
 import { WalletConnectScreen } from '../screens/WalletConnectScreen';
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
 import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
@@ -41,11 +42,14 @@ function OnboardingNavigator() {
 export function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
+  const hasValidInvitation = useAuthStore((s) => s.hasValidInvitation);
 
   return (
     <Root.Navigator id={undefined} screenOptions={{ headerShown: false, animation: 'fade' }}>
       {!isAuthenticated ? (
         <Root.Screen name="Auth" component={AuthNavigator} />
+      ) : !hasValidInvitation ? (
+        <Root.Screen name="InvitationGate" component={InvitationGateScreen} />
       ) : !hasCompletedOnboarding ? (
         <Root.Screen name="Onboarding" component={OnboardingNavigator} />
       ) : (

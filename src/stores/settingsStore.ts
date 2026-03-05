@@ -23,16 +23,18 @@ export interface ModelOption {
   provider: string;
   icon: string;
   badge?: string; // e.g. 'Default', 'Fast', 'Pro'
+  availability: 'available' | 'coming_soon' | 'requires_key';
+  costTier: 'free_trial' | 'starter' | 'pro';
 }
 
 export const SUPPORTED_MODELS: ModelOption[] = [
-  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5',    provider: 'AWS Bedrock', icon: '🤖', badge: 'Default' },
-  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5',   provider: 'AWS Bedrock', icon: '💎', badge: 'Pro' },
-  { id: 'claude-opus-4',     label: 'Claude Opus 4',       provider: 'AWS Bedrock', icon: '🏆', badge: 'Max' },
-  { id: 'gemini-2.0-flash',  label: 'Gemini 2.0 Flash',    provider: 'Google',      icon: '✨', badge: 'Fast' },
-  { id: 'gpt-4o',            label: 'GPT-4o',               provider: 'OpenAI',      icon: '🧠' },
-  { id: 'deepseek-v3',       label: 'DeepSeek-V3',         provider: 'DeepSeek',    icon: '🔬' },
-  { id: 'llama-3.3-70b',     label: 'Llama 3.3 70B',       provider: 'Groq',        icon: '🦙', badge: 'Free' },
+  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5',    provider: 'AWS Bedrock', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
+  { id: 'deepseek-v3',       label: 'DeepSeek V3',         provider: 'DeepSeek',    icon: '🔬', badge: 'Cost‑efficient', availability: 'available', costTier: 'free_trial' },
+  { id: 'gemini-2.0-flash',  label: 'Gemini 2.0 Flash',    provider: 'Google',      icon: '✨', badge: 'Fast', availability: 'available', costTier: 'free_trial' },
+  { id: 'llama-3.3-70b',     label: 'Llama 3.3 70B',       provider: 'Groq',        icon: '🦙', badge: 'Free', availability: 'available', costTier: 'free_trial' },
+  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5',   provider: 'AWS Bedrock', icon: '💎', badge: 'Pro',  availability: 'coming_soon', costTier: 'pro' },
+  { id: 'gpt-4o',            label: 'GPT-4o',               provider: 'OpenAI',      icon: '🧠', availability: 'coming_soon', costTier: 'pro' },
+  { id: 'claude-opus-4',     label: 'Claude Opus 4',       provider: 'AWS Bedrock', icon: '🏆', badge: 'Max',  availability: 'coming_soon', costTier: 'pro' },
 ];
 
 interface SettingsState {

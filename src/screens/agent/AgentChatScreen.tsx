@@ -8,6 +8,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
+import { switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
@@ -589,22 +590,66 @@ export function AgentChatScreen() {
         )}
       </View>
 
-      {/* Model picker modal */}
+      {/* Model picker modal — enhanced with availability & backend sync */}
       <Modal visible={showModelPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
           <View style={styles.modelSheet}>
-            <Text style={styles.modelSheetTitle}>Select Model</Text>
+            <Text style={styles.modelSheetTitle}>Switch Model</Text>
+            <Text style={styles.modelSheetSubtitle}>Applies to this agent (cloud & local)</Text>
             <ScrollView>
-              {SUPPORTED_MODELS.map((m) => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[styles.modelOption, m.id === selectedModelId && styles.modelOptionActive]}
-                  onPress={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
-                >
-                  <Text style={styles.modelOptionLabel}>{m.label}</Text>
-                  {m.id === selectedModelId && <Text style={styles.modelOptionCheck}>✓</Text>}
-                </TouchableOpacity>
-              ))}
+              {SUPPORTED_MODELS.map((m) => {
+                const isActive = m.id === selectedModelId;
+                const isAvailable = m.availability === 'available';
+                const isComingSoon = m.availability === 'coming_soon';
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[
+                      styles.modelOption,
+                      isActive && styles.modelOptionActive,
+                      !isAvailable && styles.modelOptionDisabled,
+                    ]}
+                    onPress={async () => {
+                      if (!isAvailable) {
+                        Alert.alert(m.label, isComingSoon ? 'This model is coming soon!' : 'Requires API key configuration.');
+                        return;
+                      }
+                      setSelectedModel(m.id);
+                      setShowModelPicker(false);
+                      // Sync to backend for the active instance
+                      if (instanceId) {
+                        try {
+                          const result = await switchInstanceModel(instanceId, m.id);
+                          // Subtle toast-like feedback — don't block the UI
+                          if (result.message) {
+                            // Optional: show brief notification
+                          }
+                        } catch (err: any) {
+                          // Model still set locally — backend sync is best-effort
+                        }
+                      }
+                    }}
+                  >
+                    <View style={styles.modelOptionRow}>
+                      <Text style={styles.modelOptionIcon}>{m.icon}</Text>
+                      <View style={styles.modelOptionInfo}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.modelOptionLabel, !isAvailable && { color: colors.textMuted }]}>{m.label}</Text>
+                          {m.badge && (
+                            <View style={[styles.modelBadge, isComingSoon && { backgroundColor: colors.textMuted + '30' }]}>
+                              <Text style={[styles.modelBadgeText, isComingSoon && { color: colors.textMuted }]}>
+                                {isComingSoon ? 'Soon' : m.badge}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.modelOptionProvider}>{m.provider}</Text>
+                      </View>
+                      {isActive && <Text style={styles.modelOptionCheck}>✓</Text>}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         </TouchableOpacity>
@@ -736,15 +781,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard, borderTopLeftRadius: 16, borderTopRightRadius: 16,
     paddingTop: 16, paddingBottom: 32, maxHeight: '60%',
   },
-  modelSheetTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 16, textAlign: 'center', marginBottom: 12 },
+  modelSheetTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 16, textAlign: 'center', marginBottom: 4 },
+  modelSheetSubtitle: { color: colors.textMuted, fontSize: 12, textAlign: 'center', marginBottom: 12 },
   modelOption: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 14, paddingHorizontal: 20,
+    paddingVertical: 12, paddingHorizontal: 20,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   modelOptionActive: { backgroundColor: colors.bgSecondary },
-  modelOptionLabel: { color: colors.textPrimary, fontSize: 15 },
+  modelOptionDisabled: { opacity: 0.5 },
+  modelOptionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  modelOptionIcon: { fontSize: 22 },
+  modelOptionInfo: { flex: 1 },
+  modelOptionLabel: { color: colors.textPrimary, fontSize: 15, fontWeight: '500' },
+  modelOptionProvider: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   modelOptionCheck: { color: colors.accent, fontSize: 16, fontWeight: '700' },
+  modelBadge: { backgroundColor: colors.accent + '20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  modelBadgeText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
   thoughtContainer: { backgroundColor: colors.bg, borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: colors.border },
   thoughtHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   thoughtHeaderText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },

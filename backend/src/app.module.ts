@@ -87,6 +87,8 @@ import { OpenClawConnectionModule } from './modules/openclaw-connection/openclaw
 import { OpenClawProxyModule } from './modules/openclaw-proxy/openclaw-proxy.module';
 import { OpenClawBridgeModule } from './modules/openclaw-bridge/openclaw-bridge.module';
 import { TokenQuotaModule } from './modules/token-quota/token-quota.module';
+// 邀请码模块
+import { InvitationModule } from './modules/invitation/invitation.module';
 // ClawLink: 社区动态模块
 import { SocialModule } from './modules/social/social.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
@@ -190,6 +192,8 @@ import { AccountAbstractionModule } from './modules/account-abstraction/account-
     OpenClawBridgeModule,
     // Token quota tracking
     TokenQuotaModule,
+    // Invitation code system
+    InvitationModule,
     // ClawLink: 社区动态
     SocialModule,
     // Direct Messaging

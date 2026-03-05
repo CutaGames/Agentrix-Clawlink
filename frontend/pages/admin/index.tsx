@@ -39,6 +39,7 @@ const menuItems = [
   { name: '资金路径', path: '/admin/fund-paths', icon: Wallet },
   { name: '工单管理', path: '/admin/tickets', icon: Ticket },
   { name: '营销管理', path: '/admin/marketing', icon: Target },
+  { name: '邀请码管理', path: '/admin/invitation', icon: Ticket },
   { name: '风控管理', path: '/admin/risk', icon: Shield },
   { name: '服务发现', path: '/admin/service-discovery', icon: Activity },
   { name: '系统管理', path: '/admin/system', icon: Settings },

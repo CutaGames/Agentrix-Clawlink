@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Body,
@@ -143,6 +144,30 @@ export class OpenClawConnectionController {
   @ApiOperation({ summary: 'Check if local agent is currently relay-connected' })
   async relayStatus(@Request() req: any, @Param('instanceId') instanceId: string) {
     return this.service.getRelayStatus(req.user.id, instanceId);
+  }
+
+  // ===== Model Switching =====
+
+  @Get('models')
+  @ApiOperation({ summary: 'Get available LLM models for switching' })
+  async getAvailableModels() {
+    return this.service.getAvailableModels();
+  }
+
+  @Get('instances/:id/model')
+  @ApiOperation({ summary: 'Get the active model for an instance' })
+  async getInstanceModel(@Request() req: any, @Param('id') id: string) {
+    return this.service.getInstanceModel(req.user.id, id);
+  }
+
+  @Patch('instances/:id/model')
+  @ApiOperation({ summary: 'Switch the LLM model for an instance (cloud or local)' })
+  async switchInstanceModel(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { modelId: string },
+  ) {
+    return this.service.switchInstanceModel(req.user.id, id, body.modelId);
   }
 
   // ===== Telegram Webhook (public — validated by bot token secret) =====

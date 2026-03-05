@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -32,6 +32,88 @@ export interface ProvisionCloudDto {
   llmProvider?: string;
   personality?: string;
 }
+
+/**
+ * Available LLM models for user switching.
+ * availability: 'available' = ready to use, 'coming_soon' = not yet wired, 'requires_key' = user must provide API key.
+ */
+export interface AvailableModel {
+  id: string;
+  label: string;
+  provider: string;
+  bedrockModelId?: string;
+  icon: string;
+  badge?: string;
+  availability: 'available' | 'coming_soon' | 'requires_key';
+  costTier: 'free_trial' | 'starter' | 'pro';
+}
+
+export const PLATFORM_MODELS: AvailableModel[] = [
+  {
+    id: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
+    provider: 'AWS Bedrock',
+    bedrockModelId: 'anthropic.claude-haiku-4-5-20251001-v1:0',
+    icon: '🤖',
+    badge: 'Default',
+    availability: 'available',
+    costTier: 'free_trial',
+  },
+  {
+    id: 'claude-sonnet-4-5',
+    label: 'Claude Sonnet 4.5',
+    provider: 'AWS Bedrock',
+    bedrockModelId: 'anthropic.claude-sonnet-4-5-20250514-v1:0',
+    icon: '💎',
+    badge: 'Pro',
+    availability: 'coming_soon',
+    costTier: 'pro',
+  },
+  {
+    id: 'deepseek-v3',
+    label: 'DeepSeek V3',
+    provider: 'DeepSeek',
+    icon: '🔬',
+    badge: 'Cost‑efficient',
+    availability: 'available',
+    costTier: 'free_trial',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    label: 'Gemini 2.0 Flash',
+    provider: 'Google',
+    icon: '✨',
+    badge: 'Fast',
+    availability: 'available',
+    costTier: 'free_trial',
+  },
+  {
+    id: 'llama-3.3-70b',
+    label: 'Llama 3.3 70B',
+    provider: 'Groq',
+    icon: '🦙',
+    badge: 'Free',
+    availability: 'available',
+    costTier: 'free_trial',
+  },
+  {
+    id: 'gpt-4o',
+    label: 'GPT-4o',
+    provider: 'OpenAI',
+    icon: '🧠',
+    availability: 'coming_soon',
+    costTier: 'pro',
+  },
+  {
+    id: 'claude-opus-4',
+    label: 'Claude Opus 4',
+    provider: 'AWS Bedrock',
+    icon: '🏆',
+    badge: 'Max',
+    availability: 'coming_soon',
+    costTier: 'pro',
+  },
+];
 
 @Injectable()
 export class OpenClawConnectionService {
@@ -87,6 +169,21 @@ export class OpenClawConnectionService {
       where: { userId, instanceType: OpenClawInstanceType.CLOUD, status: OpenClawInstanceStatus.PROVISIONING },
     });
     if (existing) return existing;
+
+    // ── Instance limit: 1 cloud instance per user (free tier) ──
+    const maxCloud = parseInt(process.env.MAX_CLOUD_INSTANCES_PER_USER || '1', 10);
+    const cloudCount = await this.instanceRepo.count({
+      where: {
+        userId,
+        instanceType: OpenClawInstanceType.CLOUD,
+        status: In([OpenClawInstanceStatus.ACTIVE, OpenClawInstanceStatus.PROVISIONING]),
+      },
+    });
+    if (cloudCount >= maxCloud) {
+      throw new BadRequestException(
+        `Free tier allows ${maxCloud} cloud instance(s). Please remove an existing instance first.`,
+      );
+    }
 
     const cloudInstanceId = `cloud-${userId.slice(0, 8)}-${Date.now()}`;
     const instance = this.instanceRepo.create({
@@ -171,8 +268,11 @@ export class OpenClawConnectionService {
       }
 
       // 3. Run container with LLM env vars injected; -p 0:3001 = random host port
+      // Resource limits to prevent any single container from starving the host
+      const memLimit = process.env.CLOUD_CONTAINER_MEMORY || '512m';
+      const cpuLimit = process.env.CLOUD_CONTAINER_CPUS || '0.5';
       // When running on the same host, skip SSH and execute docker directly
-      const dockerRunCmd = `docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped ${llmEnvFlags} openclaw/openclaw:latest`;
+      const dockerRunCmd = `docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped --memory=${memLimit} --cpus=${cpuLimit} ${llmEnvFlags} openclaw/openclaw:latest`;
       const sshCmd = isLocalHost
         ? dockerRunCmd
         : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${dockerRunCmd}"`;
@@ -334,6 +434,21 @@ export class OpenClawConnectionService {
     wsRelayUrl: string;
     downloadUrls: { win: string; mac: string };
   }> {
+    // ── Instance limit: 1 local instance per user (free tier) ──
+    const maxLocal = parseInt(process.env.MAX_LOCAL_INSTANCES_PER_USER || '1', 10);
+    const localCount = await this.instanceRepo.count({
+      where: {
+        userId,
+        instanceType: OpenClawInstanceType.LOCAL,
+        status: In([OpenClawInstanceStatus.ACTIVE, OpenClawInstanceStatus.PROVISIONING]),
+      },
+    });
+    if (localCount >= maxLocal) {
+      throw new BadRequestException(
+        `Free tier allows ${maxLocal} local instance(s). Please remove an existing instance first.`,
+      );
+    }
+
     const relayToken = randomBytes(24).toString('hex');
     const instance = this.instanceRepo.create({
       userId,
@@ -365,5 +480,88 @@ export class OpenClawConnectionService {
   async getRelayStatus(userId: string, instanceId: string): Promise<{ connected: boolean; instanceId: string }> {
     const instance = await this.getInstanceById(userId, instanceId);
     return { connected: instance.relayConnected ?? false, instanceId };
+  }
+
+  // ── Model switching ────────────────────────────────────────────────────────
+
+  /**
+   * Get available models for the user (respects plan type).
+   */
+  getAvailableModels(): AvailableModel[] {
+    return PLATFORM_MODELS;
+  }
+
+  /**
+   * Get the active model for an instance.
+   */
+  async getInstanceModel(userId: string, instanceId: string): Promise<{ modelId: string; model: AvailableModel | null }> {
+    const instance = await this.getInstanceById(userId, instanceId);
+    const modelId = (instance.capabilities as any)?.activeModel
+      || (instance.capabilities as any)?.llmProvider
+      || process.env.DEFAULT_MODEL
+      || 'claude-haiku-4-5';
+    const model = PLATFORM_MODELS.find(m => m.id === modelId) || null;
+    return { modelId, model };
+  }
+
+  /**
+   * Switch the model used by an instance.
+   * Updates the instance metadata and attempts to push the config to the running container.
+   */
+  async switchInstanceModel(userId: string, instanceId: string, modelId: string): Promise<{
+    success: boolean;
+    modelId: string;
+    model: AvailableModel;
+    pushed: boolean;
+    message: string;
+  }> {
+    const model = PLATFORM_MODELS.find(m => m.id === modelId);
+    if (!model) {
+      throw new BadRequestException(`Unknown model: "${modelId}". Available: ${PLATFORM_MODELS.map(m => m.id).join(', ')}`);
+    }
+    if (model.availability === 'coming_soon') {
+      throw new BadRequestException(`Model "${model.label}" is coming soon and not yet available.`);
+    }
+
+    const instance = await this.getInstanceById(userId, instanceId);
+
+    // Update capabilities with the active model
+    const caps = { ...(instance.capabilities || {}), activeModel: modelId };
+    await this.instanceRepo.update(instance.id, { capabilities: caps });
+
+    // Try pushing the model change to the running OpenClaw instance
+    let pushed = false;
+    if (instance.instanceUrl && instance.status === OpenClawInstanceStatus.ACTIVE) {
+      try {
+        const resp = await fetch(`${instance.instanceUrl}/api/config/model`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(instance.instanceToken ? { Authorization: `Bearer ${instance.instanceToken}` } : {}),
+          },
+          body: JSON.stringify({
+            modelId,
+            bedrockModelId: model.bedrockModelId,
+            provider: model.provider,
+          }),
+          signal: AbortSignal.timeout(8_000),
+        });
+        pushed = resp.ok;
+      } catch (err: any) {
+        this.logger.warn(`Could not push model switch to instance ${instanceId}: ${err.message}`);
+      }
+    }
+
+    this.logger.log(`Model switched for instance ${instanceId}: ${modelId} (pushed=${pushed})`);
+
+    return {
+      success: true,
+      modelId,
+      model,
+      pushed,
+      message: pushed
+        ? `Switched to ${model.label}. Active immediately.`
+        : `Switched to ${model.label}. Will take effect on next chat (instance config saved).`,
+    };
   }
 }

@@ -14,6 +14,7 @@ import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
+import { switchInstanceModel } from '../../services/openclaw.service';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
@@ -240,9 +241,18 @@ export function AgentConsoleScreen() {
         <TouchableOpacity 
           style={styles.modelSelector}
           onPress={() => {
+            const available = SUPPORTED_MODELS.filter((m) => m.availability === 'available');
             Alert.alert('Select Engine', 'Choose the AI model for your agent',
               [
-                ...SUPPORTED_MODELS.map((m) => ({ text: m.label, onPress: () => setSelectedModel(m.id) })),
+                ...available.map((m) => ({
+                  text: `${m.icon} ${m.label}${m.badge ? ` (${m.badge})` : ''}`,
+                  onPress: async () => {
+                    setSelectedModel(m.id);
+                    if (activeInstance?.id) {
+                      try { await switchInstanceModel(activeInstance.id, m.id); } catch (_) {}
+                    }
+                  },
+                })),
                 { text: 'Cancel', style: 'cancel' as const },
               ]
             );

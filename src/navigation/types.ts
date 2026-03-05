@@ -92,6 +92,7 @@ export type MainTabParamList = {
 
 export type RootStackParamList = {
   Auth: undefined;
+  InvitationGate: undefined;
   Onboarding: undefined;
   Main: undefined;
 };

@@ -3,14 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserTokenQuota, TokenPlanType } from '../../entities/user-token-quota.entity';
 
-/** Free tier tokens granted to new users for their first month */
-export const FREE_TRIAL_TOKENS = 5_000_000;
+/** Free tier tokens granted to new users — configurable via FREE_TRIAL_TOKEN_LIMIT env */
+export const FREE_TRIAL_TOKENS = Number(process.env.FREE_TRIAL_TOKEN_LIMIT) || 1_000_000;
 
 /** Token allocation per plan per month */
 export const PLAN_QUOTAS: Record<TokenPlanType, number> = {
-  [TokenPlanType.FREE_TRIAL]: 5_000_000,
-  [TokenPlanType.STARTER]:    10_000_000,
-  [TokenPlanType.PRO]:        30_000_000,
+  [TokenPlanType.FREE_TRIAL]: FREE_TRIAL_TOKENS,
+  [TokenPlanType.STARTER]:    5_000_000,
+  [TokenPlanType.PRO]:        20_000_000,
   [TokenPlanType.UNLIMITED]:  999_999_999,
 };
 

@@ -40,6 +40,7 @@ interface AuthState {
   isLoading: boolean;
   isInitialized: boolean;
   hasCompletedOnboarding: boolean;
+  hasValidInvitation: boolean;
   activeInstance: OpenClawInstance | null;
 
   // Actions
@@ -49,6 +50,7 @@ interface AuthState {
   setInitialized: (initialized: boolean) => void;
   restoreSession: () => Promise<boolean>;
   setOnboardingComplete: () => void;
+  setInvitationValid: () => void;
   addInstance: (instance: OpenClawInstance) => void;
   setActiveInstance: (instanceId: string) => void;
   updateInstance: (instanceId: string, update: Partial<OpenClawInstance>) => void;
@@ -65,6 +67,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       isInitialized: false,
       hasCompletedOnboarding: false,
+      hasValidInvitation: false,
       activeInstance: null,
 
       setAuth: async (user, token) => {
@@ -95,6 +98,7 @@ export const useAuthStore = create<AuthState>()(
       setLoading: (loading) => set({ isLoading: loading }),
       setInitialized: (initialized) => set({ isInitialized: initialized }),
       setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
+      setInvitationValid: () => set({ hasValidInvitation: true }),
 
       restoreSession: async () => {
         try {
@@ -170,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
+        hasValidInvitation: state.hasValidInvitation,
         activeInstance: state.activeInstance,
       }),
     }

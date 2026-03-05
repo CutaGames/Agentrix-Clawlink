@@ -71,7 +71,12 @@ export class OpenClawProxyService {
       const resp = await fetch(url, {
         method: 'POST',
         headers: this.buildHeaders(instance),
-        body: JSON.stringify({ message: dto.message, sessionId: dto.sessionId, context: dto.context, model: dto.model || process.env.DEFAULT_MODEL || 'claude-haiku-4-5' }),
+        body: JSON.stringify({
+          message: dto.message,
+          sessionId: dto.sessionId,
+          context: dto.context,
+          model: dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+        }),
         signal: AbortSignal.timeout(30_000),
       });
 
@@ -120,7 +125,11 @@ export class OpenClawProxyService {
       const upstreamResp = await fetch(url, {
         method: 'POST',
         headers: { ...this.buildHeaders(instance), Accept: 'text/event-stream' },
-        body: JSON.stringify({ message: dto.message, sessionId: dto.sessionId, model: dto.model || process.env.DEFAULT_MODEL || 'claude-haiku-4-5' }),
+        body: JSON.stringify({
+          message: dto.message,
+          sessionId: dto.sessionId,
+          model: dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+        }),
         signal: AbortSignal.timeout(60_000),
       });
 

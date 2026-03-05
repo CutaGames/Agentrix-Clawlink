@@ -159,6 +159,43 @@ export async function batchCleanupInstances(status: string = 'error'): Promise<{
   return apiFetch(`/openclaw/instances?status=${encodeURIComponent(status)}`, { method: 'DELETE' });
 }
 
+// ── Model Switching ────────────────────────────────────────────────────────────
+
+export interface AvailableModel {
+  id: string;
+  label: string;
+  provider: string;
+  bedrockModelId?: string;
+  icon: string;
+  badge?: string;
+  availability: 'available' | 'coming_soon' | 'requires_key';
+  costTier: 'free_trial' | 'starter' | 'pro';
+}
+
+/** Fetch available models from backend */
+export async function getAvailableModels(): Promise<AvailableModel[]> {
+  return apiFetch<AvailableModel[]>('/openclaw/models');
+}
+
+/** Get the currently active model for an instance */
+export async function getInstanceModel(instanceId: string): Promise<{ modelId: string; model: AvailableModel | null }> {
+  return apiFetch(`/openclaw/instances/${instanceId}/model`);
+}
+
+/** Switch model for an instance (both cloud and local) */
+export async function switchInstanceModel(instanceId: string, modelId: string): Promise<{
+  success: boolean;
+  modelId: string;
+  model: AvailableModel;
+  pushed: boolean;
+  message: string;
+}> {
+  return apiFetch(`/openclaw/instances/${instanceId}/model`, {
+    method: 'PATCH',
+    body: JSON.stringify({ modelId }),
+  });
+}
+
 // ── Local Agent ────────────────────────────────────────────────────────────────
 
 export interface ProvisionLocalResult {
