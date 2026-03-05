@@ -40,7 +40,7 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
     useSettingsStore();
   const steps = [
     { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: t({ en: 'Deploy your first Agent', zh: '部署你的第一个智能体' }), action: undefined, actionLabel: '' },
-    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: t({ en: 'Install your first Skill', zh: '安装第一个技能' }), action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: t({ en: 'Browse Market →', zh: '浏览市场 →' }) },
+    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: t({ en: 'Install your first Skill', zh: '安装第一个技能' }), action: () => (navigation as any).navigate('Explore', { screen: 'Marketplace' }), actionLabel: t({ en: 'Browse Market →', zh: '浏览市场 →' }) },
     { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: t({ en: 'Create your first Workflow', zh: '创建第一个工作流' }), action: () => navigation.navigate('WorkflowList'), actionLabel: t({ en: 'Create →', zh: '创建 →' }) },
   ];
   const completedCount = steps.filter((s) => s.done).length;

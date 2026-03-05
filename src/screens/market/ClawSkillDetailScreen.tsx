@@ -144,7 +144,14 @@ export function ClawSkillDetailScreen() {
 
   const handleInstallToAgent = useCallback(async () => {
     if (!activeInstance) {
-      Alert.alert('No Agent', 'Connect an OpenClaw instance first to install skills.');
+      Alert.alert(
+        'No Agent',
+        'Connect an OpenClaw instance first to install skills.',
+        [
+          { text: 'Connect Agent', onPress: () => (navigation as any).navigate('Agent', { screen: 'DeploySelect' }) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
       return;
     }
     if (!isAuthenticated) {
@@ -154,7 +161,10 @@ export function ClawSkillDetailScreen() {
     setInstalling(true);
     try {
       const result = await installSkillToInstance(activeInstance.id, skillId);
-      const pendingMsg = (result as any)?.pendingDeploy
+      // Only show pending message if the result explicitly says pendingDeploy
+      // AND the instance is actually offline
+      const isPending = (result as any)?.pendingDeploy && activeInstance.status !== 'active';
+      const pendingMsg = isPending
         ? `\n\nNote: Your agent is not online yet. The skill will auto-deploy when it reconnects.`
         : '';
       Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}${pendingMsg}`);
@@ -179,18 +189,55 @@ export function ClawSkillDetailScreen() {
   const handlePromote = useCallback(async () => {
     if (!skill) return;
     const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
+    const skillDisplayName = skill.displayName || skill.name;
     const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || '';
-    try {
-      navigation.navigate('ShareCard' as any, {
-        shareUrl,
-        title: `${skill.displayName || skill.name} — Promote & Earn`,
-        userName: authorName,
-      });
-    } catch {
-      await Share.share({
-        message: `🔥 Promote & Earn commission!\n"${skill.displayName || skill.name}" on Agentrix Claw\n${shareUrl}`,
-      });
-    }
+    
+    // Show share options: Social post, Native share, and Poster
+    Alert.alert(
+      '🔗 Share & Promote',
+      `Share "${skillDisplayName}" to earn commission!`,
+      [
+        {
+          text: '📱 Share via Apps',
+          onPress: async () => {
+            await Share.share({
+              message: `🔥 Check out "${skillDisplayName}" on Agentrix Claw!\n\nDownload Agentrix: https://agentrix.top/download\n\nSkill link: ${shareUrl}`,
+              url: shareUrl,
+              title: skillDisplayName,
+            });
+          },
+        },
+        {
+          text: '🖼️ Share Poster',
+          onPress: () => {
+            try {
+              navigation.navigate('ShareCard' as any, {
+                shareUrl,
+                title: skillDisplayName,
+                userName: authorName,
+              });
+            } catch {
+              Share.share({
+                message: `🔥 "${skillDisplayName}" on Agentrix Claw\n\nDownload: https://agentrix.top/download\n${shareUrl}`,
+              });
+            }
+          },
+        },
+        {
+          text: '📋 Copy Link',
+          onPress: async () => {
+            try {
+              const Clipboard = require('expo-clipboard');
+              await Clipboard.setStringAsync(shareUrl);
+              Alert.alert('Copied!', 'Share link copied to clipboard');
+            } catch {
+              Alert.alert('Share Link', shareUrl);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   }, [skill, skillId, activeInstance, navigation]);
 
   // ── Loading / Error states ──
