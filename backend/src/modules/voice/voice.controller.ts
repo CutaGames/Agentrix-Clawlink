@@ -21,7 +21,7 @@ export class VoiceController {
       const command = new SynthesizeSpeechCommand({
         Engine: 'neural',
         VoiceId: 'Matthew',
-        LanguageCode: 'zh-CN',
+        LanguageCode: 'cmn-CN',
         OutputFormat: 'mp3',
         Text: text,
       });
