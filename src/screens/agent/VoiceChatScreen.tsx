@@ -60,6 +60,14 @@ export function VoiceChatScreen() {
   const [recordState, setRecordState] = useState<RecordingState>('idle');
   const [textInput, setTextInput] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioPlayer = React.useRef<AudioQueuePlayer | null>(null);
+
+  React.useEffect(() => {
+    audioPlayer.current = new AudioQueuePlayer(() => setIsSpeaking(false));
+    return () => {
+      audioPlayer.current?.stopAll();
+    };
+  }, []);
   const recordingRef = useRef<any>(null);
   const scrollRef = useRef<ScrollView>(null);
 
