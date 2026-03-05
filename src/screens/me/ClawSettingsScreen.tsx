@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -38,6 +39,7 @@ const SETTING_GROUPS = [
 ];
 
 export function ClawSettingsScreen() {
+  const navigation = useNavigation();
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const setUiComplexity = useSettingsStore((s) => s.setUiComplexity);
@@ -81,6 +83,11 @@ export function ClawSettingsScreen() {
               <TouchableOpacity
                 key={item.id}
                 style={[styles.item, i < group.items.length - 1 && styles.itemBorder]}
+                onPress={() => {
+                  if (item.id === 'api') {
+                    navigation.navigate('ApiKeys' as never);
+                  }
+                }}
               >
                 <Text style={styles.itemIcon}>{item.icon}</Text>
                 <Text style={styles.itemLabel}>{item.label}</Text>

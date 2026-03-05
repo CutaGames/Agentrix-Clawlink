@@ -63,18 +63,23 @@ export function LoginScreen() {
   };
 
   const handleWalletLogin = async (wallet?: typeof WALLET_PROVIDERS[0]) => {
+    // If no specific wallet is chosen but we detected multiple, show a picker
     if (!wallet && detectedWallets.length > 1) {
       setShowWalletModal(true);
       return;
     }
     
+    // Choose the selected one, or the first detected one
     const target = wallet || detectedWallets[0];
+
     if (target) {
-      // Navigate to WalletConnect screen which handles the full nonce→sign→verify flow
+      // Navigate to WalletConnect screen for nonce→sign→verify flow
       (navigation as any).navigate('WalletConnect', { walletId: target.id });
     } else {
-      // No wallet detected — show WalletConnect screen for manual entry
-      (navigation as any).navigate('WalletConnect');
+      Alert.alert(
+        t({ en: 'No Wallet Detected', zh: '未检测到钱包' }), 
+        t({ en: 'Please install a supported Web3 wallet app (e.g., MetaMask, TokenPocket) to continue.', zh: '请安装支持的 Web3 钱包应用（如 MetaMask、TokenPocket）以继续。' })
+      );
     }
     setShowWalletModal(false);
   };
@@ -351,14 +356,20 @@ export function LoginScreen() {
         </View>
       </Modal>
 
-      {/* Instance Bind Link - Hidden for regular users */}
+      {/* OpenClaw Instance Bind Link - Highlighted */}
       <TouchableOpacity 
-        style={{ marginTop: 40, alignSelf: 'center' }} 
+        style={styles.openclawEntryCard} 
         onPress={() => setMode('openclaw')}
+        activeOpacity={0.8}
       >
-        <Text style={{ color: colors.textMuted, fontSize: 12, textDecorationLine: 'underline' }}>
-          Legacy OpenClaw Login
-        </Text>
+        <View style={styles.openclawEntryIconBox}>
+          <Text style={styles.openclawEntryEmoji}>🦞</Text>
+        </View>
+        <View style={styles.openclawEntryContent}>
+          <Text style={styles.openclawEntryTitle}>{t({ en: 'OpenClaw Instance', zh: '连接私有龙虾实例' })}</Text>
+          <Text style={styles.openclawEntrySub}>{t({ en: 'Bind your self-hosted AI agent node', zh: '绑定你自行托管的 AI 智能体节点' })}</Text>
+        </View>
+        <Text style={styles.openclawEntryArrow}>→</Text>
       </TouchableOpacity>
 
       <Text style={styles.footer}>
@@ -450,6 +461,31 @@ const styles = StyleSheet.create({
   modalLabel: { color: colors.textPrimary, fontSize: 12, textAlign: 'center' },
   modalClose: { marginTop: 32, padding: 16, borderRadius: 16, backgroundColor: colors.bgCard, alignItems: 'center' },
   modalCloseText: { color: colors.textSecondary, fontWeight: '600' },
+
+  openclawEntryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 69, 58, 0.1)', // Subtle red/orange tint
+    borderWidth: 1,
+    borderColor: 'rgba(255, 69, 58, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 40,
+  },
+  openclawEntryIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 69, 58, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  openclawEntryEmoji: { fontSize: 24 },
+  openclawEntryContent: { flex: 1 },
+  openclawEntryTitle: { fontSize: 16, fontWeight: '700', color: '#ff6b6b', marginBottom: 2 },
+  openclawEntrySub: { fontSize: 12, color: colors.textSecondary },
+  openclawEntryArrow: { fontSize: 20, color: '#ff6b6b', fontWeight: '500' },
 
   footer: { marginTop: 40, textAlign: 'center', fontSize: 12, color: colors.textMuted, lineHeight: 20 },
 });

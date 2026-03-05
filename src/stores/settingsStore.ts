@@ -38,6 +38,8 @@ export const SUPPORTED_MODELS: ModelOption[] = [
 ];
 
 interface SettingsState {
+  customApiKeys: Record<string, string>;
+  setCustomApiKey: (provider: string, key: string) => void;
   // 环境配置
   environment: Environment;
   apiBaseUrl: string;

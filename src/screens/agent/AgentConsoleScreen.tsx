@@ -14,6 +14,7 @@ import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
+import { SelectEngineModal } from '../../components/SelectEngineModal';
 import { switchInstanceModel } from '../../services/openclaw.service';
 import { useI18n } from '../../stores/i18nStore';
 
@@ -110,6 +111,7 @@ export function AgentConsoleScreen() {
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
+  const [showEngineModal, setShowEngineModal] = useState(false);
   const selectedModelLabel = SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId;
 
   // Auto-mark onboarding step 1 when user has an active instance
@@ -242,23 +244,7 @@ export function AgentConsoleScreen() {
         <Text style={styles.modelLabel}>Current Engine:</Text>
         <TouchableOpacity 
           style={styles.modelSelector}
-          onPress={() => {
-            const available = SUPPORTED_MODELS.filter((m) => m.availability === 'available');
-            Alert.alert('Select Engine', 'Choose the AI model for your agent',
-              [
-                ...available.map((m) => ({
-                  text: `${m.icon} ${m.label}${m.badge ? ` (${m.badge})` : ''}`,
-                  onPress: async () => {
-                    setSelectedModel(m.id);
-                    if (activeInstance?.id) {
-                      try { await switchInstanceModel(activeInstance.id, m.id); } catch (_) {}
-                    }
-                  },
-                })),
-                { text: 'Cancel', style: 'cancel' as const },
-              ]
-            );
-          }}
+          onPress={() => setShowEngineModal(true)}
         >
           <Text style={styles.modelSelectorText}>{selectedModelLabel}</Text>
           <Text style={styles.modelSelectorArrow}>▼</Text>
@@ -543,6 +529,18 @@ export function AgentConsoleScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <SelectEngineModal 
+        visible={showEngineModal} 
+        onClose={() => setShowEngineModal(false)}
+        selectedModelId={selectedModelId}
+        onSelect={async (id) => {
+          setSelectedModel(id);
+          if (activeInstance?.id) {
+            try { await switchInstanceModel(activeInstance.id, id); } catch (_) {}
+          }
+        }}
+      />
     </ScrollView>
   );
 }

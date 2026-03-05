@@ -5,6 +5,7 @@ import { colors } from '../theme/colors';
 import { ProfileScreen } from '../screens/me/ProfileScreen';
 import { ReferralDashboardScreen } from '../screens/me/ReferralDashboardScreen';
 import { ClawSettingsScreen } from '../screens/me/ClawSettingsScreen';
+import { ApiKeysScreen } from '../screens/me/ApiKeysScreen';
 import { AccountScreen } from '../screens/AccountScreen';
 import { MySkillsScreen } from '../screens/me/MySkillsScreen';
 import { MyOrdersScreen } from '../screens/me/MyOrdersScreen';
@@ -29,6 +30,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Me' }} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} options={{ title: 'Referrals & Earnings' }} />
       <Stack.Screen name="Settings" component={ClawSettingsScreen} options={{ title: 'Settings' }} />
+      <Stack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: 'Custom API Keys' }} />
       <Stack.Screen name="Account" component={AccountScreen} options={{ title: 'Account' }} />
       <Stack.Screen name="MySkills" component={MySkillsScreen} options={{ title: 'My Skills' }} />
       <Stack.Screen name="MyOrders" component={MyOrdersScreen} options={{ title: 'My Orders' }} />

@@ -73,6 +73,7 @@ export type MeStackParamList = {
   Profile: undefined;
   ReferralDashboard: undefined;
   Settings: undefined;
+  ApiKeys: undefined;
   Account: undefined;
   MySkills: undefined;
   MyOrders: undefined;
