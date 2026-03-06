@@ -15,6 +15,7 @@ import { OpenClawConnectionService } from '../openclaw-connection/openclaw-conne
 import { TokenQuotaService, estimateTokens } from '../token-quota/token-quota.service';
 import { SkillExecutorService, ExecutionContext } from '../skill/skill-executor.service';
 import { AGENT_PRESET_SKILLS, getDefaultEnabledSkills, PresetSkill } from '../skill/agent-preset-skills.config';
+import { RelayRegistry } from '../openclaw-connection/telegram-bot.service';
 import { Response } from 'express';
 
 export interface ChatMessageDto {
@@ -215,12 +216,30 @@ export class OpenClawProxyService {
 
     // Allow install even if instance is not fully connected yet
     // The install record is created in /skills/{id}/install (step 1).
-    // Step 2 (push to instance) only works if instance has a reachable URL.
+    // Step 2: push to instance via HTTP (cloud) or WebSocket relay (local).
     if (!instance.instanceUrl) {
+      // No HTTP URL — try relay (local agents connect via WebSocket)
+      if (instance.relayConnected) {
+        try {
+          RelayRegistry.emitToAgent(instanceId, {
+            type: 'install-skill',
+            skillId,
+            packageUrl: skillPackageUrl,
+          });
+          return {
+            success: true,
+            status: 200,
+            message: 'Skill install sent to your local agent via relay.',
+            pendingDeploy: false,
+          };
+        } catch (err: any) {
+          this.logger.warn(`Relay install to ${instanceId} failed: ${err.message}`);
+        }
+      }
       return {
         success: true,
         status: 200,
-        message: 'Skill saved to your account. It will be deployed when your agent is online.',
+        message: 'Skill saved to your account. It will sync when your agent reconnects.',
         pendingDeploy: true,
       };
     }
@@ -228,7 +247,7 @@ export class OpenClawProxyService {
       return {
         success: true,
         status: 200,
-        message: `Skill saved. Agent "${instance.name}" is ${instance.status} — skill will sync when agent is active.`,
+        message: `Skill saved. Agent "${instance.name}" will sync when active.`,
         pendingDeploy: true,
       };
     }
@@ -242,12 +261,22 @@ export class OpenClawProxyService {
       });
       return { success: resp.ok, status: resp.status };
     } catch (err: any) {
-      // Instance unreachable — skill was already recorded in DB, return soft success
+      // Instance unreachable — try relay fallback if connected
       this.logger.warn(`Skill push to instance ${instanceId} failed: ${err.message}`);
+      if (instance.relayConnected) {
+        try {
+          RelayRegistry.emitToAgent(instanceId, {
+            type: 'install-skill',
+            skillId,
+            packageUrl: skillPackageUrl,
+          });
+          return { success: true, status: 200, message: 'Skill install sent via relay.' };
+        } catch (_) {}
+      }
       return {
         success: true,
         status: 200,
-        message: 'Skill saved to your account. Push to agent failed — it will sync when agent reconnects.',
+        message: 'Skill saved. Push to agent failed — it will sync when agent reconnects.',
         pendingDeploy: true,
       };
     }

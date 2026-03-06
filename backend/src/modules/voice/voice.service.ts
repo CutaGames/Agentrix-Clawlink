@@ -20,16 +20,19 @@ export class VoiceService {
    * Transcribe audio buffer.
    * Strategy: convert to PCM WAV → AWS Transcribe Streaming (no S3 needed)
    * Fallback: OpenAI Whisper if configured.
+   * @param lang — optional language hint: 'zh' for Chinese, 'en' for English.
+   *               If omitted, uses automatic language identification.
    */
   async transcribe(
     buffer: Buffer,
     mimetype: string,
     originalName: string,
+    lang?: string,
   ): Promise<{ transcript: string }> {
     // Try AWS Transcribe Streaming (needs only transcribe:StartStreamTranscription)
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       try {
-        const result = await this.transcribeStreaming(buffer, mimetype, originalName);
+        const result = await this.transcribeStreaming(buffer, mimetype, originalName, lang);
         if (result.transcript) return result;
       } catch (err: any) {
         this.logger.error(`AWS Transcribe Streaming failed: ${err.message}`);
@@ -54,11 +57,13 @@ export class VoiceService {
   /**
    * AWS Transcribe Streaming — sends audio directly over HTTP/2, no S3 needed.
    * Requires audio in PCM 16-bit LE format at 16000 Hz sample rate.
+   * Supports automatic language identification for Chinese + English.
    */
   private async transcribeStreaming(
     buffer: Buffer,
     mimetype: string,
     originalName: string,
+    lang?: string,
   ): Promise<{ transcript: string }> {
     // Convert input audio to 16kHz 16-bit PCM WAV using ffmpeg
     const pcmBuffer = await this.convertToPcm(buffer, mimetype, originalName);
@@ -83,13 +88,25 @@ export class VoiceService {
       }
     }
 
-    // Detect likely language from app context (default: multi-language)
-    const command = new StartStreamTranscriptionCommand({
-      LanguageCode: LanguageCode.EN_US,
+    // Determine language: explicit hint → auto-detect with IdentifyLanguage
+    const commandParams: any = {
       MediaEncoding: MediaEncoding.PCM,
       MediaSampleRateHertz: 16000,
       AudioStream: audioStream(),
-    });
+    };
+
+    if (lang === 'zh') {
+      commandParams.LanguageCode = LanguageCode.ZH_CN;
+    } else if (lang === 'en') {
+      commandParams.LanguageCode = LanguageCode.EN_US;
+    } else {
+      // Auto-detect: use IdentifyLanguage with Chinese + English
+      commandParams.IdentifyLanguage = true;
+      commandParams.LanguageOptions = 'en-US,zh-CN';
+      commandParams.PreferredLanguage = LanguageCode.ZH_CN;
+    }
+
+    const command = new StartStreamTranscriptionCommand(commandParams);
 
     const response = await client.send(command);
 

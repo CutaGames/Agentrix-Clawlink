@@ -162,16 +162,16 @@ export function ClawSkillDetailScreen() {
     setInstalling(true);
     try {
       const result = await installSkillToInstance(activeInstance.id, skillId);
-      const isPending = result?.pendingDeploy === true;
       const skillName = skill?.name || skill?.displayName || 'Skill';
 
       void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
       void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
 
-      if (isPending) {
+      // Both dbRecorded (marketplace) and pendingDeploy (live push) are acceptable success states
+      if (result?.dbRecorded || result?.pendingDeploy) {
         Alert.alert(
-          '⏳ Queued',
-          `${skillName} has been saved to your account. It will be deployed when ${activeInstance.name} comes online.${result?.message ? '\n\n' + result.message : ''}`,
+          '✅ Installed!',
+          `${skillName} has been added to ${activeInstance.name}.${result?.pendingDeploy ? '\n\nIt will sync automatically when the agent reconnects.' : ''}`,
         );
       } else {
         Alert.alert('✅ Installed!', `${skillName} has been installed to ${activeInstance.name}!`);

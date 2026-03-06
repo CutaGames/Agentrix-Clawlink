@@ -157,13 +157,24 @@ export async function installSkillToInstance(instanceId: string, skillId: string
   }
 
   // 2. Push to live OpenClaw instance (uses skillId as both skillPackageUrl ref and skillId)
-  // If instance has no URL, backend returns success with pendingDeploy=true
-  const result = await apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
-    method: 'POST',
-    body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),
-  });
+  // If instance has no URL, backend returns success with pendingDeploy=true — this is normal
+  let proxyResult: any = {};
+  try {
+    proxyResult = await apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
+      method: 'POST',
+      body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),
+    });
+  } catch (proxyErr: any) {
+    // Proxy push failure is non-fatal — DB record is the important part
+    proxyResult = { pendingDeploy: true, message: 'Will sync when agent reconnects.' };
+  }
 
-  return { ...(result || {}), dbRecorded, dbError };
+  // If both DB record and proxy push failed, throw an error
+  if (!dbRecorded && proxyResult?.pendingDeploy !== true && !proxyResult?.success) {
+    throw new Error(dbError || 'Install failed. Please try again.');
+  }
+
+  return { ...(proxyResult || {}), dbRecorded, dbError };
 }
 
 // Restart instance

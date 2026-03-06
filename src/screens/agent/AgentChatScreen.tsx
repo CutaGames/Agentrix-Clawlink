@@ -15,6 +15,7 @@ import { useTokenQuota } from '../../hooks/useTokenQuota';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -145,7 +146,30 @@ export function AgentChatScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);   // WeChat-style toggle
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
   const flatListRef = useRef<FlatList>(null);
+  const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
+
+  // Init TTS audio queue player
+  useEffect(() => {
+    audioPlayerRef.current = new AudioQueuePlayer(() => setIsSpeaking(false));
+    return () => { audioPlayerRef.current?.stopAll(); };
+  }, []);
+
+  // TTS helper — speaks text via backend /voice/tts endpoint
+  const speakText = useCallback((text: string) => {
+    if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
+    setIsSpeaking(true);
+    // Split sentences for streaming playback
+    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+    for (const s of sentences) {
+      const trimmed = s.trim();
+      if (!trimmed || trimmed.length < 2) continue;
+      const encoded = encodeURIComponent(trimmed);
+      audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}`);
+    }
+  }, []);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -322,15 +346,22 @@ export function AgentChatScreen() {
       }
 
       // If stream ran but produced no content, show a friendly error
-      setMessages((prev) =>
-        prev.map((m) => {
+      setMessages((prev) => {
+        let finalContent = '';
+        const updated = prev.map((m) => {
           if (m.id !== assistantMsgId) return m;
           if (!m.content && !m.thoughts?.length) {
             return { ...m, content: '⚠️ No response received. Please check your connection or try again.', streaming: false, error: true };
           }
+          finalContent = m.content;
           return { ...m, streaming: false };
-        })
-      );
+        });
+        // Auto-speak agent reply (if voice mode enabled or autoSpeak is on)
+        if (finalContent && (voiceMode || autoSpeak) && !finalContent.startsWith('⚠️')) {
+          setTimeout(() => speakText(finalContent), 200);
+        }
+        return updated;
+      });
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -529,6 +560,15 @@ export function AgentChatScreen() {
       <View style={styles.chatBar}>
         <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <TouchableOpacity
+            onPress={() => {
+              setAutoSpeak(!autoSpeak);
+              if (isSpeaking) { audioPlayerRef.current?.stopAll(); setIsSpeaking(false); }
+            }}
+            style={[styles.chatBarBtn, autoSpeak && { backgroundColor: colors.primary + '30' }]}
+          >
+            <Text style={styles.chatBarBtnText}>{isSpeaking ? '🔊' : autoSpeak ? '🔈' : '🔇'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={openModelPicker} style={styles.modelBtn}>
             <Text style={styles.modelBtnText} numberOfLines={1}>
               {SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId}

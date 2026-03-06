@@ -97,10 +97,45 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
 
   const installedWallets = wallets.filter(w => w.installed);
 
-  // 监听 App 从后台返回 — 自动检查剪贴板中的签名
+  // 监听 App 从后台返回 — 自动检查剪贴板中的地址或签名
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        // Check for wallet address in clipboard (when returning from wallet app)
+        if (step === 'connect' && selectedWallet && !walletAddress) {
+          setStatusText('Checking clipboard for address...');
+          try {
+            const text = await Clipboard.getStringAsync();
+            if (text && /^0x[a-fA-F0-9]{40}$/.test(text.trim())) {
+              const addr = text.trim();
+              setWalletAddress(addr);
+              setStatusText(`Address detected: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
+              // Auto-proceed to get sign message
+              setLoading(true);
+              try {
+                const { message } = await getWalletNonce(addr);
+                setSignMessage(message);
+                await Clipboard.setStringAsync(message);
+                setStatusText('Sign this message in your wallet — it has been copied to clipboard');
+                waitingForSignRef.current = true;
+                // Re-open wallet for signing
+                if (selectedWallet.installed) {
+                  await Linking.openURL(selectedWallet.scheme);
+                }
+              } catch (e: any) {
+                setStatusText('Failed to get sign message. Try manual entry.');
+                setStep('manual');
+              } finally {
+                setLoading(false);
+              }
+            } else if (!text) {
+              setStatusText(`No address found. Copy your ${selectedWallet.name} address and come back.`);
+            }
+          } catch {
+            setStatusText('Could not read clipboard. Try manual entry.');
+          }
+        }
+        // Check for signature in clipboard (returning from wallet after signing)
         if (waitingForSignRef.current && signMessage && !signature) {
           setStatusText('Checking clipboard for signature...');
           try {
@@ -122,7 +157,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
       appStateRef.current = nextState;
     });
     return () => sub.remove();
-  }, [signMessage, signature, walletAddress, selectedWallet]);
+  }, [step, signMessage, signature, walletAddress, selectedWallet]);
 
   // 自动登录（签名检测到后）
   const handleAutoLogin = useCallback(async (sig: string) => {
@@ -148,16 +183,53 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
     }
   }, [walletAddress, signMessage, selectedWallet]);
 
-  // 一键连接已安装钱包 — show address input step first, then sign
+  // 一键连接已安装钱包 — open wallet app via deeplink, get address from clipboard on return
   const handleConnectWallet = useCallback(async (wallet: WalletConfig) => {
     setSelectedWallet(wallet);
-    setStep('manual');
-    setStatusText('');
-    setWalletAddress('');
-    setSignMessage('');
-    setSignature('');
-    // Go to manual mode which shows address input + sign flow
-    // User enters address (or paste from clipboard), gets sign message, opens wallet to sign
+
+    if (!wallet.installed) {
+      // Not installed — go to manual flow
+      setStep('manual');
+      setStatusText('');
+      setWalletAddress('');
+      setSignMessage('');
+      setSignature('');
+      return;
+    }
+
+    // Installed wallet: open via deeplink, then detect address from clipboard
+    setStep('connect');
+    setStatusText(`Opening ${wallet.name}...`);
+    setLoading(true);
+
+    try {
+      // Clear clipboard first so we can detect a new address
+      await Clipboard.setStringAsync('');
+
+      // Open wallet app via deeplink
+      const canOpen = await Linking.canOpenURL(wallet.scheme);
+      if (canOpen) {
+        await Linking.openURL(wallet.scheme);
+        setStatusText(`Copy your address in ${wallet.name}, then come back`);
+        setLoading(false);
+        // The AppState listener below will handle detecting the address on return
+      } else {
+        // Can't open — fallback to manual address entry
+        setStep('manual');
+        setStatusText('');
+        setWalletAddress('');
+        setSignMessage('');
+        setSignature('');
+        setLoading(false);
+      }
+    } catch (e: any) {
+      setStep('manual');
+      setStatusText('');
+      setWalletAddress('');
+      setSignMessage('');
+      setSignature('');
+      setLoading(false);
+    }
   }, []);
 
   // 手动提交（从弹窗）
@@ -319,7 +391,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
             )}
           </>
         ) : step === 'connect' ? (
-          /* 连接中状态 */
+          /* 连接中状态 — 等待用户从钱包返回 */
           <View style={styles.connectingContainer}>
             {selectedWallet && (
               <View style={styles.connectingWalletIcon}>
@@ -328,12 +400,33 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
             )}
             {loading && <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 16 }} />}
             <Text style={styles.connectingStatus}>{statusText}</Text>
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => { setStep('select'); setSignMessage(''); setSignature(''); waitingForSignRef.current = false; }}
-            >
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
+            <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: 8, paddingHorizontal: 24 }}>
+              {signMessage
+                ? '1. Open your wallet\n2. Sign the message\n3. Copy the signature\n4. Come back here'
+                : `1. Open ${selectedWallet?.name || 'your wallet'}\n2. Go to Receive\n3. Copy your address\n4. Come back here`}
+            </Text>
+            {selectedWallet?.installed && !loading && (
+              <TouchableOpacity
+                style={[styles.primaryButton || styles.connectBadge, { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.primary }]}
+                onPress={() => Linking.openURL(selectedWallet.scheme)}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600' }}>Open {selectedWallet.name} Again</Text>
+              </TouchableOpacity>
+            )}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => { setStep('select'); setSignMessage(''); setSignature(''); setWalletAddress(''); waitingForSignRef.current = false; }}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.cancelBtn, { borderColor: colors.primary }]}
+                onPress={() => { setStep('manual'); }}
+              >
+                <Text style={[styles.cancelBtnText, { color: colors.primary }]}>Enter Manually</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           /* 手动输入模式 */
