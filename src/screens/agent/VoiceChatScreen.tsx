@@ -20,13 +20,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
-import { apiFetch } from '../../services/api';
-
-// expo-speech may not be installed yet — degrade gracefully
-let SpeechModule: any = null;
-try {
-  SpeechModule = require('expo-speech');
-} catch (_) {}
+import { apiFetch, API_BASE } from '../../services/api';
+import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
 
 // expo-av may not be installed yet — degrade gracefully
 let AudioModule: any = null;
@@ -73,16 +68,17 @@ export function VoiceChatScreen() {
 
   // ── TTS helper ───────────────────────────────────────────────────────────────
   const speak = useCallback(async (text: string) => {
-    if (!text || !SpeechModule) return;
-    // Stop any current speech
-    SpeechModule.stop?.();
+    if (!text) return;
     setIsSpeaking(true);
-    SpeechModule.speak(text, {
-      language: 'en-US',
-      rate: 1.0,
-      onDone: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
+    // Cut responses into smaller sentences for audio streaming
+    const sentences = text.match(/[^。！？.!?]+[。！？.!?]*/g) || [text];
+    for (let i = 0; i < sentences.length; i++) {
+      const s = sentences[i].trim();
+      if (!s) continue;
+      const encodedText = encodeURIComponent(s);
+      const audioUri = `${API_BASE}/voice/tts?text=${encodedText}`;
+      audioPlayer.current?.enqueue(audioUri);
+    }
   }, []);
 
   // ── Add message ──────────────────────────────────────────────────────────────
