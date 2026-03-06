@@ -148,9 +148,10 @@ export function AgentPermissionsScreen() {
   const handleSave = async () => {
     if (!activeAgent) return;
     try {
-      // Persist spending limits to backend via PATCH /agent-accounts/:id
+      // Current backend support is limited to agent-account fields like spending limits.
+      // Device/network/tool toggles shown on this screen are not yet enforced by the claw runtime.
       await apiFetch(`/agent-accounts/${activeAgent.id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify({
           spendingLimits: {
             singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,
@@ -158,14 +159,12 @@ export function AgentPermissionsScreen() {
             monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
             currency: 'USD',
           },
-          permissions: perms,
         }),
       });
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-      Alert.alert('Saved ✅', 'Permissions updated successfully.');
+      Alert.alert('Partially Saved', 'Payment limits and agent account state were saved. Device, network, and tool toggles are not yet enforced server-side.');
     } catch (e: any) {
-      // Graceful: permissions stored locally even if backend doesn't return 200 yet
-      Alert.alert('Saved locally', 'Settings saved on device. Backend sync will resume on reconnect.');
+      Alert.alert('Save Failed', e?.message || 'Could not save agent account settings.');
     }
   };
 
