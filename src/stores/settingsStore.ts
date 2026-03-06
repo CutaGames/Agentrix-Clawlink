@@ -85,6 +85,11 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       environment: 'sandbox',
       apiBaseUrl: API_URLS.local, // 开发时使用本地
+
+      customApiKeys: {} as Record<string, string>,
+      setCustomApiKey: (provider: string, key: string) => set((state) => ({
+        customApiKeys: { ...state.customApiKeys, [provider]: key },
+      })),
       
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 

@@ -66,20 +66,10 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
     };
   }, []);
 
-  // App-first wallet login: try installed wallet apps, fall back to WalletConnect
+  // App-first wallet login: navigate to WalletConnect screen for proper auth flow
   const handleWalletLogin = useCallback(async () => {
-    // Try to open installed wallet apps first
-    for (const wallet of WALLET_APPS) {
-      try {
-        const canOpen = await Linking.canOpenURL(wallet.scheme);
-        if (canOpen) {
-          // Wallet app installed 鈥?navigate to WalletConnect which will handle deep link
-          navigation?.navigate('WalletConnect', { preferredWallet: wallet.name });
-          return;
-        }
-      } catch { /* continue */ }
-    }
-    // No wallet app installed 鈥?use web-based WalletConnect
+    // Always use WalletConnectScreen which has the full sign-in flow
+    // (detect installed wallets → get nonce → sign → verify)
     navigation?.navigate('WalletConnect');
   }, [navigation]);
 

@@ -130,18 +130,40 @@ export async function toggleSkill(instanceId: string, skillId: string, enabled: 
 
 // Install a marketplace skill: first records to Agentrix DB, then pushes to OpenClaw instance
 export async function installSkillToInstance(instanceId: string, skillId: string): Promise<any> {
+  let dbRecorded = false;
+  let dbError: string | null = null;
+
   // 1. Record installation in Agentrix marketplace DB
   try {
     await apiFetch(`/skills/${skillId}/install`, { method: 'POST' });
-  } catch (_) {
-    // Fallback — skill may not have a marketplace entry yet
+    dbRecorded = true;
+  } catch (e: any) {
+    // Hub skills (oc-xxx / s-xxx) may not have marketplace entries — try bridge endpoint
+    if (skillId.startsWith('oc-') || skillId.startsWith('s') || skillId.startsWith('hub-')) {
+      try {
+        await apiFetch('/openclaw/bridge/skill-hub/install', {
+          method: 'POST',
+          body: JSON.stringify({ skillId, instanceId }),
+        });
+        dbRecorded = true;
+      } catch (bridgeErr: any) {
+        dbError = bridgeErr?.message || 'Hub install failed';
+      }
+    } else if (e?.message?.includes('already installed') || e?.message?.includes('Conflict')) {
+      dbRecorded = true; // Already installed is fine
+    } else {
+      dbError = e?.message || 'DB record failed';
+    }
   }
+
   // 2. Push to live OpenClaw instance (uses skillId as both skillPackageUrl ref and skillId)
   // If instance has no URL, backend returns success with pendingDeploy=true
-  return apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
+  const result = await apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
     method: 'POST',
     body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),
   });
+
+  return { ...(result || {}), dbRecorded, dbError };
 }
 
 // Restart instance

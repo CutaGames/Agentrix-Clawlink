@@ -148,51 +148,16 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
     }
   }, [walletAddress, signMessage, selectedWallet]);
 
-  // 一键连接已安装钱包
+  // 一键连接已安装钱包 — show address input step first, then sign
   const handleConnectWallet = useCallback(async (wallet: WalletConfig) => {
     setSelectedWallet(wallet);
-    setStep('connect');
-    setStatusText(`Connecting to ${wallet.name}...`);
-    setLoading(true);
-
-    try {
-      // Step 1: 先检查剪贴板是否有地址
-      let addr = '';
-      try {
-        const clipText = await Clipboard.getStringAsync();
-        if (clipText && /^0x[a-fA-F0-9]{40}$/.test(clipText.trim())) {
-          addr = clipText.trim();
-        }
-      } catch {}
-
-      if (!addr) {
-        // 打开钱包让用户复制地址
-        setStatusText(`Opening ${wallet.name}...\nPlease copy your wallet address`);
-        await Linking.openURL(wallet.scheme);
-        setLoading(false);
-        // 等用户回来粘贴地址
-        setShowSignModal(true);
-        return;
-      }
-
-      setWalletAddress(addr);
-      setStatusText('Getting sign message...');
-
-      // Step 2: 获取签名消息
-      const { message } = await getWalletNonce(addr);
-      setSignMessage(message);
-      await Clipboard.setStringAsync(message);
-
-      // Step 3: 打开钱包签名
-      setStatusText(`Opening ${wallet.name} to sign...\nMessage copied to clipboard`);
-      waitingForSignRef.current = true;
-      await Linking.openURL(wallet.scheme);
-      setLoading(false);
-    } catch (e: any) {
-      setLoading(false);
-      Alert.alert('Error', e.message || 'Failed to connect wallet');
-      setStep('select');
-    }
+    setStep('manual');
+    setStatusText('');
+    setWalletAddress('');
+    setSignMessage('');
+    setSignature('');
+    // Go to manual mode which shows address input + sign flow
+    // User enters address (or paste from clipboard), gets sign message, opens wallet to sign
   }, []);
 
   // 手动提交（从弹窗）
@@ -374,8 +339,14 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
           /* 手动输入模式 */
           <View style={styles.section}>
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>Manual Connection</Text>
-              <Text style={styles.headerDesc}>Enter your wallet address and sign the message</Text>
+              <Text style={styles.headerTitle}>
+                {selectedWallet ? `Connect ${selectedWallet.name}` : 'Manual Connection'}
+              </Text>
+              <Text style={styles.headerDesc}>
+                {selectedWallet
+                  ? `Enter your ${selectedWallet.name} address, then sign the verification message`
+                  : 'Enter your wallet address and sign the message'}
+              </Text>
             </View>
 
             <Text style={styles.fieldLabel}>Wallet Address</Text>

@@ -6,6 +6,7 @@ import { colors } from '../theme/colors';
 import { setApiConfig, getApiConfig, apiFetch } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useI18n, Language } from '../stores/i18nStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 // ─── API Key Types ─────────────────────────────────────────────
@@ -36,7 +37,12 @@ export const SettingsScreen: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const { language, setLanguage, t } = useI18n();
+  const customApiKeys = useSettingsStore((s) => s.customApiKeys) || {};
+  const setCustomApiKey = useSettingsStore((s) => s.setCustomApiKey);
   const queryClient = useQueryClient();
+
+  // Custom model API key local state
+  const [editingKey, setEditingKey] = useState<Record<string, string>>({});
 
   // ── API Keys ──
   const { data: apiKeys, isLoading: keysLoading } = useQuery({
@@ -183,6 +189,68 @@ export const SettingsScreen: React.FC = () => {
             </TouchableOpacity>
           ))}
         </View>
+      </Card>
+
+      {/* Custom Model API Keys (BYOK for AI Models) */}
+      <Card>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>🤖 {t({ en: 'Model API Keys', zh: '模型 API 密钥' })}</Text>
+        <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12 }}>
+          {t({ en: 'Use your own API keys for AI models (optional). Leave empty to use Agentrix cloud.', zh: '使用你自己的 AI 模型 API 密钥（可选）。留空则使用 Agentrix 云端。' })}
+        </Text>
+        {[
+          { provider: 'openai', label: 'OpenAI', placeholder: 'sk-...' },
+          { provider: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-...' },
+          { provider: 'google', label: 'Google (Gemini)', placeholder: 'AIza...' },
+          { provider: 'deepseek', label: 'DeepSeek', placeholder: 'sk-...' },
+        ].map((item) => (
+          <View key={item.provider} style={{ marginTop: 10 }}>
+            <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>{item.label}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                value={editingKey[item.provider] ?? (customApiKeys[item.provider] ? '••••••••' + (customApiKeys[item.provider]?.slice(-4) || '') : '')}
+                onChangeText={(v) => setEditingKey((prev) => ({ ...prev, [item.provider]: v }))}
+                placeholder={item.placeholder}
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                secureTextEntry={!editingKey[item.provider]}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.cardAlt,
+                  color: colors.text,
+                  padding: 10,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: customApiKeys[item.provider] ? colors.primary + '40' : colors.border,
+                  fontSize: 13,
+                }}
+              />
+              <TouchableOpacity
+                style={{
+                  backgroundColor: editingKey[item.provider] ? colors.primary : colors.cardAlt,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: editingKey[item.provider] ? colors.primary : colors.border,
+                }}
+                onPress={() => {
+                  if (editingKey[item.provider]) {
+                    setCustomApiKey(item.provider, editingKey[item.provider]);
+                    setEditingKey((prev) => ({ ...prev, [item.provider]: '' }));
+                    Alert.alert('✅', t({ en: `${item.label} key saved`, zh: `${item.label} 密钥已保存` }));
+                  } else if (customApiKeys[item.provider]) {
+                    setCustomApiKey(item.provider, '');
+                    Alert.alert('🗑️', t({ en: `${item.label} key removed`, zh: `${item.label} 密钥已移除` }));
+                  }
+                }}
+              >
+                <Text style={{ color: editingKey[item.provider] ? '#fff' : colors.muted, fontSize: 12, fontWeight: '600' }}>
+                  {editingKey[item.provider] ? t({ en: 'Save', zh: '保存' }) : customApiKeys[item.provider] ? t({ en: 'Clear', zh: '清除' }) : t({ en: 'Set', zh: '设置' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
       </Card>
 
       {/* Developer API Keys (BYOK) */}

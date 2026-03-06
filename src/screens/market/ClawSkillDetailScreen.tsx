@@ -162,15 +162,20 @@ export function ClawSkillDetailScreen() {
     setInstalling(true);
     try {
       const result = await installSkillToInstance(activeInstance.id, skillId);
-      // Only show pending message if the result explicitly says pendingDeploy
-      // AND the instance is actually offline
-      const isPending = (result as any)?.pendingDeploy && activeInstance.status !== 'active';
-      const pendingMsg = isPending
-        ? `\n\nNote: Your agent is not online yet. The skill will auto-deploy when it reconnects.`
-        : '';
+      const isPending = result?.pendingDeploy === true;
+      const skillName = skill?.name || skill?.displayName || 'Skill';
+
       void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
       void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
-      Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}${pendingMsg}`);
+
+      if (isPending) {
+        Alert.alert(
+          '⏳ Queued',
+          `${skillName} has been saved to your account. It will be deployed when ${activeInstance.name} comes online.${result?.message ? '\n\n' + result.message : ''}`,
+        );
+      } else {
+        Alert.alert('✅ Installed!', `${skillName} has been installed to ${activeInstance.name}!`);
+      }
       useSettingsStore.getState().markOnboardingStep('installedSkill');
     } catch (e: any) {
       const msg = e?.message || 'Install failed';

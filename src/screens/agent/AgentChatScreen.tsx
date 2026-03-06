@@ -348,15 +348,24 @@ export function AgentChatScreen() {
   // Voice recording — called on both onPressIn (start) and onPressOut (stop)
   const handleVoicePressIn = async () => {
     if (!Audio) {
-      Alert.alert('Voice input', 'Install expo-av to enable voice input, or type your message.');
+      Alert.alert('Voice Unavailable', 'Audio module not available. Please type your message instead.');
       return;
     }
     try {
       if (!isRecordingRef.current) {
         // START recording
         isRecordingRef.current = true;
-        await Audio.requestPermissionsAsync();
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const permResult = await Audio.requestPermissionsAsync();
+        if (!permResult.granted) {
+          isRecordingRef.current = false;
+          Alert.alert('Microphone Permission', 'Please enable microphone access in your device settings to use voice input.');
+          return;
+        }
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+        });
         if (recordingRef.current) {
           try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
           recordingRef.current = null;
@@ -366,11 +375,17 @@ export function AgentChatScreen() {
         );
         recordingRef.current = recording;
         setIsRecording(true);
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
     } catch (e: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
-      Alert.alert('Voice error', e?.message || 'Unknown error starting recording');
+      const msg = e?.message || 'Unknown error';
+      if (msg.includes('permission') || msg.includes('Permission')) {
+        Alert.alert('Microphone Permission', 'Please enable microphone access in Settings to use voice input.');
+      } else {
+        Alert.alert('Voice Error', `Could not start recording: ${msg}\n\nTry typing your message instead.`);
+      }
     }
   };
 
@@ -380,40 +395,55 @@ export function AgentChatScreen() {
       // STOP and transcribe
       isRecordingRef.current = false;
       setIsRecording(false);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
+          // Show transcribing indicator
+          setInput('🎙 Transcribing...');
           try {
             const formData = new FormData();
             formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+            const ac = new AbortController();
+            const timeout = setTimeout(() => ac.abort(), 35_000);
             const resp = await fetch(`${API_BASE}/voice/transcribe`, {
               method: 'POST',
               headers: { Authorization: `Bearer ${token}` },
               body: formData,
-              signal: (() => { const _acV = new AbortController(); setTimeout(() => _acV.abort(), 20_000); return _acV.signal; })(),
+              signal: ac.signal,
             });
+            clearTimeout(timeout);
             if (resp.ok) {
               const data = await resp.json();
               const transcript = data?.text || data?.transcript || '';
               if (transcript) {
-                // Auto-send voice message
                 setInput(transcript);
                 setTimeout(() => handleSend(transcript), 100);
+              } else {
+                setInput('');
+                Alert.alert('No Speech Detected', 'Could not detect any speech. Please try again or type your message.');
               }
             } else {
-              Alert.alert('Transcription failed', 'Could not convert audio to text. Try typing instead.');
+              const errText = await resp.text().catch(() => '');
+              setInput('');
+              Alert.alert('Transcription Failed', `Server returned ${resp.status}. ${errText ? errText.slice(0, 100) : 'Try typing instead.'}`);
             }
-          } catch {
-            Alert.alert('Voice error', 'Could not reach transcription service. Try typing instead.');
+          } catch (fetchErr: any) {
+            setInput('');
+            const msg = fetchErr?.name === 'AbortError'
+              ? 'Transcription timed out. Try again or type your message.'
+              : `Could not reach voice service: ${fetchErr?.message || 'Network error'}`;
+            Alert.alert('Voice Error', msg);
           }
         }
       }
     } catch (e: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
-      Alert.alert('Voice error', e?.message || 'Unknown error stopping recording');
+      setInput('');
+      Alert.alert('Voice Error', e?.message || 'Unknown error stopping recording');
     }
   };
 
