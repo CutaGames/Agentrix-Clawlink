@@ -96,9 +96,9 @@ export function InvitationGateScreen() {
       <View style={styles.content}>
         {/* Logo area */}
         <Text style={styles.logo}>🤖</Text>
-        <Text style={styles.title}>{t({ en: 'Welcome to ClawLink', zh: '欢迎来到 ClawLink' })}</Text>
+        <Text style={styles.title}>{t({ en: 'Welcome to Agentrix-Claw', zh: '欢迎来到 Agentrix-Claw' })}</Text>
         <Text style={styles.subtitle}>
-          {t({ en: "ClawLink is currently in private beta.\nEnter your invitation code to get started.", zh: 'ClawLink 目前处于私测阶段。\n请输入邀请码以开始使用。' })}
+          {t({ en: "Agentrix-Claw is currently in private beta.\nEnter your invitation code to get started.", zh: 'Agentrix-Claw 目前处于私测阶段。\n请输入邀请码以开始使用。' })}
         </Text>
 
         {/* Code input */}

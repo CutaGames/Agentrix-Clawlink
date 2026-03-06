@@ -44,7 +44,7 @@ type PostDetail = {
 
 const PLACEHOLDER_POST: PostDetail = {
   id: '1', authorId: 'u1', author: 'openclaw_fan', avatar: '🦀',
-  content: 'Just deployed my first cloud agent via ClawLink! Running a research agent 24/7 now 🚀\n\nHere\'s my setup:\n- Web Search skill\n- Summarizer skill\n- Scheduled via Cron trigger\n\nTotal cost: ~$0.03 / day. Absolutely worth it.',
+  content: 'Just deployed my first cloud agent via Agentrix-Claw! Running a research agent 24/7 now 🚀\n\nHere\'s my setup:\n- Web Search skill\n- Summarizer skill\n- Scheduled via Cron trigger\n\nTotal cost: ~$0.03 / day. Absolutely worth it.',
   tags: ['showcase', 'cloud', 'agent'],
   likes: 42, comments: 3, time: '2h', isLiked: false,
   badges: ['Top Creator'],

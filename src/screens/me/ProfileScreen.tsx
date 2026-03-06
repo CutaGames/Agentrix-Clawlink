@@ -29,8 +29,8 @@ export function ProfileScreen() {
 
   const handleShare = () => {
     navigation.navigate('ShareCard', {
-      shareUrl: `https://clawlink.app/i/${user?.agentrixId ?? ''}`,
-      title: '🦀 ClawLink — Your 24/7 AI Agent',
+      shareUrl: `https://agentrix.top/i/${user?.agentrixId ?? ''}`,
+      title: '� Agentrix-Claw — Your 24/7 AI Agent',
       userName: user?.nickname ?? undefined,
     });
   };
@@ -103,7 +103,7 @@ export function ProfileScreen() {
         <Text style={styles.shareEmoji}>🦀</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.shareTitle}>Invite friends, earn commissions</Text>
-          <Text style={styles.shareSub}>Share ClawLink and earn 30% on every purchase</Text>
+          <Text style={styles.shareSub}>Share Agentrix-Claw and earn 30% on every purchase</Text>
         </View>
         <Text style={styles.shareArrow}>›</Text>
       </TouchableOpacity>

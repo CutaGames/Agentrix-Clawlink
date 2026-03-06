@@ -87,7 +87,7 @@ export function OpenClawBindScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>Add OpenClaw Instance</Text>
-      <Text style={styles.subtitle}>Connect another OpenClaw instance to your ClawLink account.</Text>
+      <Text style={styles.subtitle}>Connect another OpenClaw instance to your Agentrix-Claw account.</Text>
 
       <View style={styles.tabs}>
         {(['manual', 'qr'] as const).map((m) => (

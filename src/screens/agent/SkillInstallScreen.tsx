@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { installSkillToInstance, getInstanceById, restartInstance } from '../../services/openclaw.service';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { AgentStackParamList } from '../../navigation/types';
@@ -34,6 +35,7 @@ export function SkillInstallScreen() {
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const { skillId, skillName } = route.params;
   const { t, language } = useI18n();
+  const queryClient = useQueryClient();
   const [installing, setInstalling] = useState(false);
   const [done, setDone] = useState(false);
   const [instanceStatus, setInstanceStatus] = useState<InstanceStatus>('unknown');
@@ -112,6 +114,8 @@ export function SkillInstallScreen() {
     setInstalling(true);
     try {
       const result = await installSkillToInstance(activeInstance!.id, skillId);
+      void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance!.id] });
+      void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance!.id] });
       const pendingMsg = (result as any)?.pendingDeploy
         ? `\n\n${t({ en: 'Note: The skill will auto-deploy when your agent reconnects.', zh: '注意：技能将在 Agent 重新连接后自动部署。' })}`
         : '';

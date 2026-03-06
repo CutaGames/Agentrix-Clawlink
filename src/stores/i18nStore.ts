@@ -38,7 +38,13 @@ export const useI18n = create<I18nState>()(
     (set, get) => ({
       language: getDeviceLanguage(),
 
-      setLanguage: (lang: Language) => set({ language: lang }),
+      setLanguage: (lang: Language) => set({
+        language: lang,
+        t: (desc: TranslationDescriptor): string => {
+          if (typeof desc === 'string') return desc;
+          return desc[lang] || desc.en || desc.zh || '';
+        },
+      }),
 
       t: (desc: TranslationDescriptor): string => {
         if (typeof desc === 'string') return desc;

@@ -28,7 +28,7 @@ export interface ShareCardProps {
 
 export function ShareCardView({
   shareUrl,
-  title = 'ClawLink',
+  title = 'Agentrix-Claw',
   subtitle = 'Your AI Agent, Powered by OpenClaw',
   headerEmoji = '🦀',
   userName,
@@ -47,7 +47,7 @@ export function ShareCardView({
       if (canShare && viewShotRef.current) {
         const opts: CaptureOptions = { format: 'png', quality: 1, result: 'tmpfile' };
         const uri: string = await (viewShotRef.current as any).capture(opts);
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share ClawLink' });
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share Agentrix-Claw' });
       } else {
         // Fallback: text share
         await Share.share({ message: `${title}\n${subtitle}\n${shareUrl}`, url: shareUrl });
@@ -105,7 +105,7 @@ export function ShareCardView({
           </View>
 
           {/* Footer brand */}
-          <Text style={styles.cardFooter}>clawlink.app • Powered by OpenClaw</Text>
+          <Text style={styles.cardFooter}>agentrix.top • Powered by OpenClaw</Text>
         </LinearGradient>
       </ViewShot>
 

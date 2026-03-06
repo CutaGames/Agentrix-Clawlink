@@ -60,7 +60,7 @@ const PLACEHOLDER_PROFILE: UserProfile = {
 };
 
 const PLACEHOLDER_POSTS: Post[] = [
-  { id: 'p1', content: 'Just deployed my first cloud agent via ClawLink! Running a research agent 24/7 now 🚀', tags: ['showcase', 'cloud'], likes: 42, comments: 7, time: '2h' },
+  { id: 'p1', content: 'Just deployed my first cloud agent via Agentrix-Claw! Running a research agent 24/7 now 🚀', tags: ['showcase', 'cloud'], likes: 42, comments: 7, time: '2h' },
   { id: 'p2', content: 'New workflow: GitHub PR auto-review + Slack notify. Drop-and-run in 5 min.', tags: ['dev', 'workflow'], likes: 58, comments: 11, time: '1d' },
 ];
 

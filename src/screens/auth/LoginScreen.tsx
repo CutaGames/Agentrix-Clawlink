@@ -8,7 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { loginWithGoogle, loginWithApple, loginWithX, loginWithTelegram, loginWithDiscord, loginWithEmail, registerWithEmail } from '../../services/auth';
+import { loginWithGoogle, loginWithApple, loginWithDiscord, loginWithEmail, registerWithEmail } from '../../services/auth';
 import { loginWithOpenClaw } from '../../services/auth';
 import type { AuthStackParamList } from '../../navigation/types';
 
@@ -26,8 +26,6 @@ const WALLET_PROVIDERS = [
 
 const SOCIAL_PROVIDERS = [
   { id: 'google', label: 'Google', emoji: '🌐', color: '#4285f4' },
-  { id: 'x', label: 'X (Twitter)', emoji: '🐦', color: '#1d9bf0' },
-  { id: 'telegram', label: 'Telegram', emoji: '✈️', color: '#229ed9' },
   { id: 'discord', label: 'Discord', emoji: '🎮', color: '#5865f2' },
 ];
 
@@ -76,9 +74,10 @@ export function LoginScreen() {
       // Navigate to WalletConnect screen for nonce→sign→verify flow
       (navigation as any).navigate('WalletConnect', { walletId: target.id });
     } else {
-      // Fallback: No detected wallet, just navigate to WalletConnect without a specific walletId,
-      // it will rely on WalletConnect's universal modal
-      (navigation as any).navigate('WalletConnect');
+      Alert.alert(
+        t({ en: 'No Wallet Detected', zh: '未检测到钱包' }), 
+        t({ en: 'Please install a supported Web3 wallet app (e.g., MetaMask, TokenPocket) to continue.', zh: '请安装支持的 Web3 钱包应用（如 MetaMask、TokenPocket）以继续。' })
+      );
     }
     setShowWalletModal(false);
   };
@@ -136,8 +135,6 @@ export function LoginScreen() {
       setLoadingProvider(provider);
       let result: any;
       if (provider === 'google') result = await loginWithGoogle();
-      else if (provider === 'x') result = await loginWithX();
-      else if (provider === 'telegram') result = await loginWithTelegram();
       else if (provider === 'discord') result = await loginWithDiscord();
       else if (provider === 'apple') result = await loginWithApple();
       else return;
@@ -384,18 +381,18 @@ const styles = StyleSheet.create({
   content: { padding: 24, paddingTop: 100, paddingBottom: 40 },
   header: { alignItems: 'center', marginBottom: 56 },
   logoCircle: { 
-    width: 64, 
-    height: 64, 
+    width: 44, 
+    height: 44, 
     backgroundColor: '#000000', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#333333',
-    borderRadius: 16
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: '#444444',
+    borderRadius: 10
   },
-  logoInitials: { fontSize: 28, fontWeight: '900', color: '#ffffff', letterSpacing: -1, fontFamily: 'monospace' },
-  logoText: { fontSize: 26, fontWeight: '800', color: '#ffffff', letterSpacing: 2, textTransform: 'uppercase' },
+  logoInitials: { fontSize: 18, fontWeight: '900', color: '#ffffff', letterSpacing: -0.5, fontFamily: 'monospace' },
+  logoText: { fontSize: 20, fontWeight: '800', color: '#ffffff', letterSpacing: 2, textTransform: 'uppercase' },
   tagline: { fontSize: 13, color: '#888888', marginTop: 10, letterSpacing: 0.5 },
   
   web25Title: { fontSize: 24, fontWeight: '700', color: '#ffffff', textAlign: 'center', marginBottom: 8 },

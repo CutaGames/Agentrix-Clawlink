@@ -106,13 +106,13 @@ export function ReferralDashboardScreen() {
       {linksLoading ? (
         <ActivityIndicator color={colors.accent} />
       ) : (!links?.length) ? (
-        <Text style={styles.emptyText}>Share ClawLink to create your first link!</Text>
+        <Text style={styles.emptyText}>Share Agentrix-Claw to create your first link!</Text>
       ) : (
         links.map((link: any) => (
           <View key={link.id} style={styles.linkRow}>
             <View>
               <Text style={styles.linkRowName}>{link.type || 'referral'}</Text>
-              <Text style={styles.linkRowUrl}>clawlink.app/i/{link.shortCode}</Text>
+              <Text style={styles.linkRowUrl}>agentrix.top/i/{link.shortCode}</Text>
             </View>
             <View style={styles.linkRowStats}>
               <Text style={styles.clicksText}>{link.clickCount || 0} clicks</Text>

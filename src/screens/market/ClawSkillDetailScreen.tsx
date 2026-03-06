@@ -17,7 +17,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { marketplaceApi, ReviewItem } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
@@ -62,6 +62,7 @@ export function ClawSkillDetailScreen() {
   const { skillId } = route.params;
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const queryClient = useQueryClient();
   const [installing, setInstalling] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -167,6 +168,8 @@ export function ClawSkillDetailScreen() {
       const pendingMsg = isPending
         ? `\n\nNote: Your agent is not online yet. The skill will auto-deploy when it reconnects.`
         : '';
+      void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
+      void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
       Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}${pendingMsg}`);
       useSettingsStore.getState().markOnboardingStep('installedSkill');
     } catch (e: any) {

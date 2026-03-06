@@ -3,7 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
 import { apiFetch } from './api';
 
-const SHARE_BASE = 'https://clawlink.app/i';
+const SHARE_BASE = 'https://agentrix.top/i';
 const API_BASE = 'https://api.agentrix.top/api';
 
 export type ShareContentType = 'agent_result' | 'skill' | 'post' | 'invite' | 'install_success';
@@ -44,7 +44,7 @@ export function buildShareText(
   type: ShareContentType,
   opts: { agentName?: string; skillName?: string; url?: string; lang?: string }
 ): string {
-  const url = opts.url ?? 'https://clawlink.app';
+  const url = opts.url ?? 'https://agentrix.top';
   const isChinese = opts.lang?.startsWith('zh');
 
   switch (type) {
@@ -55,8 +55,8 @@ export function buildShareText(
 
     case 'agent_result':
       return isChinese
-        ? `我的 AI Agent「${opts.agentName ?? 'Agent'}」刚帮我完成了一个任务！ ✨\n\n用 ClawLink 免费试试 → ${url}`
-        : `My AI Agent "${opts.agentName ?? 'Agent'}" just completed an amazing task! ✨\n\nTry ClawLink for free → ${url}`;
+        ? `我的 AI Agent「${opts.agentName ?? 'Agent'}」刚帮我完成了一个任务！ ✨\n\n用 Agentrix-Claw 免费试试 → ${url}`
+        : `My AI Agent "${opts.agentName ?? 'Agent'}" just completed an amazing task! ✨\n\nTry Agentrix-Claw for free → ${url}`;
 
     case 'skill':
       return isChinese
@@ -66,8 +66,8 @@ export function buildShareText(
     case 'invite':
     default:
       return isChinese
-        ? `加入 ClawLink，30 秒免费拥有你的 AI Agent！ 🚀\n\n${url}`
-        : `Join ClawLink and get your own AI Agent in 30 seconds, for free! 🚀\n\n${url}`;
+        ? `加入 Agentrix-Claw，30 秒免费拥有你的 AI Agent！ 🚀\n\n${url}`
+        : `Join Agentrix-Claw and get your own AI Agent in 30 seconds, for free! 🚀\n\n${url}`;
   }
 }
 
