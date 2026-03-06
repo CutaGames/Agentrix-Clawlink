@@ -45,6 +45,14 @@ export class OpenClawProxyService {
     private installedSkillRepo: Repository<UserInstalledSkill>,
   ) {}
 
+  private async loadInstalledSkillRecords(userId: string): Promise<UserInstalledSkill[]> {
+    return this.installedSkillRepo.find({
+      where: { userId },
+      relations: ['skill'],
+      order: { installedAt: 'DESC' },
+    });
+  }
+
   /**
    * Load user-installed marketplace skills and build:
    * 1. `additionalTools` — Anthropic-format tool schemas to pass to LLM
@@ -56,10 +64,7 @@ export class OpenClawProxyService {
   }> {
     let records: UserInstalledSkill[] = [];
     try {
-      records = await this.installedSkillRepo.find({
-        where: { userId, isEnabled: true },
-        relations: ['skill'],
-      });
+      records = (await this.loadInstalledSkillRecords(userId)).filter((record) => record.isEnabled);
     } catch (e: any) {
       this.logger.warn(`Could not load installed skills for ${userId}: ${e.message}`);
     }
@@ -407,6 +412,23 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
   /** Get installed skills from the instance */
   async getInstanceSkills(userId: string, instanceId: string) {
     const instance = await this.resolveInstance(userId, instanceId);
+
+    if (this.isPlatformHosted(instance)) {
+      const records = await this.loadInstalledSkillRecords(userId);
+      return records
+        .filter((record) => !!record.skill)
+        .map((record) => ({
+          id: record.skill.id,
+          name: record.skill.displayName || record.skill.name,
+          enabled: record.isEnabled,
+          version: record.skill.version || '1.0.0',
+          description: record.skill.description,
+          installedAt: record.installedAt,
+          source: 'marketplace',
+          platformHosted: true,
+        }));
+    }
+
     try {
       const resp = await fetch(`${instance.instanceUrl}/api/skills`, {
         headers: this.buildHeaders(instance),
@@ -422,6 +444,19 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
   /** Toggle a skill on/off */
   async toggleSkill(userId: string, instanceId: string, skillId: string, enabled: boolean) {
     const instance = await this.resolveInstance(userId, instanceId);
+
+    if (this.isPlatformHosted(instance)) {
+      const installation = await this.installedSkillRepo.findOne({
+        where: { userId, skillId },
+      });
+      if (!installation) {
+        throw new NotFoundException('Skill is not installed on this claw');
+      }
+      installation.isEnabled = enabled;
+      await this.installedSkillRepo.save(installation);
+      return { success: true, platformHosted: true, enabled };
+    }
+
     try {
       const resp = await fetch(`${instance.instanceUrl}/api/skills/${skillId}/toggle`, {
         method: 'POST',
@@ -438,6 +473,27 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
   /** Push-install a skill package to the instance */
   async installSkill(userId: string, instanceId: string, skillPackageUrl: string, skillId: string) {
     const instance = await this.connectionService.getInstanceById(userId, instanceId);
+
+    if (this.isPlatformHosted(instance)) {
+      const existing = await this.installedSkillRepo.findOne({
+        where: { userId, skillId },
+        relations: ['skill'],
+      });
+
+      if (existing && !existing.isEnabled) {
+        existing.isEnabled = true;
+        await this.installedSkillRepo.save(existing);
+      }
+
+      return {
+        success: true,
+        status: 200,
+        pendingDeploy: false,
+        platformHosted: true,
+        skillActive: true,
+        message: `Skill is now active on \"${instance.name}\" and available in chat immediately.`,
+      };
+    }
 
     // Allow install even if instance is not fully connected yet
     // The install record is created in /skills/{id}/install (step 1).

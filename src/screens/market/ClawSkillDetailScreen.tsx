@@ -167,8 +167,12 @@ export function ClawSkillDetailScreen() {
       void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
       void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
 
-      // Both dbRecorded (marketplace) and pendingDeploy (live push) are acceptable success states
-      if (result?.dbRecorded || result?.pendingDeploy) {
+      if (result?.skillActive || result?.platformHosted) {
+        Alert.alert(
+          '✅ Installed!',
+          `${skillName} is now active on ${activeInstance.name} and can be used in chat immediately.`,
+        );
+      } else if (result?.dbRecorded || result?.pendingDeploy) {
         Alert.alert(
           '✅ Installed!',
           `${skillName} has been added to ${activeInstance.name}.${result?.pendingDeploy ? '\n\nIt will sync automatically when the agent reconnects.' : ''}`,

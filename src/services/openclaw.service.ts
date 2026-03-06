@@ -132,6 +132,7 @@ export async function toggleSkill(instanceId: string, skillId: string, enabled: 
 export async function installSkillToInstance(instanceId: string, skillId: string): Promise<any> {
   let dbRecorded = false;
   let dbError: string | null = null;
+  let proxyError: string | null = null;
 
   // 1. Record installation in Agentrix marketplace DB
   try {
@@ -156,8 +157,8 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     }
   }
 
-  // 2. Push to live OpenClaw instance (uses skillId as both skillPackageUrl ref and skillId)
-  // If instance has no URL, backend returns success with pendingDeploy=true — this is normal
+  // 2. Activate on the target claw (platform-hosted claws activate immediately;
+  // disconnected local claws may explicitly return pendingDeploy=true).
   let proxyResult: any = {};
   try {
     proxyResult = await apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
@@ -165,8 +166,8 @@ export async function installSkillToInstance(instanceId: string, skillId: string
       body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),
     });
   } catch (proxyErr: any) {
-    // Proxy push failure is non-fatal — DB record is the important part
-    proxyResult = { pendingDeploy: true, message: 'Will sync when agent reconnects.' };
+    proxyError = proxyErr?.message || 'Skill activation failed on claw';
+    proxyResult = { success: false, pendingDeploy: false, proxyFailed: true, message: proxyError };
   }
 
   // If both DB record and proxy push failed, throw an error
@@ -174,7 +175,12 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     throw new Error(dbError || 'Install failed. Please try again.');
   }
 
-  return { ...(proxyResult || {}), dbRecorded, dbError };
+  // DB-only success is not enough for a live claw unless backend explicitly said pendingDeploy.
+  if (dbRecorded && proxyError && proxyResult?.pendingDeploy !== true) {
+    throw new Error(`Skill was saved to your account, but activation on this claw failed: ${proxyError}`);
+  }
+
+  return { ...(proxyResult || {}), dbRecorded, dbError, proxyError };
 }
 
 // Restart instance
