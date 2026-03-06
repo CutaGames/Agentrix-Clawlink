@@ -1,114 +1,156 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import { TranscribeClient, StartTranscriptionJobCommand, GetTranscriptionJobCommand } from '@aws-sdk/client-transcribe';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  TranscribeStreamingClient,
+  StartStreamTranscriptionCommand,
+  MediaEncoding,
+  LanguageCode,
+} from '@aws-sdk/client-transcribe-streaming';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execSync } from 'child_process';
 
 @Injectable()
 export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
-
-  private transcribeClient: TranscribeClient;
-  private s3Client: S3Client;
   private readonly REGION = process.env.AWS_REGION || 'us-east-1';
-  private readonly BUCKET = process.env.AWS_TRANSCRIBE_BUCKET || 'agentrix-voice-transcribe';
-
-  constructor() {
-    this.transcribeClient = new TranscribeClient({ region: this.REGION });
-    this.s3Client = new S3Client({ region: this.REGION });
-  }
 
   /**
-   * Transcribe audio buffer using AWS Transcribe.
-   * Falls back to OpenAI Whisper if AWS fails.
+   * Transcribe audio buffer.
+   * Strategy: convert to PCM WAV → AWS Transcribe Streaming (no S3 needed)
+   * Fallback: OpenAI Whisper if configured.
    */
   async transcribe(
     buffer: Buffer,
     mimetype: string,
     originalName: string,
   ): Promise<{ transcript: string }> {
-    const ext = originalName?.split('.').pop() || 'm4a';
-    const jobName = `transcribe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const s3Key = `voice-input/${jobName}.${ext}`;
+    // Try AWS Transcribe Streaming (needs only transcribe:StartStreamTranscription)
+    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+      try {
+        const result = await this.transcribeStreaming(buffer, mimetype, originalName);
+        if (result.transcript) return result;
+      } catch (err: any) {
+        this.logger.error(`AWS Transcribe Streaming failed: ${err.message}`);
+      }
+    }
 
-    // Map MIME types to AWS Transcribe media formats
-    const mediaFormatMap: Record<string, string> = {
-      'audio/m4a': 'mp4', 'audio/mp4': 'mp4', 'audio/x-m4a': 'mp4',
-      'audio/mpeg': 'mp3', 'audio/mp3': 'mp3',
-      'audio/wav': 'wav', 'audio/x-wav': 'wav',
-      'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/flac': 'flac',
-    };
-    const mediaFormat = mediaFormatMap[mimetype] || 'mp4';
+    // Fallback: OpenAI Whisper
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        return await this.whisperFallback(buffer, originalName);
+      } catch (err: any) {
+        this.logger.error(`Whisper fallback failed: ${err.message}`);
+      }
+    }
+
+    this.logger.warn('No transcription service available');
+    throw new BadRequestException(
+      'Voice transcription is not configured. Set AWS credentials or OPENAI_API_KEY.',
+    );
+  }
+
+  /**
+   * AWS Transcribe Streaming — sends audio directly over HTTP/2, no S3 needed.
+   * Requires audio in PCM 16-bit LE format at 16000 Hz sample rate.
+   */
+  private async transcribeStreaming(
+    buffer: Buffer,
+    mimetype: string,
+    originalName: string,
+  ): Promise<{ transcript: string }> {
+    // Convert input audio to 16kHz 16-bit PCM WAV using ffmpeg
+    const pcmBuffer = await this.convertToPcm(buffer, mimetype, originalName);
+
+    const client = new TranscribeStreamingClient({
+      region: this.REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+    });
+
+    // Create audio stream generator — send chunks of ~8KB
+    const CHUNK_SIZE = 8192;
+    async function* audioStream(): AsyncGenerator<AudioStream> {
+      for (let offset = 0; offset < pcmBuffer.length; offset += CHUNK_SIZE) {
+        yield {
+          AudioEvent: {
+            AudioChunk: pcmBuffer.subarray(offset, offset + CHUNK_SIZE),
+          },
+        };
+      }
+    }
+
+    // Detect likely language from app context (default: multi-language)
+    const command = new StartStreamTranscriptionCommand({
+      LanguageCode: LanguageCode.EN_US,
+      MediaEncoding: MediaEncoding.PCM,
+      MediaSampleRateHertz: 16000,
+      AudioStream: audioStream(),
+    });
+
+    const response = await client.send(command);
+
+    // Collect transcript from streaming results
+    let transcript = '';
+    if (response.TranscriptResultStream) {
+      for await (const event of response.TranscriptResultStream) {
+        if (event.TranscriptEvent?.Transcript?.Results) {
+          for (const result of event.TranscriptEvent.Transcript.Results) {
+            if (!result.IsPartial && result.Alternatives?.[0]?.Transcript) {
+              transcript += result.Alternatives[0].Transcript + ' ';
+            }
+          }
+        }
+      }
+    }
+
+    return { transcript: transcript.trim() };
+  }
+
+  /**
+   * Convert audio buffer to 16kHz 16-bit LE PCM using ffmpeg.
+   * If ffmpeg is not available, try to pass raw buffer (works for WAV).
+   */
+  private async convertToPcm(
+    buffer: Buffer,
+    mimetype: string,
+    originalName: string,
+  ): Promise<Buffer> {
+    const ext = originalName?.split('.').pop() || 'm4a';
+    const tmpInput = path.join(os.tmpdir(), `voice_in_${Date.now()}.${ext}`);
+    const tmpOutput = path.join(os.tmpdir(), `voice_out_${Date.now()}.pcm`);
 
     try {
-      // 1. Upload audio to S3
-      await this.s3Client.send(new PutObjectCommand({
-        Bucket: this.BUCKET,
-        Key: s3Key,
-        Body: buffer,
-        ContentType: mimetype || 'audio/mp4',
-      }));
-
-      // 2. Start transcription job (auto-detect language)
-      await this.transcribeClient.send(new StartTranscriptionJobCommand({
-        TranscriptionJobName: jobName,
-        LanguageCode: 'en-US',
-        IdentifyMultipleLanguages: true,
-        LanguageOptions: ['en-US', 'zh-CN', 'ja-JP', 'ko-KR', 'es-US'],
-        Media: { MediaFileUri: `s3://${this.BUCKET}/${s3Key}` },
-        MediaFormat: mediaFormat as any,
-        OutputBucketName: this.BUCKET,
-        OutputKey: `voice-output/${jobName}.json`,
-      }));
-
-      // 3. Poll for completion (max ~30s)
-      let transcript = '';
-      for (let i = 0; i < 30; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const jobResult = await this.transcribeClient.send(
-          new GetTranscriptionJobCommand({ TranscriptionJobName: jobName }),
-        );
-        const status = jobResult.TranscriptionJob?.TranscriptionJobStatus;
-        if (status === 'COMPLETED') {
-          try {
-            const outputObj = await this.s3Client.send(new GetObjectCommand({
-              Bucket: this.BUCKET, Key: `voice-output/${jobName}.json`,
-            }));
-            const body = await outputObj.Body?.transformToString();
-            if (body) {
-              const parsed = JSON.parse(body);
-              transcript = parsed?.results?.transcripts?.[0]?.transcript || '';
-            }
-          } catch (fetchErr: any) {
-            this.logger.warn(`Failed to fetch transcript: ${fetchErr.message}`);
-          }
-          break;
-        }
-        if (status === 'FAILED') {
-          throw new Error(jobResult.TranscriptionJob?.FailureReason || 'Transcription failed');
-        }
-      }
-
-      // 4. Cleanup S3 (best-effort)
-      this.cleanupS3(s3Key, `voice-output/${jobName}.json`).catch(() => {});
-
-      return { transcript: transcript || '' };
+      fs.writeFileSync(tmpInput, buffer);
+      execSync(
+        `ffmpeg -y -i "${tmpInput}" -ar 16000 -ac 1 -f s16le "${tmpOutput}" 2>/dev/null`,
+        { timeout: 15000 },
+      );
+      const pcm = fs.readFileSync(tmpOutput);
+      return pcm;
     } catch (err: any) {
-      this.logger.error('AWS Transcribe failed', err?.message);
-      // Fallback to OpenAI Whisper
-      if (process.env.OPENAI_API_KEY) {
-        try {
-          return await this.whisperFallback(buffer, originalName);
-        } catch (whisperErr: any) {
-          this.logger.error('Whisper fallback also failed', whisperErr?.message);
-        }
+      this.logger.warn(`ffmpeg conversion failed: ${err.message}, using raw buffer`);
+      // If input is already WAV, strip the 44-byte header to get raw PCM
+      if (mimetype?.includes('wav') || ext === 'wav') {
+        return buffer.subarray(44);
       }
-      throw new BadRequestException(`Transcription failed: ${err?.message}`);
+      // Otherwise return raw and let Transcribe try to handle it
+      return buffer;
+    } finally {
+      try { fs.unlinkSync(tmpInput); } catch (_) {}
+      try { fs.unlinkSync(tmpOutput); } catch (_) {}
     }
   }
 
-  private async whisperFallback(buffer: Buffer, originalName: string): Promise<{ transcript: string }> {
+  /**
+   * Fallback: OpenAI Whisper API
+   */
+  private async whisperFallback(
+    buffer: Buffer,
+    originalName: string,
+  ): Promise<{ transcript: string }> {
     const OpenAI = require('openai').default;
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
@@ -120,17 +162,18 @@ export class VoiceService {
       fs.writeFileSync(tmpPath, buffer);
       const fileStream = fs.createReadStream(tmpPath);
       const response = await openai.audio.transcriptions.create({
-        file: fileStream as any, model: 'whisper-1', response_format: 'text',
+        file: fileStream as any,
+        model: 'whisper-1',
+        response_format: 'text',
       });
-      return { transcript: typeof response === 'string' ? response : (response as any).text || '' };
+      return {
+        transcript:
+          typeof response === 'string'
+            ? response
+            : (response as any).text || '',
+      };
     } finally {
       try { fs.unlinkSync(tmpPath); } catch (_) {}
-    }
-  }
-
-  private async cleanupS3(...keys: string[]) {
-    for (const key of keys) {
-      try { await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.BUCKET, Key: key })); } catch (_) {}
     }
   }
 }
