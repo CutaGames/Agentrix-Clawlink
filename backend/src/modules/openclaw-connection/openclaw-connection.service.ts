@@ -125,18 +125,36 @@ export class OpenClawConnectionService implements OnModuleInit {
     private instanceRepo: Repository<OpenClawInstance>,
   ) {}
 
-  /** Pre-pull docker image on startup so the first deploy is fast (fire-and-forget). */
-  onModuleInit() {
-    const host = process.env.CLOUD_HOST || '18.139.157.116';
-    const user = process.env.CLOUD_USER || 'ubuntu';
-    const pemPath = process.env.CLOUD_PEM_PATH || '/home/ubuntu/.ssh/hq.pem';
-    const isLocalHost = host === '127.0.0.1' || host === 'localhost' || host === process.env.HOSTNAME;
-    const pullCmd = isLocalHost
-      ? 'docker pull openclaw/openclaw:latest'
-      : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "docker pull openclaw/openclaw:latest"`;
-    execAsync(pullCmd)
-      .then(() => this.logger.log('openclaw/openclaw:latest pre-pull complete'))
-      .catch((e) => this.logger.warn(`Pre-pull skipped: ${e.message}`));
+  /** On startup: auto-fix any ERROR cloud instances left from failed Docker provisioning. */
+  async onModuleInit() {
+    // Fix any stuck ERROR/PROVISIONING cloud instances from old Docker-based provisioning
+    try {
+      const broken = await this.instanceRepo.find({
+        where: [
+          { instanceType: OpenClawInstanceType.CLOUD, status: OpenClawInstanceStatus.ERROR },
+          { instanceType: OpenClawInstanceType.CLOUD, status: OpenClawInstanceStatus.PROVISIONING },
+        ],
+      });
+      for (const inst of broken) {
+        this.logger.log(`Auto-fixing broken cloud instance ${inst.id} (was ${inst.status}) → platform-hosted`);
+        await this.instanceRepo.update(inst.id, {
+          status: OpenClawInstanceStatus.ACTIVE,
+          instanceUrl: null as any,
+          capabilities: {
+            platformTools: getDefaultSkillHandlerNames(),
+            provisionedAt: new Date().toISOString(),
+            llmProvider: 'bedrock',
+            platformHosted: true,
+            activeModel: 'claude-haiku-4-5',
+          } as any,
+        });
+      }
+      if (broken.length > 0) {
+        this.logger.log(`Fixed ${broken.length} broken cloud instance(s)`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`Auto-fix cloud instances failed: ${e.message}`);
+    }
   }
 
   async bindInstance(userId: string, dto: BindOpenClawDto): Promise<OpenClawInstance> {
@@ -227,121 +245,31 @@ export class OpenClawConnectionService implements OnModuleInit {
     llmProvider = 'deepseek',
   ) {
     try {
-      this.logger.log(`Starting cloud provisioning for ${cloudInstanceId}...`); 
+      this.logger.log(`Starting cloud provisioning for ${cloudInstanceId} (platform-hosted mode)...`);
 
-      // 1. SSH parameters from .env (default PEM path under ubuntu home)
-      const host = process.env.CLOUD_HOST || '18.139.157.116';
-      const user = process.env.CLOUD_USER || 'ubuntu';
-      const pemPath = process.env.CLOUD_PEM_PATH || '/home/ubuntu/.ssh/hq.pem';
-      const isLocalHost = host === '127.0.0.1' || host === 'localhost' || host === process.env.HOSTNAME;
+      // ── Platform-hosted mode ──
+      // Instead of spinning up a Docker container (which requires a pre-built image),
+      // we provision the instance as "platform-hosted": chat is routed through the
+      // Agentrix backend's own Claude/Bedrock integration with full tool support.
+      // This gives every user a working agent with web search, marketplace tools, etc.
 
-      // 2. Map provider id → OpenClaw env var name and fetch platform API key
-      // The platform owns the API keys — users never need to configure them.
-      // 'default' maps to the platform-preferred provider (currently deepseek for cost efficiency,
-      //  or bedrock for internal team testing).
       const resolvedProvider = llmProvider === 'default'
-        ? (process.env.PLATFORM_DEFAULT_LLM_PROVIDER || 'deepseek')
+        ? (process.env.PLATFORM_DEFAULT_LLM_PROVIDER || 'bedrock')
         : llmProvider;
-
-      const providerEnvMap: Record<string, string[]> = {
-        openai:    ['PLATFORM_OPENAI_API_KEY', 'OPENAI_API_KEY'],
-        deepseek:  ['PLATFORM_DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY', 'deepseek_API_KEY'],
-        anthropic: ['PLATFORM_ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'],
-        gemini:    ['PLATFORM_GEMINI_API_KEY', 'GEMINI_API_KEY'],
-        bedrock:   ['AWS_ACCESS_KEY_ID'],  // Bedrock uses AWS IAM credentials
-      };
-
-      const providerTargetEnv: Record<string, string> = {
-        openai: 'OPENAI_API_KEY',
-        deepseek: 'DEEPSEEK_API_KEY',
-        anthropic: 'ANTHROPIC_API_KEY',
-        gemini: 'GEMINI_API_KEY',
-        bedrock: 'AWS_ACCESS_KEY_ID',
-      };
-      const targetEnvVar = providerTargetEnv[resolvedProvider] ?? 'OPENAI_API_KEY';
-
-      // Build LLM env flags — Bedrock needs extra AWS env vars
-      let llmEnvFlags: string;
-      if (resolvedProvider === 'bedrock') {
-        const accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
-        const secretKey = process.env.AWS_SECRET_ACCESS_KEY || '';
-        const region = process.env.AWS_BEDROCK_REGION || process.env.AWS_REGION || 'us-east-1';
-        const modelId = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
-        if (!accessKeyId || !secretKey) {
-          this.logger.warn('AWS credentials missing for Bedrock provider. Container may not function.');
-        }
-        llmEnvFlags = `-e LLM_PROVIDER=bedrock -e AWS_ACCESS_KEY_ID=${accessKeyId} -e AWS_SECRET_ACCESS_KEY=${secretKey} -e AWS_REGION=${region} -e BEDROCK_MODEL_ID=${modelId}`;
-      } else {
-        const candidates = providerEnvMap[resolvedProvider] ?? ['OPENAI_API_KEY'];
-        const platformApiKey = candidates.map(k => process.env[k]).find(v => !!v) || '';
-        if (!platformApiKey) {
-          this.logger.warn(`No platform API key found for provider ${resolvedProvider}. Container will start without LLM key.`);
-        }
-        llmEnvFlags = platformApiKey
-          ? `-e LLM_PROVIDER=${resolvedProvider} -e ${targetEnvVar}=${platformApiKey}`
-          : `-e LLM_PROVIDER=${resolvedProvider}`;
-      }
-
-      // 3. Run container and get assigned port in a single SSH round-trip.
-      // Combined command: run container, then immediately query the port — saves ~2-3s SSH overhead.
-      // Resource limits to prevent any single container from starving the host
-      const memLimit = process.env.CLOUD_CONTAINER_MEMORY || '512m';
-      const cpuLimit = process.env.CLOUD_CONTAINER_CPUS || '0.5';
-      const dockerCombinedCmd = [
-        `CID=$(docker run -d -p 0:3001 --name oc-${cloudInstanceId} --restart=unless-stopped`,
-        `--memory=${memLimit} --cpus=${cpuLimit} ${llmEnvFlags} openclaw/openclaw:latest)`,
-        `&& docker port $CID 3001`,
-      ].join(' ');
-      const sshCmd = isLocalHost
-        ? `bash -c '${dockerCombinedCmd}'`
-        : `ssh -o StrictHostKeyChecking=no -i ${pemPath} ${user}@${host} "${dockerCombinedCmd}"`;
-
-      this.logger.log(`Executing deploy for ${cloudInstanceId} (provider: ${resolvedProvider}, local: ${isLocalHost})`);
-      const { stdout: portOutput } = await execAsync(sshCmd);
-
-      // portOutput: "0.0.0.0:32768\n" or ":::32768\n"
-      const portMatch = portOutput.match(/:(\d+)/);
-      const assignedPort = portMatch ? portMatch[1] : '3001';
-      const instanceUrl = `http://${host}:${assignedPort}`;
-
-      // 4. Wait for container health — poll /api/health every 500ms (max 20s) instead of fixed 5s sleep.
-      // Exits early the moment the container is ready, avg 2-4s with pre-pulled image.
-      this.logger.log(`Waiting for ${cloudInstanceId} at ${instanceUrl}...`);
-      let containerReady = false;
-      for (let attempt = 0; attempt < 40; attempt++) {
-        await new Promise((r) => setTimeout(r, 500));
-        try {
-          const hc = await fetch(`${instanceUrl}/api/health`, { signal: AbortSignal.timeout(1500) });
-          if (hc.ok) { containerReady = true; break; }
-        } catch { /* still starting */ }
-      }
-      if (!containerReady) {
-        this.logger.warn(`Container ${cloudInstanceId} health check timed out after 20s; proceeding anyway`);
-      }
-
-      // 5. Retrieve the API token OpenClaw generates on first start
-      let instanceToken = `cloud-token-${cloudInstanceId}`;
-      try {
-        const tokenResp = await fetch(`${instanceUrl}/api/token`, { signal: AbortSignal.timeout(4000) });
-        if (tokenResp.ok) {
-          const tokenData = await tokenResp.json() as { token?: string };
-          if (tokenData.token) instanceToken = tokenData.token;
-        }
-      } catch {
-        this.logger.warn(`Could not fetch auto-token from ${instanceUrl}, using generated token`);
-      }
 
       await this.instanceRepo.update(instanceId, {
         status: OpenClawInstanceStatus.ACTIVE,
-        instanceUrl,
-        instanceToken,
+        instanceUrl: null,  // No external URL — routed through platform
         capabilities: {
           platformTools: getDefaultSkillHandlerNames(),
           provisionedAt: new Date().toISOString(),
-          llmProvider: llmProvider,
+          llmProvider: resolvedProvider,
+          platformHosted: true,
+          activeModel: 'claude-haiku-4-5',
         } as any,
       });
-      this.logger.log(`Cloud instance ${cloudInstanceId} live at ${instanceUrl} (LLM: ${llmProvider})`);
+
+      this.logger.log(`Cloud instance ${cloudInstanceId} provisioned in platform-hosted mode (LLM: ${resolvedProvider})`);
     } catch (error: any) {
       this.logger.error(`Failed to provision cloud instance: ${error.message}`);
       await this.instanceRepo.update(instanceId, {

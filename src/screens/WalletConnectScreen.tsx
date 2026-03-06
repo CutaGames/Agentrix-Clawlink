@@ -33,8 +33,15 @@ interface WalletConfig {
   scheme: string;
   installed: boolean;
   downloadUrl: string;
-  signingUrl?: (message: string, address: string) => string;
 }
+
+// ========== 流程步骤类型 ==========
+type FlowStep =
+  | 'select'         // 选择钱包
+  | 'install-guide'  // 引导安装
+  | 'connecting'     // 已装钱包 → 等待授权
+  | 'walletconnect'  // WalletConnect 扫码
+  | 'manual';        // 手动输入（兜底）
 
 const WALLET_DEFS: Omit<WalletConfig, 'installed'>[] = [
   {
@@ -74,11 +81,12 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
   const [walletAddress, setWalletAddress] = useState('');
   const [signMessage, setSignMessage] = useState('');
   const [signature, setSignature] = useState('');
-  const [step, setStep] = useState<'select' | 'connect' | 'manual'>('select');
+  const [step, setStep] = useState<FlowStep>('select');
   const [statusText, setStatusText] = useState('');
   const [showSignModal, setShowSignModal] = useState(false);
   const appStateRef = useRef(AppState.currentState);
   const waitingForSignRef = useRef(false);
+  const returnCountRef = useRef(0);
 
   // 启动时自动检测已安装的钱包
   useEffect(() => {
@@ -96,20 +104,22 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
   }, []);
 
   const installedWallets = wallets.filter(w => w.installed);
+  const uninstalledWallets = wallets.filter(w => !w.installed);
 
-  // 监听 App 从后台返回 — 自动检查剪贴板中的地址或签名
+  // ── 监听 App 从后台返回 — 自动检查剪贴板 ──
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
         // Check for wallet address in clipboard (when returning from wallet app)
-        if (step === 'connect' && selectedWallet && !walletAddress) {
+        if (step === 'connecting' && selectedWallet && !walletAddress) {
+          returnCountRef.current++;
           setStatusText('Checking clipboard for address...');
           try {
             const text = await Clipboard.getStringAsync();
             if (text && /^0x[a-fA-F0-9]{40}$/.test(text.trim())) {
               const addr = text.trim();
               setWalletAddress(addr);
-              setStatusText(`Address detected: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
+              setStatusText(`✅ Address: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
               // Auto-proceed to get sign message
               setLoading(true);
               try {
@@ -120,7 +130,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
                 waitingForSignRef.current = true;
                 // Re-open wallet for signing
                 if (selectedWallet.installed) {
-                  await Linking.openURL(selectedWallet.scheme);
+                  setTimeout(() => Linking.openURL(selectedWallet.scheme), 500);
                 }
               } catch (e: any) {
                 setStatusText('Failed to get sign message. Try manual entry.');
@@ -128,8 +138,10 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
               } finally {
                 setLoading(false);
               }
-            } else if (!text) {
-              setStatusText(`No address found. Copy your ${selectedWallet.name} address and come back.`);
+            } else if (returnCountRef.current >= 2) {
+              setStatusText('No address found. Tap "Enter Manually" below.');
+            } else {
+              setStatusText(`No address found. Copy your address in ${selectedWallet.name} and come back.`);
             }
           } catch {
             setStatusText('Could not read clipboard. Try manual entry.');
@@ -184,52 +196,64 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
   }, [walletAddress, signMessage, selectedWallet]);
 
   // 一键连接已安装钱包 — open wallet app via deeplink, get address from clipboard on return
-  const handleConnectWallet = useCallback(async (wallet: WalletConfig) => {
+  const handleInstalledWallet = useCallback(async (wallet: WalletConfig) => {
     setSelectedWallet(wallet);
-
-    if (!wallet.installed) {
-      // Not installed — go to manual flow
-      setStep('manual');
-      setStatusText('');
-      setWalletAddress('');
-      setSignMessage('');
-      setSignature('');
-      return;
-    }
-
-    // Installed wallet: open via deeplink, then detect address from clipboard
-    setStep('connect');
+    setStep('connecting');
     setStatusText(`Opening ${wallet.name}...`);
     setLoading(true);
+    setWalletAddress('');
+    setSignMessage('');
+    setSignature('');
+    returnCountRef.current = 0;
+    waitingForSignRef.current = false;
 
     try {
-      // Clear clipboard first so we can detect a new address
       await Clipboard.setStringAsync('');
-
-      // Open wallet app via deeplink
       const canOpen = await Linking.canOpenURL(wallet.scheme);
       if (canOpen) {
         await Linking.openURL(wallet.scheme);
         setStatusText(`Copy your address in ${wallet.name}, then come back`);
-        setLoading(false);
-        // The AppState listener below will handle detecting the address on return
       } else {
-        // Can't open — fallback to manual address entry
         setStep('manual');
         setStatusText('');
-        setWalletAddress('');
-        setSignMessage('');
-        setSignature('');
-        setLoading(false);
       }
-    } catch (e: any) {
+    } catch {
       setStep('manual');
       setStatusText('');
-      setWalletAddress('');
-      setSignMessage('');
-      setSignature('');
+    } finally {
       setLoading(false);
     }
+  }, []);
+
+  // 未安装 — 引导安装流程
+  const handleInstallWallet = useCallback((wallet: WalletConfig) => {
+    setSelectedWallet(wallet);
+    setStep('install-guide');
+  }, []);
+
+  // WalletConnect — 打开网页 QR 扫码
+  const handleWalletConnect = useCallback(async () => {
+    setStep('walletconnect');
+    const frontendUrl = 'https://www.agentrix.top';
+    const walletLoginUrl = `${frontendUrl}/auth/login?tab=wallet&mobile=1&callback=agentrix://wallet-callback`;
+    try {
+      await WebBrowser.openBrowserAsync(walletLoginUrl, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+      });
+    } finally {
+      setStep('select');
+    }
+  }, []);
+
+  const resetFlow = useCallback(() => {
+    setStep('select');
+    setSignMessage('');
+    setSignature('');
+    setWalletAddress('');
+    setSelectedWallet(null);
+    setStatusText('');
+    waitingForSignRef.current = false;
+    returnCountRef.current = 0;
   }, []);
 
   // 手动提交（从弹窗）
@@ -276,12 +300,12 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
 
-        {step === 'select' ? (
+        {/* ────── STEP: SELECT WALLET ────── */}
+        {step === 'select' && (
           <>
-            {/* Header */}
             <View style={styles.header}>
               <Text style={styles.headerTitle}>Connect Wallet</Text>
-              <Text style={styles.headerDesc}>Select a wallet to sign in securely</Text>
+              <Text style={styles.headerDesc}>Choose how to connect your wallet</Text>
             </View>
 
             {detecting ? (
@@ -291,15 +315,15 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
               </View>
             ) : (
               <>
-                {/* 已安装的钱包 — 一键连接 */}
+                {/* 已安装钱包 — 一键连接 */}
                 {installedWallets.length > 0 && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Available Wallets</Text>
+                    <Text style={styles.sectionTitle}>Installed Wallets</Text>
                     {installedWallets.map(w => (
                       <TouchableOpacity
                         key={w.id}
                         style={styles.walletCard}
-                        onPress={() => handleConnectWallet(w)}
+                        onPress={() => handleInstalledWallet(w)}
                         activeOpacity={0.7}
                         disabled={isDisabled}
                       >
@@ -308,7 +332,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
                         </View>
                         <View style={styles.walletInfo}>
                           <Text style={styles.walletName}>{w.name}</Text>
-                          <Text style={styles.walletStatus}>Ready to connect</Text>
+                          <Text style={styles.walletStatus}>Tap to connect</Text>
                         </View>
                         <View style={styles.connectBadge}>
                           <Text style={styles.connectBadgeText}>Connect</Text>
@@ -318,45 +342,38 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
                   </View>
                 )}
 
-                {/* 未安装的钱包 */}
-                {wallets.filter(w => !w.installed).length > 0 && (
+                {/* 未安装钱包 — 引导安装 */}
+                {uninstalledWallets.length > 0 && (
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>
-                      {installedWallets.length > 0 ? 'Get a Wallet' : 'Install a Wallet'}
+                      {installedWallets.length > 0 ? 'Get a Wallet' : 'Install a Wallet to Get Started'}
                     </Text>
-                    {wallets.filter(w => !w.installed).map(w => (
+                    {uninstalledWallets.map(w => (
                       <TouchableOpacity
                         key={w.id}
                         style={[styles.walletCard, styles.walletCardDim]}
-                        onPress={() => Linking.openURL(w.downloadUrl)}
+                        onPress={() => handleInstallWallet(w)}
                         activeOpacity={0.7}
                       >
-                        <View style={[styles.walletIconCircle, { opacity: 0.5 }]}>
+                        <View style={[styles.walletIconCircle, { opacity: 0.6 }]}>
                           <Text style={styles.walletIconText}>{w.icon}</Text>
                         </View>
                         <View style={styles.walletInfo}>
-                          <Text style={[styles.walletName, { opacity: 0.6 }]}>{w.name}</Text>
-                          <Text style={styles.walletDesc}>Tap to install</Text>
+                          <Text style={[styles.walletName, { opacity: 0.7 }]}>{w.name}</Text>
+                          <Text style={styles.walletDesc}>Not installed — tap to set up</Text>
                         </View>
-                        <Text style={styles.downloadIcon}>↓</Text>
+                        <Text style={styles.downloadIcon}>→</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 )}
 
-                {/* WalletConnect — 扫码连接任意钱包 */}
+                {/* WalletConnect — 任意钱包扫码 */}
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>WalletConnect</Text>
+                  <Text style={styles.sectionTitle}>Universal</Text>
                   <TouchableOpacity
                     style={styles.walletCard}
-                    onPress={async () => {
-                      // 打开网站的钱包登录页，支持 WalletConnect v2 QR 码扫描
-                      const frontendUrl = 'https://www.agentrix.top';
-                      const walletLoginUrl = `${frontendUrl}/auth/login?tab=wallet&mobile=1`;
-                      await WebBrowser.openBrowserAsync(walletLoginUrl, {
-                        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-                      });
-                    }}
+                    onPress={handleWalletConnect}
                     activeOpacity={0.7}
                     disabled={isDisabled}
                   >
@@ -364,8 +381,8 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
                       <Text style={styles.walletIconText}>🔗</Text>
                     </View>
                     <View style={styles.walletInfo}>
-                      <Text style={styles.walletName}>Scan QR Code</Text>
-                      <Text style={styles.walletDesc}>Connect any wallet via WalletConnect</Text>
+                      <Text style={styles.walletName}>WalletConnect</Text>
+                      <Text style={styles.walletDesc}>Scan QR with any compatible wallet</Text>
                     </View>
                     <View style={[styles.connectBadge, { backgroundColor: '#8B5CF6' }]}>
                       <Text style={styles.connectBadgeText}>Scan</Text>
@@ -385,13 +402,69 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
                   onPress={() => { setSelectedWallet(null); setStep('manual'); }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.manualBtnText}>Enter address manually</Text>
+                  <Text style={styles.manualBtnText}>Enter wallet address manually</Text>
                 </TouchableOpacity>
               </>
             )}
           </>
-        ) : step === 'connect' ? (
-          /* 连接中状态 — 等待用户从钱包返回 */
+        )}
+
+        {/* ────── STEP: INSTALL GUIDE ────── */}
+        {step === 'install-guide' && selectedWallet && (
+          <View style={styles.guideContainer}>
+            <View style={styles.connectingWalletIcon}>
+              <Text style={{ fontSize: 48 }}>{selectedWallet.icon}</Text>
+            </View>
+            <Text style={styles.guideTitle}>Install {selectedWallet.name}</Text>
+            <Text style={styles.guideDesc}>
+              {selectedWallet.name} is not installed on this device. Follow these steps:
+            </Text>
+
+            <View style={styles.stepsContainer}>
+              <Text style={styles.stepItem}>1. Tap "Install" below to get {selectedWallet.name}</Text>
+              <Text style={styles.stepItem}>2. Create or import your wallet</Text>
+              <Text style={styles.stepItem}>3. Come back here and tap "I've Installed It"</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: '#8B5CF6' }]}
+              onPress={() => Linking.openURL(selectedWallet.downloadUrl)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Install {selectedWallet.name}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 12 }]}
+              onPress={async () => {
+                let installed = false;
+                try { installed = await Linking.canOpenURL(selectedWallet.scheme); } catch {}
+                if (installed) {
+                  const updated = { ...selectedWallet, installed: true };
+                  setSelectedWallet(updated);
+                  setWallets(prev => prev.map(w => w.id === updated.id ? updated : w));
+                  handleInstalledWallet(updated);
+                } else {
+                  Alert.alert(
+                    'Not Found',
+                    `${selectedWallet.name} doesn't appear to be installed yet. Install it first, then come back.`,
+                    [{ text: 'OK' }],
+                  );
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>I've Installed It →</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.backBtn} onPress={resetFlow}>
+              <Text style={styles.backBtnText}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ────── STEP: CONNECTING (installed wallet deeplink flow) ────── */}
+        {step === 'connecting' && (
           <View style={styles.connectingContainer}>
             {selectedWallet && (
               <View style={styles.connectingWalletIcon}>
@@ -400,45 +473,74 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
             )}
             {loading && <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 16 }} />}
             <Text style={styles.connectingStatus}>{statusText}</Text>
-            <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: 8, paddingHorizontal: 24 }}>
-              {signMessage
-                ? '1. Open your wallet\n2. Sign the message\n3. Copy the signature\n4. Come back here'
-                : `1. Open ${selectedWallet?.name || 'your wallet'}\n2. Go to Receive\n3. Copy your address\n4. Come back here`}
-            </Text>
+
+            <View style={styles.stepsContainer}>
+              {!signMessage ? (
+                <>
+                  <Text style={[styles.stepItem, walletAddress ? styles.stepDone : styles.stepActive]}>
+                    {walletAddress ? '✅' : '1️⃣'} Copy your wallet address
+                  </Text>
+                  <Text style={styles.stepItem}>2️⃣ Come back to Agentrix</Text>
+                  <Text style={styles.stepItem}>3️⃣ Sign the verification message</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.stepDone}>✅ Address detected</Text>
+                  <Text style={styles.stepDone}>✅ Verification message ready</Text>
+                  <Text style={styles.stepActive}>3️⃣ Sign the message and copy the signature</Text>
+                </>
+              )}
+            </View>
+
             {selectedWallet?.installed && !loading && (
               <TouchableOpacity
-                style={[styles.primaryButton || styles.connectBadge, { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.primary }]}
+                style={[styles.primaryButton, { marginTop: 16 }]}
                 onPress={() => Linking.openURL(selectedWallet.scheme)}
               >
-                <Text style={{ color: '#fff', fontWeight: '600' }}>Open {selectedWallet.name} Again</Text>
+                <Text style={styles.primaryButtonText}>Open {selectedWallet.name}</Text>
               </TouchableOpacity>
             )}
+
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => { setStep('select'); setSignMessage(''); setSignature(''); setWalletAddress(''); waitingForSignRef.current = false; }}
-              >
+              <TouchableOpacity style={styles.cancelBtn} onPress={resetFlow}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.cancelBtn, { borderColor: colors.primary }]}
-                onPress={() => { setStep('manual'); }}
+                onPress={() => setStep('manual')}
               >
                 <Text style={[styles.cancelBtnText, { color: colors.primary }]}>Enter Manually</Text>
               </TouchableOpacity>
             </View>
           </View>
-        ) : (
-          /* 手动输入模式 */
+        )}
+
+        {/* ────── STEP: WALLETCONNECT ────── */}
+        {step === 'walletconnect' && (
+          <View style={styles.connectingContainer}>
+            <View style={styles.connectingWalletIcon}>
+              <Text style={{ fontSize: 48 }}>🔗</Text>
+            </View>
+            <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 16 }} />
+            <Text style={styles.connectingStatus}>Opening WalletConnect...</Text>
+            <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: 8 }}>
+              Scan the QR code with your wallet app to connect
+            </Text>
+            <TouchableOpacity style={[styles.cancelBtn, { marginTop: 24 }]} onPress={resetFlow}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ────── STEP: MANUAL INPUT ────── */}
+        {step === 'manual' && (
           <View style={styles.section}>
             <View style={styles.header}>
               <Text style={styles.headerTitle}>
                 {selectedWallet ? `Connect ${selectedWallet.name}` : 'Manual Connection'}
               </Text>
               <Text style={styles.headerDesc}>
-                {selectedWallet
-                  ? `Enter your ${selectedWallet.name} address, then sign the verification message`
-                  : 'Enter your wallet address and sign the message'}
+                Enter your wallet address and sign the verification message
               </Text>
             </View>
 
@@ -524,7 +626,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
               </>
             )}
 
-            <TouchableOpacity style={styles.backBtn} onPress={() => { setStep('select'); setSignMessage(''); setSignature(''); }}>
+            <TouchableOpacity style={styles.backBtn} onPress={resetFlow}>
               <Text style={styles.backBtnText}>← Back</Text>
             </TouchableOpacity>
           </View>
@@ -592,7 +694,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
-                onPress={() => { setShowSignModal(false); setStep('select'); setSignMessage(''); setSignature(''); }}
+                onPress={() => { setShowSignModal(false); resetFlow(); }}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -660,8 +762,17 @@ const styles = StyleSheet.create({
   // Manual button
   manualBtn: { alignItems: 'center', paddingVertical: 14 },
   manualBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
+  // Install guide
+  guideContainer: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 16, gap: 12 },
+  guideTitle: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 12, textAlign: 'center' },
+  guideDesc: { fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 20, marginBottom: 8 },
+  // Steps
+  stepsContainer: { width: '100%', paddingHorizontal: 16, marginVertical: 12, gap: 8 },
+  stepItem: { fontSize: 14, color: colors.muted, lineHeight: 22 },
+  stepActive: { fontSize: 14, color: colors.text, fontWeight: '600', lineHeight: 22 },
+  stepDone: { fontSize: 14, color: colors.success, fontWeight: '500', lineHeight: 22 },
   // Connecting state
-  connectingContainer: { alignItems: 'center', paddingTop: 60, gap: 12 },
+  connectingContainer: { alignItems: 'center', paddingTop: 60, gap: 12, paddingHorizontal: 16 },
   connectingWalletIcon: {
     width: 96, height: 96, borderRadius: 28,
     backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center',

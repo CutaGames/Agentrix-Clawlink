@@ -391,15 +391,76 @@ export class ClaudeIntegrationService {
       onToolCall?: (name: string, args: any) => Promise<any>;
     },
   ): Promise<any> {
-        if (!this.anthropic && !options?.userApiKey) {
+    // Always fetch standard tools first — needed for both Anthropic SDK and Bedrock fallback
+    const standardTools = await this.getFunctionSchemas();
+    const mergedTools = [...standardTools, ...(options?.additionalTools || [])];
+
+    if (!this.anthropic && !options?.userApiKey) {
       // Fallback to AWS Bedrock (uses AWS_BEARER_TOKEN_BEDROCK)
       try {
         const modelId = (options && options.model) ? options.model : 'claude-3-haiku';
-        this.logger.log('Bedrock fallback model: ' + modelId);
+        this.logger.log(`Bedrock fallback model: ${modelId} with ${mergedTools.length} tools`);
+
+        // Convert Claude tool format (input_schema) to Bedrock format (parameters)
+        const bedrockTools = mergedTools.map(t => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.input_schema || t.parameters,
+        }));
+
         const bedrockResult = await this.bedrockService.chatWithFunctions(messages, {
           model: modelId,
-          tools: options?.additionalTools,
+          tools: bedrockTools,
         });
+
+        // If Bedrock returned tool calls, execute them and do a second LLM call
+        if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
+          this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s)`);
+          const toolResults: any[] = [];
+          for (const tc of bedrockResult.functionCalls) {
+            const fnName = tc.function?.name || tc.name;
+            const fnArgs = tc.function?.arguments
+              ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
+              : tc.input || {};
+            try {
+              let result: any;
+              if (options?.onToolCall) {
+                result = await options.onToolCall(fnName, fnArgs);
+              }
+              if (result === undefined) {
+                result = await this.executeFunctionCall(fnName, fnArgs, options?.context || {});
+              }
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: tc.id || `tool-${Date.now()}`,
+                content: JSON.stringify(result),
+              });
+            } catch (err: any) {
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: tc.id || `tool-${Date.now()}`,
+                content: JSON.stringify({ success: false, error: err.message }),
+              });
+            }
+          }
+
+          // Second Bedrock call with tool results
+          const followUpMessages = [
+            ...messages,
+            { role: 'assistant' as const, content: bedrockResult.text || '(tool calls executed)' },
+            { role: 'user' as const, content: `Tool results:\n${toolResults.map(r => r.content).join('\n')}` },
+          ];
+          try {
+            const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
+              model: modelId,
+            });
+            return { text: finalResult.text, toolCalls: bedrockResult.functionCalls };
+          } catch {
+            // If second call fails, return the tool results directly
+            return { text: bedrockResult.text + '\n\n' + toolResults.map(r => r.content).join('\n'), toolCalls: bedrockResult.functionCalls };
+          }
+        }
+
         return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
       } catch (bedrockErr: any) {
         this.logger.error(`Bedrock fallback failed: ${bedrockErr.message}`);
@@ -416,8 +477,8 @@ export class ClaudeIntegrationService {
       : this.anthropic;
 
     try {
-      // 获取 Function Schemas
-      let tools = await this.getFunctionSchemas();
+      // Reuse tools already fetched above (standardTools + additionalTools)
+      let tools = [...standardTools];
       
       // 合并 HQ 专属工具箱
       if (options?.additionalTools) {
