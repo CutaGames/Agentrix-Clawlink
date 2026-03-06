@@ -5,9 +5,10 @@
  */
 
 import { Injectable, Logger, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
-import { Skill, SkillPricingType, SkillLayer } from '../../entities/skill.entity';
+import { Skill, SkillPricingType, SkillLayer, SkillOriginalPlatform, SkillResourceType, SkillValueType } from '../../entities/skill.entity';
 import { SkillService } from './skill.service';
 import { MCPServerProxyService } from './mcp-server-proxy.service';
+import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
 import { X402AuthorizationService } from '../payment/x402-authorization.service';
 import { AgentPaymentService } from '../payment/agent-payment.service';
 import { ProductService } from '../product/product.service';
@@ -71,6 +72,8 @@ export class SkillExecutorService {
     private readonly merchantTaskService: MerchantTaskService,
     @Inject(forwardRef(() => TaskMarketplaceService))
     private readonly taskMarketplaceService: TaskMarketplaceService,
+    @Inject(forwardRef(() => ClaudeIntegrationService))
+    private readonly claudeIntegrationService: ClaudeIntegrationService,
   ) {
     this.registerDefaultHandlers();
   }
@@ -209,16 +212,153 @@ export class SkillExecutorService {
    * 执行 MCP Skill
    */
   private async executeMcpSkill(skill: Skill, params: any, context: ExecutionContext): Promise<any> {
-    const serverName = skill.executor.mcpServer;
-    // 假设 skill.name 的格式为 mcp_servername_toolname 或者直接通过元数据获取
-    // 实际实现中，通常一个 Skill 对应一个特定的 Tool
-    const toolName = skill.executor.internalHandler || skill.name.replace(/^mcp_/, '').replace(/^[^_]+_/, '');
+    if (
+      skill.originalPlatform === SkillOriginalPlatform.OPENCLAW
+      && skill.executor.mcpServer === 'openclaw'
+    ) {
+      return this.executeOpenClawHubSkill(skill, params, context);
+    }
+
+    const declaredTools = Array.isArray(skill.metadata?.tools) ? skill.metadata.tools : [];
+    const claudeSchema = skill.platformSchemas?.claude as Record<string, any> | undefined;
+    const serverName =
+      claudeSchema?.server
+      || skill.metadata?.serverId
+      || skill.executor.mcpServer
+      || skill.metadata?.package;
 
     if (!serverName) {
       throw new BadRequestException('MCP executor requires server name');
     }
 
-    return this.mcpProxyService.callTool(serverName, toolName, params);
+    let toolName: string | undefined;
+    let toolParams: Record<string, any> = params;
+
+    if (typeof params?.action === 'string' && params.action.trim()) {
+      toolName = params.action.trim();
+      if (params.params && typeof params.params === 'object' && !Array.isArray(params.params)) {
+        toolParams = params.params;
+      } else {
+        const { action, ...rest } = params;
+        toolParams = rest;
+      }
+    } else if (declaredTools.length === 1 && typeof declaredTools[0]?.name === 'string') {
+      toolName = declaredTools[0].name;
+      toolParams = params?.params && typeof params.params === 'object' && !Array.isArray(params.params)
+        ? params.params
+        : params;
+    } else if (Array.isArray(claudeSchema?.tools) && claudeSchema.tools.length === 1) {
+      toolName = claudeSchema.tools[0];
+    } else if (typeof skill.metadata?.toolName === 'string' && skill.metadata.toolName.trim()) {
+      toolName = skill.metadata.toolName.trim();
+    } else if (skill.executor.internalHandler) {
+      toolName = skill.executor.internalHandler;
+    } else {
+      toolName = skill.name.replace(/^mcp_/, '').replace(/^[^_]+_/, '');
+    }
+
+    if (!toolName) {
+      throw new BadRequestException('MCP executor requires tool name');
+    }
+
+    return this.mcpProxyService.callTool(serverName, toolName, toolParams);
+  }
+
+  private async executeOpenClawHubSkill(skill: Skill, params: any, context: ExecutionContext): Promise<any> {
+    const slug = String(skill.metadata?.hubSlug || skill.externalSkillId || skill.name || '').trim();
+    if (!slug) {
+      throw new BadRequestException('OpenClaw Hub skill is missing its slug');
+    }
+
+    const version = String(skill.version || '1.0.0');
+    const versionUrl = `https://clawhub.ai/api/v1/skills/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`;
+    const versionResp = await axios.get(versionUrl, {
+      timeout: 15_000,
+      headers: { Accept: 'application/json' },
+    });
+
+    const files: Array<{ path?: string; size?: number; contentType?: string }> =
+      versionResp.data?.version?.files || [];
+
+    const promptFiles = files
+      .filter((file) => typeof file.path === 'string')
+      .filter((file) => /\.(md|txt)$/i.test(file.path!))
+      .slice(0, 5);
+
+    if (promptFiles.length === 0) {
+      throw new BadRequestException(`OpenClaw Hub skill ${slug} has no prompt files to execute`);
+    }
+
+    const fileSections = await Promise.all(promptFiles.map(async (file) => {
+      const fileUrl = `https://clawhub.ai/api/v1/skills/${encodeURIComponent(slug)}/file?path=${encodeURIComponent(file.path!)}&version=${encodeURIComponent(version)}`;
+      const resp = await axios.get(fileUrl, {
+        timeout: 15_000,
+        responseType: 'text',
+        headers: { Accept: 'text/plain, text/markdown, application/json' },
+      });
+      return `# FILE: ${file.path}\n\n${String(resp.data || '').trim()}`;
+    }));
+
+    const promptInput =
+      params?.prompt
+      || params?.input
+      || params?.query
+      || params?.message
+      || params?.idea
+      || (typeof params === 'string' ? params : '');
+
+    if (!promptInput) {
+      throw new BadRequestException('OpenClaw Hub skill requires a prompt-like input');
+    }
+
+    const systemPrompt = [
+      `You are executing the OpenClaw/ClawHub skill "${skill.displayName || skill.name}" (slug: ${slug}, version: ${version}).`,
+      'Follow the skill files below as the authoritative runtime instructions.',
+      'Return only the skill output for the user request. Do not mention internal files unless the skill itself requires it.',
+      ...fileSections,
+    ].join('\n\n');
+
+    const commandName = fileSections
+      .map((section) => section.match(/\/([a-z][a-z0-9_-]*)\s+(?:"|<|'|`)/i)?.[1])
+      .find(Boolean);
+
+    const executionInput = commandName
+      ? `Execute the skill command /${commandName} with the following input:\n${String(promptInput)}`
+      : `Execute this skill with the following input:\n${String(promptInput)}`;
+
+    let result = await this.claudeIntegrationService.chatWithFunctions(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: executionInput },
+      ],
+      {
+        context: { userId: context.userId, sessionId: context.sessionId },
+      },
+    );
+
+    if (!result?.text?.trim()) {
+      result = await this.claudeIntegrationService.chatWithFunctions(
+        [
+          {
+            role: 'system',
+            content: `${systemPrompt}\n\nProduce the concrete final output this skill should return for the user's input. Do not leave the response blank.`,
+          },
+          { role: 'user', content: executionInput },
+        ],
+        {
+          context: { userId: context.userId, sessionId: context.sessionId },
+        },
+      );
+    }
+
+    return {
+      success: true,
+      output: result?.text || '',
+      slug,
+      version,
+      files: promptFiles.map((file) => file.path),
+      executionMode: 'clawhub-prompt-runtime',
+    };
   }
 
   /**
@@ -265,18 +405,105 @@ export class SkillExecutorService {
    * 注册默认处理器
    */
   private registerDefaultHandlers(): void {
+    const normalizeSkillName = (name: string) =>
+      String(name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5\s_-]/g, '')
+        .replace(/\s+/g, '_')
+        .slice(0, 100);
+
+    const normalizeResourceType = (input?: string): SkillResourceType => {
+      const value = String(input || '').trim().toLowerCase();
+      if (value === 'physical' || value === '实物') return SkillResourceType.PHYSICAL;
+      if (value === 'service' || value === '服务') return SkillResourceType.SERVICE;
+      if (value === 'data' || value === '数据') return SkillResourceType.DATA;
+      if (value === 'logic' || value === '代码' || value === '脚本') return SkillResourceType.LOGIC;
+      return SkillResourceType.DIGITAL;
+    };
+
+    const normalizeValueType = (input?: string): SkillValueType | undefined => {
+      const value = String(input || '').trim().toLowerCase();
+      if (!value) return undefined;
+      if (value === 'action' || value === '交易' || value === '执行') return SkillValueType.ACTION;
+      if (value === 'deliverable' || value === '交付') return SkillValueType.DELIVERABLE;
+      if (value === 'decision' || value === '决策') return SkillValueType.DECISION;
+      if (value === 'data' || value === '数据') return SkillValueType.DATA;
+      return undefined;
+    };
+
+    const publishMarketplaceItem = async (
+      params: any,
+      context: ExecutionContext,
+      defaults?: { layer?: SkillLayer; resourceType?: SkillResourceType },
+    ) => {
+      const { name, displayName, description, category, inputSchema, executor, pricing } = params;
+      if (!context.userId) throw new ForbiddenException('User context required to publish marketplace items');
+      if (!name || !description) throw new BadRequestException('name and description are required');
+
+      const layer = defaults?.layer || (params.layer as SkillLayer) || SkillLayer.LOGIC;
+      const isResource = layer === SkillLayer.RESOURCE;
+      const resourceType = isResource
+        ? (defaults?.resourceType || normalizeResourceType(params.resourceType || params.type))
+        : undefined;
+
+      const skill = await this.skillService.create({
+        name: normalizeSkillName(name),
+        displayName: displayName || name,
+        description,
+        category: (category as SkillCategory) || (isResource ? SkillCategory.COMMERCE : SkillCategory.UTILITY),
+        layer,
+        resourceType,
+        valueType: normalizeValueType(params.valueType),
+        source: params.source,
+        status: SkillStatus.PUBLISHED,
+        inputSchema: inputSchema || { type: 'object', properties: {}, required: [] },
+        outputSchema: params.outputSchema || { type: 'object', properties: { result: { type: 'string' } } },
+        executor: executor || { type: 'http', endpoint: params.endpoint || '' },
+        pricing: pricing || {
+          type: params.price && Number(params.price) > 0 ? SkillPricingType.PER_CALL : SkillPricingType.FREE,
+          pricePerCall: params.price ? Number(params.price) : 0,
+          currency: params.currency || 'USD',
+        },
+        version: params.version || '1.0.0',
+        tags: params.tags || [],
+        humanAccessible: params.humanAccessible ?? true,
+        metadata: {
+          ...(params.metadata || {}),
+          sourceCommand: params.sourceCommand,
+          publishType: isResource ? 'resource' : 'skill',
+        },
+        imageUrl: params.imageUrl,
+        thumbnailUrl: params.thumbnailUrl,
+      }, context.userId);
+
+      return {
+        success: true,
+        itemId: skill.id,
+        skillId: skill.id,
+        name: skill.name,
+        displayName: skill.displayName,
+        layer: skill.layer,
+        resourceType: skill.resourceType,
+        message: `${isResource ? 'Resource' : 'Skill'} "${skill.displayName}" published to marketplace`,
+        marketplaceUrl: `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/skill/${skill.id}`,
+      };
+    };
+
     // ============ 电商类 Handlers ============
     
     // 搜索商品 - 搜索 Skills (新的统一市场)
     this.registerHandler('search_products', async (params, context) => {
       try {
+        const requestedType = params.resourceType || params.type;
         // 使用统一市场搜索 Skills
         const searchResult = await this.unifiedMarketplaceService.search({
           query: params.query,
-          layer: params.type === 'service' ? [SkillLayer.RESOURCE] : undefined,
-          resourceType: params.type ? [params.type as any] : undefined,
+          layer: [SkillLayer.RESOURCE],
+          resourceType: requestedType ? [normalizeResourceType(requestedType)] : undefined,
+          category: params.category ? [params.category as SkillCategory] : undefined,
           page: 1,
-          limit: 20,
+          limit: params.limit || 20,
         });
         
         const formattedProducts = searchResult.items.map(skill => ({
@@ -308,6 +535,10 @@ export class SkillExecutorService {
           message: `Search failed: ${error.message}`
         };
       }
+    });
+
+    this.registerHandler('resource_search', async (params, context) => {
+      return this.internalHandlers.get('search_products')?.(params, context);
     });
 
     // 创建订单 - 真实实现
@@ -670,6 +901,34 @@ export class SkillExecutorService {
       if (!skillId) throw new BadRequestException('skillId is required for skill_install');
       if (!context.userId) throw new ForbiddenException('User context required to install skills');
 
+      const instanceId = typeof context.metadata?.instanceId === 'string'
+        ? context.metadata.instanceId
+        : undefined;
+
+      if (instanceId) {
+        const alreadyInstalled = await this.skillService.isSkillInstalledForInstance(instanceId, skillId);
+        if (alreadyInstalled) {
+          return {
+            success: true,
+            alreadyInstalled: true,
+            scope: 'claw',
+            instanceId,
+            message: `Skill ${skillId} is already installed on this claw`,
+          };
+        }
+
+        const installed = await this.skillService.installSkillForInstance(instanceId, skillId, context.userId, config);
+        return {
+          success: true,
+          alreadyInstalled: false,
+          scope: 'claw',
+          instanceId,
+          installId: installed.id,
+          skillId: installed.skillId,
+          message: 'Skill installed successfully on this claw',
+        };
+      }
+
       // Check if already installed
       const alreadyInstalled = await this.skillService.isSkillInstalled(context.userId, skillId);
       if (alreadyInstalled) {
@@ -687,6 +946,28 @@ export class SkillExecutorService {
         installId: installed.id,
         skillId: installed.skillId,
         message: `Skill installed successfully`,
+      };
+    });
+
+    /**
+     * skill_execute — Execute a marketplace skill directly from the claw
+     * Params: { skillId: string, input?: Record<string, any> }
+     */
+    this.registerHandler('skill_execute', async (params, context) => {
+      const skillId = params.skillId || params.id;
+      if (!skillId) throw new BadRequestException('skillId is required for skill_execute');
+
+      const result = await this.unifiedMarketplaceService.executeSkill(
+        skillId,
+        params.input || params.params || {},
+        context.userId,
+      );
+
+      return {
+        success: true,
+        skillId,
+        executedAt: new Date().toISOString(),
+        result,
       };
     });
 
@@ -731,7 +1012,8 @@ export class SkillExecutorService {
      * Params: { skillId: string, paymentMethod?: 'wallet'|'x402', quantity?: number }
      */
     this.registerHandler('marketplace_purchase', async (params, context) => {
-      const { skillId, paymentMethod = 'wallet', quantity = 1 } = params;
+      const { paymentMethod = 'wallet', quantity = 1, autoInstall = true } = params;
+      const skillId = params.skillId || params.itemId || params.listingId;
       if (!skillId) throw new BadRequestException('skillId is required for marketplace_purchase');
       if (!context.userId) throw new ForbiddenException('User context required for purchases');
 
@@ -747,8 +1029,46 @@ export class SkillExecutorService {
         return { success: false, error: `Skill ${skillId} not found in marketplace` };
       }
 
-      // 2. Check if free — just install directly
+      // 2. Check if free — install logic skills, confirm purchase for resource goods
       if (!skill.pricing || skill.pricing.type === SkillPricingType.FREE) {
+        const instanceId = typeof context.metadata?.instanceId === 'string'
+          ? context.metadata.instanceId
+          : undefined;
+
+        if (skill.layer === SkillLayer.RESOURCE) {
+          return {
+            success: true,
+            message: `Free resource "${skill.displayName || skill.name}" is ready to use`,
+            cost: 0,
+            skillId,
+            layer: skill.layer,
+            resourceType: skill.resourceType,
+          };
+        }
+
+        if (instanceId && autoInstall !== false) {
+          const alreadyInstalled = await this.skillService.isSkillInstalledForInstance(instanceId, skillId);
+          if (alreadyInstalled) {
+            return {
+              success: true,
+              message: 'Skill is free and already installed on this claw',
+              cost: 0,
+              scope: 'claw',
+              instanceId,
+            };
+          }
+
+          const installed = await this.skillService.installSkillForInstance(instanceId, skillId, context.userId);
+          return {
+            success: true,
+            message: `Free skill "${skill.displayName || skill.name}" installed successfully on this claw`,
+            installId: installed.id,
+            cost: 0,
+            scope: 'claw',
+            instanceId,
+          };
+        }
+
         const alreadyInstalled = await this.skillService.isSkillInstalled(context.userId, skillId);
         if (alreadyInstalled) {
           return { success: true, message: 'Skill is free and already installed', cost: 0 };
@@ -786,13 +1106,15 @@ export class SkillExecutorService {
       // 4. For paid skills, create a payment intent and return checkout info
       // Actual on-chain payment happens client-side; we prepare the intent here
       try {
-        const checkoutUrl = `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/pay/checkout?skillId=${skillId}`;
+        const checkoutUrl = `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/pay/checkout?skillId=${encodeURIComponent(skillId)}&quantity=${quantity}&method=${encodeURIComponent(String(paymentMethod))}`;
         return {
           success: true,
           requiresPayment: true,
           message: `Skill "${skill.displayName || skill.name}" costs ${price} ${currency}. Complete checkout to install.`,
           skillId,
           skillName: skill.displayName || skill.name,
+          layer: skill.layer,
+          resourceType: skill.resourceType,
           cost: price,
           currency,
           checkoutUrl,
@@ -812,37 +1134,25 @@ export class SkillExecutorService {
      * Params: { name, displayName, description, category, inputSchema, executor, pricing? }
      */
     this.registerHandler('skill_publish', async (params, context) => {
-      const { name, displayName, description, category, inputSchema, executor, pricing } = params;
-      if (!context.userId) throw new ForbiddenException('User context required to publish skills');
-      if (!name || !description) throw new BadRequestException('name and description are required');
-
       try {
-        // Create the skill entity
-        const skill = await this.skillService.create({
-          name: name.toLowerCase().replace(/\s+/g, '_'),
-          displayName: displayName || name,
-          description,
-          category: category || SkillCategory.UTILITY,
-          layer: SkillLayer.LOGIC,
-          status: SkillStatus.PUBLISHED,
-          inputSchema: inputSchema || { type: 'object', properties: {}, required: [] },
-          outputSchema: { type: 'object', properties: { result: { type: 'string' } } },
-          executor: executor || { type: 'http', endpoint: '' },
-          pricing: pricing || { type: SkillPricingType.FREE },
-          version: '1.0.0',
-          tags: params.tags || [],
-        }, context.userId);
-
-        return {
-          success: true,
-          skillId: skill.id,
-          name: skill.name,
-          displayName: skill.displayName,
-          message: `Skill "${skill.displayName}" published to marketplace`,
-          marketplaceUrl: `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/marketplace/skills/${skill.id}`,
-        };
+        return await publishMarketplaceItem(params, context, { layer: SkillLayer.LOGIC });
       } catch (err: any) {
         return { success: false, error: `Failed to publish skill: ${err.message}` };
+      }
+    });
+
+    /**
+     * resource_publish — Agent publishes a resource/goods listing to marketplace
+     * Params: { name, description, price?, currency?, resourceType?, category?, executor? }
+     */
+    this.registerHandler('resource_publish', async (params, context) => {
+      try {
+        return await publishMarketplaceItem(params, context, {
+          layer: SkillLayer.RESOURCE,
+          resourceType: normalizeResourceType(params.resourceType || params.type),
+        });
+      } catch (err: any) {
+        return { success: false, error: `Failed to publish resource: ${err.message}` };
       }
     });
 

@@ -272,9 +272,62 @@ export class ClaudeIntegrationService {
     try {
       const axios = require('axios');
       const encoded = encodeURIComponent(query);
+      const decodeEntities = (input: string) => input
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+
+      if (/(news|headline|headlines|latest|current|recent)/i.test(query)) {
+        const newsResp = await axios.get(
+          `https://news.google.com/rss/search?q=${encoded}`,
+          {
+            timeout: 10_000,
+            headers: {
+              'Accept-Encoding': 'identity',
+              'User-Agent': 'Mozilla/5.0 (compatible; AgentrixBot/1.0; +https://agentrix.top)',
+            },
+          },
+        );
+        const xml = typeof newsResp.data === 'string' ? newsResp.data : '';
+        const items = Array.from(
+          xml.matchAll(/<item>[\s\S]*?<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>[\s\S]*?<link>(.*?)<\/link>/gi),
+        ).slice(0, 5);
+        if (items.length > 0) {
+          const lines = items.map((match, index) => `${index + 1}. ${decodeEntities(match[1] || '')}\n   ${decodeEntities(match[2] || '')}`);
+          return `Top news results for "${query}":\n${lines.join('\n')}`;
+        }
+      }
+
+      const htmlResp = await axios.get(
+        `https://html.duckduckgo.com/html/?q=${encoded}`,
+        {
+          timeout: 10_000,
+          headers: {
+            'Accept-Encoding': 'identity',
+            'User-Agent': 'Mozilla/5.0 (compatible; AgentrixBot/1.0; +https://agentrix.top)',
+          },
+        },
+      );
+
+      const html = typeof htmlResp.data === 'string' ? htmlResp.data : '';
+      const matches = Array.from(
+        html.matchAll(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gis),
+      ).slice(0, 5);
+
+      if (matches.length > 0) {
+        const lines = matches.map((match, index) => {
+          const url = decodeEntities(match[1] || '');
+          const title = decodeEntities((match[2] || '').replace(/<[^>]+>/g, '').trim());
+          return `${index + 1}. ${title}\n   ${url}`;
+        });
+        return `Top web results for "${query}":\n${lines.join('\n')}`;
+      }
+
       const resp = await axios.get(
         `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
-        { timeout: 8000, headers: { 'Accept-Encoding': 'identity' } }
+        { timeout: 8000, headers: { 'Accept-Encoding': 'identity' } },
       );
       const data = resp.data;
       const abstract = data.AbstractText || '';
@@ -282,11 +335,11 @@ export class ClaudeIntegrationService {
         .filter((t: any) => t.Text)
         .slice(0, 5)
         .map((t: any) => t.Text);
-      
+
       if (!abstract && relatedTopics.length === 0) {
-        return `No instant results found for: "${query}". The model's training knowledge may cover this topic.`;
+        return `No web results found for: "${query}".`;
       }
-      
+
       let result = '';
       if (abstract) result += `Summary: ${abstract}\n\n`;
       if (relatedTopics.length > 0) result += `Related:\n` + relatedTopics.map(t => `- ${t}`).join('\n');
@@ -294,6 +347,60 @@ export class ClaudeIntegrationService {
     } catch (e: any) {
       return `Search failed: ${e.message}`;
     }
+  }
+
+  private extractToolResultText(toolResult: any): string {
+    const rawContent = toolResult?.content ?? toolResult;
+    let parsed = rawContent;
+
+    if (typeof rawContent === 'string') {
+      try {
+        parsed = JSON.parse(rawContent);
+      } catch {
+        parsed = rawContent;
+      }
+    }
+
+    if (typeof parsed === 'string') {
+      return parsed;
+    }
+
+    if (parsed?.result && typeof parsed.result === 'string') {
+      return parsed.result;
+    }
+
+    if (typeof parsed?.message === 'string' && !parsed?.data) {
+      return parsed.message;
+    }
+
+    if (typeof parsed?.error === 'string') {
+      return `Tool error: ${parsed.error}`;
+    }
+
+    if (parsed?.data !== undefined) {
+      return typeof parsed.data === 'string'
+        ? parsed.data
+        : JSON.stringify(parsed.data, null, 2);
+    }
+
+    return JSON.stringify(parsed, null, 2);
+  }
+
+  private buildToolFallbackText(toolResults: any[]): string {
+    const parts = toolResults
+      .map((result, index) => {
+        const text = this.extractToolResultText(result)?.trim();
+        if (!text) return '';
+        return toolResults.length === 1 ? text : `Tool ${index + 1} result:\n${text}`;
+      })
+      .filter(Boolean);
+
+    return parts.join('\n\n').trim();
+  }
+
+  private looksLikeToolAccessRefusal(text?: string): boolean {
+    if (!text) return false;
+    return /(?:don't|do not|can't|cannot|unable to|lack)\b.{0,50}\b(?:web|internet|browse|search|real-time|current information|access)|(?:tool|web search|search tool).{0,20}(?:not available|unavailable)/i.test(text);
   }
 
   async executeFunctionCall(
@@ -444,20 +551,39 @@ export class ClaudeIntegrationService {
             }
           }
 
+          const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
+          const toolFallbackText = this.buildToolFallbackText(toolResults);
+
           // Second Bedrock call with tool results
           const followUpMessages = [
             ...messages,
-            { role: 'assistant' as const, content: bedrockResult.text || '(tool calls executed)' },
-            { role: 'user' as const, content: `Tool results:\n${toolResults.map(r => r.content).join('\n')}` },
+            { role: 'assistant' as const, content: bedrockResult.text || 'I used the available tools and received the results.' },
+            {
+              role: 'user' as const,
+              content:
+                `Answer the original request using the tool results below. ` +
+                `Do not say you lack web access or tool access when tool results are present.\n\n` +
+                `Original request:\n${lastUserMessage}\n\n` +
+                `Tool results:\n${toolResults.map(r => r.content).join('\n')}`,
+            },
           ];
           try {
             const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
               model: modelId,
             });
-            return { text: finalResult.text, toolCalls: bedrockResult.functionCalls };
+            const finalText = finalResult.text?.trim();
+            return {
+              text: !finalText || this.looksLikeToolAccessRefusal(finalText)
+                ? (toolFallbackText || finalText || bedrockResult.text)
+                : finalText,
+              toolCalls: bedrockResult.functionCalls,
+            };
           } catch {
             // If second call fails, return the tool results directly
-            return { text: bedrockResult.text + '\n\n' + toolResults.map(r => r.content).join('\n'), toolCalls: bedrockResult.functionCalls };
+            return {
+              text: toolFallbackText || (bedrockResult.text + '\n\n' + toolResults.map(r => r.content).join('\n')),
+              toolCalls: bedrockResult.functionCalls,
+            };
           }
         }
 
@@ -625,9 +751,12 @@ export class ClaudeIntegrationService {
         const finalTextContent = finalResponse.content.find(
           (item: any) => item.type === 'text',
         );
+        const finalText = finalTextContent?.text || text;
 
         return {
-          text: finalTextContent?.text || text,
+          text: this.looksLikeToolAccessRefusal(finalText)
+            ? (this.buildToolFallbackText(toolResults) || finalText)
+            : finalText,
           toolCalls: toolUses.map((toolUse: any) => ({
             name: toolUse.name,
             input: toolUse.input,

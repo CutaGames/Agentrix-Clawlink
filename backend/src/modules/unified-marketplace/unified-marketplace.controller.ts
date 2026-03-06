@@ -270,7 +270,7 @@ export class UnifiedMarketplaceController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '购买 Skill' })
   async purchaseSkill(
-    @Body() body: { skillId: string; quantity?: number },
+    @Body() body: { skillId: string; quantity?: number; paymentMethod?: string },
     @Request() req: any,
   ) {
     try {
@@ -278,6 +278,7 @@ export class UnifiedMarketplaceController {
         body.skillId,
         req.user.id,
         body.quantity || 1,
+        body.paymentMethod,
       );
       return { success: true, result, message: '购买成功' };
     } catch (error: any) {

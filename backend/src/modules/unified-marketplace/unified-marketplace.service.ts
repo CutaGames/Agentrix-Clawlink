@@ -553,6 +553,7 @@ export class UnifiedMarketplaceService {
     skillId: string,
     userId: string,
     quantity: number = 1,
+    paymentMethod?: string,
   ): Promise<any> {
     const skill = await this.skillRepository.findOne({ where: { id: skillId } });
     if (!skill) {
@@ -575,6 +576,12 @@ export class UnifiedMarketplaceService {
     const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const currency = skill.pricing?.currency || 'USD';
     const skillName = skill.displayName || skill.name;
+    const frontendBase = process.env.FRONTEND_URL || 'https://www.agentrix.top';
+
+    const requiresPayment = totalAmount > 0;
+    const checkoutUrl = requiresPayment
+      ? `${frontendBase}/pay/checkout?skillId=${encodeURIComponent(skillId)}&quantity=${quantity}${paymentMethod ? `&method=${encodeURIComponent(paymentMethod)}` : ''}`
+      : undefined;
 
     // 触发人类推广佣金计算
     try {
@@ -597,6 +604,10 @@ export class UnifiedMarketplaceService {
       unitPrice: price,
       totalAmount,
       currency,
+      status: requiresPayment ? 'pending_payment' : 'completed',
+      requiresPayment,
+      paymentMethod: paymentMethod || 'web_checkout',
+      checkoutUrl,
       purchasedAt: new Date().toISOString(),
       orderId,
     };
