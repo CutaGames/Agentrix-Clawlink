@@ -7,6 +7,7 @@ import { Product } from '../../entities/product.entity';
 import { ExternalSkillMapping } from '../../entities/external-skill-mapping.entity';
 import { ProductSkillConversion } from '../../entities/product-skill-conversion.entity';
 import { SkillAnalytics } from '../../entities/skill-analytics.entity';
+import { ClawInstalledSkill } from '../../entities/claw-installed-skill.entity';
 import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
 import { SkillReview } from '../../entities/skill-review.entity';
 import { SkillService } from './skill.service';
@@ -44,6 +45,7 @@ import { UnifiedMarketplaceModule } from '../unified-marketplace/unified-marketp
 import { DeveloperAccountModule } from '../developer-account/developer-account.module';
 import { A2AModule } from '../a2a/a2a.module';
 import { MerchantTaskModule } from '../merchant-task/merchant-task.module';
+import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
 
 @Module({
   imports: [
@@ -54,6 +56,7 @@ import { MerchantTaskModule } from '../merchant-task/merchant-task.module';
       ExternalSkillMapping,
       ProductSkillConversion,
       SkillAnalytics,
+      ClawInstalledSkill,
       UserInstalledSkill,
       SkillReview,
     ]),
@@ -67,6 +70,7 @@ import { MerchantTaskModule } from '../merchant-task/merchant-task.module';
     forwardRef(() => DeveloperAccountModule),
     forwardRef(() => A2AModule),
     forwardRef(() => MerchantTaskModule),
+    forwardRef(() => ClaudeIntegrationModule),
   ],
   controllers: [SkillController, SkillAdminController, DeveloperRevenueController, OnboardingController],
   providers: [

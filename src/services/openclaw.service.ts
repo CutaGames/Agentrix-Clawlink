@@ -132,7 +132,6 @@ export async function toggleSkill(instanceId: string, skillId: string, enabled: 
 export async function installSkillToInstance(instanceId: string, skillId: string): Promise<any> {
   let dbRecorded = false;
   let dbError: string | null = null;
-  let proxyError: string | null = null;
 
   // 1. Record installation in Agentrix marketplace DB
   try {
@@ -157,8 +156,8 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     }
   }
 
-  // 2. Activate on the target claw (platform-hosted claws activate immediately;
-  // disconnected local claws may explicitly return pendingDeploy=true).
+  // 2. Push to live OpenClaw instance (uses skillId as both skillPackageUrl ref and skillId)
+  // If instance has no URL, backend returns success with pendingDeploy=true — this is normal
   let proxyResult: any = {};
   try {
     proxyResult = await apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
@@ -166,8 +165,8 @@ export async function installSkillToInstance(instanceId: string, skillId: string
       body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),
     });
   } catch (proxyErr: any) {
-    proxyError = proxyErr?.message || 'Skill activation failed on claw';
-    proxyResult = { success: false, pendingDeploy: false, proxyFailed: true, message: proxyError };
+    // Proxy push failure is non-fatal — DB record is the important part
+    proxyResult = { pendingDeploy: true, message: 'Will sync when agent reconnects.' };
   }
 
   // If both DB record and proxy push failed, throw an error
@@ -175,12 +174,7 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     throw new Error(dbError || 'Install failed. Please try again.');
   }
 
-  // DB-only success is not enough for a live claw unless backend explicitly said pendingDeploy.
-  if (dbRecorded && proxyError && proxyResult?.pendingDeploy !== true) {
-    throw new Error(`Skill was saved to your account, but activation on this claw failed: ${proxyError}`);
-  }
-
-  return { ...(proxyResult || {}), dbRecorded, dbError, proxyError };
+  return { ...(proxyResult || {}), dbRecorded, dbError };
 }
 
 // Restart instance
@@ -436,6 +430,15 @@ export async function agentSkillInstall(
   return executePlatformTool(instanceId, 'skill_install', { skillId, config });
 }
 
+/** Execute a skill via platform tool */
+export async function agentSkillExecute(
+  instanceId: string,
+  skillId: string,
+  input?: Record<string, any>,
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'skill_execute', { skillId, input });
+}
+
 /** Get AI skill recommendations via platform tool */
 export async function agentSkillRecommend(
   instanceId: string,
@@ -453,6 +456,59 @@ export async function agentMarketplacePurchase(
   paymentMethod: 'wallet' | 'x402' = 'wallet',
 ): Promise<PlatformToolResult> {
   return executePlatformTool(instanceId, 'marketplace_purchase', { skillId, paymentMethod });
+}
+
+/** Search resources/goods in marketplace via platform tool */
+export async function agentResourceSearch(
+  instanceId: string,
+  query: string,
+  resourceType?: string,
+  limit = 10,
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'resource_search', { query, resourceType, limit });
+}
+
+/** Publish a new skill listing via platform tool */
+export async function agentSkillPublish(
+  instanceId: string,
+  payload: {
+    name: string;
+    description: string;
+    displayName?: string;
+    category?: string;
+    price?: number;
+    currency?: string;
+    tags?: string[];
+  },
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'skill_publish', {
+    ...payload,
+    pricing: payload.price && payload.price > 0
+      ? { type: 'per_call', pricePerCall: payload.price, currency: payload.currency || 'USD' }
+      : { type: 'free', currency: payload.currency || 'USD' },
+  });
+}
+
+/** Publish a new resource listing via platform tool */
+export async function agentResourcePublish(
+  instanceId: string,
+  payload: {
+    name: string;
+    description: string;
+    displayName?: string;
+    category?: string;
+    resourceType?: string;
+    price?: number;
+    currency?: string;
+    tags?: string[];
+  },
+): Promise<PlatformToolResult> {
+  return executePlatformTool(instanceId, 'resource_publish', {
+    ...payload,
+    pricing: payload.price && payload.price > 0
+      ? { type: 'per_call', pricePerCall: payload.price, currency: payload.currency || 'USD' }
+      : { type: 'free', currency: payload.currency || 'USD' },
+  });
 }
 
 /** Post a task/bounty via platform tool */

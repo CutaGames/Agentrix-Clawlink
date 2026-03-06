@@ -47,6 +47,14 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     icon: '📦',
   },
   {
+    handlerName: 'skill_execute',
+    displayName: 'Skill Execute',
+    description: 'Execute a marketplace skill directly from the claw',
+    category: 'core',
+    enabledByDefault: true,
+    icon: '▶️',
+  },
+  {
     handlerName: 'skill_recommend',
     displayName: 'Skill Recommendations',
     description: 'Get personalized skill recommendations based on context and usage',
@@ -63,6 +71,14 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     category: 'commerce',
     enabledByDefault: true,
     icon: '🛒',
+  },
+  {
+    handlerName: 'resource_search',
+    displayName: 'Resource Search',
+    description: 'Search resource, service, and goods listings in the unified marketplace',
+    category: 'commerce',
+    enabledByDefault: true,
+    icon: '📚',
   },
   {
     handlerName: 'create_order',
@@ -159,6 +175,14 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     category: 'marketplace',
     enabledByDefault: false,
     icon: '📤',
+  },
+  {
+    handlerName: 'resource_publish',
+    displayName: 'Publish Resource',
+    description: 'Publish a resource, service, or goods listing to the marketplace',
+    category: 'marketplace',
+    enabledByDefault: false,
+    icon: '🧺',
   },
 
   // ─── P2: Task Marketplace ───

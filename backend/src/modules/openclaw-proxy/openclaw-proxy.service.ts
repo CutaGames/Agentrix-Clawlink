@@ -11,14 +11,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OpenClawInstance, OpenClawInstanceStatus } from '../../entities/openclaw-instance.entity';
-import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
-import { Skill } from '../../entities/skill.entity';
 import { OpenClawConnectionService } from '../openclaw-connection/openclaw-connection.service';
+import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
 import { TokenQuotaService, estimateTokens } from '../token-quota/token-quota.service';
 import { SkillExecutorService, ExecutionContext } from '../skill/skill-executor.service';
 import { AGENT_PRESET_SKILLS, getDefaultEnabledSkills, PresetSkill } from '../skill/agent-preset-skills.config';
+import { SkillService } from '../skill/skill.service';
 import { RelayRegistry } from '../openclaw-connection/telegram-bot.service';
-import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
 import { Response } from 'express';
 
 export interface ChatMessageDto {
@@ -35,129 +34,205 @@ export class OpenClawProxyService {
   constructor(
     private readonly connectionService: OpenClawConnectionService,
     private readonly tokenQuotaService: TokenQuotaService,
+    @Inject(forwardRef(() => ClaudeIntegrationService))
+    private readonly claudeIntegrationService: ClaudeIntegrationService,
     @Inject(forwardRef(() => SkillExecutorService))
     private readonly skillExecutorService: SkillExecutorService,
-    @Inject(forwardRef(() => ClaudeIntegrationService))
-    private readonly claudeService: ClaudeIntegrationService,
+    @Inject(forwardRef(() => SkillService))
+    private readonly skillService: SkillService,
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
-    @InjectRepository(UserInstalledSkill)
-    private installedSkillRepo: Repository<UserInstalledSkill>,
   ) {}
 
-  private async loadInstalledSkillRecords(userId: string): Promise<UserInstalledSkill[]> {
-    return this.installedSkillRepo.find({
-      where: { userId },
-      relations: ['skill'],
-      order: { installedAt: 'DESC' },
-    });
-  }
-
-  /**
-   * Load user-installed marketplace skills and build:
-   * 1. `additionalTools` — Anthropic-format tool schemas to pass to LLM
-   * 2. `onToolCall` — execution handler for each skill
-   */
-  private async buildUserSkillTools(userId: string): Promise<{
-    additionalTools: any[];
-    onToolCall: ((name: string, args: any) => Promise<any>) | undefined;
-  }> {
-    let records: UserInstalledSkill[] = [];
-    try {
-      records = (await this.loadInstalledSkillRecords(userId)).filter((record) => record.isEnabled);
-    } catch (e: any) {
-      this.logger.warn(`Could not load installed skills for ${userId}: ${e.message}`);
-    }
-
-    const skillMap = new Map<string, Skill>();
-    const additionalTools: any[] = [];
-
-    for (const rec of records) {
-      const skill = rec.skill;
-      if (!skill) continue;
-
-      // Build a safe tool name (LLM tool names must be alphanumeric + underscores)
-      const toolName = `skill_${skill.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
-      skillMap.set(toolName, skill);
-
-      // Build Anthropic-format tool schema from skill's inputSchema
-      const inputSchema = skill.inputSchema || { type: 'object', properties: {}, required: [] };
-      additionalTools.push({
-        name: toolName,
-        description: `${skill.displayName || skill.name}: ${skill.description}`,
-        input_schema: {
-          type: 'object' as const,
-          properties: inputSchema.properties || {},
-          required: inputSchema.required || [],
-        },
-      });
-    }
-
-    if (additionalTools.length === 0) {
-      return { additionalTools: [], onToolCall: undefined };
-    }
-
-    const onToolCall = async (name: string, args: any): Promise<any> => {
-      const skill = skillMap.get(name);
-      if (!skill) return { error: `Unknown skill: ${name}` };
-
-      const executor = skill.executor;
-      if (!executor) return { error: 'Skill has no executor defined' };
-
-      if (executor.type === 'internal' && executor.internalHandler) {
-        // Dispatch to internal skill executor
-        try {
-          const ctx: ExecutionContext = { userId, sessionId: undefined, metadata: {} };
-          return await this.skillExecutorService.executeInternal(executor.internalHandler, args, ctx);
-        } catch (e: any) {
-          return { error: e.message };
-        }
-      }
-
-      if (executor.type === 'http' && executor.endpoint) {
-        // Call the skill's HTTP endpoint
-        try {
-          const method = executor.method || 'POST';
-          const resp = await fetch(executor.endpoint, {
-            method,
-            headers: {
-              'Content-Type': 'application/json',
-              ...(executor.headers || {}),
-            },
-            body: method !== 'GET' ? JSON.stringify({ ...args, _userId: userId }) : undefined,
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (!resp.ok) {
-            const text = await resp.text().catch(() => '');
-            return { error: `Skill endpoint returned ${resp.status}: ${text}` };
-          }
-          return resp.json();
-        } catch (e: any) {
-          return { error: `Skill HTTP call failed: ${e.message}` };
-        }
-      }
-
-      return { error: `Unsupported skill executor type: ${executor.type}` };
-    };
-
-    return { additionalTools, onToolCall };
+  private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
+    return this.connectionService.getInstanceById(userId, instanceId);
   }
 
   private async resolveInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
-    const instance = await this.connectionService.getInstanceById(userId, instanceId);
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (instance.status !== OpenClawInstanceStatus.ACTIVE) {
       throw new BadGatewayException(`Instance "${instance.name}" is not active (status: ${instance.status})`);
     }
-    // Platform-hosted instances have no URL — that's OK, they route through Claude/Bedrock
-    if (!instance.instanceUrl && !(instance.capabilities as any)?.platformHosted) {
+    if (!instance.instanceUrl) {
       throw new BadGatewayException('Instance has no URL configured');
     }
     return instance;
   }
 
-  /** Check if an instance is platform-hosted (uses Agentrix backend LLM, no external URL). */
   private isPlatformHosted(instance: OpenClawInstance): boolean {
     return !instance.instanceUrl || !!(instance.capabilities as any)?.platformHosted;
+  }
+
+  private buildPlatformToolSchema(skill: PresetSkill) {
+    return {
+      name: skill.handlerName,
+      description: skill.description,
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          query: { type: 'string', description: 'Search query or natural-language request' },
+          skillId: { type: 'string', description: 'Marketplace skill id when already known' },
+          itemId: { type: 'string', description: 'Marketplace item id when already known' },
+          title: { type: 'string', description: 'Task or listing title' },
+          name: { type: 'string', description: 'Skill or resource name' },
+          description: { type: 'string', description: 'Task, skill, or resource description' },
+          category: { type: 'string', description: 'Marketplace category' },
+          resourceType: { type: 'string', description: 'digital, service, physical, data, logic' },
+          price: { type: 'number', description: 'Price amount if publishing or buying' },
+          budget: { type: 'number', description: 'Task budget' },
+          currency: { type: 'string', description: 'Currency code like USD or CNY' },
+          paymentMethod: { type: 'string', description: 'wallet, stripe, quickpay, etc.' },
+          input: { type: 'object', description: 'Structured input payload for skill execution' },
+          params: { type: 'object', description: 'Generic structured params' },
+        },
+        additionalProperties: true,
+      },
+    };
+  }
+
+  private buildMarketplaceSkillToolName(name: string): string {
+    return `installed_${String(name || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')}`;
+  }
+
+  private async buildPlatformHostedTools(userId: string, instance: OpenClawInstance): Promise<{
+    additionalTools: any[];
+    onToolCall: (name: string, args: any) => Promise<any>;
+  }> {
+    const installations = await this.skillService.findEffectiveInstalledSkillsForInstance(instance.id, userId);
+    const enabledInstallations = installations.filter((installation: any) => installation?.isEnabled && installation?.skill);
+
+    const presetTools = AGENT_PRESET_SKILLS.map((skill) => this.buildPlatformToolSchema(skill));
+    const installedToolEntries = enabledInstallations.map((installation: any) => {
+      const skill = installation.skill;
+      return {
+        toolName: this.buildMarketplaceSkillToolName(skill.displayName || skill.name || skill.id),
+        skill,
+        schema: {
+          name: this.buildMarketplaceSkillToolName(skill.displayName || skill.name || skill.id),
+          description: skill.description || `Execute installed marketplace skill ${skill.displayName || skill.name}`,
+          input_schema: skill.inputSchema || {
+            type: 'object' as const,
+            properties: {
+              input: { type: 'string' },
+            },
+            additionalProperties: true,
+          },
+        },
+      };
+    });
+
+    const installedToolMap = new Map(installedToolEntries.map((entry) => [entry.toolName, entry.skill]));
+
+    return {
+      additionalTools: [
+        ...presetTools,
+        ...installedToolEntries.map((entry) => entry.schema),
+      ],
+      onToolCall: async (name: string, args: any) => {
+        const preset = AGENT_PRESET_SKILLS.find((skill) => skill.handlerName === name);
+        const ctx: ExecutionContext = {
+          userId,
+          sessionId: undefined,
+          metadata: { instanceId: instance.id, source: 'platform-hosted-chat' },
+        };
+
+        if (preset) {
+          return this.skillExecutorService.executeInternal(name, args || {}, ctx);
+        }
+
+        const installedSkill = installedToolMap.get(name);
+        if (installedSkill) {
+          return this.skillExecutorService.execute(installedSkill.id, args || {}, ctx);
+        }
+
+        return undefined;
+      },
+    };
+  }
+
+  private async runPlatformHostedChat(
+    userId: string,
+    instance: OpenClawInstance,
+    dto: ChatMessageDto,
+  ) {
+    const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
+    const sessionId = dto.sessionId || `platform-${Date.now()}`;
+    const messages = [
+      {
+        role: 'system' as const,
+        content:
+          `You are "${instance.name || 'Agent'}", a personal AI claw running on Agentrix. ` +
+          `Use the provided tools to search, install, execute, purchase, publish, and arrange marketplace skills, tasks, and resources when helpful. ` +
+          `Reply in the same language as the user and be action-oriented.`,
+      },
+      { role: 'user' as const, content: dto.message },
+    ];
+
+    const result = await this.claudeIntegrationService.chatWithFunctions(messages, {
+      model: dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+      context: { userId, sessionId },
+      additionalTools,
+      onToolCall,
+    });
+
+    const text = result?.text || '';
+    const inputTokens = estimateTokens(dto.message);
+    const outputTokens = estimateTokens(text);
+    this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
+      (err) => this.logger.warn(`Token deduct failed: ${err.message}`),
+    );
+
+    return {
+      sessionId,
+      reply: {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: text,
+        createdAt: new Date().toISOString(),
+      },
+      toolCalls: result?.toolCalls || null,
+      platformHosted: true,
+    };
+  }
+
+  private async streamPlatformHostedChat(
+    userId: string,
+    instance: OpenClawInstance,
+    dto: ChatMessageDto,
+    res: Response,
+  ): Promise<void> {
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+    }
+
+    try {
+      const result = await this.runPlatformHostedChat(userId, instance, dto);
+      const text = result.reply?.content || 'Sorry, I could not generate a response.';
+      const chunks = text.match(/.{1,12}/gs) || [text];
+      for (const chunk of chunks) {
+        if (res.writableEnded) break;
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
+      }
+      if (!res.writableEnded) {
+        res.write('data: [DONE]\n\n');
+      }
+    } catch (err: any) {
+      this.logger.error(`Platform-hosted stream error: ${err.message}`);
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      }
+    } finally {
+      if (!res.writableEnded) res.end();
+    }
   }
 
   private buildHeaders(instance: OpenClawInstance): Record<string, string> {
@@ -176,46 +251,23 @@ export class OpenClawProxyService {
     // Check quota before forwarding (throws ForbiddenException if exhausted)
     await this.tokenQuotaService.getOrCreateCurrentQuota(userId);
 
-    const instance = await this.resolveInstance(userId, instanceId);
-
-    // Platform-hosted: route through Claude/Bedrock
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (this.isPlatformHosted(instance)) {
-      const model = dto.model || (instance.capabilities as any)?.activeModel || 'claude-haiku-4-5';
-      const agentName = instance.name || 'Agent';
-
-      // Load user-installed marketplace skills as additional tools
-      const { additionalTools, onToolCall } = await this.buildUserSkillTools(userId);
-
-      const messages = [
-        { role: 'system' as const, content: `You are "${agentName}", a personal AI assistant. Reply in the same language the user uses. Be concise and helpful.` },
-        { role: 'user' as const, content: dto.message },
-      ];
-      const result = await this.claudeService.chatWithFunctions(messages, {
-        model,
-        context: { userId, sessionId: dto.sessionId },
-        additionalTools: additionalTools.length > 0 ? additionalTools : undefined,
-        onToolCall: onToolCall || undefined,
-      });
-      const text = result?.text || '';
-      const inputTokens = estimateTokens(dto.message);
-      const outputTokens = estimateTokens(text);
-      this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
-        err => this.logger.warn(`Token deduct failed: ${err.message}`),
-      );
-      return { reply: text, toolCalls: result?.toolCalls || null };
+      return this.runPlatformHostedChat(userId, instance, dto);
     }
 
-    const url = `${instance.instanceUrl}/api/chat`;
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
+    const url = `${resolvedInstance.instanceUrl}/api/chat`;
 
     try {
       const resp = await fetch(url, {
         method: 'POST',
-        headers: this.buildHeaders(instance),
+        headers: this.buildHeaders(resolvedInstance),
         body: JSON.stringify({
           message: dto.message,
           sessionId: dto.sessionId,
           context: dto.context,
-          model: dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+          model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
         }),
         signal: AbortSignal.timeout(30_000),
       });
@@ -252,14 +304,13 @@ export class OpenClawProxyService {
     dto: ChatMessageDto,
     res: Response,
   ): Promise<void> {
-    const instance = await this.resolveInstance(userId, instanceId);
-
-    // Platform-hosted instances: route through Agentrix's Claude/Bedrock with full tool support
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (this.isPlatformHosted(instance)) {
-      return this.streamPlatformChat(userId, instance, dto, res);
+      return this.streamPlatformHostedChat(userId, instance, dto, res);
     }
 
-    const url = `${instance.instanceUrl}/api/chat/stream`;
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
+    const url = `${resolvedInstance.instanceUrl}/api/chat/stream`;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -270,19 +321,19 @@ export class OpenClawProxyService {
     try {
       const upstreamResp = await fetch(url, {
         method: 'POST',
-        headers: { ...this.buildHeaders(instance), Accept: 'text/event-stream' },
+        headers: { ...this.buildHeaders(resolvedInstance), Accept: 'text/event-stream' },
         body: JSON.stringify({
           message: dto.message,
           sessionId: dto.sessionId,
-          model: dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+          model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
         }),
         signal: AbortSignal.timeout(60_000),
       });
 
       if (!upstreamResp.ok || !upstreamResp.body) {
-        // Upstream failed — fallback to platform chat
-        this.logger.warn(`Upstream ${url} returned ${upstreamResp.status}, falling back to platform chat`);
-        return this.streamPlatformChat(userId, instance, dto, res);
+        res.write(`data: ${JSON.stringify({ error: 'Instance stream unavailable' })}\n\n`);
+        res.end();
+        return;
       }
 
       const reader = upstreamResp.body.getReader();
@@ -296,94 +347,9 @@ export class OpenClawProxyService {
         if ((res as any).flush) (res as any).flush();
       }
     } catch (err: any) {
-      this.logger.error(`Proxy stream error: ${err.message}, falling back to platform chat`);
-      if (!res.headersSent) {
-        return this.streamPlatformChat(userId, instance, dto, res);
-      }
+      this.logger.error(`Proxy stream error: ${err.message}`);
       if (!res.writableEnded) {
         res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-      }
-    } finally {
-      if (!res.writableEnded) res.end();
-    }
-  }
-
-  /**
-   * Stream a chat via the platform's own Claude/Bedrock integration.
-   * This provides full tool calling (web search, marketplace, etc.).
-   */
-  private async streamPlatformChat(
-    userId: string,
-    instance: OpenClawInstance,
-    dto: ChatMessageDto,
-    res: Response,
-  ): Promise<void> {
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no');
-      res.flushHeaders();
-    }
-
-    try {
-      const model = dto.model
-        || (instance.capabilities as any)?.activeModel
-        || process.env.DEFAULT_MODEL
-        || 'claude-haiku-4-5';
-
-      // Build system prompt tailored to this agent
-      const agentName = instance.name || 'Agent';
-      const systemPrompt = `You are "${agentName}", a personal AI assistant on the Agentrix platform.
-You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
-
-You have the following real capabilities you can use:
-- **Web search**: when you need up-to-date information, call the search_web tool
-- **Agentrix marketplace**: search and browse products using search_agentrix_products
-- **Shopping**: add items to cart, checkout, manage orders
-
-Always reply in the same language the user uses. Be concise, helpful, and friendly.
-If the user asks you to search the web, USE the search_web tool — don't say you can't.`;
-
-      // Load user-installed marketplace skills as additional tools
-      const { additionalTools, onToolCall } = await this.buildUserSkillTools(userId);
-
-      const messages = [
-        { role: 'system' as const, content: systemPrompt },
-        { role: 'user' as const, content: dto.message },
-      ];
-
-      const result = await this.claudeService.chatWithFunctions(messages, {
-        model,
-        context: { userId, sessionId: dto.sessionId },
-        additionalTools: additionalTools.length > 0 ? additionalTools : undefined,
-        onToolCall: onToolCall || undefined,
-      });
-
-      const text = result?.text || 'Sorry, I could not generate a response.';
-
-      // Stream output in small chunks for typing effect
-      const chunks = text.match(/.{1,8}/gs) || [text];
-      for (const chunk of chunks) {
-        if (res.writableEnded) break;
-        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-        if ((res as any).flush) (res as any).flush();
-      }
-      if (!res.writableEnded) {
-        res.write('data: [DONE]\n\n');
-      }
-
-      // Deduct tokens
-      const inputTokens = estimateTokens(dto.message);
-      const outputTokens = estimateTokens(text);
-      this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
-        err => this.logger.warn(`Token deduct failed: ${err.message}`),
-      );
-    } catch (err: any) {
-      this.logger.error(`Platform chat error: ${err.message}`);
-      if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-        res.write('data: [DONE]\n\n');
       }
     } finally {
       if (!res.writableEnded) res.end();
@@ -411,27 +377,27 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
 
   /** Get installed skills from the instance */
   async getInstanceSkills(userId: string, instanceId: string) {
-    const instance = await this.resolveInstance(userId, instanceId);
-
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (this.isPlatformHosted(instance)) {
-      const records = await this.loadInstalledSkillRecords(userId);
-      return records
-        .filter((record) => !!record.skill)
-        .map((record) => ({
-          id: record.skill.id,
-          name: record.skill.displayName || record.skill.name,
-          enabled: record.isEnabled,
-          version: record.skill.version || '1.0.0',
-          description: record.skill.description,
-          installedAt: record.installedAt,
+      const installations = await this.skillService.findEffectiveInstalledSkillsForInstance(instanceId, userId);
+      return installations
+        .filter((installation: any) => !!installation?.skill)
+        .map((installation: any) => ({
+          id: installation.skill.id,
+          name: installation.skill.displayName || installation.skill.name,
+          enabled: installation.isEnabled,
+          version: installation.skill.version || '1.0.0',
+          description: installation.skill.description,
+          installedAt: installation.installedAt,
           source: 'marketplace',
           platformHosted: true,
         }));
     }
 
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
     try {
-      const resp = await fetch(`${instance.instanceUrl}/api/skills`, {
-        headers: this.buildHeaders(instance),
+      const resp = await fetch(`${resolvedInstance.instanceUrl}/api/skills`, {
+        headers: this.buildHeaders(resolvedInstance),
         signal: AbortSignal.timeout(10_000),
       });
       if (!resp.ok) return [];
@@ -443,24 +409,22 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
 
   /** Toggle a skill on/off */
   async toggleSkill(userId: string, instanceId: string, skillId: string, enabled: boolean) {
-    const instance = await this.resolveInstance(userId, instanceId);
-
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (this.isPlatformHosted(instance)) {
-      const installation = await this.installedSkillRepo.findOne({
-        where: { userId, skillId },
-      });
-      if (!installation) {
-        throw new NotFoundException('Skill is not installed on this claw');
+      const isInstalledOnInstance = await this.skillService.isSkillInstalledForInstance(instanceId, skillId);
+      if (isInstalledOnInstance) {
+        await this.skillService.updateInstanceInstalledSkill(instanceId, skillId, { isEnabled: enabled });
+      } else {
+        await this.skillService.updateInstalledSkill(userId, skillId, { isEnabled: enabled });
       }
-      installation.isEnabled = enabled;
-      await this.installedSkillRepo.save(installation);
       return { success: true, platformHosted: true, enabled };
     }
 
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
     try {
-      const resp = await fetch(`${instance.instanceUrl}/api/skills/${skillId}/toggle`, {
+      const resp = await fetch(`${resolvedInstance.instanceUrl}/api/skills/${skillId}/toggle`, {
         method: 'POST',
-        headers: this.buildHeaders(instance),
+        headers: this.buildHeaders(resolvedInstance),
         body: JSON.stringify({ enabled }),
         signal: AbortSignal.timeout(10_000),
       });
@@ -475,23 +439,13 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
     const instance = await this.connectionService.getInstanceById(userId, instanceId);
 
     if (this.isPlatformHosted(instance)) {
-      const existing = await this.installedSkillRepo.findOne({
-        where: { userId, skillId },
-        relations: ['skill'],
-      });
-
-      if (existing && !existing.isEnabled) {
-        existing.isEnabled = true;
-        await this.installedSkillRepo.save(existing);
-      }
-
       return {
         success: true,
         status: 200,
         pendingDeploy: false,
         platformHosted: true,
         skillActive: true,
-        message: `Skill is now active on \"${instance.name}\" and available in chat immediately.`,
+        message: `Skill is now active on "${instance.name}" and available in chat immediately.`,
       };
     }
 
@@ -580,14 +534,20 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
 
   /** Proxy GET /status from the instance */
   async getInstanceStatus(userId: string, instanceId: string) {
-    const instance = await this.resolveInstance(userId, instanceId);
-    // Platform-hosted instances are always "online" as they use the backend's LLM
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (this.isPlatformHosted(instance)) {
-      return { online: true, status: 200, platformHosted: true, model: (instance.capabilities as any)?.activeModel || 'claude-haiku-4-5' };
+      return {
+        online: true,
+        status: 200,
+        platformHosted: true,
+        model: (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+      };
     }
+
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
     try {
-      const resp = await fetch(`${instance.instanceUrl}/api/health`, {
-        headers: this.buildHeaders(instance),
+      const resp = await fetch(`${resolvedInstance.instanceUrl}/api/health`, {
+        headers: this.buildHeaders(resolvedInstance),
         signal: AbortSignal.timeout(5_000),
       });
       const data = resp.ok ? await resp.json().catch(() => ({})) : {};
@@ -607,7 +567,7 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
    */
   async getAvailablePlatformTools(userId: string, instanceId: string) {
     // Validate ownership
-    await this.resolveInstance(userId, instanceId);
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
 
     // Preset skills available to all claws
     const presets = AGENT_PRESET_SKILLS.map((s) => ({
@@ -620,9 +580,23 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
       type: 'platform' as const,
     }));
 
+    const installations = await this.skillService.findEffectiveInstalledSkillsForInstance(instance.id, userId);
+    const installedTools = installations
+      .filter((installation: any) => !!installation?.skill)
+      .map((installation: any) => ({
+        name: this.buildMarketplaceSkillToolName(installation.skill.displayName || installation.skill.name || installation.skill.id),
+        displayName: installation.skill.displayName || installation.skill.name,
+        description: installation.skill.description,
+        category: installation.skill.category,
+        enabledByDefault: installation.isEnabled,
+        icon: '⚡',
+        type: 'installed-skill' as const,
+        skillId: installation.skill.id,
+      }));
+
     return {
-      tools: presets,
-      total: presets.length,
+      tools: [...presets, ...installedTools],
+      total: presets.length + installedTools.length,
       defaultEnabled: getDefaultEnabledSkills().map((s) => s.handlerName),
     };
   }
@@ -639,7 +613,7 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
     params: Record<string, any>,
   ) {
     // Validate instance ownership
-    await this.resolveInstance(userId, instanceId);
+    await this.ensureOwnedInstance(userId, instanceId);
 
     // Validate tool name exists as a registered handler
     const presetNames = AGENT_PRESET_SKILLS.map((s) => s.handlerName);
@@ -684,7 +658,7 @@ If the user asks you to search the web, USE the search_web tool — don't say yo
     instanceId: string,
     calls: Array<{ tool: string; params: Record<string, any> }>,
   ) {
-    await this.resolveInstance(userId, instanceId);
+    await this.ensureOwnedInstance(userId, instanceId);
 
     const results = [];
     for (const call of calls) {

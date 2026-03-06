@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
+import { ClawInstalledSkill } from '../../entities/claw-installed-skill.entity';
 import { Skill, SkillStatus, SkillPricingType, SkillValueType } from '../../entities/skill.entity';
 import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
 import { SkillConverterService } from './skill-converter.service';
@@ -11,6 +12,8 @@ export class SkillService {
   constructor(
     @InjectRepository(Skill)
     private skillRepository: Repository<Skill>,
+    @InjectRepository(ClawInstalledSkill)
+    private clawInstalledSkillRepository: Repository<ClawInstalledSkill>,
     @InjectRepository(UserInstalledSkill)
     private userInstalledSkillRepository: Repository<UserInstalledSkill>,
     private skillConverter: SkillConverterService,
@@ -370,6 +373,101 @@ export class SkillService {
     }
 
     return this.userInstalledSkillRepository.save(installation);
+  }
+
+  /**
+   * 为指定 Claw 实例安装技能
+   */
+  async installSkillForInstance(
+    instanceId: string,
+    skillId: string,
+    installedByUserId?: string,
+    config?: Record<string, any>,
+  ): Promise<ClawInstalledSkill> {
+    const skill = await this.findOne(skillId);
+    if (skill.status !== SkillStatus.PUBLISHED) {
+      throw new NotFoundException('Skill is not available for installation');
+    }
+
+    const existing = await this.clawInstalledSkillRepository.findOne({
+      where: { instanceId, skillId },
+    });
+    if (existing) {
+      throw new ConflictException('Skill is already installed on this claw');
+    }
+
+    const installation = this.clawInstalledSkillRepository.create({
+      instanceId,
+      installedByUserId,
+      skillId,
+      isEnabled: true,
+      config: config || {},
+    });
+
+    return this.clawInstalledSkillRepository.save(installation);
+  }
+
+  async uninstallSkillForInstance(instanceId: string, skillId: string): Promise<void> {
+    const installation = await this.clawInstalledSkillRepository.findOne({
+      where: { instanceId, skillId },
+    });
+    if (!installation) {
+      throw new NotFoundException('Skill is not installed on this claw');
+    }
+    await this.clawInstalledSkillRepository.remove(installation);
+  }
+
+  async findInstanceInstalledSkills(instanceId: string): Promise<ClawInstalledSkill[]> {
+    return this.clawInstalledSkillRepository.find({
+      where: { instanceId },
+      relations: ['skill'],
+      order: { installedAt: 'DESC' },
+    });
+  }
+
+  async findEffectiveInstalledSkillsForInstance(
+    instanceId: string,
+    fallbackUserId?: string,
+  ): Promise<Array<ClawInstalledSkill | UserInstalledSkill>> {
+    const instanceInstallations = await this.findInstanceInstalledSkills(instanceId);
+    if (instanceInstallations.length > 0 || !fallbackUserId) {
+      return instanceInstallations;
+    }
+
+    return this.userInstalledSkillRepository.find({
+      where: { userId: fallbackUserId },
+      relations: ['skill'],
+      order: { installedAt: 'DESC' },
+    });
+  }
+
+  async isSkillInstalledForInstance(instanceId: string, skillId: string): Promise<boolean> {
+    const count = await this.clawInstalledSkillRepository.count({
+      where: { instanceId, skillId },
+    });
+    return count > 0;
+  }
+
+  async updateInstanceInstalledSkill(
+    instanceId: string,
+    skillId: string,
+    update: { isEnabled?: boolean; config?: Record<string, any> },
+  ): Promise<ClawInstalledSkill> {
+    const installation = await this.clawInstalledSkillRepository.findOne({
+      where: { instanceId, skillId },
+    });
+    if (!installation) {
+      throw new NotFoundException('Skill is not installed on this claw');
+    }
+
+    if (update.isEnabled !== undefined) {
+      installation.isEnabled = update.isEnabled;
+    }
+    if (update.config !== undefined) {
+      installation.config = update.config;
+    }
+
+    return this.clawInstalledSkillRepository.save(installation);
   }
 
   // ========== V2.0 Playground API ==========
