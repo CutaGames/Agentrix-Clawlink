@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import {
   TranscribeStreamingClient,
   StartStreamTranscriptionCommand,
+  AudioStream,
   MediaEncoding,
   LanguageCode,
 } from '@aws-sdk/client-transcribe-streaming';
