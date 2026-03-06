@@ -8,7 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { loginWithGoogle, loginWithApple, loginWithX, loginWithTelegram, loginWithEmail, registerWithEmail } from '../../services/auth';
+import { loginWithGoogle, loginWithApple, loginWithX, loginWithTelegram, loginWithDiscord, loginWithEmail, registerWithEmail } from '../../services/auth';
 import { loginWithOpenClaw } from '../../services/auth';
 import type { AuthStackParamList } from '../../navigation/types';
 
@@ -76,10 +76,9 @@ export function LoginScreen() {
       // Navigate to WalletConnect screen for nonce→sign→verify flow
       (navigation as any).navigate('WalletConnect', { walletId: target.id });
     } else {
-      Alert.alert(
-        t({ en: 'No Wallet Detected', zh: '未检测到钱包' }), 
-        t({ en: 'Please install a supported Web3 wallet app (e.g., MetaMask, TokenPocket) to continue.', zh: '请安装支持的 Web3 钱包应用（如 MetaMask、TokenPocket）以继续。' })
-      );
+      // Fallback: No detected wallet, just navigate to WalletConnect without a specific walletId,
+      // it will rely on WalletConnect's universal modal
+      (navigation as any).navigate('WalletConnect');
     }
     setShowWalletModal(false);
   };
@@ -139,6 +138,7 @@ export function LoginScreen() {
       if (provider === 'google') result = await loginWithGoogle();
       else if (provider === 'x') result = await loginWithX();
       else if (provider === 'telegram') result = await loginWithTelegram();
+      else if (provider === 'discord') result = await loginWithDiscord();
       else if (provider === 'apple') result = await loginWithApple();
       else return;
       // handleLoginResult (inside loginWith*) already calls setAuth + fetches instances.

@@ -18,7 +18,7 @@ function getBackendBaseUrl(): string {
 // ClawLink deep link scheme
 function getMobileCallbackUrl(): string {
   return AuthSession.makeRedirectUri({
-    scheme: 'clawlink',
+    scheme: 'agentrix',
     path: 'auth/callback',
   });
 }
