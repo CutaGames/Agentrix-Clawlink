@@ -61,24 +61,11 @@ export function LoginScreen() {
   };
 
   const handleWalletLogin = async (wallet?: typeof WALLET_PROVIDERS[0]) => {
-    // If no specific wallet is chosen but we detected multiple, show a picker
-    if (!wallet && detectedWallets.length > 1) {
-      setShowWalletModal(true);
-      return;
-    }
-    
-    // Choose the selected one, or the first detected one
-    const target = wallet || detectedWallets[0];
-
-    if (target) {
-      // Navigate to WalletConnect screen for nonce→sign→verify flow
-      (navigation as any).navigate('WalletConnect', { walletId: target.id });
-    } else {
-      Alert.alert(
-        t({ en: 'No Wallet Detected', zh: '未检测到钱包' }), 
-        t({ en: 'Please install a supported Web3 wallet app (e.g., MetaMask, TokenPocket) to continue.', zh: '请安装支持的 Web3 钱包应用（如 MetaMask、TokenPocket）以继续。' })
-      );
-    }
+    // Always enter the dedicated wallet-connect flow so users can:
+    // 1) pick an installed wallet and deep-link into it,
+    // 2) install a wallet if none is present,
+    // 3) fall back to WalletConnect QR.
+    (navigation as any).navigate('WalletConnect', wallet ? { walletId: wallet.id } : undefined);
     setShowWalletModal(false);
   };
 
@@ -97,33 +84,7 @@ export function LoginScreen() {
     } catch (err: any) {
       Alert.alert(
         t({ en: 'Connection Failed', zh: '连接失败' }),
-        err?.message || t({ en: 'Could not connect to OpenClaw instance. The server might be offline. Do you want to force bind it anyway?', zh: '无法连接到 OpenClaw 实例，服务器可能离线。是否强制绑定？' }),
-        [
-          { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
-          {
-            text: t({ en: 'Force Bind', zh: '强制绑定' }),
-            style: 'destructive',
-            onPress: async () => {
-              // Mock a successful login for demo/testing purposes
-              const mockUser = {
-                id: 'mock-user-id',
-                agentrixId: 'mock-agentrix-id',
-                nickname: 'OpenClaw User',
-                roles: ['user'],
-                provider: 'openclaw' as const,
-                openClawInstances: [{
-                  id: 'mock-instance-id',
-                  name: 'My OpenClaw',
-                  instanceUrl: url,
-                  status: 'active' as const,
-                  deployType: 'cloud' as const,
-                }],
-                activeInstanceId: 'mock-instance-id',
-              };
-              await setAuth(mockUser, 'mock-token-123');
-            }
-          }
-        ]
+        err?.message || t({ en: 'Could not connect to OpenClaw instance. Please verify the instance URL and try again.', zh: '无法连接到 OpenClaw 实例，请检查实例地址后重试。' }),
       );
     } finally {
       setLoading(false);
@@ -143,23 +104,7 @@ export function LoginScreen() {
     } catch (err: any) {
       Alert.alert(
         t({ en: 'Login Failed', zh: '登录失败' }), 
-        err?.message || `${provider} ${t({ en: 'login failed. Do you want to mock login for testing?', zh: '登录失败。是否使用模拟登录进行测试？' })}`,
-        [
-          { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
-          {
-            text: t({ en: 'Mock Login', zh: '模拟登录' }),
-            onPress: async () => {
-              const mockUser = {
-                id: `mock-${provider}-user`,
-                agentrixId: `mock-${provider}-agentrix`,
-                nickname: `${provider} User`,
-                roles: ['user'],
-                provider: provider as any,
-              };
-              await setAuth(mockUser, `mock-${provider}-token`);
-            }
-          }
-        ]
+        err?.message || `${provider} ${t({ en: 'login failed. Please try again later.', zh: '登录失败，请稍后重试。' })}`,
       );
     } finally {
       setLoadingProvider(null);
