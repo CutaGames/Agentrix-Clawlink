@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useI18n } from '../../stores/i18nStore';
 import type { AgentStackParamList } from '../../navigation/types';
 import type { Workflow } from './WorkflowListScreen';
 
@@ -44,6 +45,7 @@ export function WorkflowDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const workflowId = route.params?.workflowId;
   const isEdit = !!workflowId;
 
@@ -90,7 +92,7 @@ export function WorkflowDetailScreen() {
       }
       navigation.goBack();
     },
-    onError: (e: any) => Alert.alert('Error', e.message || 'Save failed'),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message || t({ en: 'Save failed', zh: '保存失败' })),
   });
 
   const isValid = name.trim().length > 0 && prompt.trim().length > 0 &&
@@ -98,39 +100,43 @@ export function WorkflowDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>Basic Info</Text>
+      <Text style={styles.sectionTitle}>{t({ en: 'Basic Info', zh: '基础信息' })}</Text>
 
-      <Text style={styles.label}>Workflow Name *</Text>
+      <Text style={styles.label}>{t({ en: 'Workflow Name *', zh: '工作流名称 *' })}</Text>
       <TextInput
         value={name}
         onChangeText={setName}
-        placeholder="e.g. Morning News Digest"
+        placeholder={t({ en: 'e.g. Morning News Digest', zh: '例如：晨间新闻摘要' })}
         placeholderTextColor={colors.textMuted}
         style={styles.input}
       />
 
-      <Text style={styles.label}>Description</Text>
+      <Text style={styles.label}>{t({ en: 'Description', zh: '描述' })}</Text>
       <TextInput
         value={description}
         onChangeText={setDescription}
-        placeholder="What does this workflow do?"
+        placeholder={t({ en: 'What does this workflow do?', zh: '这个工作流会做什么？' })}
         placeholderTextColor={colors.textMuted}
         style={styles.input}
       />
 
-      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Trigger</Text>
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>{t({ en: 'Trigger', zh: '触发方式' })}</Text>
       <View style={styles.triggerRow}>
-        {(['cron', 'webhook', 'manual'] as TriggerType[]).map((t) => (
+        {(['cron', 'webhook', 'manual'] as TriggerType[]).map((trigger) => (
           <TouchableOpacity
-            key={t}
-            style={[styles.triggerBtn, triggerType === t && styles.triggerBtnActive]}
-            onPress={() => setTriggerType(t)}
+            key={trigger}
+            style={[styles.triggerBtn, triggerType === trigger && styles.triggerBtnActive]}
+            onPress={() => setTriggerType(trigger)}
           >
             <Text style={styles.triggerIcon}>
-              {t === 'cron' ? '⏰' : t === 'webhook' ? '🔗' : '▶️'}
+              {trigger === 'cron' ? '⏰' : trigger === 'webhook' ? '🔗' : '▶️'}
             </Text>
-            <Text style={[styles.triggerLabel, triggerType === t && styles.triggerLabelActive]}>
-              {t === 'cron' ? 'Schedule' : t === 'webhook' ? 'Webhook' : 'Manual'}
+            <Text style={[styles.triggerLabel, triggerType === trigger && styles.triggerLabelActive]}>
+              {trigger === 'cron'
+                ? t({ en: 'Schedule', zh: '定时' })
+                : trigger === 'webhook'
+                  ? t({ en: 'Webhook', zh: 'Webhook' })
+                  : t({ en: 'Manual', zh: '手动' })}
             </Text>
           </TouchableOpacity>
         ))}
@@ -138,7 +144,7 @@ export function WorkflowDetailScreen() {
 
       {triggerType === 'cron' && (
         <>
-          <Text style={styles.label}>Cron Expression *</Text>
+          <Text style={styles.label}>{t({ en: 'Cron Expression *', zh: 'Cron 表达式 *' })}</Text>
           <TextInput
             value={cronExpr}
             onChangeText={setCronExpr}
@@ -147,7 +153,7 @@ export function WorkflowDetailScreen() {
             style={styles.input}
             autoCapitalize="none"
           />
-          <Text style={styles.helper}>Presets:</Text>
+          <Text style={styles.helper}>{t({ en: 'Presets:', zh: '预设：' })}</Text>
           <View style={styles.presetRow}>
             {CRON_PRESETS.map((p) => (
               <TouchableOpacity
@@ -166,10 +172,10 @@ export function WorkflowDetailScreen() {
 
       {triggerType === 'webhook' && (
         <>
-          <Text style={styles.label}>Webhook URL (will be generated)</Text>
+          <Text style={styles.label}>{t({ en: 'Webhook URL (will be generated)', zh: 'Webhook 地址（保存后生成）' })}</Text>
           <View style={styles.webhookBox}>
             <Text style={styles.webhookText}>
-              {webhookUrl || 'A unique webhook URL will be generated after saving.'}
+              {webhookUrl || t({ en: 'A unique webhook URL will be generated after saving.', zh: '保存后会自动生成唯一的 Webhook 地址。' })}
             </Text>
           </View>
         </>
@@ -178,21 +184,21 @@ export function WorkflowDetailScreen() {
       {triggerType === 'manual' && (
         <View style={styles.infoBanner}>
           <Text style={styles.infoBannerText}>
-            ▶️ Manual workflows are triggered via the "Run" button in the workflow list or via the API.
+            {t({ en: '▶️ Manual workflows are triggered via the "Run" button in the workflow list or via the API.', zh: '▶️ 手动工作流可通过工作流列表中的“运行”按钮，或通过 API 触发。' })}
           </Text>
         </View>
       )}
 
-      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Agent Instructions *</Text>
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>{t({ en: 'Agent Instructions *', zh: '智能体指令 *' })}</Text>
       <Text style={styles.helper}>
-        What should your agent do when this workflow runs? Be specific and detailed.
+        {t({ en: 'What should your agent do when this workflow runs? Be specific and detailed.', zh: '当这个工作流运行时，智能体需要执行什么？请尽量写得具体。' })}
       </Text>
       <TextInput
         value={prompt}
         onChangeText={setPrompt}
         multiline
         numberOfLines={6}
-        placeholder="e.g. Search for the top 5 AI news stories from the past 24 hours, summarize them in 2 sentences each, and send me the digest via notification."
+        placeholder={t({ en: 'e.g. Search for the top 5 AI news stories from the past 24 hours, summarize them in 2 sentences each, and send me the digest via notification.', zh: '例如：搜索过去 24 小时内最重要的 5 条 AI 新闻，用 2 句话总结每条，并通过通知发送给我。' })}
         placeholderTextColor={colors.textMuted}
         style={[styles.input, { height: 140, textAlignVertical: 'top' }]}
       />
@@ -204,7 +210,7 @@ export function WorkflowDetailScreen() {
       >
         {saveMut.isPending || loadingEdit
           ? <ActivityIndicator size="small" color="#fff" />
-          : <Text style={styles.saveBtnText}>{isEdit ? 'Update Workflow' : 'Create Workflow'}</Text>
+          : <Text style={styles.saveBtnText}>{isEdit ? t({ en: 'Update Workflow', zh: '更新工作流' }) : t({ en: 'Create Workflow', zh: '创建工作流' })}</Text>
         }
       </TouchableOpacity>
     </ScrollView>

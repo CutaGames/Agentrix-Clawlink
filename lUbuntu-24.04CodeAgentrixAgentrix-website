@@ -1,7 +1,0 @@
-app.json
-backend/src/modules/openclaw-bridge/openclaw-bridge.controller.ts
-backend/tsconfig.tsbuildinfo
-src/screens/MyAgentsScreen.tsx
-src/screens/auth/LoginScreen.tsx
-src/screens/market/CheckoutScreen.tsx
-src/services/auth.ts

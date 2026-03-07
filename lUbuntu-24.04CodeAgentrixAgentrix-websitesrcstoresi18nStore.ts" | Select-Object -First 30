@@ -1,370 +1,0 @@
-[1mdiff --git a/src/services/walletConnect.ts b/src/services/walletConnect.ts[m
-[1mindex fa11699..aff7a9e 100755[m
-[1m--- a/src/services/walletConnect.ts[m
-[1m+++ b/src/services/walletConnect.ts[m
-[36m@@ -1,125 +1,125 @@[m
-[31m-// WalletConnect + MetaMask + OKX 钱包登录服务[m
-[31m-import { apiFetch } from './api';[m
-[31m-import { useAuthStore, AuthUser } from '../stores/authStore';[m
-[31m-import { setApiConfig, saveTokenToStorage } from './api';[m
-[31m-[m
-[31m-// ========== Types ==========[m
-[31m-[m
-[31m-export type WalletProvider = 'walletconnect' | 'metamask' | 'tokenpocket' | 'okx';[m
-[31m-[m
-[31m-interface WalletLoginResponse {[m
-[31m-  access_token: string;[m
-[31m-  user: {[m
-[31m-    id: string;[m
-[31m-    agentrixId: string;[m
-[31m-    email?: string;[m
-[31m-    roles: string[];[m
-[31m-    walletAddress?: string;[m
-[31m-  };[m
-[31m-  wallet: {[m
-[31m-    id: string;[m
-[31m-    walletAddress: string;[m
-[31m-    walletType: string;[m
-[31m-    chain: string;[m
-[31m-    isDefault: boolean;[m
-[31m-  };[m
-[31m-}[m
-[31m-[m
-[31m-// ========== Wallet Deep Links ==========[m
-[31m-[m
-[31m-const WALLET_DEEP_LINKS: Record<WalletProvider, { ios: string; android: string; universal: string }> = {[m
-[31m-  metamask: {[m
-[31m-    ios: 'metamask://',[m
-[31m-    android: 'metamask://',[m
-[31m-    universal: 'https://metamask.app.link',[m
-[31m-  },[m
-[31m-  tokenpocket: {[m
-[31m-    ios: 'tpoutside://',[m
-[31m-    android: 'tpoutside://',[m
-[31m-    universal: 'https://www.tokenpocket.pro',[m
-[31m-  },[m
-[31m-  okx: {[m
-[31m-    ios: 'okx://',[m
-[31m-    android: 'okx://',[m
-[31m-    universal: 'https://www.okx.com/download',[m
-[31m-  },[m
-[31m-  walletconnect: {[m
-[31m-    ios: '',[m
-[31m-    android: '',[m
-[31m-    universal: '',[m
-[31m-  },[m
-[31m-};[m
-[31m-[m
-[31m-// ========== Helper Functions ==========[m
-[31m-[m
-[31m-/**[m
-[31m- * 获取钱包登录 nonce 和签名消息[m
-[31m- */[m
-[31m-export async function getWalletNonce(address: string): Promise<{ nonce: string; message: string }> {[m
-[31m-  return apiFetch(`/auth/wallet/nonce?address=${address}`);[m
-[31m-}[m
-[31m-[m
-[31m-/**[m
-[31m- * 使用钱包签名登录[m
-[31m- */[m
-[31m-export async function walletSignatureLogin(params: {[m
-[31m-  address: string;[m
-[31m-  signature: string;[m
-[31m-  message: string;[m
-[31m-  chainType: 'evm' | 'solana';[m
-[31m-  walletType: WalletProvider;[m
-[31m-}): Promise<AuthUser> {[m
-[31m-  const loginResult = await apiFetch<WalletLoginResponse>('/auth/wallet/login', {[m
-[31m-    method: 'POST',[m
-[31m-    body: JSON.stringify({[m
-[31m-      walletAddress: params.address,[m
-[31m-      walletType: params.walletType === 'okx' ? 'okx' : params.walletType === 'metamask' ? 'metamask' : 'walletconnect',[m
-[31m-      chain: params.chainType,[m
-[31m-      message: params.message,[m
-[31m-      signature: params.signature,[m
-[31m-    }),[m
-[31m-  });[m
-[31m-[m
-[31m-  const { setAuth } = useAuthStore.getState();[m
-[31m-[m
-[31m-  const user: AuthUser = {[m
-[31m-    id: loginResult.user.id,[m
-[31m-    agentrixId: loginResult.user.agentrixId,[m
-[31m-    email: loginResult.user.email,[m
-[31m-    walletAddress: loginResult.wallet?.walletAddress || loginResult.user.walletAddress,[m
-[31m-    roles: loginResult.user.roles || ['user'],[m
-[31m-    provider: 'wallet',[m
-[31m-  };[m
-[31m-[m
-[31m-  setApiConfig({ token: loginResult.access_token });[m
-[31m-  await saveTokenToStorage(loginResult.access_token);[m
-[31m-  await setAuth(user, loginResult.access_token);[m
-[31m-[m
-[31m-  return user;[m
-[31m-}[m
-[31m-[m
-[31m-/**[m
-[31m- * 检查钱包 app 是否已安装[m
-[31m- */[m
-[31m-export function getWalletProviders(): { provider: WalletProvider; name: string; icon: string; description: string }[] {[m
-[31m-  return [[m
-[31m-    {[m
-[31m-      provider: 'metamask',[m
-[31m-      name: 'MetaMask',[m
-[31m-      icon: '🦊',[m
-[31m-      description: 'Connect with MetaMask wallet',[m
-[31m-    },[m
-[31m-    {[m
-[31m-      provider: 'okx',[m
-[31m-      name: 'OKX Wallet',[m
-[31m-      icon: '⭕',[m
-[31m-      description: 'Connect with OKX wallet',[m
-[31m-    },[m
-[31m-    {[m
-[31m-      provider: 'walletconnect',[m
-[31m-      name: 'WalletConnect',[m
-[31m-      icon: '🔗',[m
-[31m-      description: 'Scan QR code with any wallet',[m
-[31m-    },[m
-[31m-  ];[m
-[31m-}[m
-[32m+[m[32m// WalletConnect + MetaMask + OKX 钱包登录服务[m[41m[m
-[32m+[m[32mimport { apiFetch } from './api';[m[41m[m
-[32m+[m[32mimport { useAuthStore, AuthUser } from '../stores/authStore';[m[41m[m
-[32m+[m[32mimport { setApiConfig, saveTokenToStorage } from './api';[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m// ========== Types ==========[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32mexport type WalletProvider = 'walletconnect' | 'metamask' | 'tokenpocket' | 'okx';[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32minterface WalletLoginResponse {[m[41m[m
-[32m+[m[32m  access_token: string;[m[41m[m
-[32m+[m[32m  user: {[m[41m[m
-[32m+[m[32m    id: string;[m[41m[m
-[32m+[m[32m    agentrixId: string;[m[41m[m
-[32m+[m[32m    email?: string;[m[41m[m
-[32m+[m[32m    roles: string[];[m[41m[m
-[32m+[m[32m    walletAddress?: string;[m[41m[m
-[32m+[m[32m  };[m[41m[m
-[32m+[m[32m  wallet: {[m[41m[m
-[32m+[m[32m    id: string;[m[41m[m
-[32m+[m[32m    walletAddress: string;[m[41m[m
-[32m+[m[32m    walletType: string;[m[41m[m
-[32m+[m[32m    chain: string;[m[41m[m
-[32m+[m[32m    isDefault: boolean;[m[41m[m
-[32m+[m[32m  };[m[41m[m
-[32m+[m[32m}[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m// ========== Wallet Deep Links ==========[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32mconst WALLET_DEEP_LINKS: Record<WalletProvider, { ios: string; android: string; universal: string }> = {[m[41m[m
-[32m+[m[32m  metamask: {[m[41m[m
-[32m+[m[32m    ios: 'metamask://',[m[41m[m
-[32m+[m[32m    android: 'metamask://',[m[41m[m
-[32m+[m[32m    universal: 'https://metamask.app.link',[m[41m[m
-[32m+[m[32m  },[m[41m[m
-[32m+[m[32m  tokenpocket: {[m[41m[m
-[32m+[m[32m    ios: 'tpoutside://',[m[41m[m
-[32m+[m[32m    android: 'tpoutside://',[m[41m[m
-[32m+[m[32m    universal: 'https://www.tokenpocket.pro',[m[41m[m
-[32m+[m[32m  },[m[41m[m
-[32m+[m[32m  okx: {[m[41m[m
-[32m+[m[32m    ios: 'okx://',[m[41m[m
-[32m+[m[32m    android: 'okx://',[m[41m[m
-[32m+[m[32m    universal: 'https://www.okx.com/download',[m[41m[m
-[32m+[m[32m  },[m[41m[m
-[32m+[m[32m  walletconnect: {[m[41m[m
-[32m+[m[32m    ios: '',[m[41m[m
-[32m+[m[32m    android: '',[m[41m[m
-[32m+[m[32m    universal: '',[m[41m[m
-[32m+[m[32m  },[m[41m[m
-[32m+[m[32m};[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m// ========== Helper Functions ==========[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m/**[m[41m[m
-[32m+[m[32m * 获取钱包登录 nonce 和签名消息[m[41m[m
-[32m+[m[32m */[m[41m[m
-[32m+[m[32mexport async function getWalletNonce(address: string): Promise<{ nonce: string; message: string }> {[m[41m[m
-[32m+[m[32m  return apiFetch(`/auth/wallet/nonce?address=${address}`);[m[41m[m
-[32m+[m[32m}[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m/**[m[41m[m
-[32m+[m[32m * 使用钱包签名登录[m[41m[m
-[32m+[m[32m */[m[41m[m
-[32m+[m[32mexport async function walletSignatureLogin(params: {[m[41m[m
-[32m+[m[32m  address: string;[m[41m[m
-[32m+[m[32m  signature: string;[m[41m[m
-[32m+[m[32m  message: string;[m[41m[m
-[32m+[m[32m  chainType: 'evm' | 'solana';[m[41m[m
-[32m+[m[32m  walletType: WalletProvider;[m[41m[m
-[32m+[m[32m}): Promise<AuthUser> {[m[41m[m
-[32m+[m[32m  const loginResult = await apiFetch<WalletLoginResponse>('/auth/wallet/login', {[m[41m[m
-[32m+[m[32m    method: 'POST',[m[41m[m
-[32m+[m[32m    body: JSON.stringify({[m[41m[m
-[32m+[m[32m      walletAddress: params.address,[m[41m[m
-[32m+[m[32m      walletType: params.walletType === 'okx' ? 'okx' : params.walletType === 'metamask' ? 'metamask' : 'walletconnect',[m[41m[m
-[32m+[m[32m      chain: params.chainType,[m[41m[m
-[32m+[m[32m      message: params.message,[m[41m[m
-[32m+[m[32m      signature: params.signature,[m[41m[m
-[32m+[m[32m    }),[m[41m[m
-[32m+[m[32m  });[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m  const { setAuth } = useAuthStore.getState();[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m  const user: AuthUser = {[m[41m[m
-[32m+[m[32m    id: loginResult.user.id,[m[41m[m
-[32m+[m[32m    agentrixId: loginResult.user.agentrixId,[m[41m[m
-[32m+[m[32m    email: loginResult.user.email,[m[41m[m
-[32m+[m[32m    walletAddress: loginResult.wallet?.walletAddress || loginResult.user.walletAddress,[m[41m[m
-[32m+[m[32m    roles: loginResult.user.roles || ['user'],[m[41m[m
-[32m+[m[32m    provider: 'wallet',[m[41m[m
-[32m+[m[32m  };[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m  setApiConfig({ token: loginResult.access_token });[m[41m[m
-[32m+[m[32m  await saveTokenToStorage(loginResult.access_token);[m[41m[m
-[32m+[m[32m  await setAuth(user, loginResult.access_token);[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m  return user;[m[41m[m
-[32m+[m[32m}[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m/**[m[41m[m
-[32m+[m[32m * 检查钱包 app 是否已安装[m[41m[m
-[32m+[m[32m */[m[41m[m
-[32m+[m[32mexport function getWalletProviders(): { provider: WalletProvider; name: string; icon: string; description: string }[] {[m[41m[m
-[32m+[m[32m  return [[m[41m[m
-[32m+[m[32m    {[m[41m[m
-[32m+[m[32m      provider: 'metamask',[m[41m[m
-[32m+[m[32m      name: 'MetaMask',[m[41m[m
-[32m+[m[32m      icon: '🦊',[m[41m[m
-[32m+[m[32m      description: 'Connect with MetaMask wallet',[m[41m[m
-[32m+[m[32m    },[m[41m[m
-[32m+[m[32m    {[m[41m[m
-[32m+[m[32m      provider: 'okx',[m[41m[m
-[32m+[m[32m      name: 'OKX Wallet',[m[41m[m
-[32m+[m[32m      icon: '⭕',[m[41m[m
-[32m+[m[32m      description: 'Connect with OKX wallet',[m[41m[m
-[32m+[m[32m    },[m[41m[m
-[32m+[m[32m    {[m[41m[m
-[32m+[m[32m      provider: 'walletconnect',[m[41m[m
-[32m+[m[32m      name: 'WalletConnect',[m[41m[m
-[32m+[m[32m      icon: '🔗',[m[41m[m
-[32m+[m[32m      description: 'Scan QR code with any wallet',[m[41m[m
-[32m+[m[32m    },[m[41m[m
-[32m+[m[32m  ];[m[41m[m
-[32m+[m[32m}[m[41m[m
-[1mdiff --git a/src/stores/i18nStore.ts b/src/stores/i18nStore.ts[m
-[1mindex 2942cd1..d10c01b 100755[m
-[1m--- a/src/stores/i18nStore.ts[m
-[1m+++ b/src/stores/i18nStore.ts[m
-[36m@@ -1,55 +1,55 @@[m
-[31m-/**[m
-[31m- * i18n Store — Chinese/English language switching for mobile app[m
-[31m- * Uses Zustand + AsyncStorage for persistence[m
-[31m- */[m
-[31m-import { create } from 'zustand';[m
-[31m-import { persist, createJSONStorage } from 'zustand/middleware';[m
-[31m-import AsyncStorage from '@react-native-async-storage/async-storage';[m
-[31m-import { NativeModules, Platform } from 'react-native';[m
-[31m-[m
-[31m-export type Language = 'en' | 'zh';[m
-[31m-[m
-[31m-export type TranslationDescriptor = string | { zh: string; en: string };[m
-[31m-[m
-[31m-interface I18nState {[m
-[31m-  language: Language;[m
-[31m-  setLanguage: (lang: Language) => void;[m
-[31m-  t: (desc: TranslationDescriptor) => string;[m
-[31m-}[m
-[31m-[m
-[31m-// Detect device language[m
-[31m-function getDeviceLanguage(): Language {[m
-[31m-  try {[m
-[31m-    let locale = 'en';[m
-[31m-    if (Platform.OS === 'ios') {[m
-[31m-      locale = NativeModules.SettingsManager?.settings?.AppleLocale ||[m
-[31m-               NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] || 'en';[m
-[31m-    } else {[m
-[31m-      locale = NativeModules.I18nManager?.localeIdentifier || 'en';[m
-[31m-    }[m
-[31m-    return locale.startsWith('zh') ? 'zh' : 'en';[m
-[31m-  } catch {[m
-[31m-    return 'en';[m
-[31m-  }[m
-[31m-}[m
-[31m-[m
-[31m-export const useI18n = create<I18nState>()([m
-[31m-  persist([m
-[31m-    (set, get) => ({[m
-[31m-      language: getDeviceLanguage(),[m
-[31m-[m
-[31m-      setLanguage: (lang: Language) => set({ language: lang }),[m
-[31m-[m
-[31m-      t: (desc: TranslationDescriptor): string => {[m
-[31m-        if (typeof desc === 'string') return desc;[m
-[31m-        const lang = get().language;[m
-[31m-        return desc[lang] || desc.en || desc.zh || '';[m
-[31m-      },[m
-[31m-    }),[m
-[31m-    {[m
-[31m-      name: 'agentrix-i18n',[m
-[31m-      storage: createJSONStorage(() => AsyncStorage),[m
-[31m-      partialize: (state) => ({ language: state.language }),[m
-[31m-    }[m
-[31m-  )[m
-[31m-);[m
-[32m+[m[32m/**[m[41m[m
-[32m+[m[32m * i18n Store — Chinese/English language switching for mobile app[m[41m[m
-[32m+[m[32m * Uses Zustand + AsyncStorage for persistence[m[41m[m
-[32m+[m[32m */[m[41m[m
-[32m+[m[32mimport { create } from 'zustand';[m[41m[m
-[32m+[m[32mimport { persist, createJSONStorage } from 'zustand/middleware';[m[41m[m
-[32m+[m[32mimport AsyncStorage from '@react-native-async-storage/async-storage';[m[41m[m
-[32m+[m[32mimport { NativeModules, Platform } from 'react-native';[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32mexport type Language = 'en' | 'zh';[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32mexport type TranslationDescriptor = string | { zh: string; en: string };[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32minterface I18nState {[m[41m[m
-[32m+[m[32m  language: Language;[m[41m[m
-[32m+[m[32m  setLanguage: (lang: Language) => void;[m[41m[m
-[32m+[m[32m  t: (desc: TranslationDescriptor) => string;[m[41m[m
-[32m+[m[32m}[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m// Detect device language[m[41m[m
-[32m+[m[32mfunction getDeviceLanguage(): Language {[m[41m[m
-[32m+[m[32m  try {[m[41m[m
-[32m+[m[32m    let locale = 'en';[m[41m[m
-[32m+[m[32m    if (Platform.OS === 'ios') {[m[41m[m
-[32m+[m[32m      locale = NativeModules.SettingsManager?.settings?.AppleLocale ||[m[41m[m
-[32m+[m[32m               NativeModules.SettingsManager?.settings?.AppleLanguages?.[0] || 'en';[m[41m[m
-[32m+[m[32m    } else {[m[41m[m
-[32m+[m[32m      locale = NativeModules.I18nManager?.localeIdentifier || 'en';[m[41m[m
-[32m+[m[32m    }[m[41m[m
-[32m+[m[32m    return locale.startsWith('zh') ? 'zh' : 'en';[m[41m[m
-[32m+[m[32m  } catch {[m[41m[m
-[32m+[m[32m    return 'en';[m[41m[m
-[32m+[m[32m  }[m[41m[m
-[32m+[m[32m}[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32mexport const useI18n = create<I18nState>()([m[41m[m
-[32m+[m[32m  persist([m[41m[m
-[32m+[m[32m    (set, get) => ({[m[41m[m
-[32m+[m[32m      language: getDeviceLanguage(),[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m      setLanguage: (lang: Language) => set({ language: lang }),[m[41m[m
-[32m+[m[41m[m
-[32m+[m[32m      t: (desc: TranslationDescriptor): string => {[m[41m[m
-[32m+[m[32m        if (typeof desc === 'string') return desc;[m[41m[m
-[32m+[m[32m        const lang = get().language;[m[41m[m
-[32m+[m[32m        return desc[lang] || desc.en || desc.zh || '';[m[41m[m
-[32m+[m[32m      },[m[41m[m
-[32m+[m[32m    }),[m[41m[m
-[32m+[m[32m    {[m[41m[m
-[32m+[m[32m      name: 'agentrix-i18n',[m[41m[m
-[32m+[m[32m      storage: createJSONStorage(() => AsyncStorage),[m[41m[m
-[32m+[m[32m      partialize: (state) => ({ language: state.language }),[m[41m[m
-[32m+[m[32m    }[m[41m[m
-[32m+[m[32m  )[m[41m[m
-[32m+[m[32m);[m[41m[m

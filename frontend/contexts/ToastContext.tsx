@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode, useState, useCallback } from 'react'
+import { createContext, useContext, ReactNode, useState, useCallback, useRef } from 'react'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -23,8 +23,19 @@ const ToastContext = createContext<ToastContextType | null>(null)
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const recentToastRef = useRef<Map<string, number>>(new Map())
 
   const showToast = useCallback((type: ToastType, message: string, duration = 3000) => {
+    const dedupeKey = `${type}:${message}`
+    const now = Date.now()
+    const lastShownAt = recentToastRef.current.get(dedupeKey)
+
+    if (lastShownAt && now - lastShownAt < 4000) {
+      return
+    }
+
+    recentToastRef.current.set(dedupeKey, now)
+
     const id = Math.random().toString(36).substring(2, 9)
     const toast: Toast = { id, type, message, duration }
     
@@ -33,8 +44,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     // 自动移除
     if (duration > 0) {
       setTimeout(() => {
+        recentToastRef.current.delete(dedupeKey)
         removeToast(id)
       }, duration)
+    } else {
+      setTimeout(() => {
+        recentToastRef.current.delete(dedupeKey)
+      }, 4000)
     }
   }, [])
 

@@ -13,6 +13,7 @@ import { NotificationCenterScreen } from '../screens/notifications/NotificationC
 import { ShareCardScreen } from '../screens/ShareCardScreen';
 import { WalletConnectScreen } from '../screens/WalletConnectScreen';
 import { WalletBackupScreen } from '../screens/me/WalletBackupScreen';
+import { WalletSetupScreen } from '../screens/me/WalletSetupScreen';
 import { SocialListenerScreen } from '../screens/social/SocialListenerScreen';
 import { useI18n } from '../stores/i18nStore';
 
@@ -38,6 +39,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="MySkills" component={MySkillsScreen} options={{ title: t({ en: 'My Skills', zh: '我的技能' }) }} />
       <Stack.Screen name="MyOrders" component={MyOrdersScreen} options={{ title: t({ en: 'My Orders', zh: '我的订单' }) }} />
       <Stack.Screen name="WalletConnect" component={WalletConnectScreen} options={{ title: t({ en: 'Wallet', zh: '钱包' }) }} />
+      <Stack.Screen name="WalletSetup" component={WalletSetupScreen} options={{ title: t({ en: 'Wallet Setup', zh: '钱包设置' }) }} />
       <Stack.Screen name="WalletBackup" component={WalletBackupScreen} options={{ title: t({ en: 'Wallet Backup', zh: '钱包备份' }) }} />
       <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} options={{ title: t({ en: 'Notifications', zh: '通知' }) }} />
       <Stack.Screen name="ShareCard" component={ShareCardScreen} options={{ title: t({ en: 'Share', zh: '分享' }) }} />

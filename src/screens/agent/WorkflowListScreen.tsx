@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 import type { AgentStackParamList } from '../../navigation/types';
+import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'WorkflowList'>;
 
@@ -86,6 +87,7 @@ function timeAgo(iso?: string) {
 export function WorkflowListScreen() {
   const navigation = useNavigation<Nav>();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['workflows'],
@@ -106,14 +108,14 @@ export function WorkflowListScreen() {
 
   const runMut = useMutation({
     mutationFn: runWorkflow,
-    onSuccess: (res) => Alert.alert('▶️ Started', `Run ID: ${res.runId}`),
-    onError: (e: any) => Alert.alert('Error', e.message || 'Run failed'),
+    onSuccess: (res) => Alert.alert(t({ en: '▶️ Started', zh: '▶️ 已启动' }), `Run ID: ${res.runId}`),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message || t({ en: 'Run failed', zh: '运行失败' })),
   });
 
   const confirmDelete = (w: Workflow) => {
-    Alert.alert('Delete Workflow', `Delete "${w.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMut.mutate(w.id) },
+    Alert.alert(t({ en: 'Delete Workflow', zh: '删除工作流' }), t({ en: `Delete "${w.name}"?`, zh: `确认删除“${w.name}”吗？` }), [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+      { text: t({ en: 'Delete', zh: '删除' }), style: 'destructive', onPress: () => deleteMut.mutate(w.id) },
     ]);
   };
 
@@ -129,7 +131,7 @@ export function WorkflowListScreen() {
             <Text style={styles.cardSub}>{formatCron(item.cronExpression)}</Text>
           )}
           {item.triggerType === 'webhook' && (
-            <Text style={styles.cardSub} numberOfLines={1}>Webhook trigger</Text>
+            <Text style={styles.cardSub} numberOfLines={1}>{t({ en: 'Webhook trigger', zh: 'Webhook 触发' })}</Text>
           )}
         </View>
         <Switch
@@ -150,25 +152,29 @@ export function WorkflowListScreen() {
             <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR[item.lastRunStatus] + '22' }]}>
               <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[item.lastRunStatus] }]} />
               <Text style={[styles.statusText, { color: STATUS_COLOR[item.lastRunStatus] }]}>
-                {item.lastRunStatus}
+                {item.lastRunStatus === 'success'
+                  ? t({ en: 'success', zh: '成功' })
+                  : item.lastRunStatus === 'error'
+                    ? t({ en: 'error', zh: '失败' })
+                    : t({ en: 'running', zh: '运行中' })}
               </Text>
             </View>
           )}
-          <Text style={styles.runCount}>{item.runCount} runs · last {timeAgo(item.lastRunAt)}</Text>
+          <Text style={styles.runCount}>{t({ en: `${item.runCount} runs · last ${timeAgo(item.lastRunAt)}`, zh: `运行 ${item.runCount} 次 · 最近 ${timeAgo(item.lastRunAt)}` })}</Text>
         </View>
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => navigation.navigate('WorkflowDetail', { workflowId: item.id })}
           >
-            <Text style={styles.actionBtnText}>Edit</Text>
+            <Text style={styles.actionBtnText}>{t({ en: 'Edit', zh: '编辑' })}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.runBtn]}
             onPress={() => runMut.mutate(item.id)}
             disabled={runMut.isPending}
           >
-            <Text style={[styles.actionBtnText, { color: colors.accent }]}>▶ Run</Text>
+            <Text style={[styles.actionBtnText, { color: colors.accent }]}>▶ {t({ en: 'Run', zh: '运行' })}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.deleteBtn]}
@@ -186,36 +192,36 @@ export function WorkflowListScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Workflows</Text>
+          <Text style={styles.headerTitle}>{t({ en: 'Workflows', zh: '工作流' })}</Text>
           <Text style={styles.headerSub}>
-            {workflows.filter((w) => w.enabled).length} active · {workflows.length} total
+            {t({ en: `${workflows.filter((w) => w.enabled).length} active · ${workflows.length} total`, zh: `${workflows.filter((w) => w.enabled).length} 个启用 · 共 ${workflows.length} 个` })}
           </Text>
         </View>
         <TouchableOpacity
           style={styles.createBtn}
           onPress={() => navigation.navigate('WorkflowDetail', {})}
         >
-          <Text style={styles.createBtnText}>+ New</Text>
+          <Text style={styles.createBtnText}>+ {t({ en: 'New', zh: '新建' })}</Text>
         </TouchableOpacity>
       </View>
 
       {isLoading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={styles.loadingText}>Loading workflows...</Text>
+          <Text style={styles.loadingText}>{t({ en: 'Loading workflows...', zh: '正在加载工作流…' })}</Text>
         </View>
       ) : workflows.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyIcon}>⏰</Text>
-          <Text style={styles.emptyTitle}>No workflows yet</Text>
+          <Text style={styles.emptyTitle}>{t({ en: 'No workflows yet', zh: '还没有工作流' })}</Text>
           <Text style={styles.emptySub}>
-            Automate your agent with scheduled tasks, cron jobs, and webhook triggers.
+            {t({ en: 'Automate your agent with scheduled tasks, cron jobs, and webhook triggers.', zh: '通过定时任务、Cron 与 Webhook 触发器来自动化你的智能体。' })}
           </Text>
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={() => navigation.navigate('WorkflowDetail', {})}
           >
-            <Text style={styles.primaryBtnText}>Create First Workflow</Text>
+            <Text style={styles.primaryBtnText}>{t({ en: 'Create First Workflow', zh: '创建第一个工作流' })}</Text>
           </TouchableOpacity>
         </View>
       ) : (

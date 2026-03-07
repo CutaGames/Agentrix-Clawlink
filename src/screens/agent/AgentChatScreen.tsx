@@ -1,12 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, PanResponder,
+  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { useI18n } from '../../stores/i18nStore';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { switchInstanceModel } from '../../services/openclaw.service';
@@ -17,42 +16,11 @@ import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
+import { useI18n } from '../../stores/i18nStore';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
 try { Audio = require('expo-av').Audio; } catch (_) {}
-
-const VOICE_CANCEL_THRESHOLD = 70;
-const MIN_VOICE_RECORD_MS = 350;
-
-function getLowLatencyRecordingOptions() {
-  if (!Audio) return null;
-  return {
-    android: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-      audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-    },
-    ios: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-      audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MEDIUM,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-      linearPCMBitDepth: 16,
-      linearPCMIsBigEndian: false,
-      linearPCMIsFloat: false,
-    },
-    web: {
-      mimeType: 'audio/webm',
-      bitsPerSecond: 32000,
-    },
-  };
-}
 
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
@@ -66,14 +34,6 @@ interface Message {
   thoughts?: string[]; // Added for Thought Chain UI
 }
 
-interface VoiceMetrics {
-  recordedMs: number;
-  transcribeMs: number;
-  stopToSendMs: number;
-  transcriptLength: number;
-  capturedAt: number;
-}
-
 // Strip basic markdown: **bold** -> bold, *italic* -> italic
 function renderContent(text: string) {
   return text
@@ -83,6 +43,7 @@ function renderContent(text: string) {
 }
 
 const MessageBubble = ({ item }: { item: Message }) => {
+  const { t } = useI18n();
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
@@ -109,7 +70,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{isThoughtsExpanded ? '▼' : '▶'}</Text>
               )}
               <Text style={styles.thoughtHeaderText}>
-                {item.streaming ? 'Agent is executing workflow...' : `Execution Log (${item.thoughts?.length} steps)`}
+                {item.streaming ? t({ en: 'Agent is executing workflow...', zh: '智能体正在执行工作流…' }) : t({ en: `Execution Log (${item.thoughts?.length} steps)`, zh: `执行日志（${item.thoughts?.length} 步）` })}
               </Text>
             </TouchableOpacity>
             
@@ -160,8 +121,8 @@ const MessageBubble = ({ item }: { item: Message }) => {
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
+  const { t } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
-  const { language, t } = useI18n();
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
   const token = useAuthStore.getState().token || '';
@@ -173,13 +134,12 @@ export function AgentChatScreen() {
   const streamAbortRef = useRef<AbortController | null>(null);
   const recordingRef = useRef<any>(null);
   const isRecordingRef = useRef(false);  // stable ref for press hold logic
-  const recordingStartedAtRef = useRef(0);
 
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content: `Hi! I'm **${instanceName}**. How can I help you today?`,
+      content: t({ en: `Hi! I'm **${instanceName}**. How can I help you today?`, zh: `你好！我是 **${instanceName}**。今天想让我帮你做什么？` }),
       createdAt: Date.now(),
     },
   ]);
@@ -187,36 +147,12 @@ export function AgentChatScreen() {
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
-  const [willCancelVoice, setWillCancelVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);   // WeChat-style toggle
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
-  const [lastVoiceMetrics, setLastVoiceMetrics] = useState<VoiceMetrics | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
-
-  const voiceButtonLabel = isVoiceProcessing
-    ? t({ en: '⏳  Transcribing...', zh: '⏳  转写中...' })
-    : isRecording
-      ? willCancelVoice
-        ? t({ en: '❌  Release to Cancel', zh: '❌  松开取消' })
-        : t({ en: '🔴  Release to Send', zh: '🔴  松开发送' })
-      : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' });
-
-  const voiceHintText = willCancelVoice
-    ? t({ en: 'Release now to cancel this recording', zh: '现在松开将取消本次录音' })
-    : t({ en: 'Hold to record · slide up to cancel', zh: '按住录音 · 上滑取消' });
-
-  const voiceMetricsText = lastVoiceMetrics
-    ? t(
-        {
-          en: `Last voice: ${lastVoiceMetrics.recordedMs}ms rec · ${lastVoiceMetrics.transcribeMs}ms ASR · ${lastVoiceMetrics.stopToSendMs}ms stop→send`,
-          zh: `上次语音：录音 ${lastVoiceMetrics.recordedMs}ms · 转写 ${lastVoiceMetrics.transcribeMs}ms · 停止到发送 ${lastVoiceMetrics.stopToSendMs}ms`,
-        },
-      )
-    : null;
 
   // Init TTS audio queue player
   useEffect(() => {
@@ -234,9 +170,9 @@ export function AgentChatScreen() {
       const trimmed = s.trim();
       if (!trimmed || trimmed.length < 2) continue;
       const encoded = encodeURIComponent(trimmed);
-      audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}&lang=${language === 'zh' ? 'zh' : 'en'}`);
+      audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}`);
     }
-  }, [language]);
+  }, []);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -404,7 +340,7 @@ export function AgentChatScreen() {
             onChunk: (chunk) => { streamSucceeded = true; appendToStreamingMessage(assistantMsgId, chunk); },
             onDone: () => resolve(),
             onError: (err) => {
-              appendToStreamingMessage(assistantMsgId, `⚠️ ${err || 'Could not reach AI service. Check your connection.'}`);
+              appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
               resolve();
             },
           });
@@ -418,7 +354,7 @@ export function AgentChatScreen() {
         const updated = prev.map((m) => {
           if (m.id !== assistantMsgId) return m;
           if (!m.content && !m.thoughts?.length) {
-            return { ...m, content: '⚠️ No response received. Please check your connection or try again.', streaming: false, error: true };
+            return { ...m, content: t({ en: '⚠️ No response received. Please check your connection or try again.', zh: '⚠️ 暂未收到回复，请检查网络或稍后重试。' }), streaming: false, error: true };
           }
           finalContent = m.content;
           return { ...m, streaming: false };
@@ -433,7 +369,7 @@ export function AgentChatScreen() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
-            ? { ...m, content: `Error: ${err?.message || 'Something went wrong'}`, streaming: false, error: true }
+            ? { ...m, content: `${t({ en: 'Error', zh: '错误' })}: ${err?.message || t({ en: 'Something went wrong', zh: '发生了一些问题' })}`, streaming: false, error: true }
             : m
         )
       );
@@ -443,206 +379,137 @@ export function AgentChatScreen() {
     }
   };
 
-  const startVoiceRecording = useCallback(async () => {
+  // Voice recording — called on both onPressIn (start) and onPressOut (stop)
+  const handleVoicePressIn = async () => {
     if (!Audio) {
-      Alert.alert(
-        t({ en: 'Voice Unavailable', zh: '语音不可用' }),
-        t({ en: 'Audio module not available. Please type your message instead.', zh: '当前设备无法使用录音模块，请先改用文字输入。' }),
-      );
+      Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available. Please type your message instead.', zh: '当前音频模块不可用，请改用文字输入。' }));
       return;
     }
-    if (isVoiceProcessing || isRecordingRef.current) return;
     try {
-      isRecordingRef.current = true;
-      const permResult = await Audio.requestPermissionsAsync();
-      if (!permResult.granted) {
-        isRecordingRef.current = false;
-        Alert.alert(
-          t({ en: 'Microphone Permission', zh: '需要麦克风权限' }),
-          t({ en: 'Please enable microphone access in your device settings to use voice input.', zh: '请在系统设置中开启麦克风权限后再使用语音输入。' }),
-        );
-        return;
-      }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-      });
-      if (recordingRef.current) {
-        try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
-        recordingRef.current = null;
-      }
-      const options = getLowLatencyRecordingOptions() || Audio.RecordingOptionsPresets.HIGH_QUALITY;
-      const { recording } = await Audio.Recording.createAsync(options);
-      recordingRef.current = recording;
-      recordingStartedAtRef.current = Date.now();
-      setWillCancelVoice(false);
-      setIsRecording(true);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setWillCancelVoice(false);
-      const msg = e?.message || 'Unknown error';
-      if (msg.includes('permission') || msg.includes('Permission')) {
-        Alert.alert(
-          t({ en: 'Microphone Permission', zh: '需要麦克风权限' }),
-          t({ en: 'Please enable microphone access in Settings to use voice input.', zh: '请在设置中开启麦克风权限后再使用语音输入。' }),
-        );
-      } else {
-        Alert.alert(
-          t({ en: 'Voice Error', zh: '语音错误' }),
-          t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n你可以先改用文字输入。` }),
-        );
-      }
-    }
-  }, [isVoiceProcessing, t]);
-
-  const finishVoiceRecording = useCallback(async (cancelled: boolean) => {
-    if (!Audio || !recordingRef.current) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setWillCancelVoice(false);
-      return;
-    }
-
-    const recording = recordingRef.current;
-    recordingRef.current = null;
-    isRecordingRef.current = false;
-    setIsRecording(false);
-    setWillCancelVoice(false);
-
-    try {
-      await recording.stopAndUnloadAsync();
-      const durationMs = Date.now() - recordingStartedAtRef.current;
-      const stopAt = Date.now();
-      const uri = recording.getURI();
-
-      if (cancelled) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        return;
-      }
-
-      if (durationMs < MIN_VOICE_RECORD_MS) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        return;
-      }
-
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (uri) {
-        setIsVoiceProcessing(true);
-        try {
-          const formData = new FormData();
-          formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
-          const ac = new AbortController();
-          const timeout = setTimeout(() => ac.abort(), 20000);
-          const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${language === 'zh' ? 'zh' : 'en'}`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-            signal: ac.signal,
-          });
-          clearTimeout(timeout);
-          if (resp.ok) {
-            const data = await resp.json();
-            const transcript = (data?.text || data?.transcript || '').trim();
-            if (transcript) {
-              const transcribeMs = Date.now() - stopAt;
-              const stopToSendMs = Date.now() - stopAt;
-              setLastVoiceMetrics({
-                recordedMs: durationMs,
-                transcribeMs,
-                stopToSendMs,
-                transcriptLength: transcript.length,
-                capturedAt: Date.now(),
-              });
-              await handleSend(transcript);
-            } else {
-              Alert.alert(
-                t({ en: 'No Speech Detected', zh: '未检测到语音' }),
-                t({ en: 'Could not detect any speech. Please try again or type your message.', zh: '没有识别到语音内容，请重试或改用文字输入。' }),
-              );
-            }
-          } else {
-            const errText = await resp.text().catch(() => '');
-            Alert.alert(
-              t({ en: 'Transcription Failed', zh: '转写失败' }),
-              t({ en: `Server returned ${resp.status}. ${errText ? errText.slice(0, 100) : 'Try typing instead.'}`, zh: `服务返回 ${resp.status}。${errText ? errText.slice(0, 100) : '请先改用文字输入。'}` }),
-            );
-          }
-        } catch (fetchErr: any) {
-          const msg = fetchErr?.name === 'AbortError'
-            ? t({ en: 'Transcription timed out. Try again or type your message.', zh: '语音转写超时，请重试或改用文字输入。' })
-            : t({ en: `Could not reach voice service: ${fetchErr?.message || 'Network error'}`, zh: `无法连接语音服务：${fetchErr?.message || '网络错误'}` });
-          Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), msg);
-        } finally {
-          setIsVoiceProcessing(false);
+      if (!isRecordingRef.current) {
+        // START recording
+        isRecordingRef.current = true;
+        const permResult = await Audio.requestPermissionsAsync();
+        if (!permResult.granted) {
+          isRecordingRef.current = false;
+          Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in your device settings to use voice input.', zh: '请在设备设置中开启麦克风权限后再使用语音输入。' }));
+          return;
         }
-      }
-    } catch (e: any) {
-      Alert.alert(
-        t({ en: 'Voice Error', zh: '语音错误' }),
-        e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }),
-      );
-    } finally {
-      try {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
+          allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
           staysActiveInBackground: false,
         });
-      } catch (_) {}
+        if (recordingRef.current) {
+          try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
+          recordingRef.current = null;
+        }
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        recordingRef.current = recording;
+        setIsRecording(true);
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    } catch (e: any) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      const msg = e?.message || 'Unknown error';
+      if (msg.includes('permission') || msg.includes('Permission')) {
+        Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in Settings to use voice input.', zh: '请在设置中开启麦克风权限后再使用语音输入。' }));
+      } else {
+        Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n请改用文字输入。` }));
+      }
     }
-  }, [language, token, handleSend, t]);
+  };
 
-  const voicePanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => voiceMode,
-    onMoveShouldSetPanResponder: () => voiceMode,
-    onPanResponderGrant: () => {
-      void startVoiceRecording();
-    },
-    onPanResponderMove: (_evt, gestureState) => {
-      if (!isRecordingRef.current) return;
-      const shouldCancel = gestureState.dy < -VOICE_CANCEL_THRESHOLD;
-      setWillCancelVoice((prev) => (prev === shouldCancel ? prev : shouldCancel));
-    },
-    onPanResponderRelease: (_evt, gestureState) => {
-      void finishVoiceRecording(gestureState.dy < -VOICE_CANCEL_THRESHOLD);
-    },
-    onPanResponderTerminate: () => {
-      void finishVoiceRecording(true);
-    },
-  }), [voiceMode, startVoiceRecording, finishVoiceRecording]);
+  const handleVoicePressOut = async () => {
+    if (!Audio || !isRecordingRef.current) return;
+    try {
+      // STOP and transcribe
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI();
+        recordingRef.current = null;
+        if (uri) {
+          // Show transcribing indicator
+          setInput(t({ en: '🎙 Transcribing...', zh: '🎙 正在转写…' }));
+          try {
+            const formData = new FormData();
+            formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+            const ac = new AbortController();
+            const timeout = setTimeout(() => ac.abort(), 35_000);
+            const resp = await fetch(`${API_BASE}/voice/transcribe`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: formData,
+              signal: ac.signal,
+            });
+            clearTimeout(timeout);
+            if (resp.ok) {
+              const data = await resp.json();
+              const transcript = data?.text || data?.transcript || '';
+              if (transcript) {
+                setInput(transcript);
+                setTimeout(() => handleSend(transcript), 100);
+              } else {
+                setInput('');
+                Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到语音' }), t({ en: 'Could not detect any speech. Please try again or type your message.', zh: '没有识别到有效语音，请重试或直接输入文字。' }));
+              }
+            } else {
+              const errText = await resp.text().catch(() => '');
+              setInput('');
+              Alert.alert(t({ en: 'Transcription Failed', zh: '转写失败' }), `${t({ en: 'Server returned', zh: '服务器返回' })} ${resp.status}. ${errText ? errText.slice(0, 100) : t({ en: 'Try typing instead.', zh: '请改用文字输入。' })}`);
+            }
+          } catch (fetchErr: any) {
+            setInput('');
+            const msg = fetchErr?.name === 'AbortError'
+              ? t({ en: 'Transcription timed out. Try again or type your message.', zh: '语音转写超时，请重试或直接输入文字。' })
+              : t({ en: `Could not reach voice service: ${fetchErr?.message || 'Network error'}`, zh: `无法连接语音服务：${fetchErr?.message || '网络错误'}` });
+            Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), msg);
+          }
+        }
+      }
+    } catch (e: any) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setInput('');
+      Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
+    }
+  };
 
   const openModelPicker = () => setShowModelPicker(true);
 
   const handleDeviceAction = () => {
-    Alert.alert('Device Tools', 'Provide local device data to the Agent', [
+    Alert.alert(t({ en: 'Device Tools', zh: '设备工具' }), t({ en: 'Provide local device data to the Agent', zh: '向智能体提供本地设备数据' }), [
       {
-        text: '📍 Send GPS Location',
+        text: t({ en: '📍 Send GPS Location', zh: '📍 发送 GPS 位置' }),
         onPress: async () => {
           try {
             const loc = await DeviceBridgingService.getCurrentLocation();
             handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
           } catch (e: any) {
-            Alert.alert('Location Error', e.message);
+            Alert.alert(t({ en: 'Location Error', zh: '定位错误' }), e.message);
           }
         }
       },
       {
-        text: '📋 Paste Clipboard',
+        text: t({ en: '📋 Paste Clipboard', zh: '📋 粘贴剪贴板' }),
         onPress: async () => {
           try {
             const text = await DeviceBridgingService.readClipboard();
-            if (!text) return Alert.alert('Clipboard Empty', 'Nothing to paste.');
+            if (!text) return Alert.alert(t({ en: 'Clipboard Empty', zh: '剪贴板为空' }), t({ en: 'Nothing to paste.', zh: '没有可粘贴的内容。' }));
             setInput((prev) => prev ? `${prev}\n${text}` : text);
           } catch (e: any) {
-            Alert.alert('Clipboard Error', e.message);
+            Alert.alert(t({ en: 'Clipboard Error', zh: '剪贴板错误' }), e.message);
           }
         }
       },
       {
-        text: '🖼️ Analyze Photo',
+        text: t({ en: '🖼️ Analyze Photo', zh: '🖼️ 分析图片' }),
         onPress: async () => {
           try {
             const base64 = await DeviceBridgingService.pickImageAsBase64();
@@ -650,22 +517,22 @@ export function AgentChatScreen() {
               // Note: Sending base64 directly might be too large for typical chat prompts.
               // For a production app, you might upload it first and send a URL.
               handleSend(`[System: User attached an image]\n${base64.substring(0, 50)}... (base64 truncated)`);
-              Alert.alert('Image Attached', 'Image data prepared for the agent.');
+              Alert.alert(t({ en: 'Image Attached', zh: '图片已附加' }), t({ en: 'Image data prepared for the agent.', zh: '图片数据已准备好，可发送给智能体。' }));
             }
           } catch (e: any) {
-            Alert.alert('Photo Error', e.message);
+            Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
           }
         }
       },
-      { text: 'Cancel', style: 'cancel' }
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' }
     ]);
   };
 
   const handleClearChat = () => {
-    Alert.alert('Start new session?', 'Chat history will be cleared.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t({ en: 'Start new session?', zh: '开始新会话？' }), t({ en: 'Chat history will be cleared.', zh: '当前聊天记录将被清空。' }), [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
       {
-        text: 'New Session',
+        text: t({ en: 'New Session', zh: '新会话' }),
         style: 'destructive',
         onPress: () => {
           streamAbortRef.current?.abort();
@@ -674,7 +541,7 @@ export function AgentChatScreen() {
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: `Hi! I\'m **${instanceName}**. How can I help you today?`,
+            content: t({ en: `Hi! I\'m **${instanceName}**. How can I help you today?`, zh: `你好！我是 **${instanceName}**。今天想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
         },
@@ -711,7 +578,7 @@ export function AgentChatScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
-            <Text style={styles.chatBarBtnText}>New</Text>
+            <Text style={styles.chatBarBtnText}>{t({ en: 'New', zh: '新建' })}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -725,7 +592,7 @@ export function AgentChatScreen() {
       {loadingHistory && (
         <View style={styles.historyLoader}>
           <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={styles.historyLoaderText}>Loading history…</Text>
+          <Text style={styles.historyLoaderText}>{t({ en: 'Loading history…', zh: '正在加载历史记录…' })}</Text>
         </View>
       )}
 
@@ -744,39 +611,28 @@ export function AgentChatScreen() {
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
           style={styles.modeToggleBtn}
-          onPress={() => {
-            setVoiceMode(!voiceMode);
-            setIsRecording(false);
-            setWillCancelVoice(false);
-          }}
+          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); }}
         >
           <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
         </TouchableOpacity>
 
         {voiceMode ? (
           /* Voice mode: hold-to-talk button */
-          <View style={styles.voiceComposerWrap}>
-            <View
-              {...voicePanResponder.panHandlers}
-              style={[
-                styles.holdTalkBtn,
-                isRecording && styles.holdTalkBtnActive,
-                willCancelVoice && styles.holdTalkBtnCancel,
-                isVoiceProcessing && styles.holdTalkBtnProcessing,
-              ]}
-            >
-              <Text style={[styles.holdTalkText, isVoiceProcessing && styles.holdTalkTextProcessing]}>
-                {voiceButtonLabel}
-              </Text>
-            </View>
-            <Text style={styles.voiceHintText}>{voiceHintText}</Text>
-            {voiceMetricsText ? <Text style={styles.voiceMetricsText}>{voiceMetricsText}</Text> : null}
-          </View>
+          <TouchableOpacity
+            style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
+            onPressIn={handleVoicePressIn}
+            onPressOut={handleVoicePressOut}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.holdTalkText}>
+              {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' })}
+            </Text>
+          </TouchableOpacity>
         ) : (
           /* Text mode */
           <TextInput
             style={styles.input}
-            placeholder={`Message ${instanceName}...`}
+            placeholder={t({ en: `Message ${instanceName}...`, zh: `给 ${instanceName} 发消息…` })}
             placeholderTextColor={colors.textMuted}
             value={input}
             onChangeText={setInput}
@@ -811,8 +667,8 @@ export function AgentChatScreen() {
       <Modal visible={showModelPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
           <View style={styles.modelSheet}>
-            <Text style={styles.modelSheetTitle}>Switch Model</Text>
-            <Text style={styles.modelSheetSubtitle}>Applies to this agent (cloud & local)</Text>
+            <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
+            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Applies to this agent (cloud & local)', zh: '应用到当前智能体（云端 / 本地）' })}</Text>
             <ScrollView>
               {SUPPORTED_MODELS.map((m) => {
                 const isActive = m.id === selectedModelId;
@@ -828,7 +684,7 @@ export function AgentChatScreen() {
                     ]}
                     onPress={async () => {
                       if (!isAvailable) {
-                        Alert.alert(m.label, isComingSoon ? 'This model is coming soon!' : 'Requires API key configuration.');
+                        Alert.alert(m.label, isComingSoon ? t({ en: 'This model is coming soon!', zh: '该模型即将上线！' }) : t({ en: 'Requires API key configuration.', zh: '需要先配置 API Key。' }));
                         return;
                       }
                       setSelectedModel(m.id);
@@ -855,7 +711,7 @@ export function AgentChatScreen() {
                           {m.badge && (
                             <View style={[styles.modelBadge, isComingSoon && { backgroundColor: colors.textMuted + '30' }]}>
                               <Text style={[styles.modelBadgeText, isComingSoon && { color: colors.textMuted }]}>
-                                {isComingSoon ? 'Soon' : m.badge}
+                                {isComingSoon ? t({ en: 'Soon', zh: '即将上线' }) : m.badge}
                               </Text>
                             </View>
                           )}
@@ -966,10 +822,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   modeToggleIcon: { fontSize: 18 },
-  voiceComposerWrap: {
-    flex: 1,
-    gap: 4,
-  },
   holdTalkBtn: {
     flex: 1,
     height: 44,
@@ -984,26 +836,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     borderColor: '#ef4444',
   },
-  holdTalkBtnCancel: {
-    backgroundColor: '#f59e0b',
-    borderColor: '#f59e0b',
-  },
-  holdTalkBtnProcessing: {
-    backgroundColor: colors.bgCard,
-    borderColor: colors.border,
-  },
   holdTalkText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  holdTalkTextProcessing: { color: colors.textPrimary },
-  voiceHintText: {
-    color: colors.textMuted,
-    fontSize: 11,
-    paddingHorizontal: 6,
-  },
-  voiceMetricsText: {
-    color: colors.accent,
-    fontSize: 11,
-    paddingHorizontal: 6,
-  },
   tokenBar: {
     height: 18, backgroundColor: colors.bgSecondary,
     flexDirection: 'row', alignItems: 'center', overflow: 'hidden', position: 'relative',

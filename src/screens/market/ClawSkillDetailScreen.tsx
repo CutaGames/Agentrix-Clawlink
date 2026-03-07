@@ -23,6 +23,7 @@ import { marketplaceApi, ReviewItem } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n, type Language } from '../../stores/i18nStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { MarketStackParamList, ShareCardRouteParams } from '../../navigation/types';
 
@@ -54,7 +55,7 @@ const formatDate = (dateStr: string) => {
   return `${Math.floor(diff / 30)}mo ago`;
 };
 
-const buildSkillShareCardParams = (skill: any, skillId: string, refId?: string): ShareCardRouteParams => {
+const buildSkillShareCardParams = (skill: any, skillId: string, language: Language, refId?: string): ShareCardRouteParams => {
   const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${refId || 'guest'}`;
   const isResource = skill?.category === 'resources';
   const title = skill?.displayName || skill?.name || 'Agentrix Listing';
@@ -70,14 +71,18 @@ const buildSkillShareCardParams = (skill: any, skillId: string, refId?: string):
     shareUrl,
     title,
     userName: authorName,
-    subtitle: isResource ? 'Premium resource for your AI workflow' : 'High-conversion AI skill for your agent',
+    subtitle: isResource
+      ? (language === 'zh' ? '面向 AI 工作流的优质资源' : 'Premium resource for your AI workflow')
+      : (language === 'zh' ? '为你的智能体打造的高转化 AI 技能' : 'High-conversion AI skill for your agent'),
     headerEmoji: skill?.icon || (isResource ? '📦' : '⚡'),
-    categoryLabel: isResource ? 'RESOURCE' : 'SKILL',
-    priceLabel: price === 0 ? 'Free' : `$${price < 1 ? price.toFixed(4) : price.toFixed(2)} / ${priceUnit}`,
+    categoryLabel: isResource ? (language === 'zh' ? '资源' : 'RESOURCE') : (language === 'zh' ? '技能' : 'SKILL'),
+    priceLabel: price === 0 ? (language === 'zh' ? '免费' : 'Free') : `$${price < 1 ? price.toFixed(4) : price.toFixed(2)} / ${priceUnit}`,
     statsLabel: `${rating.toFixed(1)}★ · ${formatCount(installs)} installs`,
     description: skill?.description || skill?.longDescription || undefined,
     tags: skill?.tags || [],
-    ctaLabel: isResource ? 'Scan to unlock this resource' : 'Scan to install this skill',
+    ctaLabel: isResource
+      ? (language === 'zh' ? '扫码解锁这个资源' : 'Scan to unlock this resource')
+      : (language === 'zh' ? '扫码安装这个技能' : 'Scan to install this skill'),
     accentFrom: isResource ? '#0F766E' : '#2563EB',
     accentTo: isResource ? '#14B8A6' : '#7C3AED',
   };
@@ -88,6 +93,7 @@ const buildSkillShareCardParams = (skill: any, skillId: string, refId?: string):
 export function ClawSkillDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteT>();
+  const { language } = useI18n();
   const { skillId } = route.params;
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -131,14 +137,14 @@ export function ClawSkillDetailScreen() {
   const handleShare = useCallback(() => {
     if (!skill) return;
     try {
-      navigation.navigate('ShareCard', buildSkillShareCardParams(skill, skillId, activeInstance?.id));
+      navigation.navigate('ShareCard', buildSkillShareCardParams(skill, skillId, language, activeInstance?.id));
     } catch {
       // Fallback to native share
       Share.share({
         message: `Check out "${skill.displayName || skill.name}" on Agentrix Claw!\nhttps://agentrix.top/skill/${skillId}`,
       });
     }
-  }, [skill, skillId, activeInstance, navigation]);
+  }, [skill, skillId, activeInstance, language, navigation]);
 
   const handleLike = useCallback(async () => {
     if (!skill) return;
@@ -221,7 +227,7 @@ export function ClawSkillDetailScreen() {
     if (!skill) return;
     const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
     const skillDisplayName = skill.displayName || skill.name;
-    const shareCardParams = buildSkillShareCardParams(skill, skillId, activeInstance?.id);
+    const shareCardParams = buildSkillShareCardParams(skill, skillId, language, activeInstance?.id);
     
     // Show share options: Social post, Native share, and Poster
     Alert.alert(

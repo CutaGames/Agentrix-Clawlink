@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
+import { useI18n } from '../../stores/i18nStore';
 
 type Route = RouteProp<AgentStackParamList, 'AgentPermissions'>;
 
@@ -112,6 +113,7 @@ export function AgentPermissionsScreen() {
   const route = useRoute<Route>();
   const agentAccountId = route.params?.agentAccountId;
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   const { data: agents = [] } = useQuery<AgentAccount[]>({
     queryKey: ['agent-accounts'],
@@ -162,27 +164,27 @@ export function AgentPermissionsScreen() {
         }),
       });
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-      Alert.alert('Saved ✅', 'Permissions updated successfully.');
+      Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions updated successfully.', zh: '权限已更新。' }));
     } catch (e: any) {
       // Graceful: permissions stored locally even if backend doesn't return 200 yet
-      Alert.alert('Saved locally', 'Settings saved on device. Backend sync will resume on reconnect.');
+      Alert.alert(t({ en: 'Saved locally', zh: '已在本地保存' }), t({ en: 'Settings saved on device. Backend sync will resume on reconnect.', zh: '设置已保存在设备上，恢复连接后会继续同步到后端。' }));
     }
   };
 
   const handleSuspend = () => {
     if (!activeAgent) return;
     Alert.alert(
-      'Suspend Agent',
-      `Suspend "${activeAgent.name}"? It will be unable to make payments or use tools.`,
+      t({ en: 'Suspend Agent', zh: '暂停智能体' }),
+      t({ en: `Suspend "${activeAgent.name}"? It will be unable to make payments or use tools.`, zh: `确认暂停“${activeAgent.name}”吗？暂停后它将无法付款或使用工具。` }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: 'Suspend', style: 'destructive', onPress: async () => {
+          text: t({ en: 'Suspend', zh: '暂停' }), style: 'destructive', onPress: async () => {
             try {
               await apiFetch(`/agent-accounts/${activeAgent.id}/suspend`, { method: 'PATCH' });
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-              Alert.alert('Agent Suspended', `${activeAgent.name} is now suspended.`);
-            } catch { Alert.alert('Error', 'Failed to suspend agent.'); }
+              Alert.alert(t({ en: 'Agent Suspended', zh: '智能体已暂停' }), t({ en: `${activeAgent.name} is now suspended.`, zh: `${activeAgent.name} 已被暂停。` }));
+            } catch { Alert.alert(t({ en: 'Error', zh: '错误' }), t({ en: 'Failed to suspend agent.', zh: '暂停智能体失败。' })); }
           },
         },
       ],
@@ -205,16 +207,16 @@ export function AgentPermissionsScreen() {
         </View>
       ) : (
         <View style={styles.noAgentBox}>
-          <Text style={styles.noAgentText}>No agent selected. Go to Agent Accounts to set one up.</Text>
+          <Text style={styles.noAgentText}>{t({ en: 'No agent selected. Go to Agent Accounts to set one up.', zh: '当前未选择智能体。请前往“智能体账户”先创建或选择一个。' })}</Text>
         </View>
       )}
 
       {/* ── Payment Permissions ── */}
-      <SectionHeader icon="💳" title="Payment Permissions" />
+      <SectionHeader icon="💳" title={t({ en: 'Payment Permissions', zh: '支付权限' })} />
       <View style={styles.section}>
         <PermRow
-          label="Allow Autonomous Payment"
-          sub="Agent can initiate transactions without asking you"
+          label={t({ en: 'Allow Autonomous Payment', zh: '允许自主支付' })}
+          sub={t({ en: 'Agent can initiate transactions without asking you', zh: '智能体可在无需询问你的情况下发起交易' })}
           value={perms.autonomousPaymentEnabled}
           onChange={(v) => updatePerm('autonomousPaymentEnabled', v)}
         />
@@ -222,8 +224,8 @@ export function AgentPermissionsScreen() {
         {/* Confirmation threshold */}
         <View style={styles.permRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.permLabel}>Require Approval ≥</Text>
-            <Text style={styles.permSub}>You'll be asked to confirm payments above this amount</Text>
+            <Text style={styles.permLabel}>{t({ en: 'Require Approval ≥', zh: '达到此金额需审批 ≥' })}</Text>
+            <Text style={styles.permSub}>{t({ en: 'You\'ll be asked to confirm payments above this amount', zh: '超过此金额的支付将要求你确认' })}</Text>
           </View>
           {editingThreshold ? (
             <View style={styles.thresholdEdit}>
@@ -243,14 +245,14 @@ export function AgentPermissionsScreen() {
           ) : (
             <TouchableOpacity onPress={() => setEditingThreshold(true)} style={styles.editableValue}>
               <Text style={styles.editableText}>${perms.confirmationThreshold}</Text>
-              <Text style={styles.editHint}>  Edit</Text>
+              <Text style={styles.editHint}>  {t({ en: 'Edit', zh: '编辑' })}</Text>
             </TouchableOpacity>
           )}
         </View>
         <View style={styles.divider} />
         {/* Currency */}
         <View style={styles.permRow}>
-          <Text style={styles.permLabel}>Allowed Currencies</Text>
+          <Text style={styles.permLabel}>{t({ en: 'Allowed Currencies', zh: '允许的币种' })}</Text>
           <View style={styles.currencyRow}>
             {CURRENCY_OPTIONS.map((c) => (
               <TouchableOpacity
@@ -270,15 +272,15 @@ export function AgentPermissionsScreen() {
         {activeAgent?.spendingLimits && (
           <>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>Single TX Limit</Text>
+              <Text style={styles.limitLabel}>{t({ en: 'Single TX Limit', zh: '单笔限额' })}</Text>
               <Text style={styles.limitValue}>${activeAgent.spendingLimits.singleTxLimit}</Text>
             </View>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>Daily Limit</Text>
+              <Text style={styles.limitLabel}>{t({ en: 'Daily Limit', zh: '日限额' })}</Text>
               <Text style={styles.limitValue}>${activeAgent.spendingLimits.dailyLimit}</Text>
             </View>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>Monthly Limit</Text>
+              <Text style={styles.limitLabel}>{t({ en: 'Monthly Limit', zh: '月限额' })}</Text>
               <Text style={styles.limitValue}>${activeAgent.spendingLimits.monthlyLimit}</Text>
             </View>
           </>
@@ -286,35 +288,35 @@ export function AgentPermissionsScreen() {
       </View>
 
       {/* ── Device Control ── */}
-      <SectionHeader icon="💻" title="Device Control Permissions" />
+      <SectionHeader icon="💻" title={t({ en: 'Device Control Permissions', zh: '设备控制权限' })} />
       <View style={styles.section}>
         <PermRow
-          label="📁 File Read"
+          label={t({ en: '📁 File Read', zh: '📁 文件读取' })}
           sub={perms.fileReadEnabled ? `Scope: ${perms.fileReadScope}` : undefined}
           value={perms.fileReadEnabled}
           onChange={(v) => updatePerm('fileReadEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="🖥 Launch Programs"
+          label={t({ en: '🖥 Launch Programs', zh: '🖥 启动程序' })}
           value={perms.programLaunchEnabled}
           onChange={(v) => updatePerm('programLaunchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="📋 Clipboard Read/Write"
+          label={t({ en: '📋 Clipboard Read/Write', zh: '📋 剪贴板读写' })}
           value={perms.clipboardEnabled}
           onChange={(v) => updatePerm('clipboardEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="📸 Screenshot"
+          label={t({ en: '📸 Screenshot', zh: '📸 截图' })}
           value={perms.screenshotEnabled}
           onChange={(v) => updatePerm('screenshotEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="📍 GPS Location"
+          label={t({ en: '📍 GPS Location', zh: '📍 GPS 定位' })}
           sub={perms.gpsEnabled ? `Precision: ${perms.gpsAccuracy}` : undefined}
           value={perms.gpsEnabled}
           onChange={(v) => updatePerm('gpsEnabled', v)}
@@ -322,65 +324,65 @@ export function AgentPermissionsScreen() {
       </View>
 
       {/* ── Network & Tools ── */}
-      <SectionHeader icon="🌐" title="Network & Tool Permissions" />
+      <SectionHeader icon="🌐" title={t({ en: 'Network & Tool Permissions', zh: '网络与工具权限' })} />
       <View style={styles.section}>
         <PermRow
-          label="🔍 Web Search"
+          label={t({ en: '🔍 Web Search', zh: '🔍 网络搜索' })}
           value={perms.webSearchEnabled}
           onChange={(v) => updatePerm('webSearchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="📧 Email Send"
-          sub={!perms.emailEnabled ? 'Requires approval to enable' : undefined}
+          label={t({ en: '📧 Email Send', zh: '📧 邮件发送' })}
+          sub={!perms.emailEnabled ? t({ en: 'Requires approval to enable', zh: '启用前需要审批' }) : undefined}
           value={perms.emailEnabled}
           onChange={(v) => updatePerm('emailEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="🐦 Twitter / X Post"
-          sub={perms.twitterEnabled ? 'Auto mode' : undefined}
+          label={t({ en: '🐦 Twitter / X Post', zh: '🐦 Twitter / X 发帖' })}
+          sub={perms.twitterEnabled ? t({ en: 'Auto mode', zh: '自动模式' }) : undefined}
           value={perms.twitterEnabled}
           onChange={(v) => updatePerm('twitterEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label="💬 Telegram Reply"
-          sub={perms.telegramEnabled ? 'Auto mode' : undefined}
+          label={t({ en: '💬 Telegram Reply', zh: '💬 Telegram 回复' })}
+          sub={perms.telegramEnabled ? t({ en: 'Auto mode', zh: '自动模式' }) : undefined}
           value={perms.telegramEnabled}
           onChange={(v) => updatePerm('telegramEnabled', v)}
         />
         <View style={styles.divider} />
         <View style={styles.permRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.permLabel}>🔧 MCP Tools Authorized</Text>
-            <Text style={styles.permSub}>{perms.mcpToolCount} tools allowed</Text>
+            <Text style={styles.permLabel}>{t({ en: '🔧 MCP Tools Authorized', zh: '🔧 已授权 MCP 工具' })}</Text>
+            <Text style={styles.permSub}>{t({ en: `${perms.mcpToolCount} tools allowed`, zh: `已允许 ${perms.mcpToolCount} 个工具` })}</Text>
           </View>
           <TouchableOpacity style={styles.manageBtn}>
-            <Text style={styles.manageBtnText}>Manage →</Text>
+            <Text style={styles.manageBtnText}>{t({ en: 'Manage →', zh: '管理 →' })}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Save Button */}
       <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>💾 Save Permissions</Text>
+        <Text style={styles.saveBtnText}>💾 {t({ en: 'Save Permissions', zh: '保存权限设置' })}</Text>
       </TouchableOpacity>
 
       {/* ── Danger Zone ── */}
-      <SectionHeader icon="⚠️" title="Danger Zone" />
+      <SectionHeader icon="⚠️" title={t({ en: 'Danger Zone', zh: '危险操作' })} />
       <View style={styles.dangerRow}>
         <TouchableOpacity style={styles.dangerBtn} onPress={handleSuspend}>
-          <Text style={styles.dangerBtnText}>⏸ Suspend Agent</Text>
+          <Text style={styles.dangerBtnText}>⏸ {t({ en: 'Suspend Agent', zh: '暂停智能体' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.dangerBtn, { borderColor: colors.error }]}
-          onPress={() => Alert.alert('Terminate Agent', 'Permanently terminate this agent? This cannot be undone.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Terminate', style: 'destructive', onPress: () => {} },
+          onPress={() => Alert.alert(t({ en: 'Terminate Agent', zh: '终止智能体' }), t({ en: 'Permanently terminate this agent? This cannot be undone.', zh: '确认永久终止该智能体吗？此操作不可撤销。' }), [
+            { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+            { text: t({ en: 'Terminate', zh: '终止' }), style: 'destructive', onPress: () => {} },
           ])}
         >
-          <Text style={[styles.dangerBtnText, { color: colors.error }]}>🗑 Terminate Agent</Text>
+          <Text style={[styles.dangerBtnText, { color: colors.error }]}>🗑 {t({ en: 'Terminate Agent', zh: '终止智能体' })}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

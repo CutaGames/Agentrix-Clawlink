@@ -47,6 +47,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch, getApiConfig } from '../../services/api';
 import { marketplaceApi } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
+import { useI18n } from '../../stores/i18nStore';
 import type { MarketStackParamList } from '../../navigation/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ const POLL_TIMEOUT = 300_000; // 5 min
 export function CheckoutScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteT>();
+  const { language } = useI18n();
   const { skillId, skillName } = route.params;
 
   const [paying, setPaying] = useState(false);
@@ -115,8 +117,8 @@ export function CheckoutScreen() {
 
   const price = skill?.pricing?.pricePerCall ?? skill?.price ?? 0;
   const currency = skill?.pricing?.currency ?? skill?.priceUnit ?? 'USD';
-  const priceUSDT = price > 0 ? `≈ ${price.toFixed(2)} USDT` : 'Free';
-  const displayPrice = price > 0 ? `$${price.toFixed(2)} ${currency}` : 'Free';
+  const priceUSDT = price > 0 ? `≈ ${price.toFixed(2)} USDT` : language === 'zh' ? '免费' : 'Free';
+  const displayPrice = price > 0 ? `$${price.toFixed(2)} ${currency}` : language === 'zh' ? '免费' : 'Free';
 
   // ── Helpers ──
 
@@ -463,14 +465,20 @@ export function CheckoutScreen() {
         shareUrl: `https://agentrix.top/skill/${skillId}?ref=purchase`,
         title: displayName,
         userName: 'Agentrix User',
-        subtitle: isResource ? 'Just purchased on Agentrix Marketplace' : 'Just unlocked on Agentrix Marketplace',
+        subtitle: isResource
+          ? (language === 'zh' ? '刚刚在 Agentrix Marketplace 完成购买' : 'Just purchased on Agentrix Marketplace')
+          : (language === 'zh' ? '刚刚在 Agentrix Marketplace 解锁' : 'Just unlocked on Agentrix Marketplace'),
         headerEmoji: skill?.icon || (isResource ? '📦' : '⚡'),
-        categoryLabel: isResource ? 'RESOURCE' : 'SKILL',
-        priceLabel: skill?.price ? `$${Number(skill.price).toFixed(2)} / ${skill?.priceUnit || 'USD'}` : 'Paid',
-        statsLabel: isResource ? 'Ready to share with your team' : 'Ready to install and promote',
+        categoryLabel: isResource ? (language === 'zh' ? '资源' : 'RESOURCE') : (language === 'zh' ? '技能' : 'SKILL'),
+        priceLabel: skill?.price ? `$${Number(skill.price).toFixed(2)} / ${skill?.priceUnit || 'USD'}` : (language === 'zh' ? '已购买' : 'Paid'),
+        statsLabel: isResource
+          ? (language === 'zh' ? '已可分享给你的团队' : 'Ready to share with your team')
+          : (language === 'zh' ? '已可安装并推广' : 'Ready to install and promote'),
         description: skill?.description || undefined,
         tags: skill?.tags || [],
-        ctaLabel: isResource ? 'Scan to view this purchase' : 'Scan to explore this skill',
+        ctaLabel: isResource
+          ? (language === 'zh' ? '扫码查看这次购买' : 'Scan to view this purchase')
+          : (language === 'zh' ? '扫码查看这个技能' : 'Scan to explore this skill'),
         accentFrom: isResource ? '#0F766E' : '#2563EB',
         accentTo: isResource ? '#14B8A6' : '#7C3AED',
       });
@@ -479,7 +487,7 @@ export function CheckoutScreen() {
         message: `I just purchased "${displayName}" on Agentrix Claw! 🎉\nhttps://agentrix.top/skill/${skillId}`,
       });
     }
-  }, [navigation, skill, skillId, skillName]);
+  }, [language, navigation, skill, skillId, skillName]);
 
   // ── Payment Success View ──
   if (paySuccess) {

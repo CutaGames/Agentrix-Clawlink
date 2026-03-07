@@ -17,31 +17,30 @@ const getApiBaseUrl = () => {
 
   // 自动识别环境
   if (typeof window !== 'undefined') {
-    // 浏览器环境：根据当前域名判断
-    const hostname = window.location.hostname;
-    
-    // 本地开发环境
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.') || hostname.startsWith('172.')) {
+    // 浏览器环境：本地开发仍然直连本地后端，生产环境统一走同源 /api 代理
+    const { hostname, origin } = window.location;
+    const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isPrivateNetwork =
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('172.');
+
+    if (isLocalHost || isPrivateNetwork) {
       return 'http://localhost:3001/api';
     }
-    
-    // 生产环境（agentrix.top 域名）
-    if (hostname.includes('agentrix.top')) {
-      return 'https://api.agentrix.top/api';
-    }
-    
-    // 生产环境（agentrix.io 域名）
-    if (hostname.includes('agentrix.io')) {
-      return 'https://api.agentrix.io/api';
-    }
 
-    // 直接 IP 访问或未知域名：使用相对路径，由 Nginx / Next.js rewrite 转发
-    return `${window.location.protocol}//${window.location.host}/api`;
+    // 生产环境统一走同源代理，避免浏览器直连 api.agentrix.top 导致的 CORS / DNS / GFW 问题
+    return `${origin}/api`;
   }
 
   // 服务端渲染或默认情况：根据 NODE_ENV 判断
   if (process.env.NODE_ENV === 'production') {
-    // 默认生产环境域名
+    const backendUrl = process.env.BACKEND_URL;
+    if (backendUrl) {
+      return backendUrl.endsWith('/api') ? backendUrl : `${backendUrl.replace(/\/$/, '')}/api`;
+    }
+
+    // SSR 默认同样优先使用生产 API 域名
     return 'https://api.agentrix.top/api';
   }
 

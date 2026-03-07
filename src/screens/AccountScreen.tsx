@@ -98,7 +98,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
           en: `Address: ${address.slice(0, 10)}...${address.slice(-8)}\n\nNext, back up your recovery shard so the wallet can be restored later.`,
           zh: `地址：${address.slice(0, 10)}...${address.slice(-8)}\n\n下一步请立即备份恢复分片，避免后续无法找回钱包。`,
         }),
-        [{ text: t({ en: 'Back up now', zh: '立即备份' }), onPress: () => navigation.navigate('WalletBackup') }],
+        [{ text: t({ en: 'Continue setup', zh: '继续设置' }), onPress: () => navigation.navigate('WalletSetup') }],
       );
     } catch (e: any) {
       Alert.alert(t({ en: 'Creation failed', zh: '创建失败' }), e?.message || t({ en: 'Please try again later', zh: '请稍后重试' }));
@@ -220,11 +220,11 @@ export function AccountScreen({ navigation }: { navigation: any }) {
                   ? t({ en: 'You can review your saved backup guidance anytime.', zh: '你可以随时再次查看备份说明。' })
                   : t({ en: 'Shard C is your recovery code. Without it, device loss may make the wallet unrecoverable.', zh: '分片 C 就是你的恢复码。如果没有它，设备丢失后钱包可能无法恢复。' })}
               </Text>
-              <TouchableOpacity style={styles.backupReminderBtn} onPress={() => navigation.navigate('WalletBackup')}>
+              <TouchableOpacity style={styles.backupReminderBtn} onPress={() => navigation.navigate(mpcBackupCompleted ? 'WalletBackup' : 'WalletSetup')}>
                 <Text style={styles.backupReminderBtnText}>
                   {mpcBackupCompleted
                     ? t({ en: 'View backup', zh: '查看备份' })
-                    : t({ en: 'Back up now', zh: '立即备份' })}
+                    : t({ en: 'Continue setup', zh: '继续设置' })}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -232,7 +232,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
         ) : (
           <TouchableOpacity
             style={styles.createMpcBtn}
-            onPress={handleCreateMpcWallet}
+            onPress={() => navigation.navigate('WalletSetup')}
             disabled={creatingMpc}
             activeOpacity={0.7}
           >
@@ -242,8 +242,8 @@ export function AccountScreen({ navigation }: { navigation: any }) {
               <>
                 <Text style={styles.createMpcIcon}>🔐</Text>
                 <View>
-                  <Text style={styles.createMpcTitle}>{t({ en: 'Create MPC Wallet', zh: '创建 MPC 钱包' })}</Text>
-                  <Text style={styles.createMpcDesc}>{t({ en: 'Create a self-custodial wallet in one tap, no seed phrase required', zh: '一键创建自托管钱包，无需助记词' })}</Text>
+                  <Text style={styles.createMpcTitle}>{t({ en: 'Set Up MPC Wallet', zh: '设置 MPC 钱包' })}</Text>
+                  <Text style={styles.createMpcDesc}>{t({ en: 'Follow the guided flow to create, back up, and confirm your wallet safely', zh: '按引导流程完成创建、备份和确认，安全启用钱包' })}</Text>
                 </View>
               </>
             )}

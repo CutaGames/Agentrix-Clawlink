@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { VoiceService } from '../voice/voice.service';
+import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
 
 interface TelegramFileRef {
   file_id: string;
@@ -48,6 +49,7 @@ export class TelegramBotService {
     @InjectRepository(OpenClawInstance)
     private readonly instanceRepo: Repository<OpenClawInstance>,
     private readonly voiceService: VoiceService,
+    private readonly claudeIntegrationService: ClaudeIntegrationService,
   ) {
     this.apiBase = `https://api.telegram.org/bot${this.botToken}`;
   }
@@ -204,6 +206,11 @@ export class TelegramBotService {
         reply = await this.callCloudAgent(instance, userText);
       }
 
+      if (this.isProviderAuthFailure(reply)) {
+        this.logger.warn(`Agent ${instance.id} returned provider auth failure, using fallback assistant reply for Telegram.`);
+        reply = await this.buildFallbackReply(instance, userText);
+      }
+
       await this.send(chatId, reply);
     } catch (err: any) {
       this.logger.error(`Agent forward error: ${err.message}`);
@@ -225,6 +232,43 @@ export class TelegramBotService {
     if (!resp.ok) throw new Error(`Instance returned ${resp.status}`);
     const data: any = await resp.json();
     return data?.reply?.content || data?.content || data?.message || '(no response)';
+  }
+
+  private isProviderAuthFailure(reply: string): boolean {
+    const text = reply || '';
+    return /No API key found for provider/i.test(text) || /auth-profiles\.json/i.test(text);
+  }
+
+  private async buildFallbackReply(instance: OpenClawInstance, userText: string): Promise<string> {
+    try {
+      const systemPrompt = [
+        `You are ${instance.name}, an Agentrix assistant responding inside Telegram.`,
+        instance.personality ? `Personality hint: ${instance.personality}.` : '',
+        'Keep replies concise and helpful.',
+        'Do not mention auth files, provider configuration, or infrastructure errors.',
+        'If a request truly needs unavailable tools, explain the limitation simply and suggest the next step.',
+      ].filter(Boolean).join(' ');
+
+      const result = await this.claudeIntegrationService.chatWithFunctions(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userText },
+        ],
+        {
+          enableModelRouting: true,
+          context: { userId: instance.userId, sessionId: `telegram-${instance.id}` },
+        },
+      );
+
+      const text = result?.text?.trim();
+      if (text) {
+        return text;
+      }
+    } catch (err: any) {
+      this.logger.error(`Telegram fallback reply failed: ${err.message}`);
+    }
+
+    return '⚠️ Your agent still needs model authorization in the app before it can use that configured provider. Please reconnect the agent or add the required credentials, then try again.';
   }
 
   /** Generate a Telegram deep-link for the given relay token */

@@ -22,6 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { apiFetch, API_BASE } from '../../services/api';
 import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
+import { useI18n } from '../../stores/i18nStore';
 
 // expo-av may not be installed yet — degrade gracefully
 let AudioModule: any = null;
@@ -44,11 +45,12 @@ type RecordingState = 'idle' | 'recording' | 'processing';
 
 export function VoiceChatScreen() {
   const navigation = useNavigation<any>();
+  const { t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
       role: 'assistant',
-      text: '👋 Hey! Press the microphone button and speak, or type your message below.',
+      text: t({ en: '👋 Hey! Press the microphone button and speak, or type your message below.', zh: '👋 你好！按下麦克风开始说话，或者直接在下面输入消息。' }),
       ts: Date.now(),
     },
   ]);
@@ -117,13 +119,13 @@ export function VoiceChatScreen() {
   // ── Start recording ──────────────────────────────────────────────────────────
   const startRecording = useCallback(async () => {
     if (!AudioModule) {
-      Alert.alert('Voice Not Available', 'expo-av is not installed. Please use text input.');
+      Alert.alert(t({ en: 'Voice Not Available', zh: '语音不可用' }), t({ en: 'expo-av is not installed. Please use text input.', zh: '当前未安装 expo-av，请改用文字输入。' }));
       return;
     }
     try {
       const { granted } = await AudioModule.requestPermissionsAsync();
       if (!granted) {
-        Alert.alert('Permission Required', 'Microphone permission is needed for voice input.');
+        Alert.alert(t({ en: 'Permission Required', zh: '需要权限' }), t({ en: 'Microphone permission is needed for voice input.', zh: '语音输入需要麦克风权限。' }));
         return;
       }
       await AudioModule.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
@@ -133,7 +135,7 @@ export function VoiceChatScreen() {
       recordingRef.current = recording;
       setRecordState('recording');
     } catch (err: any) {
-      Alert.alert('Recording Error', err.message);
+      Alert.alert(t({ en: 'Recording Error', zh: '录音错误' }), err.message);
     }
   }, []);
 
@@ -167,13 +169,13 @@ export function VoiceChatScreen() {
       } else {
         // Transcription failed — show prompt for manual override
         Alert.alert(
-          'Transcription Failed',
-          'Could not transcribe audio. Please type your message.',
+          t({ en: 'Transcription Failed', zh: '转写失败' }),
+          t({ en: 'Could not transcribe audio. Please type your message.', zh: '无法识别这段语音，请改用文字输入。' }),
         );
         setRecordState('idle');
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err.message);
       setRecordState('idle');
     }
   }, [sendToAgent]);
@@ -204,12 +206,12 @@ export function VoiceChatScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>← {t({ en: 'Back', zh: '返回' })}</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Voice Chat</Text>
+        <Text style={styles.title}>{t({ en: 'Voice Chat', zh: '语音对话' })}</Text>
         {isSpeaking && (
           <View style={styles.speakingBadge}>
-            <Text style={styles.speakingText}>🔊 Speaking</Text>
+            <Text style={styles.speakingText}>🔊 {t({ en: 'Speaking', zh: '播放中' })}</Text>
           </View>
         )}
       </View>
@@ -237,7 +239,7 @@ export function VoiceChatScreen() {
         {micProcessing && (
           <View style={[styles.bubble, styles.assistantBubble]}>
             <ActivityIndicator size="small" color={colors.accent} />
-            <Text style={[styles.bubbleText, styles.assistantText]}> Processing...</Text>
+            <Text style={[styles.bubbleText, styles.assistantText]}> {t({ en: 'Processing...', zh: '处理中…' })}</Text>
           </View>
         )}
       </ScrollView>
@@ -257,7 +259,11 @@ export function VoiceChatScreen() {
           )}
         </TouchableOpacity>
         <Text style={styles.micHint}>
-          {micActive ? 'Tap to stop recording' : micProcessing ? 'Processing...' : 'Tap to speak'}
+          {micActive
+            ? t({ en: 'Tap to stop recording', zh: '点击停止录音' })
+            : micProcessing
+              ? t({ en: 'Processing...', zh: '处理中…' })
+              : t({ en: 'Tap to speak', zh: '点击开始说话' })}
         </Text>
       </View>
 
@@ -267,7 +273,7 @@ export function VoiceChatScreen() {
           style={styles.textInput}
           value={textInput}
           onChangeText={setTextInput}
-          placeholder="Or type here..."
+          placeholder={t({ en: 'Or type here...', zh: '或者在这里输入…' })}
           placeholderTextColor={colors.textMuted}
           editable={recordState !== 'processing'}
           onSubmitEditing={handleSendText}

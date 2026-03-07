@@ -1,3 +1,5 @@
+const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001'
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -17,7 +19,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:3000/api/:path*',
+        destination: `${backendUrl.replace(/\/$/, '')}/api/:path*`,
       },
     ];
   },
