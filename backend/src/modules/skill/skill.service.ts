@@ -430,15 +430,29 @@ export class SkillService {
     fallbackUserId?: string,
   ): Promise<Array<ClawInstalledSkill | UserInstalledSkill>> {
     const instanceInstallations = await this.findInstanceInstalledSkills(instanceId);
-    if (instanceInstallations.length > 0 || !fallbackUserId) {
+    if (!fallbackUserId) {
       return instanceInstallations;
     }
 
-    return this.userInstalledSkillRepository.find({
-      where: { userId: fallbackUserId },
-      relations: ['skill'],
-      order: { installedAt: 'DESC' },
-    });
+    let userInstallations: UserInstalledSkill[] = [];
+    try {
+      userInstallations = await this.userInstalledSkillRepository.find({
+        where: { userId: fallbackUserId },
+        relations: ['skill'],
+        order: { installedAt: 'DESC' },
+      });
+    } catch {
+      return instanceInstallations;
+    }
+
+    if (instanceInstallations.length === 0) {
+      return userInstallations;
+    }
+
+    const existingSkillIds = new Set(instanceInstallations.map((installation) => installation.skillId));
+    const mergedFallback = userInstallations.filter((installation) => !existingSkillIds.has(installation.skillId));
+
+    return [...instanceInstallations, ...mergedFallback];
   }
 
   async isSkillInstalledForInstance(instanceId: string, skillId: string): Promise<boolean> {

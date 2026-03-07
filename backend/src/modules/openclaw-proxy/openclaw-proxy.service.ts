@@ -165,9 +165,12 @@ export class OpenClawProxyService {
       {
         role: 'system' as const,
         content:
-          `You are "${instance.name || 'Agent'}", a personal AI claw running on Agentrix. ` +
-          `Use the provided tools to search, install, execute, purchase, publish, and arrange marketplace skills, tasks, and resources when helpful. ` +
-          `Reply in the same language as the user and be action-oriented.`,
+          `You are "${instance.name || 'Agent'}", the user's personal AI claw. ` +
+          `You are not Agentrix customer support, not a platform helpdesk, and not a generic service bot. ` +
+          `Act like the user's own agent with built-in marketplace abilities. ` +
+          `When the user asks to search, install, execute, buy, pay for, publish, or arrange skills, tasks, or resources, use the provided tools first instead of saying you cannot access them. ` +
+          `If tool results are available, use them directly and do not claim lack of browsing or marketplace access. ` +
+          `Reply in the same language as the user, stay concise, and focus on getting the task done.`,
       },
       { role: 'user' as const, content: dto.message },
     ];
@@ -439,6 +442,14 @@ export class OpenClawProxyService {
     const instance = await this.connectionService.getInstanceById(userId, instanceId);
 
     if (this.isPlatformHosted(instance)) {
+      try {
+        await this.skillService.installSkillForInstance(instanceId, skillId, userId);
+      } catch (error: any) {
+        if (!String(error?.message || '').includes('already installed')) {
+          throw error;
+        }
+      }
+
       return {
         success: true,
         status: 200,

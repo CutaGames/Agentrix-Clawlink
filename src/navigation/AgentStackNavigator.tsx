@@ -51,7 +51,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="LocalDeploy" component={LocalDeployScreen} options={{ title: 'Local Deploy', headerShown: false }} />
       <Stack.Screen name="SocialBind" component={SocialBindScreen} options={{ title: 'Link Social', headerShown: false }} />
       {/* Layer 2 */}
-      <Stack.Screen name="VoiceChat" component={VoiceChatScreen} options={{ title: 'Voice Chat', headerShown: false }} />
+      <Stack.Screen name="VoiceChat" component={AgentChatScreen} options={{ title: 'Voice Chat', headerShown: false }} />
       <Stack.Screen name="TeamSpace" component={TeamSpaceScreen} options={{ title: 'Team Spaces', headerShown: false }} />
       <Stack.Screen name="TeamInvite" component={TeamInviteScreen} options={{ title: 'Invite Members', headerShown: false }} />
       <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: 'Agent Accounts' }} />

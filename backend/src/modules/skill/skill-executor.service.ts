@@ -6,6 +6,7 @@
 
 import { Injectable, Logger, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { Skill, SkillPricingType, SkillLayer, SkillOriginalPlatform, SkillResourceType, SkillValueType } from '../../entities/skill.entity';
+import { TaskType } from '../../entities/merchant-task.entity';
 import { SkillService } from './skill.service';
 import { MCPServerProxyService } from './mcp-server-proxy.service';
 import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
@@ -432,6 +433,36 @@ export class SkillExecutorService {
       return undefined;
     };
 
+    const normalizeTaskType = (input?: string): TaskType => {
+      const value = String(input || '').trim().toLowerCase();
+      switch (value) {
+        case 'consultation':
+        case 'consult':
+        case 'advisory':
+          return TaskType.CONSULTATION;
+        case 'design':
+        case 'ui':
+        case 'ux':
+          return TaskType.DESIGN;
+        case 'development':
+        case 'dev':
+        case 'code':
+        case 'coding':
+          return TaskType.DEVELOPMENT;
+        case 'content':
+        case 'copywriting':
+        case 'writing':
+        case 'translation':
+          return TaskType.CONTENT;
+        case 'custom_service':
+        case 'custom':
+        case 'service':
+          return TaskType.CUSTOM_SERVICE;
+        default:
+          return TaskType.OTHER;
+      }
+    };
+
     const publishMarketplaceItem = async (
       params: any,
       context: ExecutionContext,
@@ -488,6 +519,86 @@ export class SkillExecutorService {
         message: `${isResource ? 'Resource' : 'Skill'} "${skill.displayName}" published to marketplace`,
         marketplaceUrl: `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/skill/${skill.id}`,
       };
+    };
+
+    const resolveMarketplaceSkill = async (
+      params: any,
+      options?: { preferLayer?: SkillLayer; resourceOnly?: boolean },
+    ): Promise<{ id: string; name?: string; source?: string } | null> => {
+      const directId = params.skillId || params.itemId || params.listingId || params.id;
+      if (directId) {
+        return { id: String(directId) };
+      }
+
+      const query = String(params.query || params.name || params.title || '').trim();
+      if (!query) {
+        return null;
+      }
+
+      const requestedLayer = options?.resourceOnly
+        ? SkillLayer.RESOURCE
+        : options?.preferLayer;
+
+      try {
+        const unified = await this.unifiedMarketplaceService.search({
+          query,
+          page: 1,
+          limit: Number(params.limit || 5),
+          layer: requestedLayer ? [requestedLayer] : undefined,
+        });
+        const first = unified.items?.[0];
+        if (first?.id) {
+          return {
+            id: String(first.id),
+            name: first.displayName || first.name,
+            source: first.originalPlatform || first.source,
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(`Unified marketplace resolve failed for "${query}": ${err.message}`);
+      }
+
+      if (!options?.resourceOnly) {
+        try {
+          const marketplace = await this.skillService.findMarketplace(1, Number(params.limit || 5), params.category, query);
+          const first = marketplace.items?.[0];
+          if (first?.id) {
+            return {
+              id: String(first.id),
+              name: first.displayName || first.name,
+              source: first.originalPlatform || first.source,
+            };
+          }
+        } catch (err: any) {
+          this.logger.warn(`Native marketplace resolve failed for "${query}": ${err.message}`);
+        }
+      }
+
+      if (options?.resourceOnly) {
+        try {
+          const productSearch = await this.internalHandlers.get('search_products')?.(
+            {
+              query,
+              category: params.category,
+              resourceType: params.resourceType || params.type,
+              limit: Number(params.limit || 5),
+            },
+            {} as ExecutionContext,
+          );
+          const first = productSearch?.products?.[0];
+          if (first?.skillId || first?.id) {
+            return {
+              id: String(first.skillId || first.id),
+              name: first.name,
+              source: 'resource_search',
+            };
+          }
+        } catch (err: any) {
+          this.logger.warn(`Resource search resolve failed for "${query}": ${err.message}`);
+        }
+      }
+
+      return null;
     };
 
     // ============ 电商类 Handlers ============
@@ -894,11 +1005,13 @@ export class SkillExecutorService {
 
     /**
      * skill_install — Agent installs a skill for the user
-     * Params: { skillId: string, config?: Record<string,any> }
+     * Params: { skillId?: string, query?: string, config?: Record<string,any> }
      */
     this.registerHandler('skill_install', async (params, context) => {
-      const { skillId, config } = params;
-      if (!skillId) throw new BadRequestException('skillId is required for skill_install');
+      const { config } = params;
+      const resolvedSkill = await resolveMarketplaceSkill(params, { preferLayer: SkillLayer.LOGIC });
+      const skillId = resolvedSkill?.id;
+      if (!skillId) throw new BadRequestException('skillId or query is required for skill_install');
       if (!context.userId) throw new ForbiddenException('User context required to install skills');
 
       const instanceId = typeof context.metadata?.instanceId === 'string'
@@ -913,7 +1026,7 @@ export class SkillExecutorService {
             alreadyInstalled: true,
             scope: 'claw',
             instanceId,
-            message: `Skill ${skillId} is already installed on this claw`,
+            message: `Skill ${resolvedSkill?.name || skillId} is already installed on this claw`,
           };
         }
 
@@ -925,7 +1038,7 @@ export class SkillExecutorService {
           instanceId,
           installId: installed.id,
           skillId: installed.skillId,
-          message: 'Skill installed successfully on this claw',
+          message: `Skill ${resolvedSkill?.name || skillId} installed successfully on this claw`,
         };
       }
 
@@ -935,7 +1048,7 @@ export class SkillExecutorService {
         return {
           success: true,
           alreadyInstalled: true,
-          message: `Skill ${skillId} is already installed`,
+          message: `Skill ${resolvedSkill?.name || skillId} is already installed`,
         };
       }
 
@@ -945,17 +1058,18 @@ export class SkillExecutorService {
         alreadyInstalled: false,
         installId: installed.id,
         skillId: installed.skillId,
-        message: `Skill installed successfully`,
+        message: `Skill ${resolvedSkill?.name || skillId} installed successfully`,
       };
     });
 
     /**
      * skill_execute — Execute a marketplace skill directly from the claw
-     * Params: { skillId: string, input?: Record<string, any> }
+     * Params: { skillId?: string, query?: string, input?: Record<string, any> }
      */
     this.registerHandler('skill_execute', async (params, context) => {
-      const skillId = params.skillId || params.id;
-      if (!skillId) throw new BadRequestException('skillId is required for skill_execute');
+      const resolvedSkill = await resolveMarketplaceSkill(params, { preferLayer: SkillLayer.LOGIC });
+      const skillId = resolvedSkill?.id;
+      if (!skillId) throw new BadRequestException('skillId or query is required for skill_execute');
 
       const result = await this.unifiedMarketplaceService.executeSkill(
         skillId,
@@ -966,6 +1080,7 @@ export class SkillExecutorService {
       return {
         success: true,
         skillId,
+        skillName: resolvedSkill?.name,
         executedAt: new Date().toISOString(),
         result,
       };
@@ -1009,12 +1124,16 @@ export class SkillExecutorService {
 
     /**
      * marketplace_purchase — Agent purchases a skill/product from marketplace
-     * Params: { skillId: string, paymentMethod?: 'wallet'|'x402', quantity?: number }
+     * Params: { skillId?: string, query?: string, paymentMethod?: 'wallet'|'x402', quantity?: number }
      */
     this.registerHandler('marketplace_purchase', async (params, context) => {
       const { paymentMethod = 'wallet', quantity = 1, autoInstall = true } = params;
-      const skillId = params.skillId || params.itemId || params.listingId;
-      if (!skillId) throw new BadRequestException('skillId is required for marketplace_purchase');
+      const resolvedSkill = await resolveMarketplaceSkill(params, {
+        preferLayer: params.resourceType || params.type ? SkillLayer.RESOURCE : undefined,
+        resourceOnly: !!(params.resourceType || params.type),
+      });
+      const skillId = resolvedSkill?.id;
+      if (!skillId) throw new BadRequestException('skillId or query is required for marketplace_purchase');
       if (!context.userId) throw new ForbiddenException('User context required for purchases');
 
       // 1. Find the skill/product
@@ -1172,13 +1291,13 @@ export class SkillExecutorService {
       }
 
       try {
-        const task = await this.merchantTaskService.createTask(context.userId, {
-          merchantId: context.userId, // Self-posting
-          type: type || 'general',
+        const task = await this.taskMarketplaceService.publishTask(context.userId, {
+          type: normalizeTaskType(type),
           title,
           description,
           budget: Number(budget),
           currency: currency || 'USDC',
+          visibility: params.visibility || 'public',
           requirements: {
             deadline: deadline ? new Date(deadline) : undefined,
             deliverables: deliverables || [],

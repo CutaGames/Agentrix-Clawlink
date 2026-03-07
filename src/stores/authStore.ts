@@ -79,10 +79,18 @@ export const useAuthStore = create<AuthState>()(
           console.warn('Failed to save token to SecureStore:', e);
         }
         // Set active instance if user has instances; preserve existing if user object has none
+        const previousUserId = get().user?.id;
         const currentActive = get().activeInstance;
         const firstInstance = user.openClawInstances?.[0] ?? null;
         const activeInstance = firstInstance ?? currentActive;
-        set({ user, token, isAuthenticated: true, isLoading: false, activeInstance });
+        set({
+          user,
+          token,
+          isAuthenticated: true,
+          isLoading: false,
+          activeInstance,
+          hasValidInvitation: previousUserId && previousUserId !== user.id ? false : get().hasValidInvitation,
+        });
       },
 
       clearAuth: async () => {
@@ -92,7 +100,14 @@ export const useAuthStore = create<AuthState>()(
         } catch (e) {
           console.warn('Failed to clear SecureStore:', e);
         }
-        set({ user: null, token: null, isAuthenticated: false, isLoading: false, activeInstance: null });
+        set({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isLoading: false,
+          hasValidInvitation: false,
+          activeInstance: null,
+        });
       },
 
       setLoading: (loading) => set({ isLoading: loading }),

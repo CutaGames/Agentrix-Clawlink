@@ -68,10 +68,14 @@ export const clearToken = async () => {
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${config.baseUrl}${path}`;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (config.token) {
     headers.Authorization = `Bearer ${config.token}`;

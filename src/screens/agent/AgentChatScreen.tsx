@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView,
+  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, PanResponder,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { switchInstanceModel } from '../../services/openclaw.service';
@@ -21,6 +22,38 @@ import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
 let Audio: any = null;
 try { Audio = require('expo-av').Audio; } catch (_) {}
 
+const VOICE_CANCEL_THRESHOLD = 70;
+const MIN_VOICE_RECORD_MS = 350;
+
+function getLowLatencyRecordingOptions() {
+  if (!Audio) return null;
+  return {
+    android: {
+      extension: '.m4a',
+      outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+      audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 32000,
+    },
+    ios: {
+      extension: '.m4a',
+      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+      audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_MEDIUM,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 32000,
+      linearPCMBitDepth: 16,
+      linearPCMIsBigEndian: false,
+      linearPCMIsFloat: false,
+    },
+    web: {
+      mimeType: 'audio/webm',
+      bitsPerSecond: 32000,
+    },
+  };
+}
+
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
 interface Message {
@@ -31,6 +64,14 @@ interface Message {
   error?: boolean;
   createdAt: number;
   thoughts?: string[]; // Added for Thought Chain UI
+}
+
+interface VoiceMetrics {
+  recordedMs: number;
+  transcribeMs: number;
+  stopToSendMs: number;
+  transcriptLength: number;
+  capturedAt: number;
 }
 
 // Strip basic markdown: **bold** -> bold, *italic* -> italic
@@ -120,6 +161,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
   const activeInstance = useAuthStore((s) => s.activeInstance);
+  const { language, t } = useI18n();
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
   const token = useAuthStore.getState().token || '';
@@ -131,6 +173,7 @@ export function AgentChatScreen() {
   const streamAbortRef = useRef<AbortController | null>(null);
   const recordingRef = useRef<any>(null);
   const isRecordingRef = useRef(false);  // stable ref for press hold logic
+  const recordingStartedAtRef = useRef(0);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -144,12 +187,36 @@ export function AgentChatScreen() {
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [willCancelVoice, setWillCancelVoice] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);   // WeChat-style toggle
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
+  const [lastVoiceMetrics, setLastVoiceMetrics] = useState<VoiceMetrics | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
+
+  const voiceButtonLabel = isVoiceProcessing
+    ? t({ en: '⏳  Transcribing...', zh: '⏳  转写中...' })
+    : isRecording
+      ? willCancelVoice
+        ? t({ en: '❌  Release to Cancel', zh: '❌  松开取消' })
+        : t({ en: '🔴  Release to Send', zh: '🔴  松开发送' })
+      : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' });
+
+  const voiceHintText = willCancelVoice
+    ? t({ en: 'Release now to cancel this recording', zh: '现在松开将取消本次录音' })
+    : t({ en: 'Hold to record · slide up to cancel', zh: '按住录音 · 上滑取消' });
+
+  const voiceMetricsText = lastVoiceMetrics
+    ? t(
+        {
+          en: `Last voice: ${lastVoiceMetrics.recordedMs}ms rec · ${lastVoiceMetrics.transcribeMs}ms ASR · ${lastVoiceMetrics.stopToSendMs}ms stop→send`,
+          zh: `上次语音：录音 ${lastVoiceMetrics.recordedMs}ms · 转写 ${lastVoiceMetrics.transcribeMs}ms · 停止到发送 ${lastVoiceMetrics.stopToSendMs}ms`,
+        },
+      )
+    : null;
 
   // Init TTS audio queue player
   useEffect(() => {
@@ -167,9 +234,9 @@ export function AgentChatScreen() {
       const trimmed = s.trim();
       if (!trimmed || trimmed.length < 2) continue;
       const encoded = encodeURIComponent(trimmed);
-      audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}`);
+      audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}&lang=${language === 'zh' ? 'zh' : 'en'}`);
     }
-  }, []);
+  }, [language]);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -376,107 +443,176 @@ export function AgentChatScreen() {
     }
   };
 
-  // Voice recording — called on both onPressIn (start) and onPressOut (stop)
-  const handleVoicePressIn = async () => {
+  const startVoiceRecording = useCallback(async () => {
     if (!Audio) {
-      Alert.alert('Voice Unavailable', 'Audio module not available. Please type your message instead.');
+      Alert.alert(
+        t({ en: 'Voice Unavailable', zh: '语音不可用' }),
+        t({ en: 'Audio module not available. Please type your message instead.', zh: '当前设备无法使用录音模块，请先改用文字输入。' }),
+      );
       return;
     }
+    if (isVoiceProcessing || isRecordingRef.current) return;
     try {
-      if (!isRecordingRef.current) {
-        // START recording
-        isRecordingRef.current = true;
-        const permResult = await Audio.requestPermissionsAsync();
-        if (!permResult.granted) {
-          isRecordingRef.current = false;
-          Alert.alert('Microphone Permission', 'Please enable microphone access in your device settings to use voice input.');
-          return;
+      isRecordingRef.current = true;
+      const permResult = await Audio.requestPermissionsAsync();
+      if (!permResult.granted) {
+        isRecordingRef.current = false;
+        Alert.alert(
+          t({ en: 'Microphone Permission', zh: '需要麦克风权限' }),
+          t({ en: 'Please enable microphone access in your device settings to use voice input.', zh: '请在系统设置中开启麦克风权限后再使用语音输入。' }),
+        );
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+      if (recordingRef.current) {
+        try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
+        recordingRef.current = null;
+      }
+      const options = getLowLatencyRecordingOptions() || Audio.RecordingOptionsPresets.HIGH_QUALITY;
+      const { recording } = await Audio.Recording.createAsync(options);
+      recordingRef.current = recording;
+      recordingStartedAtRef.current = Date.now();
+      setWillCancelVoice(false);
+      setIsRecording(true);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (e: any) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setWillCancelVoice(false);
+      const msg = e?.message || 'Unknown error';
+      if (msg.includes('permission') || msg.includes('Permission')) {
+        Alert.alert(
+          t({ en: 'Microphone Permission', zh: '需要麦克风权限' }),
+          t({ en: 'Please enable microphone access in Settings to use voice input.', zh: '请在设置中开启麦克风权限后再使用语音输入。' }),
+        );
+      } else {
+        Alert.alert(
+          t({ en: 'Voice Error', zh: '语音错误' }),
+          t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n你可以先改用文字输入。` }),
+        );
+      }
+    }
+  }, [isVoiceProcessing, t]);
+
+  const finishVoiceRecording = useCallback(async (cancelled: boolean) => {
+    if (!Audio || !recordingRef.current) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setWillCancelVoice(false);
+      return;
+    }
+
+    const recording = recordingRef.current;
+    recordingRef.current = null;
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    setWillCancelVoice(false);
+
+    try {
+      await recording.stopAndUnloadAsync();
+      const durationMs = Date.now() - recordingStartedAtRef.current;
+      const stopAt = Date.now();
+      const uri = recording.getURI();
+
+      if (cancelled) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+
+      if (durationMs < MIN_VOICE_RECORD_MS) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (uri) {
+        setIsVoiceProcessing(true);
+        try {
+          const formData = new FormData();
+          formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+          const ac = new AbortController();
+          const timeout = setTimeout(() => ac.abort(), 20000);
+          const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${language === 'zh' ? 'zh' : 'en'}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+            signal: ac.signal,
+          });
+          clearTimeout(timeout);
+          if (resp.ok) {
+            const data = await resp.json();
+            const transcript = (data?.text || data?.transcript || '').trim();
+            if (transcript) {
+              const transcribeMs = Date.now() - stopAt;
+              const stopToSendMs = Date.now() - stopAt;
+              setLastVoiceMetrics({
+                recordedMs: durationMs,
+                transcribeMs,
+                stopToSendMs,
+                transcriptLength: transcript.length,
+                capturedAt: Date.now(),
+              });
+              await handleSend(transcript);
+            } else {
+              Alert.alert(
+                t({ en: 'No Speech Detected', zh: '未检测到语音' }),
+                t({ en: 'Could not detect any speech. Please try again or type your message.', zh: '没有识别到语音内容，请重试或改用文字输入。' }),
+              );
+            }
+          } else {
+            const errText = await resp.text().catch(() => '');
+            Alert.alert(
+              t({ en: 'Transcription Failed', zh: '转写失败' }),
+              t({ en: `Server returned ${resp.status}. ${errText ? errText.slice(0, 100) : 'Try typing instead.'}`, zh: `服务返回 ${resp.status}。${errText ? errText.slice(0, 100) : '请先改用文字输入。'}` }),
+            );
+          }
+        } catch (fetchErr: any) {
+          const msg = fetchErr?.name === 'AbortError'
+            ? t({ en: 'Transcription timed out. Try again or type your message.', zh: '语音转写超时，请重试或改用文字输入。' })
+            : t({ en: `Could not reach voice service: ${fetchErr?.message || 'Network error'}`, zh: `无法连接语音服务：${fetchErr?.message || '网络错误'}` });
+          Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), msg);
+        } finally {
+          setIsVoiceProcessing(false);
         }
+      }
+    } catch (e: any) {
+      Alert.alert(
+        t({ en: 'Voice Error', zh: '语音错误' }),
+        e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }),
+      );
+    } finally {
+      try {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
+          allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
           staysActiveInBackground: false,
         });
-        if (recordingRef.current) {
-          try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
-          recordingRef.current = null;
-        }
-        const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        recordingRef.current = recording;
-        setIsRecording(true);
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      const msg = e?.message || 'Unknown error';
-      if (msg.includes('permission') || msg.includes('Permission')) {
-        Alert.alert('Microphone Permission', 'Please enable microphone access in Settings to use voice input.');
-      } else {
-        Alert.alert('Voice Error', `Could not start recording: ${msg}\n\nTry typing your message instead.`);
-      }
+      } catch (_) {}
     }
-  };
+  }, [language, token, handleSend, t]);
 
-  const handleVoicePressOut = async () => {
-    if (!Audio || !isRecordingRef.current) return;
-    try {
-      // STOP and transcribe
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
-        recordingRef.current = null;
-        if (uri) {
-          // Show transcribing indicator
-          setInput('🎙 Transcribing...');
-          try {
-            const formData = new FormData();
-            formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
-            const ac = new AbortController();
-            const timeout = setTimeout(() => ac.abort(), 35_000);
-            const resp = await fetch(`${API_BASE}/voice/transcribe`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-              signal: ac.signal,
-            });
-            clearTimeout(timeout);
-            if (resp.ok) {
-              const data = await resp.json();
-              const transcript = data?.text || data?.transcript || '';
-              if (transcript) {
-                setInput(transcript);
-                setTimeout(() => handleSend(transcript), 100);
-              } else {
-                setInput('');
-                Alert.alert('No Speech Detected', 'Could not detect any speech. Please try again or type your message.');
-              }
-            } else {
-              const errText = await resp.text().catch(() => '');
-              setInput('');
-              Alert.alert('Transcription Failed', `Server returned ${resp.status}. ${errText ? errText.slice(0, 100) : 'Try typing instead.'}`);
-            }
-          } catch (fetchErr: any) {
-            setInput('');
-            const msg = fetchErr?.name === 'AbortError'
-              ? 'Transcription timed out. Try again or type your message.'
-              : `Could not reach voice service: ${fetchErr?.message || 'Network error'}`;
-            Alert.alert('Voice Error', msg);
-          }
-        }
-      }
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setInput('');
-      Alert.alert('Voice Error', e?.message || 'Unknown error stopping recording');
-    }
-  };
+  const voicePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => voiceMode,
+    onMoveShouldSetPanResponder: () => voiceMode,
+    onPanResponderGrant: () => {
+      void startVoiceRecording();
+    },
+    onPanResponderMove: (_evt, gestureState) => {
+      if (!isRecordingRef.current) return;
+      const shouldCancel = gestureState.dy < -VOICE_CANCEL_THRESHOLD;
+      setWillCancelVoice((prev) => (prev === shouldCancel ? prev : shouldCancel));
+    },
+    onPanResponderRelease: (_evt, gestureState) => {
+      void finishVoiceRecording(gestureState.dy < -VOICE_CANCEL_THRESHOLD);
+    },
+    onPanResponderTerminate: () => {
+      void finishVoiceRecording(true);
+    },
+  }), [voiceMode, startVoiceRecording, finishVoiceRecording]);
 
   const openModelPicker = () => setShowModelPicker(true);
 
@@ -608,23 +744,34 @@ export function AgentChatScreen() {
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
           style={styles.modeToggleBtn}
-          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); }}
+          onPress={() => {
+            setVoiceMode(!voiceMode);
+            setIsRecording(false);
+            setWillCancelVoice(false);
+          }}
         >
           <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
         </TouchableOpacity>
 
         {voiceMode ? (
           /* Voice mode: hold-to-talk button */
-          <TouchableOpacity
-            style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-            onPressIn={handleVoicePressIn}
-            onPressOut={handleVoicePressOut}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.holdTalkText}>
-              {isRecording ? '🔴  Release to Send' : '🎙  Hold to Talk'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.voiceComposerWrap}>
+            <View
+              {...voicePanResponder.panHandlers}
+              style={[
+                styles.holdTalkBtn,
+                isRecording && styles.holdTalkBtnActive,
+                willCancelVoice && styles.holdTalkBtnCancel,
+                isVoiceProcessing && styles.holdTalkBtnProcessing,
+              ]}
+            >
+              <Text style={[styles.holdTalkText, isVoiceProcessing && styles.holdTalkTextProcessing]}>
+                {voiceButtonLabel}
+              </Text>
+            </View>
+            <Text style={styles.voiceHintText}>{voiceHintText}</Text>
+            {voiceMetricsText ? <Text style={styles.voiceMetricsText}>{voiceMetricsText}</Text> : null}
+          </View>
         ) : (
           /* Text mode */
           <TextInput
@@ -819,6 +966,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   modeToggleIcon: { fontSize: 18 },
+  voiceComposerWrap: {
+    flex: 1,
+    gap: 4,
+  },
   holdTalkBtn: {
     flex: 1,
     height: 44,
@@ -833,7 +984,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     borderColor: '#ef4444',
   },
+  holdTalkBtnCancel: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  holdTalkBtnProcessing: {
+    backgroundColor: colors.bgCard,
+    borderColor: colors.border,
+  },
   holdTalkText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  holdTalkTextProcessing: { color: colors.textPrimary },
+  voiceHintText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    paddingHorizontal: 6,
+  },
+  voiceMetricsText: {
+    color: colors.accent,
+    fontSize: 11,
+    paddingHorizontal: 6,
+  },
   tokenBar: {
     height: 18, backgroundColor: colors.bgSecondary,
     flexDirection: 'row', alignItems: 'center', overflow: 'hidden', position: 'relative',
