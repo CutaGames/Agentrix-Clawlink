@@ -12,31 +12,6 @@ import { colors } from '../theme/colors';
 import { SkillItem } from '../services/marketplace.api';
 import { apiFetch } from '../services/api';
 
-const MOCK_FAVORITES: SkillItem[] = [
-  {
-    id: 'skill-4',
-    name: 'Smart Contract Audit',
-    description: '自动化智能合约安全审计',
-    author: '@sec_team',
-    authorId: 'user-4',
-    category: 'skills',
-    subCategory: 'Web3',
-    price: 2.00,
-    priceUnit: '次审计',
-    rating: 4.7,
-    reviewCount: 89,
-    likeCount: 45,
-    usageCount: 320,
-    callCount: 1500,
-    agentCompatible: false,
-    tags: ['Web3', '安全'],
-    isLiked: false,
-    isFavorited: true,
-    createdAt: '2025-12-10T00:00:00Z',
-    updatedAt: '2026-02-09T00:00:00Z',
-  },
-];
-
 interface Props {
   navigation: any;
 }
@@ -71,9 +46,9 @@ export function MyFavoritesScreen({ navigation }: Props) {
         createdAt: s.createdAt || new Date().toISOString(),
         updatedAt: s.updatedAt || new Date().toISOString(),
       }));
-      setFavorites(mapped.length > 0 ? mapped : MOCK_FAVORITES);
+      setFavorites(mapped);
     } catch {
-      setFavorites(MOCK_FAVORITES);
+      setFavorites([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

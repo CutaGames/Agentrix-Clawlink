@@ -23,51 +23,38 @@ export interface SellerSkill {
   status: 'active' | 'paused' | 'draft';
 }
 
-// ========== Mock 数据 ==========
+interface RawSkillRecord {
+  id: string;
+  name?: string;
+  displayName?: string;
+  rating?: number;
+  callCount?: number;
+  reviewCount?: number;
+  pricing?: { pricePerCall?: number };
+  status?: string;
+}
 
-const MOCK_DASHBOARD: SellerDashboard = {
-  totalSkills: 3,
-  totalRevenue: 4560,
-  monthlyRevenue: 856,
-  monthlyCallCount: 2400,
-  revenueChange: 23,
-};
+function mapSellerSkill(skill: RawSkillRecord): SellerSkill {
+  const monthlyCallCount = Number(skill.callCount || 0);
+  const pricePerCall = Number(skill.pricing?.pricePerCall || 0);
 
-const MOCK_SELLER_SKILLS: SellerSkill[] = [
-  {
-    id: 'skill-1',
-    name: 'GPT-4 Translation',
-    rating: 4.8,
-    monthlyCallCount: 1200,
-    monthlyRevenue: 456,
-    revenueChange: 23,
-    totalReviews: 326,
-    newReviews: 5,
-    status: 'active',
-  },
-  {
-    id: 'skill-3',
-    name: 'Image Generation Pro',
-    rating: 4.9,
-    monthlyCallCount: 800,
-    monthlyRevenue: 280,
-    revenueChange: 15,
-    totalReviews: 512,
-    newReviews: 12,
-    status: 'active',
-  },
-  {
-    id: 'skill-8',
-    name: 'Code Review Bot',
-    rating: 4.4,
-    monthlyCallCount: 400,
-    monthlyRevenue: 120,
-    revenueChange: -5,
-    totalReviews: 203,
-    newReviews: 3,
-    status: 'active',
-  },
-];
+  return {
+    id: skill.id,
+    name: skill.displayName || skill.name || 'Untitled Skill',
+    rating: Number(skill.rating || 0),
+    monthlyCallCount,
+    monthlyRevenue: Number((monthlyCallCount * pricePerCall).toFixed(2)),
+    revenueChange: 0,
+    totalReviews: Number(skill.reviewCount || 0),
+    newReviews: 0,
+    status: skill.status === 'paused' ? 'paused' : skill.status === 'draft' ? 'draft' : 'active',
+  };
+}
+
+async function fetchMySkills(): Promise<SellerSkill[]> {
+  const result = await apiFetch<{ items?: RawSkillRecord[] }>('/skills/my?limit=100');
+  return (result.items || []).map(mapSellerSkill);
+}
 
 // ========== API 方法 ==========
 
@@ -75,27 +62,44 @@ export const sellerApi = {
   // 获取卖家总览
   async getDashboard(): Promise<SellerDashboard> {
     try {
-      return await apiFetch('/seller/dashboard');
-    } catch (e) {
-      return MOCK_DASHBOARD;
+      const dashboard = await apiFetch<any>('/developer-accounts/dashboard');
+      const account = dashboard?.account;
+      return {
+        totalSkills: Number(account?.publishedSkillCount || 0),
+        totalRevenue: Number(account?.totalRevenue || 0),
+        monthlyRevenue: Number(account?.monthlyRevenue || 0),
+        monthlyCallCount: Number(account?.monthlyApiCallCount || 0),
+        revenueChange: 0,
+      };
+    } catch {
+      const skills = await fetchMySkills().catch(() => []);
+      return {
+        totalSkills: skills.length,
+        totalRevenue: skills.reduce((sum, item) => sum + item.monthlyRevenue, 0),
+        monthlyRevenue: skills.reduce((sum, item) => sum + item.monthlyRevenue, 0),
+        monthlyCallCount: skills.reduce((sum, item) => sum + item.monthlyCallCount, 0),
+        revenueChange: 0,
+      };
     }
   },
 
   // 获取我发布的技能列表
   async getMySkills(): Promise<SellerSkill[]> {
-    try {
-      return await apiFetch('/seller/skills');
-    } catch (e) {
-      return MOCK_SELLER_SKILLS;
-    }
+    return fetchMySkills().catch(() => []);
   },
 
   // 获取单个技能统计
   async getSkillStats(skillId: string): Promise<SellerSkill> {
     try {
-      return await apiFetch(`/seller/skills/${skillId}/stats`);
-    } catch (e) {
-      return MOCK_SELLER_SKILLS.find(s => s.id === skillId) || MOCK_SELLER_SKILLS[0];
+      const skill = await apiFetch<RawSkillRecord>(`/skills/${skillId}`);
+      return mapSellerSkill(skill);
+    } catch {
+      const skills = await fetchMySkills().catch(() => []);
+      const found = skills.find(item => item.id === skillId);
+      if (!found) {
+        throw new Error('Skill not found');
+      }
+      return found;
     }
   },
 };

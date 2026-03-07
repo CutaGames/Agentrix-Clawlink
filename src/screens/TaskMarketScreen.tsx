@@ -434,7 +434,7 @@ export default function TaskMarketScreen() {
         <View style={{ backgroundColor: '#ef4444', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
           <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>TEST</Text>
         </View>
-        <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>This is a test area — task features are under development</Text>
+        <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Featured bounties are shown when live tasks are still sparse.</Text>
       </View>
       {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}
       <View style={styles.bannerCarousel}>

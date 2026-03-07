@@ -34,21 +34,15 @@ interface CommissionItem {
   metadata?: { level?: number };
 }
 
-const MOCK_STATS: CommissionStats = {
-  totalCommission: 1234.56,
-  settledCommission: 890.00,
-  pendingCommission: 344.56,
-  todayCommission: 12.30,
-  todayOrders: 3,
-  totalOrders: 128,
-  referralCount: 45,
+const EMPTY_STATS: CommissionStats = {
+  totalCommission: 0,
+  settledCommission: 0,
+  pendingCommission: 0,
+  todayCommission: 0,
+  todayOrders: 0,
+  totalOrders: 0,
+  referralCount: 0,
 };
-
-const MOCK_ITEMS: CommissionItem[] = [
-  { id: 'c1', skillName: 'GPT-4 Translation', orderAmount: 10.00, commissionAmount: 0.10, commissionRate: 1, currency: 'USD', status: 'settled', createdAt: '2026-02-11T10:30:00Z' },
-  { id: 'c2', skillName: 'Image Generation Pro', orderAmount: 25.00, commissionAmount: 0.25, commissionRate: 1, currency: 'USD', status: 'confirmed', createdAt: '2026-02-10T14:20:00Z' },
-  { id: 'c3', skillName: 'Code Review Bot', orderAmount: 15.00, commissionAmount: 0.15, commissionRate: 1, currency: 'USD', status: 'pending', createdAt: '2026-02-09T09:15:00Z', metadata: { level: 2 } },
-];
 
 export function CommissionEarningsScreen() {
   const [stats, setStats] = useState<CommissionStats | null>(null);
@@ -60,14 +54,14 @@ export function CommissionEarningsScreen() {
   const loadData = useCallback(async () => {
     try {
       const [statsData, commData] = await Promise.all([
-        apiFetch<CommissionStats>('/human-commissions/stats').catch(() => MOCK_STATS),
-        apiFetch<{ items: CommissionItem[] }>('/human-commissions').catch(() => ({ items: MOCK_ITEMS })),
+        apiFetch<CommissionStats>('/human-commissions/stats').catch(() => EMPTY_STATS),
+        apiFetch<{ items: CommissionItem[] }>('/human-commissions').catch(() => ({ items: [] })),
       ]);
       setStats(statsData);
-      setItems(commData.items || MOCK_ITEMS);
+      setItems(commData.items || []);
     } catch {
-      setStats(MOCK_STATS);
-      setItems(MOCK_ITEMS);
+      setStats(EMPTY_STATS);
+      setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);

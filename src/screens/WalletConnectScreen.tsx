@@ -20,9 +20,12 @@ import { colors } from '../theme/colors';
 import { useAuthStore } from '../stores/authStore';
 import {
   WalletProvider,
+  buildWalletConnectLoginUrl,
   getWalletNonce,
+  parseWalletCallbackUrl,
   walletSignatureLogin,
 } from '../services/walletConnect';
+import { QrCode } from '../components/common/QrCode';
 
 // ========== 钱包配置 ==========
 
@@ -73,7 +76,7 @@ const WALLET_DEFS: Omit<WalletConfig, 'installed'>[] = [
   },
 ];
 
-export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
+export const WalletConnectScreen: React.FC<{ navigation?: any; route?: any }> = ({ navigation, route }) => {
   const [loading, setLoading] = useState(false);
   const [detecting, setDetecting] = useState(true);
   const [wallets, setWallets] = useState<WalletConfig[]>([]);
@@ -84,9 +87,11 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
   const [step, setStep] = useState<FlowStep>('select');
   const [statusText, setStatusText] = useState('');
   const [showSignModal, setShowSignModal] = useState(false);
+  const [walletConnectUrl, setWalletConnectUrl] = useState('');
   const appStateRef = useRef(AppState.currentState);
   const waitingForSignRef = useRef(false);
   const returnCountRef = useRef(0);
+  const preferredWalletId = route?.params?.walletId as WalletProvider | undefined;
 
   // 启动时自动检测已安装的钱包
   useEffect(() => {
@@ -195,6 +200,42 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
     }
   }, [walletAddress, signMessage, selectedWallet]);
 
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', async ({ url }) => {
+      if (!url || !url.includes('wallet-callback')) return;
+
+      const payload = parseWalletCallbackUrl(url);
+
+      if (payload.address) {
+        setWalletAddress(payload.address);
+      }
+      if (payload.message) {
+        setSignMessage(payload.message);
+      }
+      if (payload.walletType) {
+        const matched = wallets.find(w => w.id === payload.walletType);
+        if (matched) {
+          setSelectedWallet(matched);
+        }
+      }
+
+      if (payload.signature && payload.address) {
+        setSignature(payload.signature);
+        setStep('manual');
+        setStatusText('Wallet signature received. Logging in...');
+        await handleAutoLogin(payload.signature);
+        return;
+      }
+
+      if (payload.address) {
+        setStep('manual');
+        setStatusText('Wallet returned. Continue the sign-in flow below.');
+      }
+    });
+
+    return () => sub.remove();
+  }, [handleAutoLogin, wallets]);
+
   // 一键连接已安装钱包 — open wallet app via deeplink, get address from clipboard on return
   const handleInstalledWallet = useCallback(async (wallet: WalletConfig) => {
     setSelectedWallet(wallet);
@@ -231,19 +272,33 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
     setStep('install-guide');
   }, []);
 
+  useEffect(() => {
+    if (!preferredWalletId || wallets.length === 0 || selectedWallet) return;
+    const preferredWallet = wallets.find(w => w.id === preferredWalletId);
+    if (!preferredWallet) return;
+    setSelectedWallet(preferredWallet);
+    if (preferredWallet.installed) {
+      handleInstalledWallet(preferredWallet);
+    } else {
+      setStep('install-guide');
+    }
+  }, [preferredWalletId, wallets, selectedWallet, handleInstalledWallet]);
+
   // WalletConnect — 打开网页 QR 扫码
   const handleWalletConnect = useCallback(async () => {
+    const walletLoginUrl = buildWalletConnectLoginUrl('agentrix://wallet-callback');
+    setWalletConnectUrl(walletLoginUrl);
+    setSelectedWallet(null);
+    setStatusText('Scan the QR code with a compatible wallet, or open the link on this device.');
     setStep('walletconnect');
-    const frontendUrl = 'https://www.agentrix.top';
-    const walletLoginUrl = `${frontendUrl}/auth/login?tab=wallet&mobile=1&callback=agentrix://wallet-callback`;
-    try {
-      await WebBrowser.openBrowserAsync(walletLoginUrl, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-      });
-    } finally {
-      setStep('select');
-    }
   }, []);
+
+  const openWalletConnect = useCallback(async () => {
+    if (!walletConnectUrl) return;
+    await WebBrowser.openBrowserAsync(walletConnectUrl, {
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+    });
+  }, [walletConnectUrl]);
 
   const resetFlow = useCallback(() => {
     setStep('select');
@@ -252,6 +307,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
     setWalletAddress('');
     setSelectedWallet(null);
     setStatusText('');
+    setWalletConnectUrl('');
     waitingForSignRef.current = false;
     returnCountRef.current = 0;
   }, []);
@@ -521,11 +577,37 @@ export const WalletConnectScreen: React.FC<{ navigation?: any }> = ({ navigation
             <View style={styles.connectingWalletIcon}>
               <Text style={{ fontSize: 48 }}>🔗</Text>
             </View>
-            <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 16 }} />
-            <Text style={styles.connectingStatus}>Opening WalletConnect...</Text>
+            <Text style={styles.connectingStatus}>WalletConnect fallback</Text>
             <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: 8 }}>
-              Scan the QR code with your wallet app to connect
+              Scan the QR code with your wallet app to connect, or open the link on this device.
             </Text>
+            <View style={styles.qrCard}>
+              <QrCode value={walletConnectUrl || 'https://www.agentrix.top/auth/login'} size={180} />
+              <Text style={styles.qrHint} numberOfLines={2}>{walletConnectUrl}</Text>
+            </View>
+            <TouchableOpacity style={styles.primaryButton} onPress={openWalletConnect} activeOpacity={0.7}>
+              <Text style={styles.primaryButtonText}>Open Wallet Login</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryButton, styles.secondaryButton]}
+              onPress={async () => {
+                if (!walletConnectUrl) return;
+                await Clipboard.setStringAsync(walletConnectUrl);
+                Alert.alert('Copied', 'Wallet login link copied to clipboard');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.secondaryButtonText}>Copy Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => {
+                setStep('manual');
+                setStatusText('Paste your wallet address and signature if the wallet does not return automatically.');
+              }}
+            >
+              <Text style={styles.backBtnText}>Enter Address Manually</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[styles.cancelBtn, { marginTop: 24 }]} onPress={resetFlow}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
@@ -779,6 +861,22 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border,
   },
   connectingStatus: { fontSize: 15, color: colors.text, textAlign: 'center', lineHeight: 22, marginTop: 8 },
+  qrCard: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    width: '100%',
+  },
+  qrHint: {
+    marginTop: 12,
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: 'center',
+  },
   cancelBtn: { marginTop: 20, paddingVertical: 10, paddingHorizontal: 24 },
   cancelBtnText: { color: colors.muted, fontSize: 14, fontWeight: '600' },
   // Fields
@@ -803,6 +901,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  secondaryButton: {
+    backgroundColor: colors.primary + '12',
+  },
+  secondaryButtonText: { color: colors.primary, fontSize: 16, fontWeight: '700' },
   buttonDisabled: { opacity: 0.4 },
   backBtn: { alignItems: 'center', paddingVertical: 12 },
   backBtnText: { color: colors.primary, fontSize: 14, fontWeight: '500' },

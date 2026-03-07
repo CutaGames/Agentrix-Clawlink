@@ -1,5 +1,6 @@
 // 推广/推荐 API 服务
 import { apiFetch } from './api';
+import { useAuthStore } from '../stores/authStore';
 
 // ========== 类型定义 ==========
 
@@ -35,63 +36,23 @@ export interface CommissionRule {
   settlementCycle: string;
 }
 
-// ========== Mock 数据 ==========
-
-const MOCK_STATS: ReferralStats = {
-  totalInvites: 128,
-  totalClicks: 2456,
-  conversionRate: 5.2,
-  totalCommission: 1234.56,
-  pendingCommission: 234.00,
-  todayClicks: 45,
-  todayConversions: 3,
-};
-
-const MOCK_LINKS: ReferralLink[] = [
-  {
-    id: 'link-1',
-    name: '注册邀请',
-    shortCode: 'invite',
-    shortUrl: 'https://agentrix.top/r/invite',
-    targetType: 'general',
-    clicks: 245,
-    conversions: 12,
-    commission: 34.50,
-    status: 'active',
-    createdAt: '2026-01-15T00:00:00Z',
-  },
-  {
-    id: 'link-2',
-    name: 'GPT-4 Translation',
-    shortCode: 'gpt4t',
-    shortUrl: 'https://agentrix.top/r/gpt4t',
-    targetType: 'skill',
-    targetId: 'skill-1',
-    clicks: 189,
-    conversions: 8,
-    commission: 22.00,
-    status: 'active',
-    createdAt: '2026-01-20T00:00:00Z',
-  },
-  {
-    id: 'link-3',
-    name: '技能市场',
-    shortCode: 'market',
-    shortUrl: 'https://agentrix.top/r/market',
-    targetType: 'general',
-    clicks: 312,
-    conversions: 15,
-    commission: 56.80,
-    status: 'active',
-    createdAt: '2026-01-10T00:00:00Z',
-  },
-];
-
-const MOCK_RULES: CommissionRule[] = [
+const DEFAULT_RULES: CommissionRule[] = [
   { assetType: '技能/服务', platformFeeRate: 5, promoterShare: 20, effectiveRate: 1, settlementCycle: 'T+3' },
   { assetType: '虚拟商品', platformFeeRate: 4, promoterShare: 20, effectiveRate: 0.8, settlementCycle: 'T+1' },
   { assetType: '实物商品', platformFeeRate: 3, promoterShare: 20, effectiveRate: 0.6, settlementCycle: 'T+7' },
 ];
+
+function getEmptyStats(): ReferralStats {
+  return {
+    totalInvites: 0,
+    totalClicks: 0,
+    conversionRate: 0,
+    totalCommission: 0,
+    pendingCommission: 0,
+    todayClicks: 0,
+    todayConversions: 0,
+  };
+}
 
 // ========== API 方法 ==========
 
@@ -99,9 +60,26 @@ export const referralApi = {
   // 获取推广统计
   async getStats(): Promise<ReferralStats> {
     try {
-      return await apiFetch('/referral/stats');
-    } catch (e) {
-      return MOCK_STATS;
+      const [referralStats, commissionStats] = await Promise.all([
+        apiFetch<any>('/referral/stats').catch(() => null),
+        apiFetch<any>('/human-commissions/stats').catch(() => null),
+      ]);
+
+      const totalInvites = Number(commissionStats?.referralCount ?? referralStats?.totalReferrals ?? 0);
+      const totalClicks = Number(referralStats?.totalMerchantGMV ?? commissionStats?.totalOrders ?? 0);
+      const todayConversions = Number(commissionStats?.todayOrders || 0);
+
+      return {
+        totalInvites,
+        totalClicks,
+        conversionRate: totalClicks > 0 ? Number(((todayConversions / totalClicks) * 100).toFixed(2)) : 0,
+        totalCommission: Number(commissionStats?.totalCommission || referralStats?.totalCommissionEarned || 0),
+        pendingCommission: Number(commissionStats?.pendingCommission || referralStats?.pendingCommissions || 0),
+        todayClicks: Number(commissionStats?.todayOrders || 0),
+        todayConversions,
+      };
+    } catch {
+      return getEmptyStats();
     }
   },
 
@@ -110,8 +88,9 @@ export const referralApi = {
     try {
       const result = await apiFetch<{ link: string }>('/referral/link');
       return result.link;
-    } catch (e) {
-      return 'https://agentrix.top/r/abc123';
+    } catch {
+      const user = useAuthStore.getState().user;
+      return user?.id ? `https://www.agentrix.top/?ref=${user.id}` : 'https://www.agentrix.top';
     }
   },
 
@@ -132,8 +111,8 @@ export const referralApi = {
         status: l.status || 'active',
         createdAt: l.createdAt,
       }));
-    } catch (e) {
-      return MOCK_LINKS;
+    } catch {
+      return [];
     }
   },
 
@@ -167,30 +146,34 @@ export const referralApi = {
         status: l.status || 'active',
         createdAt: l.createdAt || new Date().toISOString(),
       };
-    } catch (e) {
-      const shortCode = Math.random().toString(36).substring(2, 10);
-      return {
-        id: `link-${Date.now()}`,
-        name: params.name,
-        shortCode,
-        shortUrl: `https://agentrix.top/r/${shortCode}`,
-        targetType: params.targetType,
-        targetId: params.targetId,
-        clicks: 0,
-        conversions: 0,
-        commission: 0,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      };
+    } catch (e: any) {
+      throw new Error(e?.message || 'Failed to create referral link');
     }
   },
 
   // 获取单条链接统计
   async getLinkStats(linkId: string): Promise<ReferralLink> {
     try {
-      return await apiFetch(`/referral/links/${linkId}/stats`);
-    } catch (e) {
-      return MOCK_LINKS.find(l => l.id === linkId) || MOCK_LINKS[0];
+      const links = await apiFetch<any[]>('/referral/links');
+      const link = (links || []).find((item: any) => item.id === linkId);
+      if (!link) {
+        throw new Error('Referral link not found');
+      }
+      return {
+        id: link.id,
+        name: link.title || link.targetName || 'Link',
+        shortCode: link.shortCode,
+        shortUrl: link.shortUrl,
+        targetType: link.type || 'general',
+        targetId: link.targetId,
+        clicks: link.clicks || 0,
+        conversions: link.conversions || 0,
+        commission: link.totalCommission || 0,
+        status: link.status || 'active',
+        createdAt: link.createdAt,
+      };
+    } catch (e: any) {
+      throw new Error(e?.message || 'Failed to load referral link stats');
     }
   },
 
@@ -203,13 +186,13 @@ export const referralApi = {
       });
       return { success: true };
     } catch (e) {
-      return { success: true };
+      throw e;
     }
   },
 
   // 获取佣金规则
   getCommissionRules(): CommissionRule[] {
-    return MOCK_RULES;
+    return DEFAULT_RULES;
   },
 
   // 获取佣金统计 — 对接 GET /human-commissions/stats
@@ -226,13 +209,13 @@ export const referralApi = {
       return await apiFetch('/human-commissions/stats');
     } catch {
       return {
-        totalCommission: MOCK_STATS.totalCommission,
-        settledCommission: MOCK_STATS.totalCommission - MOCK_STATS.pendingCommission,
-        pendingCommission: MOCK_STATS.pendingCommission,
+        totalCommission: 0,
+        settledCommission: 0,
+        pendingCommission: 0,
         todayCommission: 0,
-        todayOrders: MOCK_STATS.todayConversions,
-        totalOrders: MOCK_STATS.totalClicks,
-        referralCount: MOCK_STATS.totalInvites,
+        todayOrders: 0,
+        totalOrders: 0,
+        referralCount: 0,
       };
     }
   },
