@@ -5,10 +5,10 @@
     "scheme": "agentrix",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./Agentrix Logo/agentrix_logo_square.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./Agentrix Logo/agentrix_logo_square_transparent.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -44,7 +44,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./Agentrix Logo/agentrix_logo_square_transparent.png",
         "backgroundColor": "#000000"
       },
       "package": "app.agentrix.claw",
@@ -65,7 +65,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./Agentrix Logo/agentrix_logo_square.png"
     },
     "newArchEnabled": false,
     "autolinking": {
@@ -96,7 +96,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./Agentrix Logo/agentrix_logo_square.png",
           "color": "#0B1220",
           "sounds": []
         }

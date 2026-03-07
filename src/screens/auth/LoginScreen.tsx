@@ -135,10 +135,14 @@ export function LoginScreen() {
       {/* Brand Header */}
       <View style={styles.header}>
         <View style={styles.logoCircle}>
-          <Text style={styles.logoInitials}>AX</Text>
+          <Image
+            source={require('../../../Agentrix Logo/agentrix_logo_square_transparent.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
         </View>
-        <Text style={styles.logoText}>Agentrix</Text>
-        <Text style={styles.tagline}>Intelligent Agents at your Fingertips</Text>
+        <Text style={styles.logoText}>Agentrix Claw</Text>
+        <Text style={styles.tagline}>Intelligent agents, smoother everywhere</Text>
       </View>
 
       {/* Web2.5 Main Login Area */}
@@ -324,21 +328,19 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
   content: { padding: 24, paddingTop: 100, paddingBottom: 40 },
-  header: { alignItems: 'center', marginBottom: 56 },
+  header: { alignItems: 'center', marginBottom: 48 },
   logoCircle: { 
-    width: 44, 
-    height: 44, 
-    backgroundColor: '#000000', 
+    width: 88, 
+    height: 88, 
+    backgroundColor: 'transparent', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    marginBottom: 10,
-    borderWidth: 1.5,
-    borderColor: '#444444',
-    borderRadius: 10
+    marginBottom: 12,
+    borderRadius: 22
   },
-  logoInitials: { fontSize: 18, fontWeight: '900', color: '#ffffff', letterSpacing: -0.5, fontFamily: 'monospace' },
-  logoText: { fontSize: 20, fontWeight: '800', color: '#ffffff', letterSpacing: 2, textTransform: 'uppercase' },
-  tagline: { fontSize: 13, color: '#888888', marginTop: 10, letterSpacing: 0.5 },
+  brandLogo: { width: 88, height: 88 },
+  logoText: { fontSize: 16, fontWeight: '800', color: '#ffffff', letterSpacing: 0.8 },
+  tagline: { fontSize: 11, color: '#888888', marginTop: 8, letterSpacing: 0.2 },
   
   web25Title: { fontSize: 24, fontWeight: '700', color: '#ffffff', textAlign: 'center', marginBottom: 8 },
   web25Sub: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 32 },

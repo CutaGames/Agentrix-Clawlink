@@ -1,4 +1,4 @@
-# ClawLink Local Agent — GUI Installer v1.2
+# Agentrix-Claw Local Agent — GUI Installer v1.3
 # Double-click Setup.bat to run this
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -6,17 +6,21 @@ Add-Type -AssemblyName System.Net.Http
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 # ── Globals ────────────────────────────────────────────────────────────
-$INSTALL_DIR        = "$env:USERPROFILE\.clawlink-agent"
+$INSTALL_DIR        = Join-Path $env:APPDATA "Agentrix-Claw"
 $CONFIG_FILE        = "$INSTALL_DIR\config.json"
-$START_SCRIPT       = "$INSTALL_DIR\Start-Agent.ps1"
-$AGENT_PORT         = 7700
+$START_SCRIPT       = "$INSTALL_DIR\Start-Agentrix-Claw.ps1"
+$AGENT_PORT         = 7474
 $API_BASE           = "https://api.agentrix.top"
-$APP_DEEPLINK_BASE  = "clawlink://connect"
+$APP_DEEPLINK_BASE  = "agentrix://connect"
+$PACKAGE_NAME       = "@agentrix/openclaw-agent@latest"
+$PACKAGE_COMMAND    = "openclaw"
+$LOGO_PATH          = Join-Path (Join-Path $PSScriptRoot "..\Agentrix Logo") "agentrix_logo_square_transparent.png"
 # Connection token param name must match mobile app (instanceId, not agentId)
 # $global:AGENT_ID is exposed as instanceId in the deep link
 $STEP               = 0    # current wizard step
 $AGENT_TOKEN        = ""
 $AGENT_ID           = ""
+$OPENCLAW_CMD       = $null
 
 # ── Color / Font helpers ─────────────────────────────────────────────
 $DARK_BG   = [System.Drawing.Color]::FromArgb(13, 15, 20)
@@ -29,6 +33,103 @@ $FONT_LG   = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.Font
 $FONT_MD   = New-Object System.Drawing.Font("Segoe UI", 11)
 $FONT_SM   = New-Object System.Drawing.Font("Segoe UI", 9)
 $FONT_MONO = New-Object System.Drawing.Font("Consolas",  9)
+
+function Refresh-SessionPath {
+    $machinePath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = @($machinePath, $userPath) -join ';'
+}
+
+function Resolve-Executable {
+    param(
+        [string[]]$Names,
+        [string[]]$ExtraPaths = @()
+    )
+
+    foreach ($name in $Names) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cmd -and $cmd.Source) { return $cmd.Source }
+    }
+
+    foreach ($path in $ExtraPaths) {
+        if ($path -and (Test-Path $path)) { return $path }
+    }
+
+    return $null
+}
+
+function Get-NodeToolchain {
+    Refresh-SessionPath
+
+    $nodeCandidates = @(
+        "$env:ProgramFiles\nodejs\node.exe",
+        "$env:ProgramFiles(x86)\nodejs\node.exe"
+    )
+    $npmCandidates = @(
+        "$env:ProgramFiles\nodejs\npm.cmd",
+        "$env:ProgramFiles(x86)\nodejs\npm.cmd"
+    )
+
+    return @{
+        Node = Resolve-Executable -Names @('node.exe', 'node') -ExtraPaths $nodeCandidates
+        Npm  = Resolve-Executable -Names @('npm.cmd', 'npm.exe', 'npm') -ExtraPaths $npmCandidates
+    }
+}
+
+function Get-OpenClawCommand {
+    param([string]$NpmPath)
+
+    Refresh-SessionPath
+    $fromPath = Resolve-Executable -Names @('openclaw.cmd', 'openclaw.exe', 'openclaw')
+    if ($fromPath) { return $fromPath }
+
+    if ($NpmPath) {
+        try {
+            $prefix = (& $NpmPath prefix -g 2>$null | Select-Object -First 1).Trim()
+            $candidates = @(
+                (Join-Path $prefix 'openclaw.cmd'),
+                (Join-Path $prefix 'openclaw.exe'),
+                (Join-Path $prefix 'node_modules\.bin\openclaw.cmd')
+            )
+            foreach ($candidate in $candidates) {
+                if (Test-Path $candidate) { return $candidate }
+            }
+        } catch {}
+    }
+
+    return $null
+}
+
+function Get-LanIp {
+    try {
+        return (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254)' } |
+            Select-Object -First 1 -ExpandProperty IPAddress)
+    } catch {
+        return $null
+    }
+}
+
+function Add-BrandLogo {
+    param(
+        [System.Windows.Forms.Control]$Parent,
+        [int]$X,
+        [int]$Y,
+        [int]$Width,
+        [int]$Height
+    )
+
+    if (-not (Test-Path $LOGO_PATH)) { return $null }
+
+    $pic = New-Object System.Windows.Forms.PictureBox
+    $pic.Size = [System.Drawing.Size]::new($Width, $Height)
+    $pic.Location = [System.Drawing.Point]::new($X, $Y)
+    $pic.BackColor = [System.Drawing.Color]::Transparent
+    $pic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+    $pic.Image = [System.Drawing.Image]::FromFile($LOGO_PATH)
+    $Parent.Controls.Add($pic)
+    return $pic
+}
 
 function New-RoundedButton($text, $x, $y, $w, $h, $bg, $fg) {
     $btn        = New-Object System.Windows.Forms.Button
@@ -46,7 +147,7 @@ function New-RoundedButton($text, $x, $y, $w, $h, $bg, $fg) {
 
 # ── Main Form ────────────────────────────────────────────────────────
 $form               = New-Object System.Windows.Forms.Form
-$form.Text          = "ClawLink Local Agent — Setup"
+$form.Text          = "Agentrix-Claw Local Agent — Setup"
 $form.Size          = [System.Drawing.Size]::new(560, 480)
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 $form.BackColor     = $DARK_BG
@@ -93,16 +194,10 @@ function Show-Step0 {
     $panel.Controls.Clear()
     Update-Dots 0
 
-    $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text      = "🦀"
-    $lbl.Font      = New-Object System.Drawing.Font("Segoe UI Emoji", 48)
-    $lbl.ForeColor = $TEXT
-    $lbl.AutoSize  = $true
-    $lbl.Location  = [System.Drawing.Point]::new(230, 50)
-    $panel.Controls.Add($lbl)
+    Add-BrandLogo -Parent $panel -X 200 -Y 36 -Width 160 -Height 90 | Out-Null
 
     $title = New-Object System.Windows.Forms.Label
-    $title.Text      = "ClawLink Local Agent"
+    $title.Text      = "Agentrix-Claw Local Agent"
     $title.Font      = $FONT_LG
     $title.ForeColor = $TEXT
     $title.AutoSize  = $true
@@ -112,7 +207,7 @@ function Show-Step0 {
     $panel.Controls.Add($title)
 
     $sub = New-Object System.Windows.Forms.Label
-    $sub.Text      = "Your personal AI agent running 24/7 on this computer`nTalk to it from anywhere with the ClawLink app"
+    $sub.Text      = "Your personal AI agent running 24/7 on this computer`nTalk to it from anywhere with the Agentrix mobile app"
     $sub.Font      = $FONT_MD
     $sub.ForeColor = $MUTED
     $sub.Size      = [System.Drawing.Size]::new(480, 60)
@@ -126,9 +221,9 @@ function Show-Step0 {
     $card.Location  = [System.Drawing.Point]::new(40, 265)
     $panel.Controls.Add($card)
 
-    @("✅  Runs locally — your data stays on this PC",
-      "✅  Connect from mobile app with QR code",
-      "✅  One-click setup — no technical knowledge needed") | ForEach-Object -Begin { $ri = 0 } -Process {
+        @("✅  Runs locally — your data stays on this PC",
+            "✅  Connect from mobile app with QR code",
+            "✅  One-click setup — no technical knowledge needed") | ForEach-Object -Begin { $ri = 0 } -Process {
         $rl = New-Object System.Windows.Forms.Label
         $rl.Text      = $_
         $rl.Font      = $FONT_SM
@@ -156,7 +251,7 @@ function Show-Step1 {
     Update-Dots 1
 
     $title = New-Object System.Windows.Forms.Label
-    $title.Text      = "Installing ClawLink Agent..."
+    $title.Text      = "Installing Agentrix-Claw Agent..."
     $title.Font      = $FONT_LG
     $title.ForeColor = $TEXT
     $title.Size      = [System.Drawing.Size]::new(540, 40)
@@ -219,8 +314,9 @@ function Show-Step1 {
 
     # Check Node.js
     SetProgress 25 "Checking Node.js..."
-    $nodeVersion = & node --version 2>$null
-    if ($nodeVersion) {
+    $toolchain = Get-NodeToolchain
+    if ($toolchain.Node -and $toolchain.Npm) {
+        $nodeVersion = & $toolchain.Node --version 2>$null
         Log "► Node.js found: $nodeVersion"
     } else {
         Log "► Node.js not found — downloading installer..."
@@ -231,17 +327,35 @@ function Show-Step1 {
             (New-Object System.Net.WebClient).DownloadFile($nodeInstallerUrl, $nodeInstaller)
             Log "► Installing Node.js (this may take 1-2 min)..."
             Start-Process msiexec -ArgumentList "/i `"$nodeInstaller`" /qn /norestart" -Wait
+            $toolchain = Get-NodeToolchain
+            if (-not $toolchain.Node -or -not $toolchain.Npm) {
+                throw "Node.js installed but PATH is still unavailable. Please reopen the installer and try again."
+            }
             Log "► Node.js installed!"
         } catch {
             Log "⚠ Could not auto-install Node.js. Please install from nodejs.org then re-run."
+            [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Agentrix-Claw Setup', 'OK', 'Error') | Out-Null
+            return
         }
     }
 
     # Install npm package
-    SetProgress 50 "Installing clawlink-agent package..."
-    Log "► Running: npm install -g clawlink-agent@latest"
-    $npmOut = & npm install -g clawlink-agent@latest 2>&1
+    SetProgress 50 "Installing Agentrix-Claw package..."
+    Log "► Running: npm install -g $PACKAGE_NAME"
+    $npmOut = & $toolchain.Npm install -g $PACKAGE_NAME 2>&1
     $npmOut | ForEach-Object { Log "  $_" }
+    if ($LASTEXITCODE -ne 0) {
+        [System.Windows.Forms.MessageBox]::Show('Package installation failed. Please check the setup log and try again.', 'Agentrix-Claw Setup', 'OK', 'Error') | Out-Null
+        return
+    }
+
+    $global:OPENCLAW_CMD = Get-OpenClawCommand -NpmPath $toolchain.Npm
+    if (-not $global:OPENCLAW_CMD) {
+        [System.Windows.Forms.MessageBox]::Show('The OpenClaw command could not be found after installation. Please reopen the installer and try again.', 'Agentrix-Claw Setup', 'OK', 'Error') | Out-Null
+        return
+    }
+
+    Log "► OpenClaw command: $global:OPENCLAW_CMD"
     SetProgress 70 "Package installed."
 
     # Write config
@@ -254,17 +368,17 @@ function Show-Step1 {
         relayUrl     = "wss://$($API_BASE -replace 'https://','')/relay"
         apiBase      = $API_BASE
         createdAt    = [System.DateTime]::UtcNow.ToString("o")
-        version      = "1.2.0"
+        version      = "1.3.0"
     } | ConvertTo-Json -Depth 3
     Set-Content -Path $CONFIG_FILE -Value $config -Encoding UTF8
     Log "► Config saved to $CONFIG_FILE"
 
     # Write start script
     $startScript = @"
-# Start ClawLink Agent
+# Start Agentrix-Claw Agent
 Set-Location "$INSTALL_DIR"
-`$env:CLAWLINK_CONFIG = "$CONFIG_FILE"
-clawlink-agent --config "$CONFIG_FILE"
+`$env:AGENTRIX_CLAW_CONFIG = "$CONFIG_FILE"
+& "$global:OPENCLAW_CMD" start --port $AGENT_PORT --token "$global:AGENT_TOKEN"
 "@
     Set-Content -Path $START_SCRIPT -Value $startScript -Encoding UTF8
 
@@ -272,18 +386,18 @@ clawlink-agent --config "$CONFIG_FILE"
     SetProgress 88 "Creating desktop shortcut..."
     try {
         $shell = New-Object -ComObject WScript.Shell
-        $shortcut = $shell.CreateShortcut("$env:USERPROFILE\Desktop\ClawLink Agent.lnk")
+        $shortcut = $shell.CreateShortcut("$env:USERPROFILE\Desktop\Agentrix-Claw Agent.lnk")
         $shortcut.TargetPath = "powershell.exe"
         $shortcut.Arguments  = "-NoProfile -ExecutionPolicy Bypass -File `"$START_SCRIPT`""
         $shortcut.WorkingDirectory = $INSTALL_DIR
-        $shortcut.Description = "Start ClawLink Local Agent"
+        $shortcut.Description = "Start Agentrix-Claw Local Agent"
         $shortcut.Save()
-        Log "► Desktop shortcut created: 'ClawLink Agent.lnk'"
+        Log "► Desktop shortcut created: 'Agentrix-Claw Agent.lnk'"
     } catch { Log "  (shortcut creation skipped)" }
 
     # Start the agent
     SetProgress 95 "Starting agent..."
-    Log "► Starting ClawLink Agent on port $AGENT_PORT..."
+    Log "► Starting Agentrix-Claw Agent on port $AGENT_PORT..."
     try {
         Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File `"$START_SCRIPT`"" -WindowStyle Minimized
         Start-Sleep -Milliseconds 2000
@@ -294,7 +408,7 @@ clawlink-agent --config "$CONFIG_FILE"
 
     SetProgress 100 "Installation complete!"
     Log ""
-    Log "✅ ClawLink Agent installed successfully!"
+    Log "✅ Agentrix-Claw Agent installed successfully!"
 
     Start-Sleep -Milliseconds 500
     Show-Step2
@@ -317,7 +431,7 @@ function Show-Step2 {
     $panel.Controls.Add($title)
 
     $sub = New-Object System.Windows.Forms.Label
-    $sub.Text      = "Scan with ClawLink app on your phone to connect"
+    $sub.Text      = "Scan with the Agentrix mobile app on your phone to connect"
     $sub.Font      = $FONT_SM
     $sub.ForeColor = $MUTED
     $sub.Size      = [System.Drawing.Size]::new(540, 20)
@@ -327,12 +441,16 @@ function Show-Step2 {
 
     # ── QR code image (from web API) ─────────────────────────────────
     # Param name normalized to 'instanceId' — matches OpenClawBindScreen route parsing
-    $deepLink = "$APP_DEEPLINK_BASE`?instanceId=$global:AGENT_ID&token=$global:AGENT_TOKEN&port=$AGENT_PORT"
+    $lanIP = Get-LanIp
+    $hostForLink = if ($lanIP) { $lanIP } else { 'localhost' }
+    $deepLink = "$APP_DEEPLINK_BASE`?instanceId=$global:AGENT_ID&token=$global:AGENT_TOKEN&host=$hostForLink&port=$AGENT_PORT"
     $qrUrl    = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=2&data=" + [uri]::EscapeDataString($deepLink)
 
+    Add-BrandLogo -Parent $panel -X 225 -Y 92 -Width 110 -Height 38 | Out-Null
+
     $picBox = New-Object System.Windows.Forms.PictureBox
-    $picBox.Size        = [System.Drawing.Size]::new(185, 185)
-    $picBox.Location    = [System.Drawing.Point]::new(185, 88)
+    $picBox.Size        = [System.Drawing.Size]::new(170, 170)
+    $picBox.Location    = [System.Drawing.Point]::new(195, 132)
     $picBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None
     $picBox.BackColor   = [System.Drawing.Color]::White
     $picBox.SizeMode    = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
@@ -344,7 +462,7 @@ function Show-Step2 {
         Font      = $FONT_SM
         ForeColor = $MUTED
         Size      = [System.Drawing.Size]::new(185, 20)
-        Location  = [System.Drawing.Point]::new(185, 275)
+        Location  = [System.Drawing.Point]::new(188, 306)
         TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
     }))
 
@@ -364,17 +482,11 @@ function Show-Step2 {
     $infoCard = New-Object System.Windows.Forms.Panel
     $infoCard.BackColor = $CARD_BG
     $infoCard.Size      = [System.Drawing.Size]::new(480, 56)
-    $infoCard.Location  = [System.Drawing.Point]::new(40, 282)
+    $infoCard.Location  = [System.Drawing.Point]::new(40, 328)
     $panel.Controls.Add($infoCard)
 
     $linkLbl = New-Object System.Windows.Forms.Label
     # Show LAN IP so user knows what to enter if QR fails
-    $lanIP = ""
-    try {
-        $lanIP = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-                  Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254)' } |
-                  Select-Object -First 1).IPAddress
-    } catch {}
     $displayUrl = if ($lanIP) { "http://${lanIP}:$AGENT_PORT" } else { "http://localhost:$AGENT_PORT" }
 
     $linkLbl.Text      = "Agent URL:  $displayUrl"
@@ -393,7 +505,7 @@ function Show-Step2 {
     $infoCard.Controls.Add($idLbl)
 
     # ── Copy deep-link button ─────────────────────────────────────────
-    $btnCopy = New-RoundedButton "⧉  Copy Link" 40 350 150 38 $CARD_BG $TEXT
+    $btnCopy = New-RoundedButton "⧉  Copy Link" 40 398 150 38 $CARD_BG $TEXT
     $btnCopy.Add_Click({
         [System.Windows.Forms.Clipboard]::SetText($deepLink)
         $btnCopy.Text = "✓  Copied!"
@@ -404,12 +516,12 @@ function Show-Step2 {
     $panel.Controls.Add($btnCopy)
 
     # ── Open ClawLink in browser ──────────────────────────────────────
-    $btnWeb = New-RoundedButton "Open App Store" 210 350 160 38 $CARD_BG $TEXT
+    $btnWeb = New-RoundedButton "Open Download Page" 190 398 190 38 $CARD_BG $TEXT
     $btnWeb.Add_Click({ Start-Process "https://agentrix.top/download" })
     $panel.Controls.Add($btnWeb)
 
     # ── Finish ───────────────────────────────────────────────────────
-    $btnFinish = New-RoundedButton "✓  Finish" 385 350 120 38 $GREEN ([System.Drawing.Color]::Black)
+    $btnFinish = New-RoundedButton "✓  Finish" 385 398 120 38 $GREEN ([System.Drawing.Color]::Black)
     $btnFinish.Add_Click({ $form.Close() })
     $panel.Controls.Add($btnFinish)
 }

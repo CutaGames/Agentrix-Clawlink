@@ -272,14 +272,18 @@ export function AgentConsoleScreen() {
 
       {/* Tab Bar */}
       <View style={styles.tabs}>
-        {(['overview', 'skills', 'tasks'] as const).map((t) => (
+        {(['overview', 'skills', 'tasks'] as const).map((tabKey) => (
           <TouchableOpacity
-            key={t}
-            style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
-            onPress={() => setTab(t)}
+            key={tabKey}
+            style={[styles.tabBtn, tab === tabKey && styles.tabBtnActive]}
+            onPress={() => setTab(tabKey)}
           >
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'overview' ? `📊 ${t({ en: 'Overview', zh: '概览' })}` : t === 'skills' ? `⚡ ${t({ en: 'Skills', zh: '技能' })}` : `📋 ${t({ en: 'Tasks', zh: '任务' })}`}
+            <Text style={[styles.tabText, tab === tabKey && styles.tabTextActive]}>
+              {tabKey === 'overview'
+                ? `📊 ${t({ en: 'Overview', zh: '概览' })}`
+                : tabKey === 'skills'
+                  ? `⚡ ${t({ en: 'Skills', zh: '技能' })}`
+                  : `📋 ${t({ en: 'Tasks', zh: '任务' })}`}
             </Text>
           </TouchableOpacity>
         ))}
