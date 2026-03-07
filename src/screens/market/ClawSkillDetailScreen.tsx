@@ -9,7 +9,7 @@
  *  - Share button → ShareCard screen
  *  - Bottom CTA: Install / Buy Now + Promote & Earn
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, Alert, ActivityIndicator, Share,
@@ -24,7 +24,7 @@ import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import type { MarketStackParamList } from '../../navigation/types';
+import type { MarketStackParamList, ShareCardRouteParams } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
 type RouteT = RouteProp<MarketStackParamList, 'SkillDetail'>;
@@ -54,6 +54,35 @@ const formatDate = (dateStr: string) => {
   return `${Math.floor(diff / 30)}mo ago`;
 };
 
+const buildSkillShareCardParams = (skill: any, skillId: string, refId?: string): ShareCardRouteParams => {
+  const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${refId || 'guest'}`;
+  const isResource = skill?.category === 'resources';
+  const title = skill?.displayName || skill?.name || 'Agentrix Listing';
+  const authorName = typeof skill?.author === 'string'
+    ? skill.author
+    : skill?.author?.nickname || skill?.vendorName || 'Agentrix Creator';
+  const price = skill?.pricing?.pricePerCall ?? skill?.price ?? 0;
+  const priceUnit = skill?.pricing?.currency ?? skill?.priceUnit ?? 'USD';
+  const rating = Number(skill?.rating || 0);
+  const installs = skill?.installCount ?? skill?.usageCount ?? skill?.callCount ?? 0;
+
+  return {
+    shareUrl,
+    title,
+    userName: authorName,
+    subtitle: isResource ? 'Premium resource for your AI workflow' : 'High-conversion AI skill for your agent',
+    headerEmoji: skill?.icon || (isResource ? '📦' : '⚡'),
+    categoryLabel: isResource ? 'RESOURCE' : 'SKILL',
+    priceLabel: price === 0 ? 'Free' : `$${price < 1 ? price.toFixed(4) : price.toFixed(2)} / ${priceUnit}`,
+    statsLabel: `${rating.toFixed(1)}★ · ${formatCount(installs)} installs`,
+    description: skill?.description || skill?.longDescription || undefined,
+    tags: skill?.tags || [],
+    ctaLabel: isResource ? 'Scan to unlock this resource' : 'Scan to install this skill',
+    accentFrom: isResource ? '#0F766E' : '#2563EB',
+    accentTo: isResource ? '#14B8A6' : '#7C3AED',
+  };
+};
+
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export function ClawSkillDetailScreen() {
@@ -79,17 +108,18 @@ export function ClawSkillDetailScreen() {
       return marketplaceApi.getDetail(skillId);
     },
     enabled: !!skillId,
-    onSuccess: (data: any) => {
-      if (data) {
-        setLiked(data.isLiked || false);
-        setLikeCount(data.likeCount || 0);
-        setFavorited(data.isFavorited || false);
-      }
-    },
   });
 
+  useEffect(() => {
+    if (skill) {
+      setLiked(skill.isLiked || false);
+      setLikeCount(skill.likeCount || 0);
+      setFavorited(skill.isFavorited || false);
+    }
+  }, [skill]);
+
   // ── Load reviews ──
-  const { data: reviewsData } = useQuery({
+  const { data: reviewsData } = useQuery<{ reviews: ReviewItem[]; total: number }>({
     queryKey: ['skill-reviews', skillId],
     queryFn: () => marketplaceApi.getReviews(skillId),
     enabled: !!skillId,
@@ -100,15 +130,8 @@ export function ClawSkillDetailScreen() {
 
   const handleShare = useCallback(() => {
     if (!skill) return;
-    const authorName = typeof skill.author === 'string'
-      ? skill.author
-      : skill.author?.nickname || skill.vendorName || 'Agentrix Creator';
     try {
-      navigation.navigate('ShareCard' as any, {
-        shareUrl: `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
-        title: skill.displayName || skill.name,
-        userName: authorName,
-      });
+      navigation.navigate('ShareCard', buildSkillShareCardParams(skill, skillId, activeInstance?.id));
     } catch {
       // Fallback to native share
       Share.share({
@@ -167,12 +190,8 @@ export function ClawSkillDetailScreen() {
       void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
       void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
 
-      if (result?.skillActive || result?.platformHosted) {
-        Alert.alert(
-          '✅ Installed!',
-          `${skillName} is now active on ${activeInstance.name} and can be used in chat immediately.`,
-        );
-      } else if (result?.dbRecorded || result?.pendingDeploy) {
+      // Both dbRecorded (marketplace) and pendingDeploy (live push) are acceptable success states
+      if (result?.dbRecorded || result?.pendingDeploy) {
         Alert.alert(
           '✅ Installed!',
           `${skillName} has been added to ${activeInstance.name}.${result?.pendingDeploy ? '\n\nIt will sync automatically when the agent reconnects.' : ''}`,
@@ -202,7 +221,7 @@ export function ClawSkillDetailScreen() {
     if (!skill) return;
     const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
     const skillDisplayName = skill.displayName || skill.name;
-    const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || '';
+    const shareCardParams = buildSkillShareCardParams(skill, skillId, activeInstance?.id);
     
     // Show share options: Social post, Native share, and Poster
     Alert.alert(
@@ -223,11 +242,7 @@ export function ClawSkillDetailScreen() {
           text: '🖼️ Share Poster',
           onPress: () => {
             try {
-              navigation.navigate('ShareCard' as any, {
-                shareUrl,
-                title: skillDisplayName,
-                userName: authorName,
-              });
+              navigation.navigate('ShareCard', shareCardParams);
             } catch {
               Share.share({
                 message: `🔥 "${skillDisplayName}" on Agentrix Claw\n\nDownload: https://agentrix.top/download\n${shareUrl}`,

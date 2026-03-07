@@ -111,7 +111,7 @@ function TelegramGuide({ botUsername, webhookUrl, onSetup, settingUp, t }: {
         <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
         <View style={{ flex: 1 }}>
           <Text style={styles.stepTitle}>{t({ en: 'Start Chatting!', zh: '开始聊天！' })}</Text>
-          <Text style={styles.stepDesc}>{t({ en: 'Send any message to your bot. Your AI agent will automatically reply! Messages will appear in the event log below.', zh: '向机器人发送任意消息，你的 AI 智能体会自动回复！消息会出现在下方的事件日志中。' })}</Text>
+          <Text style={styles.stepDesc}>{t({ en: 'Send any text or voice message to your bot. Your AI agent will automatically reply and events will appear below.', zh: '向机器人发送任意文字或语音消息，你的 AI 智能体会自动回复，事件也会显示在下方。' })}</Text>
         </View>
       </View>
     </View>

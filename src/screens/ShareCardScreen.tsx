@@ -5,13 +5,27 @@ import type { RouteProp } from '@react-navigation/native';
 import { ShareCardView } from '../components/ShareCardView';
 import { useAuthStore } from '../stores/authStore';
 import { colors } from '../theme/colors';
-import type { MeStackParamList } from '../navigation/types';
+import type { ShareCardRouteParams } from '../navigation/types';
 
-type RouteT = RouteProp<MeStackParamList, 'ShareCard'>;
+type RouteT = RouteProp<Record<'ShareCard', ShareCardRouteParams>, 'ShareCard'>;
 
 export function ShareCardScreen() {
   const route = useRoute<RouteT>();
-  const { shareUrl, title, userName } = route.params;
+  const {
+    shareUrl,
+    title,
+    userName,
+    subtitle,
+    headerEmoji,
+    categoryLabel,
+    priceLabel,
+    statsLabel,
+    description,
+    tags,
+    ctaLabel,
+    accentFrom,
+    accentTo,
+  } = route.params;
   const user = useAuthStore((s) => s.user);
 
   return (
@@ -20,7 +34,17 @@ export function ShareCardScreen() {
         <ShareCardView
           shareUrl={shareUrl}
           title={title ?? 'Agentrix Claw'}
+          subtitle={subtitle}
+          headerEmoji={headerEmoji}
           userName={userName ?? user?.nickname ?? user?.email}
+          categoryLabel={categoryLabel}
+          priceLabel={priceLabel}
+          statsLabel={statsLabel}
+          description={description}
+          tags={tags}
+          ctaLabel={ctaLabel}
+          accentFrom={accentFrom}
+          accentTo={accentTo}
         />
       </ScrollView>
     </SafeAreaView>

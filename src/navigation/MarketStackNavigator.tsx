@@ -10,6 +10,7 @@ import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { PostTaskScreen } from '../screens/PostTaskScreen';
 import { CreateLinkScreen } from '../screens/CreateLinkScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
+import { ShareCardScreen } from '../screens/ShareCardScreen';
 
 const Stack = createNativeStackNavigator<MarketStackParamList>();
 
@@ -32,6 +33,7 @@ export function MarketStackNavigator() {
       <Stack.Screen name="PublishTask" component={PostTaskScreen} options={{ title: 'Post Task' }} />
       <Stack.Screen name="CreateLink" component={CreateLinkScreen} options={{ title: 'Create Link' }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: 'Install Skill' }} />
+      <Stack.Screen name="ShareCard" component={ShareCardScreen} options={{ title: 'Share Poster' }} />
     </Stack.Navigator>
   );
 }

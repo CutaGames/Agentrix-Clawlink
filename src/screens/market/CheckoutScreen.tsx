@@ -456,18 +456,30 @@ export function CheckoutScreen() {
 
   // ── Share after payment ──
   const handleShareAfterPay = useCallback(() => {
+    const isResource = skill?.category === 'resources';
+    const displayName = skillName || skill?.displayName || skill?.name || 'Skill';
     try {
-      navigation.navigate('ShareCard' as any, {
+      navigation.navigate('ShareCard', {
         shareUrl: `https://agentrix.top/skill/${skillId}?ref=purchase`,
-        title: skillName || skill?.displayName || skill?.name || 'Skill',
+        title: displayName,
         userName: 'Agentrix User',
+        subtitle: isResource ? 'Just purchased on Agentrix Marketplace' : 'Just unlocked on Agentrix Marketplace',
+        headerEmoji: skill?.icon || (isResource ? '📦' : '⚡'),
+        categoryLabel: isResource ? 'RESOURCE' : 'SKILL',
+        priceLabel: skill?.price ? `$${Number(skill.price).toFixed(2)} / ${skill?.priceUnit || 'USD'}` : 'Paid',
+        statsLabel: isResource ? 'Ready to share with your team' : 'Ready to install and promote',
+        description: skill?.description || undefined,
+        tags: skill?.tags || [],
+        ctaLabel: isResource ? 'Scan to view this purchase' : 'Scan to explore this skill',
+        accentFrom: isResource ? '#0F766E' : '#2563EB',
+        accentTo: isResource ? '#14B8A6' : '#7C3AED',
       });
     } catch {
       Share.share({
-        message: `I just purchased "${skillName || skill?.name}" on Agentrix Claw! 🎉\nhttps://agentrix.top/skill/${skillId}`,
+        message: `I just purchased "${displayName}" on Agentrix Claw! 🎉\nhttps://agentrix.top/skill/${skillId}`,
       });
     }
-  }, [skillId, skillName, skill, navigation]);
+  }, [navigation, skill, skillId, skillName]);
 
   // ── Payment Success View ──
   if (paySuccess) {

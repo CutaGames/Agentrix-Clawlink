@@ -14,7 +14,8 @@ import * as Clipboard from 'expo-clipboard';
 import { colors } from '../theme/colors';
 import { useAuthStore } from '../stores/authStore';
 import { apiFetch } from '../services/api';
-import { checkMPCWallet, ensureMPCWallet } from '../services/mpcWallet';
+import { useI18n } from '../stores/i18nStore';
+import { checkMPCWallet, ensureMPCWallet, isMPCBackupCompleted } from '../services/mpcWallet';
 
 interface SocialAccount {
   id: string;
@@ -45,9 +46,11 @@ const SOCIAL_PROVIDERS = [
 
 export function AccountScreen({ navigation }: { navigation: any }) {
   const user = useAuthStore((s) => s.user);
+  const { t } = useI18n();
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [wallets, setWallets] = useState<WalletConnection[]>([]);
   const [mpcWallet, setMpcWallet] = useState<{ address: string; chain: string } | null>(null);
+  const [mpcBackupCompleted, setMpcBackupCompleted] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [creatingMpc, setCreatingMpc] = useState(false);
@@ -65,6 +68,10 @@ export function AccountScreen({ navigation }: { navigation: any }) {
       if (walletRes.status === 'fulfilled') setWallets(walletRes.value || []);
       if (mpcRes.status === 'fulfilled' && mpcRes.value.hasWallet && mpcRes.value.wallet) {
         setMpcWallet({ address: mpcRes.value.wallet.walletAddress, chain: mpcRes.value.wallet.chain });
+        setMpcBackupCompleted(await isMPCBackupCompleted());
+      } else {
+        setMpcWallet(null);
+        setMpcBackupCompleted(true);
       }
     } catch (e) {
       console.warn('Failed to load account data:', e);
@@ -84,9 +91,17 @@ export function AccountScreen({ navigation }: { navigation: any }) {
     try {
       const address = await ensureMPCWallet(user.id);
       setMpcWallet({ address, chain: 'BSC' });
-      Alert.alert('MPC 钱包已创建', `地址: ${address.slice(0, 10)}...${address.slice(-8)}`);
+      setMpcBackupCompleted(false);
+      Alert.alert(
+        t({ en: 'MPC wallet created', zh: 'MPC 钱包已创建' }),
+        t({
+          en: `Address: ${address.slice(0, 10)}...${address.slice(-8)}\n\nNext, back up your recovery shard so the wallet can be restored later.`,
+          zh: `地址：${address.slice(0, 10)}...${address.slice(-8)}\n\n下一步请立即备份恢复分片，避免后续无法找回钱包。`,
+        }),
+        [{ text: t({ en: 'Back up now', zh: '立即备份' }), onPress: () => navigation.navigate('WalletBackup') }],
+      );
     } catch (e: any) {
-      Alert.alert('创建失败', e?.message || '请稍后重试');
+      Alert.alert(t({ en: 'Creation failed', zh: '创建失败' }), e?.message || t({ en: 'Please try again later', zh: '请稍后重试' }));
     } finally {
       setCreatingMpc(false);
     }
@@ -94,18 +109,18 @@ export function AccountScreen({ navigation }: { navigation: any }) {
 
   const handleCopyAddress = async (address: string) => {
     await Clipboard.setStringAsync(address);
-    Alert.alert('已复制', '钱包地址已复制到剪贴板');
+    Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Wallet address copied to clipboard', zh: '钱包地址已复制到剪贴板' }));
   };
 
   const handleBindSocial = (providerType: string) => {
     Alert.alert(
-      '绑定账号',
-      `即将跳转到 ${providerType} 进行授权绑定`,
+      t({ en: 'Bind social account', zh: '绑定账号' }),
+      t({ en: `You will be redirected to ${providerType} to authorize linking`, zh: `即将跳转到 ${providerType} 进行授权绑定` }),
       [
-        { text: '取消', style: 'cancel' },
-        { text: '去绑定', onPress: () => {
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        { text: t({ en: 'Continue', zh: '去绑定' }), onPress: () => {
           // TODO: 实现绑定流程 — 复用 auth.ts 的 socialLogin 然后调用 /auth/social/bind
-          Alert.alert('提示', '绑定功能开发中，请先通过该社交账号登录来自动绑定');
+          Alert.alert(t({ en: 'Notice', zh: '提示' }), t({ en: 'Binding is under development. For now, please log in with that social account once to bind it automatically.', zh: '绑定功能开发中，请先通过该社交账号登录一次以自动绑定。' }));
         }},
       ]
     );
@@ -113,20 +128,20 @@ export function AccountScreen({ navigation }: { navigation: any }) {
 
   const handleUnbindSocial = (account: SocialAccount) => {
     if (socialAccounts.length <= 1 && !user?.email) {
-      Alert.alert('无法解绑', '至少保留一个登录方式');
+      Alert.alert(t({ en: 'Cannot unbind', zh: '无法解绑' }), t({ en: 'Keep at least one login method', zh: '至少保留一个登录方式' }));
       return;
     }
     Alert.alert(
-      '确认解绑',
-      `确定要解绑 ${account.displayName || account.type} 吗？`,
+      t({ en: 'Confirm unbind', zh: '确认解绑' }),
+      t({ en: `Unbind ${account.displayName || account.type}?`, zh: `确定要解绑 ${account.displayName || account.type} 吗？` }),
       [
-        { text: '取消', style: 'cancel' },
-        { text: '解绑', style: 'destructive', onPress: async () => {
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        { text: t({ en: 'Unbind', zh: '解绑' }), style: 'destructive', onPress: async () => {
           try {
             await apiFetch(`/auth/social/unbind/${account.type}`, { method: 'DELETE' });
             setSocialAccounts(prev => prev.filter(a => a.id !== account.id));
           } catch (e: any) {
-            Alert.alert('解绑失败', e?.message || '请稍后重试');
+            Alert.alert(t({ en: 'Unbind failed', zh: '解绑失败' }), e?.message || t({ en: 'Please try again later', zh: '请稍后重试' }));
           }
         }},
       ]
@@ -156,7 +171,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
           </Text>
         </View>
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{user?.nickname || user?.email || '用户'}</Text>
+          <Text style={styles.userName}>{user?.nickname || user?.email || t({ en: 'User', zh: '用户' })}</Text>
           <Text style={styles.userId}>{user?.agentrixId || `ID: ${user?.id?.slice(0, 8)}`}</Text>
           {user?.email && <Text style={styles.userEmail}>📧 {user.email}</Text>}
         </View>
@@ -164,8 +179,8 @@ export function AccountScreen({ navigation }: { navigation: any }) {
 
       {/* MPC 钱包 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🔐 MPC 钱包</Text>
-        <Text style={styles.sectionDesc}>自托管钱包，密钥分片加密存储在您的设备上</Text>
+        <Text style={styles.sectionTitle}>🔐 {t({ en: 'MPC Wallet', zh: 'MPC 钱包' })}</Text>
+        <Text style={styles.sectionDesc}>{t({ en: 'Self-custodial wallet with encrypted key shards stored across your device and recovery flow.', zh: '自托管钱包，密钥会以加密分片方式存储在你的设备和恢复流程中。' })}</Text>
 
         {mpcWallet ? (
           <View style={styles.mpcCard}>
@@ -174,25 +189,44 @@ export function AccountScreen({ navigation }: { navigation: any }) {
                 <Text style={styles.mpcChainText}>{mpcWallet.chain}</Text>
               </View>
               <View style={styles.mpcStatusDot} />
-              <Text style={styles.mpcStatusText}>已激活</Text>
+              <Text style={styles.mpcStatusText}>{t({ en: 'Active', zh: '已激活' })}</Text>
             </View>
             <TouchableOpacity onPress={() => handleCopyAddress(mpcWallet.address)} activeOpacity={0.7}>
               <Text style={styles.mpcAddress}>{shortenAddress(mpcWallet.address)}</Text>
-              <Text style={styles.mpcCopyHint}>点击复制完整地址</Text>
+              <Text style={styles.mpcCopyHint}>{t({ en: 'Tap to copy full address', zh: '点击复制完整地址' })}</Text>
             </TouchableOpacity>
             <View style={styles.mpcFeatures}>
               <View style={styles.mpcFeature}>
                 <Text style={styles.mpcFeatureIcon}>🔑</Text>
-                <Text style={styles.mpcFeatureText}>2/3 分片</Text>
+                <Text style={styles.mpcFeatureText}>{t({ en: '2/3 shards', zh: '2/3 分片' })}</Text>
               </View>
               <View style={styles.mpcFeature}>
                 <Text style={styles.mpcFeatureIcon}>📱</Text>
-                <Text style={styles.mpcFeatureText}>设备存储</Text>
+                <Text style={styles.mpcFeatureText}>{t({ en: 'Device storage', zh: '设备存储' })}</Text>
               </View>
               <View style={styles.mpcFeature}>
                 <Text style={styles.mpcFeatureIcon}>🛡️</Text>
-                <Text style={styles.mpcFeatureText}>加密保护</Text>
+                <Text style={styles.mpcFeatureText}>{t({ en: 'Encrypted protection', zh: '加密保护' })}</Text>
               </View>
+            </View>
+            <View style={[styles.backupReminderCard, mpcBackupCompleted ? styles.backupReminderDone : styles.backupReminderWarn]}>
+              <Text style={styles.backupReminderTitle}>
+                {mpcBackupCompleted
+                  ? t({ en: '✅ Recovery shard backed up', zh: '✅ 恢复分片已备份' })
+                  : t({ en: '⚠️ Back up your recovery shard now', zh: '⚠️ 请立即备份恢复分片' })}
+              </Text>
+              <Text style={styles.backupReminderText}>
+                {mpcBackupCompleted
+                  ? t({ en: 'You can review your saved backup guidance anytime.', zh: '你可以随时再次查看备份说明。' })
+                  : t({ en: 'Shard C is your recovery code. Without it, device loss may make the wallet unrecoverable.', zh: '分片 C 就是你的恢复码。如果没有它，设备丢失后钱包可能无法恢复。' })}
+              </Text>
+              <TouchableOpacity style={styles.backupReminderBtn} onPress={() => navigation.navigate('WalletBackup')}>
+                <Text style={styles.backupReminderBtnText}>
+                  {mpcBackupCompleted
+                    ? t({ en: 'View backup', zh: '查看备份' })
+                    : t({ en: 'Back up now', zh: '立即备份' })}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         ) : (
@@ -208,8 +242,8 @@ export function AccountScreen({ navigation }: { navigation: any }) {
               <>
                 <Text style={styles.createMpcIcon}>🔐</Text>
                 <View>
-                  <Text style={styles.createMpcTitle}>创建 MPC 钱包</Text>
-                  <Text style={styles.createMpcDesc}>一键创建自托管钱包，无需助记词</Text>
+                  <Text style={styles.createMpcTitle}>{t({ en: 'Create MPC Wallet', zh: '创建 MPC 钱包' })}</Text>
+                  <Text style={styles.createMpcDesc}>{t({ en: 'Create a self-custodial wallet in one tap, no seed phrase required', zh: '一键创建自托管钱包，无需助记词' })}</Text>
                 </View>
               </>
             )}
@@ -219,8 +253,8 @@ export function AccountScreen({ navigation }: { navigation: any }) {
 
       {/* 社交账号绑定 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🔗 社交账号</Text>
-        <Text style={styles.sectionDesc}>绑定社交账号可用于快速登录和身份验证</Text>
+        <Text style={styles.sectionTitle}>🔗 {t({ en: 'Social Accounts', zh: '社交账号' })}</Text>
+        <Text style={styles.sectionDesc}>{t({ en: 'Link social accounts for faster sign-in and identity verification.', zh: '绑定社交账号可用于快速登录和身份验证。' })}</Text>
 
         {SOCIAL_PROVIDERS.map(provider => {
           const bound = socialAccounts.find(a => a.type === provider.type);
@@ -234,16 +268,16 @@ export function AccountScreen({ navigation }: { navigation: any }) {
                 {bound ? (
                   <>
                     <Text style={styles.socialBound}>
-                      {bound.displayName || bound.username || '已绑定'}
+                      {bound.displayName || bound.username || t({ en: 'Linked', zh: '已绑定' })}
                     </Text>
                     {bound.permissions && bound.permissions.length > 0 && (
                       <Text style={styles.socialPermissions}>
-                        权限: {bound.permissions.join(', ')}
+                        {t({ en: 'Permissions', zh: '权限' })}: {bound.permissions.join(', ')}
                       </Text>
                     )}
                   </>
                 ) : (
-                  <Text style={styles.socialUnbound}>未绑定</Text>
+                  <Text style={styles.socialUnbound}>{t({ en: 'Not linked', zh: '未绑定' })}</Text>
                 )}
               </View>
               {bound ? (
@@ -251,14 +285,14 @@ export function AccountScreen({ navigation }: { navigation: any }) {
                   style={styles.unbindBtn}
                   onPress={() => handleUnbindSocial(bound)}
                 >
-                  <Text style={styles.unbindBtnText}>解绑</Text>
+                  <Text style={styles.unbindBtnText}>{t({ en: 'Unbind', zh: '解绑' })}</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={styles.bindBtn}
                   onPress={() => handleBindSocial(provider.type)}
                 >
-                  <Text style={styles.bindBtnText}>绑定</Text>
+                  <Text style={styles.bindBtnText}>{t({ en: 'Bind', zh: '绑定' })}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -268,8 +302,8 @@ export function AccountScreen({ navigation }: { navigation: any }) {
 
       {/* 外部钱包 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>💳 外部钱包</Text>
-        <Text style={styles.sectionDesc}>连接外部钱包用于链上交易和支付</Text>
+        <Text style={styles.sectionTitle}>💳 {t({ en: 'External Wallets', zh: '外部钱包' })}</Text>
+        <Text style={styles.sectionDesc}>{t({ en: 'Connect external wallets for on-chain payments and trading.', zh: '连接外部钱包用于链上交易和支付。' })}</Text>
 
         {wallets.length > 0 ? (
           wallets.map(w => (
@@ -282,7 +316,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
                   <Text style={styles.walletName}>{shortenAddress(w.walletAddress)}</Text>
                   {w.isDefault && (
                     <View style={styles.defaultBadge}>
-                      <Text style={styles.defaultBadgeText}>默认</Text>
+                      <Text style={styles.defaultBadgeText}>{t({ en: 'Default', zh: '默认' })}</Text>
                     </View>
                   )}
                 </View>
@@ -294,7 +328,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>暂未连接外部钱包</Text>
+          <Text style={styles.emptyText}>{t({ en: 'No external wallet connected yet', zh: '暂未连接外部钱包' })}</Text>
         )}
 
         <TouchableOpacity
@@ -303,7 +337,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
           activeOpacity={0.7}
         >
           <Text style={styles.addWalletIcon}>+</Text>
-          <Text style={styles.addWalletText}>连接外部钱包</Text>
+          <Text style={styles.addWalletText}>{t({ en: 'Connect external wallet', zh: '连接外部钱包' })}</Text>
         </TouchableOpacity>
       </View>
 
@@ -311,8 +345,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
       <View style={styles.securityNote}>
         <Text style={styles.securityIcon}>🛡️</Text>
         <Text style={styles.securityText}>
-          您的 MPC 钱包密钥分片使用 AES-256 加密，安全存储在设备的 Secure Enclave 中。
-          社交账号绑定信息仅用于身份验证，不会获取您的社交数据。
+          {t({ en: 'Your MPC wallet shards are encrypted with AES-256 and stored securely on device. Social account links are used only for identity verification and do not grant access to your social data.', zh: '你的 MPC 钱包密钥分片使用 AES-256 加密并安全保存在设备中。社交账号绑定仅用于身份验证，不会读取你的社交数据。' })}
         </Text>
       </View>
 
@@ -388,6 +421,25 @@ const styles = StyleSheet.create({
   mpcFeature: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   mpcFeatureIcon: { fontSize: 14 },
   mpcFeatureText: { color: colors.muted, fontSize: 11 },
+  backupReminderCard: {
+    marginTop: 14,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+  },
+  backupReminderWarn: { backgroundColor: colors.warning + '14', borderColor: colors.warning + '40' },
+  backupReminderDone: { backgroundColor: colors.success + '10', borderColor: colors.success + '35' },
+  backupReminderTitle: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  backupReminderText: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 6 },
+  backupReminderBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  backupReminderBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
   createMpcBtn: {
     flexDirection: 'row',
