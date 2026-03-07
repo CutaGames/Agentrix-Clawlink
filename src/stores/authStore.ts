@@ -89,6 +89,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           await SecureStore.deleteItemAsync('clawlink_token');
           await SecureStore.deleteItemAsync('mpc_shard_a');
+          await SecureStore.deleteItemAsync('mpc_recovery_code');
+          await SecureStore.deleteItemAsync('mpc_backup_confirmed');
         } catch (e) {
           console.warn('Failed to clear SecureStore:', e);
         }

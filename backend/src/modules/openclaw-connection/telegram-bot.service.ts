@@ -2,6 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
+import { VoiceService } from '../voice/voice.service';
+
+interface TelegramFileRef {
+  file_id: string;
+  mime_type?: string;
+  file_name?: string;
+  duration?: number;
+}
 
 export interface TelegramUpdate {
   update_id: number;
@@ -10,6 +18,10 @@ export interface TelegramUpdate {
     chat: { id: number; type: string; first_name?: string; username?: string };
     from?: { id: number; first_name?: string; username?: string };
     text?: string;
+    caption?: string;
+    voice?: TelegramFileRef;
+    audio?: TelegramFileRef;
+    document?: TelegramFileRef;
     date: number;
   };
 }
@@ -35,6 +47,7 @@ export class TelegramBotService {
   constructor(
     @InjectRepository(OpenClawInstance)
     private readonly instanceRepo: Repository<OpenClawInstance>,
+    private readonly voiceService: VoiceService,
   ) {
     this.apiBase = `https://api.telegram.org/bot${this.botToken}`;
   }
@@ -42,32 +55,43 @@ export class TelegramBotService {
   /** Called by controller for every Telegram webhook POST */
   async handleUpdate(update: TelegramUpdate): Promise<void> {
     const msg = update.message;
-    if (!msg?.text) return;
+    if (!msg) return;
 
     const chatId = msg.chat.id;
-    const text = msg.text.trim();
+    const text = msg.text?.trim();
 
-    if (text.startsWith('/start ')) {
-      await this.handleBindCommand(chatId, text.slice(7).trim(), msg.chat.first_name);
-      return;
-    }
-    if (text === '/start') {
-      await this.send(chatId,
-        `👋 Welcome to ClawLink!\n\nTo connect your AI agent, open the ClawLink app → Agent tab → Connect Social.`
-      );
-      return;
-    }
-    if (text === '/status') {
-      await this.handleStatusCommand(chatId);
-      return;
-    }
-    if (text === '/help') {
-      await this.send(chatId, HELP_TEXT);
+    if (text) {
+      if (text.startsWith('/start ')) {
+        await this.handleBindCommand(chatId, text.slice(7).trim(), msg.chat.first_name);
+        return;
+      }
+      if (text === '/start') {
+        await this.send(chatId,
+          `👋 Welcome to ClawLink!\n\nTo connect your AI agent, open the ClawLink app → Agent tab → Connect Social.`
+        );
+        return;
+      }
+      if (text === '/status') {
+        await this.handleStatusCommand(chatId);
+        return;
+      }
+      if (text === '/help') {
+        await this.send(chatId, HELP_TEXT);
+        return;
+      }
+
+      // Forward message to AI engine
+      await this.forwardToAgent(chatId, text);
       return;
     }
 
-    // Forward message to AI engine
-    await this.forwardToAgent(chatId, text);
+    const audioRef = this.getAudioRef(msg);
+    if (audioRef) {
+      await this.handleVoiceMessage(chatId, msg, audioRef);
+      return;
+    }
+
+    await this.send(chatId, '⚠️ Unsupported message type. Please send text or a voice note.');
   }
 
   private async handleBindCommand(chatId: number, token: string, firstName?: string): Promise<void> {
@@ -95,7 +119,7 @@ export class TelegramBotService {
     const name = firstName ? firstName : 'there';
     await this.send(chatId,
       `🎉 Connected! Hi ${name}, your AI agent *${instance.name}* is now linked to this chat.\n\n` +
-      `Just type any message to talk to your agent.\n\n` +
+      `Send a text or voice note to talk to your agent.\n\n` +
       `Type /help for commands.`,
       { parse_mode: 'Markdown' }
     );
@@ -115,6 +139,46 @@ export class TelegramBotService {
       `*${instance.name}*\nStatus: ${status}\nMode: ${mode}\nType: ${instance.instanceType}`,
       { parse_mode: 'Markdown' }
     );
+  }
+
+  private getAudioRef(msg: TelegramUpdate['message']): TelegramFileRef | null {
+    if (!msg) return null;
+    if (msg.voice?.file_id) return msg.voice;
+    if (msg.audio?.file_id) return msg.audio;
+    if (msg.document?.file_id && msg.document?.mime_type?.startsWith('audio/')) return msg.document;
+    return null;
+  }
+
+  private async handleVoiceMessage(
+    chatId: number,
+    msg: NonNullable<TelegramUpdate['message']>,
+    audioRef: TelegramFileRef,
+  ): Promise<void> {
+    await this.sendChatAction(chatId, 'typing');
+
+    try {
+      const file = await this.downloadTelegramAudio(audioRef.file_id);
+      const originalName = audioRef.file_name || this.inferTelegramFileName(file.filePath, audioRef.mime_type);
+      const transcript = await this.voiceService.transcribe(
+        file.buffer,
+        audioRef.mime_type || this.guessMimeType(originalName),
+        originalName,
+      );
+      const spokenText = transcript?.transcript?.trim();
+
+      if (!spokenText) {
+        await this.send(chatId, '⚠️ I could not transcribe that voice message. Please try again or send text.');
+        return;
+      }
+
+      await this.forwardToAgent(chatId, spokenText);
+    } catch (err: any) {
+      this.logger.error(`Telegram voice handling failed: ${err.message}`);
+      await this.send(
+        chatId,
+        `⚠️ Voice message processing failed. ${err?.message?.includes('not configured') ? 'Voice transcription is not configured on the server yet.' : 'Please try again or send text.'}`,
+      );
+    }
   }
 
   private async forwardToAgent(chatId: number, userText: string): Promise<void> {
@@ -180,6 +244,58 @@ export class TelegramBotService {
     });
   }
 
+  private async getTelegramFilePath(fileId: string): Promise<string> {
+    const resp = await fetch(`${this.apiBase}/getFile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: fileId }),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Telegram getFile failed with ${resp.status}`);
+    }
+
+    const data: any = await resp.json();
+    const filePath = data?.result?.file_path;
+    if (!filePath) {
+      throw new Error('Telegram file path missing');
+    }
+    return filePath;
+  }
+
+  private async downloadTelegramAudio(fileId: string): Promise<{ buffer: Buffer; filePath: string }> {
+    if (!this.botToken) {
+      throw new Error('Telegram bot token is not configured');
+    }
+
+    const filePath = await this.getTelegramFilePath(fileId);
+    const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${filePath}`;
+    const resp = await fetch(fileUrl);
+
+    if (!resp.ok) {
+      throw new Error(`Telegram file download failed with ${resp.status}`);
+    }
+
+    const arrayBuffer = await resp.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuffer), filePath };
+  }
+
+  private inferTelegramFileName(filePath: string, mimeType?: string): string {
+    const fileName = filePath.split('/').pop();
+    if (fileName) return fileName;
+    const ext = mimeType?.split('/')[1] || 'ogg';
+    return `telegram-audio.${ext}`;
+  }
+
+  private guessMimeType(fileName: string): string {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (ext === 'ogg' || ext === 'oga') return 'audio/ogg';
+    if (ext === 'mp3') return 'audio/mpeg';
+    if (ext === 'wav') return 'audio/wav';
+    if (ext === 'm4a') return 'audio/m4a';
+    return 'audio/ogg';
+  }
+
   private async sendChatAction(chatId: number, action: string): Promise<void> {
     if (!this.botToken) return;
     await fetch(`${this.apiBase}/sendChatAction`, {
@@ -193,7 +309,7 @@ export class TelegramBotService {
 const HELP_TEXT = `
 *ClawLink AI Agent Commands*
 
-Just type any message — the AI will respond.
+Send any text or voice note — the AI will respond.
 
 /status  — Show agent connection status
 /help    — Show this help

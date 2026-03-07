@@ -7,18 +7,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { useI18n } from '../../stores/i18nStore';
 import type { MeStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MeStackParamList, 'Profile'>;
-
-const MENU_ITEMS = [
-  { id: 'referral', icon: '🎁', label: 'Referrals & Earnings', route: 'ReferralDashboard' },
-  { id: 'account', icon: '🔐', label: 'Wallet & Account', route: 'Account' },
-  { id: 'skills', icon: '⚡', label: 'My Skills', route: 'MySkills' },
-  { id: 'orders', icon: '📦', label: 'My Orders', route: 'MyOrders' },
-  { id: 'social-listener', icon: '📡', label: 'Social Listener', route: 'SocialListener' },
-  { id: 'settings', icon: '⚙️', label: 'Settings', route: 'Settings' },
-];
 
 export function ProfileScreen() {
   const navigation = useNavigation<Nav>();
@@ -26,19 +18,30 @@ export function ProfileScreen() {
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const { t } = useI18n();
+
+  const menuItems = [
+    { id: 'referral', icon: '🎁', label: t({ en: 'Referrals & Earnings', zh: '推广与收益' }), route: 'ReferralDashboard' },
+    { id: 'account', icon: '🔐', label: t({ en: 'Wallet & Account', zh: '钱包与账户' }), route: 'Account' },
+    { id: 'wallet-backup', icon: '🧩', label: t({ en: 'Wallet Backup', zh: '钱包备份' }), route: 'WalletBackup' },
+    { id: 'skills', icon: '⚡', label: t({ en: 'My Skills', zh: '我的技能' }), route: 'MySkills' },
+    { id: 'orders', icon: '📦', label: t({ en: 'My Orders', zh: '我的订单' }), route: 'MyOrders' },
+    { id: 'social-listener', icon: '📡', label: t({ en: 'Social Listener', zh: '社交监听' }), route: 'SocialListener' },
+    { id: 'settings', icon: '⚙️', label: t({ en: 'Settings', zh: '设置' }), route: 'Settings' },
+  ] as const;
 
   const handleShare = () => {
     navigation.navigate('ShareCard', {
       shareUrl: `https://agentrix.top/i/${user?.agentrixId ?? ''}`,
-      title: '� Agentrix-Claw — Your 24/7 AI Agent',
+      title: t({ en: 'Agentrix-Claw — Your 24/7 AI Agent', zh: 'Agentrix-Claw —— 你的 24/7 AI 助手' }),
       userName: user?.nickname ?? undefined,
     });
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: clearAuth },
+    Alert.alert(t({ en: 'Sign Out', zh: '退出登录' }), t({ en: 'Are you sure you want to sign out?', zh: '确定要退出登录吗？' }), [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+      { text: t({ en: 'Sign Out', zh: '退出登录' }), style: 'destructive', onPress: clearAuth },
     ]);
   };
 
@@ -46,7 +49,7 @@ export function ProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Top bar: title + notification bell */}
       <View style={styles.topBar}>
-        <Text style={styles.topBarTitle}>Profile</Text>
+        <Text style={styles.topBarTitle}>{t({ en: 'Profile', zh: '我的' })}</Text>
         <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('NotificationCenter')}>
           <Text style={styles.bellIcon}>🔔</Text>
           {unreadCount > 0 && (
@@ -65,8 +68,8 @@ export function ProfileScreen() {
           </Text>
         </View>
         <View>
-          <Text style={styles.nickname}>{user?.nickname || 'Anonymous'}</Text>
-          <Text style={styles.email}>{user?.email || user?.walletAddress?.slice(0, 14) || 'Guest'}</Text>
+          <Text style={styles.nickname}>{user?.nickname || t({ en: 'Anonymous', zh: '匿名用户' })}</Text>
+          <Text style={styles.email}>{user?.email || user?.walletAddress?.slice(0, 14) || t({ en: 'Guest', zh: '访客' })}</Text>
           <View style={styles.roleRow}>
             {user?.roles?.map((r) => (
               <View key={r} style={styles.roleBadge}>
@@ -94,7 +97,7 @@ export function ProfileScreen() {
         </View>
       ) : (
         <View style={styles.noInstanceCard}>
-          <Text style={styles.noInstanceText}>No agent connected</Text>
+          <Text style={styles.noInstanceText}>{t({ en: 'No agent connected', zh: '暂未连接智能体' })}</Text>
         </View>
       )}
 
@@ -102,15 +105,15 @@ export function ProfileScreen() {
       <TouchableOpacity style={styles.shareCard} onPress={handleShare}>
         <Text style={styles.shareEmoji}>🦀</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.shareTitle}>Invite friends, earn commissions</Text>
-          <Text style={styles.shareSub}>Share Agentrix-Claw and earn 30% on every purchase</Text>
+          <Text style={styles.shareTitle}>{t({ en: 'Invite friends, earn commissions', zh: '邀请好友，赚取佣金' })}</Text>
+          <Text style={styles.shareSub}>{t({ en: 'Share Agentrix-Claw and earn 30% on every purchase', zh: '分享 Agentrix-Claw，每笔购买都可获得 30% 佣金' })}</Text>
         </View>
         <Text style={styles.shareArrow}>›</Text>
       </TouchableOpacity>
 
       {/* Menu */}
       <View style={styles.menu}>
-        {MENU_ITEMS.map((item) => (
+        {menuItems.map((item) => (
           <TouchableOpacity
             key={item.id}
             style={styles.menuItem}
@@ -125,7 +128,7 @@ export function ProfileScreen() {
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Sign Out</Text>
+        <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

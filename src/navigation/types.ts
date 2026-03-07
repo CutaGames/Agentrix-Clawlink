@@ -38,6 +38,22 @@ export type AgentStackParamList = {
   SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
+export type ShareCardRouteParams = {
+  shareUrl: string;
+  title?: string;
+  userName?: string;
+  subtitle?: string;
+  headerEmoji?: string;
+  categoryLabel?: string;
+  priceLabel?: string;
+  statsLabel?: string;
+  description?: string;
+  tags?: string[];
+  ctaLabel?: string;
+  accentFrom?: string;
+  accentTo?: string;
+};
+
 export type MarketStackParamList = {
   Marketplace: undefined;
   SkillDetail: { skillId: string; skillName: string };
@@ -48,7 +64,7 @@ export type MarketStackParamList = {
   PostTask: undefined;
   CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };
   SkillInstall: { skillId: string; skillName: string };
-  ShareCard: { shareUrl: string; title?: string; userName?: string };
+  ShareCard: ShareCardRouteParams;
 };
 
 export type SocialStackParamList = {
@@ -80,7 +96,7 @@ export type MeStackParamList = {
   WalletConnect: undefined;
   WalletBackup: undefined;
   NotificationCenter: undefined;
-  ShareCard: { shareUrl: string; title?: string; userName?: string };
+  ShareCard: ShareCardRouteParams;
   SocialListener: undefined;
 };
 
