@@ -8,6 +8,10 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 
+const DESKTOP_DOWNLOAD_PAGE_URL = 'https://agentrix.top/claw/download?platform=cli';
+const WINDOWS_INSTALLER_URL = 'https://api.agentrix.top/downloads/Agentrix-Setup.exe';
+const ANDROID_DOWNLOAD_URL = 'https://api.agentrix.top/downloads/clawlink-agent.apk';
+
 // Wizard steps:
 // 'choose'    → user picks: novice (install guide) OR existing (scan)
 // 'install'   → Docker / NPM guide with QR scan
@@ -128,15 +132,15 @@ export function LocalDeployScreen() {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.stepIndicator}>Local Agent Setup</Text>
-        <Text style={styles.title}>Install Agentrix</Text>
+        <Text style={styles.title}>Install Agentrix Desktop</Text>
         <Text style={styles.subtitle}>
-          One installer puts a full AI agent on your PC. Click Next until a QR code appears, then scan with your phone.
+          Download the latest desktop build for your computer, finish setup, then scan the QR code with the mobile app.
         </Text>
 
         {/* Windows primary download */}
         <TouchableOpacity
           style={[styles.stepsCard, styles.dlCardPrimary]}
-          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/Agentrix-Setup.exe')}
+          onPress={() => Linking.openURL(WINDOWS_INSTALLER_URL)}
           activeOpacity={0.8}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
@@ -152,13 +156,26 @@ export function LocalDeployScreen() {
         {/* Linux secondary */}
         <TouchableOpacity
           style={[styles.stepsCard, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}
-          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/clawlink-agent-linux')}
+          onPress={() => Linking.openURL(DESKTOP_DOWNLOAD_PAGE_URL)}
           activeOpacity={0.8}
         >
-          <Text style={{ fontSize: 24 }}>🐧</Text>
+          <Text style={{ fontSize: 24 }}>🧰</Text>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Linux binary</Text>
-            <Text style={styles.stepsText}>x86-64</Text>
+            <Text style={[styles.methodTitle, { marginBottom: 0 }]}>More desktop options</Text>
+            <Text style={styles.stepsText}>Open the desktop downloads page for the latest Windows / macOS / Linux installers</Text>
+          </View>
+          <Text style={{ fontSize: 18, color: colors.textMuted }}>↗</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.stepsCard, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}
+          onPress={() => Linking.openURL(ANDROID_DOWNLOAD_URL)}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 24 }}>📱</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Need the Android app too?</Text>
+            <Text style={styles.stepsText}>Download the latest Android APK for the phone that will connect to this desktop agent</Text>
           </View>
           <Text style={{ fontSize: 18, color: colors.textMuted }}>⬇</Text>
         </TouchableOpacity>
@@ -197,7 +214,7 @@ export function LocalDeployScreen() {
         <Text style={styles.choiceEmoji}>🆕</Text>
         <View style={styles.choiceBody}>
           <Text style={styles.choiceTitle}>I'm new — download the installer</Text>
-          <Text style={styles.choiceDesc}>Download Agentrix-Setup.exe, click Next through the installer, and a QR code appears automatically. ~2 min.</Text>
+          <Text style={styles.choiceDesc}>Open the desktop download flow, install the latest build, and a QR code will appear automatically. ~2 min.</Text>
         </View>
         <Text style={styles.choiceArrow}>›</Text>
       </TouchableOpacity>
@@ -219,8 +236,8 @@ export function LocalDeployScreen() {
 }
 
 const INSTALL_STEPS = [
-  'Run Agentrix-Setup.exe and click "Next" through the installer',
-  'The Agentrix tray icon appears — a QR code is displayed automatically',
+  'Open the latest desktop installer for your OS and finish setup',
+  'The Agentrix tray icon appears and a QR code is displayed automatically',
   'Tap "QR code is ready — Scan Now" above to connect your phone',
 ];
 

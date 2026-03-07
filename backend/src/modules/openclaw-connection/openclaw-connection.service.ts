@@ -19,7 +19,9 @@ import {
   OpenClawInstanceStatus,
   OpenClawInstanceType,
 } from '../../entities/openclaw-instance.entity';
+import { SkillLayer, SkillPricingType } from '../../entities/skill.entity';
 import { getDefaultSkillHandlerNames } from '../skill/agent-preset-skills.config';
+import { SkillService } from '../skill/skill.service';
 
 export interface BindOpenClawDto {
   name: string;
@@ -116,6 +118,15 @@ export const PLATFORM_MODELS: AvailableModel[] = [
   },
 ];
 
+const DEFAULT_STARTER_CLAW_SKILL_QUERIES = [
+  'web search pro',
+  'document processor',
+  'memory guardian',
+  'playwright browser automation',
+  'python executor',
+  'github assistant',
+];
+
 @Injectable()
 export class OpenClawConnectionService implements OnModuleInit {
   private readonly logger = new Logger(OpenClawConnectionService.name);
@@ -123,7 +134,74 @@ export class OpenClawConnectionService implements OnModuleInit {
   constructor(
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
+    private readonly skillService: SkillService,
   ) {}
+
+  private getStarterSkillQueries(): string[] {
+    const configured = String(process.env.DEFAULT_STARTER_CLAW_SKILLS || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    return configured.length > 0 ? configured : DEFAULT_STARTER_CLAW_SKILL_QUERIES;
+  }
+
+  private scoreStarterSkillCandidate(query: string, skill: any): number {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    const displayName = String(skill?.displayName || '').trim().toLowerCase();
+    const name = String(skill?.name || '').trim().toLowerCase();
+    const description = String(skill?.description || '').trim().toLowerCase();
+
+    let score = 0;
+
+    if (displayName === normalizedQuery || name === normalizedQuery) score += 100;
+    if (displayName.includes(normalizedQuery) || name.includes(normalizedQuery)) score += 40;
+
+    const queryTerms = normalizedQuery.split(/\s+/).filter(Boolean);
+    score += queryTerms.filter((term) => displayName.includes(term)).length * 8;
+    score += queryTerms.filter((term) => name.includes(term)).length * 6;
+    score += queryTerms.filter((term) => description.includes(term)).length * 2;
+
+    return score;
+  }
+
+  private async installStarterSkillsForInstance(instanceId: string, userId: string): Promise<void> {
+    const queries = this.getStarterSkillQueries();
+    if (queries.length === 0) return;
+
+    const installedSkillIds = new Set<string>();
+
+    for (const query of queries) {
+      try {
+        const marketplace = await this.skillService.findMarketplace(1, 8, undefined, query);
+        const candidate = (marketplace.items || [])
+          .filter((skill: any) => {
+            if (!skill?.id) return false;
+            if (installedSkillIds.has(skill.id)) return false;
+            if (skill.layer && skill.layer === SkillLayer.RESOURCE) return false;
+            if (skill.pricing?.type && skill.pricing.type !== SkillPricingType.FREE) return false;
+            return true;
+          })
+          .sort((a: any, b: any) => this.scoreStarterSkillCandidate(query, b) - this.scoreStarterSkillCandidate(query, a))[0];
+
+        if (!candidate?.id) {
+          this.logger.warn(`No starter skill matched query "${query}" for instance ${instanceId}`);
+          continue;
+        }
+
+        await this.skillService.installSkillForInstance(instanceId, candidate.id, userId, {
+          starterPack: true,
+          starterQuery: query,
+          autoInstalledAt: new Date().toISOString(),
+        });
+        installedSkillIds.add(candidate.id);
+      } catch (error: any) {
+        if (!String(error?.message || '').includes('already installed')) {
+          this.logger.warn(`Starter skill install failed for "${query}" on ${instanceId}: ${error.message}`);
+        }
+      }
+    }
+  }
 
   /** On startup: auto-fix any ERROR cloud instances left from failed Docker provisioning. */
   async onModuleInit() {
@@ -193,7 +271,11 @@ export class OpenClawConnectionService implements OnModuleInit {
       },
     });
 
-    return this.instanceRepo.save(instance);
+    const saved = await this.instanceRepo.save(instance);
+    await this.installStarterSkillsForInstance(saved.id, userId).catch((e) =>
+      this.logger.warn(`Starter skill bootstrap skipped for bound instance ${saved.id}: ${e.message}`),
+    );
+    return saved;
   }
 
   async provisionCloudInstance(userId: string, dto: ProvisionCloudDto): Promise<OpenClawInstance> {
@@ -268,6 +350,11 @@ export class OpenClawConnectionService implements OnModuleInit {
           activeModel: 'claude-haiku-4-5',
         } as any,
       });
+
+      const instance = await this.instanceRepo.findOne({ where: { id: instanceId } });
+      if (instance?.userId) {
+        await this.installStarterSkillsForInstance(instanceId, instance.userId);
+      }
 
       this.logger.log(`Cloud instance ${cloudInstanceId} provisioned in platform-hosted mode (LLM: ${resolvedProvider})`);
     } catch (error: any) {
@@ -417,15 +504,19 @@ export class OpenClawConnectionService implements OnModuleInit {
       },
     });
     const saved = await this.instanceRepo.save(instance);
+    await this.installStarterSkillsForInstance(saved.id, userId).catch((e) =>
+      this.logger.warn(`Starter skill bootstrap skipped for local instance ${saved.id}: ${e.message}`),
+    );
 
     const appDomain = process.env.APP_DOMAIN ?? 'api.agentrix.top';
+    const webDomain = process.env.WEB_APP_DOMAIN ?? 'agentrix.top';
     return {
       instanceId: saved.id,
       relayToken,
       wsRelayUrl: `wss://${appDomain}/relay`,
       downloadUrls: {
-        win: `https://${appDomain}/downloads/clawlink-agent-win.exe`,
-        mac: `https://${appDomain}/downloads/clawlink-agent-mac`,
+        win: `https://${appDomain}/downloads/Agentrix-Setup.exe`,
+        mac: `https://${webDomain}/claw/download?platform=cli`,
       },
     };
   }

@@ -55,6 +55,14 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     icon: '▶️',
   },
   {
+    handlerName: 'skill_inventory',
+    displayName: 'Installed Skills',
+    description: 'List the skills already installed on this claw and show how to execute them',
+    category: 'core',
+    enabledByDefault: true,
+    icon: '🧰',
+  },
+  {
     handlerName: 'skill_recommend',
     displayName: 'Skill Recommendations',
     description: 'Get personalized skill recommendations based on context and usage',

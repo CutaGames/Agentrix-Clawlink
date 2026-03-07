@@ -233,7 +233,9 @@ export class SkillService {
       query.andWhere('skill.category = :category', { category });
     }
     if (search) {
-      query.andWhere('(skill.name ILIKE :search OR skill.description ILIKE :search)', { search: `%${search}%` });
+      query.andWhere('(skill.name ILIKE :search OR skill.displayName ILIKE :search OR skill.description ILIKE :search)', {
+        search: `%${search}%`,
+      });
     }
     
     query.orderBy('skill.callCount', 'DESC')

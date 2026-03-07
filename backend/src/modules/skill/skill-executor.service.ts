@@ -23,6 +23,7 @@ import { SkillRecommendationService } from './skill-recommendation.service';
 import { MerchantTaskService } from '../merchant-task/merchant-task.service';
 import { TaskMarketplaceService } from '../merchant-task/task-marketplace.service';
 import { SkillCategory, SkillStatus } from '../../entities/skill.entity';
+import { AGENT_PRESET_SKILLS } from './agent-preset-skills.config';
 import axios from 'axios';
 
 export interface ExecutionContext {
@@ -1083,6 +1084,64 @@ export class SkillExecutorService {
         skillName: resolvedSkill?.name,
         executedAt: new Date().toISOString(),
         result,
+      };
+    });
+
+    /**
+     * skill_inventory — List installed skills for this user / claw
+     * Params: { limit?: number, includePreset?: boolean }
+     */
+    this.registerHandler('skill_inventory', async (params, context) => {
+      const limit = Math.max(1, Math.min(Number(params?.limit) || 50, 100));
+      const includePreset = params?.includePreset !== false;
+      const instanceId = typeof context.metadata?.instanceId === 'string'
+        ? context.metadata.instanceId
+        : undefined;
+
+      let installations: Array<any> = [];
+      if (instanceId) {
+        installations = await this.skillService.findEffectiveInstalledSkillsForInstance(instanceId, context.userId);
+      } else if (context.userId) {
+        const userInstalled = await this.skillService.findUserInstalledSkills(context.userId, 1, limit);
+        installations = userInstalled.items || [];
+      }
+
+      const installedSkills = installations
+        .filter((installation) => !!installation?.skill)
+        .slice(0, limit)
+        .map((installation) => {
+          const skill = installation.skill;
+          return {
+            skillId: skill.id,
+            name: skill.displayName || skill.name,
+            description: skill.description,
+            category: skill.category,
+            enabled: installation.isEnabled !== false,
+            installedAt: installation.installedAt,
+            version: skill.version || '1.0.0',
+            executionTool: `installed_${String(skill.displayName || skill.name || skill.id)
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '_')
+              .replace(/^_+|_+$/g, '')}`,
+          };
+        });
+
+      return {
+        scope: instanceId ? 'claw' : 'user',
+        instanceId,
+        totalInstalled: installedSkills.length,
+        installedSkills,
+        presetTools: includePreset
+          ? AGENT_PRESET_SKILLS.map((skill) => ({
+              name: skill.handlerName,
+              displayName: skill.displayName,
+              description: skill.description,
+            }))
+          : undefined,
+        message: installedSkills.length > 0
+          ? 'Installed skills loaded. Use executionTool when the user asks to run one of them.'
+          : 'No marketplace skills are installed yet on this scope.',
       };
     });
 

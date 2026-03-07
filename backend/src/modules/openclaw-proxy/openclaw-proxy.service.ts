@@ -160,6 +160,13 @@ export class OpenClawProxyService {
     dto: ChatMessageDto,
   ) {
     const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
+    const installedSkills = await this.getInstanceSkills(userId, instance.id).catch(() => []);
+    const installedSkillSummary = installedSkills.length > 0
+      ? installedSkills
+          .slice(0, 20)
+          .map((skill: any) => `- ${skill.name} (${skill.id})${skill.enabled === false ? ' [disabled]' : ''}`)
+          .join('\n')
+      : '- none';
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messages = [
       {
@@ -168,8 +175,10 @@ export class OpenClawProxyService {
           `You are "${instance.name || 'Agent'}", the user's personal AI claw. ` +
           `You are not Agentrix customer support, not a platform helpdesk, and not a generic service bot. ` +
           `Act like the user's own agent with built-in marketplace abilities. ` +
-          `When the user asks to search, install, execute, buy, pay for, publish, or arrange skills, tasks, or resources, use the provided tools first instead of saying you cannot access them. ` +
+          `When the user asks to search, install, inspect, list, execute, buy, pay for, publish, or arrange skills, tasks, or resources, use the provided tools first instead of saying you cannot access them. ` +
           `If tool results are available, use them directly and do not claim lack of browsing or marketplace access. ` +
+          `Use skill_search for Agentrix/OpenClaw marketplace discovery and use skill_inventory whenever the user asks what skills are installed, enabled, or available on this claw. ` +
+          `Current installed marketplace skills on this claw:\n${installedSkillSummary}\n` +
           `Reply in the same language as the user, stay concise, and focus on getting the task done.`,
       },
       { role: 'user' as const, content: dto.message },

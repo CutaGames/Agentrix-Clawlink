@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../services/api';
 
+export const TOKEN_QUOTA_QUERY_KEY = ['token-quota'] as const;
+
 export interface QuotaStatus {
   planType: string;
   totalQuota: number;
@@ -20,7 +22,7 @@ export interface QuotaStatus {
  */
 export function useTokenQuota() {
   return useQuery<QuotaStatus>({
-    queryKey: ['token-quota'],
+    queryKey: TOKEN_QUOTA_QUERY_KEY,
     queryFn: async () => {
       return apiFetch<QuotaStatus>('/token-quota/me');
     },

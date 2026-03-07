@@ -34,8 +34,8 @@ const PLATFORMS: Record<string, PlatformConfig> = {
   android: {
     icon: Smartphone,
     name: 'Android',
-    fileName: 'ClawLink-latest.apk',
-    url: `${DOWNLOAD_BASE}/ClawLink-latest.apk`,
+    fileName: 'clawlink-agent.apk',
+    url: `${DOWNLOAD_BASE}/clawlink-agent.apk`,
     requirements: 'Android 7.0+',
     size: '~45 MB',
     color: 'violet',
@@ -66,16 +66,14 @@ const PLATFORMS: Record<string, PlatformConfig> = {
     name: 'Desktop',
     fileName: null,
     url: null, // Will be set per-OS
-    requirements: 'Windows 10+ / macOS 12+ / Linux',
+    requirements: 'Windows 10+ (latest desktop installer)',
     size: '~25 MB',
     color: 'emerald',
     subPlatforms: [
       { os: 'Windows', file: 'Agentrix-Setup.exe', label: 'Windows Installer (.exe)' },
-      { os: 'macOS', file: 'Agentrix.dmg', label: 'macOS Installer (.dmg)' },
-      { os: 'Linux', file: 'Agentrix.AppImage', label: 'Linux AppImage' },
     ],
     instructions: [
-      { step: 1, text: { zh: '选择你的操作系统并下载安装包', en: 'Choose your OS and download the installer' } },
+      { step: 1, text: { zh: '下载最新 Windows 桌面安装包', en: 'Download the latest Windows desktop installer' } },
       { step: 2, text: { zh: '运行安装程序完成安装', en: 'Run the installer to complete setup' } },
       { step: 3, text: { zh: '程序会自动配置 OpenClaw 本地环境', en: 'The app will auto-configure your local OpenClaw environment' } },
       { step: 4, text: { zh: '用手机扫码连接或在桌面端直接使用', en: 'Scan QR with your phone or use directly on desktop' } },

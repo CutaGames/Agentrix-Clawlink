@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Alert, RefreshControl,
+  Alert, RefreshControl, Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,6 +19,9 @@ import { switchInstanceModel } from '../../services/openclaw.service';
 import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
+
+const DESKTOP_DOWNLOAD_PAGE_URL = 'https://agentrix.top/claw/download?platform=cli';
+const WINDOWS_INSTALLER_URL = 'https://api.agentrix.top/downloads/Agentrix-Setup.exe';
 
 const STATUS_COLOR: Record<string, string> = {
   active: colors.success,
@@ -431,11 +434,11 @@ export function AgentConsoleScreen() {
           onPress={() => {
             Alert.alert(
               '💻 Agentrix Desktop',
-              'Download the Agentrix Desktop app to control your computer with AI, run local agents, and sync with your mobile.',
+              'Open the latest desktop download flow to install Agentrix on Windows, macOS, or Linux, then connect it with your phone.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Download Standard (.exe)', onPress: () => {} },
-                { text: 'Download AIO (All-in-One)', onPress: () => {} },
+                { text: 'Windows Installer (.exe)', onPress: () => Linking.openURL(WINDOWS_INSTALLER_URL) },
+                { text: 'All desktop downloads', onPress: () => Linking.openURL(DESKTOP_DOWNLOAD_PAGE_URL) },
               ]
             );
           }}
@@ -444,7 +447,7 @@ export function AgentConsoleScreen() {
           <Text style={styles.downloadBannerIcon}>💻</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.downloadBannerTitle}>Get Agentrix Desktop</Text>
-            <Text style={styles.downloadBannerSub}>Run AI agents on your computer — one-click AIO installer available</Text>
+            <Text style={styles.downloadBannerSub}>Install the latest desktop build and connect your computer agent with mobile</Text>
           </View>
           <Text style={styles.downloadBannerArrow}>↓</Text>
         </TouchableOpacity>

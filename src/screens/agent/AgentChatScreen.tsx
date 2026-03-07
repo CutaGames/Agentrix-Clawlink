@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, PanResponder,
@@ -12,7 +13,7 @@ import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.
 import { switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
-import { useTokenQuota } from '../../hooks/useTokenQuota';
+import { TOKEN_QUOTA_QUERY_KEY, formatTokens, useTokenQuota } from '../../hooks/useTokenQuota';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -64,14 +65,6 @@ interface Message {
   error?: boolean;
   createdAt: number;
   thoughts?: string[]; // Added for Thought Chain UI
-}
-
-interface VoiceMetrics {
-  recordedMs: number;
-  transcribeMs: number;
-  stopToSendMs: number;
-  transcriptLength: number;
-  capturedAt: number;
 }
 
 // Strip basic markdown: **bold** -> bold, *italic* -> italic
@@ -160,6 +153,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
+  const queryClient = useQueryClient();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const { language, t } = useI18n();
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
@@ -193,7 +187,6 @@ export function AgentChatScreen() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
-  const [lastVoiceMetrics, setLastVoiceMetrics] = useState<VoiceMetrics | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
 
@@ -209,14 +202,13 @@ export function AgentChatScreen() {
     ? t({ en: 'Release now to cancel this recording', zh: '现在松开将取消本次录音' })
     : t({ en: 'Hold to record · slide up to cancel', zh: '按住录音 · 上滑取消' });
 
-  const voiceMetricsText = lastVoiceMetrics
-    ? t(
-        {
-          en: `Last voice: ${lastVoiceMetrics.recordedMs}ms rec · ${lastVoiceMetrics.transcribeMs}ms ASR · ${lastVoiceMetrics.stopToSendMs}ms stop→send`,
-          zh: `上次语音：录音 ${lastVoiceMetrics.recordedMs}ms · 转写 ${lastVoiceMetrics.transcribeMs}ms · 停止到发送 ${lastVoiceMetrics.stopToSendMs}ms`,
-        },
-      )
-    : null;
+  const voiceStatusText = isVoiceProcessing
+    ? t({ en: '… Turning your voice into text', zh: '… 正在把语音转成文字' })
+    : isRecording
+      ? willCancelVoice
+        ? t({ en: 'Release to cancel', zh: '松开即可取消' })
+        : t({ en: '… Listening', zh: '… 正在聆听' })
+      : null;
 
   // Init TTS audio queue player
   useEffect(() => {
@@ -241,9 +233,12 @@ export function AgentChatScreen() {
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
   const used = quota?.usedTokens ?? 0;
-  const total = quota?.totalQuota ?? 100000;
-  const tokenPct = quota?.energyLevel ?? (total > 0 ? Math.min(100, (used / total) * 100) : 0);
-  const tokenBarColor = tokenPct > 80 ? '#ef4444' : tokenPct > 50 ? '#f59e0b' : '#22c55e';
+  const total = quota?.totalQuota ?? 1_000_000;
+  const remaining = quota?.remainingTokens ?? Math.max(0, total - used);
+  const usagePct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
+  const energyPct = total > 0 ? Math.max(0, 100 - usagePct) : 100;
+  const tokenBarColor = energyPct < 20 ? '#ef4444' : energyPct < 50 ? '#f59e0b' : '#22c55e';
+  const tokenBarLabel = `${formatTokens(remaining)} left · ${formatTokens(used)} used · ${quota?.callCount ?? 0} calls`;
 
   // Load chat history on mount — first from local storage (instant), then try API
   useEffect(() => {
@@ -440,6 +435,7 @@ export function AgentChatScreen() {
     } finally {
       setSending(false);
       streamAbortRef.current = null;
+      void queryClient.invalidateQueries({ queryKey: TOKEN_QUOTA_QUERY_KEY });
     }
   };
 
@@ -547,15 +543,6 @@ export function AgentChatScreen() {
             const data = await resp.json();
             const transcript = (data?.text || data?.transcript || '').trim();
             if (transcript) {
-              const transcribeMs = Date.now() - stopAt;
-              const stopToSendMs = Date.now() - stopAt;
-              setLastVoiceMetrics({
-                recordedMs: durationMs,
-                transcribeMs,
-                stopToSendMs,
-                transcriptLength: transcript.length,
-                capturedAt: Date.now(),
-              });
               await handleSend(transcript);
             } else {
               Alert.alert(
@@ -718,8 +705,8 @@ export function AgentChatScreen() {
 
       {/* Compact token energy bar */}
       <View style={styles.tokenBar}>
-        <View style={[styles.tokenBarFill, { width: `${tokenPct}%` as any, backgroundColor: tokenBarColor }]} />
-        <Text style={styles.tokenBarLabel}>{used.toLocaleString()} / {total.toLocaleString()} tokens</Text>
+        <View style={[styles.tokenBarFill, { width: `${energyPct}%` as any, backgroundColor: tokenBarColor }]} />
+        <Text style={styles.tokenBarLabel}>{tokenBarLabel}</Text>
       </View>
 
       {loadingHistory && (
@@ -738,6 +725,12 @@ export function AgentChatScreen() {
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollToBottom}
       />
+
+      {voiceMode && voiceStatusText ? (
+        <View style={styles.voiceStatusBubble}>
+          <Text style={styles.voiceStatusText}>{voiceStatusText}</Text>
+        </View>
+      ) : null}
 
       {/* Input bar — WeChat / Doubao style */}
       <View style={styles.inputRow}>
@@ -769,8 +762,7 @@ export function AgentChatScreen() {
                 {voiceButtonLabel}
               </Text>
             </View>
-            <Text style={styles.voiceHintText}>{voiceHintText}</Text>
-            {voiceMetricsText ? <Text style={styles.voiceMetricsText}>{voiceMetricsText}</Text> : null}
+            {(isRecording || isVoiceProcessing) ? <Text style={styles.voiceHintText}>{voiceHintText}</Text> : null}
           </View>
         ) : (
           /* Text mode */
@@ -968,7 +960,7 @@ const styles = StyleSheet.create({
   modeToggleIcon: { fontSize: 18 },
   voiceComposerWrap: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   holdTalkBtn: {
     flex: 1,
@@ -999,10 +991,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     paddingHorizontal: 6,
   },
-  voiceMetricsText: {
-    color: colors.accent,
-    fontSize: 11,
-    paddingHorizontal: 6,
+  voiceStatusBubble: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    alignSelf: 'center',
+    backgroundColor: colors.bgCard,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  voiceStatusText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
   },
   tokenBar: {
     height: 18, backgroundColor: colors.bgSecondary,
