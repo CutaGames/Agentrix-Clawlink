@@ -36,13 +36,21 @@ export function CloudDeployScreen() {
       // SSH provisioning is async — poll up to 30 s for instanceUrl to be ready
       // 1s interval × 30 polls = 30s max wait (vs 3s × 20 = 60s previously)
       let finalUrl = result.instanceUrl;
-      if (!finalUrl) {
+      let finalStatus = result.status;
+      if (!finalUrl && finalStatus !== 'active') {
         for (let i = 0; i < 30; i++) {
           await new Promise((r) => setTimeout(r, 1000));
           setProgress((p) => Math.min(p + 2, 95));
           try {
             const info = await getInstanceById(result.id);
-            if (info.instanceUrl) { finalUrl = info.instanceUrl; break; }
+            finalStatus = info.status;
+            if (info.instanceUrl) {
+              finalUrl = info.instanceUrl;
+              break;
+            }
+            if (info.status === 'active') {
+              break;
+            }
           } catch (_) { /* keep polling */ }
         }
       }

@@ -18,25 +18,25 @@ export class ClawInstalledSkill {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'instanceId', type: 'uuid' })
   instanceId: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ name: 'installedByUserId', type: 'uuid', nullable: true })
   installedByUserId?: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'skillId', type: 'uuid' })
   skillId: string;
 
-  @Column({ default: true })
+  @Column({ name: 'isEnabled', default: true })
   isEnabled: boolean;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'config', type: 'jsonb', nullable: true })
   config: Record<string, any>;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'installedAt' })
   installedAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updatedAt' })
   updatedAt: Date;
 
   @ManyToOne(() => OpenClawInstance, { onDelete: 'CASCADE' })
