@@ -446,6 +446,45 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════
   # JOB 3 — Create GitHub Release with download link (only if build passes)
   # ═══════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 3b — Deploy APK to download server (runs after build, parallel to release)
+  # Requires GitHub Secret: DEPLOY_SSH_KEY  (private key for ubuntu@18.139.157.116)
+  # ═══════════════════════════════════════════════════════════════════
+  deploy-apk:
+    name: 📦 Deploy APK to server
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: ${{ needs.build.result == 'success' && secrets.DEPLOY_SSH_KEY != '' }}
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apks-build-${{ github.run_number }}
+          path: artifacts/
+
+      - name: Upload APK to download server
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          APK="artifacts/ClawLink-build-${{ github.run_number }}.apk"
+          if [ ! -f "$APK" ]; then
+            echo "APK not found: $APK"
+            ls artifacts/ || true
+            exit 1
+          fi
+          echo "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
+          chmod 600 /tmp/deploy.pem
+          DEST="ubuntu@18.139.157.116:/home/ubuntu/Agentrix/frontend/public/downloads"
+          OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
+          # Backup current and deploy new
+          ssh $OPTS ubuntu@18.139.157.116 \
+            "cp $DEST/clawlink-agent.apk $DEST/clawlink-agent.apk.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
+          scp $OPTS "$APK" "$DEST/clawlink-agent.apk"
+          scp $OPTS "$APK" "$DEST/ClawLink-latest.apk"
+          echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
+
   release:
     name: 🚀 Release
     runs-on: ubuntu-latest

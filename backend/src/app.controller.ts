@@ -81,5 +81,19 @@ export class AppController {
   getLiveness() {
     return { status: 'alive', timestamp: new Date().toISOString() };
   }
+
+  @Get('api/app/version')
+  @ApiOperation({ summary: 'App version check (mobile update)' })
+  getAppVersion() {
+    return {
+      latestVersion: '1.1.0',
+      buildNumber: 70,
+      apkUrl: 'https://api.agentrix.top/downloads/clawlink-agent.apk',
+      minVersion: '1.0.0',
+      forceUpdate: false,
+      releaseNotes: 'Bug fixes, QR scan improvements, desktop AIO support',
+      releasedAt: '2026-03-08',
+    };
+  }
 }
 
