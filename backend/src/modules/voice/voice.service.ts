@@ -15,6 +15,7 @@ import { execSync } from 'child_process';
 export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
   private readonly REGION = process.env.AWS_REGION || 'us-east-1';
+  private readonly groqBaseUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
   /**
    * Transcribe audio buffer.
@@ -42,15 +43,34 @@ export class VoiceService {
     // Fallback: OpenAI Whisper
     if (process.env.OPENAI_API_KEY) {
       try {
-        return await this.whisperFallback(buffer, originalName);
+        return await this.openAiCompatibleTranscription(buffer, originalName, {
+          apiKey: process.env.OPENAI_API_KEY,
+          model: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
+          provider: 'OpenAI Whisper',
+          baseURL: process.env.OPENAI_BASE_URL || undefined,
+        });
       } catch (err: any) {
         this.logger.error(`Whisper fallback failed: ${err.message}`);
       }
     }
 
+    // Fallback: Groq Whisper-compatible endpoint
+    if (process.env.GROQ_API_KEY) {
+      try {
+        return await this.openAiCompatibleTranscription(buffer, originalName, {
+          apiKey: process.env.GROQ_API_KEY,
+          model: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
+          provider: 'Groq transcription',
+          baseURL: this.groqBaseUrl,
+        });
+      } catch (err: any) {
+        this.logger.error(`Groq transcription fallback failed: ${err.message}`);
+      }
+    }
+
     this.logger.warn('No transcription service available');
     throw new BadRequestException(
-      'Voice transcription is not configured. Set AWS credentials or OPENAI_API_KEY.',
+      'Voice transcription is not configured. Set AWS credentials, OPENAI_API_KEY, or GROQ_API_KEY.',
     );
   }
 
@@ -165,14 +185,20 @@ export class VoiceService {
   /**
    * Fallback: OpenAI Whisper API
    */
-  private async whisperFallback(
+  private async openAiCompatibleTranscription(
     buffer: Buffer,
     originalName: string,
+    options: {
+      apiKey: string;
+      model: string;
+      provider: string;
+      baseURL?: string;
+    },
   ): Promise<{ transcript: string }> {
     const OpenAI = require('openai').default;
     const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
+      apiKey: options.apiKey,
+      baseURL: options.baseURL,
     });
     const ext = originalName?.split('.').pop() || 'm4a';
     const tmpPath = path.join(os.tmpdir(), `voice_${Date.now()}.${ext}`);
@@ -181,7 +207,7 @@ export class VoiceService {
       const fileStream = fs.createReadStream(tmpPath);
       const response = await openai.audio.transcriptions.create({
         file: fileStream as any,
-        model: 'whisper-1',
+        model: options.model,
         response_format: 'text',
       });
       return {
@@ -190,6 +216,8 @@ export class VoiceService {
             ? response
             : (response as any).text || '',
       };
+    } catch (err: any) {
+      throw new BadRequestException(`${options.provider} failed: ${err.message}`);
     } finally {
       try { fs.unlinkSync(tmpPath); } catch (_) {}
     }

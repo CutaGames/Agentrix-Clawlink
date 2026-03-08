@@ -46,6 +46,7 @@ import { DeveloperAccountModule } from '../developer-account/developer-account.m
 import { A2AModule } from '../a2a/a2a.module';
 import { MerchantTaskModule } from '../merchant-task/merchant-task.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
+import { OpenClawBridgeModule } from '../openclaw-bridge/openclaw-bridge.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integra
     forwardRef(() => A2AModule),
     forwardRef(() => MerchantTaskModule),
     forwardRef(() => ClaudeIntegrationModule),
+    forwardRef(() => OpenClawBridgeModule),
   ],
   controllers: [SkillController, SkillAdminController, DeveloperRevenueController, OnboardingController],
   providers: [

@@ -23,6 +23,8 @@ import { SkillRecommendationService } from './skill-recommendation.service';
 import { MerchantTaskService } from '../merchant-task/merchant-task.service';
 import { TaskMarketplaceService } from '../merchant-task/task-marketplace.service';
 import { SkillCategory, SkillStatus } from '../../entities/skill.entity';
+import { OpenClawBridgeService } from '../openclaw-bridge/openclaw-bridge.service';
+import { OpenClawSkillHubService } from '../openclaw-bridge/openclaw-skill-hub.service';
 import axios from 'axios';
 
 export interface ExecutionContext {
@@ -75,6 +77,8 @@ export class SkillExecutorService {
     private readonly taskMarketplaceService: TaskMarketplaceService,
     @Inject(forwardRef(() => ClaudeIntegrationService))
     private readonly claudeIntegrationService: ClaudeIntegrationService,
+    private readonly openClawBridgeService: OpenClawBridgeService,
+    private readonly openClawSkillHubService: OpenClawSkillHubService,
   ) {
     this.registerDefaultHandlers();
   }
@@ -574,6 +578,25 @@ export class SkillExecutorService {
         }
       }
 
+      if (!options?.resourceOnly) {
+        try {
+          const hubResult = await this.openClawSkillHubService.getSkills({
+            query,
+            limit: Number(params.limit || 5),
+          });
+          const first = hubResult.items?.[0];
+          if (first?.id) {
+            return {
+              id: String(first.hubSlug || first.key || first.id),
+              name: first.displayName || first.name,
+              source: 'openclaw_hub',
+            };
+          }
+        } catch (err: any) {
+          this.logger.warn(`OpenClaw hub resolve failed for "${query}": ${err.message}`);
+        }
+      }
+
       if (options?.resourceOnly) {
         try {
           const productSearch = await this.internalHandlers.get('search_products')?.(
@@ -975,11 +998,26 @@ export class SkillExecutorService {
         this.logger.warn(`Unified marketplace search failed: ${e.message}`);
       }
 
+      let hubItems: any[] = [];
+      try {
+        const hub = await this.openClawSkillHubService.getSkills({
+          query,
+          category,
+          limit,
+          page: 1,
+          sortBy: 'downloads',
+          sortOrder: 'DESC',
+        });
+        hubItems = hub.items || [];
+      } catch (e: any) {
+        this.logger.warn(`OpenClaw hub search failed: ${e.message}`);
+      }
+
       // Merge and deduplicate by id
       const seen = new Set<string>();
       const results: any[] = [];
-      for (const skill of [...(marketplace.items || []), ...unifiedItems]) {
-        const id = skill.id || skill.skillId;
+      for (const skill of [...(marketplace.items || []), ...unifiedItems, ...hubItems]) {
+        const id = skill.id || skill.skillId || skill.hubSlug || skill.key;
         if (id && !seen.has(id)) {
           seen.add(id);
           results.push({
@@ -988,9 +1026,10 @@ export class SkillExecutorService {
             description: skill.description?.substring(0, 200),
             category: skill.category,
             rating: skill.rating ?? 0,
-            callCount: skill.callCount ?? 0,
+            callCount: skill.callCount ?? skill.hubStats?.downloads ?? 0,
             pricing: skill.pricing ?? { type: 'free' },
-            source: skill.originalPlatform || skill.source || 'native',
+            source: skill.originalPlatform || skill.source || (skill.hubSlug ? 'openclaw_hub' : 'native'),
+            tags: skill.tags ?? [],
           });
         }
       }
@@ -1019,6 +1058,19 @@ export class SkillExecutorService {
         : undefined;
 
       if (instanceId) {
+        if (resolvedSkill?.source === 'openclaw_hub') {
+          const installed = await this.openClawBridgeService.installHubSkillToInstance(context.userId, instanceId, skillId);
+          return {
+            success: true,
+            alreadyInstalled: false,
+            scope: 'claw',
+            instanceId,
+            skillId,
+            message: installed.message,
+            source: 'openclaw_hub',
+          };
+        }
+
         const alreadyInstalled = await this.skillService.isSkillInstalledForInstance(instanceId, skillId);
         if (alreadyInstalled) {
           return {
@@ -1166,6 +1218,18 @@ export class SkillExecutorService {
         }
 
         if (instanceId && autoInstall !== false) {
+          if (resolvedSkill?.source === 'openclaw_hub') {
+            const installed = await this.openClawBridgeService.installHubSkillToInstance(context.userId, instanceId, skillId);
+            return {
+              success: true,
+              message: installed.message,
+              cost: 0,
+              scope: 'claw',
+              instanceId,
+              source: 'openclaw_hub',
+            };
+          }
+
           const alreadyInstalled = await this.skillService.isSkillInstalledForInstance(instanceId, skillId);
           if (alreadyInstalled) {
             return {
