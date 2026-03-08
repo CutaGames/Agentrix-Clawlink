@@ -5,6 +5,7 @@ import { colors } from '../theme/colors';
 import { AgentConsoleScreen } from '../screens/agent/AgentConsoleScreen';
 import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
 import { OpenClawBindScreen } from '../screens/agent/OpenClawBindScreen';
+import { LocalConnectScreen } from '../screens/agent/LocalConnectScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
 import { StoragePlanScreen } from '../screens/agent/StoragePlanScreen';
 import { AgentLogsScreen } from '../screens/agent/AgentLogsScreen';
@@ -41,6 +42,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'My Agent', zh: '我的智能体' }) }} />
       <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: t({ en: 'Chat', zh: '对话' }) }} />
       <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: t({ en: 'Connect OpenClaw', zh: '连接 OpenClaw' }) }} />
+      <Stack.Screen name="LocalConnect" component={LocalConnectScreen} options={{ title: t({ en: 'Link Local Agent', zh: '关联本地智能体' }) }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: t({ en: 'Install Skill', zh: '安装技能' }) }} />
       <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: t({ en: 'Storage Plans', zh: '存储方案' }) }} />
       <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: t({ en: 'Activity Logs', zh: '活动日志' }) }} />
