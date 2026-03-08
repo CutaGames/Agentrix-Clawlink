@@ -479,7 +479,7 @@ export default function ClawPage() {
                   platform: 'Android',
                   sub: 'Android 7.0+',
                   cta: t({ zh: '下载 APK', en: 'Download APK' }),
-                  href: 'https://github.com/CutaGames/Agentrix-Clawlink/releases/download/build-29/ClawLink-build-29.apk',
+                  href: 'https://api.agentrix.top/downloads/clawlink-agent.apk',
                   badge: t({ zh: '推荐', en: 'Recommended' }),
                   color: 'violet',
                 },

@@ -49,12 +49,27 @@ export function LocalDeployScreen() {
       // QR payload formats:
       //   Relay mode (Agentrix Agent): {relayToken, wsRelayUrl, mode:'relay'}
       //   Direct LAN (OpenClaw):       {url:'http://ip:port', token?:'xxx'}
+      //   agentrix:// deep-link:       agentrix://connect?instanceId=X&token=T&host=H&port=P
       //   Plain URL fallback:          'http://...'
-      let parsedData: { url?: string; token?: string; relayToken?: string; wsRelayUrl?: string; mode?: string };
+      let parsedData: { url?: string; token?: string; relayToken?: string; wsRelayUrl?: string; mode?: string; name?: string };
       try {
         parsedData = JSON.parse(data);
       } catch {
-        if (data.startsWith('http') || data.startsWith('ws')) {
+        // agentrix://connect?instanceId=X&token=T&host=H&port=P
+        if (data.startsWith('agentrix://connect')) {
+          try {
+            const u = new URL(data);
+            const host = u.searchParams.get('host') || 'localhost';
+            const port = u.searchParams.get('port') || '7474';
+            parsedData = {
+              url: `http://${host}:${port}`,
+              token: u.searchParams.get('token') || u.searchParams.get('instanceId') || '',
+              mode: 'direct',
+            };
+          } catch {
+            throw new Error('QR code format not recognized. Please try again.');
+          }
+        } else if (data.startsWith('http') || data.startsWith('ws')) {
           parsedData = { url: data };
         } else {
           throw new Error('QR code format not recognized. Please try again.');

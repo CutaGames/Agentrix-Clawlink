@@ -14,7 +14,14 @@ $LOG_FILE         = Join-Path $INSTALL_DIR "install.log"
 function Write-Info  { param($msg) Write-Host "[Agentrix] $msg" -ForegroundColor Cyan }
 function Write-Ok    { param($msg) Write-Host "[✓] $msg" -ForegroundColor Green }
 function Write-Warn  { param($msg) Write-Host "[!] $msg" -ForegroundColor Yellow }
-function Write-Err   { param($msg) Write-Host "[✗] $msg" -ForegroundColor Red; exit 1 }
+function Write-Err   {
+    param($msg)
+    Write-Host "[✗] $msg" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Press any key to close..." -ForegroundColor Gray
+    try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } catch { Start-Sleep 5 }
+    exit 1
+}
 
 # Create install directory
 New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
@@ -117,20 +124,22 @@ if ($LAN_IP) {
 }
 
 # ── 5. Show connection QR ─────────────────────────────────────────────────────
-# Scheme: agentrix:// (registered in the mobile app)
-# Param:  instanceId (normalized across all installers)
-$QR_URL = "agentrix://connect?instanceId=$INSTANCE_ID&token=$TOKEN&host=$LAN_IP&port=$OPENCLAW_PORT"
+# QR payload: JSON recognised by LocalDeployScreen.handleBarCodeScanned
+# Direct LAN mode: {url, token, mode, name}
+$QR_PAYLOAD = "{`"url`":`"http://${LAN_IP}:$OPENCLAW_PORT`",`"token`":`"$TOKEN`",`"mode`":`"direct`",`"name`":`"My PC (AIO)`"}"
+# Mobile connection deep-link (shown as plain text / fallback)
+$QR_DEEPLINK = "agentrix://connect?instanceId=$INSTANCE_ID&token=$TOKEN&host=$LAN_IP&port=$OPENCLAW_PORT"
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
 Write-Host "  SCAN WITH AGENTRIX MOBILE APP" -ForegroundColor Green
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Connection URL:" -ForegroundColor Yellow
-Write-Host "  $QR_URL" -ForegroundColor White
+Write-Host "  $QR_DEEPLINK" -ForegroundColor White
 Write-Host ""
 # Try to show QR image via free API (works when online)
 try {
-    $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + [uri]::EscapeDataString($QR_URL)
+    $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + [uri]::EscapeDataString($QR_PAYLOAD)
     $qrFile = Join-Path $env:TEMP "agentrix-qr.png"
     Invoke-WebRequest -Uri $qrApiUrl -OutFile $qrFile -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
     Write-Info "QR code saved: $qrFile  (opening…)"
@@ -153,7 +162,8 @@ if ($taskExists) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 }
 
-$nodeExe = (Get-Command node -ErrorAction SilentlyContinue)?.Source
+$_nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+$nodeExe  = if ($_nodeCmd) { $_nodeCmd.Source } else { $null }
 if ($nodeExe) {
     $action = New-ScheduledTaskAction -Execute $nodeExe -Argument "`"$oclawExe`" $OPENCLAW_PORT"
     $trigger = New-ScheduledTaskTrigger -AtLogOn
@@ -200,3 +210,7 @@ Write-Host "  Mobile connection URL: agentrix://connect?instanceId=$INSTANCE_ID&
 Write-Host ""
 
 Stop-Transcript | Out-Null
+Write-Ok "All done. OpenClaw is running!"
+Write-Host ""
+Write-Host "Press any key to close this window..." -ForegroundColor Gray
+try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } catch { Start-Sleep 3 }

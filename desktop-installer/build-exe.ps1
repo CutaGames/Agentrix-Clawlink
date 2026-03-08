@@ -11,6 +11,11 @@ $buildRoot   = Join-Path $PSScriptRoot '..\builds'
 $logoSource  = Join-Path (Join-Path $PSScriptRoot '..\Agentrix Logo') 'agentrix_logo_square_transparent.png'
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
+# ── PS5.1 syntax check (Gates the build — catches PS7-only syntax before compile) ───────────
+Write-Host '[Agentrix] Checking installer script syntax (PS5.1)...' -ForegroundColor DarkCyan
+& (Join-Path $PSScriptRoot '_syntax-check.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Syntax check failed — fix errors before building.' }
+
 # ── Compile a standalone .NET "Windows Application" EXE (no console window) ──────────────────
 # The EXE embeds install-gui.ps1 (and optionally the logo) as base64 strings,
 # extracts them to a per-run GUID temp dir, then launches PowerShell -STA with
@@ -28,7 +33,6 @@ function New-GuiExe {
     if (-not (Test-Path $Ps1Source)) { throw "PS1 not found: $Ps1Source" }
 
     $ps1B64  = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Ps1Source))
-    $showConsoleStr = if ($Console) { 'true' } else { 'false' }
 
     # Embed logo only when the file is present (it is cosmetic; installer works without it)
     $logoDecodeCode = ''
@@ -42,8 +46,81 @@ function New-GuiExe {
 '@
     }
 
-    # C# source — /target:winexe = no console window; MessageBox on any error
-    $src = @"
+    # ── Build two different C# sources depending on -Console mode ─────────────────────────────
+    #
+    # GUI  (-Console $false): /target:winexe — no console ever allocated; WinForms dialogs shown
+    #       on error.  PowerShell runs hidden; stdout/stderr captured and shown in a MessageBox.
+    #
+    # AIO  (-Console $true):  /target:exe    — the EXE IS a console app so Windows allocates
+    #       exactly ONE console for it at startup.  PowerShell is started with UseShellExecute=false
+    #       and NO CreateNoWindow flag, so it inherits the launcher's existing console.
+    #       Result: one window, zero flicker, user sees Write-Host output in real time.
+
+    if ($Console) {
+        # ── Console (AIO) C# source ───────────────────────────────────────────────────────────
+        $src = @"
+using System;
+using System.Diagnostics;
+using System.IO;
+
+class AgentrixClawSetup {
+    private static readonly string _ps1b64 = "$ps1B64";
+
+    static int Main() {
+        string tmpDir = Path.Combine(
+            Path.GetTempPath(),
+            "AgentrixClaw_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        try {
+            Directory.CreateDirectory(tmpDir);
+
+            string ps1Path = Path.Combine(tmpDir, "install-aio.ps1");
+            byte[] bom      = new byte[] { 0xEF, 0xBB, 0xBF };
+            byte[] ps1Bytes = Convert.FromBase64String(_ps1b64);
+            byte[] ps1WithBom = new byte[bom.Length + ps1Bytes.Length];
+            Array.Copy(bom, 0, ps1WithBom, 0, bom.Length);
+            Array.Copy(ps1Bytes, 0, ps1WithBom, bom.Length, ps1Bytes.Length);
+            File.WriteAllBytes(ps1Path, ps1WithBom);
+
+            string sysRoot = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            string psExe   = Path.Combine(sysRoot, @"WindowsPowerShell\v1.0\powershell.exe");
+            if (!File.Exists(psExe)) psExe = "powershell.exe";
+
+            // UseShellExecute=false: child inherits THIS process's console (no new window).
+            // Do NOT set CreateNoWindow or redirect streams — let PS write directly to our console.
+            var psi = new ProcessStartInfo(psExe,
+                "-NoProfile -ExecutionPolicy Bypass -File \"" + ps1Path + "\"") {
+                UseShellExecute = false
+            };
+            using (var proc = Process.Start(psi)) {
+                if (proc != null) {
+                    proc.WaitForExit();
+                    if (proc.ExitCode != 0) {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("\n[Agentrix] Exited with code " + proc.ExitCode + ". Check output above.");
+                        Console.ResetColor();
+                        Console.WriteLine("Press any key to close...");
+                        try { Console.ReadKey(true); } catch { System.Threading.Thread.Sleep(5000); }
+                    }
+                    return proc.ExitCode;
+                }
+            }
+        } catch (Exception ex) {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[Agentrix] Setup error: " + ex.Message);
+            Console.ResetColor();
+            Console.WriteLine("Press any key to close...");
+            Console.ReadKey();
+            return 1;
+        } finally {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+        return 0;
+    }
+}
+"@
+    } else {
+        # ── GUI (WinForms) C# source ──────────────────────────────────────────────────────────
+        $src = @"
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -63,8 +140,6 @@ class AgentrixClawSetup {
             Directory.CreateDirectory(tmpDir);
 
             string ps1Path = Path.Combine(tmpDir, "install-gui.ps1");
-            // Prepend UTF-8 BOM (EF BB BF) so Windows PowerShell 5.1, which defaults to
-            // ANSI encoding when no BOM is present, correctly reads Unicode characters.
             byte[] bom      = new byte[] { 0xEF, 0xBB, 0xBF };
             byte[] ps1Bytes = Convert.FromBase64String(_ps1b64);
             byte[] ps1WithBom = new byte[bom.Length + ps1Bytes.Length];
@@ -77,48 +152,29 @@ class AgentrixClawSetup {
             string psExe   = Path.Combine(sysRoot, @"WindowsPowerShell\v1.0\powershell.exe");
             if (!File.Exists(psExe)) psExe = "powershell.exe";
 
-            // Console=false (WinForms): hide window, capture output, show MessageBox on error.
-            // Console=true  (terminal scripts): show normal console window directly.
-            bool showConsole = $showConsoleStr;
-            ProcessStartInfo psi;
-            if (showConsole) {
-                // UseShellExecute=false, CreateNoWindow=false, no redirects:
-                // the child inherits (or creates) exactly ONE console window.
-                // UseShellExecute=true can spin up an extra shell host on some systems.
-                psi = new ProcessStartInfo(psExe,
-                    "-NoProfile -ExecutionPolicy Bypass -File \"" + ps1Path + "\"") {
-                    UseShellExecute = false,
-                    CreateNoWindow  = false
-                };
-            } else {
-                psi = new ProcessStartInfo(psExe,
-                    "-NoProfile -ExecutionPolicy Bypass -STA -File \"" + ps1Path + "\"") {
-                    UseShellExecute        = false,
-                    CreateNoWindow         = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError  = true
-                };
-            }
+            var psi = new ProcessStartInfo(psExe,
+                "-NoProfile -ExecutionPolicy Bypass -STA -File \"" + ps1Path + "\"") {
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true
+            };
             using (var proc = Process.Start(psi)) {
                 if (proc != null) {
-                    if (showConsole) {
-                        proc.WaitForExit();
-                    } else {
-                        string stdout = proc.StandardOutput.ReadToEnd();
-                        string stderr = proc.StandardError.ReadToEnd();
-                        proc.WaitForExit();
-                        string log = string.Format(
-                            "Exit: {0}\r\nPS: {1}\r\nPS1: {2}\r\n\r\n--- STDOUT ---\r\n{3}\r\n--- STDERR ---\r\n{4}",
-                            proc.ExitCode, psExe, ps1Path, stdout, stderr);
-                        File.WriteAllText(logPath, log);
-                        if (proc.ExitCode != 0 || stderr.Length > 0) {
-                            string preview = (stderr.Length > 0 ? stderr : stdout);
-                            if (preview.Length > 1200) preview = preview.Substring(0, 1200) + "\n...";
-                            MessageBox.Show(
-                                "Installer error (log: " + logPath + "):\n\n" + preview,
-                                "Agentrix-Claw Setup",
-                                MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
+                    string stdout = proc.StandardOutput.ReadToEnd();
+                    string stderr = proc.StandardError.ReadToEnd();
+                    proc.WaitForExit();
+                    string log = string.Format(
+                        "Exit: {0}\r\nPS: {1}\r\nPS1: {2}\r\n\r\n--- STDOUT ---\r\n{3}\r\n--- STDERR ---\r\n{4}",
+                        proc.ExitCode, psExe, ps1Path, stdout, stderr);
+                    File.WriteAllText(logPath, log);
+                    if (proc.ExitCode != 0 || stderr.Length > 0) {
+                        string preview = (stderr.Length > 0 ? stderr : stdout);
+                        if (preview.Length > 1200) preview = preview.Substring(0, 1200) + "\n...";
+                        MessageBox.Show(
+                            "Installer error (log: " + logPath + "):\n\n" + preview,
+                            "Agentrix-Claw Setup",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }
@@ -134,6 +190,7 @@ class AgentrixClawSetup {
     }
 }
 "@
+    }
 
     if (Test-Path $OutputPath) { Remove-Item $OutputPath -Force }
 
@@ -142,9 +199,15 @@ class AgentrixClawSetup {
     $cp.OutputAssembly      = [System.IO.Path]::GetFullPath($OutputPath)
     $cp.GenerateExecutable  = $true
     $cp.GenerateInMemory    = $false
-    # /target:winexe  = Windows GUI application; no console window spawned
-    $cp.CompilerOptions     = '/target:winexe /optimize+'
-    $cp.ReferencedAssemblies.AddRange([string[]]@('System.dll', 'System.Windows.Forms.dll'))
+    if ($Console) {
+        # /target:exe = real console app; inherits one console window, no flicker
+        $cp.CompilerOptions = '/target:exe /optimize+'
+        $cp.ReferencedAssemblies.AddRange([string[]]@('System.dll'))
+    } else {
+        # /target:winexe = GUI app; no console ever allocated
+        $cp.CompilerOptions = '/target:winexe /optimize+'
+        $cp.ReferencedAssemblies.AddRange([string[]]@('System.dll', 'System.Windows.Forms.dll'))
+    }
 
     $result = $provider.CompileAssemblyFromSource($cp, $src)
     if ($result.Errors.HasErrors) {
