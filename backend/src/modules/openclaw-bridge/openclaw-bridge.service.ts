@@ -1,8 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { OpenClawSkillHubService } from './openclaw-skill-hub.service';
+import { SkillService } from '../skill/skill.service';
 import axios, { AxiosInstance } from 'axios';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -79,7 +80,13 @@ export class OpenClawBridgeService {
     @InjectRepository(OpenClawInstance)
     private readonly instanceRepo: Repository<OpenClawInstance>,
     private readonly skillHub: OpenClawSkillHubService,
+    @Inject(forwardRef(() => SkillService))
+    private readonly skillService: SkillService,
   ) {}
+
+  private isPlatformHosted(instance: OpenClawInstance): boolean {
+    return !instance.instanceUrl || !!(instance.capabilities as any)?.platformHosted;
+  }
 
   // ── Probe (quick check, unbound URL) ────────────────────────────────────────
 
@@ -256,15 +263,35 @@ export class OpenClawBridgeService {
   ): Promise<{ success: boolean; message: string; skillKey?: string }> {
     const instance = await this.instanceRepo.findOne({ where: { id: instanceId, userId } });
     if (!instance) throw new NotFoundException('Instance not found');
-    if (!instance.instanceUrl) throw new BadRequestException('Instance has no URL configured');
 
-    // Resolve skill from hub catalog
-    const hubResult = await this.skillHub.getSkills({ query: skillId, limit: 50 });
+    // Resolve skill from hub catalog by exact id/key/slug before falling back to fuzzy search.
     const skill =
-      hubResult.items.find((s) => s.id === skillId || s.key === skillId) ??
-      hubResult.items[0];
+      await this.skillHub.getSkillById(skillId) ??
+      await this.skillHub.getSkillBySlug(skillId) ??
+      (await this.skillHub.getSkills({ query: skillId, limit: 10 })).items.find(
+        (s) => s.id === skillId || s.key === skillId || s.hubSlug === skillId,
+      ) ??
+      null;
 
     if (!skill) throw new NotFoundException(`Hub skill '${skillId}' not found`);
+
+    if (this.isPlatformHosted(instance)) {
+      try {
+        await this.skillService.installSkillForInstance(instanceId, skill.id, userId);
+      } catch (err: any) {
+        if (!String(err?.message || '').includes('already installed')) {
+          throw err;
+        }
+      }
+
+      return {
+        success: true,
+        message: `Skill '${skill.displayName ?? skill.name}' is now active on '${instance.name}'`,
+        skillKey: skill.key,
+      };
+    }
+
+    if (!instance.instanceUrl) throw new BadRequestException('Instance has no URL configured');
 
     const base = instance.instanceUrl.replace(/\/$/, '');
     const client = this.makeClient(base, instance.instanceToken ?? undefined);

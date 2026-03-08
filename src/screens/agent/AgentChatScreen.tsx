@@ -139,6 +139,7 @@ export function AgentChatScreen() {
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
+  const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
   const recordingRef = useRef<any>(null);
   const isRecordingRef = useRef(false);  // stable ref for press hold logic
@@ -308,12 +309,17 @@ export function AgentChatScreen() {
         } catch {}
       }
     });
+    AsyncStorage.getItem(draftStorageKey).then((rawDraft) => {
+      if (typeof rawDraft === 'string') {
+        setInput(rawDraft);
+      }
+    });
     loadHistory();
     return () => {
       // Cancel any in-flight stream on unmount
       streamAbortRef.current?.abort();
     };
-  }, [instanceId]);
+  }, [draftStorageKey, instanceId, storageKey]);
 
   // Persist messages to local storage whenever they change
   useEffect(() => {
@@ -322,6 +328,10 @@ export function AgentChatScreen() {
       AsyncStorage.setItem(storageKey, JSON.stringify(toSave)).catch(() => {});
     }
   }, [messages]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(draftStorageKey, input).catch(() => {});
+  }, [draftStorageKey, input]);
 
   const loadHistory = async () => {
     if (!instanceId || !token) return;
@@ -460,6 +470,7 @@ export function AgentChatScreen() {
     activeAssistantMessageIdRef.current = assistantMsgId;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
+    AsyncStorage.removeItem(draftStorageKey).catch(() => {});
     setTranscriptPreview('');
     setSending(true);
     streamAbortRef.current?.abort();
@@ -755,6 +766,8 @@ export function AgentChatScreen() {
           streamAbortRef.current?.abort();
           sessionIdRef.current = `session-${Date.now()}`;
           AsyncStorage.removeItem(storageKey).catch(() => {});
+          AsyncStorage.removeItem(draftStorageKey).catch(() => {});
+          setInput('');
           setMessages([{
             id: 'welcome',
             role: 'assistant',

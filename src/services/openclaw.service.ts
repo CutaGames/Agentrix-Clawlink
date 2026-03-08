@@ -149,9 +149,9 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     // Hub skills (oc-xxx / s-xxx) may not have marketplace entries — try bridge endpoint
     if (skillId.startsWith('oc-') || skillId.startsWith('s') || skillId.startsWith('hub-')) {
       try {
-        await apiFetch('/openclaw/bridge/skill-hub/install', {
+        await apiFetch(`/openclaw/bridge/${instanceId}/skill-hub-install`, {
           method: 'POST',
-          body: JSON.stringify({ skillId, instanceId }),
+          body: JSON.stringify({ skillId }),
         });
         dbRecorded = true;
       } catch (bridgeErr: any) {
