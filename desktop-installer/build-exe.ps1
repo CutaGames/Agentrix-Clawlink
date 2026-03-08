@@ -126,15 +126,38 @@ if ($Variant -in @('all', 'gui')) {
     ) + $commonPayload
 
     $launchGuiVbs = @"
+' Agentrix-Claw GUI Launcher
+' IExpress extracts to a temp dir and cleans it up as soon as the launch process exits.
+' To survive that cleanup we FIRST copy the payload to a persistent folder, THEN
+' launch PowerShell from there (visible window, fire-and-forget so IExpress can finish).
 Set shell = CreateObject(""WScript.Shell"")
-Set fso = CreateObject(""Scripting.FileSystemObject"")
-scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+Set fso   = CreateObject(""Scripting.FileSystemObject"")
+srcDir  = fso.GetParentFolderName(WScript.ScriptFullName)
+destDir = shell.ExpandEnvironmentStrings(""%APPDATA%"") & ""\Agentrix-Claw-Installer""
+
+' Ensure persistent destination directory exists
+If Not fso.FolderExists(destDir) Then fso.CreateFolder(destDir)
+
+' Copy installer script
+ps1Src = srcDir  & ""\install-gui.ps1""
+ps1Dst = destDir & ""\install-gui.ps1""
+If fso.FileExists(ps1Src) Then fso.CopyFile ps1Src, ps1Dst, True
+
+' Copy logo (used by the GUI for branding)
+logoSrc = srcDir  & ""\agentrix_logo_square_transparent.png""
+logoDst = destDir & ""\agentrix_logo_square_transparent.png""
+If fso.FileExists(logoSrc) Then fso.CopyFile logoSrc, logoDst, True
+
+' Write a launch log
 logPath = shell.ExpandEnvironmentStrings(""%TEMP%"") & ""\agentrix-claw-iexpress-launch.log""
-Set log = fso.OpenTextFile(logPath, 8, True)
-log.WriteLine Now & "" GUI launch from "" & scriptDir
-log.Close
-cmd = ""powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File """""" & scriptDir & ""\install-gui.ps1""""""
-shell.Run cmd, 0, False
+Set logFile = fso.OpenTextFile(logPath, 8, True)
+logFile.WriteLine Now & "" GUI launch: "" & ps1Dst
+logFile.Close
+
+' Launch from persistent dir — mode 1 (normal visible window), False = don't wait
+' (IExpress can exit; files are safe in %APPDATA%)
+cmd = ""powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File """""""" & ps1Dst & """"""""
+shell.Run cmd, 1, False
 "@
 
     New-IexpressPackage -Name 'Agentrix-Claw-Setup' -FriendlyName 'Agentrix-Claw GUI Setup' -AppLaunched 'wscript.exe Launch-GUI.vbs' -PayloadFiles $guiPayload -GeneratedFiles @{
