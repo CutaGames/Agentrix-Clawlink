@@ -13,6 +13,7 @@ import { AccountOwnerType } from '../../entities/account.entity';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly walletLoginChallenges = new Map<string, { nonce: string; message: string; expiresAt: number }>();
 
   constructor(
     @InjectRepository(User)
@@ -128,6 +129,46 @@ export class AuthService {
         walletAddress: defaultWallet?.walletAddress || null,
       },
     };
+  }
+
+  issueWalletLoginChallenge(walletAddress: string) {
+    const normalizedAddress = walletAddress.toLowerCase();
+    const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const message = `Sign this message to login to Agentrix.\n\nWallet: ${walletAddress}\nNonce: ${nonce}\nTimestamp: ${new Date().toISOString()}`;
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    this.walletLoginChallenges.set(normalizedAddress, { nonce, message, expiresAt });
+    this.cleanupWalletChallenges();
+
+    return { nonce, message, expiresAt };
+  }
+
+  private consumeWalletLoginChallenge(walletAddress: string, message: string) {
+    const normalizedAddress = walletAddress.toLowerCase();
+    const challenge = this.walletLoginChallenges.get(normalizedAddress);
+
+    if (!challenge) {
+      throw new UnauthorizedException('登录挑战不存在，请重新发起钱包登录');
+    }
+
+    this.walletLoginChallenges.delete(normalizedAddress);
+
+    if (challenge.expiresAt < Date.now()) {
+      throw new UnauthorizedException('钱包登录挑战已过期，请重新签名');
+    }
+
+    if (challenge.message !== message) {
+      throw new UnauthorizedException('签名消息不匹配，请重新发起钱包登录');
+    }
+  }
+
+  private cleanupWalletChallenges() {
+    const now = Date.now();
+    for (const [address, challenge] of this.walletLoginChallenges.entries()) {
+      if (challenge.expiresAt < now) {
+        this.walletLoginChallenges.delete(address);
+      }
+    }
   }
 
   async validateGoogleUser(googleProfile: any) {
@@ -444,7 +485,10 @@ export class AuthService {
     // 1. 验证地址格式
     this.validateWalletAddress(walletAddress, chain as ChainType);
 
-    // 2. 验证签名（必须验证，不能跳过）
+    // 2. 校验并消费后端签发的钱包登录挑战，防止重放
+    this.consumeWalletLoginChallenge(walletAddress, message);
+
+    // 3. 验证签名（必须验证，不能跳过）
     const isValidSignature = await this.verifyWalletSignature(
       walletAddress,
       chain as ChainType,
@@ -456,7 +500,7 @@ export class AuthService {
       throw new UnauthorizedException('签名验证失败，请重新签名');
     }
 
-    // 3. 查找该钱包地址是否已存在（不区分链，因为同一个地址在不同链上应该对应同一个用户）
+    // 4. 查找该钱包地址是否已存在（不区分链，因为同一个地址在不同链上应该对应同一个用户）
     // 注意：这里查找所有链的钱包连接，因为同一个地址在不同链上应该对应同一个 Agentrix ID
     // 使用 relations 而不是 leftJoin 来避免 TypeORM 列名问题
     const existingWallet = await this.walletRepository.findOne({
@@ -470,7 +514,7 @@ export class AuthService {
     let walletConnection: WalletConnection;
 
     if (existingWallet) {
-      // 4a. 如果钱包已存在，使用现有的用户和 Agentrix ID
+      // 5a. 如果钱包已存在，使用现有的用户和 Agentrix ID
       user = existingWallet.user;
       
       // 检查该链的钱包连接是否已存在
@@ -482,7 +526,7 @@ export class AuthService {
       walletConnection.chainId = chainId;
       walletConnection = await this.walletRepository.save(walletConnection);
     } else {
-      // 4b. 如果钱包不存在，创建新用户和钱包连接
+      // 5b. 如果钱包不存在，创建新用户和钱包连接
       // 生成 Agentrix ID
       const agentrixId = `AX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -520,7 +564,7 @@ export class AuthService {
       walletConnection = await this.walletRepository.save(walletConnection);
     }
 
-    // 5. 生成JWT token
+    // 6. 生成JWT token
     const payload = { 
       sub: user.id,
       agentrixId: user.agentrixId,
@@ -563,6 +607,8 @@ export class AuthService {
     }
 
     this.validateWalletAddress(walletAddress, chain as ChainType);
+
+    this.consumeWalletLoginChallenge(walletAddress, message);
 
     const isValidSignature = await this.verifyWalletSignature(
       walletAddress,

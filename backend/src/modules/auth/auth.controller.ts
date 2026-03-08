@@ -781,9 +781,7 @@ export class AuthController {
     if (!address) {
       throw new BadRequestException('address is required');
     }
-    const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    const message = `Sign this message to login to Agentrix.\n\nWallet: ${address}\nNonce: ${nonce}\nTimestamp: ${new Date().toISOString()}`;
-    return { nonce, message };
+    return this.authService.issueWalletLoginChallenge(address);
   }
 
   @Post('social/token-login')

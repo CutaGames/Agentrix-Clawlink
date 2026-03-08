@@ -23,6 +23,7 @@ export default function LoginPage() {
   const { login, isAuthenticated } = useUser();
   const { connect, signMessage } = useWeb3();
   const toast = useToast();
+  const mobileCallback = typeof router.query.callback === 'string' ? router.query.callback : null;
   
   const [authMethod, setAuthMethod] = useState<'web3' | 'email'>('web3');
   const [isLoading, setIsLoading] = useState(false);
@@ -62,6 +63,29 @@ export default function LoginPage() {
     }
   }, [router.query]);
 
+  const buildMobileCallbackUrl = (token: string, walletAddress?: string) => {
+    if (!mobileCallback) {
+      return null;
+    }
+
+    try {
+      const url = new URL(mobileCallback);
+      url.searchParams.set('token', token);
+      url.searchParams.set('provider', 'wallet');
+      if (walletAddress) {
+        url.searchParams.set('walletAddress', walletAddress);
+      }
+      return url.toString();
+    } catch {
+      const separator = mobileCallback.includes('?') ? '&' : '?';
+      const params = new URLSearchParams({ token, provider: 'wallet' });
+      if (walletAddress) {
+        params.set('walletAddress', walletAddress);
+      }
+      return `${mobileCallback}${separator}${params.toString()}`;
+    }
+  };
+
   const handleWeb3Login = async (walletType: any) => {
     setIsLoading(true);
     try {
@@ -82,6 +106,12 @@ export default function LoginPage() {
       });
 
       if (response && (response as any).user) {
+        const callbackUrl = buildMobileCallbackUrl(response.access_token, walletInfo.address);
+        if (callbackUrl && typeof window !== 'undefined') {
+          window.location.href = callbackUrl;
+          return;
+        }
+
         const user = (response as any).user;
         login({
           id: user.id,

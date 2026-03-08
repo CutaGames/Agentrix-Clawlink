@@ -272,15 +272,30 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
   const handleWalletConnect = useCallback(async () => {
     setStep('walletconnect');
     const frontendUrl = 'https://www.agentrix.top';
-    const walletLoginUrl = `${frontendUrl}/auth/login?tab=wallet&mobile=1&callback=agentrix://wallet-callback`;
+    const callbackUrl = 'agentrix://auth/callback';
+    const walletLoginUrl = `${frontendUrl}/auth/login?tab=wallet&mobile=1&callback=${encodeURIComponent(callbackUrl)}`;
     try {
-      await WebBrowser.openBrowserAsync(walletLoginUrl, {
+      const result = await WebBrowser.openAuthSessionAsync(walletLoginUrl, callbackUrl, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
+
+      if (result.type === 'success' && result.url) {
+        const parsed = Linking.parse(result.url);
+        const token = typeof parsed.queryParams?.token === 'string' ? parsed.queryParams.token : undefined;
+        const code = typeof parsed.queryParams?.code === 'string' ? parsed.queryParams.code : undefined;
+        const provider = typeof parsed.queryParams?.provider === 'string' ? parsed.queryParams.provider : 'wallet';
+
+        navigation?.replace?.('AuthCallback', {
+          token,
+          code,
+          provider,
+        });
+        return;
+      }
     } finally {
       setStep('select');
     }
-  }, []);
+  }, [navigation]);
 
   const resetFlow = useCallback(() => {
     setStep('select');
