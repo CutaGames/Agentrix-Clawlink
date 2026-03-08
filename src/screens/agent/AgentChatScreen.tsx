@@ -156,6 +156,8 @@ export function AgentChatScreen() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceMode, setVoiceMode] = useState(voiceModeRequested);   // WeChat-style toggle
+  const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>('hold');
+  const [duplexMode, setDuplexMode] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
@@ -210,8 +212,20 @@ export function AgentChatScreen() {
   useEffect(() => {
     if (!voiceMode) {
       setVoicePhase('idle');
+      setIsRecording(false);
+      isRecordingRef.current = false;
     }
   }, [voiceMode]);
+
+  useEffect(() => {
+    if (duplexMode) {
+      setVoiceMode(true);
+      setAutoSpeak(true);
+      setVoiceInteractionMode('tap');
+    } else if (voiceInteractionMode === 'tap') {
+      setVoiceInteractionMode('hold');
+    }
+  }, [duplexMode, voiceInteractionMode]);
 
   // TTS helper — speaks text via backend /voice/tts endpoint
   const speakText = useCallback((text: string) => {
@@ -553,8 +567,7 @@ export function AgentChatScreen() {
     }
   };
 
-  // Voice recording — called on both onPressIn (start) and onPressOut (stop)
-  const handleVoicePressIn = async () => {
+  const startVoiceRecording = useCallback(async () => {
     if (!Audio) {
       Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available. Please type your message instead.', zh: '当前音频模块不可用，请改用文字输入。' }));
       return;
@@ -604,9 +617,9 @@ export function AgentChatScreen() {
         Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n请改用文字输入。` }));
       }
     }
-  };
+  }, [Audio, isSpeaking, stopCurrentResponse, t, voiceRecordingOptions]);
 
-  const handleVoicePressOut = async () => {
+  const stopVoiceRecording = useCallback(async () => {
     if (!Audio || !isRecordingRef.current) return;
     try {
       // STOP and transcribe
@@ -664,7 +677,26 @@ export function AgentChatScreen() {
       setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
     }
+  }, [Audio, handleSend, language, t, token]);
+
+  // Voice recording — hold mode wrappers
+  const handleVoicePressIn = async () => {
+    if (voiceInteractionMode !== 'hold') return;
+    await startVoiceRecording();
   };
+
+  const handleVoicePressOut = async () => {
+    if (voiceInteractionMode !== 'hold') return;
+    await stopVoiceRecording();
+  };
+
+  const handleVoiceTapToggle = useCallback(async () => {
+    if (isRecordingRef.current) {
+      await stopVoiceRecording();
+      return;
+    }
+    await startVoiceRecording();
+  }, [startVoiceRecording, stopVoiceRecording]);
 
   const openModelPicker = () => setShowModelPicker(true);
 
@@ -749,6 +781,14 @@ export function AgentChatScreen() {
         <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <TouchableOpacity
+            onPress={() => setDuplexMode((prev) => !prev)}
+            style={[styles.chatBarBtn, duplexMode && { backgroundColor: colors.accent + '30' }]}
+          >
+            <Text style={[styles.chatBarBtnText, duplexMode && { color: colors.accent }]}>
+              {duplexMode ? t({ en: 'Duplex', zh: '双工' }) : t({ en: 'Simple', zh: '基础' })}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => {
               setAutoSpeak(!autoSpeak);
               if (isSpeaking) { audioPlayerRef.current?.stopAll(); setIsSpeaking(false); }
@@ -802,10 +842,14 @@ export function AgentChatScreen() {
           <Text style={styles.voiceStatusDots}>...</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.voiceStatusText}>
-              {voicePhase === 'recording' && t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' })}
+                {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
+                  ? t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
+                  : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
               {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
               {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
-              {voicePhase === 'speaking' && t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' })}
+                {voicePhase === 'speaking' && (voiceInteractionMode === 'tap'
+                  ? t({ en: 'Agent is speaking… tap mic anytime to interrupt', zh: '智能体正在播报… 随时点麦克风即可打断' })
+                  : t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' }))}
             </Text>
             {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
               <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
@@ -827,17 +871,32 @@ export function AgentChatScreen() {
         </TouchableOpacity>
 
         {voiceMode ? (
-          /* Voice mode: hold-to-talk button */
-          <TouchableOpacity
-            style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-            onPressIn={handleVoicePressIn}
-            onPressOut={handleVoicePressOut}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.holdTalkText}>
-              {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' })}
-            </Text>
-          </TouchableOpacity>
+          voiceInteractionMode === 'tap' ? (
+            <TouchableOpacity
+              style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
+              onPress={handleVoiceTapToggle}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.holdTalkText}>
+                {isRecording
+                  ? t({ en: '🔴  Tap to Send', zh: '🔴  点击发送' })
+                  : duplexMode
+                    ? t({ en: '🎙  Tap to Talk (Duplex)', zh: '🎙  点击说话（双工）' })
+                    : t({ en: '🎙  Tap to Talk', zh: '🎙  点击说话' })}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
+              onPressIn={handleVoicePressIn}
+              onPressOut={handleVoicePressOut}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.holdTalkText}>
+                {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' })}
+              </Text>
+            </TouchableOpacity>
+          )
         ) : (
           /* Text mode */
           <TextInput
@@ -867,9 +926,20 @@ export function AgentChatScreen() {
             )}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.deviceBtn} onPress={handleDeviceAction}>
-            <Text style={styles.deviceIcon}>⊕</Text>
-          </TouchableOpacity>
+          voiceMode ? (
+            <TouchableOpacity
+              style={[styles.deviceBtn, duplexMode && { borderColor: colors.accent }]}
+              onPress={() => setVoiceInteractionMode((prev) => prev === 'hold' ? 'tap' : 'hold')}
+            >
+              <Text style={[styles.deviceIcon, duplexMode && { color: colors.accent }]}>
+                {voiceInteractionMode === 'tap' ? '◉' : '◎'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.deviceBtn} onPress={handleDeviceAction}>
+              <Text style={styles.deviceIcon}>⊕</Text>
+            </TouchableOpacity>
+          )
         )}
       </View>
 
