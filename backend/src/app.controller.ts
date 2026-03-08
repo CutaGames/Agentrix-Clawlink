@@ -82,7 +82,7 @@ export class AppController {
     return { status: 'alive', timestamp: new Date().toISOString() };
   }
 
-  @Get('api/app/version')
+  @Get('app/version')
   @ApiOperation({ summary: 'App version check (mobile update)' })
   getAppVersion() {
     return {
