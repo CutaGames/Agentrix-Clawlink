@@ -99,6 +99,7 @@ export function LocalDeployScreen() {
         const result = await bindOpenClaw({
           instanceUrl: parsedData.url,
           apiToken: parsedData.token || '',
+          instanceName: parsedData.name || 'My PC Agent',
         });
         addInstance?.({
           id: result.id,

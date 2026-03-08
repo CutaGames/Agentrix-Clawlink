@@ -518,11 +518,15 @@ function Show-Step2 {
     $panel.Controls.Add($sub)
 
     # ── QR code image (from web API) ─────────────────────────────────
-    # Param name normalized to 'instanceId' — matches OpenClawBindScreen route parsing
     $lanIP = Get-LanIp
     $hostForLink = if ($lanIP) { $lanIP } else { 'localhost' }
-    $deepLink = "$APP_DEEPLINK_BASE`?instanceId=$global:AGENT_ID&token=$global:AGENT_TOKEN&host=$hostForLink&port=$AGENT_PORT"
-    $qrUrl    = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=2&data=" + [uri]::EscapeDataString($deepLink)
+    # QR encodes relay-mode JSON — mobile app uses registerLocalRelayAgent (no LAN required)
+    # The agent connects to the relay server via WebSocket; mobile pairs via cloud relay.
+    $relayWsUrl   = "wss://$($API_BASE -replace 'https://','')/relay"
+    $qrPayload    = "{`"relayToken`":`"$global:AGENT_TOKEN`",`"wsRelayUrl`":`"$relayWsUrl`",`"mode`":`"relay`",`"name`":`"My PC`"}"
+    # Deep-link kept as text fallback for the Copy button
+    $deepLink     = "$APP_DEEPLINK_BASE`?instanceId=$global:AGENT_ID&token=$global:AGENT_TOKEN&host=$hostForLink&port=$AGENT_PORT"
+    $qrUrl        = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=2&data=" + [uri]::EscapeDataString($qrPayload)
 
     Add-BrandLogo -Parent $panel -X 225 -Y 92 -Width 110 -Height 38 | Out-Null
 

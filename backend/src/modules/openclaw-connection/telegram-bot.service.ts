@@ -201,8 +201,11 @@ export class TelegramBotService {
       if (instance.instanceType === 'local') {
         // Relay to local agent via in-memory relay registry
         reply = await RelayRegistry.sendAndAwait(instance.id, userText, chatId);
+      } else if (!instance.instanceUrl || (instance.capabilities as any)?.platformHosted) {
+        // Platform-hosted cloud instance (no external URL) — route through built-in AI
+        reply = await this.buildFallbackReply(instance, userText);
       } else {
-        // Proxy to cloud instance
+        // Self-hosted cloud or external URL instance
         reply = await this.callCloudAgent(instance, userText);
       }
 

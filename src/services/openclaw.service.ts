@@ -41,9 +41,16 @@ export interface AgentTask {
 
 // Bind a new OpenClaw instance (manual input or QR scan result)
 export async function bindOpenClaw(payload: BindPayload): Promise<OpenClawInstanceInfo> {
+  // Map client-side field names to backend DTO field names
+  const body = {
+    instanceUrl: payload.instanceUrl,
+    instanceToken: payload.apiToken ?? '',
+    name: payload.instanceName || 'My Local Agent',
+    deployType: payload.deployType,
+  };
   return apiFetch<OpenClawInstanceInfo>('/openclaw/bind', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 

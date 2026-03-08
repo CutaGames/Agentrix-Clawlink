@@ -28,6 +28,23 @@ export interface BindOpenClawDto {
   isPrimary?: boolean;
 }
 
+/** Returns true for localhost, 127.x, 10.x, 192.168.x, 172.16-31.x — unreachable from cloud server */
+function isPrivateOrLocalUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return (
+      host === 'localhost' ||
+      /^127\./.test(host) ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
+      host === '::1'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export interface ProvisionCloudDto {
   name: string;
   llmProvider?: string;
@@ -164,21 +181,30 @@ export class OpenClawConnectionService implements OnModuleInit {
   }
 
   async bindInstance(userId: string, dto: BindOpenClawDto): Promise<OpenClawInstance> {
-    // Basic connectivity check
-    try {
-      const resp = await fetch(`${dto.instanceUrl.replace(/\/$/, '')}/api/health`, {
-        headers: { Authorization: `Bearer ${dto.instanceToken}` },
-        signal: AbortSignal.timeout(6000),
-      });
-      if (!resp.ok) {
-        throw new BadRequestException(`OpenClaw instance responded with ${resp.status}`);
+    const isLocal = isPrivateOrLocalUrl(dto.instanceUrl);
+
+    if (isLocal) {
+      // LAN / desktop installer QR: the backend server cannot reach private IPs,
+      // so skip the connectivity check and register as disconnected.
+      // The mobile app will connect directly via LAN.
+      this.logger.log(`Skipping connectivity check for local/LAN instance at ${dto.instanceUrl}`);
+    } else {
+      // Public URL — verify reachability before registering
+      try {
+        const resp = await fetch(`${dto.instanceUrl.replace(/\/$/, '')}/api/health`, {
+          headers: { Authorization: `Bearer ${dto.instanceToken}` },
+          signal: AbortSignal.timeout(6000),
+        });
+        if (!resp.ok) {
+          throw new BadRequestException(`OpenClaw instance responded with ${resp.status}`);
+        }
+      } catch (err: any) {
+        if (err instanceof BadRequestException) throw err;
+        this.logger.warn(`Cannot reach instance at ${dto.instanceUrl}: ${err.message}`);
+        throw new BadRequestException(
+          `Cannot reach OpenClaw instance at ${dto.instanceUrl}. Check the URL and ensure the instance is running.`,
+        );
       }
-    } catch (err: any) {
-      if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Cannot reach instance at ${dto.instanceUrl}: ${err.message}`);
-      throw new BadRequestException(
-        `Cannot reach OpenClaw instance at ${dto.instanceUrl}. Check the URL and ensure the instance is running.`,
-      );
     }
 
     if (dto.isPrimary) {
@@ -188,8 +214,8 @@ export class OpenClawConnectionService implements OnModuleInit {
     const instance = this.instanceRepo.create({
       userId,
       name: dto.name,
-      instanceType: OpenClawInstanceType.SELF_HOSTED,
-      status: OpenClawInstanceStatus.ACTIVE,
+      instanceType: isLocal ? OpenClawInstanceType.LOCAL : OpenClawInstanceType.SELF_HOSTED,
+      status: isLocal ? OpenClawInstanceStatus.PROVISIONING : OpenClawInstanceStatus.ACTIVE,
       instanceUrl: dto.instanceUrl.replace(/\/$/, ''),
       instanceToken: dto.instanceToken,
       isPrimary: dto.isPrimary ?? false,
