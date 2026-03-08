@@ -5,6 +5,11 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Net.Http
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+try {
+    $BOOT_LOG = Join-Path $env:TEMP 'agentrix-claw-installer-launch.log'
+    Add-Content -Path $BOOT_LOG -Value ("[{0}] launch from {1}" -f (Get-Date).ToString('s'), $PSScriptRoot)
+} catch {}
+
 # ── Globals ────────────────────────────────────────────────────────────
 $INSTALL_DIR        = Join-Path $env:APPDATA "Agentrix-Claw"
 $CONFIG_FILE        = "$INSTALL_DIR\config.json"
@@ -14,7 +19,10 @@ $API_BASE           = "https://api.agentrix.top"
 $APP_DEEPLINK_BASE  = "agentrix://connect"
 $PACKAGE_NAME       = "@agentrix/openclaw-agent@latest"
 $PACKAGE_COMMAND    = "openclaw"
-$LOGO_PATH          = Join-Path (Join-Path $PSScriptRoot "..\Agentrix Logo") "agentrix_logo_square_transparent.png"
+$LOGO_PATH          = @(
+    (Join-Path $PSScriptRoot "agentrix_logo_square_transparent.png"),
+    (Join-Path (Join-Path $PSScriptRoot "..\Agentrix Logo") "agentrix_logo_square_transparent.png")
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
 # Connection token param name must match mobile app (instanceId, not agentId)
 # $global:AGENT_ID is exposed as instanceId in the deep link
 $STEP               = 0    # current wizard step

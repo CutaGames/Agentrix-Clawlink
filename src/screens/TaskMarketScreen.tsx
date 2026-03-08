@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
+import { useI18n } from '../stores/i18nStore';
 import {
   taskMarketplaceApi,
   TaskItem,
@@ -30,6 +31,25 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 type SortMode = 'latest' | 'budget_high' | 'budget_low' | 'deadline';
 
+const TYPE_LABEL_ZH: Record<string, string> = {
+  development: '开发',
+  design: '设计',
+  content: '内容',
+  consultation: '咨询',
+  custom_service: '定制',
+  other: '其他',
+};
+
+const STATUS_LABEL_ZH: Record<string, string> = {
+  pending: '待处理',
+  active: '进行中',
+  in_progress: '进行中',
+  completed: '已完成',
+  cancelled: '已取消',
+  expired: '已过期',
+  draft: '草稿',
+};
+
 // Compact banner carousel slides
 const BANNER_SLIDES = [
   {
@@ -39,8 +59,8 @@ const BANNER_SLIDES = [
     bg: '#7c3aed18',
     borderColor: '#7c3aed33',
     badge: 'X402',
-    title: 'On-chain Auto-settle',
-    sub: 'Escrowed bounties · Agent-to-agent payments · BSC',
+    title: { en: 'On-chain Auto-settle', zh: '链上自动结算' },
+    sub: { en: 'Escrowed bounties · Agent-to-agent payments · BSC', zh: '托管悬赏 · 智能体间支付 · BSC' },
   },
   {
     id: 'share',
@@ -49,8 +69,8 @@ const BANNER_SLIDES = [
     bg: '#F59E0B12',
     borderColor: '#F59E0B33',
     badge: null,
-    title: 'Share & Earn 10%',
-    sub: 'Invite friends → they complete tasks → you earn referral reward',
+    title: { en: 'Share & Earn 10%', zh: '分享赚 10%' },
+    sub: { en: 'Invite friends → they complete tasks → you earn referral reward', zh: '邀请好友 → 完成任务 → 你赚推荐奖励' },
   },
   {
     id: 'how',
@@ -59,8 +79,8 @@ const BANNER_SLIDES = [
     bg: '#6366f118',
     borderColor: '#6366f133',
     badge: null,
-    title: 'Post → Bid → Accept → Pay',
-    sub: '3% fee · Dispute protection · Escrow release on delivery',
+    title: { en: 'Post → Bid → Accept → Pay', zh: '发布 → 投标 → 接单 → 支付' },
+    sub: { en: '3% fee · Dispute protection · Escrow release on delivery', zh: '3% 费率 · 争议保护 · 交付后放款' },
   },
 ] as const;
 
@@ -153,24 +173,25 @@ export function getSeedTaskById(id: string): TaskItem | undefined {
   return SEED_TASKS.find(t => t.id === id);
 }
 
-const TYPE_FILTERS: { key: TaskType | 'all'; label: string; icon: string }[] = [
-  { key: 'all', label: 'All', icon: '🔥' },
-  { key: 'development', label: 'Dev', icon: '💻' },
-  { key: 'design', label: 'Design', icon: '🎨' },
-  { key: 'content', label: 'Content', icon: '✍️' },
-  { key: 'consultation', label: 'Consult', icon: '💡' },
-  { key: 'custom_service', label: 'Custom', icon: '⚙️' },
+const TYPE_FILTERS: { key: TaskType | 'all'; label: { en: string; zh: string }; icon: string }[] = [
+  { key: 'all', label: { en: 'All', zh: '全部' }, icon: '🔥' },
+  { key: 'development', label: { en: 'Dev', zh: '开发' }, icon: '💻' },
+  { key: 'design', label: { en: 'Design', zh: '设计' }, icon: '🎨' },
+  { key: 'content', label: { en: 'Content', zh: '内容' }, icon: '✍️' },
+  { key: 'consultation', label: { en: 'Consult', zh: '咨询' }, icon: '💡' },
+  { key: 'custom_service', label: { en: 'Custom', zh: '定制' }, icon: '⚙️' },
 ];
 
-const SORT_OPTIONS: { key: SortMode; label: string }[] = [
-  { key: 'latest', label: 'Latest' },
-  { key: 'budget_high', label: 'Budget ↓' },
-  { key: 'budget_low', label: 'Budget ↑' },
-  { key: 'deadline', label: 'Urgent' },
+const SORT_OPTIONS: { key: SortMode; label: { en: string; zh: string } }[] = [
+  { key: 'latest', label: { en: 'Latest', zh: '最新' } },
+  { key: 'budget_high', label: { en: 'Budget ↓', zh: '预算↓' } },
+  { key: 'budget_low', label: { en: 'Budget ↑', zh: '预算↑' } },
+  { key: 'deadline', label: { en: 'Urgent', zh: '紧急' } },
 ];
 
 export default function TaskMarketScreen() {
   const navigation = useNavigation<any>();
+  const { t } = useI18n();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -183,6 +204,7 @@ export default function TaskMarketScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [shareContent, setShareContent] = useState<{ title: string; message: string; url: string }>({ title: '', message: '', url: '' });
+  const tr = (en: string, zh: string) => t({ en, zh });
 
   // 对种子数据做客户端过滤/排序
   const getFilteredSeedTasks = useCallback(() => {
@@ -301,7 +323,10 @@ export default function TaskMarketScreen() {
       }
       setShareContent({
         title: task.title,
-        message: `${typeConf.icon} ${task.title}\n\n💰 Bounty: ${budget}\n📝 ${task.description.slice(0, 120)}...\n\n🔗 Apply now on Agentrix Bounty Board`,
+        message: t({
+          en: `${typeConf.icon} ${task.title}\n\n💰 Bounty: ${budget}\n📝 ${task.description.slice(0, 120)}...\n\n🔗 Apply now on Agentrix Bounty Board`,
+          zh: `${typeConf.icon} ${task.title}\n\n💰 悬赏：${budget}\n📝 ${task.description.slice(0, 120)}...\n\n🔗 立即前往 Agentrix 悬赏板申请`,
+        }),
         url,
       });
       setShareVisible(true);
@@ -329,14 +354,14 @@ export default function TaskMarketScreen() {
         <View style={styles.taskTopRow}>
           <View style={[styles.typeBadge, { backgroundColor: typeConf.color + '20' }]}>
             <Text style={styles.typeBadgeIcon}>{typeConf.icon}</Text>
-            <Text style={[styles.typeBadgeText, { color: typeConf.color }]}>{typeConf.label}</Text>
+            <Text style={[styles.typeBadgeText, { color: typeConf.color }]}>{t({ en: typeConf.label, zh: TYPE_LABEL_ZH[item.type] || typeConf.label })}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: statusConf.color + '20' }]}>
-            <Text style={[styles.statusBadgeText, { color: statusConf.color }]}>{statusConf.label}</Text>
+            <Text style={[styles.statusBadgeText, { color: statusConf.color }]}>{t({ en: statusConf.label, zh: STATUS_LABEL_ZH[item.status] || statusConf.label })}</Text>
           </View>
           {isUrgent && (
             <View style={styles.urgentBadge}>
-              <Text style={styles.urgentText}>🔥 Urgent</Text>
+              <Text style={styles.urgentText}>🔥 {tr('Urgent', '紧急')}</Text>
             </View>
           )}
           <View style={{ flex: 1 }} />
@@ -360,7 +385,7 @@ export default function TaskMarketScreen() {
           {hasMilestones && (
             <View style={styles.milestoneBadge}>
               <Text style={styles.milestoneIcon}>🔒</Text>
-              <Text style={styles.milestoneText}>Escrowed in Budget Pool</Text>
+              <Text style={styles.milestoneText}>{tr('Escrowed in Budget Pool', '已托管至预算池')}</Text>
             </View>
           )}
           {item.tags && item.tags.slice(0, 3).map((tag, i) => (
@@ -373,14 +398,14 @@ export default function TaskMarketScreen() {
         {/* Bottom: Budget + Deadline + Publisher */}
         <View style={styles.taskBottom}>
           <View style={styles.budgetBox}>
-            <Text style={styles.budgetLabel}>Bounty</Text>
+            <Text style={styles.budgetLabel}>{tr('Bounty', '悬赏')}</Text>
             <Text style={styles.budgetValue}>{formatBudget(item.budget, item.currency)}</Text>
           </View>
           {daysLeft !== null && (
             <View style={styles.deadlineBox}>
-              <Text style={styles.deadlineLabel}>Due</Text>
+              <Text style={styles.deadlineLabel}>{tr('Due', '截止')}</Text>
               <Text style={[styles.deadlineValue, isUrgent && { color: colors.warning }, isExpired && { color: colors.error }]}>
-                {isExpired ? 'Expired' : `${daysLeft}d`}
+                {isExpired ? tr('Expired', '已过期') : t({ en: `${daysLeft}d`, zh: `${daysLeft}天` })}
               </Text>
             </View>
           )}
@@ -392,8 +417,8 @@ export default function TaskMarketScreen() {
       </TouchableOpacity>
     );
   };
-
-  // ── Banner carousel state ──
+      title: tr('Agentrix Bounty Board', 'Agentrix 悬赏板'),
+      message: tr('🎯 Agentrix Bounty Board — Earn crypto by completing tasks!\n\n💰 $200-$2000 bounties for content, dev, design & more', '🎯 Agentrix 悬赏板——完成任务即可赚取加密奖励！\n\n💰 涵盖内容、开发、设计等方向的 $200-$2000 悬赏'),
   const bannerScrollRef = useRef<ScrollView>(null);
   const [bannerPage, setBannerPage] = useState(0);
 
@@ -434,7 +459,7 @@ export default function TaskMarketScreen() {
         <View style={{ backgroundColor: '#ef4444', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
           <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>TEST</Text>
         </View>
-        <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>This is a test area — task features are under development</Text>
+        <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>{tr('This is a test area — task features are under development', '这是测试区域——任务功能仍在开发中')}</Text>
       </View>
       {/* Compact Banner Carousel (X402 / Share & Earn / How It Works) */}
       <View style={styles.bannerCarousel}>
@@ -463,8 +488,8 @@ export default function TaskMarketScreen() {
                 </View>
               ) : null}
               <View style={styles.bannerSlideTexts}>
-                <Text style={[styles.bannerSlideTitle, { color: b.color }]}>{b.title}</Text>
-                <Text style={styles.bannerSlideSub} numberOfLines={1}>{b.sub}</Text>
+                <Text style={[styles.bannerSlideTitle, { color: b.color }]}>{t(b.title)}</Text>
+                <Text style={styles.bannerSlideSub} numberOfLines={1}>{t(b.sub)}</Text>
               </View>
               {b.id === 'x402' && <View style={styles.liveDot} />}
               {b.id === 'share' && <Text style={[styles.bannerArrow, { color: b.color }]}>›</Text>}
@@ -483,7 +508,7 @@ export default function TaskMarketScreen() {
         <View style={styles.searchBar}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search tasks..."
+            placeholder={tr('Search tasks...', '搜索任务…')}
             placeholderTextColor={colors.muted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -492,10 +517,10 @@ export default function TaskMarketScreen() {
             autoFocus
           />
           <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
-            <Text style={styles.searchBtnText}>Search</Text>
+            <Text style={styles.searchBtnText}>{tr('Search', '搜索')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); handleSearch(); }}>
-            <Text style={styles.searchCancel}>Cancel</Text>
+            <Text style={styles.searchCancel}>{tr('Cancel', '取消')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -516,7 +541,7 @@ export default function TaskMarketScreen() {
             >
               <Text style={styles.filterIcon}>{f.icon}</Text>
               <Text style={[styles.filterText, typeFilter === f.key && styles.filterTextActive]}>
-                {f.label}
+                {t(f.label)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -533,7 +558,7 @@ export default function TaskMarketScreen() {
               onPress={() => setSortMode(s.key)}
             >
               <Text style={[styles.sortChipText, sortMode === s.key && styles.sortChipTextActive]}>
-                {s.label}
+                {t(s.label)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -547,7 +572,7 @@ export default function TaskMarketScreen() {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading tasks...</Text>
+          <Text style={styles.loadingText}>{tr('Loading tasks...', '正在加载任务…')}</Text>
         </View>
       ) : (
         <FlatList
@@ -564,18 +589,18 @@ export default function TaskMarketScreen() {
           ListFooterComponent={loadingMore ? (
             <ActivityIndicator color={colors.primary} style={{ paddingVertical: 16 }} />
           ) : tasks.length > 0 && tasks.length >= total ? (
-            <Text style={styles.endText}>— All {total} tasks loaded —</Text>
+            <Text style={styles.endText}>{t({ en: `— All ${total} tasks loaded —`, zh: `— 已加载全部 ${total} 个任务 —` })}</Text>
           ) : null}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyIcon}>📋</Text>
-              <Text style={styles.emptyTitle}>No bounties yet</Text>
-              <Text style={styles.emptyText}>Be the first to post a task!</Text>
+              <Text style={styles.emptyTitle}>{tr('No bounties yet', '暂无悬赏任务')}</Text>
+              <Text style={styles.emptyText}>{tr('Be the first to post a task!', '来发布第一个任务吧！')}</Text>
               <TouchableOpacity
                 style={styles.emptyBtn}
                 onPress={() => navigation.navigate('PostTask')}
               >
-                <Text style={styles.emptyBtnText}>+ Post Task</Text>
+                <Text style={styles.emptyBtnText}>+ {tr('Post Task', '发布任务')}</Text>
               </TouchableOpacity>
             </View>
           }
@@ -589,14 +614,14 @@ export default function TaskMarketScreen() {
         onPress={() => navigation.navigate('PostTask')}
       >
         <Text style={styles.fabIcon}>+</Text>
-        <Text style={styles.fabText}>Post Task</Text>
+        <Text style={styles.fabText}>{tr('Post Task', '发布任务')}</Text>
       </TouchableOpacity>
 
       {/* Commission-tracked Share Bottom Sheet */}
       <ShareBottomSheet
         visible={shareVisible}
         onClose={() => setShareVisible(false)}
-        title="分享任务 · 赚取佣金"
+        title={tr('Share task · Earn commission', '分享任务 · 赚取佣金')}
         shareContent={shareContent}
       />
     </SafeAreaView>

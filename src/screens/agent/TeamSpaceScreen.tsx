@@ -28,6 +28,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 import type { AgentStackParamList } from '../../navigation/types';
+import { useI18n } from '../../stores/i18nStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 export function TeamSpaceScreen() {
   const navigation = useNavigation<Nav>();
+  const { t } = useI18n();
   const qc = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -105,29 +107,29 @@ export function TeamSpaceScreen() {
       setNewDesc('');
       setNewType('team');
     },
-    onError: (e: any) => Alert.alert('Error', e.message),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteWorkspace,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['workspaces'] }),
-    onError: (e: any) => Alert.alert('Error', e.message),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message),
   });
 
   const handleDelete = (ws: Workspace) => {
     Alert.alert(
-      'Delete Workspace',
-      `Are you sure you want to delete "${ws.name}"? This cannot be undone.`,
+      t({ en: 'Delete Workspace', zh: '删除工作区' }),
+      t({ en: `Are you sure you want to delete "${ws.name}"? This cannot be undone.`, zh: `确定要删除“${ws.name}”吗？此操作无法撤销。` }),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate(ws.id) },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        { text: t({ en: 'Delete', zh: '删除' }), style: 'destructive', onPress: () => deleteMutation.mutate(ws.id) },
       ],
     );
   };
 
   const handleCreate = () => {
     if (!newName.trim()) {
-      Alert.alert('Name required', 'Please enter a workspace name.');
+      Alert.alert(t({ en: 'Name required', zh: '需要名称' }), t({ en: 'Please enter a workspace name.', zh: '请输入工作区名称。' }));
       return;
     }
     createMutation.mutate({ name: newName.trim(), description: newDesc.trim() || undefined, type: newType });
@@ -138,18 +140,18 @@ export function TeamSpaceScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>← {t({ en: 'Back', zh: '返回' })}</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Team Spaces</Text>
+        <Text style={styles.title}>{t({ en: 'Team Spaces', zh: '团队空间' })}</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
-          <Text style={styles.addText}>+ New</Text>
+          <Text style={styles.addText}>+ {t({ en: 'New', zh: '新建' })}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Info banner */}
       <View style={styles.infoBanner}>
         <Text style={styles.infoText}>
-          🏢 Share agent instances, skills, and tasks with your team members.
+          🏢 {t({ en: 'Share agent instances, skills, and tasks with your team members.', zh: '与团队成员共享智能体实例、技能和任务。' })}
         </Text>
       </View>
 
@@ -164,10 +166,10 @@ export function TeamSpaceScreen() {
         ) : workspaces.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>👥</Text>
-            <Text style={styles.emptyTitle}>No workspaces yet</Text>
-            <Text style={styles.emptySubtitle}>Create a team space to collaborate with others.</Text>
+            <Text style={styles.emptyTitle}>{t({ en: 'No workspaces yet', zh: '还没有工作区' })}</Text>
+            <Text style={styles.emptySubtitle}>{t({ en: 'Create a team space to collaborate with others.', zh: '创建一个团队空间，与他人协作。' })}</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowCreate(true)}>
-              <Text style={styles.emptyBtnText}>Create Workspace</Text>
+              <Text style={styles.emptyBtnText}>{t({ en: 'Create Workspace', zh: '创建工作区' })}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -180,7 +182,7 @@ export function TeamSpaceScreen() {
                   <Text style={styles.cardSlug}>@{ws.slug}</Text>
                 </View>
                 <View style={styles.cardBadge}>
-                  <Text style={styles.cardBadgeText}>{ws.type}</Text>
+                  <Text style={styles.cardBadgeText}>{t({ en: ws.type, zh: ws.type === 'personal' ? '个人' : ws.type === 'team' ? '团队' : '组织' })}</Text>
                 </View>
               </View>
 
@@ -190,10 +192,10 @@ export function TeamSpaceScreen() {
 
               <View style={styles.cardMeta}>
                 <Text style={styles.cardMetaText}>
-                  👤 {ws.memberCount ?? (ws.members?.length ?? 1)} member{(ws.memberCount ?? 1) !== 1 ? 's' : ''}
+                  👤 {t({ en: `${ws.memberCount ?? (ws.members?.length ?? 1)} member${(ws.memberCount ?? 1) !== 1 ? 's' : ''}`, zh: `${ws.memberCount ?? (ws.members?.length ?? 1)} 名成员` })}
                 </Text>
                 <Text style={styles.cardMetaText}>
-                  {ws.plan === 'free' ? '🆓' : '⭐'} {ws.plan}
+                  {ws.plan === 'free' ? '🆓' : '⭐'} {ws.plan === 'free' ? t({ en: 'free', zh: '免费' }) : ws.plan}
                 </Text>
               </View>
 
@@ -207,13 +209,13 @@ export function TeamSpaceScreen() {
                     })
                   }
                 >
-                  <Text style={styles.actionBtnText}>👋 Invite</Text>
+                  <Text style={styles.actionBtnText}>👋 {t({ en: 'Invite', zh: '邀请' })}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.actionBtnDanger]}
                   onPress={() => handleDelete(ws)}
                 >
-                  <Text style={[styles.actionBtnText, { color: '#ef4444' }]}>🗑 Delete</Text>
+                  <Text style={[styles.actionBtnText, { color: '#ef4444' }]}>🗑 {t({ en: 'Delete', zh: '删除' })}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -225,39 +227,39 @@ export function TeamSpaceScreen() {
       <Modal visible={showCreate} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>New Workspace</Text>
+            <Text style={styles.modalTitle}>{t({ en: 'New Workspace', zh: '新建工作区' })}</Text>
 
-            <Text style={styles.fieldLabel}>Name *</Text>
+            <Text style={styles.fieldLabel}>{t({ en: 'Name *', zh: '名称 *' })}</Text>
             <TextInput
               style={styles.input}
               value={newName}
               onChangeText={setNewName}
-              placeholder="My Team"
+              placeholder={t({ en: 'My Team', zh: '我的团队' })}
               placeholderTextColor={colors.textMuted}
               autoFocus
             />
 
-            <Text style={styles.fieldLabel}>Description</Text>
+            <Text style={styles.fieldLabel}>{t({ en: 'Description', zh: '描述' })}</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={newDesc}
               onChangeText={setNewDesc}
-              placeholder="What does this workspace do?"
+              placeholder={t({ en: 'What does this workspace do?', zh: '这个工作区是做什么的？' })}
               placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={3}
             />
 
-            <Text style={styles.fieldLabel}>Type</Text>
+            <Text style={styles.fieldLabel}>{t({ en: 'Type', zh: '类型' })}</Text>
             <View style={styles.typeRow}>
-              {(['personal', 'team', 'organization'] as const).map((t) => (
+              {(['personal', 'team', 'organization'] as const).map((typeKey) => (
                 <TouchableOpacity
-                  key={t}
-                  style={[styles.typeChip, newType === t && styles.typeChipActive]}
-                  onPress={() => setNewType(t)}
+                  key={typeKey}
+                  style={[styles.typeChip, newType === typeKey && styles.typeChipActive]}
+                  onPress={() => setNewType(typeKey)}
                 >
-                  <Text style={[styles.typeChipText, newType === t && styles.typeChipTextActive]}>
-                    {TYPE_ICON[t]} {t}
+                  <Text style={[styles.typeChipText, newType === typeKey && styles.typeChipTextActive]}>
+                    {TYPE_ICON[typeKey]} {t({ en: typeKey, zh: typeKey === 'personal' ? '个人' : typeKey === 'team' ? '团队' : '组织' })}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -268,7 +270,7 @@ export function TeamSpaceScreen() {
                 style={styles.cancelBtn}
                 onPress={() => { setShowCreate(false); setNewName(''); setNewDesc(''); }}
               >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                <Text style={styles.cancelBtnText}>{t({ en: 'Cancel', zh: '取消' })}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.createBtn, !newName.trim() && styles.createBtnDisabled]}
@@ -278,7 +280,7 @@ export function TeamSpaceScreen() {
                 {createMutation.isPending ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.createBtnText}>Create</Text>
+                  <Text style={styles.createBtnText}>{t({ en: 'Create', zh: '创建' })}</Text>
                 )}
               </TouchableOpacity>
             </View>

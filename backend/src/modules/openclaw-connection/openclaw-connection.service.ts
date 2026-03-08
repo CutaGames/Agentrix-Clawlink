@@ -34,6 +34,12 @@ export interface ProvisionCloudDto {
   personality?: string;
 }
 
+export interface RegisterLocalRelayDto {
+  relayToken: string;
+  name?: string;
+  wsRelayUrl?: string;
+}
+
 /**
  * Available LLM models for user switching.
  * availability: 'available' = ready to use, 'coming_soon' = not yet wired, 'requires_key' = user must provide API key.
@@ -424,10 +430,56 @@ export class OpenClawConnectionService implements OnModuleInit {
       relayToken,
       wsRelayUrl: `wss://${appDomain}/relay`,
       downloadUrls: {
-        win: `https://${appDomain}/downloads/clawlink-agent-win.exe`,
-        mac: `https://${appDomain}/downloads/clawlink-agent-mac`,
+        win: `https://${appDomain}/downloads/Agentrix-Claw-Setup.exe`,
+        mac: `https://${appDomain}/downloads/agentrix-claw-mac`,
       },
     };
+  }
+
+  async registerLocalRelayInstance(userId: string, dto: RegisterLocalRelayDto): Promise<OpenClawInstance> {
+    const relayToken = dto.relayToken?.trim();
+    if (!relayToken) {
+      throw new BadRequestException('relayToken is required');
+    }
+
+    const existing = await this.instanceRepo.findOne({ where: { relayToken } });
+    if (existing) {
+      if (existing.userId !== userId) {
+        throw new ForbiddenException('This desktop agent is already linked to another account.');
+      }
+      return existing;
+    }
+
+    const maxLocal = parseInt(process.env.MAX_LOCAL_INSTANCES_PER_USER || '1', 10);
+    const localCount = await this.instanceRepo.count({
+      where: {
+        userId,
+        instanceType: OpenClawInstanceType.LOCAL,
+        status: In([OpenClawInstanceStatus.ACTIVE, OpenClawInstanceStatus.PROVISIONING]),
+      },
+    });
+    if (localCount >= maxLocal) {
+      throw new BadRequestException(
+        `Free tier allows ${maxLocal} local instance(s). Please remove an existing instance first.`,
+      );
+    }
+
+    const instance = this.instanceRepo.create({
+      userId,
+      name: dto.name?.trim() || 'My PC Agent',
+      instanceType: OpenClawInstanceType.LOCAL,
+      status: OpenClawInstanceStatus.PROVISIONING,
+      relayToken,
+      isPrimary: true,
+      capabilities: {
+        platformTools: getDefaultSkillHandlerNames(),
+        provisionedAt: new Date().toISOString(),
+        provisionSource: 'desktop-installer',
+        wsRelayUrl: dto.wsRelayUrl,
+      },
+    });
+
+    return this.instanceRepo.save(instance);
   }
 
   async getRelayStatus(userId: string, instanceId: string): Promise<{ connected: boolean; instanceId: string }> {

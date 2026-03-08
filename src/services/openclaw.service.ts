@@ -244,12 +244,30 @@ export interface ProvisionLocalResult {
   downloadUrls: { win: string; mac: string };
 }
 
+export interface RegisterLocalRelayResult {
+  id: string;
+  name: string;
+  relayToken?: string;
+  status: string;
+}
+
 /** Create a new LOCAL-type instance and get relay token + download links */
 export async function provisionLocalAgent(opts: {
   name: string;
   os?: 'android' | 'ios';
 }): Promise<ProvisionLocalResult> {
   return apiFetch<ProvisionLocalResult>('/openclaw/local/provision', {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
+}
+
+export async function registerLocalRelayAgent(opts: {
+  relayToken: string;
+  name?: string;
+  wsRelayUrl?: string;
+}): Promise<RegisterLocalRelayResult> {
+  return apiFetch<RegisterLocalRelayResult>('/openclaw/local/register', {
     method: 'POST',
     body: JSON.stringify(opts),
   });

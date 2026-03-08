@@ -21,6 +21,28 @@ import {
   TASK_TYPE_CONFIG,
   TASK_STATUS_CONFIG,
 } from '../services/taskMarketplace.api';
+import { useI18n } from '../stores/i18nStore';
+
+const TYPE_LABEL_ZH: Record<string, string> = {
+  development: '开发',
+  design: '设计',
+  content: '内容',
+  consultation: '咨询',
+  custom_service: '定制',
+  other: '其他',
+};
+
+const STATUS_LABEL_ZH: Record<string, string> = {
+  pending: '待处理',
+  active: '进行中',
+  in_progress: '进行中',
+  completed: '已完成',
+  cancelled: '已取消',
+  expired: '已过期',
+  draft: '草稿',
+  accepted: '已接受',
+  rejected: '已拒绝',
+};
 
 interface Props {
   route: { params: { taskId: string } };
@@ -29,12 +51,14 @@ interface Props {
 
 export function TaskDetailScreen({ route, navigation }: Props) {
   const { taskId } = route.params;
+  const { t } = useI18n();
   const userId = useAuthStore(s => s.user?.id);
   const [task, setTask] = useState<TaskItem | null>(null);
   const [bids, setBids] = useState<BidItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showBidForm, setShowBidForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const tr = (en: string, zh: string) => t({ en, zh });
 
   // Bid form state
   const [bidBudget, setBidBudget] = useState('');
@@ -69,7 +93,7 @@ export function TaskDetailScreen({ route, navigation }: Props) {
           return;
         }
       } catch {}
-      Alert.alert('Load Failed', typeof e?.message === 'string' ? e.message : 'Unable to load task details');
+      Alert.alert(tr('Load Failed', '加载失败'), typeof e?.message === 'string' ? e.message : tr('Unable to load task details', '无法加载任务详情'));
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -81,9 +105,9 @@ export function TaskDetailScreen({ route, navigation }: Props) {
   const handleSubmitBid = async () => {
     const budget = parseFloat(bidBudget);
     const days = parseInt(bidDays);
-    if (!budget || budget <= 0) { Alert.alert('Please enter a valid bid amount'); return; }
-    if (!days || days <= 0) { Alert.alert('Please enter estimated days'); return; }
-    if (bidProposal.trim().length < 10) { Alert.alert('Proposal must be at least 10 characters'); return; }
+    if (!budget || budget <= 0) { Alert.alert(tr('Please enter a valid bid amount', '请输入有效的出价金额')); return; }
+    if (!days || days <= 0) { Alert.alert(tr('Please enter estimated days', '请输入预计天数')); return; }
+    if (bidProposal.trim().length < 10) { Alert.alert(tr('Proposal must be at least 10 characters', '方案描述至少需要 10 个字符')); return; }
 
     setSubmitting(true);
     try {
@@ -93,11 +117,11 @@ export function TaskDetailScreen({ route, navigation }: Props) {
         estimatedDays: days,
         proposal: bidProposal.trim(),
       });
-      Alert.alert('Bid Submitted', 'Your proposal has been submitted, waiting for review.', [
-        { text: 'OK', onPress: () => { setShowBidForm(false); loadData(); } },
+      Alert.alert(tr('Bid Submitted', '竞标已提交'), tr('Your proposal has been submitted, waiting for review.', '你的方案已提交，正在等待审核。'), [
+        { text: tr('OK', '确定'), onPress: () => { setShowBidForm(false); loadData(); } },
       ]);
     } catch (e: any) {
-      Alert.alert('Submit Failed', e.message || 'Please try again later');
+      Alert.alert(tr('Submit Failed', '提交失败'), e.message || tr('Please try again later', '请稍后再试'));
     } finally {
       setSubmitting(false);
     }
@@ -105,19 +129,19 @@ export function TaskDetailScreen({ route, navigation }: Props) {
 
   const handleAcceptBid = (bid: BidItem) => {
     Alert.alert(
-      'Accept Bid',
-      `Accept proposal from "${bid.bidder?.nickname || 'Bidder'}"?\nBid: $${bid.proposedBudget}\nEst: ${bid.estimatedDays} days`,
+      tr('Accept Bid', '接受竞标'),
+      t({ en: `Accept proposal from "${bid.bidder?.nickname || 'Bidder'}"?\nBid: $${bid.proposedBudget}\nEst: ${bid.estimatedDays} days`, zh: `要接受“${bid.bidder?.nickname || '竞标者'}”的方案吗？\n报价：$${bid.proposedBudget}\n预计：${bid.estimatedDays} 天` }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tr('Cancel', '取消'), style: 'cancel' },
         {
-          text: 'Confirm',
+          text: tr('Confirm', '确认'),
           onPress: async () => {
             try {
               await taskMarketplaceApi.acceptBid(taskId, bid.id);
-              Alert.alert('Accepted', 'Task has been assigned to this bidder');
+              Alert.alert(tr('Accepted', '已接受'), tr('Task has been assigned to this bidder', '任务已分配给该竞标者'));
               loadData();
             } catch (e: any) {
-              Alert.alert('Failed', e.message);
+              Alert.alert(tr('Failed', '失败'), e.message);
             }
           },
         },
@@ -130,7 +154,7 @@ export function TaskDetailScreen({ route, navigation }: Props) {
       await taskMarketplaceApi.rejectBid(taskId, bid.id);
       loadData();
     } catch (e: any) {
-      Alert.alert('Failed', e.message);
+      Alert.alert(tr('Failed', '失败'), e.message);
     }
   };
 
@@ -165,28 +189,28 @@ export function TaskDetailScreen({ route, navigation }: Props) {
           <View style={styles.badgeRow}>
             <View style={[styles.typeBadge, { backgroundColor: typeConf.color + '20' }]}>
               <Text style={{ fontSize: 14 }}>{typeConf.icon}</Text>
-              <Text style={[styles.typeBadgeText, { color: typeConf.color }]}>{typeConf.label}</Text>
+              <Text style={[styles.typeBadgeText, { color: typeConf.color }]}>{t({ en: typeConf.label, zh: TYPE_LABEL_ZH[task.type] || typeConf.label })}</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusConf.color + '20' }]}>
-              <Text style={[styles.statusBadgeText, { color: statusConf.color }]}>{statusConf.label}</Text>
+              <Text style={[styles.statusBadgeText, { color: statusConf.color }]}>{t({ en: statusConf.label, zh: STATUS_LABEL_ZH[task.status] || statusConf.label })}</Text>
             </View>
           </View>
           <Text style={styles.title}>{task.title}</Text>
           <View style={styles.metaRow}>
-            <Text style={styles.metaText}>By: {task.user?.nickname || task.user?.agentrixId?.slice(0, 12) || 'Anonymous'}</Text>
-            <Text style={styles.metaText}>Posted: {formatDate(task.createdAt)}</Text>
+            <Text style={styles.metaText}>{tr('By', '发布者')}：{task.user?.nickname || task.user?.agentrixId?.slice(0, 12) || tr('Anonymous', '匿名')}</Text>
+            <Text style={styles.metaText}>{tr('Posted', '发布时间')}：{formatDate(task.createdAt)}</Text>
           </View>
         </View>
 
         {/* Budget */}
         <View style={styles.budgetCard}>
           <View style={styles.budgetMain}>
-            <Text style={styles.budgetLabel}>Bounty</Text>
+            <Text style={styles.budgetLabel}>{tr('Bounty', '悬赏')}</Text>
             <Text style={styles.budgetValue}>{formatBudget(task.budget, task.currency)}</Text>
           </View>
           {task.requirements?.deadline && (
             <View style={styles.budgetSide}>
-              <Text style={styles.budgetLabel}>Deadline</Text>
+              <Text style={styles.budgetLabel}>{tr('Deadline', '截止时间')}</Text>
               <Text style={styles.deadlineValue}>{formatDate(task.requirements.deadline)}</Text>
             </View>
           )}
@@ -194,14 +218,14 @@ export function TaskDetailScreen({ route, navigation }: Props) {
 
         {/* Description */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📝 Description</Text>
+          <Text style={styles.sectionTitle}>📝 {tr('Description', '描述')}</Text>
           <Text style={styles.descText}>{task.description}</Text>
         </View>
 
         {/* Tags */}
         {task.tags && task.tags.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🏷️ Tags</Text>
+            <Text style={styles.sectionTitle}>🏷️ {tr('Tags', '标签')}</Text>
             <View style={styles.tagsRow}>
               {task.tags.map((tag, i) => (
                 <View key={i} style={styles.tagChip}>
@@ -215,7 +239,7 @@ export function TaskDetailScreen({ route, navigation }: Props) {
         {/* Requirements */}
         {task.requirements?.deliverables && task.requirements.deliverables.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📋 Deliverables</Text>
+            <Text style={styles.sectionTitle}>📋 {tr('Deliverables', '交付物')}</Text>
             {task.requirements.deliverables.map((d, i) => (
               <View key={i} style={styles.deliverableRow}>
                 <Text style={styles.deliverableBullet}>•</Text>
@@ -228,32 +252,32 @@ export function TaskDetailScreen({ route, navigation }: Props) {
         {/* Bids Section (Owner only) */}
         {isOwner && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📨 Bids Received ({bids.length})</Text>
+            <Text style={styles.sectionTitle}>{t({ en: `📨 Bids Received (${bids.length})`, zh: `📨 已收到竞标（${bids.length}）` })}</Text>
             {bids.length === 0 ? (
-              <Text style={styles.noBidsText}>No bids yet, please wait...</Text>
+              <Text style={styles.noBidsText}>{tr('No bids yet, please wait...', '暂时还没有竞标，请稍候…')}</Text>
             ) : (
               bids.map(bid => (
                 <View key={bid.id} style={styles.bidCard}>
                   <View style={styles.bidHeader}>
-                    <Text style={styles.bidderName}>{bid.bidder?.nickname || 'Bidder'}</Text>
+                    <Text style={styles.bidderName}>{bid.bidder?.nickname || tr('Bidder', '竞标者')}</Text>
                     <View style={[styles.bidStatusBadge, { backgroundColor: bid.status === 'accepted' ? colors.success + '20' : bid.status === 'rejected' ? colors.error + '20' : colors.primary + '20' }]}>
                       <Text style={[styles.bidStatusText, { color: bid.status === 'accepted' ? colors.success : bid.status === 'rejected' ? colors.error : colors.primary }]}>
-                        {bid.status === 'pending' ? 'Pending' : bid.status === 'accepted' ? 'Accepted' : bid.status === 'rejected' ? 'Rejected' : bid.status}
+                        {bid.status === 'pending' ? tr('Pending', '待处理') : bid.status === 'accepted' ? tr('Accepted', '已接受') : bid.status === 'rejected' ? tr('Rejected', '已拒绝') : t({ en: bid.status, zh: STATUS_LABEL_ZH[bid.status] || bid.status })}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.bidMeta}>
                     <Text style={styles.bidBudget}>{formatBudget(bid.proposedBudget, bid.currency)}</Text>
-                    <Text style={styles.bidDays}>{bid.estimatedDays}d est.</Text>
+                    <Text style={styles.bidDays}>{t({ en: `${bid.estimatedDays}d est.`, zh: `预计 ${bid.estimatedDays} 天` })}</Text>
                   </View>
                   <Text style={styles.bidProposal} numberOfLines={4}>{bid.proposal}</Text>
                   {bid.status === 'pending' && (
                     <View style={styles.bidActions}>
                       <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAcceptBid(bid)}>
-                        <Text style={styles.acceptBtnText}>Accept</Text>
+                        <Text style={styles.acceptBtnText}>{tr('Accept', '接受')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.rejectBtn} onPress={() => handleRejectBid(bid)}>
-                        <Text style={styles.rejectBtnText}>Reject</Text>
+                        <Text style={styles.rejectBtnText}>{tr('Reject', '拒绝')}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -266,13 +290,13 @@ export function TaskDetailScreen({ route, navigation }: Props) {
         {/* Bid Form */}
         {showBidForm && !isOwner && task.status === 'pending' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>✍️ Submit Your Bid</Text>
+            <Text style={styles.sectionTitle}>✍️ {tr('Submit Your Bid', '提交你的竞标')}</Text>
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Bid ({task.currency})</Text>
+                <Text style={styles.formLabel}>{t({ en: `Bid (${task.currency})`, zh: `报价（${task.currency}）` })}</Text>
                 <TextInput
                   style={styles.formInput}
-                  placeholder="Enter bid amount"
+                  placeholder={tr('Enter bid amount', '输入报价金额')}
                   placeholderTextColor={colors.muted}
                   value={bidBudget}
                   onChangeText={setBidBudget}
@@ -280,10 +304,10 @@ export function TaskDetailScreen({ route, navigation }: Props) {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Est. Days</Text>
+                <Text style={styles.formLabel}>{tr('Est. Days', '预计天数')}</Text>
                 <TextInput
                   style={styles.formInput}
-                  placeholder="Days"
+                  placeholder={tr('Days', '天数')}
                   placeholderTextColor={colors.muted}
                   value={bidDays}
                   onChangeText={setBidDays}
@@ -291,10 +315,10 @@ export function TaskDetailScreen({ route, navigation }: Props) {
                 />
               </View>
             </View>
-            <Text style={styles.formLabel}>Proposal</Text>
+            <Text style={styles.formLabel}>{tr('Proposal', '方案说明')}</Text>
             <TextInput
               style={[styles.formInput, styles.formTextarea]}
-              placeholder="Describe your approach, experience and strengths..."
+              placeholder={tr('Describe your approach, experience and strengths...', '请描述你的方法、经验和优势…')}
               placeholderTextColor={colors.muted}
               value={bidProposal}
               onChangeText={setBidProposal}
@@ -309,7 +333,7 @@ export function TaskDetailScreen({ route, navigation }: Props) {
               onPress={handleSubmitBid}
               disabled={submitting}
             >
-              <Text style={styles.submitBidBtnText}>{submitting ? 'Submitting...' : 'Submit Bid'}</Text>
+              <Text style={styles.submitBidBtnText}>{submitting ? tr('Submitting...', '提交中…') : tr('Submit Bid', '提交竞标')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -321,7 +345,7 @@ export function TaskDetailScreen({ route, navigation }: Props) {
       {!isOwner && task.status === 'pending' && !showBidForm && (
         <View style={styles.bottomBar}>
           <TouchableOpacity style={styles.bidButton} onPress={() => setShowBidForm(true)}>
-            <Text style={styles.bidButtonText}>💰 Place a Bid</Text>
+            <Text style={styles.bidButtonText}>💰 {tr('Place a Bid', '立即竞标')}</Text>
           </TouchableOpacity>
         </View>
       )}

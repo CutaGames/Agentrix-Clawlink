@@ -7,6 +7,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { useI18n } from '../../stores/i18nStore';
 
 // ──────────────────────────────────────────────
 // Types
@@ -95,6 +96,7 @@ function CreateAgentModal({
   onCreate: (dto: CreateAgentDto) => void;
   loading: boolean;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [agentType, setAgentType] = useState('personal');
@@ -104,7 +106,7 @@ function CreateAgentModal({
 
   const handleCreate = () => {
     if (!name.trim()) {
-      Alert.alert('Name required', 'Please give your agent a name.');
+      Alert.alert(t({ en: 'Name required', zh: '需要名称' }), t({ en: 'Please give your agent a name.', zh: '请为你的智能体填写名称。' }));
       return;
     }
     onCreate({
@@ -125,58 +127,58 @@ function CreateAgentModal({
       <View style={modal.root}>
         <View style={modal.header}>
           <TouchableOpacity onPress={onClose}>
-            <Text style={modal.cancel}>Cancel</Text>
+            <Text style={modal.cancel}>{t({ en: 'Cancel', zh: '取消' })}</Text>
           </TouchableOpacity>
-          <Text style={modal.title}>New Agent Account</Text>
+          <Text style={modal.title}>{t({ en: 'New Agent Account', zh: '新建智能体账户' })}</Text>
           <TouchableOpacity onPress={handleCreate} disabled={loading}>
             {loading ? (
               <ActivityIndicator color={colors.accent} />
             ) : (
-              <Text style={modal.createBtn}>Create</Text>
+              <Text style={modal.createBtn}>{t({ en: 'Create', zh: '创建' })}</Text>
             )}
           </TouchableOpacity>
         </View>
 
         <ScrollView style={modal.body} keyboardShouldPersistTaps="handled">
-          <Text style={modal.label}>Agent Name *</Text>
+          <Text style={modal.label}>{t({ en: 'Agent Name *', zh: '智能体名称 *' })}</Text>
           <TextInput
             style={modal.input}
-            placeholder="e.g. My Research Agent"
+            placeholder={t({ en: 'e.g. My Research Agent', zh: '例如：我的研究智能体' })}
             placeholderTextColor={colors.textMuted}
             value={name}
             onChangeText={setName}
             autoFocus
           />
 
-          <Text style={modal.label}>Description</Text>
+          <Text style={modal.label}>{t({ en: 'Description', zh: '描述' })}</Text>
           <TextInput
             style={[modal.input, { minHeight: 70, textAlignVertical: 'top' }]}
-            placeholder="What does this agent do?"
+            placeholder={t({ en: 'What does this agent do?', zh: '这个智能体负责什么？' })}
             placeholderTextColor={colors.textMuted}
             value={description}
             onChangeText={setDescription}
             multiline
           />
 
-          <Text style={modal.label}>Agent Type</Text>
+          <Text style={modal.label}>{t({ en: 'Agent Type', zh: '智能体类型' })}</Text>
           <View style={modal.typeRow}>
-            {AGENT_TYPES.map((t) => (
+            {AGENT_TYPES.map((typeKey) => (
               <TouchableOpacity
-                key={t}
-                style={[modal.typeChip, agentType === t && modal.typeChipActive]}
-                onPress={() => setAgentType(t)}
+                key={typeKey}
+                style={[modal.typeChip, agentType === typeKey && modal.typeChipActive]}
+                onPress={() => setAgentType(typeKey)}
               >
-                <Text style={[modal.typeText, agentType === t && modal.typeTextActive]}>
-                  {t}
+                <Text style={[modal.typeText, agentType === typeKey && modal.typeTextActive]}>
+                  {t({ en: typeKey, zh: typeKey === 'personal' ? '个人' : typeKey === 'assistant' ? '助理' : typeKey === 'commerce' ? '商业' : typeKey === 'research' ? '研究' : '自动化' })}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={modal.label}>Spending Limits (USD)</Text>
+          <Text style={modal.label}>{t({ en: 'Spending Limits (USD)', zh: '支出限制（USD）' })}</Text>
           <View style={modal.limitsGrid}>
             <View style={modal.limitItem}>
-              <Text style={modal.limitLabel}>Single TX</Text>
+              <Text style={modal.limitLabel}>{t({ en: 'Single TX', zh: '单笔' })}</Text>
               <TextInput
                 style={modal.limitInput}
                 value={singleTxLimit}
@@ -186,7 +188,7 @@ function CreateAgentModal({
               />
             </View>
             <View style={modal.limitItem}>
-              <Text style={modal.limitLabel}>Daily</Text>
+              <Text style={modal.limitLabel}>{t({ en: 'Daily', zh: '每日' })}</Text>
               <TextInput
                 style={modal.limitInput}
                 value={dailyLimit}
@@ -196,7 +198,7 @@ function CreateAgentModal({
               />
             </View>
             <View style={modal.limitItem}>
-              <Text style={modal.limitLabel}>Monthly</Text>
+              <Text style={modal.limitLabel}>{t({ en: 'Monthly', zh: '每月' })}</Text>
               <TextInput
                 style={modal.limitInput}
                 value={monthlyLimit}
@@ -209,7 +211,7 @@ function CreateAgentModal({
 
           <View style={modal.infoBox}>
             <Text style={modal.infoText}>
-              💡 Spending limits protect you by capping how much this agent can pay autonomously.
+              💡 {t({ en: 'Spending limits protect you by capping how much this agent can pay autonomously.', zh: '支出限制可约束该智能体的自主支付额度，保护你的资金安全。' })}
             </Text>
           </View>
         </ScrollView>
@@ -232,6 +234,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function AgentAccountScreen() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [walletLoading, setWalletLoading] = useState<string | null>(null);
@@ -254,50 +257,50 @@ export function AgentAccountScreen() {
         const walletResult = await openWalletForAgent(result.id);
         queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
         Alert.alert(
-          'Agent Ready ✅🔐',
-          `"${result.name}" has been created with an independent MPC wallet.\n\nWallet Address:\n${walletResult.walletAddress}\n\nYour agent now has autonomous payment capability within the spending limits you set.`,
+          t({ en: 'Agent Ready ✅🔐', zh: '智能体已就绪 ✅🔐' }),
+          t({ en: `"${result.name}" has been created with an independent MPC wallet.\n\nWallet Address:\n${walletResult.walletAddress}\n\nYour agent now has autonomous payment capability within the spending limits you set.`, zh: `“${result.name}”已创建完成，并已配置独立 MPC 钱包。\n\n钱包地址：\n${walletResult.walletAddress}\n\n你的智能体现在可以在设定的支出限制内自主支付。` }),
         );
       } catch {
         // Wallet creation failed, notify user (non-blocking — agent itself was created)
         Alert.alert(
-          'Agent Created ✅',
-          `"${result.name}" is ready.\n\n⚠️ Wallet activation failed — tap "Open Wallet" on the agent card to try again.`,
+          t({ en: 'Agent Created ✅', zh: '智能体已创建 ✅' }),
+          t({ en: `"${result.name}" is ready.\n\n⚠️ Wallet activation failed — tap "Open Wallet" on the agent card to try again.`, zh: `“${result.name}”已就绪。\n\n⚠️ 钱包激活失败——请点击卡片上的“打开独立钱包”重试。` }),
         );
       }
     },
     onError: (err: any) => {
-      Alert.alert('Error', err?.message || 'Failed to create agent account.');
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to create agent account.', zh: '创建智能体账户失败。' }));
     },
   });
 
   const handleOpenWallet = async (agent: AgentAccount) => {
     if (agent.walletAddress) {
       Alert.alert(
-        'Agent Wallet',
-        `Address: ${agent.walletAddress}`,
-        [{ text: 'OK' }],
+        t({ en: 'Agent Wallet', zh: '智能体钱包' }),
+        t({ en: `Address: ${agent.walletAddress}`, zh: `地址：${agent.walletAddress}` }),
+        [{ text: t({ en: 'OK', zh: '确定' }) }],
       );
       return;
     }
 
     Alert.alert(
-      'Open Independent Wallet',
-      `Create an MPC wallet for "${agent.name}"?\n\nThis generates a self-custody wallet where only this agent can sign transactions within its spending limits.`,
+      t({ en: 'Open Independent Wallet', zh: '打开独立钱包' }),
+      t({ en: `Create an MPC wallet for "${agent.name}"?\n\nThis generates a self-custody wallet where only this agent can sign transactions within its spending limits.`, zh: `要为“${agent.name}”创建 MPC 钱包吗？\n\n这会生成一个自托管钱包，只有该智能体能在其支出限制内签署交易。` }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: 'Create Wallet',
+          text: t({ en: 'Create Wallet', zh: '创建钱包' }),
           onPress: async () => {
             setWalletLoading(agent.id);
             try {
               const result = await openWalletForAgent(agent.id);
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
               Alert.alert(
-                'Wallet Created 🎉',
-                `Your agent wallet is ready!\n\nAddress: ${result.walletAddress}`,
+                t({ en: 'Wallet Created 🎉', zh: '钱包已创建 🎉' }),
+                t({ en: `Your agent wallet is ready!\n\nAddress: ${result.walletAddress}`, zh: `你的智能体钱包已就绪！\n\n地址：${result.walletAddress}` }),
               );
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to create wallet.');
+              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to create wallet.', zh: '创建钱包失败。' }));
             } finally {
               setWalletLoading(null);
             }
@@ -309,19 +312,19 @@ export function AgentAccountScreen() {
 
   const handleSuspend = (agent: AgentAccount) => {
     Alert.alert(
-      'Suspend Agent',
-      `Suspend "${agent.name}"? It will no longer be able to make payments.`,
+      t({ en: 'Suspend Agent', zh: '暂停智能体' }),
+      t({ en: `Suspend "${agent.name}"? It will no longer be able to make payments.`, zh: `要暂停“${agent.name}”吗？暂停后它将无法继续支付。` }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: 'Suspend',
+          text: t({ en: 'Suspend', zh: '暂停' }),
           style: 'destructive',
           onPress: async () => {
             try {
               await suspendAgent(agent.id);
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
             } catch {
-              Alert.alert('Error', 'Failed to suspend agent.');
+              Alert.alert(t({ en: 'Error', zh: '错误' }), t({ en: 'Failed to suspend agent.', zh: '暂停智能体失败。' }));
             }
           },
         },
@@ -331,20 +334,20 @@ export function AgentAccountScreen() {
 
   const handleResume = (agent: AgentAccount) => {
     Alert.alert(
-      'Resume Agent',
-      `Reactivate "${agent.name}"?`,
+      t({ en: 'Resume Agent', zh: '恢复智能体' }),
+      t({ en: `Reactivate "${agent.name}"?`, zh: `要重新激活“${agent.name}”吗？` }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: 'Resume',
+          text: t({ en: 'Resume', zh: '恢复' }),
           onPress: async () => {
             setActionLoading(agent.id);
             try {
               await resumeAgent(agent.id);
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-              Alert.alert('Agent Reactivated ✅', `${agent.name} is active again.`);
+              Alert.alert(t({ en: 'Agent Reactivated ✅', zh: '智能体已重新激活 ✅' }), t({ en: `${agent.name} is active again.`, zh: `${agent.name} 已重新启用。` }));
             } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to resume agent.');
+              Alert.alert(t({ en: 'Error', zh: '错误' }), e?.message || t({ en: 'Failed to resume agent.', zh: '恢复智能体失败。' }));
             } finally {
               setActionLoading(null);
             }
@@ -367,7 +370,7 @@ export function AgentAccountScreen() {
         </View>
         <View style={[styles.statusBadge, { backgroundColor: (STATUS_COLOR[agent.status] || '#888') + '22' }]}>
           <Text style={[styles.statusText, { color: STATUS_COLOR[agent.status] || colors.textMuted }]}>
-            {agent.status}
+            {t({ en: agent.status, zh: agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status === 'suspended' ? '已暂停' : agent.status === 'terminated' ? '已终止' : agent.status === 'error' ? '错误' : '未连接' })}
           </Text>
         </View>
       </View>
@@ -381,19 +384,19 @@ export function AgentAccountScreen() {
       {agent.spendingLimits && (
         <View style={styles.limitsRow}>
           <View style={styles.limitChip}>
-            <Text style={styles.limitChipLabel}>Single TX</Text>
+            <Text style={styles.limitChipLabel}>{t({ en: 'Single TX', zh: '单笔' })}</Text>
             <Text style={styles.limitChipValue}>
               ${agent.spendingLimits.singleTxLimit} {agent.spendingLimits.currency}
             </Text>
           </View>
           <View style={styles.limitChip}>
-            <Text style={styles.limitChipLabel}>Daily</Text>
+            <Text style={styles.limitChipLabel}>{t({ en: 'Daily', zh: '每日' })}</Text>
             <Text style={styles.limitChipValue}>
               ${agent.spendingLimits.dailyLimit}
             </Text>
           </View>
           <View style={styles.limitChip}>
-            <Text style={styles.limitChipLabel}>Monthly</Text>
+            <Text style={styles.limitChipLabel}>{t({ en: 'Monthly', zh: '每月' })}</Text>
             <Text style={styles.limitChipValue}>
               ${agent.spendingLimits.monthlyLimit}
             </Text>
@@ -428,7 +431,7 @@ export function AgentAccountScreen() {
           ) : (
             <>
               <Text style={styles.openWalletIcon}>🔐</Text>
-              <Text style={styles.openWalletText}>Open Independent Wallet</Text>
+              <Text style={styles.openWalletText}>{t({ en: 'Open Independent Wallet', zh: '打开独立钱包' })}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -438,7 +441,7 @@ export function AgentAccountScreen() {
       <View style={styles.actionsRow}>
         {(agent.status === 'active' || agent.status === 'draft') && (
           <TouchableOpacity style={styles.actionBtn} onPress={() => handleSuspend(agent)}>
-            <Text style={styles.actionBtnText}>⏸ Suspend</Text>
+            <Text style={styles.actionBtnText}>⏸ {t({ en: 'Suspend', zh: '暂停' })}</Text>
           </TouchableOpacity>
         )}
         {agent.status === 'suspended' && (
@@ -450,7 +453,7 @@ export function AgentAccountScreen() {
             {actionLoading === agent.id ? (
               <ActivityIndicator color={colors.accent} size="small" />
             ) : (
-              <Text style={[styles.actionBtnText, { color: colors.accent }]}>▶ Resume</Text>
+              <Text style={[styles.actionBtnText, { color: colors.accent }]}>▶ {t({ en: 'Resume', zh: '恢复' })}</Text>
             )}
           </TouchableOpacity>
         )}
@@ -458,19 +461,19 @@ export function AgentAccountScreen() {
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnFund]}
             onPress={() =>
-              Alert.alert('Fund Agent', `Top up agent wallet:\n${agent.walletAddress}\n\nSend USDT (BSC) to this address.`)
+              Alert.alert(t({ en: 'Fund Agent', zh: '给智能体充值' }), t({ en: `Top up agent wallet:\n${agent.walletAddress}\n\nSend USDT (BSC) to this address.`, zh: `请向该智能体钱包充值：\n${agent.walletAddress}\n\n请向此地址发送 USDT（BSC）。` }))
             }
           >
-            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>💰 Fund</Text>
+            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>💰 {t({ en: 'Fund', zh: '充值' })}</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() =>
-            Alert.alert('Transactions', `Transaction history for ${agent.name} will open in the Orders tab.`)
+            Alert.alert(t({ en: 'Transactions', zh: '交易记录' }), t({ en: `Transaction history for ${agent.name} will open in the Orders tab.`, zh: `${agent.name} 的交易记录会在订单页中打开。` }))
           }
         >
-          <Text style={styles.actionBtnText}>📋 Txs</Text>
+          <Text style={styles.actionBtnText}>📋 {t({ en: 'Txs', zh: '交易' })}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -492,18 +495,18 @@ export function AgentAccountScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View style={styles.headerCard}>
-              <Text style={styles.headerTitle}>Agent Accounts</Text>
+              <Text style={styles.headerTitle}>{t({ en: 'Agent Accounts', zh: '智能体账户' })}</Text>
               <Text style={styles.headerSub}>
-                Each agent account is an autonomous identity with its own spending limits and optional self-custody wallet.
+                {t({ en: 'Each agent account is an autonomous identity with its own spending limits and optional self-custody wallet.', zh: '每个智能体账户都是一个独立身份，拥有自己的支出限制，并可选配自托管钱包。' })}
               </Text>
             </View>
           }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyIcon}>🤖</Text>
-              <Text style={styles.emptyTitle}>No agent accounts</Text>
+              <Text style={styles.emptyTitle}>{t({ en: 'No agent accounts', zh: '暂无智能体账户' })}</Text>
               <Text style={styles.emptySub}>
-                Create an agent account to let your AI act autonomously on your behalf.
+                {t({ en: 'Create an agent account to let your AI act autonomously on your behalf.', zh: '创建一个智能体账户，让你的 AI 代表你自主执行操作。' })}
               </Text>
             </View>
           }
@@ -512,7 +515,7 @@ export function AgentAccountScreen() {
 
       {/* FAB: Create agent */}
       <TouchableOpacity style={styles.fab} onPress={() => setShowCreate(true)}>
-        <Text style={styles.fabText}>＋ New Agent</Text>
+        <Text style={styles.fabText}>＋ {t({ en: 'New Agent', zh: '新建智能体' })}</Text>
       </TouchableOpacity>
 
       {/* Create modal */}

@@ -117,12 +117,12 @@ if ($LAN_IP) {
 }
 
 # ── 5. Show connection QR ─────────────────────────────────────────────────────
-# Scheme: clawlink:// (registered in the mobile app)
+# Scheme: agentrix:// (registered in the mobile app)
 # Param:  instanceId (normalized across all installers)
-$QR_URL = "clawlink://connect?instanceId=$INSTANCE_ID&token=$TOKEN&host=$LAN_IP&port=$OPENCLAW_PORT"
+$QR_URL = "agentrix://connect?instanceId=$INSTANCE_ID&token=$TOKEN&host=$LAN_IP&port=$OPENCLAW_PORT"
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
-Write-Host "  SCAN WITH CLAWLINK / AGENTRIX MOBILE APP" -ForegroundColor Green
+Write-Host "  SCAN WITH AGENTRIX MOBILE APP" -ForegroundColor Green
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Connection URL:" -ForegroundColor Yellow
@@ -131,7 +131,7 @@ Write-Host ""
 # Try to show QR image via free API (works when online)
 try {
     $qrApiUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + [uri]::EscapeDataString($QR_URL)
-    $qrFile = Join-Path $env:TEMP "clawlink-qr.png"
+    $qrFile = Join-Path $env:TEMP "agentrix-qr.png"
     Invoke-WebRequest -Uri $qrApiUrl -OutFile $qrFile -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
     Write-Info "QR code saved: $qrFile  (opening…)"
     Start-Process $qrFile
@@ -139,7 +139,7 @@ try {
     Write-Info "(offline — scan the URL above manually)"
 }
 Write-Host ""
-Write-Host "  → Open ClawLink / Agentrix Mobile App" -ForegroundColor Cyan
+Write-Host "  → Open Agentrix Mobile App" -ForegroundColor Cyan
 Write-Host "  → Tap Agent Tab → + New Instance → Scan QR or Import URL" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
@@ -196,7 +196,7 @@ Write-Host "  • Config file:        $(Join-Path $INSTALL_DIR 'config.json')"
 Write-Host "  • Log file:           $logPath"
 Write-Host ""
 Write-Host "  To manage: Task Scheduler → AgentrixOpenClaw"
-Write-Host "  Mobile connection URL: clawlink://connect?instanceId=$INSTANCE_ID&host=$LAN_IP&port=$OPENCLAW_PORT"
+Write-Host "  Mobile connection URL: agentrix://connect?instanceId=$INSTANCE_ID&host=$LAN_IP&port=$OPENCLAW_PORT"
 Write-Host ""
 
 Stop-Transcript | Out-Null

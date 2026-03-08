@@ -7,6 +7,9 @@ import { useNavigation } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
+import { bindOpenClaw } from '../../services/auth';
+import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 // Wizard steps:
 // 'choose'    → user picks: novice (install guide) OR existing (scan)
@@ -18,6 +21,7 @@ type Step = 'choose' | 'install' | 'scanning' | 'connecting';
 
 export function LocalDeployScreen() {
   const navigation = useNavigation<any>();
+  const { t } = useI18n();
   const { addInstance, setActiveInstance } = useAuthStore.getState();
 
   const [step, setStep] = useState<Step>('choose');
@@ -28,7 +32,7 @@ export function LocalDeployScreen() {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        Alert.alert('Permission Required', 'Camera access is needed to scan the QR code from your PC.');
+        Alert.alert(t({ en: 'Permission Required', zh: '需要权限' }), t({ en: 'Camera access is needed to scan the QR code from your PC.', zh: '需要相机权限才能扫描电脑上的二维码。' }));
         return;
       }
     }
@@ -57,36 +61,42 @@ export function LocalDeployScreen() {
         }
       }
 
-      const instanceId = `local-${Date.now()}`;
-
       if (parsedData.mode === 'relay' || parsedData.relayToken) {
-        // Relay mode — Agentrix Agent is running on PC, we connect via relay
         if (!parsedData.relayToken) throw new Error('Relay QR missing relayToken.');
+        const registered = await registerLocalRelayAgent({
+          relayToken: parsedData.relayToken,
+          name: parsedData.name || 'My PC Agent',
+          wsRelayUrl: parsedData.wsRelayUrl,
+        });
         addInstance?.({
-          id: instanceId,
-          name: 'My PC (Agentrix Relay)',
+          id: registered.id,
+          name: registered.name || 'My PC (Agentrix Relay)',
           instanceUrl: parsedData.wsRelayUrl || 'wss://api.agentrix.top/relay',
           status: 'active',
           deployType: 'local',
           relayToken: parsedData.relayToken,
           wsRelayUrl: parsedData.wsRelayUrl,
         });
+        setActiveInstance?.(registered.id);
+        navigation.navigate('SocialBind', { instanceId: registered.id, platform: 'telegram' });
       } else {
-        // Direct LAN mode — OpenClaw is accessible on local network
         if (!parsedData.url) throw new Error('QR code missing URL field.');
-        addInstance?.({
-          id: instanceId,
-          name: 'My Local Agent',
+        const result = await bindOpenClaw({
           instanceUrl: parsedData.url,
-          status: 'active',
-          deployType: 'local',
+          apiToken: parsedData.token || '',
         });
+        addInstance?.({
+          id: result.id,
+          name: result.name || 'My Local Agent',
+          instanceUrl: parsedData.url,
+          status: (result.status || 'active') as 'active' | 'disconnected' | 'error',
+          deployType: 'existing',
+        });
+        setActiveInstance?.(result.id);
+        navigation.navigate('SocialBind', { instanceId: result.id, platform: 'telegram' });
       }
-
-      setActiveInstance?.(instanceId);
-      navigation.navigate('SocialBind', { instanceId, platform: 'telegram' });
     } catch (error: any) {
-      Alert.alert('Scan Error', error.message || 'Failed to parse QR code.');
+      Alert.alert(t({ en: 'Scan Error', zh: '扫描错误' }), error.message || t({ en: 'Failed to parse QR code.', zh: '二维码解析失败。' }));
       setStep('scanning');
       setScanned(false);
     }
@@ -97,7 +107,7 @@ export function LocalDeployScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={styles.loadingText}>Connecting to local agent...</Text>
+        <Text style={styles.loadingText}>{t({ en: 'Connecting to local agent...', zh: '正在连接本地智能体…' })}</Text>
       </View>
     );
   }
@@ -114,9 +124,9 @@ export function LocalDeployScreen() {
         />
         <View style={styles.overlay}>
           <View style={styles.scanFrame} />
-          <Text style={styles.scanLabel}>Aim at the QR code on your PC screen</Text>
+          <Text style={styles.scanLabel}>{t({ en: 'Aim at the QR code on your PC screen', zh: '将摄像头对准电脑屏幕上的二维码' })}</Text>
           <TouchableOpacity style={styles.cancelBtn} onPress={() => setStep(step === 'scanning' ? 'install' : 'choose')}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
+            <Text style={styles.cancelBtnText}>{t({ en: 'Cancel', zh: '取消' })}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -127,59 +137,59 @@ export function LocalDeployScreen() {
   if (step === 'install') {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.stepIndicator}>Local Agent Setup</Text>
-        <Text style={styles.title}>Install Agentrix</Text>
+        <Text style={styles.stepIndicator}>{t({ en: 'Local Agent Setup', zh: '本地智能体安装' })}</Text>
+        <Text style={styles.title}>{t({ en: 'Install Agentrix-Claw', zh: '安装 Agentrix-Claw' })}</Text>
         <Text style={styles.subtitle}>
-          One installer puts a full AI agent on your PC. Click Next until a QR code appears, then scan with your phone.
+          {t({ en: 'One installer puts a full AI agent on your PC. Click Next until a QR code appears, then scan with your phone.', zh: '一个安装包即可在你的电脑上部署完整 AI 智能体。一路点击下一步，直到出现二维码，然后用手机扫描即可。' })}
         </Text>
 
         {/* Windows primary download */}
         <TouchableOpacity
           style={[styles.stepsCard, styles.dlCardPrimary]}
-          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/Agentrix-Setup.exe')}
+          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/Agentrix-Claw-Setup.exe')}
           activeOpacity={0.8}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <Text style={{ fontSize: 36 }}>🪟</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Agentrix-Setup.exe</Text>
-              <Text style={styles.stepsText}>Windows 10 / 11 × 64-bit</Text>
+              <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Agentrix-Claw-Setup.exe</Text>
+              <Text style={styles.stepsText}>{t({ en: 'Windows 10 / 11 × 64-bit', zh: 'Windows 10 / 11 × 64 位' })}</Text>
             </View>
             <Text style={{ fontSize: 22, color: '#60a5fa' }}>⬇</Text>
           </View>
         </TouchableOpacity>
 
-        {/* Linux secondary */}
+        {/* macOS secondary */}
         <TouchableOpacity
           style={[styles.stepsCard, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}
-          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/clawlink-agent-linux')}
+          onPress={() => Linking.openURL('https://api.agentrix.top/downloads/agentrix-claw-mac')}
           activeOpacity={0.8}
         >
-          <Text style={{ fontSize: 24 }}>🐧</Text>
+          <Text style={{ fontSize: 24 }}>🍎</Text>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.methodTitle, { marginBottom: 0 }]}>Linux binary</Text>
-            <Text style={styles.stepsText}>x86-64</Text>
+            <Text style={[styles.methodTitle, { marginBottom: 0 }]}>{t({ en: 'macOS package', zh: 'macOS 安装包' })}</Text>
+            <Text style={styles.stepsText}>{t({ en: 'Desktop pairing build', zh: '桌面端配对版本' })}</Text>
           </View>
           <Text style={{ fontSize: 18, color: colors.textMuted }}>⬇</Text>
         </TouchableOpacity>
 
         {/* Steps after install */}
         <View style={styles.stepsCard}>
-          <Text style={styles.methodTitle}>After installing:</Text>
+          <Text style={styles.methodTitle}>{t({ en: 'After installing:', zh: '安装完成后：' })}</Text>
           {INSTALL_STEPS.map((s, i) => (
             <View key={i} style={styles.stepsRow}>
               <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
-              <Text style={styles.stepsText}>{s}</Text>
+              <Text style={styles.stepsText}>{t(s)}</Text>
             </View>
           ))}
         </View>
 
         <TouchableOpacity style={styles.primaryBtn} onPress={openScanner} activeOpacity={0.85}>
-          <Text style={styles.primaryBtnText}>📷 QR code is ready — Scan Now</Text>
+          <Text style={styles.primaryBtnText}>📷 {t({ en: 'QR code is ready — Scan Now', zh: '二维码已准备好——立即扫描' })}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => setStep('choose')} style={styles.backLink}>
-          <Text style={styles.backLinkText}>← Back</Text>
+          <Text style={styles.backLinkText}>← {t({ en: 'Back', zh: '返回' })}</Text>
         </TouchableOpacity>
       </ScrollView>
     );
@@ -188,16 +198,16 @@ export function LocalDeployScreen() {
   // ── choose (default / entry) ──────────────────────────────────────────────
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Local / Private Agent</Text>
+      <Text style={styles.title}>{t({ en: 'Local / Private Agent', zh: '本地 / 私有智能体' })}</Text>
       <Text style={styles.subtitle}>
-        Run your AI agent on your own PC. Fully private, no monthly cloud fee.
+        {t({ en: 'Run your AI agent on your own PC. Fully private, no monthly cloud fee.', zh: '让你的 AI 智能体运行在自己的电脑上。更私密，无需每月云端费用。' })}
       </Text>
 
       <TouchableOpacity style={styles.choiceCard} onPress={() => setStep('install')} activeOpacity={0.85}>
         <Text style={styles.choiceEmoji}>🆕</Text>
         <View style={styles.choiceBody}>
-          <Text style={styles.choiceTitle}>I'm new — download the installer</Text>
-          <Text style={styles.choiceDesc}>Download Agentrix-Setup.exe, click Next through the installer, and a QR code appears automatically. ~2 min.</Text>
+          <Text style={styles.choiceTitle}>{t({ en: `I'm new — download the installer`, zh: '我是新用户——下载安装器' })}</Text>
+          <Text style={styles.choiceDesc}>{t({ en: 'Download Agentrix-Claw-Setup.exe, click Next through the installer, and a QR code appears automatically. ~2 min.', zh: '下载 Agentrix-Claw-Setup.exe，按向导点击下一步，二维码会自动出现。约 2 分钟。' })}</Text>
         </View>
         <Text style={styles.choiceArrow}>›</Text>
       </TouchableOpacity>
@@ -205,23 +215,23 @@ export function LocalDeployScreen() {
       <TouchableOpacity style={styles.choiceCard} onPress={openScanner} activeOpacity={0.85}>
         <Text style={styles.choiceEmoji}>📷</Text>
         <View style={styles.choiceBody}>
-          <Text style={styles.choiceTitle}>I already have OpenClaw running</Text>
-          <Text style={styles.choiceDesc}>Scan the QR code shown in your OpenClaw terminal to connect instantly.</Text>
+          <Text style={styles.choiceTitle}>{t({ en: 'I already have the desktop agent running', zh: '我已经启动桌面端智能体' })}</Text>
+          <Text style={styles.choiceDesc}>{t({ en: 'Scan the QR code shown in the Agentrix-Claw desktop app or terminal to connect instantly.', zh: '扫描 Agentrix-Claw 桌面应用或终端中显示的二维码即可立即连接。' })}</Text>
         </View>
         <Text style={styles.choiceArrow}>›</Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
-        <Text style={styles.backLinkText}>← Back</Text>
+        <Text style={styles.backLinkText}>← {t({ en: 'Back', zh: '返回' })}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const INSTALL_STEPS = [
-  'Run Agentrix-Setup.exe and click "Next" through the installer',
-  'The Agentrix tray icon appears — a QR code is displayed automatically',
-  'Tap "QR code is ready — Scan Now" above to connect your phone',
+  { en: 'Run Agentrix-Claw-Setup.exe and click "Next" through the installer', zh: '运行 Agentrix-Claw-Setup.exe，并按向导点击“下一步”' },
+  { en: 'The Agentrix-Claw tray icon appears — a QR code is displayed automatically', zh: 'Agentrix-Claw 托盘图标会出现——二维码会自动显示' },
+  { en: 'Tap "QR code is ready — Scan Now" above to connect your phone', zh: '点击上方“二维码已准备好——立即扫描”来连接手机' },
 ];
 
 const styles = StyleSheet.create({

@@ -31,6 +31,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as crypto from 'crypto';
+import { TelegramBotService } from '../openclaw-connection/telegram-bot.service';
 
 // ── Environment ───────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'agentrixnetwork_bot';
 const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY ?? process.env.DISCORD_CLIENT_SECRET ?? '';
 const API_BASE_URL = process.env.BACKEND_URL ?? process.env.APP_URL ?? 'https://api.agentrix.top/api';
+const TELEGRAM_WEBHOOK_URL = `${API_BASE_URL}/openclaw-connection/webhook/telegram`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,8 @@ interface SocialEvent {
 @Controller('social/callback')
 export class SocialCallbackController {
   private readonly logger = new Logger(SocialCallbackController.name);
+
+  constructor(private readonly telegramBotService: TelegramBotService) {}
 
   // In-memory circular buffer of last 100 events (for the frontend dashboard)
   private readonly eventLog: (SocialEvent & { id: string })[] = [];
@@ -88,7 +92,7 @@ export class SocialCallbackController {
         telegram: {
           connected: !!TELEGRAM_BOT_TOKEN,
           botUsername: TELEGRAM_BOT_USERNAME,
-          webhookUrl: `${API_BASE_URL}/social/callback/telegram`,
+          webhookUrl: TELEGRAM_WEBHOOK_URL,
         },
         discord: {
           connected: !!DISCORD_PUBLIC_KEY,
@@ -109,7 +113,7 @@ export class SocialCallbackController {
     if (!TELEGRAM_BOT_TOKEN) {
       return { ok: false, error: 'TELEGRAM_BOT_TOKEN not configured' };
     }
-    const webhookUrl = `${API_BASE_URL}/social/callback/telegram`;
+    const webhookUrl = TELEGRAM_WEBHOOK_URL;
     try {
       const res = await fetch(
         `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook`,
@@ -217,32 +221,28 @@ export class SocialCallbackController {
   @Post('telegram')
   @HttpCode(200)
   async handleTelegramWebhook(@Body() body: any) {
-    // Verify secret_token header if configured
     const update = body;
 
     const message = update?.message ?? update?.channel_post ?? null;
-    if (!message) return { ok: true };
+    if (message) {
+      const text: string = message?.text ?? message?.caption ?? message?.voice?.file_id ?? message?.audio?.file_id ?? '[non-text message]';
+      const senderId = String(message?.from?.id ?? message?.chat?.id ?? '');
+      const senderName =
+        message?.from?.username ??
+        `${message?.from?.first_name ?? ''} ${message?.from?.last_name ?? ''}`.trim();
 
-    const text: string = message?.text ?? message?.caption ?? '';
-    const senderId = String(message?.from?.id ?? message?.chat?.id ?? '');
-    const senderName =
-      message?.from?.username ??
-      `${message?.from?.first_name ?? ''} ${message?.from?.last_name ?? ''}`.trim();
+      this.pushEvent({
+        platform: 'telegram',
+        eventType: text.startsWith('/') ? 'command' : 'message',
+        senderId,
+        senderName,
+        text,
+        rawPayload: message,
+        timestamp: Date.now(),
+      });
+    }
 
-    // Only process messages that mention @AgentrixBot or start with /
-    const isMention = text.includes('@AgentrixBot') || text.startsWith('/');
-    if (!isMention) return { ok: true };
-
-    const event: SocialEvent = {
-      platform: 'telegram',
-      eventType: text.startsWith('/') ? 'command' : 'mention',
-      senderId,
-      senderName,
-      text,
-      rawPayload: message,
-      timestamp: Date.now(),
-    };
-    await this.dispatchEvent(event);
+    await this.telegramBotService.handleUpdate(update);
 
     return { ok: true };
   }

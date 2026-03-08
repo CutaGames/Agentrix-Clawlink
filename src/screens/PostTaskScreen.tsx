@@ -17,12 +17,23 @@ import {
   TaskType,
   TASK_TYPE_CONFIG,
 } from '../services/taskMarketplace.api';
+import { useI18n } from '../stores/i18nStore';
+
+const TYPE_LABEL_ZH: Record<string, string> = {
+  development: '开发',
+  design: '设计',
+  content: '内容',
+  consultation: '咨询',
+  custom_service: '定制',
+  other: '其他',
+};
 
 interface Props {
   navigation: any;
 }
 
 export function PostTaskScreen({ navigation }: Props) {
+  const { t } = useI18n();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState('');
@@ -32,14 +43,15 @@ export function PostTaskScreen({ navigation }: Props) {
   const [deadline, setDeadline] = useState('');
   const [deliverables, setDeliverables] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const tr = (en: string, zh: string) => t({ en, zh });
 
   const handleSubmit = async () => {
-    if (!title.trim()) { Alert.alert('Please enter a task title'); return; }
-    if (title.trim().length < 5) { Alert.alert('Title must be at least 5 characters'); return; }
-    if (!description.trim()) { Alert.alert('Please enter a description'); return; }
-    if (description.trim().length < 20) { Alert.alert('Description must be at least 20 characters'); return; }
+    if (!title.trim()) { Alert.alert(tr('Please enter a task title', '请输入任务标题')); return; }
+    if (title.trim().length < 5) { Alert.alert(tr('Title must be at least 5 characters', '标题至少需要 5 个字符')); return; }
+    if (!description.trim()) { Alert.alert(tr('Please enter a description', '请输入任务描述')); return; }
+    if (description.trim().length < 20) { Alert.alert(tr('Description must be at least 20 characters', '描述至少需要 20 个字符')); return; }
     const budgetNum = parseFloat(budget);
-    if (!budgetNum || budgetNum <= 0) { Alert.alert('Please enter a valid budget'); return; }
+    if (!budgetNum || budgetNum <= 0) { Alert.alert(tr('Please enter a valid budget', '请输入有效的预算')); return; }
 
     setSubmitting(true);
     try {
@@ -61,12 +73,12 @@ export function PostTaskScreen({ navigation }: Props) {
       });
 
       Alert.alert(
-        'Published!',
-        'Your bounty task is now live on the Bounty Board, waiting for bids.',
-        [{ text: 'View Task', onPress: () => navigation.replace('TaskDetail', { taskId: task.id }) }],
+        tr('Published!', '已发布！'),
+        tr('Your bounty task is now live on the Bounty Board, waiting for bids.', '你的悬赏任务已上线悬赏板，正在等待竞标。'),
+        [{ text: tr('View Task', '查看任务'), onPress: () => navigation.replace('TaskDetail', { taskId: task.id }) }],
       );
     } catch (e: any) {
-      Alert.alert('Publish Failed', e.message || 'Please try again later');
+      Alert.alert(tr('Publish Failed', '发布失败'), e.message || tr('Please try again later', '请稍后再试'));
     } finally {
       setSubmitting(false);
     }
@@ -79,7 +91,7 @@ export function PostTaskScreen({ navigation }: Props) {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Task Type */}
         <View style={styles.section}>
-          <Text style={styles.label}>Task Type *</Text>
+          <Text style={styles.label}>{tr('Task Type *', '任务类型 *')}</Text>
           <View style={styles.typeGrid}>
             {typeKeys.map(key => {
               const conf = TASK_TYPE_CONFIG[key];
@@ -91,7 +103,7 @@ export function PostTaskScreen({ navigation }: Props) {
                   onPress={() => setTaskType(key)}
                 >
                   <Text style={styles.typeIcon}>{conf.icon}</Text>
-                  <Text style={[styles.typeLabel, selected && { color: conf.color, fontWeight: '700' }]}>{conf.label}</Text>
+                  <Text style={[styles.typeLabel, selected && { color: conf.color, fontWeight: '700' }]}>{t({ en: conf.label, zh: TYPE_LABEL_ZH[key] || conf.label })}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -100,10 +112,10 @@ export function PostTaskScreen({ navigation }: Props) {
 
         {/* Title */}
         <View style={styles.section}>
-          <Text style={styles.label}>Task Title *</Text>
+          <Text style={styles.label}>{tr('Task Title *', '任务标题 *')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Briefly describe the task you need done"
+            placeholder={tr('Briefly describe the task you need done', '简要描述你需要完成的任务')}
             placeholderTextColor={colors.muted}
             value={title}
             onChangeText={setTitle}
@@ -114,10 +126,10 @@ export function PostTaskScreen({ navigation }: Props) {
 
         {/* Description */}
         <View style={styles.section}>
-          <Text style={styles.label}>Description *</Text>
+          <Text style={styles.label}>{tr('Description *', '任务描述 *')}</Text>
           <TextInput
             style={[styles.input, styles.textarea]}
-            placeholder="Detail the requirements, technical specs, expected outcome..."
+            placeholder={tr('Detail the requirements, technical specs, expected outcome...', '详细说明需求、技术规格和预期结果…')}
             placeholderTextColor={colors.muted}
             value={description}
             onChangeText={setDescription}
@@ -131,7 +143,7 @@ export function PostTaskScreen({ navigation }: Props) {
 
         {/* Budget */}
         <View style={styles.section}>
-          <Text style={styles.label}>Bounty Amount *</Text>
+          <Text style={styles.label}>{tr('Bounty Amount *', '悬赏金额 *')}</Text>
           <View style={styles.budgetRow}>
             <TouchableOpacity
               style={[styles.currencyBtn, currency === 'USD' && styles.currencyBtnActive]}
@@ -147,7 +159,7 @@ export function PostTaskScreen({ navigation }: Props) {
             </TouchableOpacity>
             <TextInput
               style={[styles.input, { flex: 1 }]}
-              placeholder="Amount"
+              placeholder={tr('Amount', '金额')}
               placeholderTextColor={colors.muted}
               value={budget}
               onChangeText={setBudget}
@@ -158,7 +170,7 @@ export function PostTaskScreen({ navigation }: Props) {
 
         {/* Deadline */}
         <View style={styles.section}>
-          <Text style={styles.label}>Deadline (optional)</Text>
+          <Text style={styles.label}>{tr('Deadline (optional)', '截止时间（可选）')}</Text>
           <TextInput
             style={styles.input}
             placeholder="YYYY-MM-DD"
@@ -171,10 +183,10 @@ export function PostTaskScreen({ navigation }: Props) {
 
         {/* Tags */}
         <View style={styles.section}>
-          <Text style={styles.label}>Tags (optional)</Text>
+          <Text style={styles.label}>{tr('Tags (optional)', '标签（可选）')}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Comma-separated, e.g. Python, React, AI"
+            placeholder={tr('Comma-separated, e.g. Python, React, AI', '用逗号分隔，例如 Python、React、AI')}
             placeholderTextColor={colors.muted}
             value={tagsInput}
             onChangeText={setTagsInput}
@@ -183,13 +195,10 @@ export function PostTaskScreen({ navigation }: Props) {
 
         {/* Deliverables */}
         <View style={styles.section}>
-          <Text style={styles.label}>Deliverables (optional, one per line)</Text>
+          <Text style={styles.label}>{tr('Deliverables (optional, one per line)', '交付物（可选，每行一项）')}</Text>
           <TextInput
             style={[styles.input, styles.textarea, { minHeight: 80 }]}
-            placeholder="e.g.:
-Complete source code
-Deployment docs
-User guide"
+            placeholder={tr('e.g.:\nComplete source code\nDeployment docs\nUser guide', '例如：\n完整源代码\n部署文档\n使用说明')}
             placeholderTextColor={colors.muted}
             value={deliverables}
             onChangeText={setDeliverables}
@@ -201,12 +210,12 @@ User guide"
 
         {/* Preview */}
         <View style={styles.previewCard}>
-          <Text style={styles.previewTitle}>📋 Preview</Text>
-          <Text style={styles.previewItem}>Type: {TASK_TYPE_CONFIG[taskType].icon} {TASK_TYPE_CONFIG[taskType].label}</Text>
-          <Text style={styles.previewItem}>Title: {title || '—'}</Text>
-          <Text style={styles.previewItem}>Budget: {budget ? `${currency === 'CNY' ? '¥' : '$'}${budget}` : '—'}</Text>
-          <Text style={styles.previewItem}>Deadline: {deadline || 'None'}</Text>
-          <Text style={styles.previewItem}>Tags: {tagsInput || 'None'}</Text>
+          <Text style={styles.previewTitle}>📋 {tr('Preview', '预览')}</Text>
+          <Text style={styles.previewItem}>{tr('Type', '类型')}：{TASK_TYPE_CONFIG[taskType].icon} {t({ en: TASK_TYPE_CONFIG[taskType].label, zh: TYPE_LABEL_ZH[taskType] || TASK_TYPE_CONFIG[taskType].label })}</Text>
+          <Text style={styles.previewItem}>{tr('Title', '标题')}：{title || '—'}</Text>
+          <Text style={styles.previewItem}>{tr('Budget', '预算')}：{budget ? `${currency === 'CNY' ? '¥' : '$'}${budget}` : '—'}</Text>
+          <Text style={styles.previewItem}>{tr('Deadline', '截止时间')}：{deadline || tr('None', '无')}</Text>
+          <Text style={styles.previewItem}>{tr('Tags', '标签')}：{tagsInput || tr('None', '无')}</Text>
         </View>
 
         {/* Submit */}
@@ -215,7 +224,7 @@ User guide"
           onPress={handleSubmit}
           disabled={submitting}
         >
-          <Text style={styles.submitBtnText}>{submitting ? 'Publishing...' : '🚀 Post Bounty Task'}</Text>
+          <Text style={styles.submitBtnText}>{submitting ? tr('Publishing...', '发布中…') : `🚀 ${tr('Post Bounty Task', '发布悬赏任务')}`}</Text>
         </TouchableOpacity>
 
         <View style={{ height: 60 }} />

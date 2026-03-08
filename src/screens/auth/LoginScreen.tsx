@@ -113,7 +113,7 @@ export function LoginScreen() {
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert(t({ en: 'Missing Fields', zh: '请填写完整' }), t({ en: 'Enter your email and password', zh: '请输入邮筱和密码' }));
+      Alert.alert(t({ en: 'Missing Fields', zh: '请填写完整' }), t({ en: 'Enter your email and password', zh: '请输入邮箱和密码' }));
       return;
     }
     try {
@@ -164,10 +164,12 @@ export function LoginScreen() {
               {detectedWallets.length === 0 && <Text style={styles.walletBadge}>💼</Text>}
             </View>
             <Text style={styles.walletMainText}>
-              {detectedWallets.length > 0 ? t({ en: 'Connect Wallet', zh: '连接钉包' }) : t({ en: 'Connect Crypto Wallet', zh: '连接加密钉包' })}
+              {detectedWallets.length > 0 ? t({ en: 'Connect Wallet', zh: '连接钱包' }) : t({ en: 'Connect Crypto Wallet', zh: '连接加密钱包' })}
             </Text>
             {detectedWallets.length > 0 && (
-              <Text style={styles.walletDetectedText}>Detected: {detectedWallets.map(w => w.label).join(', ')}</Text>
+              <Text style={styles.walletDetectedText}>
+                {t({ en: `Detected: ${detectedWallets.map(w => w.label).join(', ')}`, zh: `已检测到：${detectedWallets.map(w => w.label).join('、')}` })}
+              </Text>
             )}
           </TouchableOpacity>
 
@@ -199,7 +201,7 @@ export function LoginScreen() {
           </View>
 
           <TouchableOpacity style={styles.linkRow} onPress={() => setMode('email')}>
-            <Text style={styles.linkText}>{t({ en: 'Use Email Address instead →', zh: '使用邮筱登录 →' })}</Text>
+            <Text style={styles.linkText}>{t({ en: 'Use Email Address instead →', zh: '改用邮箱登录 →' })}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -241,10 +243,10 @@ export function LoginScreen() {
       {/* Email Mode */}
       {mode === 'email' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{isSignUp ? t({ en: 'Create Account', zh: '注册账号' }) : t({ en: 'Sign In with Email', zh: '邮筱登录' })}</Text>
+          <Text style={styles.sectionTitle}>{isSignUp ? t({ en: 'Create Account', zh: '注册账号' }) : t({ en: 'Sign In with Email', zh: '邮箱登录' })}</Text>
           <TextInput
             style={styles.input}
-            placeholder={t({ en: 'Email', zh: '邮筱' })}
+            placeholder={t({ en: 'Email', zh: '邮箱' })}
             placeholderTextColor={colors.textMuted}
             value={email}
             onChangeText={setEmail}
@@ -286,7 +288,7 @@ export function LoginScreen() {
       <Modal visible={showWalletModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t({ en: 'Select Wallet', zh: '选择钉包' })}</Text>
+            <Text style={styles.modalTitle}>{t({ en: 'Select Wallet', zh: '选择钱包' })}</Text>
             <View style={styles.modalGrid}>
               {detectedWallets.map(w => (
                 <TouchableOpacity key={w.id} style={styles.modalItem} onPress={() => { setShowWalletModal(false); handleWalletLogin(w); }}>
@@ -339,8 +341,8 @@ const styles = StyleSheet.create({
     borderRadius: 22
   },
   brandLogo: { width: 88, height: 88 },
-  logoText: { fontSize: 16, fontWeight: '800', color: '#ffffff', letterSpacing: 0.8 },
-  tagline: { fontSize: 11, color: '#888888', marginTop: 8, letterSpacing: 0.2 },
+  logoText: { fontSize: 14, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
+  tagline: { fontSize: 9, color: '#888888', marginTop: 6, letterSpacing: 0.1 },
   
   web25Title: { fontSize: 24, fontWeight: '700', color: '#ffffff', textAlign: 'center', marginBottom: 8 },
   web25Sub: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 32 },

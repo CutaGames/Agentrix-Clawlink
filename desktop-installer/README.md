@@ -1,6 +1,25 @@
 # Agentrix Desktop Installer
 
-Two versions depending on your setup. Both put a local OpenClaw agent on your machine and generate a QR / deep-link for mobile connection.
+The main Windows deliverable is the graphical one-click installer `Agentrix-Claw-Setup.exe`. It launches the GUI wizard, installs the local agent, and shows the QR code for mobile pairing.
+
+Two script variants are also kept in source form for manual setup. All options generate a QR / deep-link for mobile connection.
+
+---
+
+## Windows GUI `.exe`
+
+Build the local Windows installer wrapper from source:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\build-exe.ps1
+```
+
+Output:
+
+- `builds/Agentrix-Claw-Setup.exe`
+
+This EXE bundles `Setup.bat`, `install-gui.ps1`, and the official Agentrix logo asset, then launches the installer automatically after extraction.
 
 ---
 
@@ -61,7 +80,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 ## What both versions do
 1. Generate a unique instance ID + connection token
 2. Show QR code / deep-link URL for mobile app scanning
-3. Start the OpenClaw agent (port 7474 by default)
+3. Start the local Agentrix-Claw agent (port 7474 by default)
 
 ## Mobile Connection
 After running the installer:
@@ -77,6 +96,7 @@ After running the installer:
 | `install-standard.ps1` | Standard Windows installer |
 | `install-aio.sh` | AIO Linux/macOS installer (bundles Node.js) |
 | `install-aio.ps1` | AIO Windows installer (bundles Node.js) |
+| `build-exe.ps1` | Builds `Agentrix-Claw-Setup.exe` with IExpress |
 | `~/.agentrix/config.json` | Instance config (Linux/macOS) |
 | `%APPDATA%\Agentrix\config.json` | Instance config (Windows) |
 

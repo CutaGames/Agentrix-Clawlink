@@ -27,6 +27,7 @@ import {
   OpenClawConnectionService,
   BindOpenClawDto,
   ProvisionCloudDto,
+  RegisterLocalRelayDto,
 } from './openclaw-connection.service';
 import { TelegramBotService, TelegramUpdate } from './telegram-bot.service';
 import { Public } from '../auth/decorators/public.decorator';
@@ -138,6 +139,12 @@ export class OpenClawConnectionController {
   @ApiOperation({ summary: 'Create a local instance entry and return relay token + download URL' })
   async provisionLocal(@Request() req: any, @Body() dto: ProvisionCloudDto) {
     return this.service.provisionLocalInstance(req.user.id, dto);
+  }
+
+  @Post('local/register')
+  @ApiOperation({ summary: 'Register a desktop-installed local relay agent after QR scan pairing' })
+  async registerLocal(@Request() req: any, @Body() dto: RegisterLocalRelayDto) {
+    return this.service.registerLocalRelayInstance(req.user.id, dto);
   }
 
   @Get('local/:instanceId/relay-status')
