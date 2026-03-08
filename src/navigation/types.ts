@@ -16,7 +16,7 @@ export type OnboardingStackParamList = {
 
 export type AgentStackParamList = {
   AgentConsole: undefined;
-  AgentChat: { instanceId?: string; instanceName?: string };
+  AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean };
   OpenClawBind: undefined;
   /** Deep-link target for the desktop installer QR code: agentrix://connect?instanceId=...&token=...&host=...&port=... */
   LocalConnect: { instanceId?: string; token?: string; host?: string; port?: string };
@@ -29,7 +29,7 @@ export type AgentStackParamList = {
   AgentAccount: undefined;
   AgentPermissions: { agentAccountId?: string } | undefined;
   // Layer 2
-  VoiceChat: { instanceId?: string };
+  VoiceChat: { instanceId?: string; instanceName?: string };
   TeamSpace: undefined;
   TeamInvite: { workspaceId: string; workspaceName: string };
   // From Onboarding reuse

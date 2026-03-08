@@ -125,6 +125,7 @@ export function AgentChatScreen() {
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
+  const voiceModeRequested = !!route.params?.voiceMode;
   const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
@@ -147,7 +148,7 @@ export function AgentChatScreen() {
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);   // WeChat-style toggle
+  const [voiceMode, setVoiceMode] = useState(voiceModeRequested);   // WeChat-style toggle
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
@@ -159,6 +160,12 @@ export function AgentChatScreen() {
     audioPlayerRef.current = new AudioQueuePlayer(() => setIsSpeaking(false));
     return () => { audioPlayerRef.current?.stopAll(); };
   }, []);
+
+  useEffect(() => {
+    if (voiceModeRequested) {
+      setVoiceMode(true);
+    }
+  }, [voiceModeRequested]);
 
   // TTS helper — speaks text via backend /voice/tts endpoint
   const speakText = useCallback((text: string) => {
