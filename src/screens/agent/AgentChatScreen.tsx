@@ -47,6 +47,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
+  const bubbleText = renderContent(item.content) || (item.streaming ? '...' : '');
 
   return (
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
@@ -106,8 +107,14 @@ const MessageBubble = ({ item }: { item: Message }) => {
               item.error && styles.bubbleError,
             ]}
           >
-            <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-              {renderContent(item.content) || (item.streaming && !hasThoughts ? ' ' : '')}
+            <Text
+              style={[
+                styles.bubbleText,
+                isUser && styles.bubbleTextUser,
+                item.streaming && !item.content && styles.bubbleTextPending,
+              ]}
+            >
+              {bubbleText}
             </Text>
             {item.streaming && (
               <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
@@ -152,6 +159,7 @@ export function AgentChatScreen() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
+  const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking'>('idle');
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
 
@@ -166,6 +174,12 @@ export function AgentChatScreen() {
       setVoiceMode(true);
     }
   }, [voiceModeRequested]);
+
+  useEffect(() => {
+    if (!voiceMode) {
+      setVoicePhase('idle');
+    }
+  }, [voiceMode]);
 
   // TTS helper — speaks text via backend /voice/tts endpoint
   const speakText = useCallback((text: string) => {
@@ -287,6 +301,10 @@ export function AgentChatScreen() {
     const text = (typeof overrideText === 'string' ? overrideText : input).trim();
     if (!text || sending) return;
 
+    if (voiceMode || voicePhase !== 'idle') {
+      setVoicePhase('thinking');
+    }
+
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -326,6 +344,7 @@ export function AgentChatScreen() {
             model: selectedModelId,
             onChunk: (chunk) => {
               streamSucceeded = true;
+              setVoicePhase('idle');
               appendToStreamingMessage(assistantMsgId, chunk);
             },
             onDone: () => resolve(),
@@ -344,9 +363,14 @@ export function AgentChatScreen() {
             token,
             model: selectedModelId,
             sessionId: sessionIdRef.current,
-            onChunk: (chunk) => { streamSucceeded = true; appendToStreamingMessage(assistantMsgId, chunk); },
+            onChunk: (chunk) => {
+              streamSucceeded = true;
+              setVoicePhase('idle');
+              appendToStreamingMessage(assistantMsgId, chunk);
+            },
             onDone: () => resolve(),
             onError: (err) => {
+              setVoicePhase('idle');
               appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
               resolve();
             },
@@ -373,6 +397,7 @@ export function AgentChatScreen() {
         return updated;
       });
     } catch (err: any) {
+      setVoicePhase('idle');
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
@@ -381,6 +406,7 @@ export function AgentChatScreen() {
         )
       );
     } finally {
+      setVoicePhase('idle');
       setSending(false);
       streamAbortRef.current = null;
     }
@@ -396,9 +422,11 @@ export function AgentChatScreen() {
       if (!isRecordingRef.current) {
         // START recording
         isRecordingRef.current = true;
+        setVoicePhase('recording');
         const permResult = await Audio.requestPermissionsAsync();
         if (!permResult.granted) {
           isRecordingRef.current = false;
+          setVoicePhase('idle');
           Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in your device settings to use voice input.', zh: '请在设备设置中开启麦克风权限后再使用语音输入。' }));
           return;
         }
@@ -421,6 +449,7 @@ export function AgentChatScreen() {
     } catch (e: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
+      setVoicePhase('idle');
       const msg = e?.message || 'Unknown error';
       if (msg.includes('permission') || msg.includes('Permission')) {
         Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in Settings to use voice input.', zh: '请在设置中开启麦克风权限后再使用语音输入。' }));
@@ -436,14 +465,13 @@ export function AgentChatScreen() {
       // STOP and transcribe
       isRecordingRef.current = false;
       setIsRecording(false);
+      setVoicePhase('transcribing');
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
-          // Show transcribing indicator
-          setInput(t({ en: '🎙 Transcribing...', zh: '🎙 正在转写…' }));
           try {
             const formData = new FormData();
             formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
@@ -460,30 +488,32 @@ export function AgentChatScreen() {
               const data = await resp.json();
               const transcript = data?.text || data?.transcript || '';
               if (transcript) {
-                setInput(transcript);
+                setVoicePhase('thinking');
                 setTimeout(() => handleSend(transcript), 100);
               } else {
-                setInput('');
+                setVoicePhase('idle');
                 Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到语音' }), t({ en: 'Could not detect any speech. Please try again or type your message.', zh: '没有识别到有效语音，请重试或直接输入文字。' }));
               }
             } else {
               const errText = await resp.text().catch(() => '');
-              setInput('');
+              setVoicePhase('idle');
               Alert.alert(t({ en: 'Transcription Failed', zh: '转写失败' }), `${t({ en: 'Server returned', zh: '服务器返回' })} ${resp.status}. ${errText ? errText.slice(0, 100) : t({ en: 'Try typing instead.', zh: '请改用文字输入。' })}`);
             }
           } catch (fetchErr: any) {
-            setInput('');
+            setVoicePhase('idle');
             const msg = fetchErr?.name === 'AbortError'
               ? t({ en: 'Transcription timed out. Try again or type your message.', zh: '语音转写超时，请重试或直接输入文字。' })
               : t({ en: `Could not reach voice service: ${fetchErr?.message || 'Network error'}`, zh: `无法连接语音服务：${fetchErr?.message || '网络错误'}` });
             Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), msg);
           }
+        } else {
+          setVoicePhase('idle');
         }
       }
     } catch (e: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
-      setInput('');
+      setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
     }
   };
@@ -612,6 +642,17 @@ export function AgentChatScreen() {
         showsVerticalScrollIndicator={false}
         onContentSizeChange={scrollToBottom}
       />
+
+      {voiceMode && voicePhase !== 'idle' && (
+        <View style={styles.voiceStatusBar}>
+          <Text style={styles.voiceStatusDots}>...</Text>
+          <Text style={styles.voiceStatusText}>
+            {voicePhase === 'recording' && t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' })}
+            {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
+            {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
+          </Text>
+        </View>
+      )}
 
       {/* Input bar — WeChat / Doubao style */}
       <View style={styles.inputRow}>
@@ -779,6 +820,22 @@ const styles = StyleSheet.create({
   bubbleError: { borderColor: colors.error, backgroundColor: colors.error + '15' },
   bubbleText: { color: colors.textPrimary, fontSize: 15, lineHeight: 22 },
   bubbleTextUser: { color: '#fff' },
+  bubbleTextPending: { opacity: 0.72 },
+  voiceStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  voiceStatusDots: { color: colors.accent, fontSize: 18, fontWeight: '700', lineHeight: 18 },
+  voiceStatusText: { color: colors.textMuted, fontSize: 13, flex: 1 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
