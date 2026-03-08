@@ -128,7 +128,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
@@ -160,11 +160,37 @@ export function AgentChatScreen() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
+  const [transcriptPreview, setTranscriptPreview] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const isNearBottomRef = useRef(true);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const responseInterruptedRef = useRef(false);
+  const pendingTtsSentenceRef = useRef('');
+  const streamedTtsStartedRef = useRef(false);
+
+  const voiceRecordingOptions = Audio ? {
+    android: {
+      extension: '.m4a',
+      outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+      audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 32000,
+    },
+    ios: {
+      extension: '.m4a',
+      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+      audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 32000,
+      linearPCMBitDepth: 16,
+      linearPCMIsBigEndian: false,
+      linearPCMIsFloat: false,
+    },
+    web: {},
+  } : null;
 
   // Init TTS audio queue player
   useEffect(() => {
@@ -201,6 +227,54 @@ export function AgentChatScreen() {
       audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}`);
     }
   }, []);
+
+  const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
+    if (!(voiceMode || autoSpeak)) return;
+
+    if (chunk) {
+      pendingTtsSentenceRef.current += chunk;
+    }
+
+    const sentenceRegex = /[^。！？.!?\n]+[。！？.!?\n]+/g;
+    const matches = pendingTtsSentenceRef.current.match(sentenceRegex) || [];
+    const shouldEarlyFlush =
+      !matches.length &&
+      pendingTtsSentenceRef.current.trim().length >= 36 &&
+      /[，,、:;； ]/.test(pendingTtsSentenceRef.current);
+
+    let segmentsToSpeak = matches.map((sentence) => sentence.trim()).filter(Boolean);
+
+    if (shouldEarlyFlush) {
+      const earlySegment = pendingTtsSentenceRef.current.trim();
+      if (earlySegment) {
+        segmentsToSpeak = [earlySegment];
+        pendingTtsSentenceRef.current = '';
+      }
+    }
+
+    if (segmentsToSpeak.length > 0) {
+      setIsSpeaking(true);
+      setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
+      streamedTtsStartedRef.current = true;
+      for (const sentence of segmentsToSpeak) {
+        audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}`);
+      }
+      if (!shouldEarlyFlush) {
+        pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
+      }
+    }
+
+    if (flush) {
+      const remainder = pendingTtsSentenceRef.current.trim();
+      if (remainder) {
+        setIsSpeaking(true);
+        setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
+        streamedTtsStartedRef.current = true;
+        audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}`);
+      }
+      pendingTtsSentenceRef.current = '';
+    }
+  }, [autoSpeak, voiceMode]);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -288,6 +362,8 @@ export function AgentChatScreen() {
     responseInterruptedRef.current = true;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
+    pendingTtsSentenceRef.current = '';
+    streamedTtsStartedRef.current = false;
     setSending(false);
     const activeMessageId = activeAssistantMessageIdRef.current;
     if (!activeMessageId) return;
@@ -365,9 +441,12 @@ export function AgentChatScreen() {
     // Capture current messages before state update for history
     const currentMsgs = messages;
     responseInterruptedRef.current = false;
+    pendingTtsSentenceRef.current = '';
+    streamedTtsStartedRef.current = false;
     activeAssistantMessageIdRef.current = assistantMsgId;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
+    setTranscriptPreview('');
     setSending(true);
     streamAbortRef.current?.abort();
 
@@ -389,6 +468,7 @@ export function AgentChatScreen() {
               streamSucceeded = true;
               resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, chunk);
+              enqueueStreamedSpeech(chunk);
             },
             onDone: () => resolve(),
             onError: (_err) => resolve(), // silently fall through to direct Claude
@@ -412,6 +492,7 @@ export function AgentChatScreen() {
               streamSucceeded = true;
               resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, chunk);
+              enqueueStreamedSpeech(chunk);
             },
             onDone: () => resolve(),
             onError: (err) => {
@@ -441,8 +522,11 @@ export function AgentChatScreen() {
           finalContent = m.content;
           return { ...m, streaming: false };
         });
-        // Auto-speak agent reply (if voice mode enabled or autoSpeak is on)
-        if (finalContent && (voiceMode || autoSpeak) && !finalContent.startsWith('⚠️')) {
+        if (finalContent && !finalContent.startsWith('⚠️')) {
+          enqueueStreamedSpeech('', true);
+        }
+        // Auto-speak agent reply only when the stream did not already start sentence playback.
+        if (finalContent && (voiceMode || autoSpeak) && !finalContent.startsWith('⚠️') && !streamedTtsStartedRef.current) {
           setTimeout(() => speakText(finalContent), 200);
         }
         return updated;
@@ -485,6 +569,7 @@ export function AgentChatScreen() {
         }
         stopCurrentResponse(true);
         setVoicePhase('recording');
+        setTranscriptPreview('');
         const permResult = await Audio.requestPermissionsAsync();
         if (!permResult.granted) {
           isRecordingRef.current = false;
@@ -502,7 +587,7 @@ export function AgentChatScreen() {
           recordingRef.current = null;
         }
         const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
+          voiceRecordingOptions || Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
         recordingRef.current = recording;
         setIsRecording(true);
@@ -539,7 +624,7 @@ export function AgentChatScreen() {
             formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
             const ac = new AbortController();
             const timeout = setTimeout(() => ac.abort(), 35_000);
-            const resp = await fetch(`${API_BASE}/voice/transcribe`, {
+            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${encodeURIComponent(language === 'zh' ? 'zh' : 'en')}`, {
               method: 'POST',
               headers: { Authorization: `Bearer ${token}` },
               body: formData,
@@ -550,8 +635,9 @@ export function AgentChatScreen() {
               const data = await resp.json();
               const transcript = data?.text || data?.transcript || '';
               if (transcript) {
+                setTranscriptPreview(transcript);
                 setVoicePhase('thinking');
-                setTimeout(() => handleSend(transcript), 100);
+                setTimeout(() => handleSend(transcript), 80);
               } else {
                 setVoicePhase('idle');
                 Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到语音' }), t({ en: 'Could not detect any speech. Please try again or type your message.', zh: '没有识别到有效语音，请重试或直接输入文字。' }));
@@ -714,12 +800,19 @@ export function AgentChatScreen() {
       {voiceMode && voicePhase !== 'idle' && (
         <View style={styles.voiceStatusBar}>
           <Text style={styles.voiceStatusDots}>...</Text>
-          <Text style={styles.voiceStatusText}>
-            {voicePhase === 'recording' && t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' })}
-            {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
-            {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
-            {voicePhase === 'speaking' && t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' })}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.voiceStatusText}>
+              {voicePhase === 'recording' && t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' })}
+              {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
+              {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
+              {voicePhase === 'speaking' && t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' })}
+            </Text>
+            {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
+              <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
+                {transcriptPreview}
+              </Text>
+            )}
+          </View>
         </View>
       )}
 
@@ -905,6 +998,7 @@ const styles = StyleSheet.create({
   },
   voiceStatusDots: { color: colors.accent, fontSize: 18, fontWeight: '700', lineHeight: 18 },
   voiceStatusText: { color: colors.textMuted, fontSize: 13, flex: 1 },
+  voiceTranscriptPreview: { color: colors.textPrimary, fontSize: 12, marginTop: 4, lineHeight: 18 },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',

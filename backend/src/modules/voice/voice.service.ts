@@ -17,6 +17,34 @@ export class VoiceService {
   private readonly REGION = process.env.AWS_REGION || 'us-east-1';
   private readonly groqBaseUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
+  private getTranscriptionOrder(): Array<'openai' | 'groq' | 'aws'> {
+    const configured = (process.env.VOICE_STT_ORDER || '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value): value is 'openai' | 'groq' | 'aws' => value === 'openai' || value === 'groq' || value === 'aws');
+
+    if (configured.length > 0) {
+      return configured;
+    }
+
+    return ['aws', 'openai', 'groq'];
+  }
+
+  private normalizeLanguageHint(lang?: string): 'zh' | 'en' | undefined {
+    if (!lang) return undefined;
+    return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  }
+
+  private buildTranscriptionPrompt(lang?: 'zh' | 'en'): string | undefined {
+    if (lang === 'zh') {
+      return '这是普通话或中英混合语音。请优先输出准确的中文、标点、品牌名和专有名词。';
+    }
+    if (lang === 'en') {
+      return 'This is English or mixed English and Chinese speech. Return the most accurate transcript with punctuation.';
+    }
+    return 'The audio may contain English, Chinese, or mixed speech. Return the most accurate transcript with punctuation and proper nouns preserved.';
+  }
+
   /**
    * Transcribe audio buffer.
    * Strategy: convert to PCM WAV → AWS Transcribe Streaming (no S3 needed)
@@ -30,41 +58,44 @@ export class VoiceService {
     originalName: string,
     lang?: string,
   ): Promise<{ transcript: string }> {
-    // Try AWS Transcribe Streaming (needs only transcribe:StartStreamTranscription)
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-      try {
-        const result = await this.transcribeStreaming(buffer, mimetype, originalName, lang);
-        if (result.transcript) return result;
-      } catch (err: any) {
-        this.logger.error(`AWS Transcribe Streaming failed: ${err.message}`);
-      }
-    }
+    const normalizedLang = this.normalizeLanguageHint(lang);
 
-    // Fallback: OpenAI Whisper
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        return await this.openAiCompatibleTranscription(buffer, originalName, {
-          apiKey: process.env.OPENAI_API_KEY,
-          model: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
-          provider: 'OpenAI Whisper',
-          baseURL: process.env.OPENAI_BASE_URL || undefined,
-        });
-      } catch (err: any) {
-        this.logger.error(`Whisper fallback failed: ${err.message}`);
+    for (const provider of this.getTranscriptionOrder()) {
+      if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+        try {
+          return await this.openAiCompatibleTranscription(buffer, originalName, {
+            apiKey: process.env.OPENAI_API_KEY,
+            model: process.env.OPENAI_WHISPER_MODEL || 'whisper-1',
+            provider: 'OpenAI Whisper',
+            baseURL: process.env.OPENAI_BASE_URL || undefined,
+            lang: normalizedLang,
+          });
+        } catch (err: any) {
+          this.logger.error(`Whisper fallback failed: ${err.message}`);
+        }
       }
-    }
 
-    // Fallback: Groq Whisper-compatible endpoint
-    if (process.env.GROQ_API_KEY) {
-      try {
-        return await this.openAiCompatibleTranscription(buffer, originalName, {
-          apiKey: process.env.GROQ_API_KEY,
-          model: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
-          provider: 'Groq transcription',
-          baseURL: this.groqBaseUrl,
-        });
-      } catch (err: any) {
-        this.logger.error(`Groq transcription fallback failed: ${err.message}`);
+      if (provider === 'groq' && process.env.GROQ_API_KEY) {
+        try {
+          return await this.openAiCompatibleTranscription(buffer, originalName, {
+            apiKey: process.env.GROQ_API_KEY,
+            model: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
+            provider: 'Groq transcription',
+            baseURL: this.groqBaseUrl,
+            lang: normalizedLang,
+          });
+        } catch (err: any) {
+          this.logger.error(`Groq transcription fallback failed: ${err.message}`);
+        }
+      }
+
+      if (provider === 'aws' && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+        try {
+          const result = await this.transcribeStreaming(buffer, mimetype, originalName, normalizedLang);
+          if (result.transcript) return result;
+        } catch (err: any) {
+          this.logger.error(`AWS Transcribe Streaming failed: ${err.message}`);
+        }
       }
     }
 
@@ -193,6 +224,7 @@ export class VoiceService {
       model: string;
       provider: string;
       baseURL?: string;
+      lang?: 'zh' | 'en';
     },
   ): Promise<{ transcript: string }> {
     const OpenAI = require('openai').default;
@@ -209,6 +241,9 @@ export class VoiceService {
         file: fileStream as any,
         model: options.model,
         response_format: 'text',
+        temperature: 0,
+        language: options.lang,
+        prompt: this.buildTranscriptionPrompt(options.lang),
       });
       return {
         transcript:
