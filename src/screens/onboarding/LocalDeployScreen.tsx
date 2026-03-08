@@ -46,33 +46,65 @@ export function LocalDeployScreen() {
     setStep('connecting');
 
     try {
+      const scanText = data.trim();
       // QR payload formats:
       //   Relay mode (Agentrix Agent): {relayToken, wsRelayUrl, mode:'relay'}
       //   Direct LAN (OpenClaw):       {url:'http://ip:port', token?:'xxx'}
-      //   agentrix:// deep-link:       agentrix://connect?instanceId=X&token=T&host=H&port=P
+      //   deep-link:                   agentrix://connect?... or clawlink://connect?...
       //   Plain URL fallback:          'http://...'
       let parsedData: { url?: string; token?: string; relayToken?: string; wsRelayUrl?: string; mode?: string; name?: string };
       try {
-        parsedData = JSON.parse(data);
+        const json = JSON.parse(scanText);
+        parsedData = {
+          url: json.url || json.instanceUrl || json.apiUrl || json.serverUrl,
+          token: json.token || json.apiToken || json.instanceToken,
+          relayToken: json.relayToken,
+          wsRelayUrl: json.wsRelayUrl,
+          mode: json.mode,
+          name: json.name,
+        };
       } catch {
-        // agentrix://connect?instanceId=X&token=T&host=H&port=P
-        if (data.startsWith('agentrix://connect')) {
+        if (
+          scanText.startsWith('agentrix://connect') ||
+          scanText.startsWith('clawlink://connect') ||
+          scanText.startsWith('https://clawlink.app/connect')
+        ) {
           try {
-            const u = new URL(data);
-            const host = u.searchParams.get('host') || 'localhost';
+            const u = new URL(scanText);
+            const host = u.searchParams.get('host') || u.searchParams.get('hostname') || '';
             const port = u.searchParams.get('port') || '7474';
-            parsedData = {
-              url: `http://${host}:${port}`,
-              token: u.searchParams.get('token') || u.searchParams.get('instanceId') || '',
-              mode: 'direct',
-            };
+            const token = u.searchParams.get('token') || u.searchParams.get('instanceId') || '';
+            if (host) {
+              parsedData = {
+                url: `http://${host}:${port}`,
+                token,
+                mode: 'direct',
+              };
+            } else if (token) {
+              parsedData = {
+                relayToken: token,
+                wsRelayUrl: 'wss://api.agentrix.top/relay',
+                mode: 'relay',
+              };
+            } else {
+              throw new Error('QR code format not recognized. Please try again.');
+            }
           } catch {
             throw new Error('QR code format not recognized. Please try again.');
           }
-        } else if (data.startsWith('http') || data.startsWith('ws')) {
-          parsedData = { url: data };
+        } else if (scanText.startsWith('http') || scanText.startsWith('ws')) {
+          parsedData = { url: scanText };
         } else {
-          throw new Error('QR code format not recognized. Please try again.');
+          const hostPortMatch = scanText.match(/^([a-zA-Z0-9.-]+|\d{1,3}(?:\.\d{1,3}){3})(?::(\d{2,5}))?(?:\?token=(.+))?$/);
+          if (!hostPortMatch) {
+            throw new Error('QR code format not recognized. Please try again.');
+          }
+          const [, host, rawPort, rawToken] = hostPortMatch;
+          parsedData = {
+            url: `http://${host}:${rawPort || '7474'}`,
+            token: rawToken || '',
+            mode: 'direct',
+          };
         }
       }
 

@@ -115,7 +115,7 @@ export class ClaudeIntegrationController {
     // Otherwise inject the default personal agent system prompt.
     const hasClientSystemMessage = messages.some(m => m.role === 'system');
 
-    const defaultSystemPrompt = `You are a helpful personal AI assistant. You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
+    const defaultSystemPrompt = `You are the user's own personal AI agent, not an Agentrix customer-support bot unless the user explicitly asks for product help. You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
 
 You have the following capabilities available:
 - Web search: when you need up-to-date information, call the search_web function
@@ -124,7 +124,7 @@ You have the following capabilities available:
 
 ${context.userId ? `User ID: ${context.userId}` : ''}${context.sessionId ? `Session ID: ${context.sessionId}` : ''}
 
-Always reply in the same language the user uses. Be concise, helpful, and friendly.`;
+Always reply in the same language the user uses. Act like the user's long-term private agent, stay concise, and only talk about Agentrix as a platform when it is directly relevant.`;
 
     const baseMessages = hasClientSystemMessage ? messages : [
       { role: 'system' as const, content: defaultSystemPrompt },

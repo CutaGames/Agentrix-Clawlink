@@ -147,7 +147,7 @@ export function AgentChatScreen() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: t({ en: `Hi! I'm **${instanceName}**. How can I help you today?`, zh: `你好！我是 **${instanceName}**。今天想让我帮你做什么？` }),
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
       createdAt: Date.now(),
     },
   ]);
@@ -159,13 +159,19 @@ export function AgentChatScreen() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
-  const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking'>('idle');
+  const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
+  const isNearBottomRef = useRef(true);
+  const activeAssistantMessageIdRef = useRef<string | null>(null);
+  const responseInterruptedRef = useRef(false);
 
   // Init TTS audio queue player
   useEffect(() => {
-    audioPlayerRef.current = new AudioQueuePlayer(() => setIsSpeaking(false));
+    audioPlayerRef.current = new AudioQueuePlayer(() => {
+      setIsSpeaking(false);
+      setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
+    });
     return () => { audioPlayerRef.current?.stopAll(); };
   }, []);
 
@@ -185,6 +191,7 @@ export function AgentChatScreen() {
   const speakText = useCallback((text: string) => {
     if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
     setIsSpeaking(true);
+    setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
     // Split sentences for streaming playback
     const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
     for (const s of sentences) {
@@ -262,11 +269,45 @@ export function AgentChatScreen() {
     }
   };
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((force = false) => {
+    if (!force && !isNearBottomRef.current) return;
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, []);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) return;
+    scrollToBottom(lastMessage.role === 'user');
+  }, [messages.length, scrollToBottom]);
+
+  const resetVoicePhaseAfterResponse = useCallback(() => {
+    setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
+  }, []);
+
+  const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
+    responseInterruptedRef.current = true;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setSending(false);
+    const activeMessageId = activeAssistantMessageIdRef.current;
+    if (!activeMessageId) return;
+
+    setMessages((prev) => prev.map((m) => {
+      if (m.id !== activeMessageId || !m.streaming) return m;
+      if (m.content || m.thoughts?.length) {
+        return { ...m, streaming: false };
+      }
+      return {
+        ...m,
+        content: showInterruptedHint
+          ? t({ en: 'Reply stopped. You can continue speaking.', zh: '当前回复已停止，你可以继续说话。' })
+          : m.content,
+        streaming: false,
+      };
+    }));
+
+    activeAssistantMessageIdRef.current = null;
+  }, [t]);
 
   const appendToStreamingMessage = (msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -323,6 +364,8 @@ export function AgentChatScreen() {
 
     // Capture current messages before state update for history
     const currentMsgs = messages;
+    responseInterruptedRef.current = false;
+    activeAssistantMessageIdRef.current = assistantMsgId;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
     setSending(true);
@@ -344,7 +387,7 @@ export function AgentChatScreen() {
             model: selectedModelId,
             onChunk: (chunk) => {
               streamSucceeded = true;
-              setVoicePhase('idle');
+              resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, chunk);
             },
             onDone: () => resolve(),
@@ -353,6 +396,8 @@ export function AgentChatScreen() {
           streamAbortRef.current = ac;
         });
       }
+
+      if (responseInterruptedRef.current) return;
 
       if (!streamSucceeded) {
         // Fallback: direct Claude via backend Bedrock key (always available)
@@ -365,12 +410,12 @@ export function AgentChatScreen() {
             sessionId: sessionIdRef.current,
             onChunk: (chunk) => {
               streamSucceeded = true;
-              setVoicePhase('idle');
+              resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, chunk);
             },
             onDone: () => resolve(),
             onError: (err) => {
-              setVoicePhase('idle');
+              resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
               resolve();
             },
@@ -379,11 +424,17 @@ export function AgentChatScreen() {
         });
       }
 
+      if (responseInterruptedRef.current) return;
+
       // If stream ran but produced no content, show a friendly error
       setMessages((prev) => {
         let finalContent = '';
         const updated = prev.map((m) => {
           if (m.id !== assistantMsgId) return m;
+          if (!m.streaming) {
+            finalContent = m.content;
+            return m;
+          }
           if (!m.content && !m.thoughts?.length) {
             return { ...m, content: t({ en: '⚠️ No response received. Please check your connection or try again.', zh: '⚠️ 暂未收到回复，请检查网络或稍后重试。' }), streaming: false, error: true };
           }
@@ -397,7 +448,10 @@ export function AgentChatScreen() {
         return updated;
       });
     } catch (err: any) {
-      setVoicePhase('idle');
+      resetVoicePhaseAfterResponse();
+      if (responseInterruptedRef.current) {
+        return;
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
@@ -406,7 +460,10 @@ export function AgentChatScreen() {
         )
       );
     } finally {
-      setVoicePhase('idle');
+      if (activeAssistantMessageIdRef.current === assistantMsgId) {
+        activeAssistantMessageIdRef.current = null;
+      }
+      resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
     }
@@ -422,6 +479,11 @@ export function AgentChatScreen() {
       if (!isRecordingRef.current) {
         // START recording
         isRecordingRef.current = true;
+        if (isSpeaking) {
+          await audioPlayerRef.current?.stopAll();
+          setIsSpeaking(false);
+        }
+        stopCurrentResponse(true);
         setVoicePhase('recording');
         const permResult = await Audio.requestPermissionsAsync();
         if (!permResult.granted) {
@@ -578,7 +640,7 @@ export function AgentChatScreen() {
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: t({ en: `Hi! I\'m **${instanceName}**. How can I help you today?`, zh: `你好！我是 **${instanceName}**。今天想让我帮你做什么？` }),
+            content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
         },
@@ -640,7 +702,13 @@ export function AgentChatScreen() {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={scrollToBottom}
+        onContentSizeChange={() => scrollToBottom()}
+        onScroll={(event) => {
+          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+          const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+          isNearBottomRef.current = distanceFromBottom < 120;
+        }}
+        scrollEventThrottle={16}
       />
 
       {voiceMode && voicePhase !== 'idle' && (
@@ -650,6 +718,7 @@ export function AgentChatScreen() {
             {voicePhase === 'recording' && t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' })}
             {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
             {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
+            {voicePhase === 'speaking' && t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' })}
           </Text>
         </View>
       )}
