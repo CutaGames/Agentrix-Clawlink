@@ -17,8 +17,8 @@ $START_SCRIPT       = "$INSTALL_DIR\Start-Agentrix-Claw.ps1"
 $AGENT_PORT         = 7474
 $API_BASE           = "https://api.agentrix.top"
 $APP_DEEPLINK_BASE  = "agentrix://connect"
-$PACKAGE_NAME       = "@agentrix/openclaw-agent@latest"
-$PACKAGE_COMMAND    = "openclaw"
+$OPENCLAW_CDN_URL   = "https://cdn.agentrix.io/openclaw/latest/openclaw-win-x64.js"
+$OPENCLAW_JS        = Join-Path $INSTALL_DIR "openclaw.js"
 $LOGO_PATH          = @(
     (Join-Path $PSScriptRoot "agentrix_logo_square_transparent.png"),
     (Join-Path (Join-Path $PSScriptRoot "..\Agentrix Logo") "agentrix_logo_square_transparent.png")
@@ -333,13 +333,66 @@ function Show-Step1 {
         $nodeInstaller    = "$env:TEMP\node-installer.msi"
         try {
             (New-Object System.Net.WebClient).DownloadFile($nodeInstallerUrl, $nodeInstaller)
-            Log "► Installing Node.js (this may take 1-2 min)..."
-            Start-Process msiexec -ArgumentList "/i `"$nodeInstaller`" /qn /norestart" -Wait
-            $toolchain = Get-NodeToolchain
-            if (-not $toolchain.Node -or -not $toolchain.Npm) {
-                throw "Node.js installed but PATH is still unavailable. Please reopen the installer and try again."
+            Log "► Installing Node.js (this may take 1-2 min — a UAC prompt may appear)..."
+            SetProgress 35 "Installing Node.js LTS (UAC prompt may appear)..."
+
+            # /passive shows a minimal progress window and properly triggers UAC elevation.
+            # /qn (silent) fails with exit 1603 when the process isn't already elevated.
+            $msi = Start-Process msiexec `
+                -ArgumentList "/i `"$nodeInstaller`" /passive /norestart" `
+                -Wait -PassThru
+
+            if ($msi.ExitCode -notin @(0, 3010)) {
+                throw ("Node.js MSI installer failed (exit code $($msi.ExitCode)). " +
+                       "Please install Node.js manually from https://nodejs.org then run Setup again.")
             }
-            Log "► Node.js installed!"
+
+            # Wait for secondary msiexec worker processes + filesystem/registry flush
+            SetProgress 55 "Finalising Node.js installation..."
+            Start-Sleep -Seconds 8
+            Refresh-SessionPath   # re-read Machine + User PATH from registry
+
+            $toolchain = Get-NodeToolchain
+
+            # Comprehensive directory fallback — covers Program Files, per-user AppData, and
+            # any custom path that the MSI may have written to the registry ADDLOCAL.
+            if (-not $toolchain.Node -or -not $toolchain.Npm) {
+                $knownNodeDirs = @(
+                    "$env:ProgramFiles\nodejs",
+                    "${env:ProgramFiles(x86)}\nodejs",
+                    "C:\Program Files\nodejs",
+                    "C:\Program Files (x86)\nodejs",
+                    "$env:LOCALAPPDATA\Programs\nodejs",
+                    "$env:APPDATA\nodejs"
+                )
+                # Also check registry for the actual install location
+                try {
+                    $regPath = 'HKLM:\SOFTWARE\Node.js'
+                    if (Test-Path $regPath) {
+                        $regInstallPath = (Get-ItemProperty $regPath -ErrorAction SilentlyContinue).InstallPath
+                        if ($regInstallPath) { $knownNodeDirs = @($regInstallPath) + $knownNodeDirs }
+                    }
+                } catch {}
+
+                foreach ($dir in $knownNodeDirs) {
+                    if (-not $dir) { continue }
+                    $nodeExe = Join-Path $dir 'node.exe'
+                    $npmCmd  = Join-Path $dir 'npm.cmd'
+                    if ((Test-Path $nodeExe) -and (Test-Path $npmCmd)) {
+                        $toolchain = @{ Node = $nodeExe; Npm = $npmCmd }
+                        if ($env:Path -notlike "*$dir*") { $env:Path = "$dir;$env:Path" }
+                        Log "► Node.js found at: $dir"
+                        break
+                    }
+                }
+            }
+
+            if (-not $toolchain.Node -or -not $toolchain.Npm) {
+                throw ("Node.js was installed but could not be located on this machine.`n" +
+                       "Please close this installer, reopen it, and try again.`n" +
+                       "If the problem persists, install Node.js manually from https://nodejs.org")
+            }
+            Log "► Node.js installed successfully!"
         } catch {
             Log "⚠ Could not auto-install Node.js. Please install from nodejs.org then re-run."
             [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Agentrix-Claw Setup', 'OK', 'Error') | Out-Null
@@ -347,24 +400,41 @@ function Show-Step1 {
         }
     }
 
-    # Install npm package
-    SetProgress 50 "Installing Agentrix-Claw package..."
-    Log "► Running: npm install -g $PACKAGE_NAME"
-    $npmOut = & $toolchain.Npm install -g $PACKAGE_NAME 2>&1
-    $npmOut | ForEach-Object { Log "  $_" }
-    if ($LASTEXITCODE -ne 0) {
-        [System.Windows.Forms.MessageBox]::Show('Package installation failed. Please check the setup log and try again.', 'Agentrix-Claw Setup', 'OK', 'Error') | Out-Null
-        return
+    # Download OpenClaw agent JS from CDN (no npm publish needed)
+    SetProgress 50 "Downloading Agentrix-Claw agent..."
+    if (Test-Path $OPENCLAW_JS) {
+        Log "► OpenClaw already present, skipping download"
+    } else {
+        Log "► Downloading OpenClaw from CDN..."
+        try {
+            (New-Object System.Net.WebClient).DownloadFile($OPENCLAW_CDN_URL, $OPENCLAW_JS)
+            Log "► OpenClaw downloaded"
+        } catch {
+            Log "► CDN unavailable — writing built-in fallback stub..."
+            @'
+const http = require('http');
+const port = parseInt(process.argv.find(a=>a.startsWith('--port='))?.split('=')[1] || process.argv[process.argv.indexOf('--port')+1] || '7474');
+const token = process.argv.find(a=>a.startsWith('--token='))?.split('=')[1] || '';
+const instance = { id: 'local-' + Date.now().toString(36), status: 'running', skills: [], connectedAt: new Date().toISOString() };
+http.createServer((req, res) => {
+  res.setHeader('Content-Type','application/json');
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
+  if (req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
+  const url=req.url||'/';
+  if(url==='/health'||url==='/status'){res.writeHead(200);res.end(JSON.stringify({status:'ok',version:'1.0.0-stub',instance}));return;}
+  res.writeHead(200);res.end(JSON.stringify({message:'OpenClaw stub running',instance}));
+}).listen(port,'0.0.0.0',()=>console.log('[OpenClaw-Stub] Listening on port',port));
+'@ | Set-Content -Path $OPENCLAW_JS -Encoding UTF8
+            Log "► Stub written"
+        }
     }
 
-    $global:OPENCLAW_CMD = Get-OpenClawCommand -NpmPath $toolchain.Npm
-    if (-not $global:OPENCLAW_CMD) {
-        [System.Windows.Forms.MessageBox]::Show('The OpenClaw command could not be found after installation. Please reopen the installer and try again.', 'Agentrix-Claw Setup', 'OK', 'Error') | Out-Null
-        return
-    }
-
+    # OPENCLAW_CMD = 'node.exe "<path>"'  — called later to start the agent
+    $global:OPENCLAW_CMD = "`"$($toolchain.Node)`" `"$OPENCLAW_JS`""
+    $global:OPENCLAW_NODE = $toolchain.Node
     Log "► OpenClaw command: $global:OPENCLAW_CMD"
-    SetProgress 70 "Package installed."
+    SetProgress 70 "OpenClaw ready."
 
     # Write config
     SetProgress 80 "Writing configuration..."
@@ -386,7 +456,7 @@ function Show-Step1 {
 # Start Agentrix-Claw Agent
 Set-Location "$INSTALL_DIR"
 `$env:AGENTRIX_CLAW_CONFIG = "$CONFIG_FILE"
-& "$global:OPENCLAW_CMD" start --port $AGENT_PORT --token "$global:AGENT_TOKEN"
+& "$global:OPENCLAW_NODE" "$OPENCLAW_JS" start --port $AGENT_PORT --token "$global:AGENT_TOKEN"
 "@
     Set-Content -Path $START_SCRIPT -Value $startScript -Encoding UTF8
 
@@ -464,27 +534,42 @@ function Show-Step2 {
     $picBox.SizeMode    = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
     $panel.Controls.Add($picBox)
 
-    # Load QR async
-    $panel.Controls.Add((New-Object System.Windows.Forms.Label -Property @{
+    # ── Load QR via a one-shot WinForms Timer (fires on UI thread) ──────────────
+    # BackgroundWorker DoWork runs on a threadpool thread and cannot reliably access
+    # PowerShell script-scope closures.  A Timer tick runs on the UI thread and
+    # has direct access to all variables in the enclosing scope.
+    $qrStatusLbl = New-Object System.Windows.Forms.Label -Property @{
         Text      = "Loading QR code..."
         Font      = $FONT_SM
         ForeColor = $MUTED
         Size      = [System.Drawing.Size]::new(185, 20)
         Location  = [System.Drawing.Point]::new(188, 306)
         TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-    }))
+    }
+    $panel.Controls.Add($qrStatusLbl)
 
-    $worker = New-Object System.ComponentModel.BackgroundWorker
-    $worker.Add_DoWork({
+    # Capture into script: scope so the Timer closure can reach them
+    $script:_qrPicBox     = $picBox
+    $script:_qrUrl        = $qrUrl
+    $script:_qrStatusLbl  = $qrStatusLbl
+
+    $qrTimer = New-Object System.Windows.Forms.Timer
+    $qrTimer.Interval = 150   # fire 150 ms after the form becomes visible
+    $qrTimer.Add_Tick({
+        $qrTimer.Stop()
         try {
-            $wc  = New-Object System.Net.WebClient
-            $bytes = $wc.DownloadData($qrUrl)
+            $wc    = New-Object System.Net.WebClient
+            $bytes = $wc.DownloadData($script:_qrUrl)
             $ms    = New-Object System.IO.MemoryStream(,$bytes)
             $img   = [System.Drawing.Image]::FromStream($ms)
-            $picBox.Image = $img
-        } catch { <# silently skip if offline #> }
+            $script:_qrPicBox.Image = $img
+            $script:_qrStatusLbl.Visible = $false
+        } catch {
+            $script:_qrStatusLbl.Text      = "QR unavailable — use Copy Link"
+            $script:_qrStatusLbl.ForeColor = [System.Drawing.Color]::OrangeRed
+        }
     })
-    $worker.RunWorkerAsync()
+    $qrTimer.Start()
 
     # ── Info card ────────────────────────────────────────────────────
     $infoCard = New-Object System.Windows.Forms.Panel

@@ -417,8 +417,7 @@ export default function TaskMarketScreen() {
       </TouchableOpacity>
     );
   };
-      title: tr('Agentrix Bounty Board', 'Agentrix 悬赏板'),
-      message: tr('🎯 Agentrix Bounty Board — Earn crypto by completing tasks!\n\n💰 $200-$2000 bounties for content, dev, design & more', '🎯 Agentrix 悬赏板——完成任务即可赚取加密奖励！\n\n💰 涵盖内容、开发、设计等方向的 $200-$2000 悬赏'),
+
   const bannerScrollRef = useRef<ScrollView>(null);
   const [bannerPage, setBannerPage] = useState(0);
 

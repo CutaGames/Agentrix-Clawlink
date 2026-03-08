@@ -7,21 +7,157 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$iexpressPath = Join-Path $env:WINDIR 'System32\iexpress.exe'
-if (-not (Test-Path $iexpressPath)) {
-    throw 'IExpress was not found on this Windows machine.'
-}
-
-$buildRoot = Join-Path $PSScriptRoot '..\builds'
-$logoSource = Join-Path (Join-Path $PSScriptRoot '..\Agentrix Logo') 'agentrix_logo_square_transparent.png'
+$buildRoot   = Join-Path $PSScriptRoot '..\builds'
+$logoSource  = Join-Path (Join-Path $PSScriptRoot '..\Agentrix Logo') 'agentrix_logo_square_transparent.png'
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
-function New-StageFile {
+# ── Compile a standalone .NET "Windows Application" EXE (no console window) ──────────────────
+# The EXE embeds install-gui.ps1 (and optionally the logo) as base64 strings,
+# extracts them to a per-run GUID temp dir, then launches PowerShell -STA with
+# CreateNoWindow=true so there is ZERO black console flicker.
+function New-GuiExe {
     param(
-        [string]$Path,
-        [string]$Content
+        [string]$OutputPath,
+        [string]$Ps1Source,
+        [string]$LogoSource,
+        [switch]$Console   # show a console window (for terminal-based scripts)
     )
 
+    Write-Host ('[Agentrix] Compiling {0} (.NET {1} launcher)...' -f [IO.Path]::GetFileName($OutputPath), $(if ($Console) {'console'} else {'no-console'})) -ForegroundColor Cyan
+
+    if (-not (Test-Path $Ps1Source)) { throw "PS1 not found: $Ps1Source" }
+
+    $ps1B64  = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Ps1Source))
+    $showConsoleStr = if ($Console) { 'true' } else { 'false' }
+
+    # Embed logo only when the file is present (it is cosmetic; installer works without it)
+    $logoDecodeCode = ''
+    $logoWriteCode  = ''
+    if (Test-Path $LogoSource) {
+        $logoB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($LogoSource))
+        $logoDecodeCode = "private static readonly string _logob64 = `"$logoB64`";"
+        $logoWriteCode  = @'
+        var logoPath = System.IO.Path.Combine(tmpDir, "agentrix_logo_square_transparent.png");
+        System.IO.File.WriteAllBytes(logoPath, Convert.FromBase64String(_logob64));
+'@
+    }
+
+    # C# source — /target:winexe = no console window; MessageBox on any error
+    $src = @"
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Forms;
+
+class AgentrixClawSetup {
+    private static readonly string _ps1b64 = "$ps1B64";
+    $logoDecodeCode
+
+    [System.STAThread]
+    static void Main() {
+        string tmpDir = Path.Combine(
+            Path.GetTempPath(),
+            "AgentrixClaw_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        string logPath = Path.Combine(Path.GetTempPath(), "agentrix-claw-setup.log");
+        try {
+            Directory.CreateDirectory(tmpDir);
+
+            string ps1Path = Path.Combine(tmpDir, "install-gui.ps1");
+            // Prepend UTF-8 BOM (EF BB BF) so Windows PowerShell 5.1, which defaults to
+            // ANSI encoding when no BOM is present, correctly reads Unicode characters.
+            byte[] bom      = new byte[] { 0xEF, 0xBB, 0xBF };
+            byte[] ps1Bytes = Convert.FromBase64String(_ps1b64);
+            byte[] ps1WithBom = new byte[bom.Length + ps1Bytes.Length];
+            Array.Copy(bom, 0, ps1WithBom, 0, bom.Length);
+            Array.Copy(ps1Bytes, 0, ps1WithBom, bom.Length, ps1Bytes.Length);
+            File.WriteAllBytes(ps1Path, ps1WithBom);
+            $logoWriteCode
+
+            string sysRoot = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            string psExe   = Path.Combine(sysRoot, @"WindowsPowerShell\v1.0\powershell.exe");
+            if (!File.Exists(psExe)) psExe = "powershell.exe";
+
+            // Console=false (WinForms): hide window, capture output, show MessageBox on error.
+            // Console=true  (terminal scripts): show normal console window directly.
+            bool showConsole = $showConsoleStr;
+            ProcessStartInfo psi;
+            if (showConsole) {
+                // UseShellExecute=false, CreateNoWindow=false, no redirects:
+                // the child inherits (or creates) exactly ONE console window.
+                // UseShellExecute=true can spin up an extra shell host on some systems.
+                psi = new ProcessStartInfo(psExe,
+                    "-NoProfile -ExecutionPolicy Bypass -File \"" + ps1Path + "\"") {
+                    UseShellExecute = false,
+                    CreateNoWindow  = false
+                };
+            } else {
+                psi = new ProcessStartInfo(psExe,
+                    "-NoProfile -ExecutionPolicy Bypass -STA -File \"" + ps1Path + "\"") {
+                    UseShellExecute        = false,
+                    CreateNoWindow         = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError  = true
+                };
+            }
+            using (var proc = Process.Start(psi)) {
+                if (proc != null) {
+                    if (showConsole) {
+                        proc.WaitForExit();
+                    } else {
+                        string stdout = proc.StandardOutput.ReadToEnd();
+                        string stderr = proc.StandardError.ReadToEnd();
+                        proc.WaitForExit();
+                        string log = string.Format(
+                            "Exit: {0}\r\nPS: {1}\r\nPS1: {2}\r\n\r\n--- STDOUT ---\r\n{3}\r\n--- STDERR ---\r\n{4}",
+                            proc.ExitCode, psExe, ps1Path, stdout, stderr);
+                        File.WriteAllText(logPath, log);
+                        if (proc.ExitCode != 0 || stderr.Length > 0) {
+                            string preview = (stderr.Length > 0 ? stderr : stdout);
+                            if (preview.Length > 1200) preview = preview.Substring(0, 1200) + "\n...";
+                            MessageBox.Show(
+                                "Installer error (log: " + logPath + "):\n\n" + preview,
+                                "Agentrix-Claw Setup",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            try { File.WriteAllText(logPath, "EXCEPTION: " + ex.ToString()); } catch { }
+            MessageBox.Show(
+                "Agentrix-Claw Setup failed:\n\n" + ex.Message + "\n\nLog: " + logPath,
+                "Agentrix-Claw Setup",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        } finally {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+}
+"@
+
+    if (Test-Path $OutputPath) { Remove-Item $OutputPath -Force }
+
+    $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
+    $cp = New-Object System.CodeDom.Compiler.CompilerParameters
+    $cp.OutputAssembly      = [System.IO.Path]::GetFullPath($OutputPath)
+    $cp.GenerateExecutable  = $true
+    $cp.GenerateInMemory    = $false
+    # /target:winexe  = Windows GUI application; no console window spawned
+    $cp.CompilerOptions     = '/target:winexe /optimize+'
+    $cp.ReferencedAssemblies.AddRange([string[]]@('System.dll', 'System.Windows.Forms.dll'))
+
+    $result = $provider.CompileAssemblyFromSource($cp, $src)
+    if ($result.Errors.HasErrors) {
+        $msgs = ($result.Errors | ForEach-Object { "  $($_.ErrorNumber): $($_.ErrorText) (line $($_.Line))" }) -join "`n"
+        throw "C# compile failed:`n$msgs"
+    }
+
+    Write-Host "[Agentrix] EXE ready: $($cp.OutputAssembly)" -ForegroundColor Green
+}
+
+# ── Helpers for Standard / AIO (still use IExpress .cmd approach) ────────────────────────────
+function New-StageFile {
+    param([string]$Path, [string]$Content)
     Set-Content -Path $Path -Value $Content -Encoding ASCII
 }
 
@@ -34,38 +170,33 @@ function New-IexpressPackage {
         [hashtable]$GeneratedFiles = @{}
     )
 
+    $iexpressPath = Join-Path $env:WINDIR 'System32\iexpress.exe'
+    if (-not (Test-Path $iexpressPath)) { throw 'IExpress not found.' }
+
     $stageDir = Join-Path $buildRoot ($Name + '-stage')
-    if (Test-Path $stageDir) {
-        Remove-Item $stageDir -Recurse -Force
-    }
+    if (Test-Path $stageDir) { Remove-Item $stageDir -Recurse -Force }
     New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 
     foreach ($file in $PayloadFiles) {
-        if (-not (Test-Path $file.Source)) {
-            throw "Required payload file not found: $($file.Source)"
-        }
+        if (-not (Test-Path $file.Source)) { throw "Payload missing: $($file.Source)" }
         Copy-Item $file.Source (Join-Path $stageDir $file.Target) -Force
     }
-
-    foreach ($generatedName in $GeneratedFiles.Keys) {
-        New-StageFile -Path (Join-Path $stageDir $generatedName) -Content $GeneratedFiles[$generatedName]
+    foreach ($gen in $GeneratedFiles.Keys) {
+        New-StageFile -Path (Join-Path $stageDir $gen) -Content $GeneratedFiles[$gen]
     }
 
-    $allFileNames = @($PayloadFiles | ForEach-Object { $_.Target }) + @($GeneratedFiles.Keys)
-    $outputPath = [System.IO.Path]::GetFullPath((Join-Path $buildRoot ($Name + '.exe')))
-    if (Test-Path $outputPath) {
-        Remove-Item $outputPath -Force
-    }
+    $allFileNames  = @($PayloadFiles | ForEach-Object { $_.Target }) + @($GeneratedFiles.Keys)
+    $outputPath    = [System.IO.Path]::GetFullPath((Join-Path $buildRoot ($Name + '.exe')))
+    if (Test-Path $outputPath) { Remove-Item $outputPath -Force }
 
     $resolvedStageDir = [System.IO.Path]::GetFullPath($stageDir)
-    $sourceLines = @()
-    $stringLines = @()
+    $sourceLines = @(); $stringLines = @()
     for ($i = 0; $i -lt $allFileNames.Count; $i++) {
         $sourceLines += ('%FILE{0}%=' -f $i)
         $stringLines += ('FILE{0}="{1}"' -f $i, $allFileNames[$i])
     }
 
-    $sedPath = Join-Path $stageDir ($Name + '.sed')
+    $sedPath    = Join-Path $stageDir ($Name + '.sed')
     $sedContent = @"
 [Version]
 Class=IEXPRESS
@@ -99,71 +230,23 @@ $(($stringLines -join "`r`n"))
 "@
     Set-Content -Path $sedPath -Value $sedContent -Encoding ASCII
 
-    Write-Host ("[Agentrix] Building {0}..." -f ([System.IO.Path]::GetFileName($outputPath))) -ForegroundColor Cyan
-    $process = Start-Process -FilePath $iexpressPath -ArgumentList @('/N', '/Q', $sedPath) -Wait -PassThru -NoNewWindow
-    if ($process.ExitCode -ne 0) {
-        throw "IExpress failed for $Name with exit code $($process.ExitCode)."
-    }
-    if (-not (Test-Path $outputPath)) {
-        throw "IExpress completed but no EXE was produced for $Name."
-    }
+    Write-Host ('[Agentrix] Building {0} (IExpress)...' -f [System.IO.Path]::GetFileName($outputPath)) -ForegroundColor Cyan
+    $proc = Start-Process -FilePath $iexpressPath -ArgumentList @('/N', '/Q', $sedPath) -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) { throw "IExpress failed for $Name (exit $($proc.ExitCode))." }
+    if (-not (Test-Path $outputPath)) { throw "IExpress produced no EXE for $Name." }
 
     Write-Host "[Agentrix] EXE ready: $outputPath" -ForegroundColor Green
-
-    if (-not $KeepStage) {
-        Remove-Item $stageDir -Recurse -Force
-    }
+    if (-not $KeepStage) { Remove-Item $stageDir -Recurse -Force }
 }
 
-$commonPayload = @(
-    @{ Source = $logoSource; Target = 'agentrix_logo_square_transparent.png' }
-)
-
+# ── GUI (compiled .NET winexe — no IExpress) ─────────────────────────────────────────────────
 if ($Variant -in @('all', 'gui')) {
-    $guiPayload = @(
-        @{ Source = (Join-Path $PSScriptRoot 'install-gui.ps1'); Target = 'install-gui.ps1' },
-        @{ Source = (Join-Path $PSScriptRoot 'Setup.bat'); Target = 'Setup.bat' }
-    ) + $commonPayload
-
-    $launchGuiVbs = @"
-' Agentrix-Claw GUI Launcher
-' IExpress extracts to a temp dir and cleans it up as soon as the launch process exits.
-' To survive that cleanup we FIRST copy the payload to a persistent folder, THEN
-' launch PowerShell from there (visible window, fire-and-forget so IExpress can finish).
-Set shell = CreateObject(""WScript.Shell"")
-Set fso   = CreateObject(""Scripting.FileSystemObject"")
-srcDir  = fso.GetParentFolderName(WScript.ScriptFullName)
-destDir = shell.ExpandEnvironmentStrings(""%APPDATA%"") & ""\Agentrix-Claw-Installer""
-
-' Ensure persistent destination directory exists
-If Not fso.FolderExists(destDir) Then fso.CreateFolder(destDir)
-
-' Copy installer script
-ps1Src = srcDir  & ""\install-gui.ps1""
-ps1Dst = destDir & ""\install-gui.ps1""
-If fso.FileExists(ps1Src) Then fso.CopyFile ps1Src, ps1Dst, True
-
-' Copy logo (used by the GUI for branding)
-logoSrc = srcDir  & ""\agentrix_logo_square_transparent.png""
-logoDst = destDir & ""\agentrix_logo_square_transparent.png""
-If fso.FileExists(logoSrc) Then fso.CopyFile logoSrc, logoDst, True
-
-' Write a launch log
-logPath = shell.ExpandEnvironmentStrings(""%TEMP%"") & ""\agentrix-claw-iexpress-launch.log""
-Set logFile = fso.OpenTextFile(logPath, 8, True)
-logFile.WriteLine Now & "" GUI launch: "" & ps1Dst
-logFile.Close
-
-' Launch from persistent dir — mode 1 (normal visible window), False = don't wait
-' (IExpress can exit; files are safe in %APPDATA%)
-cmd = ""powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File """""""" & ps1Dst & """"""""
-shell.Run cmd, 1, False
-"@
-
-    New-IexpressPackage -Name 'Agentrix-Claw-Setup' -FriendlyName 'Agentrix-Claw GUI Setup' -AppLaunched 'wscript.exe Launch-GUI.vbs' -PayloadFiles $guiPayload -GeneratedFiles @{
-        'Launch-GUI.vbs' = $launchGuiVbs
-    }
+    New-GuiExe `
+        -OutputPath (Join-Path $buildRoot 'Agentrix-Claw-Setup.exe') `
+        -Ps1Source  (Join-Path $PSScriptRoot 'install-gui.ps1') `
+        -LogoSource $logoSource
 }
+
 
 if ($Variant -in @('all', 'standard')) {
     $standardPayload = @(
@@ -186,21 +269,9 @@ pause >nul
 }
 
 if ($Variant -in @('all', 'aio')) {
-    $aioPayload = @(
-        @{ Source = (Join-Path $PSScriptRoot 'install-aio.ps1'); Target = 'install-aio.ps1' }
-    )
-
-    $launchAioCmd = @"
-@echo off
-title Agentrix-Claw AIO Setup
-cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-aio.ps1"
-echo.
-echo Agentrix-Claw AIO installer finished. Press any key to close.
-pause >nul
-"@
-
-    New-IexpressPackage -Name 'Agentrix-Claw-AIO-Setup' -FriendlyName 'Agentrix-Claw AIO Setup' -AppLaunched 'cmd.exe /c Launch-AIO.cmd' -PayloadFiles $aioPayload -GeneratedFiles @{
-        'Launch-AIO.cmd' = $launchAioCmd
-    }
+    New-GuiExe `
+        -OutputPath (Join-Path $buildRoot 'Agentrix-Claw-AIO-Setup.exe') `
+        -Ps1Source  (Join-Path $PSScriptRoot 'install-aio.ps1') `
+        -LogoSource $logoSource `
+        -Console   # AIO uses Write-Host; show a normal console window, no IExpress
 }
