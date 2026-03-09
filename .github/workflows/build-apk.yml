@@ -317,28 +317,38 @@ jobs:
 
       # ── Artifact upload (optional — only for UI test job) ────────
       # Storage quota may be exceeded; this step must not block deploy/release.
+      # GitHub recalculates quota every 6-12h, so aggressive cleanup is needed.
       - name: Delete old artifacts (free quota)
         continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            const artifacts = await github.rest.actions.listArtifactsForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 30,
-            });
-            for (const artifact of artifacts.data.artifacts) {
-              if (artifact.name.startsWith('apks-build-')) {
-                try {
-                  await github.rest.actions.deleteArtifact({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    artifact_id: artifact.id,
-                  });
-                  console.log(`Deleted: ${artifact.name}`);
-                } catch (e) {
-                  console.log(`Failed to delete ${artifact.name}: ${e.message}`);
-                }
+            // Paginate to get ALL artifacts (not just first 30)
+            let page = 1;
+            let allArtifacts = [];
+            while (true) {
+              const resp = await github.rest.actions.listArtifactsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page: page,
+              });
+              if (resp.data.artifacts.length === 0) break;
+              allArtifacts.push(...resp.data.artifacts);
+              page++;
+            }
+            console.log(`Found ${allArtifacts.length} artifacts total`);
+            // Delete ALL old artifacts (apks + maestro-results)
+            for (const artifact of allArtifacts) {
+              try {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+                console.log(`Deleted: ${artifact.name}`);
+              } catch (e) {
+                console.log(`Failed to delete ${artifact.name}: ${e.message}`);
               }
             }
 
