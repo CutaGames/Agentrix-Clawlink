@@ -19,12 +19,13 @@ export class VoiceService {
 
   private getTranscriptionOrder(): Array<'openai' | 'groq' | 'aws'> {
     const hasAwsCredentials = Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+    const defaultOrder: Array<'openai' | 'groq' | 'aws'> = ['aws', 'openai', 'groq'];
     const configured = (process.env.VOICE_STT_ORDER || '')
       .split(',')
       .map((value) => value.trim().toLowerCase())
       .filter((value): value is 'openai' | 'groq' | 'aws' => value === 'openai' || value === 'groq' || value === 'aws');
 
-    const uniqueProviders = [...new Set(configured.length > 0 ? configured : ['aws', 'openai', 'groq'])];
+    const uniqueProviders = Array.from(new Set<'openai' | 'groq' | 'aws'>(configured.length > 0 ? configured : defaultOrder));
 
     if (hasAwsCredentials && uniqueProviders.includes('aws')) {
       return ['aws', ...uniqueProviders.filter((provider) => provider !== 'aws')];
