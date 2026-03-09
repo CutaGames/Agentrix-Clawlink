@@ -18,16 +18,19 @@ export class VoiceService {
   private readonly groqBaseUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
   private getTranscriptionOrder(): Array<'openai' | 'groq' | 'aws'> {
+    const hasAwsCredentials = Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
     const configured = (process.env.VOICE_STT_ORDER || '')
       .split(',')
       .map((value) => value.trim().toLowerCase())
       .filter((value): value is 'openai' | 'groq' | 'aws' => value === 'openai' || value === 'groq' || value === 'aws');
 
-    if (configured.length > 0) {
-      return configured;
+    const uniqueProviders = [...new Set(configured.length > 0 ? configured : ['aws', 'openai', 'groq'])];
+
+    if (hasAwsCredentials && uniqueProviders.includes('aws')) {
+      return ['aws', ...uniqueProviders.filter((provider) => provider !== 'aws')];
     }
 
-    return ['aws', 'openai', 'groq'];
+    return uniqueProviders;
   }
 
   private normalizeLanguageHint(lang?: string): 'zh' | 'en' | undefined {

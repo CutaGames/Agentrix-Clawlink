@@ -195,6 +195,8 @@ export function AgentChatScreen() {
     web: {},
   } : null;
 
+  const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
+
   // Init TTS audio queue player
   useEffect(() => {
     audioPlayerRef.current = new AudioQueuePlayer(() => {
@@ -381,6 +383,17 @@ export function AgentChatScreen() {
   const resetVoicePhaseAfterResponse = useCallback(() => {
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
   }, []);
+
+  const resetAudioModeAfterRecording = useCallback(async () => {
+    if (!Audio) return;
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+    } catch {}
+  }, [Audio]);
 
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
@@ -583,6 +596,13 @@ export function AgentChatScreen() {
       Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available. Please type your message instead.', zh: '当前音频模块不可用，请改用文字输入。' }));
       return;
     }
+    if (voicePhase === 'transcribing') {
+      Alert.alert(
+        t({ en: 'Voice Busy', zh: '语音处理中' }),
+        t({ en: 'The previous recording is still being transcribed. Please wait a moment.', zh: '上一段录音还在转写中，请稍等一下。' }),
+      );
+      return;
+    }
     try {
       if (!isRecordingRef.current) {
         // START recording
@@ -628,7 +648,7 @@ export function AgentChatScreen() {
         Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n请改用文字输入。` }));
       }
     }
-  }, [Audio, isSpeaking, stopCurrentResponse, t, voiceRecordingOptions]);
+  }, [Audio, isSpeaking, stopCurrentResponse, t, voicePhase, voiceRecordingOptions]);
 
   const stopVoiceRecording = useCallback(async () => {
     if (!Audio || !isRecordingRef.current) return;
@@ -648,13 +668,17 @@ export function AgentChatScreen() {
             formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
             const ac = new AbortController();
             const timeout = setTimeout(() => ac.abort(), 35_000);
-            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=auto`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-              signal: ac.signal,
-            });
-            clearTimeout(timeout);
+            let resp: Response;
+            try {
+              resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+                signal: ac.signal,
+              });
+            } finally {
+              clearTimeout(timeout);
+            }
             if (resp.ok) {
               const data = await resp.json();
               const transcript = data?.text || data?.transcript || '';
@@ -687,8 +711,10 @@ export function AgentChatScreen() {
       setIsRecording(false);
       setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
+    } finally {
+      await resetAudioModeAfterRecording();
     }
-  }, [Audio, handleSend, t, token]);
+  }, [Audio, handleSend, resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
 
   // Voice recording — hold mode wrappers
   const handleVoicePressIn = async () => {
