@@ -65,9 +65,12 @@ export class VoiceService {
     lang?: string,
   ): Promise<{ transcript: string }> {
     const normalizedLang = this.normalizeLanguageHint(lang);
+    let attemptedProviders = 0;
+    let lastProviderError: string | undefined;
 
     for (const provider of this.getTranscriptionOrder()) {
       if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+        attemptedProviders += 1;
         try {
           return await this.openAiCompatibleTranscription(buffer, originalName, {
             apiKey: process.env.OPENAI_API_KEY,
@@ -77,11 +80,13 @@ export class VoiceService {
             lang: normalizedLang,
           });
         } catch (err: any) {
+          lastProviderError = `OpenAI Whisper failed: ${err.message}`;
           this.logger.error(`Whisper fallback failed: ${err.message}`);
         }
       }
 
       if (provider === 'groq' && process.env.GROQ_API_KEY) {
+        attemptedProviders += 1;
         try {
           return await this.openAiCompatibleTranscription(buffer, originalName, {
             apiKey: process.env.GROQ_API_KEY,
@@ -91,18 +96,27 @@ export class VoiceService {
             lang: normalizedLang,
           });
         } catch (err: any) {
+          lastProviderError = `Groq transcription failed: ${err.message}`;
           this.logger.error(`Groq transcription fallback failed: ${err.message}`);
         }
       }
 
       if (provider === 'aws' && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+        attemptedProviders += 1;
         try {
           const result = await this.transcribeStreaming(buffer, mimetype, originalName, normalizedLang);
           if (result.transcript) return result;
+          lastProviderError = 'AWS Transcribe returned an empty transcript';
         } catch (err: any) {
+          lastProviderError = `AWS Transcribe Streaming failed: ${err.message}`;
           this.logger.error(`AWS Transcribe Streaming failed: ${err.message}`);
         }
       }
+    }
+
+    if (attemptedProviders > 0) {
+      this.logger.warn(`All configured transcription providers failed. Last error: ${lastProviderError || 'unknown error'}`);
+      throw new BadRequestException(lastProviderError || 'Voice transcription failed with all configured providers.');
     }
 
     this.logger.warn('No transcription service available');

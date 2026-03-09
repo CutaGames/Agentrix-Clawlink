@@ -5,7 +5,7 @@
     "scheme": "agentrix",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./Agentrix Logo/agentrix_logo_square.png",
+    "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./Agentrix Logo/agentrix_logo_square_transparent.png",
@@ -45,7 +45,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./Agentrix Logo/agentrix_logo_square_transparent.png",
+        "foregroundImage": "./Agentrix Logo/agentrix_app_icon_1024.png",
         "backgroundColor": "#000000"
       },
       "package": "app.agentrix.claw",
@@ -97,7 +97,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./Agentrix Logo/agentrix_logo_square.png",
+          "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
           "color": "#0B1220",
           "sounds": []
         }
