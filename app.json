@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Agentrix Claw",
+    "name": "Agentrix",
     "slug": "agentrix-claw",
     "scheme": "agentrix",
     "version": "1.1.0",
@@ -19,6 +19,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
+        "CFBundleDisplayName": "Agentrix",
         "LSApplicationQueriesSchemes": [
           "metamask",
           "okx",

@@ -24,6 +24,7 @@ export default function LoginPage() {
   const { connect, signMessage } = useWeb3();
   const toast = useToast();
   const mobileCallback = typeof router.query.callback === 'string' ? router.query.callback : null;
+  const isWalletFlow = router.query.tab === 'wallet' || router.query.mobile === '1' || !!mobileCallback;
   
   const [authMethod, setAuthMethod] = useState<'web3' | 'email'>('web3');
   const [isLoading, setIsLoading] = useState(false);
@@ -47,6 +48,12 @@ export default function LoginPage() {
       router.replace('/workbench');
     }
   }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isWalletFlow) {
+      setAuthMethod('web3');
+    }
+  }, [isWalletFlow]);
 
   // 检查 URL 参数中的社交登录回调
   useEffect(() => {
@@ -94,7 +101,8 @@ export default function LoginPage() {
       const walletInfo = await connect(mappedType);
       if (!walletInfo?.address) throw new Error('Wallet connection failed');
 
-      const message = `Agentrix Login\nAddress: ${walletInfo.address}\nTimestamp: ${Date.now()}`;
+      const challenge = await authApi.getWalletNonce(walletInfo.address);
+      const message = challenge.message;
       const signature = await signMessage(message, walletInfo);
 
       const response = await authApi.walletLogin({

@@ -154,11 +154,89 @@ export class OpenClawProxyService {
     };
   }
 
+  private extractSkillIntentQuery(message: string): string {
+    return String(message || '')
+      .replace(/(?:帮我|请|麻烦|能否|可以|could you|please)/gi, ' ')
+      .replace(/(?:在|从)?\s*(?:openclaw|clawhub)\s*(?:hub)?/gi, ' ')
+      .replace(/(?:skill|skills|技能)/gi, ' ')
+      .replace(/(?:install|add|enable|search|find|look for|retrieve|use|装上|安装|添加|启用|搜索|检索|查找|找一下)/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private async tryHandleDirectSkillIntent(
+    userId: string,
+    instance: OpenClawInstance,
+    message: string,
+  ): Promise<{
+    sessionId: string;
+    reply: { id: string; role: 'assistant'; content: string; createdAt: string };
+    toolCalls: any[];
+    platformHosted: true;
+  } | null> {
+    const normalized = String(message || '').toLowerCase();
+    const mentionsHub = /(openclaw|clawhub|技能|skill)/i.test(message);
+    if (!mentionsHub) return null;
+
+    const ctx: ExecutionContext = {
+      userId,
+      sessionId: `platform-${Date.now()}`,
+      metadata: { instanceId: instance.id, source: 'platform-hosted-chat' },
+    };
+
+    const query = this.extractSkillIntentQuery(message) || message.trim();
+
+    if (/(install|add|enable|装上|安装|添加|启用)/i.test(normalized)) {
+      const installResult = await this.skillExecutorService.executeInternal('skill_install', { query }, ctx);
+      return {
+        sessionId: ctx.sessionId!,
+        reply: {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: installResult?.message || `Skill ${query} installed successfully.`,
+          createdAt: new Date().toISOString(),
+        },
+        toolCalls: [{ name: 'skill_install', input: { query }, output: installResult }],
+        platformHosted: true,
+      };
+    }
+
+    if (/(search|find|look for|retrieve|搜索|检索|查找|找一下)/i.test(normalized)) {
+      const searchResult = await this.skillExecutorService.executeInternal('skill_search', { query, limit: 5 }, ctx);
+      const skills = Array.isArray(searchResult?.skills) ? searchResult.skills : [];
+      const content = skills.length > 0
+        ? skills
+            .slice(0, 5)
+            .map((skill: any, index: number) => `${index + 1}. ${skill.name || skill.id}${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
+            .join('\n')
+        : `No matching OpenClaw skills found for "${query}".`;
+
+      return {
+        sessionId: ctx.sessionId!,
+        reply: {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content,
+          createdAt: new Date().toISOString(),
+        },
+        toolCalls: [{ name: 'skill_search', input: { query, limit: 5 }, output: searchResult }],
+        platformHosted: true,
+      };
+    }
+
+    return null;
+  }
+
   private async runPlatformHostedChat(
     userId: string,
     instance: OpenClawInstance,
     dto: ChatMessageDto,
   ) {
+    const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, dto.message);
+    if (directSkillIntent) {
+      return directSkillIntent;
+    }
+
     const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messages = [

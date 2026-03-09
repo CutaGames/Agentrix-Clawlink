@@ -648,7 +648,7 @@ export function AgentChatScreen() {
             formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
             const ac = new AbortController();
             const timeout = setTimeout(() => ac.abort(), 35_000);
-            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${encodeURIComponent(language === 'zh' ? 'zh' : 'en')}`, {
+            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=auto`, {
               method: 'POST',
               headers: { Authorization: `Bearer ${token}` },
               body: formData,
@@ -688,7 +688,7 @@ export function AgentChatScreen() {
       setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
     }
-  }, [Audio, handleSend, language, t, token]);
+  }, [Audio, handleSend, t, token]);
 
   // Voice recording — hold mode wrappers
   const handleVoicePressIn = async () => {

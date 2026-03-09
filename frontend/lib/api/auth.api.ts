@@ -37,6 +37,12 @@ export interface WalletLoginDto {
   chainId?: string;
 }
 
+export interface WalletNonceResponse {
+  nonce: string;
+  message: string;
+  expiresAt?: number;
+}
+
 export const authApi = {
   /**
    * 用户注册
@@ -86,6 +92,13 @@ export const authApi = {
     // 保存token
     apiClient.setToken(response.access_token);
     return response;
+  },
+
+  /**
+   * 获取钱包登录 nonce / challenge
+   */
+  getWalletNonce: async (walletAddress: string): Promise<WalletNonceResponse> => {
+    return apiClient.get<WalletNonceResponse>(`/auth/wallet/nonce?address=${encodeURIComponent(walletAddress)}`);
   },
 };
 

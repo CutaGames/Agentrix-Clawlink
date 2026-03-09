@@ -32,7 +32,13 @@ export class VoiceService {
 
   private normalizeLanguageHint(lang?: string): 'zh' | 'en' | undefined {
     if (!lang) return undefined;
-    return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+    const normalized = lang.toLowerCase().trim();
+    if (normalized === 'auto' || normalized === 'mixed' || normalized === 'multilingual') {
+      return undefined;
+    }
+    if (normalized.startsWith('zh')) return 'zh';
+    if (normalized.startsWith('en')) return 'en';
+    return undefined;
   }
 
   private buildTranscriptionPrompt(lang?: 'zh' | 'en'): string | undefined {
