@@ -626,37 +626,62 @@ export class SkillExecutorService {
 
     // ============ 电商类 Handlers ============
     
-    // 搜索商品 - 搜索 Skills (新的统一市场)
+    // 搜索商品 - 搜索统一市场（RESOURCE + Hub fallback）
     this.registerHandler('search_products', async (params, context) => {
       try {
         const requestedType = params.resourceType || params.type;
-        // 使用统一市场搜索 Skills
+        const limit = params.limit || 20;
+        // 1. 搜索 RESOURCE 层（商品/资源）
         const searchResult = await this.unifiedMarketplaceService.search({
           query: params.query,
           layer: [SkillLayer.RESOURCE],
           resourceType: requestedType ? [normalizeResourceType(requestedType)] : undefined,
           category: params.category ? [params.category as SkillCategory] : undefined,
           page: 1,
-          limit: params.limit || 20,
+          limit,
         });
+
+        let allItems: any[] = searchResult.items || [];
+
+        // 2. Fallback: if RESOURCE returns few results, also search Hub skills
+        if (allItems.length < 3) {
+          try {
+            const hub = await this.openClawSkillHubService.getSkills({
+              query: params.query,
+              category: params.category,
+              limit,
+              page: 1,
+              sortBy: 'downloads',
+              sortOrder: 'DESC',
+            });
+            const hubItems = (hub.items || []).map(h => ({
+              ...h,
+              _isHub: true,
+            }));
+            allItems = [...allItems, ...hubItems];
+          } catch (e: any) {
+            this.logger.warn(`search_products hub fallback failed: ${e.message}`);
+          }
+        }
         
-        const formattedProducts = searchResult.items.map(skill => ({
-          id: skill.id,
+        const formattedProducts = allItems.slice(0, limit).map(skill => ({
+          id: skill.id || skill.hubSlug,
           name: skill.displayName || skill.name,
           description: skill.description,
           price: skill.pricing?.pricePerCall || 0,
           currency: skill.pricing?.currency || 'USD',
-          type: skill.resourceType || 'service',
+          type: skill._isHub ? 'skill' : (skill.resourceType || 'service'),
           category: skill.category,
           stock: 999,
           image: skill.imageUrl || skill.thumbnailUrl,
           checkoutUrl: `${process.env.FRONTEND_URL || 'https://www.agentrix.top'}/pay/checkout?skillId=${skill.id}`,
-          skillId: skill.id
+          skillId: skill.id || skill.hubSlug,
+          source: skill._isHub ? 'openclaw_hub' : (skill.originalPlatform || 'native'),
         }));
         
         return {
           products: formattedProducts,
-          total: searchResult.total,
+          total: formattedProducts.length,
           message: formattedProducts.length > 0 
             ? `Found ${formattedProducts.length} products matching "${params.query}"`
             : `No products found for "${params.query}". Try browsing the marketplace.`

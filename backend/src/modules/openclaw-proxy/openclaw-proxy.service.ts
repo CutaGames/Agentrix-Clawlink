@@ -108,7 +108,7 @@ export class OpenClawProxyService {
       },
       search_products: {
         properties: {
-          query: { type: 'string', description: 'Product search query' },
+          query: { type: 'string', description: 'Search query for physical goods, digital resources, or paid services (NOT skills — use skill_search for skills)' },
           category: { type: 'string', description: 'Product category' },
           limit: { type: 'number', description: 'Max results' },
         },

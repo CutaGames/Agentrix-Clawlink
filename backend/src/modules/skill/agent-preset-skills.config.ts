@@ -33,7 +33,7 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
   {
     handlerName: 'skill_search',
     displayName: 'Skill Search',
-    description: 'Search the marketplace and ClawHub for skills to expand capabilities',
+    description: 'Search for installable skills, tools, and plugins across the marketplace and OpenClaw Hub — ALWAYS use this when looking for skills or capabilities',
     category: 'core',
     enabledByDefault: true,
     icon: '🔍',
@@ -67,7 +67,7 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
   {
     handlerName: 'search_products',
     displayName: 'Product Search',
-    description: 'Search products across the unified marketplace',
+    description: 'Search physical goods, digital resources, and paid services — for skill/tool lookup use skill_search instead',
     category: 'commerce',
     enabledByDefault: true,
     icon: '🛒',
