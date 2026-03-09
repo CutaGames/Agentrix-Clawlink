@@ -978,7 +978,8 @@ export class SkillExecutorService {
      * Params: { query: string, category?: string, limit?: number }
      */
     this.registerHandler('skill_search', async (params, context) => {
-      const { query, category, limit = 10 } = params;
+      const query = params.query || params.name || params.title || '';
+      const { category, limit = 10 } = params;
       if (!query) throw new BadRequestException('query is required for skill_search');
 
       // 1. Search local published skills
@@ -1123,19 +1124,35 @@ export class SkillExecutorService {
       const skillId = resolvedSkill?.id;
       if (!skillId) throw new BadRequestException('skillId or query is required for skill_execute');
 
-      const result = await this.unifiedMarketplaceService.executeSkill(
-        skillId,
-        params.input || params.params || {},
-        context.userId,
-      );
+      const execInput = params.input || params.params || {};
 
-      return {
-        success: true,
-        skillId,
-        skillName: resolvedSkill?.name,
-        executedAt: new Date().toISOString(),
-        result,
-      };
+      // OpenClaw Hub skills: resolve the DB entity and use the hub execution path
+      if (resolvedSkill?.source === 'openclaw_hub') {
+        const hubSkill = await this.openClawSkillHubService.getSkillBySlug(skillId)
+          ?? await this.openClawSkillHubService.getSkillById(skillId);
+        if (hubSkill?.id) {
+          try {
+            const dbSkill = await this.skillService.findById(hubSkill.id);
+            if (dbSkill) {
+              const hubResult = await this.executeOpenClawHubSkill(dbSkill, { ...execInput, prompt: execInput.prompt || execInput.input || params.query }, context);
+              return { success: true, skillId, skillName: resolvedSkill?.name, executedAt: new Date().toISOString(), result: hubResult };
+            }
+          } catch { /* fall through to unified marketplace */ }
+        }
+      }
+
+      // Native / synced skills: look up by UUID in the unified marketplace
+      try {
+        const result = await this.unifiedMarketplaceService.executeSkill(skillId, execInput, context.userId);
+        return { success: true, skillId, skillName: resolvedSkill?.name, executedAt: new Date().toISOString(), result };
+      } catch (err: any) {
+        // Fallback: if unified marketplace can't find by ID (e.g. slug passed), try execute() path
+        if (String(err?.message).includes('not found')) {
+          const result = await this.execute(skillId, execInput, context);
+          return { success: true, skillId, skillName: resolvedSkill?.name, executedAt: new Date().toISOString(), result };
+        }
+        throw err;
+      }
     });
 
     /**

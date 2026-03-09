@@ -519,9 +519,22 @@ export class UnifiedMarketplaceService {
     params: Record<string, any>,
     userId?: string,
   ): Promise<any> {
-    const skill = await this.skillRepository.findOne({ where: { id: skillId } });
+    // Try direct UUID lookup first, then fallback to slug/name search
+    let skill = await this.skillRepository.findOne({ where: { id: skillId } });
     if (!skill) {
-      throw new Error('Skill not found');
+      // Fallback: search by name, externalSkillId, or slug-like fields
+      skill = await this.skillRepository
+        .createQueryBuilder('skill')
+        .where('skill.status = :status', { status: SkillStatus.PUBLISHED })
+        .andWhere(
+          '(skill.name ILIKE :q OR skill.display_name ILIKE :q OR skill.external_skill_id = :exact)',
+          { q: `%${skillId}%`, exact: skillId },
+        )
+        .orderBy('skill.call_count', 'DESC')
+        .getOne();
+    }
+    if (!skill) {
+      throw new Error(`Skill not found: ${skillId}`);
     }
 
     // 记录调用 (recordSkillCall 内部已 increment callCount，不要重复)

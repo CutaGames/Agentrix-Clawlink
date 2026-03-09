@@ -173,7 +173,7 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     displayName: 'Publish Skill',
     description: 'Publish a new skill to the marketplace for others to use',
     category: 'marketplace',
-    enabledByDefault: false,
+    enabledByDefault: true,
     icon: '📤',
   },
   {
@@ -181,7 +181,7 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     displayName: 'Publish Resource',
     description: 'Publish a resource, service, or goods listing to the marketplace',
     category: 'marketplace',
-    enabledByDefault: false,
+    enabledByDefault: true,
     icon: '🧺',
   },
 

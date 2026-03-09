@@ -226,7 +226,8 @@ export class OpenClawSkillHubService implements OnModuleInit {
     }
 
     if (category && category !== 'all') {
-      filtered = filtered.filter(s => s.category === category);
+      const lowerCat = category.toLowerCase();
+      filtered = filtered.filter(s => s.category?.toLowerCase() === lowerCat);
     }
 
     filtered.sort((a, b) => {

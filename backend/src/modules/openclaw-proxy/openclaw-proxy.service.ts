@@ -64,27 +64,93 @@ export class OpenClawProxyService {
   }
 
   private buildPlatformToolSchema(skill: PresetSkill) {
+    // Per-skill tailored schemas so Claude knows exactly what each tool accepts
+    const schemas: Record<string, { properties: Record<string, any>; required?: string[] }> = {
+      skill_search: {
+        properties: {
+          query: { type: 'string', description: 'Search query — keyword, skill name, or description' },
+          category: { type: 'string', description: 'Filter by category (e.g. utility, social, finance)' },
+          limit: { type: 'number', description: 'Max results to return (default 10)' },
+        },
+        required: ['query'],
+      },
+      skill_install: {
+        properties: {
+          query: { type: 'string', description: 'Skill name or search query to find and install' },
+          skillId: { type: 'string', description: 'Direct skill ID or slug if known' },
+        },
+      },
+      skill_execute: {
+        properties: {
+          query: { type: 'string', description: 'Skill name or search query to find and execute' },
+          skillId: { type: 'string', description: 'Direct skill ID or slug if known' },
+          input: { type: 'object', description: 'Structured input payload for the skill' },
+          prompt: { type: 'string', description: 'Natural-language prompt for prompt-based skills' },
+        },
+      },
+      skill_recommend: {
+        properties: {
+          intent: { type: 'string', description: 'What the user wants to accomplish' },
+          category: { type: 'string', description: 'Preferred category' },
+          limit: { type: 'number', description: 'Max recommendations' },
+        },
+      },
+      skill_publish: {
+        properties: {
+          name: { type: 'string', description: 'Skill name (alphanumeric, underscores, hyphens)' },
+          displayName: { type: 'string', description: 'Human-readable display name' },
+          description: { type: 'string', description: 'Skill description' },
+          category: { type: 'string', description: 'Category: utility, social, finance, etc.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags for discoverability' },
+          price: { type: 'number', description: 'Price per call (0 for free)' },
+        },
+        required: ['name', 'description'],
+      },
+      search_products: {
+        properties: {
+          query: { type: 'string', description: 'Product search query' },
+          category: { type: 'string', description: 'Product category' },
+          limit: { type: 'number', description: 'Max results' },
+        },
+        required: ['query'],
+      },
+      marketplace_purchase: {
+        properties: {
+          skillId: { type: 'string', description: 'Skill ID to purchase' },
+          itemId: { type: 'string', description: 'Item ID to purchase' },
+          paymentMethod: { type: 'string', description: 'wallet, stripe, quickpay' },
+        },
+      },
+      task_search: {
+        properties: {
+          query: { type: 'string', description: 'Task search query' },
+          category: { type: 'string', description: 'Task category' },
+          limit: { type: 'number', description: 'Max results' },
+        },
+      },
+      task_post: {
+        properties: {
+          title: { type: 'string', description: 'Task title' },
+          description: { type: 'string', description: 'Task description and requirements' },
+          budget: { type: 'number', description: 'Task budget amount' },
+          currency: { type: 'string', description: 'Currency code (USD, CNY)' },
+        },
+        required: ['title', 'description'],
+      },
+    };
+
+    const specific = schemas[skill.handlerName];
     return {
       name: skill.handlerName,
       description: skill.description,
       input_schema: {
         type: 'object' as const,
-        properties: {
+        properties: specific?.properties ?? {
           query: { type: 'string', description: 'Search query or natural-language request' },
-          skillId: { type: 'string', description: 'Marketplace skill id when already known' },
-          itemId: { type: 'string', description: 'Marketplace item id when already known' },
-          title: { type: 'string', description: 'Task or listing title' },
-          name: { type: 'string', description: 'Skill or resource name' },
-          description: { type: 'string', description: 'Task, skill, or resource description' },
-          category: { type: 'string', description: 'Marketplace category' },
-          resourceType: { type: 'string', description: 'digital, service, physical, data, logic' },
-          price: { type: 'number', description: 'Price amount if publishing or buying' },
-          budget: { type: 'number', description: 'Task budget' },
-          currency: { type: 'string', description: 'Currency code like USD or CNY' },
-          paymentMethod: { type: 'string', description: 'wallet, stripe, quickpay, etc.' },
-          input: { type: 'object', description: 'Structured input payload for skill execution' },
+          input: { type: 'object', description: 'Structured input payload' },
           params: { type: 'object', description: 'Generic structured params' },
         },
+        ...(specific?.required ? { required: specific.required } : {}),
         additionalProperties: true,
       },
     };
@@ -105,7 +171,9 @@ export class OpenClawProxyService {
     const installations = await this.skillService.findEffectiveInstalledSkillsForInstance(instance.id, userId);
     const enabledInstallations = installations.filter((installation: any) => installation?.isEnabled && installation?.skill);
 
-    const presetTools = AGENT_PRESET_SKILLS.map((skill) => this.buildPlatformToolSchema(skill));
+    const presetTools = AGENT_PRESET_SKILLS
+      .filter((skill) => skill.enabledByDefault || skill.handlerName === 'skill_publish' || skill.handlerName === 'resource_publish')
+      .map((skill) => this.buildPlatformToolSchema(skill));
     const installedToolEntries = enabledInstallations.map((installation: any) => {
       const skill = installation.skill;
       return {
@@ -155,13 +223,21 @@ export class OpenClawProxyService {
   }
 
   private extractSkillIntentQuery(message: string): string {
-    return String(message || '')
+    let q = String(message || '')
       .replace(/(?:帮我|请|麻烦|能否|可以|could you|please)/gi, ' ')
-      .replace(/(?:在|从)?\s*(?:openclaw|clawhub)\s*(?:hub)?/gi, ' ')
-      .replace(/(?:skill|skills|技能)/gi, ' ')
+      .replace(/(?:在|从)?\s*(?:openclaw|clawhub)\s*(?:hub|市场)?/gi, ' ')
       .replace(/(?:install|add|enable|search|find|look for|retrieve|use|装上|安装|添加|启用|搜索|检索|查找|找一下)/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+    // If stripping removed everything (e.g. "搜索openclaw skill"), keep original minus action words
+    if (!q || q === 'skill' || q === 'skills' || q === '技能') {
+      q = String(message || '')
+        .replace(/(?:帮我|请|麻烦|能否|可以|could you|please)/gi, ' ')
+        .replace(/(?:install|add|enable|search|find|look for|retrieve|use|装上|安装|添加|启用|搜索|检索|查找|找一下)/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    return q;
   }
 
   private async tryHandleDirectSkillIntent(
@@ -201,15 +277,15 @@ export class OpenClawProxyService {
       };
     }
 
-    if (/(search|find|look for|retrieve|搜索|检索|查找|找一下)/i.test(normalized)) {
-      const searchResult = await this.skillExecutorService.executeInternal('skill_search', { query, limit: 5 }, ctx);
+    if (/(search|find|look for|retrieve|搜索|检索|查找|找一下|浏览|browse|list)/i.test(normalized)) {
+      const searchResult = await this.skillExecutorService.executeInternal('skill_search', { query, limit: 10 }, ctx);
       const skills = Array.isArray(searchResult?.skills) ? searchResult.skills : [];
       const content = skills.length > 0
-        ? skills
-            .slice(0, 5)
-            .map((skill: any, index: number) => `${index + 1}. ${skill.name || skill.id}${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
+        ? `Found ${searchResult.total || skills.length} skills:\n` + skills
+            .slice(0, 10)
+            .map((skill: any, index: number) => `${index + 1}. **${skill.name || skill.id}**${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
             .join('\n')
-        : `No matching OpenClaw skills found for "${query}".`;
+        : `No matching skills found for "${query}". Try broader keywords.`;
 
       return {
         sessionId: ctx.sessionId!,
@@ -219,9 +295,38 @@ export class OpenClawProxyService {
           content,
           createdAt: new Date().toISOString(),
         },
-        toolCalls: [{ name: 'skill_search', input: { query, limit: 5 }, output: searchResult }],
+        toolCalls: [{ name: 'skill_search', input: { query, limit: 10 }, output: searchResult }],
         platformHosted: true,
       };
+    }
+
+    if (/(execute|run|call|invoke|执行|运行|调用|用一下)/i.test(normalized)) {
+      try {
+        const executeResult = await this.skillExecutorService.executeInternal('skill_execute', { query }, ctx);
+        return {
+          sessionId: ctx.sessionId!,
+          reply: {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: executeResult?.result?.output || executeResult?.message || `Skill executed successfully.`,
+            createdAt: new Date().toISOString(),
+          },
+          toolCalls: [{ name: 'skill_execute', input: { query }, output: executeResult }],
+          platformHosted: true,
+        };
+      } catch (err: any) {
+        return {
+          sessionId: ctx.sessionId!,
+          reply: {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: `Failed to execute skill "${query}": ${err.message}`,
+            createdAt: new Date().toISOString(),
+          },
+          toolCalls: [],
+          platformHosted: true,
+        };
+      }
     }
 
     return null;
@@ -245,12 +350,20 @@ export class OpenClawProxyService {
         content:
           `You are "${instance.name || 'Agent'}", the user's personal AI claw. ` +
           `You are not Agentrix customer support, not a platform helpdesk, and not a generic service bot. ` +
-          `Act like the user's own agent with built-in marketplace abilities. ` +
-          `When the user asks to search, install, execute, buy, pay for, publish, or arrange skills, tasks, or resources, use the provided tools first instead of saying you cannot access them. ` +
-          `For marketplace or OpenClaw Hub capabilities, prefer tool calls such as skill_search, skill_install, skill_execute, and marketplace_purchase before answering in prose. ` +
-          `Do not say that OpenClaw skills cannot be searched or installed when those tools are available. ` +
-          `If tool results are available, use them directly and do not claim lack of browsing or marketplace access. ` +
-          `Reply in the same language as the user, stay concise, and focus on getting the task done.`,
+          `Act like the user's own agent with built-in marketplace abilities.\n\n` +
+          `## OpenClaw Hub & Marketplace\n` +
+          `You have FULL access to the OpenClaw Hub marketplace with thousands of skills. Use these tools:\n` +
+          `- **skill_search**: Search skills by keyword, name, or description. Always call this when the user asks about available skills.\n` +
+          `- **skill_install**: Install a skill by name or ID onto this claw.\n` +
+          `- **skill_execute**: Run/execute a skill with input parameters.\n` +
+          `- **skill_recommend**: Get personalized skill recommendations.\n` +
+          `- **skill_publish**: Publish a new skill to the marketplace.\n` +
+          `- **marketplace_purchase**: Purchase a paid skill or resource.\n\n` +
+          `## Rules\n` +
+          `1. When the user asks to search, install, execute, buy, pay for, publish, or manage skills: ALWAYS use the appropriate tool. NEVER say you cannot access the marketplace.\n` +
+          `2. When tool results are returned, summarize them clearly. Do not claim lack of access.\n` +
+          `3. If a search returns no results, suggest different keywords or broader queries.\n` +
+          `4. Reply in the same language as the user, stay concise, and focus on getting the task done.`,
       },
       { role: 'user' as const, content: dto.message },
     ];
