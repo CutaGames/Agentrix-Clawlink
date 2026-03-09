@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useUser } from '../../contexts/UserContext'
@@ -24,12 +24,30 @@ export function MobileMenu() {
   const { isAuthenticated } = useUser()
   const { t } = useLocalization()
 
+  useEffect(() => {
+    if (!isOpen) {
+      document.body.style.overflow = ''
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    setIsOpen(false)
+  }, [router.asPath])
+
   return (
     <>
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-200 hover:bg-white/10 hover:text-white md:hidden"
+        className="shrink-0 rounded-xl border border-white/10 bg-white/5 p-2 text-slate-200 hover:bg-white/10 hover:text-white md:hidden"
         aria-label="菜单"
       >
         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,18 +63,18 @@ export function MobileMenu() {
       {isOpen && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-[80] bg-slate-950/85 backdrop-blur-md md:hidden"
             onClick={() => setIsOpen(false)}
           />
-          <div className="fixed top-0 left-0 z-50 h-full w-[86vw] max-w-sm transform border-r border-white/10 bg-slate-950 text-white shadow-2xl shadow-black/60 transition-transform duration-300 md:hidden">
-            <div className="border-b border-white/10 p-5">
-              <div className="flex items-center justify-between">
+          <div className="fixed inset-y-0 left-0 z-[90] flex h-[100dvh] w-[88vw] max-w-sm flex-col border-r border-white/10 bg-slate-950/98 text-white shadow-2xl shadow-black/60 backdrop-blur-2xl md:hidden">
+            <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-950/95 p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3">
                 <Link href="/" className="hover:opacity-80 transition-opacity" onClick={() => setIsOpen(false)}>
-                  <AgentrixLogo size="md" showText={true} className="text-white" />
+                  <AgentrixLogo size="sm" showText={true} className="text-white" compact={true} />
                 </Link>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="rounded-xl border border-white/10 p-2 text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="shrink-0 rounded-xl border border-white/10 p-2 text-slate-300 hover:bg-white/10 hover:text-white"
                   aria-label="关闭菜单"
                 >
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,16 +82,16 @@ export function MobileMenu() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-5 flex items-center justify-between gap-3">
-                <div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-slate-500">Agentrix</p>
                   <p className="mt-1 text-sm text-slate-300">{t({ zh: '移动端统一导航', en: 'Unified mobile navigation' })}</p>
                 </div>
-                <LanguageSwitcher />
+                <LanguageSwitcher compact={true} dark={true} />
               </div>
             </div>
 
-            <nav className="space-y-6 p-5">
+            <nav className="flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-4 pb-6 pt-5 sm:px-5">
               <div className="space-y-2">
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{t({ zh: '核心导航', en: 'Primary' })}</p>
                 {primaryItems.map((item) => (
@@ -81,14 +99,14 @@ export function MobileMenu() {
                     key={item.href}
                     href={item.href}
                     onClick={() => setIsOpen(false)}
-                    className={`flex items-center space-x-3 rounded-2xl border px-4 py-3.5 transition-colors ${
+                    className={`flex min-h-[68px] items-center gap-3 rounded-2xl border px-4 py-3.5 transition-colors ${
                       router.pathname === item.href
                         ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-300'
                         : 'border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    <span className="text-xl">{item.icon}</span>
-                    <span className="font-medium">{t(item.name)}</span>
+                    <span className="shrink-0 text-xl leading-none">{item.icon}</span>
+                    <span className="min-w-0 text-[15px] font-medium leading-tight">{t(item.name)}</span>
                   </Link>
                 ))}
               </div>
@@ -101,14 +119,14 @@ export function MobileMenu() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setIsOpen(false)}
-                      className={`flex items-center space-x-3 rounded-2xl border px-4 py-3 transition-colors ${
+                      className={`flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 py-3 transition-colors ${
                         router.pathname === item.href
                           ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-300'
                           : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      <span>{item.icon}</span>
-                      <span className="font-medium">{t(item.name)}</span>
+                      <span className="shrink-0 leading-none">{item.icon}</span>
+                      <span className="min-w-0 text-[15px] font-medium leading-tight">{t(item.name)}</span>
                     </Link>
                   ))}
                 </div>
