@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -54,6 +54,19 @@ export default function LoginPage() {
       setAuthMethod('web3');
     }
   }, [isWalletFlow]);
+
+  // Plan B: 当从移动端 WebBrowser 打开时 (mobile=1)，自动触发 WalletConnect 连接
+  const autoConnectTriggered = useRef(false);
+  useEffect(() => {
+    if (router.query.mobile === '1' && mobileCallback && !autoConnectTriggered.current && !isLoading && !isAuthenticated) {
+      autoConnectTriggered.current = true;
+      // 延迟一小段时间确保页面完全加载
+      const timer = setTimeout(() => {
+        handleWeb3Login('walletconnect');
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [router.query.mobile, mobileCallback, isLoading, isAuthenticated]);
 
   // 检查 URL 参数中的社交登录回调
   useEffect(() => {

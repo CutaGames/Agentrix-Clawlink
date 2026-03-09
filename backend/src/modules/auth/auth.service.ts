@@ -717,11 +717,9 @@ export class AuthService {
         const recoveredAddress = ethers.verifyMessage(message, signature);
         return recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
       } else if (chain === ChainType.SOLANA) {
-        // Solana地址签名验证（需要实现）
-        // TODO: 实现Solana签名验证
-        // 暂时返回true（开发环境）
-        console.warn('Solana签名验证待实现');
-        return true;
+        // Solana 签名验证尚未实现，拒绝所有 Solana 登录请求
+        this.logger.warn('Solana wallet login attempted but verification is not implemented');
+        return false;
       }
       return false;
     } catch (error) {
