@@ -251,7 +251,7 @@ export class OpenClawProxyService {
     platformHosted: true;
   } | null> {
     const normalized = String(message || '').toLowerCase();
-    const mentionsHub = /(openclaw|clawhub|技能|skill)/i.test(message);
+    const mentionsHub = /(openclaw|clawhub|技能|skill|市场|marketplace|hub)/i.test(message);
     if (!mentionsHub) return null;
 
     const ctx: ExecutionContext = {
@@ -263,41 +263,51 @@ export class OpenClawProxyService {
     const query = this.extractSkillIntentQuery(message) || message.trim();
 
     if (/(install|add|enable|装上|安装|添加|启用)/i.test(normalized)) {
-      const installResult = await this.skillExecutorService.executeInternal('skill_install', { query }, ctx);
-      return {
-        sessionId: ctx.sessionId!,
-        reply: {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: installResult?.message || `Skill ${query} installed successfully.`,
-          createdAt: new Date().toISOString(),
-        },
-        toolCalls: [{ name: 'skill_install', input: { query }, output: installResult }],
-        platformHosted: true,
-      };
+      try {
+        const installResult = await this.skillExecutorService.executeInternal('skill_install', { query }, ctx);
+        return {
+          sessionId: ctx.sessionId!,
+          reply: {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: installResult?.message || `Skill ${query} installed successfully.`,
+            createdAt: new Date().toISOString(),
+          },
+          toolCalls: [{ name: 'skill_install', input: { query }, output: installResult }],
+          platformHosted: true,
+        };
+      } catch (err: any) {
+        this.logger.warn(`Direct skill install intent failed: ${err.message}`);
+        return null;
+      }
     }
 
-    if (/(search|find|look for|retrieve|搜索|检索|查找|找一下|浏览|browse|list)/i.test(normalized)) {
-      const searchResult = await this.skillExecutorService.executeInternal('skill_search', { query, limit: 10 }, ctx);
-      const skills = Array.isArray(searchResult?.skills) ? searchResult.skills : [];
-      const content = skills.length > 0
-        ? `Found ${searchResult.total || skills.length} skills:\n` + skills
-            .slice(0, 10)
-            .map((skill: any, index: number) => `${index + 1}. **${skill.name || skill.id}**${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
-            .join('\n')
-        : `No matching skills found for "${query}". Try broader keywords.`;
+    if (/(search|find|look for|retrieve|搜索|搜一下|搜搜|检索|查找|找一下|找找|浏览|看看|有什么|有哪些|browse|list|show)/i.test(normalized)) {
+      try {
+        const searchResult = await this.skillExecutorService.executeInternal('skill_search', { query, limit: 10 }, ctx);
+        const skills = Array.isArray(searchResult?.skills) ? searchResult.skills : [];
+        const content = skills.length > 0
+          ? `Found ${searchResult.total || skills.length} skills:\n` + skills
+              .slice(0, 10)
+              .map((skill: any, index: number) => `${index + 1}. **${skill.name || skill.id}**${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
+              .join('\n')
+          : `No matching skills found for "${query}". Try broader keywords.`;
 
-      return {
-        sessionId: ctx.sessionId!,
-        reply: {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content,
-          createdAt: new Date().toISOString(),
-        },
-        toolCalls: [{ name: 'skill_search', input: { query, limit: 10 }, output: searchResult }],
-        platformHosted: true,
-      };
+        return {
+          sessionId: ctx.sessionId!,
+          reply: {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content,
+            createdAt: new Date().toISOString(),
+          },
+          toolCalls: [{ name: 'skill_search', input: { query, limit: 10 }, output: searchResult }],
+          platformHosted: true,
+        };
+      } catch (err: any) {
+        this.logger.warn(`Direct skill search intent failed: ${err.message}`);
+        return null; // fall through to LLM path
+      }
     }
 
     if (/(execute|run|call|invoke|执行|运行|调用|用一下)/i.test(normalized)) {

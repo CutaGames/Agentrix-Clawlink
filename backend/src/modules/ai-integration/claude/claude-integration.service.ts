@@ -421,8 +421,8 @@ export class ClaudeIntegrationService {
       return { success: true, result };
     }
     switch (functionName) {
-        case 'search_agentrix_products':
-          return await this.capabilityExecutor.execute(
+        case 'search_agentrix_products': {
+          const productResult = await this.capabilityExecutor.execute(
             'executor_search',
             parameters as {
               query: string;
@@ -437,6 +437,44 @@ export class ClaudeIntegrationService {
               sessionId: context.sessionId,
             },
           );
+          // If product search returned nothing, also search the skill table as fallback
+          // (covers agent chat fallback path that only has standard tools)
+          const hasProducts = (productResult?.data?.products?.length ?? 0) > 0;
+          if (!hasProducts && parameters.query) {
+            try {
+              const q = `%${String(parameters.query).toLowerCase().replace(/[%_]/g, '')}%`;
+              const skills = await this.productRepository.query(
+                `SELECT id, name, "displayName", description, category, "hubSlug" FROM skill
+                 WHERE status = 'published'
+                   AND (LOWER(name) LIKE $1 OR LOWER("displayName") LIKE $1 OR LOWER(description) LIKE $1)
+                 ORDER BY "callCount" DESC NULLS LAST
+                 LIMIT 10`,
+                [q],
+              );
+              if (skills.length > 0) {
+                return {
+                  success: true,
+                  data: {
+                    products: skills.map((s: any) => ({
+                      id: s.id,
+                      name: s.displayName || s.name,
+                      description: s.description?.substring(0, 200),
+                      category: s.category || 'skill',
+                      type: 'skill',
+                      source: s.hubSlug ? 'openclaw_hub' : 'marketplace',
+                    })),
+                    query: parameters.query,
+                    total: skills.length,
+                  },
+                  message: `Found ${skills.length} skills matching "${parameters.query}"`,
+                };
+              }
+            } catch (skillErr: any) {
+              this.logger.warn(`Skill fallback search failed: ${skillErr.message}`);
+            }
+          }
+          return productResult;
+        }
 
         case 'add_to_agentrix_cart':
           return await this.addToCart(
@@ -500,7 +538,17 @@ export class ClaudeIntegrationService {
   ): Promise<any> {
     // Always fetch standard tools first — needed for both Anthropic SDK and Bedrock fallback
     const standardTools = await this.getFunctionSchemas();
-    const mergedTools = [...standardTools, ...(options?.additionalTools || [])];
+    // When the caller provides dedicated tools (e.g. agent chat with skill_search),
+    // strip out standard e-commerce tools so the LLM doesn’t pick the wrong one
+    // (e.g. search_agentrix_products instead of skill_search).
+    const ECOMMERCE_STANDARD_TOOLS = new Set([
+      'search_agentrix_products', 'add_to_agentrix_cart', 'view_agentrix_cart',
+      'checkout_agentrix_cart', 'buy_agentrix_product', 'get_agentrix_order', 'pay_agentrix_order',
+    ]);
+    const effectiveStandard = (options?.additionalTools?.length)
+      ? standardTools.filter(t => !ECOMMERCE_STANDARD_TOOLS.has(t.name))
+      : standardTools;
+    const mergedTools = [...effectiveStandard, ...(options?.additionalTools || [])];
 
     if (!this.anthropic && !options?.userApiKey) {
       // Fallback to AWS Bedrock (uses AWS_BEARER_TOKEN_BEDROCK)
