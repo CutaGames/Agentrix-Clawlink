@@ -587,7 +587,7 @@ export class SkillExecutorService {
           const first = hubResult.items?.[0];
           if (first?.id) {
             return {
-              id: String(first.hubSlug || first.key || first.id),
+              id: String(first.id),
               name: first.displayName || first.name,
               source: 'openclaw_hub',
             };
@@ -1021,6 +1021,7 @@ export class SkillExecutorService {
         const id = skill.id || skill.skillId || skill.hubSlug || skill.key;
         if (id && !seen.has(id)) {
           seen.add(id);
+          const isHub = skill.hubSlug || skill.source === 'openclaw_hub' || skill.originalPlatform === 'openclaw';
           results.push({
             id,
             name: skill.name || skill.displayName,
@@ -1029,7 +1030,7 @@ export class SkillExecutorService {
             rating: skill.rating ?? 0,
             callCount: skill.callCount ?? skill.hubStats?.downloads ?? 0,
             pricing: skill.pricing ?? { type: 'free' },
-            source: skill.originalPlatform || skill.source || (skill.hubSlug ? 'openclaw_hub' : 'native'),
+            source: isHub ? 'openclaw_hub' : (skill.originalPlatform || skill.source || 'native'),
             tags: skill.tags ?? [],
           });
         }
@@ -1059,7 +1060,12 @@ export class SkillExecutorService {
         : undefined;
 
       if (instanceId) {
-        if (resolvedSkill?.source === 'openclaw_hub') {
+        // Detect hub skills: check source or look up in hub cache
+        const isHubSkill = resolvedSkill?.source === 'openclaw_hub'
+          || resolvedSkill?.source === 'openclaw'
+          || await this.openClawSkillHubService.getSkillById(skillId).then(s => !!s).catch(() => false);
+
+        if (isHubSkill) {
           const installed = await this.openClawBridgeService.installHubSkillToInstance(context.userId, instanceId, skillId);
           return {
             success: true,
@@ -1127,7 +1133,8 @@ export class SkillExecutorService {
       const execInput = params.input || params.params || {};
 
       // OpenClaw Hub skills: resolve the DB entity and use the hub execution path
-      if (resolvedSkill?.source === 'openclaw_hub') {
+      const isHubSource = resolvedSkill?.source === 'openclaw_hub' || resolvedSkill?.source === 'openclaw';
+      if (isHubSource || await this.openClawSkillHubService.getSkillById(skillId).then(s => !!s).catch(() => false)) {
         const hubSkill = await this.openClawSkillHubService.getSkillBySlug(skillId)
           ?? await this.openClawSkillHubService.getSkillById(skillId);
         if (hubSkill?.id) {
@@ -1235,7 +1242,9 @@ export class SkillExecutorService {
         }
 
         if (instanceId && autoInstall !== false) {
-          if (resolvedSkill?.source === 'openclaw_hub') {
+          const isHubSkill = resolvedSkill?.source === 'openclaw_hub' || resolvedSkill?.source === 'openclaw'
+            || await this.openClawSkillHubService.getSkillById(skillId).then(s => !!s).catch(() => false);
+          if (isHubSkill) {
             const installed = await this.openClawBridgeService.installHubSkillToInstance(context.userId, instanceId, skillId);
             return {
               success: true,

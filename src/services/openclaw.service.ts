@@ -130,7 +130,7 @@ export async function getInstanceSkills(instanceId: string): Promise<{
 // Toggle skill enable/disable
 export async function toggleSkill(instanceId: string, skillId: string, enabled: boolean): Promise<void> {
   return apiFetch(`/openclaw/proxy/${instanceId}/skills/${skillId}/toggle`, {
-    method: 'POST',
+    method: 'PUT',
     body: JSON.stringify({ enabled }),
   });
 }
@@ -146,21 +146,20 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     await apiFetch(`/skills/${skillId}/install`, { method: 'POST' });
     dbRecorded = true;
   } catch (e: any) {
-    // Hub skills (oc-xxx / s-xxx) may not have marketplace entries — try bridge endpoint
-    if (skillId.startsWith('oc-') || skillId.startsWith('s') || skillId.startsWith('hub-')) {
-      try {
-        await apiFetch(`/openclaw/bridge/${instanceId}/skill-hub-install`, {
-          method: 'POST',
-          body: JSON.stringify({ skillId }),
-        });
-        dbRecorded = true;
-      } catch (bridgeErr: any) {
-        dbError = bridgeErr?.message || 'Hub install failed';
+    // Hub skills may not have marketplace entries — always try bridge endpoint as fallback
+    // (Hub skills can have UUID IDs or various prefixes)
+    try {
+      await apiFetch(`/openclaw/bridge/${instanceId}/skill-hub-install`, {
+        method: 'POST',
+        body: JSON.stringify({ skillId }),
+      });
+      dbRecorded = true;
+    } catch (bridgeErr: any) {
+      if (e?.message?.includes('already installed') || e?.message?.includes('Conflict')) {
+        dbRecorded = true; // Already installed is fine
+      } else {
+        dbError = bridgeErr?.message || e?.message || 'Install failed';
       }
-    } else if (e?.message?.includes('already installed') || e?.message?.includes('Conflict')) {
-      dbRecorded = true; // Already installed is fine
-    } else {
-      dbError = e?.message || 'DB record failed';
     }
   }
 
@@ -170,7 +169,7 @@ export async function installSkillToInstance(instanceId: string, skillId: string
   try {
     proxyResult = await apiFetch(`/openclaw/proxy/${instanceId}/skills/install`, {
       method: 'POST',
-      body: JSON.stringify({ skillId, skillPackageUrl: `/api/skills/${skillId}/pack/openclaw` }),
+      body: JSON.stringify({ skillId }),
     });
   } catch (proxyErr: any) {
     proxyError = proxyErr?.message || 'Skill activation failed on claw';
