@@ -138,7 +138,7 @@ export class ClaudeIntegrationService {
       },
       {
         name: 'search_agentrix_products',
-        description: '搜索 Agentrix Marketplace 中的商品。支持语义搜索、价格筛选、分类筛选等。',
+        description: 'Search Agentrix Marketplace for products, goods, and services. Also searches installable AI skills and tools when no products match. Use for any marketplace search query.',
         input_schema: {
           type: 'object',
           properties: {
@@ -437,17 +437,17 @@ export class ClaudeIntegrationService {
               sessionId: context.sessionId,
             },
           );
-          // If product search returned nothing, also search the skill table as fallback
+          // If product search returned nothing, also search the skills table as fallback
           // (covers agent chat fallback path that only has standard tools)
           const hasProducts = (productResult?.data?.products?.length ?? 0) > 0;
           if (!hasProducts && parameters.query) {
             try {
               const q = `%${String(parameters.query).toLowerCase().replace(/[%_]/g, '')}%`;
               const skills = await this.productRepository.query(
-                `SELECT id, name, "displayName", description, category, "hubSlug" FROM skill
+                `SELECT id, name, display_name, description, category, external_skill_id FROM skills
                  WHERE status = 'published'
-                   AND (LOWER(name) LIKE $1 OR LOWER("displayName") LIKE $1 OR LOWER(description) LIKE $1)
-                 ORDER BY "callCount" DESC NULLS LAST
+                   AND (LOWER(name) LIKE $1 OR LOWER(display_name) LIKE $1 OR LOWER(description) LIKE $1)
+                 ORDER BY call_count DESC NULLS LAST
                  LIMIT 10`,
                 [q],
               );
@@ -457,11 +457,11 @@ export class ClaudeIntegrationService {
                   data: {
                     products: skills.map((s: any) => ({
                       id: s.id,
-                      name: s.displayName || s.name,
+                      name: s.display_name || s.name,
                       description: s.description?.substring(0, 200),
                       category: s.category || 'skill',
                       type: 'skill',
-                      source: s.hubSlug ? 'openclaw_hub' : 'marketplace',
+                      source: s.external_skill_id ? 'openclaw_hub' : 'marketplace',
                     })),
                     query: parameters.query,
                     total: skills.length,
