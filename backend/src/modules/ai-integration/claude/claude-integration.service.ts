@@ -3,7 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Product } from '../../../entities/product.entity';
+import { Product, ProductStatus } from '../../../entities/product.entity';
 import { Order } from '../../../entities/order.entity';
 import { CapabilityRegistryService } from '../../ai-capability/services/capability-registry.service';
 import { CapabilityExecutorService } from '../../ai-capability/services/capability-executor.service';
@@ -166,14 +166,21 @@ export class ClaudeIntegrationService {
         input_schema: {
           type: 'object',
           properties: {
-            product_id: { type: 'string', description: '商品ID（必需）' },
+            product_id: {
+              type: 'string',
+              description: '商品ID、商品名称或商品 slug（任选其一）',
+            },
+            product_name: {
+              type: 'string',
+              description: '商品名称或 slug（可选，未提供 product_id 时可用）',
+            },
             quantity: {
               type: 'number',
               description: '数量（可选，默认：1）',
               minimum: 1,
             },
           },
-          required: ['product_id'],
+          required: [],
         },
       },
       {
@@ -203,7 +210,11 @@ export class ClaudeIntegrationService {
           properties: {
             product_id: {
               type: 'string',
-              description: '商品ID（从搜索结果中获取）',
+              description: '商品ID、商品名称或商品 slug（任选其一）',
+            },
+            product_name: {
+              type: 'string',
+              description: '商品名称或 slug（可选，未提供 product_id 时可用）',
             },
             quantity: {
               type: 'number',
@@ -232,7 +243,7 @@ export class ClaudeIntegrationService {
               description: '区块链网络（NFT类商品需要）',
             },
           },
-          required: ['product_id'],
+          required: [],
         },
       },
       {
@@ -1049,11 +1060,87 @@ export class ClaudeIntegrationService {
   }
 
   // 以下方法与 Gemini 服务相同，可以复用
+  private normalizeProductReference(value?: string): string | null {
+    const normalized = String(value || '').trim();
+    return normalized ? normalized : null;
+  }
+
+  private looksLikeUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
+  private async resolveProductFromReference(params: {
+    product_id?: string;
+    product_name?: string;
+  }): Promise<Product> {
+    const references = [
+      this.normalizeProductReference(params.product_id),
+      this.normalizeProductReference(params.product_name),
+    ].filter((value, index, list): value is string => !!value && list.indexOf(value) === index);
+
+    if (references.length === 0) {
+      throw new Error('缺少商品标识，请提供 product_id 或 product_name');
+    }
+
+    for (const reference of references) {
+      if (!this.looksLikeUuid(reference)) {
+        continue;
+      }
+
+      try {
+        return await this.productService.getProduct(reference);
+      } catch {
+        // Fall through to name/slug lookup.
+      }
+    }
+
+    for (const reference of references) {
+      const normalized = reference.toLowerCase();
+
+      const exactMatch = await this.productRepository
+        .createQueryBuilder('product')
+        .where('product.status = :status', { status: ProductStatus.ACTIVE })
+        .andWhere(
+          '(LOWER(product.name) = :normalized OR LOWER(product.externalId) = :normalized)',
+          { normalized },
+        )
+        .orderBy('product.stock', 'DESC')
+        .addOrderBy('product.createdAt', 'DESC')
+        .getOne();
+
+      if (exactMatch) {
+        return exactMatch;
+      }
+
+      const fuzzyPattern = `%${normalized}%`;
+      const fuzzyMatch = await this.productRepository
+        .createQueryBuilder('product')
+        .where('product.status = :status', { status: ProductStatus.ACTIVE })
+        .andWhere(
+          '(LOWER(product.name) LIKE :pattern OR LOWER(product.externalId) LIKE :pattern)',
+          { pattern: fuzzyPattern },
+        )
+        .orderBy('product.stock', 'DESC')
+        .addOrderBy('product.createdAt', 'DESC')
+        .getOne();
+
+      if (fuzzyMatch) {
+        return fuzzyMatch;
+      }
+    }
+
+    throw new Error(
+      `商品不存在：${references.join(' / ')}。请先搜索商品，或提供准确的商品 ID、名称或 slug。`,
+    );
+  }
+
   private async addToCart(
-    params: { product_id: string; quantity?: number },
+    params: { product_id?: string; product_name?: string; quantity?: number },
     context: { userId?: string; sessionId?: string },
   ): Promise<any> {
-    const { product_id, quantity = 1 } = params;
+    const { quantity = 1 } = params;
     const cartIdentifier = context.userId || context.sessionId;
     const isSessionId = !context.userId;
 
@@ -1061,14 +1148,11 @@ export class ClaudeIntegrationService {
       throw new Error('无法识别用户身份');
     }
 
-    const product = await this.productService.getProduct(product_id);
-    if (!product) {
-      throw new Error('商品不存在');
-    }
+    const product = await this.resolveProductFromReference(params);
 
     const cart = await this.cartService.addToCart(
       cartIdentifier,
-      product_id,
+      product.id,
       quantity,
       isSessionId,
     );
@@ -1172,7 +1256,8 @@ export class ClaudeIntegrationService {
 
   private async buyProduct(
     params: {
-      product_id: string;
+      product_id?: string;
+      product_name?: string;
       quantity?: number;
       shipping_address?: string;
       appointment_time?: string;
@@ -1196,14 +1281,11 @@ export class ClaudeIntegrationService {
       throw new Error('购买需要登录');
     }
 
-    const product = await this.productService.getProduct(product_id);
-    if (!product) {
-      throw new Error('商品不存在');
-    }
+    const product = await this.resolveProductFromReference(params);
 
     const order = await this.orderService.createOrder(context.userId, {
       merchantId: product.merchantId,
-      productId: product_id,
+      productId: product.id,
       amount: Number(product.price) * quantity,
       currency: (product.metadata as any)?.currency || 'CNY',
       metadata: {

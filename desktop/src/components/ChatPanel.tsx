@@ -3,8 +3,10 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   type CSSProperties,
   type KeyboardEvent,
+  type ChangeEvent,
 } from "react";
 import {
   useAuthStore,
@@ -12,6 +14,8 @@ import {
   streamDirectChat,
   fetchModels,
   type ChatMessage,
+  type ChatAttachment,
+  uploadChatAttachment,
 } from "../services/store";
 import MessageBubble from "./MessageBubble";
 import VoiceButton from "./VoiceButton";
@@ -40,11 +44,14 @@ export default function ChatPanel({ onClose }: Props) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
   // Track whether the current send was voice-initiated for auto-TTS
@@ -87,6 +94,20 @@ export default function ChatPanel({ onClose }: Props) {
     }
   }, [activeInstanceId]);
 
+  const serializeMessageForModel = useCallback(
+    (content: string, attachments: ChatAttachment[] = []) => {
+      const trimmed = content.trim();
+      if (attachments.length === 0) return trimmed;
+      const attachmentLines = attachments.map((attachment, index) => {
+        const label = attachment.kind === "image" ? "Image" : "File";
+        return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatBytes(attachment.size)})\nURL: ${attachment.publicUrl}`;
+      });
+      const prefix = trimmed ? `${trimmed}\n\n` : "";
+      return `${prefix}[User Attachments]\n${attachmentLines.join("\n\n")}\nUse the attachment URLs when relevant.`;
+    },
+    [],
+  );
+
   const appendChunk = useCallback((msgId: string, chunk: string) => {
     setMessages((prev) =>
       prev.map((m) =>
@@ -106,13 +127,16 @@ export default function ChatPanel({ onClose }: Props) {
   const handleSend = useCallback(
     async (overrideText?: string) => {
       const text = (overrideText || input).trim();
-      if (!text || sending) return;
+      if ((!text && pendingAttachments.length === 0) || sending || uploadingAttachments) return;
       if (!overrideText) setInput("");
+
+      const outboundText = serializeMessageForModel(text, pendingAttachments);
 
       const userMsg: ChatMessage = {
         id: `u-${Date.now()}`,
         role: "user",
-        content: text,
+        content: text || `Sent ${pendingAttachments.length} attachment${pendingAttachments.length > 1 ? "s" : ""}`,
+        attachments: pendingAttachments,
         createdAt: Date.now(),
       };
       const assistantId = `a-${Date.now()}`;
@@ -125,6 +149,7 @@ export default function ChatPanel({ onClose }: Props) {
       };
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setPendingAttachments([]);
       setSending(true);
       setBallState("thinking");
 
@@ -153,7 +178,7 @@ export default function ChatPanel({ onClose }: Props) {
           await new Promise<void>((resolve) => {
             const ac = streamChat({
               instanceId: activeInstanceId,
-              message: text,
+              message: outboundText,
               sessionId: sessionIdRef.current,
               token,
               model: selectedModel,
@@ -179,9 +204,9 @@ export default function ChatPanel({ onClose }: Props) {
       if (!succeeded && token) {
         const history = messages.slice(-10).map((m) => ({
           role: m.role,
-          content: m.content,
+          content: serializeMessageForModel(m.content, m.attachments || []),
         }));
-        history.push({ role: "user", content: text });
+        history.push({ role: "user", content: outboundText });
 
         await new Promise<void>((resolve) => {
           const ac = streamDirectChat({
@@ -227,11 +252,42 @@ export default function ChatPanel({ onClose }: Props) {
       token,
       selectedModel,
       messages,
+      pendingAttachments,
       appendChunk,
       finalizeMessage,
       ttsEnabled,
+      serializeMessageForModel,
+      uploadingAttachments,
     ],
   );
+
+  const pendingAttachmentSummary = useMemo(
+    () => pendingAttachments.map((attachment) => attachment.originalName).join(", "),
+    [pendingAttachments],
+  );
+
+  const handleAttachmentChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files || []);
+      event.target.value = "";
+      if (!files.length || !token) return;
+
+      try {
+        setUploadingAttachments(true);
+        const uploaded = await Promise.all(files.map((file) => uploadChatAttachment(file, token)));
+        setPendingAttachments((prev) => [...prev, ...uploaded]);
+      } catch (error: any) {
+        window.alert(error?.message || "Failed to upload attachment");
+      } finally {
+        setUploadingAttachments(false);
+      }
+    },
+    [token],
+  );
+
+  const removePendingAttachment = useCallback((fileName: string) => {
+    setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
+  }, []);
 
   // Sync voiceState with ballState
   useEffect(() => {
@@ -265,6 +321,7 @@ export default function ChatPanel({ onClose }: Props) {
     sentenceAccRef.current?.reset();
     sessionIdRef.current = `session-${Date.now()}`;
     setMessages([]);
+    setPendingAttachments([]);
     setBallState("idle");
   };
 
@@ -409,10 +466,45 @@ export default function ChatPanel({ onClose }: Props) {
           padding: "12px 16px",
           borderTop: "1px solid var(--border)",
           display: "flex",
+          flexDirection: "column",
           gap: 8,
-          alignItems: "flex-end",
         }}
       >
+        {!!pendingAttachments.length && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} title={pendingAttachmentSummary}>
+            {pendingAttachments.map((attachment) => (
+              <div
+                key={attachment.fileName}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid var(--border)",
+                  maxWidth: 260,
+                }}
+              >
+                <span style={{ fontSize: 14 }}>{attachment.isImage ? "🖼️" : "📎"}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {attachment.originalName}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatBytes(attachment.size)}</div>
+                </div>
+                <button onClick={() => removePendingAttachment(attachment.fileName)} style={chipCloseBtnStyle}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "flex-end",
+          }}
+        >
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -434,6 +526,30 @@ export default function ChatPanel({ onClose }: Props) {
             fontFamily: "inherit",
           }}
         />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleAttachmentChange}
+          style={{ display: "none" }}
+          accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!token || uploadingAttachments}
+          style={{
+            ...iconBtnStyle,
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: "var(--bg-input)",
+            border: "1px solid var(--border)",
+            opacity: !token || uploadingAttachments ? 0.5 : 1,
+          }}
+          title="Attach image or file"
+        >
+          {uploadingAttachments ? "⏳" : "📎"}
+        </button>
         <VoiceButton
           onTranscript={handleVoiceTranscript}
           voiceState={voiceState}
@@ -441,16 +557,16 @@ export default function ChatPanel({ onClose }: Props) {
         />
         <button
           onClick={() => handleSend()}
-          disabled={!input.trim() || sending}
+          disabled={(!input.trim() && pendingAttachments.length === 0) || sending || uploadingAttachments}
           style={{
             width: 40,
             height: 40,
             borderRadius: "50%",
             background:
-              input.trim() && !sending ? "var(--accent)" : "var(--bg-input)",
+              (input.trim() || pendingAttachments.length > 0) && !sending && !uploadingAttachments ? "var(--accent)" : "var(--bg-input)",
             color: "white",
             border: "none",
-            cursor: input.trim() && !sending ? "pointer" : "default",
+            cursor: (input.trim() || pendingAttachments.length > 0) && !sending && !uploadingAttachments ? "pointer" : "default",
             fontSize: 18,
             display: "flex",
             alignItems: "center",
@@ -459,11 +575,19 @@ export default function ChatPanel({ onClose }: Props) {
             flexShrink: 0,
           }}
         >
-          {sending ? "⏳" : "➤"}
+          {sending || uploadingAttachments ? "⏳" : "➤"}
         </button>
+        </div>
       </div>
     </div>
   );
+}
+
+function formatBytes(size: number) {
+  if (!size) return "Unknown size";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 const iconBtnStyle: CSSProperties = {
@@ -479,4 +603,13 @@ const iconBtnStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   WebkitAppRegion: "no-drag",
+};
+
+const chipCloseBtnStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "var(--text-dim)",
+  cursor: "pointer",
+  fontSize: 12,
+  padding: 0,
 };

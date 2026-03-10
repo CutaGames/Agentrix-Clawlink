@@ -39,6 +39,91 @@ export default function MessageBubble({ message, onRetry }: Props) {
     >
       {renderContent(message.content, message.streaming)}
 
+      {!!message.attachments?.length && (
+        <div
+          style={{
+            marginTop: message.content ? 10 : 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          {message.attachments.map((attachment) => (
+            <a
+              key={`${message.id}-${attachment.fileName}`}
+              href={attachment.publicUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: 8,
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.04)",
+                color: "inherit",
+                textDecoration: "none",
+              }}
+            >
+              {attachment.isImage ? (
+                <img
+                  src={attachment.publicUrl}
+                  alt={attachment.originalName}
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 8,
+                    objectFit: "cover",
+                    flexShrink: 0,
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(0,0,0,0.24)",
+                    flexShrink: 0,
+                    fontSize: 22,
+                  }}
+                >
+                  📎
+                </div>
+              )}
+              <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {attachment.originalName}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-dim)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {attachment.mimetype} · {formatBytes(attachment.size)}
+                </span>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
       {/* Retry button for error messages */}
       {isError && onRetry && (
         <button
@@ -93,6 +178,13 @@ export default function MessageBubble({ message, onRetry }: Props) {
       )}
     </div>
   );
+}
+
+function formatBytes(size: number) {
+  if (!size) return "Unknown size";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**

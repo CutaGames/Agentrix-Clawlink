@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
 import { useI18n } from '../../stores/i18nStore';
+import { uploadChatAttachment, type UploadedChatAttachment } from '../../services/api';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -28,10 +29,35 @@ interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: UploadedChatAttachment[];
   streaming?: boolean;
   error?: boolean;
   createdAt: number;
   thoughts?: string[]; // Added for Thought Chain UI
+}
+
+function formatAttachmentSize(size?: number | null) {
+  if (!size) return 'Unknown size';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function buildOutgoingMessageContent(text: string, attachments: UploadedChatAttachment[]) {
+  const trimmed = text.trim();
+  if (attachments.length === 0) return trimmed;
+
+  const attachmentLines = attachments.map((attachment, index) => {
+    const label = attachment.kind === 'image' ? 'Image' : 'File';
+    return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatAttachmentSize(attachment.size)})\nURL: ${attachment.publicUrl}`;
+  });
+
+  const prefix = trimmed ? `${trimmed}\n\n` : '';
+  return `${prefix}[User Attachments]\n${attachmentLines.join('\n\n')}\nUse the attachment URLs when relevant.`;
+}
+
+function serializeMessageForModel(message: Message) {
+  return buildOutgoingMessageContent(message.content, message.attachments || []);
 }
 
 // Strip basic markdown: **bold** -> bold, *italic* -> italic
@@ -121,6 +147,27 @@ const MessageBubble = ({ item }: { item: Message }) => {
             )}
           </View>
         )}
+        {!!item.attachments?.length && (
+          <View style={styles.attachmentList}>
+            {item.attachments.map((attachment) => (
+              <View key={`${item.id}-${attachment.fileName}`} style={styles.attachmentCard}>
+                {attachment.isImage ? (
+                  <Image source={{ uri: attachment.publicUrl }} style={styles.attachmentImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.attachmentFileIconWrap}>
+                    <Text style={styles.attachmentFileIcon}>📎</Text>
+                  </View>
+                )}
+                <View style={styles.attachmentMeta}>
+                  <Text style={styles.attachmentName} numberOfLines={1}>{attachment.originalName}</Text>
+                  <Text style={styles.attachmentSub} numberOfLines={1}>
+                    {attachment.mimetype} · {formatAttachmentSize(attachment.size)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -160,6 +207,8 @@ export function AgentChatScreen() {
   const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>('hold');
   const [duplexMode, setDuplexMode] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<UploadedChatAttachment[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
@@ -358,6 +407,7 @@ export function AgentChatScreen() {
           id: m.id || `hist-${Math.random()}`,
           role: m.role,
           content: m.content,
+          attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
           createdAt: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
         }));
         setMessages(historyMessages);
@@ -447,13 +497,42 @@ export function AgentChatScreen() {
     [
       ...msgs
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: serializeMessageForModel(m) })),
       { role: 'user' as const, content: newText },
     ];
 
-  const handleSend = async (overrideText?: string | any) => {
-    const text = (typeof overrideText === 'string' ? overrideText : input).trim();
-    if (!text || sending) return;
+  const enqueueAttachment = useCallback(async (localAttachment: {
+    uri: string;
+    fileName: string;
+    mimeType: string;
+  }) => {
+    try {
+      setUploadingAttachment(true);
+      const uploaded = await uploadChatAttachment({
+        uri: localAttachment.uri,
+        name: localAttachment.fileName,
+        type: localAttachment.mimeType,
+      });
+      setPendingAttachments((prev) => [...prev, uploaded]);
+      await Haptics.selectionAsync();
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Attachment Error', zh: '附件错误' }), error?.message || t({ en: 'Failed to upload attachment.', zh: '上传附件失败。' }));
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }, [t]);
+
+  const removePendingAttachment = useCallback((fileName: string) => {
+    setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
+  }, []);
+
+  const handleSend = async (overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => {
+    const rawText = typeof overrideText === 'string' ? overrideText : input;
+    const text = rawText.trim();
+    const attachments = overrideAttachments ?? pendingAttachments;
+    if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
+
+    const outgoingText = buildOutgoingMessageContent(text, attachments);
 
     if (voiceMode || voicePhase !== 'idle') {
       setVoicePhase('thinking');
@@ -462,7 +541,8 @@ export function AgentChatScreen() {
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: text,
+      content: text || `Sent ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`,
+      attachments,
       createdAt: Date.now(),
     };
 
@@ -483,6 +563,7 @@ export function AgentChatScreen() {
     activeAssistantMessageIdRef.current = assistantMsgId;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
+    setPendingAttachments([]);
     AsyncStorage.removeItem(draftStorageKey).catch(() => {});
     setTranscriptPreview('');
     setSending(true);
@@ -498,7 +579,7 @@ export function AgentChatScreen() {
         await new Promise<void>((resolve) => {
           const ac = streamProxyChatSSE({
             instanceId,
-            message: text,
+            message: outgoingText,
             sessionId: sessionIdRef.current,
             token,
             model: selectedModelId,
@@ -519,7 +600,7 @@ export function AgentChatScreen() {
 
       if (!streamSucceeded) {
         // Fallback: direct Claude via backend Bedrock key (always available)
-        const history = buildHistory(currentMsgs, text);
+        const history = buildHistory(currentMsgs, outgoingText);
         await new Promise<void>((resolve) => {
           const ac = streamDirectClaude({
             messages: history,
@@ -766,15 +847,33 @@ export function AgentChatScreen() {
         text: t({ en: '🖼️ Analyze Photo', zh: '🖼️ 分析图片' }),
         onPress: async () => {
           try {
-            const base64 = await DeviceBridgingService.pickImageAsBase64();
-            if (base64) {
-              // Note: Sending base64 directly might be too large for typical chat prompts.
-              // For a production app, you might upload it first and send a URL.
-              handleSend(`[System: User attached an image]\n${base64.substring(0, 50)}... (base64 truncated)`);
-              Alert.alert(t({ en: 'Image Attached', zh: '图片已附加' }), t({ en: 'Image data prepared for the agent.', zh: '图片数据已准备好，可发送给智能体。' }));
+            const image = await DeviceBridgingService.pickImageAttachment();
+            if (image?.uri) {
+              await enqueueAttachment({
+                uri: image.uri,
+                fileName: image.fileName || `image-${Date.now()}.jpg`,
+                mimeType: image.mimeType || 'image/jpeg',
+              });
             }
           } catch (e: any) {
             Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
+          }
+        }
+      },
+      {
+        text: t({ en: '📎 Insert File', zh: '📎 插入文件' }),
+        onPress: async () => {
+          try {
+            const file = await DeviceBridgingService.pickFileAttachment();
+            if (file?.uri) {
+              await enqueueAttachment({
+                uri: file.uri,
+                fileName: file.fileName,
+                mimeType: file.mimeType,
+              });
+            }
+          } catch (e: any) {
+            Alert.alert(t({ en: 'File Error', zh: '文件错误' }), e.message);
           }
         }
       },
@@ -900,6 +999,23 @@ export function AgentChatScreen() {
       )}
 
       {/* Input bar — WeChat / Doubao style */}
+      <View style={styles.inputArea}>
+        {!!pendingAttachments.length && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pendingAttachmentRow}>
+            {pendingAttachments.map((attachment) => (
+              <View key={attachment.fileName} style={styles.pendingAttachmentChip}>
+                <Text style={styles.pendingAttachmentIcon}>{attachment.isImage ? '🖼️' : '📎'}</Text>
+                <View style={styles.pendingAttachmentMeta}>
+                  <Text style={styles.pendingAttachmentName} numberOfLines={1}>{attachment.originalName}</Text>
+                  <Text style={styles.pendingAttachmentSub}>{formatAttachmentSize(attachment.size)}</Text>
+                </View>
+                <TouchableOpacity onPress={() => removePendingAttachment(attachment.fileName)}>
+                  <Text style={styles.pendingAttachmentRemove}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
       <View style={styles.inputRow}>
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
@@ -952,13 +1068,13 @@ export function AgentChatScreen() {
         )}
 
         {/* Right: Device Action or Send */}
-        {input.trim().length > 0 && !voiceMode ? (
+        {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
-            style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
             onPress={() => handleSend()}
-            disabled={sending}
+            disabled={sending || uploadingAttachment}
           >
-            {sending ? (
+            {sending || uploadingAttachment ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={styles.sendIcon}>⬆</Text>
@@ -980,6 +1096,7 @@ export function AgentChatScreen() {
             </TouchableOpacity>
           )
         )}
+      </View>
       </View>
 
       {/* Model picker modal — enhanced with availability & backend sync */}
@@ -1108,16 +1225,40 @@ const styles = StyleSheet.create({
   voiceStatusDots: { color: colors.accent, fontSize: 18, fontWeight: '700', lineHeight: 18 },
   voiceStatusText: { color: colors.textMuted, fontSize: 13, flex: 1 },
   voiceTranscriptPreview: { color: colors.textPrimary, fontSize: 12, marginTop: 4, lineHeight: 18 },
+  inputArea: {
+    backgroundColor: colors.bgSecondary,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: 12,
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     gap: 10,
   },
+  pendingAttachmentRow: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  pendingAttachmentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    maxWidth: 240,
+  },
+  pendingAttachmentIcon: { fontSize: 16 },
+  pendingAttachmentMeta: { flex: 1, minWidth: 0 },
+  pendingAttachmentName: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  pendingAttachmentSub: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
+  pendingAttachmentRemove: { color: colors.textMuted, fontSize: 12, paddingHorizontal: 2 },
   input: {
     flex: 1,
     backgroundColor: colors.bgCard,
@@ -1213,4 +1354,28 @@ const styles = StyleSheet.create({
   thoughtItemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   thoughtIcon: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   thoughtItemText: { fontSize: 12, color: colors.textMuted, flex: 1, lineHeight: 16 },
+  attachmentList: { marginTop: 8, gap: 8 },
+  attachmentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  attachmentImage: { width: 52, height: 52, borderRadius: 10 },
+  attachmentFileIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    backgroundColor: colors.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentFileIcon: { fontSize: 22 },
+  attachmentMeta: { flex: 1, minWidth: 0 },
+  attachmentName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
+  attachmentSub: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
 });
