@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import agentrixLogo from "../assets/agentrix-logo.png";
+import { useAuthStore } from "../services/store";
 
 const API_BASE = "https://api.agentrix.top/api";
 const PAIR_POLL_INTERVAL = 2000;
@@ -53,14 +54,21 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     pollRef.current = setInterval(async () => {
       try {
         const res = await apiFetch(`${API_BASE}/auth/desktop-pair/poll?session=${encodeURIComponent(id)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.token) {
-            localStorage.setItem("agentrix_token", data.token);
-            if (pollRef.current) clearInterval(pollRef.current);
-            if (timerRef.current) clearTimeout(timerRef.current);
-            onSuccess();
-          }
+        if (!res.ok) return;
+        const text = await res.text();
+        if (!text) return;
+        let data: any;
+        try { data = JSON.parse(text); } catch { return; }
+        if (data.token) {
+          // Save token and directly update store (don't rely on loadToken roundtrip)
+          localStorage.setItem("agentrix_token", data.token);
+          if (pollRef.current) clearInterval(pollRef.current);
+          if (timerRef.current) clearTimeout(timerRef.current);
+          // Directly set token in auth store for immediate UI transition
+          useAuthStore.setState({ token: data.token });
+          onSuccess();
+          // Then async load user info in background
+          useAuthStore.getState().loadToken();
         }
       } catch {
         // API not ready yet — silently continue polling
