@@ -1,5 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Product } from '../../../entities/product.entity';
 import { Order } from '../../../entities/order.entity';
 import { ClaudeIntegrationService } from './claude-integration.service';
@@ -17,6 +19,13 @@ import { BedrockIntegrationModule } from '../bedrock/bedrock-integration.module'
 @Module({
   imports: [
     TypeOrmModule.forFeature([Product, Order]),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({
+        secret: cfg.get<string>('JWT_SECRET', 'default-secret'),
+      }),
+    }),
     forwardRef(() => AiCapabilityModule),
     forwardRef(() => SearchModule),
     forwardRef(() => ProductModule),

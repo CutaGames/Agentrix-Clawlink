@@ -305,7 +305,131 @@ export class ClaudeIntegrationService {
       },
     ];
 
-    return [...claudeTools, ...basicTools, ...skillTools];
+    // Task marketplace tools
+    const taskTools = [
+      {
+        name: 'task_search',
+        description: 'Search the task marketplace for available tasks, bounties, gigs, and freelance work. Use when user asks about tasks, jobs, or bounties.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search keyword for tasks' },
+            type: { type: 'string', enum: ['custom_service', 'consultation', 'design', 'development', 'content', 'other'], description: 'Task type filter' },
+            minBudget: { type: 'number', description: 'Minimum budget filter' },
+            maxBudget: { type: 'number', description: 'Maximum budget filter' },
+            limit: { type: 'number', description: 'Max results (default 10)' },
+          },
+        },
+      },
+      {
+        name: 'task_post',
+        description: 'Post a new task or bounty to the task marketplace. Requires title, description, and budget.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Task title' },
+            description: { type: 'string', description: 'Detailed task description' },
+            budget: { type: 'number', description: 'Budget amount' },
+            currency: { type: 'string', description: 'Currency (default USDC)' },
+            type: { type: 'string', enum: ['custom_service', 'consultation', 'design', 'development', 'content', 'other'], description: 'Task type' },
+            deadline: { type: 'string', description: 'Deadline (ISO 8601 date)' },
+          },
+          required: ['title', 'description', 'budget'],
+        },
+      },
+      {
+        name: 'task_accept',
+        description: 'Accept a task from the task marketplace.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            taskId: { type: 'string', description: 'Task ID to accept' },
+          },
+          required: ['taskId'],
+        },
+      },
+      {
+        name: 'task_submit',
+        description: 'Submit deliverables for an accepted task to mark it complete.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            taskId: { type: 'string', description: 'Task ID' },
+            message: { type: 'string', description: 'Submission message or notes' },
+          },
+          required: ['taskId'],
+        },
+      },
+    ];
+
+    // Publish & marketplace tools
+    const publishTools = [
+      {
+        name: 'skill_publish',
+        description: 'Publish a new AI skill to the marketplace. The skill will be listed as a LOGIC-layer skill.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Skill name (unique identifier)' },
+            displayName: { type: 'string', description: 'Display name shown to users' },
+            description: { type: 'string', description: 'Detailed skill description' },
+            category: { type: 'string', description: 'Category (e.g. utility, finance, social)' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Tags for discovery' },
+            price: { type: 'number', description: 'Price (0 for free)' },
+          },
+          required: ['name', 'description'],
+        },
+      },
+      {
+        name: 'resource_publish',
+        description: 'Publish a resource, product, API service, or high-value workflow to the marketplace.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Resource name' },
+            description: { type: 'string', description: 'Detailed description' },
+            resourceType: { type: 'string', enum: ['api', 'dataset', 'model', 'workflow', 'service', 'product'], description: 'Resource type' },
+            price: { type: 'number', description: 'Price' },
+            currency: { type: 'string', description: 'Currency (default USDC)' },
+            category: { type: 'string', description: 'Category' },
+          },
+          required: ['name', 'description'],
+        },
+      },
+      {
+        name: 'marketplace_purchase',
+        description: 'Purchase a skill or resource from the marketplace using wallet balance.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            skillId: { type: 'string', description: 'Skill/resource ID to purchase' },
+            query: { type: 'string', description: 'Or search by name to find and purchase' },
+            paymentMethod: { type: 'string', description: 'Payment method (default USDC)' },
+          },
+        },
+      },
+    ];
+
+    // Share tools
+    const shareTools = [
+      {
+        name: 'share_content',
+        description: 'Generate a shareable link or poster for a skill, product, task, or any marketplace item. Returns a share URL and optional poster image data.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            itemType: { type: 'string', enum: ['skill', 'product', 'task', 'resource'], description: 'Type of item to share' },
+            itemId: { type: 'string', description: 'ID of the item to share' },
+            title: { type: 'string', description: 'Title for the share card' },
+            description: { type: 'string', description: 'Description for the share card' },
+            format: { type: 'string', enum: ['link', 'poster', 'both'], description: 'Share format (default: both)' },
+          },
+          required: ['itemType', 'itemId'],
+        },
+      },
+    ];
+
+    return [...claudeTools, ...basicTools, ...skillTools, ...taskTools, ...publishTools, ...shareTools];
   }
 
   /** Lazily get SkillExecutorService to avoid circular dependency */
@@ -567,7 +691,14 @@ export class ClaudeIntegrationService {
 
         case 'skill_search':
         case 'skill_install':
-        case 'skill_execute': {
+        case 'skill_execute':
+        case 'task_search':
+        case 'task_post':
+        case 'task_accept':
+        case 'task_submit':
+        case 'skill_publish':
+        case 'resource_publish':
+        case 'marketplace_purchase': {
           const executor = this.getSkillExecutor();
           if (!executor) {
             return { success: false, error: 'Skill service unavailable' };
@@ -581,6 +712,29 @@ export class ClaudeIntegrationService {
           } catch (skillErr: any) {
             return { success: false, error: skillErr.message };
           }
+        }
+
+        case 'share_content': {
+          const { itemType, itemId, title, description, format = 'both' } = parameters;
+          const baseUrl = this.configService.get<string>('APP_URL', 'https://agentrix.top');
+          const shareUrl = `${baseUrl}/share/${itemType}/${itemId}`;
+          const result: any = {
+            success: true,
+            shareUrl,
+            itemType,
+            itemId,
+            message: `Share link generated for ${itemType}: ${shareUrl}`,
+          };
+          if (format === 'poster' || format === 'both') {
+            result.poster = {
+              title: title || `Agentrix ${itemType}`,
+              description: description || '',
+              qrCodeUrl: shareUrl,
+              template: 'default',
+              instruction: 'Use this information to create a share card. The QR code should link to the share URL.',
+            };
+          }
+          return result;
         }
 
         default:

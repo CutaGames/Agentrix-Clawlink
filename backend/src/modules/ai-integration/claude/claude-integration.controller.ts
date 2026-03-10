@@ -1,9 +1,29 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Req } from '@nestjs/common';
+import { Request } from 'express';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { ClaudeIntegrationService } from './claude-integration.service';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
-  constructor(private claudeService: ClaudeIntegrationService) {}
+  constructor(
+    private claudeService: ClaudeIntegrationService,
+    private jwtService: JwtService,
+    private configService: ConfigService,
+  ) {}
+
+  /** Best-effort userId extraction from Bearer token (no guard — stays public). */
+  private extractUserIdFromToken(req: Request): string | undefined {
+    const auth = req.headers?.authorization;
+    if (!auth?.startsWith('Bearer ')) return undefined;
+    try {
+      const secret = this.configService.get<string>('JWT_SECRET', 'default-secret');
+      const payload = this.jwtService.verify(auth.slice(7), { secret });
+      return payload?.sub as string | undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   /**
    * 获取 Claude Function Schemas
@@ -24,6 +44,7 @@ export class ClaudeIntegrationController {
    */
   @Post('function-call')
   async executeFunctionCall(
+    @Req() req: Request,
     @Body()
     body: {
       function: {
@@ -37,6 +58,11 @@ export class ClaudeIntegrationController {
     },
   ) {
     const { function: func, context = {} } = body;
+
+    // Extract userId from JWT if not already in context
+    if (!context.userId) {
+      context.userId = this.extractUserIdFromToken(req);
+    }
 
     let parameters: Record<string, any> = {};
     try {
@@ -89,6 +115,7 @@ export class ClaudeIntegrationController {
    */
   @Post('chat')
   async chat(
+    @Req() req: Request,
     @Body()
     body: {
       messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
@@ -107,6 +134,11 @@ export class ClaudeIntegrationController {
   ) {
     const { messages, anthropicApiKey, context = {}, options } = body;
 
+    // Extract userId from JWT if not already in context
+    if (!context.userId) {
+      context.userId = this.extractUserIdFromToken(req);
+    }
+
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return { error: 'messages array is required and must not be empty' };
     }
@@ -115,16 +147,23 @@ export class ClaudeIntegrationController {
     // Otherwise inject the default personal agent system prompt.
     const hasClientSystemMessage = messages.some(m => m.role === 'system');
 
-    const defaultSystemPrompt = `You are the user's own personal AI agent, not an Agentrix customer-support bot unless the user explicitly asks for product help. You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
+    const defaultSystemPrompt = `You are the user's own personal AI agent on Agentrix platform. You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
 
-You have the following capabilities available:
-- Web search: when you need up-to-date information, call the search_web function
-- Agentrix marketplace: you can search and browse products if the user asks
-- Task assistance: help users plan, organise, and execute tasks
+You have the following tool capabilities — USE THEM when relevant:
+- **Web search** (search_web): search for up-to-date information
+- **Marketplace products** (search_agentrix_products): search goods, services, APIs, resources
+- **Shopping** (add_to_agentrix_cart, view_agentrix_cart, checkout_agentrix_cart, buy_agentrix_product): full e-commerce flow
+- **Orders & Payment** (get_agentrix_order, pay_agentrix_order): order tracking and payment
+- **AI Skills** (skill_search, skill_install, skill_execute): search, install, and run AI skills from OpenClaw Hub
+- **Publish** (skill_publish, resource_publish): publish new skills or resources to the marketplace
+- **Task marketplace** (task_search, task_post, task_accept, task_submit): search, post, accept, and complete tasks/bounties
+- **Marketplace purchase** (marketplace_purchase): purchase skills/resources with wallet balance
+- **Share** (share_content): generate share links and posters for any marketplace item
 
-${context.userId ? `User ID: ${context.userId}` : ''}${context.sessionId ? `Session ID: ${context.sessionId}` : ''}
+${context.userId ? `Authenticated User ID: ${context.userId}` : 'User is not authenticated — some features may be limited.'}
+${context.sessionId ? `Session: ${context.sessionId}` : ''}
 
-Always reply in the same language the user uses. Act like the user's long-term private agent, stay concise, and only talk about Agentrix as a platform when it is directly relevant.`;
+Always reply in the same language the user uses. When the user asks to do something, call the appropriate tool — never say you cannot do it if a tool exists for it.`;
 
     const baseMessages = hasClientSystemMessage ? messages : [
       { role: 'system' as const, content: defaultSystemPrompt },

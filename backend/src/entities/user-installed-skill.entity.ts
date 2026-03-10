@@ -17,29 +17,29 @@ export class UserInstalledSkill {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'userId', type: 'uuid' })
+  @Column({ type: 'uuid' })
   userId: string;
 
-  @Column({ name: 'skillId', type: 'uuid' })
+  @Column({ type: 'uuid' })
   skillId: string;
 
-  @Column({ name: 'isEnabled', default: true })
+  @Column({ default: true })
   isEnabled: boolean;
 
-  @Column({ name: 'config', type: 'jsonb', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   config: Record<string, any>;
 
-  @CreateDateColumn({ name: 'installedAt' })
+  @CreateDateColumn()
   installedAt: Date;
 
-  @UpdateDateColumn({ name: 'updatedAt' })
+  @UpdateDateColumn()
   updatedAt: Date;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'userId' })
+  @JoinColumn({ name: 'user_id' })
   user: User;
 
   @ManyToOne(() => Skill, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'skillId' })
+  @JoinColumn({ name: 'skill_id' })
   skill: Skill;
 }
