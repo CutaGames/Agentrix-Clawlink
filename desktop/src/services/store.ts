@@ -39,24 +39,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const stored = localStorage.getItem("agentrix_token");
       if (!stored) return;
       set({ token: stored });
-      // Fetch user info
+      // Fetch user info (use text+JSON.parse for tauriFetch compat)
       const res = await apiFetch(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${stored}` },
       });
-      if (!res.ok) {
+      const status = res.status;
+      if (status === 401 || status === 403) {
+        // Token is genuinely invalid — clear it
+        console.warn("[loadToken] /auth/me returned", status, "— clearing token");
         localStorage.removeItem("agentrix_token");
         set({ token: null });
         return;
       }
-      const data = await res.json();
+      if (status < 200 || status >= 300) {
+        // Server error — keep token, just skip loading user info
+        console.warn("[loadToken] /auth/me returned", status, "— keeping token");
+        return;
+      }
+      const text = await res.text();
+      if (!text) return;
+      const data = JSON.parse(text);
       set({
         user: data.user || data,
         instances: data.openClawInstances || data.instances || [],
         activeInstanceId:
           data.openClawInstances?.[0]?.id || data.instances?.[0]?.id || null,
       });
-    } catch {
-      // offline / token expired
+    } catch (e) {
+      // Offline / parse error — keep token, don't clear
+      console.warn("[loadToken] error (keeping token):", e);
     }
   },
 
@@ -75,8 +86,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, code }),
     });
-    if (!res.ok) return false;
-    const data = await res.json();
+    if (res.status < 200 || res.status >= 300) return false;
+    const text = await res.text();
+    if (!text) return false;
+    const data = JSON.parse(text);
     const token = data.token || data.access_token;
     if (!token) return false;
     localStorage.setItem("agentrix_token", token);

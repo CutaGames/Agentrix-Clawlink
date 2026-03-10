@@ -60,14 +60,14 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
         let data: any;
         try { data = JSON.parse(text); } catch { return; }
         if (data.token) {
+          console.log("[LoginPanel] Poll got token, transitioning...");
           // Save token and directly update store (don't rely on loadToken roundtrip)
           localStorage.setItem("agentrix_token", data.token);
           if (pollRef.current) clearInterval(pollRef.current);
           if (timerRef.current) clearTimeout(timerRef.current);
           // Directly set token in auth store for immediate UI transition
           useAuthStore.setState({ token: data.token });
-          onSuccess();
-          // Then async load user info in background
+          // Load user info in background (won't clear token on failure)
           useAuthStore.getState().loadToken();
         }
       } catch {

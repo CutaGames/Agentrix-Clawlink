@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, ActivityIndicator, Linking,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -22,12 +22,20 @@ type Step = 'choose' | 'install' | 'scanning' | 'connecting';
 
 export function LocalDeployScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { t } = useI18n();
   const { addInstance, setActiveInstance } = useAuthStore.getState();
 
   const [step, setStep] = useState<Step>('choose');
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+
+  // Auto-open scanner when navigated with directScan param (e.g. from Quick Action)
+  useEffect(() => {
+    if (route.params?.directScan) {
+      openScanner();
+    }
+  }, []);
 
   const openScanner = async () => {
     if (!permission?.granted) {

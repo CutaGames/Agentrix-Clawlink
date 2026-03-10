@@ -411,18 +411,19 @@ export function AgentConsoleScreen() {
           {/* ── Quick Actions ── */}
           <View style={styles.quickActions}>
             {([
+              { icon: '📷', label: t({ en: 'Scan QR', zh: '扫一扫' }), route: 'LocalDeploy' as const, params: { directScan: true } },
               { icon: '📋', label: t({ en: 'Activity Logs', zh: '活动日志' }), route: 'AgentLogs' as const },
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
               { icon: '🎤', label: t({ en: 'Voice Chat', zh: '语音对话' }), route: 'VoiceChat' as const },
-              { icon: '�️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
-              { icon: '�👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
+              { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
+              { icon: '👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
               { icon: '🤖', label: t({ en: 'Agent Accounts', zh: '智能体账户' }), route: 'AgentAccount' as const },
-            ]).map((item) => (
+            ] as const).map((item) => (
               <TouchableOpacity
                 key={item.route}
                 style={styles.quickAction}
-                onPress={() => navigation.navigate(item.route as any)}
+                onPress={() => navigation.navigate(item.route as any, 'params' in item ? item.params : undefined)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.quickActionIcon}>{item.icon}</Text>

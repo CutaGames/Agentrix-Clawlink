@@ -10,7 +10,7 @@ export type OnboardingStackParamList = {
   DeploySelect: undefined;
   CloudDeploy: undefined;
   ConnectExisting: undefined;
-  LocalDeploy: undefined;
+  LocalDeploy: { directScan?: boolean } | undefined;
   SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
@@ -37,7 +37,7 @@ export type AgentStackParamList = {
   DeploySelect: undefined;
   CloudDeploy: undefined;
   ConnectExisting: undefined;
-  LocalDeploy: undefined;
+  LocalDeploy: { directScan?: boolean } | undefined;
   SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
