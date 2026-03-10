@@ -20,6 +20,7 @@ export type AgentStackParamList = {
   OpenClawBind: undefined;
   /** Deep-link target for the desktop installer QR code: agentrix://connect?instanceId=...&token=...&host=...&port=... */
   LocalConnect: { instanceId?: string; token?: string; host?: string; port?: string };
+  Scan: undefined;
   SkillInstall: { skillId: string; skillName: string };
   StoragePlan: undefined;
   AgentLogs: undefined;
@@ -90,6 +91,7 @@ export type ChatStackParamList = {
 
 export type MeStackParamList = {
   Profile: undefined;
+  Scan: undefined;
   ReferralDashboard: undefined;
   Settings: undefined;
   ApiKeys: undefined;

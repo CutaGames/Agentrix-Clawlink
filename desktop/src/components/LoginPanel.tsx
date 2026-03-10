@@ -45,20 +45,27 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: id }),
       });
-      if (!createRes.ok) console.warn('Desktop pair create failed:', createRes.status);
+      const createStatus = createRes.status;
+      if (createStatus < 200 || createStatus >= 300) {
+        console.warn('Desktop pair create failed:', createStatus);
+      } else {
+        console.log('[LoginPanel] Session created:', id);
+      }
     } catch (e) {
       console.warn('Desktop pair create error:', e);
     }
 
-    // Poll for token
+    // Poll for token (note: tauriFetch .ok may not work, use .status)
     pollRef.current = setInterval(async () => {
       try {
         const res = await apiFetch(`${API_BASE}/auth/desktop-pair/poll?session=${encodeURIComponent(id)}`);
-        if (!res.ok) return;
+        const status = res.status;
+        if (status < 200 || status >= 300) return;
         const text = await res.text();
         if (!text) return;
         let data: any;
         try { data = JSON.parse(text); } catch { return; }
+        console.log('[LoginPanel] Poll response:', JSON.stringify(data));
         if (data.token) {
           console.log("[LoginPanel] Poll got token, transitioning...");
           // Save token and directly update store (don't rely on loadToken roundtrip)

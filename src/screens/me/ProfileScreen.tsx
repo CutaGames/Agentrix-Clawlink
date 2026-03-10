@@ -47,9 +47,13 @@ export function ProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Top bar: title + notification bell */}
+      {/* Top bar: title + scan + notification bell */}
       <View style={styles.topBar}>
         <Text style={styles.topBarTitle}>{t({ en: 'Profile', zh: '我的' })}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('Scan')}>
+          <Text style={styles.bellIcon}>📷</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('NotificationCenter')}>
           <Text style={styles.bellIcon}>🔔</Text>
           {unreadCount > 0 && (
@@ -58,6 +62,7 @@ export function ProfileScreen() {
             </View>
           )}
         </TouchableOpacity>
+        </View>
       </View>
 
       {/* Profile Header */}

@@ -15,6 +15,7 @@ import { WalletConnectScreen } from '../screens/WalletConnectScreen';
 import { WalletBackupScreen } from '../screens/me/WalletBackupScreen';
 import { WalletSetupScreen } from '../screens/me/WalletSetupScreen';
 import { SocialListenerScreen } from '../screens/social/SocialListenerScreen';
+import { ScanScreen } from '../screens/me/ScanScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -32,6 +33,7 @@ export function MeStackNavigator() {
       }}
     >
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: t({ en: 'Me', zh: '我的' }) }} />
+      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} options={{ title: t({ en: 'Referrals & Earnings', zh: '推广与收益' }) }} />
       <Stack.Screen name="Settings" component={ClawSettingsScreen} options={{ title: t({ en: 'Settings', zh: '设置' }) }} />
       <Stack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: t({ en: 'Custom API Keys', zh: '自定义 API 密钥' }) }} />

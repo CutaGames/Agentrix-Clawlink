@@ -411,7 +411,7 @@ export function AgentConsoleScreen() {
           {/* ── Quick Actions ── */}
           <View style={styles.quickActions}>
             {([
-              { icon: '📷', label: t({ en: 'Scan QR', zh: '扫一扫' }), route: 'LocalDeploy' as const, params: { directScan: true } },
+              { icon: '📷', label: t({ en: 'Scan QR', zh: '扫一扫' }), route: 'Scan' as const },
               { icon: '📋', label: t({ en: 'Activity Logs', zh: '活动日志' }), route: 'AgentLogs' as const },
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
