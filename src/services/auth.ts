@@ -398,6 +398,16 @@ export async function startQrBindSession(): Promise<{
   return createBindSession();
 }
 
+/**
+ * 确认桌面端扫码配对（移动端已登录用户调用）
+ */
+export async function confirmDesktopPair(sessionId: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>('/auth/desktop-pair/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
 export async function waitForQrBind(sessionId: string): Promise<OpenClawInstance | null> {
   const result = await pollBindSession(sessionId);
   if (result.status === 'confirmed' && result.instance) {

@@ -984,6 +984,35 @@ export class AuthController {
   async mcpJwks() {
     return { keys: [] };
   }
+
+  // ========== Desktop Pair (桌面端扫码配对) ==========
+
+  @Post('desktop-pair/create')
+  @ApiOperation({ summary: '创建桌面端配对会话' })
+  @ApiResponse({ status: 200, description: '会话已创建' })
+  async createDesktopPair(@Body() body: { sessionId: string }) {
+    if (!body.sessionId) throw new BadRequestException('sessionId is required');
+    return this.authService.createDesktopPairSession(body.sessionId);
+  }
+
+  @Get('desktop-pair/poll')
+  @ApiOperation({ summary: '桌面端轮询配对结果' })
+  @ApiResponse({ status: 200, description: '返回配对状态' })
+  async pollDesktopPair(@Request() req) {
+    const sessionId = req.query?.session;
+    if (!sessionId) throw new BadRequestException('session query param is required');
+    return this.authService.pollDesktopPairSession(sessionId);
+  }
+
+  @Post('desktop-pair/confirm')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '移动端确认桌面配对（需登录）' })
+  @ApiResponse({ status: 200, description: '配对成功' })
+  async confirmDesktopPair(@Body() body: { sessionId: string }, @Request() req) {
+    if (!body.sessionId) throw new BadRequestException('sessionId is required');
+    return this.authService.confirmDesktopPair(body.sessionId, req.user);
+  }
 }
 
 

@@ -887,5 +887,59 @@ export class AuthService {
 
     return this.login(user);
   }
+
+  // ========== Desktop Pair (扫码配对登录) ==========
+
+  private desktopPairSessions = new Map<string, { token?: string; expiresAt: number }>();
+
+  /**
+   * 创建桌面配对会话（桌面端调用）
+   */
+  createDesktopPairSession(sessionId: string): { sessionId: string; expiresAt: number } {
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 min
+    this.desktopPairSessions.set(sessionId, { expiresAt });
+
+    // 清理过期会话
+    for (const [key, val] of this.desktopPairSessions.entries()) {
+      if (val.expiresAt < Date.now()) this.desktopPairSessions.delete(key);
+    }
+
+    return { sessionId, expiresAt };
+  }
+
+  /**
+   * 桌面端轮询配对结果
+   */
+  pollDesktopPairSession(sessionId: string): { resolved: boolean; token?: string } {
+    const session = this.desktopPairSessions.get(sessionId);
+    if (!session) return { resolved: false };
+    if (session.expiresAt < Date.now()) {
+      this.desktopPairSessions.delete(sessionId);
+      return { resolved: false };
+    }
+    if (session.token) {
+      this.desktopPairSessions.delete(sessionId);
+      return { resolved: true, token: session.token };
+    }
+    return { resolved: false };
+  }
+
+  /**
+   * 移动端确认配对（已登录用户扫码后调用）
+   */
+  async confirmDesktopPair(sessionId: string, user: User): Promise<{ success: boolean }> {
+    const session = this.desktopPairSessions.get(sessionId);
+    if (!session) throw new BadRequestException('Session not found or expired');
+    if (session.expiresAt < Date.now()) {
+      this.desktopPairSessions.delete(sessionId);
+      throw new BadRequestException('Session expired');
+    }
+
+    // 为桌面端生成 JWT
+    const loginResult = await this.login(user);
+    session.token = loginResult.access_token;
+    this.logger.log(`Desktop pair confirmed for user ${user.id}, session ${sessionId}`);
+    return { success: true };
+  }
 }
 

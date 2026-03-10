@@ -415,7 +415,8 @@ export function AgentConsoleScreen() {
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
               { icon: '🎤', label: t({ en: 'Voice Chat', zh: '语音对话' }), route: 'VoiceChat' as const },
-              { icon: '👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
+              { icon: '�️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
+              { icon: '�👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
               { icon: '🤖', label: t({ en: 'Agent Accounts', zh: '智能体账户' }), route: 'AgentAccount' as const },
             ]).map((item) => (
               <TouchableOpacity

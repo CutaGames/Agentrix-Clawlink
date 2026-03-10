@@ -28,6 +28,7 @@ export type AgentStackParamList = {
   WorkflowDetail: { workflowId?: string };
   AgentAccount: undefined;
   AgentPermissions: { agentAccountId?: string } | undefined;
+  AgentTools: { instanceId?: string };
   // Layer 2
   VoiceChat: { instanceId?: string; instanceName?: string };
   TeamSpace: undefined;

@@ -52,3 +52,11 @@ scripts/
 
 # Gradle
 mobile-app/
+
+# Desktop (Tauri) build artifacts
+desktop/src-tauri/target/
+desktop/node_modules/
+desktop/dist/
+desktop/*.ps1
+desktop/*.png
+desktop/*.tar.gz
