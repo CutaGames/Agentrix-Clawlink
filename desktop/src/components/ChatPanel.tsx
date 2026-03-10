@@ -17,7 +17,12 @@ import MessageBubble from "./MessageBubble";
 import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
-import { playTTS, stopTTS, type VoiceState } from "../services/voice";
+import { type VoiceState } from "../services/voice";
+import {
+  AudioQueuePlayer,
+  SentenceAccumulator,
+  detectLang,
+} from "../services/AudioQueuePlayer";
 
 interface Props {
   onClose: () => void;
@@ -40,6 +45,10 @@ export default function ChatPanel({ onClose }: Props) {
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
+  const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
+  const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
+  // Track whether the current send was voice-initiated for auto-TTS
+  const voiceInitiatedRef = useRef(false);
 
   useEffect(() => {
     if (token) {
@@ -119,6 +128,24 @@ export default function ChatPanel({ onClose }: Props) {
       setSending(true);
       setBallState("thinking");
 
+      // Set up streaming TTS if enabled and voice-initiated
+      const shouldStreamTTS = ttsEnabled && token && voiceInitiatedRef.current;
+      let audioPlayer: AudioQueuePlayer | null = null;
+      let sentenceAcc: SentenceAccumulator | null = null;
+
+      if (shouldStreamTTS) {
+        audioPlayer = new AudioQueuePlayer(
+          token!,
+          () => setBallState("idle"),
+          (playing) => { if (playing) setBallState("speaking"); },
+        );
+        audioPlayerRef.current = audioPlayer;
+        sentenceAcc = new SentenceAccumulator((sentence) => {
+          audioPlayer!.enqueue(sentence, detectLang(sentence));
+        });
+        sentenceAccRef.current = sentenceAcc;
+      }
+
       let succeeded = false;
 
       if (activeInstanceId && token) {
@@ -132,11 +159,13 @@ export default function ChatPanel({ onClose }: Props) {
               model: selectedModel,
               onChunk: (chunk) => {
                 succeeded = true;
-                setBallState("speaking");
+                if (!audioPlayer?.playing) setBallState("speaking");
                 appendChunk(assistantId, chunk);
+                sentenceAcc?.push(chunk);
               },
               onDone: () => {
                 finalizeMessage(assistantId);
+                sentenceAcc?.flush();
                 resolve();
               },
               onError: () => resolve(),
@@ -160,11 +189,13 @@ export default function ChatPanel({ onClose }: Props) {
             sessionId: sessionIdRef.current,
             token,
             onChunk: (chunk) => {
-              setBallState("speaking");
+              if (!audioPlayer?.playing) setBallState("speaking");
               appendChunk(assistantId, chunk);
+              sentenceAcc?.push(chunk);
             },
             onDone: () => {
               finalizeMessage(assistantId);
+              sentenceAcc?.flush();
               resolve();
             },
             onError: (err) => {
@@ -183,22 +214,10 @@ export default function ChatPanel({ onClose }: Props) {
       }
 
       setSending(false);
-      setBallState("idle");
-
-      // Auto-play TTS for voice-initiated messages
-      if (ttsEnabled && token) {
-        const lastMsg = messages[messages.length - 1];
-        // Get the final assistant content after streaming is done
-        setMessages((prev) => {
-          const assistant = prev.find((m) => m.id === assistantId);
-          if (assistant?.content && !assistant.error) {
-            setBallState("speaking");
-            playTTS(assistant.content.slice(0, 500), token).then(() => {
-              setBallState("idle");
-            });
-          }
-          return prev;
-        });
+      voiceInitiatedRef.current = false;
+      // If no audio queued, reset ball state immediately
+      if (!audioPlayer?.playing) {
+        setBallState("idle");
       }
     },
     [
@@ -220,9 +239,10 @@ export default function ChatPanel({ onClose }: Props) {
     else if (voiceState === "processing") setBallState("thinking");
   }, [voiceState]);
 
-  // Handle voice transcript — auto-send
+  // Handle voice transcript — auto-send with TTS
   const handleVoiceTranscript = useCallback(
     (text: string) => {
+      voiceInitiatedRef.current = true;
       setInput(text);
       handleSend(text);
     },
@@ -241,8 +261,11 @@ export default function ChatPanel({ onClose }: Props) {
 
   const handleNewChat = () => {
     abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
     sessionIdRef.current = `session-${Date.now()}`;
     setMessages([]);
+    setBallState("idle");
   };
 
   const panel: CSSProperties = {
