@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import agentrixLogo from "../assets/agentrix-logo.png";
 
 const API_BASE = "https://api.agentrix.top/api";
 const PAIR_POLL_INTERVAL = 2000;
 const PAIR_TTL = 300_000; // 5 min
+
+// Use Tauri HTTP plugin to bypass CORS in WebView2
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await tauriFetch(url, init as any);
+  } catch {
+    return await fetch(url, init);
+  }
+}
 
 interface Props {
   onSuccess: () => void;
@@ -27,21 +37,22 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     if (pollRef.current) clearInterval(pollRef.current);
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    // Register session with backend
+    // Register session with backend (must use apiFetch for CORS bypass in Tauri)
     try {
-      await fetch(`${API_BASE}/auth/desktop-pair/create`, {
+      const createRes = await apiFetch(`${API_BASE}/auth/desktop-pair/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: id }),
       });
-    } catch {
-      // Backend may not be reachable — QR still works for future retry
+      if (!createRes.ok) console.warn('Desktop pair create failed:', createRes.status);
+    } catch (e) {
+      console.warn('Desktop pair create error:', e);
     }
 
     // Poll for token
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`${API_BASE}/auth/desktop-pair/poll?session=${encodeURIComponent(id)}`);
+        const res = await apiFetch(`${API_BASE}/auth/desktop-pair/poll?session=${encodeURIComponent(id)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.token) {
