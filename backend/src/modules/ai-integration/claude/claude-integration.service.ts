@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -64,6 +65,7 @@ export class ClaudeIntegrationService {
     private payIntentService: PayIntentService,
     private modelRouter: ModelRouterService,
     private bedrockService: BedrockIntegrationService,
+    private moduleRef: ModuleRef,
   ) {
     // 从环境变量读取模型名称（向后兼容）
     this.defaultModel =
@@ -261,7 +263,59 @@ export class ClaudeIntegrationService {
       },
     ];
 
-    return [...claudeTools, ...basicTools];
+    // Skill tools — always available so LLM can search/install/execute skills
+    // even when called from /api/claude/chat (no additionalTools/preset skills)
+    const skillTools = [
+      {
+        name: 'skill_search',
+        description: 'Search for installable AI skills, tools, and plugins across the marketplace and OpenClaw Hub. ALWAYS use this when the user asks about skills, tools, or capabilities.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query — keyword, skill name, or description' },
+            category: { type: 'string', description: 'Filter by category (e.g. utility, social, finance, integration)' },
+            limit: { type: 'number', description: 'Max results to return (default 10)' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'skill_install',
+        description: 'Install a skill from the marketplace or OpenClaw Hub for the user. Call skill_search first to find the skill.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Skill name or search query to find and install' },
+            skillId: { type: 'string', description: 'Direct skill ID if known' },
+          },
+        },
+      },
+      {
+        name: 'skill_execute',
+        description: 'Execute an installed or hub skill directly. Call skill_search first if you need to find it.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Skill name or search query to find and execute' },
+            skillId: { type: 'string', description: 'Direct skill ID if known' },
+            prompt: { type: 'string', description: 'Natural-language prompt for the skill' },
+            input: { type: 'object', description: 'Structured input payload for the skill' },
+          },
+        },
+      },
+    ];
+
+    return [...claudeTools, ...basicTools, ...skillTools];
+  }
+
+  /** Lazily get SkillExecutorService to avoid circular dependency */
+  private getSkillExecutor(): any {
+    try {
+      const { SkillExecutorService } = require('../../skill/skill-executor.service');
+      return this.moduleRef.get(SkillExecutorService, { strict: false });
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -510,6 +564,24 @@ export class ClaudeIntegrationService {
             parameters as { order_id: string; payment_method?: string },
             context,
           );
+
+        case 'skill_search':
+        case 'skill_install':
+        case 'skill_execute': {
+          const executor = this.getSkillExecutor();
+          if (!executor) {
+            return { success: false, error: 'Skill service unavailable' };
+          }
+          try {
+            const result = await executor.executeInternal(functionName, parameters, {
+              userId: context.userId,
+              metadata: {},
+            });
+            return { success: true, data: result };
+          } catch (skillErr: any) {
+            return { success: false, error: skillErr.message };
+          }
+        }
 
         default:
           throw new Error(`未知的 Function: ${functionName}`);
