@@ -131,6 +131,7 @@ export function AgentPermissionsScreen() {
   const [perms, setPerms] = useState<PermissionState>(DEFAULT_PERMISSIONS);
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
+  const [isSaving, setIsSaving] = useState(false);
 
   const updatePerm = <K extends keyof PermissionState>(key: K, value: PermissionState[K]) => {
     setPerms((p) => ({ ...p, [key]: value }));
@@ -150,6 +151,7 @@ export function AgentPermissionsScreen() {
   const handleSave = async () => {
     if (!activeAgent) return;
     try {
+      setIsSaving(true);
       // Persist spending limits to backend via PATCH /agent-accounts/:id
       await apiFetch(`/agent-accounts/${activeAgent.id}`, {
         method: 'PATCH',
@@ -166,8 +168,9 @@ export function AgentPermissionsScreen() {
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
       Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions updated successfully.', zh: '权限已更新。' }));
     } catch (e: any) {
-      // Graceful: permissions stored locally even if backend doesn't return 200 yet
-      Alert.alert(t({ en: 'Saved locally', zh: '已在本地保存' }), t({ en: 'Settings saved on device. Backend sync will resume on reconnect.', zh: '设置已保存在设备上，恢复连接后会继续同步到后端。' }));
+      Alert.alert(t({ en: 'Save Failed', zh: '保存失败' }), e?.message || t({ en: 'Failed to update permissions.', zh: '更新权限失败。' }));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -365,8 +368,12 @@ export function AgentPermissionsScreen() {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>💾 {t({ en: 'Save Permissions', zh: '保存权限设置' })}</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, (isSaving || !activeAgent) && styles.saveBtnDisabled]}
+        onPress={handleSave}
+        disabled={isSaving || !activeAgent}
+      >
+        <Text style={styles.saveBtnText}>{isSaving ? '⏳ ' : '💾 '}{t({ en: 'Save Permissions', zh: '保存权限设置' })}</Text>
       </TouchableOpacity>
 
       {/* ── Danger Zone ── */}
@@ -453,6 +460,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary, borderRadius: 14, padding: 15,
     alignItems: 'center', marginTop: 4,
   },
+  saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   dangerRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   dangerBtn: {

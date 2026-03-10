@@ -6,10 +6,36 @@ import { v4 as uuidv4 } from 'uuid';
 @Injectable()
 export class UploadService {
   private readonly uploadDir = path.join(process.cwd(), 'uploads', 'products');
+  private readonly chatUploadDir = path.join(process.cwd(), 'uploads', 'chat');
+  private readonly maxAttachmentSize = 15 * 1024 * 1024;
 
   constructor() {
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
+    this.ensureDir(this.uploadDir);
+    this.ensureDir(this.chatUploadDir);
+  }
+
+  private ensureDir(dirPath: string) {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  }
+
+  private saveFile(file: Express.Multer.File, dirPath: string, publicPrefix: string) {
+    const fileExt = path.extname(file.originalname);
+    const fileName = `${uuidv4()}${fileExt}`;
+    const filePath = path.join(dirPath, fileName);
+
+    try {
+      fs.writeFileSync(filePath, file.buffer);
+      return {
+        url: `${publicPrefix}/${fileName}`,
+        fileName,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      };
+    } catch {
+      throw new BadRequestException('Failed to save file');
     }
   }
 
@@ -23,24 +49,45 @@ export class UploadService {
       throw new BadRequestException('Invalid file type. Only images are allowed.');
     }
 
-    const fileExt = path.extname(file.originalname);
-    const fileName = `${uuidv4()}${fileExt}`;
-    const filePath = path.join(this.uploadDir, fileName);
+    return this.saveFile(file, this.uploadDir, '/api/uploads/products');
+  }
 
-    try {
-      fs.writeFileSync(filePath, file.buffer);
-      
-      // Return the URL that can be used to access the file
-      // The prefix /api/uploads/ is configured in main.ts
-      return {
-        url: `/api/uploads/products/${fileName}`,
-        fileName: fileName,
-        originalName: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size,
-      };
-    } catch (error) {
-      throw new BadRequestException('Failed to save file');
+  async uploadChatAttachment(file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
     }
+
+    if (file.size > this.maxAttachmentSize) {
+      throw new BadRequestException('Attachment is too large. Max size is 15 MB.');
+    }
+
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'application/json',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Unsupported attachment type.');
+    }
+
+    const saved = this.saveFile(file, this.chatUploadDir, '/api/uploads/chat');
+    return {
+      ...saved,
+      kind: file.mimetype.startsWith('image/') ? 'image' : 'file',
+      isImage: file.mimetype.startsWith('image/'),
+    };
   }
 }

@@ -21,6 +21,17 @@ export interface ApiConfig {
   token?: string;
 }
 
+export interface UploadedChatAttachment {
+  url: string;
+  publicUrl: string;
+  fileName: string;
+  originalName: string;
+  mimetype: string;
+  size: number;
+  kind: 'image' | 'file';
+  isImage: boolean;
+}
+
 let config: ApiConfig = {
   baseUrl: API_BASE,
 };
@@ -68,12 +79,18 @@ export const clearToken = async () => {
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${config.baseUrl}${path}`;
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
 
-  if (!isFormData && !headers['Content-Type']) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const contentTypeHeader = Object.keys(headers).find((key) => key.toLowerCase() === 'content-type');
+
+  if (isFormData) {
+    if (contentTypeHeader) {
+      delete headers[contentTypeHeader];
+    }
+  } else if (!contentTypeHeader) {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -99,7 +116,31 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     throw new Error(errorMessage);
   }
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json();
+}
+
+export async function uploadChatAttachment(file: {
+  uri: string;
+  name: string;
+  type: string;
+}): Promise<UploadedChatAttachment> {
+  const formData = new FormData();
+  formData.append('file', file as any);
+
+  const uploaded = await apiFetch<Omit<UploadedChatAttachment, 'publicUrl'>>('/upload/chat-attachment', {
+    method: 'POST',
+    body: formData,
+  });
+
+  const publicBase = (config.baseUrl || API_BASE).replace(/\/api\/?$/, '');
+  return {
+    ...uploaded,
+    publicUrl: uploaded.url.startsWith('http') ? uploaded.url : `${publicBase}${uploaded.url}`,
+  };
 }
 
 // ========== Memory API ==========

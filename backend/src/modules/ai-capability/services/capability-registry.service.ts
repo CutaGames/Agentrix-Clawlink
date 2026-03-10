@@ -378,10 +378,11 @@ export class CapabilityRegistryService {
       parameters: {
         type: 'object',
         properties: {
-          product_id: { type: 'string', description: '商品ID' },
+          product_id: { type: 'string', description: '商品ID、商品名称或商品 slug' },
+          product_name: { type: 'string', description: '商品名称或商品 slug（可选）' },
           quantity: { type: 'number', description: '数量' },
         },
-        required: ['product_id'],
+        required: [],
       },
       enabled: true,
     });

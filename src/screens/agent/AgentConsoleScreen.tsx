@@ -423,7 +423,14 @@ export function AgentConsoleScreen() {
               <TouchableOpacity
                 key={item.route}
                 style={styles.quickAction}
-                onPress={() => navigation.navigate(item.route as any, 'params' in item ? item.params : undefined)}
+                onPress={() => navigation.navigate(
+                  item.route as any,
+                  item.route === 'VoiceChat'
+                    ? { instanceId: activeInstance.id, instanceName: activeInstance.name }
+                    : 'params' in item
+                      ? item.params
+                      : undefined,
+                )}
                 activeOpacity={0.7}
               >
                 <Text style={styles.quickActionIcon}>{item.icon}</Text>

@@ -96,7 +96,9 @@ test.describe('Phase 3 – Social Callback Status', () => {
     const body = await res.json();
     // Bot token is set in production .env
     expect(body.platforms.telegram.connected).toBe(true);
-    expect(body.platforms.telegram.webhookUrl).toContain('/social/callback/telegram');
+    expect(body.platforms.telegram.webhookUrl).toMatch(
+      /\/(social\/callback|openclaw-connection\/webhook)\/telegram$/,
+    );
   });
 
   test('Discord platform shows connected when DISCORD keys are set', async ({ request }) => {

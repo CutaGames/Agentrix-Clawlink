@@ -1,15 +1,51 @@
 import { create } from "zustand";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
-const API_BASE = "https://api.agentrix.top/api";
+export const API_BASE = "https://api.agentrix.top/api";
 
 // Use Tauri HTTP plugin (bypasses CORS) when available, else standard fetch
-async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   try {
     return await tauriFetch(url, init as any);
   } catch {
     return await fetch(url, init);
   }
+}
+
+export interface ChatAttachment {
+  url: string;
+  publicUrl: string;
+  fileName: string;
+  originalName: string;
+  mimetype: string;
+  size: number;
+  kind: 'image' | 'file';
+  isImage: boolean;
+}
+
+export async function uploadChatAttachment(file: File, token: string): Promise<ChatAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE}/upload/chat-attachment`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `Upload failed: ${response.status}`);
+  }
+
+  const uploaded = await response.json();
+  const publicBase = API_BASE.replace(/\/api\/?$/, '');
+  return {
+    ...uploaded,
+    publicUrl: uploaded.url.startsWith('http') ? uploaded.url : `${publicBase}${uploaded.url}`,
+  };
 }
 
 // ─── Auth Store ────────────────────────────────────────
@@ -114,6 +150,7 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  attachments?: ChatAttachment[];
   streaming?: boolean;
   error?: boolean;
   createdAt: number;
