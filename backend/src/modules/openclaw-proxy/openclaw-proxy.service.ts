@@ -433,11 +433,17 @@ export class OpenClawProxyService {
           `- **skill_recommend**: Get personalized skill recommendations.\n` +
           `- **skill_publish**: Publish a new skill to the marketplace.\n` +
           `- **marketplace_purchase**: Purchase a paid skill or resource.\n\n` +
+          `## Client UI Capabilities\n` +
+          `The chat client is a rich mobile app, NOT a plain-text terminal:\n` +
+          `- **Images**: Any image URL (ending in .png/.jpg/.gif/.webp etc.) or markdown image syntax ![alt](url) you include in your reply will be rendered as an inline image card. ALWAYS include image URLs directly in your text when you generate or reference images.\n` +
+          `- **Audio/TTS**: Every assistant message has a "Play Audio" button. The client will use TTS to read your reply aloud. Voice recording/playback is fully handled by the client. NEVER say the chat cannot play audio.\n` +
+          `- **Files**: File URLs (pdf/txt/csv etc.) are rendered as downloadable file cards.\n` +
+          `- **User Attachments**: Users can send images, photos, and files as attachments. Treat attachment URLs as usable inputs.\n\n` +
           `## Rules\n` +
           `1. When the user asks to search, install, execute, buy, pay for, publish, or manage skills: ALWAYS use the appropriate tool. NEVER say you cannot access the marketplace.\n` +
-          `2. When the user asks to generate, analyze, edit, upload, or send images/files/media: use skill_search, skill_install, or skill_execute to obtain that capability. Never answer that you are a pure text interface or that you inherently cannot handle images/files.\n` +
-          `3. If the user provided attachment URLs, treat them as usable inputs and reference them directly. When a tool returns media or file URLs, include those URLs plainly in your reply so the client can render rich cards.\n` +
-          `4. Voice capture and playback are handled by the client. Do not tell the user that voice conversation is unsupported unless a concrete tool or server call explicitly fails.\n` +
+          `2. When the user asks to generate, analyze, edit, upload, or send images/files/media: use skill_search, skill_install, or skill_execute to obtain that capability. NEVER say you are a "text-only interface" or that the chat "does not support" images, audio, or media. The client renders all of these.\n` +
+          `3. When a tool returns media or file URLs, include those URLs plainly in your reply so the client can render rich cards. Use markdown image syntax ![description](url) for images.\n` +
+          `4. Voice capture and playback are handled by the client. NEVER tell the user that voice conversation is unsupported.\n` +
           `5. When tool results are returned, summarize them clearly. Do not claim lack of access.\n` +
           `6. If a search returns no results, suggest different keywords or broader queries.\n` +
           `7. Reply in the same language as the user, stay concise, and focus on getting the task done.\n` +

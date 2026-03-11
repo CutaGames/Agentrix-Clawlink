@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, Modal,
-  TextInput, ScrollView,
+  TextInput, ScrollView, Platform, StatusBar,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
@@ -655,7 +655,9 @@ const modal = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 12 : 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.bgSecondary,

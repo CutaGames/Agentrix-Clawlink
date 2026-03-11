@@ -180,21 +180,27 @@ export class DeviceBridgingService {
 
   /**
    * Take a photo using the device camera.
+   * Falls back to album picker if camera is unavailable (e.g. HarmonyOS).
    */
   static async takeCameraPhoto(): Promise<ImageAttachment | null> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const ImagePicker = require('expo-image-picker');
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+      // Check if camera hardware is available before requesting permissions
+      const available = await ImagePicker.getCameraPermissionsAsync();
+      const { status } = available.status === 'granted'
+        ? available
+        : await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         throw new Error('Camera permission denied by user.');
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.8,
         base64: false,
+        exif: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -215,6 +221,12 @@ export class DeviceBridgingService {
         return null;
       }
       console.error('Failed to take camera photo:', error);
+      // If camera launch crashes (e.g. HarmonyOS), fall back to album picker
+      const msg = String(error?.message || '').toLowerCase();
+      if (msg.includes('activity') || msg.includes('crash') || msg.includes('resolve') || msg.includes('not available')) {
+        console.warn('Camera unavailable — falling back to photo album');
+        return DeviceBridgingService.pickImageAttachment();
+      }
       throw new Error(error.message || 'Failed to take camera photo');
     }
   }
