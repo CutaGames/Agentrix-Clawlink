@@ -1,6 +1,6 @@
 // 🔐 Agent Permissions & Security Screen
 // Shows and manages all permission boundaries for the active AgentAccount
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Switch, Alert, TextInput,
@@ -12,6 +12,8 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { useI18n } from '../../stores/i18nStore';
+import { useAuthStore } from '../../stores/authStore';
+import { bindAgentAccountToInstance } from '../../services/openclaw.service';
 
 type Route = RouteProp<AgentStackParamList, 'AgentPermissions'>;
 
@@ -23,6 +25,7 @@ interface AgentAccount {
   agentUniqueId: string;
   status: string;
   walletAddress?: string;
+  permissions?: Partial<PermissionState>;
   spendingLimits?: {
     singleTxLimit: number;
     dailyLimit: number;
@@ -70,6 +73,25 @@ const DEFAULT_PERMISSIONS: PermissionState = {
   mcpToolCount: 3,
 };
 
+function normalizePermissions(value?: Partial<PermissionState> | null): PermissionState {
+  return {
+    ...DEFAULT_PERMISSIONS,
+    ...(value || {}),
+    allowedCurrencies: Array.isArray(value?.allowedCurrencies) && value?.allowedCurrencies.length
+      ? value.allowedCurrencies.filter((currency): currency is string => typeof currency === 'string')
+      : DEFAULT_PERMISSIONS.allowedCurrencies,
+    gpsAccuracy:
+      value?.gpsAccuracy === 'district' || value?.gpsAccuracy === 'exact'
+        ? value.gpsAccuracy
+        : DEFAULT_PERMISSIONS.gpsAccuracy,
+    mcpToolCount: typeof value?.mcpToolCount === 'number' ? value.mcpToolCount : DEFAULT_PERMISSIONS.mcpToolCount,
+    confirmationThreshold:
+      typeof value?.confirmationThreshold === 'number'
+        ? value.confirmationThreshold
+        : DEFAULT_PERMISSIONS.confirmationThreshold,
+  };
+}
+
 const CURRENCY_OPTIONS = ['USDT', 'ETH', 'USD'];
 
 // ── Section header ──────────────────────────────────────────────────
@@ -114,6 +136,8 @@ export function AgentPermissionsScreen() {
   const agentAccountId = route.params?.agentAccountId;
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const activeInstance = useAuthStore((s) => s.activeInstance);
+  const updateInstance = useAuthStore((s) => s.updateInstance);
 
   const { data: agents = [] } = useQuery<AgentAccount[]>({
     queryKey: ['agent-accounts'],
@@ -124,14 +148,38 @@ export function AgentPermissionsScreen() {
     retry: false,
   });
 
-  const activeAgent = agentAccountId
-    ? agents.find((a) => a.id === agentAccountId)
-    : agents[0];
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(agentAccountId);
+
+  useEffect(() => {
+    if (agentAccountId) {
+      setSelectedAgentId(agentAccountId);
+      return;
+    }
+    if (!selectedAgentId && activeInstance?.metadata?.agentAccountId) {
+      setSelectedAgentId(activeInstance.metadata.agentAccountId);
+      return;
+    }
+    if (!selectedAgentId && agents[0]?.id) {
+      setSelectedAgentId(agents[0].id);
+    }
+  }, [agentAccountId, activeInstance?.metadata?.agentAccountId, agents, selectedAgentId]);
+
+  const activeAgent = (selectedAgentId
+    ? agents.find((a) => a.id === selectedAgentId)
+    : undefined) ?? agents[0];
 
   const [perms, setPerms] = useState<PermissionState>(DEFAULT_PERMISSIONS);
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
   const [isSaving, setIsSaving] = useState(false);
+
+  const expectedPermissionsJson = JSON.stringify(normalizePermissions(perms));
+
+  useEffect(() => {
+    const nextPermissions = normalizePermissions(activeAgent?.permissions);
+    setPerms(nextPermissions);
+    setThresholdInput(String(nextPermissions.confirmationThreshold));
+  }, [activeAgent?.id, activeAgent?.permissions]);
 
   const updatePerm = <K extends keyof PermissionState>(key: K, value: PermissionState[K]) => {
     setPerms((p) => ({ ...p, [key]: value }));
@@ -152,9 +200,9 @@ export function AgentPermissionsScreen() {
     if (!activeAgent) return;
     try {
       setIsSaving(true);
-      // Persist spending limits to backend via PATCH /agent-accounts/:id
+      // Persist spending limits and permissions to backend.
       await apiFetch(`/agent-accounts/${activeAgent.id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify({
           spendingLimits: {
             singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,
@@ -165,8 +213,27 @@ export function AgentPermissionsScreen() {
           permissions: perms,
         }),
       });
-      queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-      Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions updated successfully.', zh: '权限已更新。' }));
+
+      const verified = await apiFetch<{ success: boolean; data: AgentAccount }>(`/agent-accounts/${activeAgent.id}`);
+      const verifiedPermissions = normalizePermissions(verified.data?.permissions);
+      if (JSON.stringify(verifiedPermissions) !== expectedPermissionsJson) {
+        throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
+      }
+
+      if (activeInstance?.id) {
+        const updatedInstance = await bindAgentAccountToInstance(activeInstance.id, activeAgent.id);
+        updateInstance(activeInstance.id, { metadata: updatedInstance.metadata || { agentAccountId: activeAgent.id } });
+      }
+
+      setPerms(verifiedPermissions);
+      setThresholdInput(String(verifiedPermissions.confirmationThreshold));
+      await queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+      Alert.alert(
+        t({ en: 'Saved ✅', zh: '已保存 ✅' }),
+        activeInstance?.id
+          ? t({ en: 'Permissions were saved, verified from the server, and bound to the current instance.', zh: '权限已保存，已从服务器回读校验，并已绑定到当前实例。' })
+          : t({ en: 'Permissions were saved and verified from the server.', zh: '权限已保存，并已从服务器回读校验。' }),
+      );
     } catch (e: any) {
       Alert.alert(t({ en: 'Save Failed', zh: '保存失败' }), e?.message || t({ en: 'Failed to update permissions.', zh: '更新权限失败。' }));
     } finally {
@@ -211,6 +278,38 @@ export function AgentPermissionsScreen() {
       ) : (
         <View style={styles.noAgentBox}>
           <Text style={styles.noAgentText}>{t({ en: 'No agent selected. Go to Agent Accounts to set one up.', zh: '当前未选择智能体。请前往“智能体账户”先创建或选择一个。' })}</Text>
+        </View>
+      )}
+
+      {activeInstance?.id ? (
+        <View style={styles.instanceBindingCard}>
+          <Text style={styles.instanceBindingTitle}>{t({ en: 'Applies to current instance', zh: '应用到当前实例' })}</Text>
+          <Text style={styles.instanceBindingText}>
+            {t({ en: `${activeInstance.name} will use the selected Agent Account profile for tool and payment permissions.`, zh: `${activeInstance.name} 将使用当前选中的 Agent Account 作为工具与支付权限档案。` })}
+          </Text>
+        </View>
+      ) : null}
+
+      {agents.length > 1 && (
+        <View style={styles.accountPickerWrap}>
+          <Text style={styles.accountPickerTitle}>{t({ en: 'Choose the account to configure', zh: '选择要配置的账户' })}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountPickerRow}>
+            {agents.map((agent) => {
+              const selected = agent.id === activeAgent?.id;
+              return (
+                <TouchableOpacity
+                  key={agent.id}
+                  style={[styles.accountChip, selected && styles.accountChipActive]}
+                  onPress={() => setSelectedAgentId(agent.id)}
+                >
+                  <Text style={[styles.accountChipText, selected && styles.accountChipTextActive]}>{agent.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          {!agentAccountId && (
+            <Text style={styles.accountPickerHint}>{t({ en: 'Permissions are saved to the selected Agent Account and verified after saving.', zh: '权限会保存到当前选中的智能体账户，并在保存后回读校验。' })}</Text>
+          )}
         </View>
       )}
 
@@ -399,6 +498,21 @@ export function AgentPermissionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
+  accountPickerWrap: { gap: 10, marginBottom: 4 },
+  accountPickerTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  accountPickerRow: { gap: 8 },
+  accountChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  accountChipActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
+  accountChipText: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  accountChipTextActive: { color: colors.accent },
+  accountPickerHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   agentBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
@@ -413,6 +527,16 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
   },
   noAgentText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
+  instanceBindingCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    marginBottom: 4,
+  },
+  instanceBindingTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  instanceBindingText: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 4, paddingTop: 12, paddingBottom: 4,

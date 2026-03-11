@@ -437,6 +437,7 @@ function mapRawInstances(raw: any[]): OpenClawInstance[] {
     relayToken: inst.relayToken || inst.relay_token || undefined,
     version: inst.version,
     lastSyncAt: inst.lastSyncAt || inst.updatedAt,
+    metadata: inst.metadata || undefined,
   }));
 }
 

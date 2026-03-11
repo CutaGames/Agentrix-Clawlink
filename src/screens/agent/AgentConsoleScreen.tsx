@@ -509,7 +509,7 @@ export function AgentConsoleScreen() {
         <View style={{ gap: 10 }}>
           <TouchableOpacity
             style={styles.permissionsCard}
-            onPress={() => navigation.navigate('AgentPermissions', {})}
+            onPress={() => navigation.navigate('AgentPermissions', { agentAccountId: activeInstance.metadata?.agentAccountId })}
             activeOpacity={0.8}
           >
             <Text style={styles.permissionsCardIcon}>🔐</Text>
@@ -537,7 +537,7 @@ export function AgentConsoleScreen() {
           ))}
           <TouchableOpacity
             style={[styles.primaryBtn, { marginTop: 4 }]}
-            onPress={() => navigation.navigate('AgentPermissions', {})}
+            onPress={() => navigation.navigate('AgentPermissions', { agentAccountId: activeInstance.metadata?.agentAccountId })}
           >
             <Text style={styles.primaryBtnText}>🔐 {t({ en: 'Open Full Permissions Manager →', zh: '打开完整权限管理器 →' })}</Text>
           </TouchableOpacity>
