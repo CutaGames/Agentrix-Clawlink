@@ -970,33 +970,25 @@ export function AgentChatScreen() {
 
   const openModelPicker = () => setShowModelPicker(true);
 
-  const handleDeviceAction = () => {
-    Alert.alert(t({ en: 'Device Tools', zh: '设备工具' }), t({ en: 'Provide local device data to the Agent', zh: '向智能体提供本地设备数据' }), [
-      {
-        text: t({ en: '📍 Send GPS Location', zh: '📍 发送 GPS 位置' }),
-        onPress: async () => {
-          try {
-            const loc = await DeviceBridgingService.getCurrentLocation();
-            handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
-          } catch (e: any) {
-            Alert.alert(t({ en: 'Location Error', zh: '定位错误' }), e.message);
-          }
-        }
-      },
-      {
-        text: t({ en: '📋 Paste Clipboard', zh: '📋 粘贴剪贴板' }),
-        onPress: async () => {
-          try {
-            const text = await DeviceBridgingService.readClipboard();
-            if (!text) return Alert.alert(t({ en: 'Clipboard Empty', zh: '剪贴板为空' }), t({ en: 'Nothing to paste.', zh: '没有可粘贴的内容。' }));
-            setInput((prev) => prev ? `${prev}\n${text}` : text);
-          } catch (e: any) {
-            Alert.alert(t({ en: 'Clipboard Error', zh: '剪贴板错误' }), e.message);
-          }
-        }
-      },
-      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' }
-    ]);
+  const handleDeviceGPS = async () => {
+    setShowAttachToolbar(false);
+    try {
+      const loc = await DeviceBridgingService.getCurrentLocation();
+      handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Location Error', zh: '定位错误' }), e.message);
+    }
+  };
+
+  const handleDeviceClipboard = async () => {
+    setShowAttachToolbar(false);
+    try {
+      const text = await DeviceBridgingService.readClipboard();
+      if (!text) return Alert.alert(t({ en: 'Clipboard Empty', zh: '剪贴板为空' }), t({ en: 'Nothing to paste.', zh: '没有可粘贴的内容。' }));
+      setInput((prev) => prev ? `${prev}\n${text}` : text);
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Clipboard Error', zh: '剪贴板错误' }), e.message);
+    }
   };
 
   const handleAttachmentAction = () => {
@@ -1223,6 +1215,14 @@ export function AgentChatScreen() {
             <Text style={styles.attachToolbarIcon}>📎</Text>
             <Text style={styles.attachToolbarLabel}>{t({ en: 'File', zh: '文件' })}</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleDeviceGPS}>
+            <Text style={styles.attachToolbarIcon}>📍</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'GPS', zh: '位置' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleDeviceClipboard}>
+            <Text style={styles.attachToolbarIcon}>📋</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'Clipboard', zh: '剪贴板' })}</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1300,7 +1300,7 @@ export function AgentChatScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Right: Device Action or Send */}
+        {/* Right: Send or voice mode toggle */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
             style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
@@ -1323,11 +1323,7 @@ export function AgentChatScreen() {
                 {voiceInteractionMode === 'tap' ? '◉' : '◎'}
               </Text>
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.deviceBtn} onPress={handleDeviceAction}>
-              <Text style={styles.deviceIcon}>⊕</Text>
-            </TouchableOpacity>
-          )
+          ) : null
         )}
       </View>
       </View>
