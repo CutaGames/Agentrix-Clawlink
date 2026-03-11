@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AgentAccount, AgentAccountStatus } from '../../entities/agent-account.entity';
 import { OpenClawInstance, OpenClawInstanceStatus } from '../../entities/openclaw-instance.entity';
 import { OpenClawConnectionService } from '../openclaw-connection/openclaw-connection.service';
 import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
@@ -27,6 +28,14 @@ export interface ChatMessageDto {
   model?: string;
 }
 
+interface RuntimePermissionProfile {
+  agentAccountId?: string;
+  agentAccountName?: string;
+  agentAccountStatus?: string;
+  allowedToolNames: string[];
+  deniedToolNames: string[];
+}
+
 @Injectable()
 export class OpenClawProxyService {
   private readonly logger = new Logger(OpenClawProxyService.name);
@@ -42,6 +51,8 @@ export class OpenClawProxyService {
     private readonly skillService: SkillService,
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
+    @InjectRepository(AgentAccount)
+    private agentAccountRepo: Repository<AgentAccount>,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -164,15 +175,58 @@ export class OpenClawProxyService {
       .replace(/^_+|_+$/g, '')}`;
   }
 
+  private async resolveRuntimePermissionProfile(userId: string, instance: OpenClawInstance): Promise<RuntimePermissionProfile | null> {
+    const agentAccountId = typeof instance.metadata?.agentAccountId === 'string'
+      ? instance.metadata.agentAccountId
+      : undefined;
+
+    if (!agentAccountId) return null;
+
+    const agentAccount = await this.agentAccountRepo.findOne({ where: { id: agentAccountId, ownerId: userId } });
+    if (!agentAccount) {
+      return null;
+    }
+
+    const permissions = agentAccount.permissions || {};
+    const deniedToolNames = new Set<string>();
+
+    if (agentAccount.status !== AgentAccountStatus.ACTIVE) {
+      AGENT_PRESET_SKILLS.forEach((skill) => deniedToolNames.add(skill.handlerName));
+    }
+    if (permissions.autonomousPaymentEnabled === false) {
+      ['create_order', 'x402_pay', 'quickpay_execute', 'marketplace_purchase', 'resource_publish', 'task_post'].forEach((name) => deniedToolNames.add(name));
+    }
+    if (permissions.webSearchEnabled === false) {
+      ['skill_search', 'search_products', 'resource_search', 'task_search', 'skill_recommend'].forEach((name) => deniedToolNames.add(name));
+    }
+    if (permissions.telegramEnabled === false) {
+      deniedToolNames.add('agent_invoke');
+    }
+    if (permissions.twitterEnabled === false) {
+      deniedToolNames.add('resource_publish');
+    }
+
+    const allPresetToolNames = AGENT_PRESET_SKILLS.map((skill) => skill.handlerName);
+    return {
+      agentAccountId: agentAccount.id,
+      agentAccountName: agentAccount.name,
+      agentAccountStatus: agentAccount.status,
+      allowedToolNames: allPresetToolNames.filter((name) => !deniedToolNames.has(name)),
+      deniedToolNames: [...deniedToolNames],
+    };
+  }
+
   private async buildPlatformHostedTools(userId: string, instance: OpenClawInstance): Promise<{
     additionalTools: any[];
     onToolCall: (name: string, args: any) => Promise<any>;
   }> {
+    const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
     const installations = await this.skillService.findEffectiveInstalledSkillsForInstance(instance.id, userId);
     const enabledInstallations = installations.filter((installation: any) => installation?.isEnabled && installation?.skill);
 
     const presetTools = AGENT_PRESET_SKILLS
       .filter((skill) => skill.enabledByDefault || skill.handlerName === 'skill_publish' || skill.handlerName === 'resource_publish')
+      .filter((skill) => !permissionProfile?.deniedToolNames.includes(skill.handlerName))
       .map((skill) => this.buildPlatformToolSchema(skill));
     const installedToolEntries = enabledInstallations.map((installation: any) => {
       const skill = installation.skill;
@@ -205,8 +259,17 @@ export class OpenClawProxyService {
         const ctx: ExecutionContext = {
           userId,
           sessionId: undefined,
-          metadata: { instanceId: instance.id, source: 'platform-hosted-chat' },
+          metadata: {
+            instanceId: instance.id,
+            source: 'platform-hosted-chat',
+            agentAccountId: permissionProfile?.agentAccountId,
+            permissionProfile,
+          },
         };
+
+        if (permissionProfile?.deniedToolNames.includes(name)) {
+          throw new ForbiddenException(`Tool ${name} is disabled by the bound Agent Account permission profile.`);
+        }
 
         if (preset) {
           return this.skillExecutorService.executeInternal(name, args || {}, ctx);
@@ -353,6 +416,7 @@ export class OpenClawProxyService {
     }
 
     const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
+    const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messages = [
       {
@@ -376,7 +440,10 @@ export class OpenClawProxyService {
           `4. Voice capture and playback are handled by the client. Do not tell the user that voice conversation is unsupported unless a concrete tool or server call explicitly fails.\n` +
           `5. When tool results are returned, summarize them clearly. Do not claim lack of access.\n` +
           `6. If a search returns no results, suggest different keywords or broader queries.\n` +
-          `7. Reply in the same language as the user, stay concise, and focus on getting the task done.`,
+          `7. Reply in the same language as the user, stay concise, and focus on getting the task done.\n` +
+          `${permissionProfile
+            ? `8. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
+            : '8. No Agent Account permission profile is currently bound to this instance.'}`,
       },
       { role: 'user' as const, content: dto.message },
     ];

@@ -19,6 +19,7 @@ import {
   OpenClawInstanceStatus,
   OpenClawInstanceType,
 } from '../../entities/openclaw-instance.entity';
+import { AgentAccount } from '../../entities/agent-account.entity';
 import { getDefaultSkillHandlerNames } from '../skill/agent-preset-skills.config';
 
 export interface BindOpenClawDto {
@@ -146,6 +147,8 @@ export class OpenClawConnectionService implements OnModuleInit {
   constructor(
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
+    @InjectRepository(AgentAccount)
+    private agentAccountRepo: Repository<AgentAccount>,
   ) {}
 
   /** On startup: auto-fix any ERROR cloud instances left from failed Docker provisioning. */
@@ -322,6 +325,27 @@ export class OpenClawConnectionService implements OnModuleInit {
     if (!instance) throw new NotFoundException('OpenClaw instance not found');
     if (instance.userId !== userId) throw new ForbiddenException();
     return instance;
+  }
+
+  async bindAgentAccount(userId: string, instanceId: string, agentAccountId: string | null): Promise<OpenClawInstance> {
+    const instance = await this.getInstanceById(userId, instanceId);
+
+    if (agentAccountId) {
+      const agentAccount = await this.agentAccountRepo.findOne({ where: { id: agentAccountId, ownerId: userId } });
+      if (!agentAccount) {
+        throw new NotFoundException('Agent account not found for this user');
+      }
+    }
+
+    const nextMetadata = { ...(instance.metadata || {}) };
+    if (agentAccountId) {
+      nextMetadata.agentAccountId = agentAccountId;
+    } else {
+      delete nextMetadata.agentAccountId;
+    }
+
+    instance.metadata = Object.keys(nextMetadata).length > 0 ? nextMetadata : null as any;
+    return this.instanceRepo.save(instance);
   }
 
   async setPrimaryInstance(userId: string, instanceId: string): Promise<void> {

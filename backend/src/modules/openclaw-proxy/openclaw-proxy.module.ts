@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AgentAccount } from '../../entities/agent-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
 import { Skill } from '../../entities/skill.entity';
@@ -12,7 +13,7 @@ import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integra
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OpenClawInstance, UserInstalledSkill, Skill]),
+    TypeOrmModule.forFeature([OpenClawInstance, UserInstalledSkill, Skill, AgentAccount]),
     OpenClawConnectionModule,
     TokenQuotaModule,
     forwardRef(() => SkillModule),

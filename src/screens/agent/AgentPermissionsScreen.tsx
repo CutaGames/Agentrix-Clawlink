@@ -12,6 +12,8 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { useI18n } from '../../stores/i18nStore';
+import { useAuthStore } from '../../stores/authStore';
+import { bindAgentAccountToInstance } from '../../services/openclaw.service';
 
 type Route = RouteProp<AgentStackParamList, 'AgentPermissions'>;
 
@@ -134,6 +136,8 @@ export function AgentPermissionsScreen() {
   const agentAccountId = route.params?.agentAccountId;
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const activeInstance = useAuthStore((s) => s.activeInstance);
+  const updateInstance = useAuthStore((s) => s.updateInstance);
 
   const { data: agents = [] } = useQuery<AgentAccount[]>({
     queryKey: ['agent-accounts'],
@@ -151,10 +155,14 @@ export function AgentPermissionsScreen() {
       setSelectedAgentId(agentAccountId);
       return;
     }
+    if (!selectedAgentId && activeInstance?.metadata?.agentAccountId) {
+      setSelectedAgentId(activeInstance.metadata.agentAccountId);
+      return;
+    }
     if (!selectedAgentId && agents[0]?.id) {
       setSelectedAgentId(agents[0].id);
     }
-  }, [agentAccountId, agents, selectedAgentId]);
+  }, [agentAccountId, activeInstance?.metadata?.agentAccountId, agents, selectedAgentId]);
 
   const activeAgent = (selectedAgentId
     ? agents.find((a) => a.id === selectedAgentId)
@@ -212,10 +220,20 @@ export function AgentPermissionsScreen() {
         throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
       }
 
+      if (activeInstance?.id) {
+        const updatedInstance = await bindAgentAccountToInstance(activeInstance.id, activeAgent.id);
+        updateInstance(activeInstance.id, { metadata: updatedInstance.metadata || { agentAccountId: activeAgent.id } });
+      }
+
       setPerms(verifiedPermissions);
       setThresholdInput(String(verifiedPermissions.confirmationThreshold));
       await queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-      Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions were saved and verified from the server.', zh: '权限已保存，并已从服务器回读校验。' }));
+      Alert.alert(
+        t({ en: 'Saved ✅', zh: '已保存 ✅' }),
+        activeInstance?.id
+          ? t({ en: 'Permissions were saved, verified from the server, and bound to the current instance.', zh: '权限已保存，已从服务器回读校验，并已绑定到当前实例。' })
+          : t({ en: 'Permissions were saved and verified from the server.', zh: '权限已保存，并已从服务器回读校验。' }),
+      );
     } catch (e: any) {
       Alert.alert(t({ en: 'Save Failed', zh: '保存失败' }), e?.message || t({ en: 'Failed to update permissions.', zh: '更新权限失败。' }));
     } finally {
@@ -263,6 +281,14 @@ export function AgentPermissionsScreen() {
         </View>
       )}
 
+      {activeInstance?.id ? (
+        <View style={styles.instanceBindingCard}>
+          <Text style={styles.instanceBindingTitle}>{t({ en: 'Applies to current instance', zh: '应用到当前实例' })}</Text>
+          <Text style={styles.instanceBindingText}>
+            {t({ en: `${activeInstance.name} will use the selected Agent Account profile for tool and payment permissions.`, zh: `${activeInstance.name} 将使用当前选中的 Agent Account 作为工具与支付权限档案。` })}
+          </Text>
+        </View>
+      ) : null}
       {agents.length > 1 && (
         <View style={styles.accountPickerWrap}>
           <Text style={styles.accountPickerTitle}>{t({ en: 'Choose the account to configure', zh: '选择要配置的账户' })}</Text>
@@ -500,6 +526,16 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
   },
   noAgentText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
+  instanceBindingCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    marginBottom: 4,
+  },
+  instanceBindingTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  instanceBindingText: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 4, paddingTop: 12, paddingBottom: 4,

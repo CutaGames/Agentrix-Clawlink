@@ -56,6 +56,16 @@ export class OpenClawConnectionController {
     return this.service.getInstanceById(req.user.id, id);
   }
 
+  @Patch('instances/:id/agent-account')
+  @ApiOperation({ summary: 'Bind or clear the Agent Account used by this instance' })
+  async bindAgentAccount(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { agentAccountId?: string | null },
+  ) {
+    return this.service.bindAgentAccount(req.user.id, id, body?.agentAccountId ?? null);
+  }
+
   // ===== Bind Self-Hosted =====
 
   @Post('bind')

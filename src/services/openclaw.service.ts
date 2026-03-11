@@ -19,6 +19,10 @@ export interface OpenClawInstanceInfo {
   models?: string[];
   agentCount?: number;
   lastSyncAt?: string;
+  metadata?: {
+    agentAccountId?: string;
+    [key: string]: any;
+  };
 }
 
 export interface ChatMessage {
@@ -86,6 +90,13 @@ export async function getMyInstances(): Promise<OpenClawInstanceInfo[]> {
 // Get a single instance by ID (used to poll for async SSH provisioning)
 export async function getInstanceById(instanceId: string): Promise<OpenClawInstanceInfo> {
   return apiFetch<OpenClawInstanceInfo>(`/openclaw/instances/${instanceId}`);
+}
+
+export async function bindAgentAccountToInstance(instanceId: string, agentAccountId?: string | null): Promise<OpenClawInstanceInfo> {
+  return apiFetch<OpenClawInstanceInfo>(`/openclaw/instances/${instanceId}/agent-account`, {
+    method: 'PATCH',
+    body: JSON.stringify({ agentAccountId: agentAccountId ?? null }),
+  });
 }
 
 // Get instance status / health

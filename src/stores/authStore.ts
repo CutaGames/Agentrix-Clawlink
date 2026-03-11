@@ -17,6 +17,10 @@ export interface OpenClawInstance {
   relayToken?: string;   // set for relay-mode connections (ClawLink Agent)
   wsRelayUrl?: string;  // wss:// relay endpoint
   lastSyncAt?: string;
+  metadata?: {
+    agentAccountId?: string;
+    [key: string]: any;
+  };
 }
 
 export interface AuthUser {

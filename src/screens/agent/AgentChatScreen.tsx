@@ -105,13 +105,25 @@ function renderContent(text: string) {
     .replace(/`(.+?)`/g, '$1');
 }
 
-const MessageBubble = ({ item }: { item: Message }) => {
+const MessageBubble = ({
+  item,
+  onSpeak,
+  onStopSpeaking,
+  speakingMessageId,
+}: {
+  item: Message;
+  onSpeak: (message: Message) => void;
+  onStopSpeaking: () => void;
+  speakingMessageId: string | null;
+}) => {
   const { t } = useI18n();
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
   const { imageUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
+  const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
+  const isThisMessageSpeaking = speakingMessageId === item.id;
 
   const handleCopy = useCallback(async () => {
     const text = getCopyableMessageText(item);
@@ -200,10 +212,21 @@ const MessageBubble = ({ item }: { item: Message }) => {
             {item.streaming && (
               <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
             )}
-            {!item.streaming && !!getCopyableMessageText(item) && (
-              <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-                <Text style={styles.copyBtnText}>{t({ en: 'Copy', zh: '复制' })}</Text>
-              </TouchableOpacity>
+            {!item.streaming && (canSpeak || !!getCopyableMessageText(item)) && (
+              <View style={styles.bubbleActions}>
+                {canSpeak && (
+                  <TouchableOpacity style={styles.copyBtn} onPress={() => (isThisMessageSpeaking ? onStopSpeaking() : onSpeak(item))}>
+                    <Text style={styles.copyBtnText}>
+                      {isThisMessageSpeaking ? t({ en: 'Stop Audio', zh: '停止朗读' }) : t({ en: 'Play Audio', zh: '朗读' })}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {!!getCopyableMessageText(item) && (
+                  <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
+                    <Text style={styles.copyBtnText}>{t({ en: 'Copy', zh: '复制' })}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
           </View>
         )}
@@ -344,6 +367,7 @@ export function AgentChatScreen() {
     audioPlayerRef.current = new AudioQueuePlayer(() => {
       setIsSpeaking(false);
       setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
+      activeAssistantMessageIdRef.current = null;
     });
     return () => { audioPlayerRef.current?.stopAll(); };
   }, []);
@@ -386,6 +410,20 @@ export function AgentChatScreen() {
       audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}`);
     }
   }, []);
+
+  const stopSpeaking = useCallback(() => {
+    audioPlayerRef.current?.stopAll();
+    setIsSpeaking(false);
+    setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
+    activeAssistantMessageIdRef.current = null;
+  }, []);
+
+  const handleSpeakMessage = useCallback((message: Message) => {
+    const text = buildDisplayMessageText(message.content);
+    if (!text) return;
+    activeAssistantMessageIdRef.current = message.id;
+    speakText(text);
+  }, [speakText]);
 
   const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
     if (!(voiceMode || autoSpeak)) return;
@@ -1035,7 +1073,14 @@ export function AgentChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    return <MessageBubble item={item} />;
+    return (
+      <MessageBubble
+        item={item}
+        onSpeak={handleSpeakMessage}
+        onStopSpeaking={stopSpeaking}
+        speakingMessageId={activeAssistantMessageIdRef.current}
+      />
+    );
   };
 
   return (
@@ -1059,7 +1104,7 @@ export function AgentChatScreen() {
           <TouchableOpacity
             onPress={() => {
               setAutoSpeak(!autoSpeak);
-              if (isSpeaking) { audioPlayerRef.current?.stopAll(); setIsSpeaking(false); }
+              if (isSpeaking) { stopSpeaking(); }
             }}
             style={[styles.chatBarBtn, autoSpeak && { backgroundColor: colors.primary + '30' }]}
           >
@@ -1366,9 +1411,8 @@ const styles = StyleSheet.create({
   bubbleText: { color: colors.textPrimary, fontSize: 15, lineHeight: 22 },
   bubbleTextUser: { color: '#fff' },
   bubbleTextPending: { opacity: 0.72 },
+  bubbleActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
   copyBtn: {
-    alignSelf: 'flex-end',
-    marginTop: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
