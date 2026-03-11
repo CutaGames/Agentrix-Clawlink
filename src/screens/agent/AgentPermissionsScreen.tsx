@@ -289,7 +289,6 @@ export function AgentPermissionsScreen() {
           </Text>
         </View>
       ) : null}
-
       {agents.length > 1 && (
         <View style={styles.accountPickerWrap}>
           <Text style={styles.accountPickerTitle}>{t({ en: 'Choose the account to configure', zh: '选择要配置的账户' })}</Text>

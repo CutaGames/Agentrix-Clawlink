@@ -101,6 +101,19 @@ export class AgentAccountController {
     };
   }
 
+  @Patch(':id')
+  @ApiOperation({ summary: '部分更新 Agent 账户' })
+  @ApiParam({ name: 'id', description: 'Agent 账户 ID' })
+  @ApiResponse({ status: 200, description: 'Agent 账户更新成功' })
+  async patchUpdate(@Param('id') id: string, @Body() dto: UpdateAgentAccountDto) {
+    const agent = await this.agentAccountService.update(id, dto);
+    return {
+      success: true,
+      data: agent,
+      message: 'Agent 账户更新成功',
+    };
+  }
+
   @Post(':id/activate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '激活 Agent 账户' })

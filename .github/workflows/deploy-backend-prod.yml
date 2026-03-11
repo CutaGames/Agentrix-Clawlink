@@ -1,0 +1,67 @@
+name: Deploy Backend Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-backend:
+    name: Deploy backend to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Prepare SSH key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
+            echo "DEPLOY_SSH_KEY is not configured"
+            exit 1
+          fi
+          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
+          chmod 600 /tmp/deploy.pem
+
+      - name: Deploy backend on production host
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
+          ssh ${SSH_OPTS} ubuntu@18.139.157.116 "TARGET_SHA=${TARGET_SHA} bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/ubuntu/Agentrix
+
+          git fetch origin main
+          git checkout main
+          git reset --hard "${TARGET_SHA}"
+
+          cd backend
+          npm run build || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json)
+
+          pm2 restart agentrix-backend --update-env
+          sleep 10
+
+          echo "=== Deployed backend HEAD ==="
+          cd /home/ubuntu/Agentrix
+          git log --oneline -1
+
+          echo "=== PM2 status ==="
+          pm2 show agentrix-backend | grep -E 'status|script path|uptime|restarts' || true
+
+          echo "=== Health check ==="
+          curl -fsS http://127.0.0.1:3000/api/health
+          REMOTE

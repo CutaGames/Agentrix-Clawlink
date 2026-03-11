@@ -14,6 +14,7 @@ export interface CreateAgentAccountDto {
   ownerId: string;
   agentType?: AgentType;
   capabilities?: string[];
+  permissions?: Record<string, any>;
   spendingLimits?: {
     singleTxLimit: number;
     dailyLimit: number;
@@ -37,6 +38,7 @@ export interface UpdateAgentAccountDto {
   description?: string;
   avatarUrl?: string;
   capabilities?: string[];
+  permissions?: Record<string, any>;
   spendingLimits?: {
     singleTxLimit: number;
     dailyLimit: number;
@@ -104,6 +106,7 @@ export class AgentAccountService {
       ownerId: dto.ownerId,
       agentType: dto.agentType || AgentType.PERSONAL,
       capabilities: dto.capabilities,
+      permissions: dto.permissions,
       spendingLimits: dto.spendingLimits,
       callbacks: dto.callbacks,
       metadata: dto.metadata,
@@ -181,6 +184,7 @@ export class AgentAccountService {
     if (dto.description !== undefined) agent.description = dto.description;
     if (dto.avatarUrl !== undefined) agent.avatarUrl = dto.avatarUrl;
     if (dto.capabilities !== undefined) agent.capabilities = dto.capabilities;
+    if (dto.permissions !== undefined) agent.permissions = dto.permissions;
     if (dto.spendingLimits !== undefined) agent.spendingLimits = dto.spendingLimits;
     if (dto.callbacks !== undefined) agent.callbacks = dto.callbacks;
     if (dto.metadata !== undefined) agent.metadata = { ...agent.metadata, ...dto.metadata };
