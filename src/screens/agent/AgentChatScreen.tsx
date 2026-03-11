@@ -325,6 +325,7 @@ export function AgentChatScreen() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<UploadedChatAttachment[]>([]);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [showAttachToolbar, setShowAttachToolbar] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
@@ -999,43 +1000,55 @@ export function AgentChatScreen() {
   };
 
   const handleAttachmentAction = () => {
-    Alert.alert(t({ en: 'Attach', zh: '添加附件' }), t({ en: 'Choose what to upload', zh: '选择要上传的内容' }), [
-      {
-        text: t({ en: '🖼️ Insert Photo', zh: '🖼️ 插入图片' }),
-        onPress: async () => {
-          try {
-            const image = await DeviceBridgingService.pickImageAttachment();
-            if (image?.uri) {
-              await enqueueAttachment({
-                uri: image.uri,
-                fileName: image.fileName || `image-${Date.now()}.jpg`,
-                mimeType: image.mimeType || 'image/jpeg',
-              });
-            }
-          } catch (e: any) {
-            Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
-          }
-        },
-      },
-      {
-        text: t({ en: '📎 Insert File', zh: '📎 插入文件' }),
-        onPress: async () => {
-          try {
-            const file = await DeviceBridgingService.pickFileAttachment();
-            if (file?.uri) {
-              await enqueueAttachment({
-                uri: file.uri,
-                fileName: file.fileName,
-                mimeType: file.mimeType,
-              });
-            }
-          } catch (e: any) {
-            Alert.alert(t({ en: 'File Error', zh: '文件错误' }), e.message);
-          }
-        },
-      },
-      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
-    ]);
+    setShowAttachToolbar((prev) => !prev);
+  };
+
+  const handleAttachCamera = async () => {
+    setShowAttachToolbar(false);
+    try {
+      const image = await DeviceBridgingService.takeCameraPhoto();
+      if (image?.uri) {
+        await enqueueAttachment({
+          uri: image.uri,
+          fileName: image.fileName || `photo-${Date.now()}.jpg`,
+          mimeType: image.mimeType || 'image/jpeg',
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), e.message);
+    }
+  };
+
+  const handleAttachAlbum = async () => {
+    setShowAttachToolbar(false);
+    try {
+      const image = await DeviceBridgingService.pickImageAttachment();
+      if (image?.uri) {
+        await enqueueAttachment({
+          uri: image.uri,
+          fileName: image.fileName || `image-${Date.now()}.jpg`,
+          mimeType: image.mimeType || 'image/jpeg',
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
+    }
+  };
+
+  const handleAttachFile = async () => {
+    setShowAttachToolbar(false);
+    try {
+      const file = await DeviceBridgingService.pickFileAttachment();
+      if (file?.uri) {
+        await enqueueAttachment({
+          uri: file.uri,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(t({ en: 'File Error', zh: '文件错误' }), e.message);
+    }
   };
 
   const handleCopyDraft = useCallback(async () => {
@@ -1195,11 +1208,29 @@ export function AgentChatScreen() {
             ))}
           </ScrollView>
         )}
+      {/* Attachment toolbar — slides above input */}
+      {showAttachToolbar && (
+        <View style={styles.attachToolbar}>
+          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleAttachCamera}>
+            <Text style={styles.attachToolbarIcon}>📷</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'Camera', zh: '拍照' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleAttachAlbum}>
+            <Text style={styles.attachToolbarIcon}>🖼️</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'Album', zh: '相册' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleAttachFile}>
+            <Text style={styles.attachToolbarIcon}>📎</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'File', zh: '文件' })}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.inputRow}>
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
           style={styles.modeToggleBtn}
-          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); }}
+          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); setShowAttachToolbar(false); }}
         >
           <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
         </TouchableOpacity>
@@ -1227,7 +1258,7 @@ export function AgentChatScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
-                {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' })}
+                {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  按住说话', zh: '🎙  按住说话' })}
               </Text>
             </TouchableOpacity>
           )
@@ -1239,6 +1270,7 @@ export function AgentChatScreen() {
             placeholderTextColor={colors.textMuted}
             value={input}
             onChangeText={setInput}
+            onFocus={() => setShowAttachToolbar(false)}
             multiline
             maxLength={2000}
             returnKeyType="send"
@@ -1246,19 +1278,18 @@ export function AgentChatScreen() {
           />
         )}
 
-        {!voiceMode && (
-          <TouchableOpacity
-            style={[styles.attachBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
-            onPress={handleAttachmentAction}
-            disabled={sending || uploadingAttachment}
-          >
-            {uploadingAttachment ? (
-              <ActivityIndicator size="small" color={colors.textPrimary} />
-            ) : (
-              <Text style={styles.attachBtnIcon}>📎</Text>
-            )}
-          </TouchableOpacity>
-        )}
+        {/* Attach button — always visible (both voice & text mode) */}
+        <TouchableOpacity
+          style={[styles.attachBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
+          onPress={handleAttachmentAction}
+          disabled={sending || uploadingAttachment}
+        >
+          {uploadingAttachment ? (
+            <ActivityIndicator size="small" color={colors.textPrimary} />
+          ) : (
+            <Text style={styles.attachBtnIcon}>{showAttachToolbar ? '✕' : '+'}</Text>
+          )}
+        </TouchableOpacity>
 
         {!voiceMode && !!input.length && (
           <TouchableOpacity
@@ -1470,6 +1501,23 @@ const styles = StyleSheet.create({
   pendingAttachmentName: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
   pendingAttachmentSub: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
   pendingAttachmentRemove: { color: colors.textMuted, fontSize: 12, paddingHorizontal: 2 },
+  attachToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  attachToolbarItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 64,
+    gap: 4,
+  },
+  attachToolbarIcon: { fontSize: 28 },
+  attachToolbarLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
   attachBtn: {
     width: 42,
     height: 42,
@@ -1480,7 +1528,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  attachBtnIcon: { fontSize: 18 },
+  attachBtnIcon: { fontSize: 18, color: colors.textPrimary, fontWeight: '600' },
   utilityBtn: {
     minWidth: 54,
     height: 42,

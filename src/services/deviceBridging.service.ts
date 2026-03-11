@@ -90,38 +90,64 @@ export class DeviceBridgingService {
    */
   static async pickImageAttachment(): Promise<ImageAttachment | null> {
     try {
-      // Lazy require: only load expo-image-picker native module when this
-      // function is actually called (not at startup), preventing HarmonyOS crash.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const ImagePicker = require('expo-image-picker');
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Photo album permission denied by user.');
-      }
+      const selected = await ExpoFile.pickFileAsync(undefined, 'image/*');
+      const file = Array.isArray(selected) ? selected[0] : selected;
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
-        base64: false,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
+      if (file?.uri) {
         return {
-          uri: asset.uri,
-          width: asset.width ?? null,
-          height: asset.height ?? null,
-          fileName: asset.fileName ?? null,
-          mimeType: asset.mimeType ?? null,
-          size: asset.fileSize ?? null,
+          uri: file.uri,
+          width: null,
+          height: null,
+          fileName: file.uri.split('/').pop() || 'image',
+          mimeType: file.type || 'image/*',
+          size: typeof file.size === 'number' ? file.size : null,
         };
       }
-      
+
       return null;
-    } catch (error: any) {
-      console.error('Failed to pick image:', error);
-      throw new Error(error.message || 'Failed to pick image');
+    } catch (filePickerError: any) {
+      const filePickerMessage = String(filePickerError?.message || '').toLowerCase();
+      if (filePickerMessage.includes('cancel')) {
+        return null;
+      }
+
+      try {
+        // Lazy require: only load expo-image-picker native module when needed.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const ImagePicker = require('expo-image-picker');
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          throw new Error('Photo album permission denied by user.');
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.8,
+          base64: false,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          const asset = result.assets[0];
+          return {
+            uri: asset.uri,
+            width: asset.width ?? null,
+            height: asset.height ?? null,
+            fileName: asset.fileName ?? null,
+            mimeType: asset.mimeType ?? null,
+            size: asset.fileSize ?? null,
+          };
+        }
+
+        return null;
+      } catch (error: any) {
+        const message = String(error?.message || '').toLowerCase();
+        if (message.includes('cancel')) {
+          return null;
+        }
+        console.error('Failed to pick image:', error);
+        throw new Error(error.message || 'Failed to pick image');
+      }
     }
   }
 
@@ -149,6 +175,47 @@ export class DeviceBridgingService {
       }
       console.error('Failed to pick file:', error);
       throw new Error(error.message || 'Failed to pick file');
+    }
+  }
+
+  /**
+   * Take a photo using the device camera.
+   */
+  static async takeCameraPhoto(): Promise<ImageAttachment | null> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ImagePicker = require('expo-image-picker');
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Camera permission denied by user.');
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        return {
+          uri: asset.uri,
+          width: asset.width ?? null,
+          height: asset.height ?? null,
+          fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
+          mimeType: asset.mimeType ?? 'image/jpeg',
+          size: asset.fileSize ?? null,
+        };
+      }
+
+      return null;
+    } catch (error: any) {
+      if (String(error?.message || '').toLowerCase().includes('cancel')) {
+        return null;
+      }
+      console.error('Failed to take camera photo:', error);
+      throw new Error(error.message || 'Failed to take camera photo');
     }
   }
 }
