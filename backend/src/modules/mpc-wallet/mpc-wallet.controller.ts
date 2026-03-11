@@ -28,7 +28,7 @@ export class MPCWalletController {
   @ApiOperation({ summary: '创建 MPC 钱包' })
   @ApiResponse({ status: 201, description: 'MPC 钱包创建成功' })
   async createWallet(@Request() req, @Body() dto: CreateMPCWalletDto) {
-    const ownerId = req.user.id;
+    const ownerId = dto.agentAccountId || req.user.id;
 
     const result = await this.mpcWalletService.generateMPCWallet(
       ownerId,

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, Linking,
+  Dimensions,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
@@ -69,8 +70,9 @@ function extractUrlsFromMessage(content: string) {
   const plainUrls = Array.from(content.matchAll(/https?:\/\/[^\s)]+/g)).map((match) => match[0].replace(/[),.;]+$/, ''));
   const allUrls = dedupeUrls([...markdownImageUrls, ...plainUrls]);
   const imageUrls = allUrls.filter((url) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
-  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
-  return { imageUrls, fileUrls };
+  const audioUrls = allUrls.filter((url) => /\.(mp3|wav|m4a|ogg|aac|flac|opus|wma)(\?.*)?$/i.test(url));
+  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
+  return { imageUrls, audioUrls, fileUrls };
 }
 
 function getCopyableMessageText(message: Message) {
@@ -81,13 +83,13 @@ function getCopyableMessageText(message: Message) {
 function buildDisplayMessageText(content: string) {
   if (!content) return '';
 
-  const { imageUrls, fileUrls } = extractUrlsFromMessage(content);
+  const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(content);
   let display = content
     .replace(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '')
     .replace(/\[User Attachments\][\s\S]*$/g, '')
     .trim();
 
-  for (const url of [...imageUrls, ...fileUrls]) {
+  for (const url of [...imageUrls, ...audioUrls, ...fileUrls]) {
     display = display.replace(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
   }
 
@@ -105,23 +107,77 @@ function renderContent(text: string) {
     .replace(/`(.+?)`/g, '$1');
 }
 
+// Inline audio player for audio URLs in messages
+const InlineAudioPlayer = ({ uri }: { uri: string }) => {
+  const { t } = useI18n();
+  const [playing, setPlaying] = useState(false);
+  const soundRef = useRef<any>(null);
+
+  const togglePlay = useCallback(async () => {
+    if (!Audio) {
+      Alert.alert(t({ en: 'Audio Unavailable', zh: '音频不可用' }));
+      return;
+    }
+    try {
+      if (playing && soundRef.current) {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+        setPlaying(false);
+        return;
+      }
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+      soundRef.current = sound;
+      setPlaying(true);
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+          soundRef.current = null;
+          setPlaying(false);
+        }
+      });
+    } catch (e: any) {
+      setPlaying(false);
+      Alert.alert(t({ en: 'Playback Error', zh: '播放错误' }), e?.message || '');
+    }
+  }, [playing, uri, t]);
+
+  useEffect(() => {
+    return () => {
+      soundRef.current?.unloadAsync().catch(() => {});
+    };
+  }, []);
+
+  return (
+    <TouchableOpacity style={styles.audioPlayerCard} onPress={togglePlay} activeOpacity={0.7}>
+      <Text style={styles.audioPlayerIcon}>{playing ? '⏹️' : '▶️'}</Text>
+      <View style={styles.audioPlayerMeta}>
+        <Text style={styles.audioPlayerLabel}>{playing ? t({ en: 'Playing...', zh: '播放中…' }) : t({ en: 'Audio message', zh: '音频消息' })}</Text>
+        <Text style={styles.audioPlayerUrl} numberOfLines={1}>{uri}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 const MessageBubble = ({
   item,
   onSpeak,
   onStopSpeaking,
   speakingMessageId,
+  onPreviewImage,
 }: {
   item: Message;
   onSpeak: (message: Message) => void;
   onStopSpeaking: () => void;
   speakingMessageId: string | null;
+  onPreviewImage: (uri: string) => void;
 }) => {
   const { t } = useI18n();
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
-  const { imageUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
+  const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
   const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
   const isThisMessageSpeaking = speakingMessageId === item.id;
 
@@ -237,7 +293,7 @@ const MessageBubble = ({
                 key={`${item.id}-${attachment.fileName}`}
                 style={styles.attachmentCard}
                 activeOpacity={0.8}
-                onPress={() => openExternalUrl(attachment.publicUrl)}
+                onPress={() => attachment.isImage ? onPreviewImage(attachment.publicUrl) : openExternalUrl(attachment.publicUrl)}
               >
                 {attachment.isImage ? (
                   <Image source={{ uri: attachment.publicUrl }} style={styles.attachmentImage} resizeMode="cover" />
@@ -259,13 +315,20 @@ const MessageBubble = ({
         {!!imageUrls.length && (
           <View style={styles.attachmentList}>
             {imageUrls.map((url) => (
-              <TouchableOpacity key={`${item.id}-${url}`} style={styles.attachmentCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
+              <TouchableOpacity key={`${item.id}-${url}`} style={styles.attachmentCard} activeOpacity={0.8} onPress={() => onPreviewImage(url)}>
                 <Image source={{ uri: url }} style={styles.attachmentImage} resizeMode="cover" />
                 <View style={styles.attachmentMeta}>
                   <Text style={styles.attachmentName} numberOfLines={1}>{t({ en: 'Generated image', zh: '生成图片' })}</Text>
                   <Text style={styles.attachmentSub} numberOfLines={1}>{url}</Text>
                 </View>
               </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        {!!audioUrls.length && (
+          <View style={styles.attachmentList}>
+            {audioUrls.map((url) => (
+              <InlineAudioPlayer key={`${item.id}-audio-${url}`} uri={url} />
             ))}
           </View>
         )}
@@ -330,6 +393,7 @@ export function AgentChatScreen() {
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
   const [transcriptPreview, setTranscriptPreview] = useState('');
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const isNearBottomRef = useRef(true);
@@ -1084,6 +1148,7 @@ export function AgentChatScreen() {
         onSpeak={handleSpeakMessage}
         onStopSpeaking={stopSpeaking}
         speakingMessageId={activeAssistantMessageIdRef.current}
+        onPreviewImage={(uri) => setPreviewImageUri(uri)}
       />
     );
   };
@@ -1327,6 +1392,20 @@ export function AgentChatScreen() {
         )}
       </View>
       </View>
+
+      {/* Image preview modal */}
+      <Modal visible={!!previewImageUri} transparent animationType="fade" onRequestClose={() => setPreviewImageUri(null)}>
+        <TouchableOpacity style={styles.imagePreviewOverlay} activeOpacity={1} onPress={() => setPreviewImageUri(null)}>
+          <View style={styles.imagePreviewContainer}>
+            {previewImageUri && (
+              <Image source={{ uri: previewImageUri }} style={styles.imagePreviewImage} resizeMode="contain" />
+            )}
+          </View>
+          <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setPreviewImageUri(null)}>
+            <Text style={styles.imagePreviewCloseText}>✕</Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Model picker modal — enhanced with availability & backend sync */}
       <Modal visible={showModelPicker} transparent animationType="slide">
@@ -1656,4 +1735,44 @@ const styles = StyleSheet.create({
   attachmentMeta: { flex: 1, minWidth: 0 },
   attachmentName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
   attachmentSub: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+  audioPlayerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  audioPlayerIcon: { fontSize: 28 },
+  audioPlayerMeta: { flex: 1, minWidth: 0 },
+  audioPlayerLabel: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
+  audioPlayerUrl: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: '#000000ee',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreviewContainer: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.75,
+  },
+  imagePreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePreviewClose: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePreviewCloseText: { color: '#fff', fontSize: 18, fontWeight: '700' },
 });

@@ -221,13 +221,18 @@ export class DeviceBridgingService {
         return null;
       }
       console.error('Failed to take camera photo:', error);
-      // If camera launch crashes (e.g. HarmonyOS), fall back to album picker
+      // If camera launch crashes for any reason, fall back to album picker
+      // This covers HarmonyOS, missing native modules, activity resolution failures, etc.
       const msg = String(error?.message || '').toLowerCase();
-      if (msg.includes('activity') || msg.includes('crash') || msg.includes('resolve') || msg.includes('not available')) {
-        console.warn('Camera unavailable — falling back to photo album');
-        return DeviceBridgingService.pickImageAttachment();
+      if (msg.includes('permission')) {
+        throw new Error(error.message || 'Camera permission denied.');
       }
-      throw new Error(error.message || 'Failed to take camera photo');
+      console.warn('Camera unavailable — falling back to photo album');
+      try {
+        return await DeviceBridgingService.pickImageAttachment();
+      } catch (fallbackErr: any) {
+        throw new Error(fallbackErr?.message || 'Failed to take camera photo');
+      }
     }
   }
 }
