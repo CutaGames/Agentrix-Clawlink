@@ -8,7 +8,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
-import { switchInstanceModel } from '../../services/openclaw.service';
+import { sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
@@ -78,6 +78,25 @@ function getCopyableMessageText(message: Message) {
   return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
 }
 
+function buildDisplayMessageText(content: string) {
+  if (!content) return '';
+
+  const { imageUrls, fileUrls } = extractUrlsFromMessage(content);
+  let display = content
+    .replace(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '')
+    .replace(/\[User Attachments\][\s\S]*$/g, '')
+    .trim();
+
+  for (const url of [...imageUrls, ...fileUrls]) {
+    display = display.replace(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
+  }
+
+  return renderContent(display)
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 // Strip basic markdown: **bold** -> bold, *italic* -> italic
 function renderContent(text: string) {
   return text
@@ -91,7 +110,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
-  const bubbleText = renderContent(item.content) || (item.streaming ? '...' : '');
+  const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
   const { imageUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
 
   const handleCopy = useCallback(async () => {
@@ -160,7 +179,7 @@ const MessageBubble = ({ item }: { item: Message }) => {
         )}
 
         {/* Main Message Bubble */}
-        {(item.content || item.streaming) && (
+        {(bubbleText || item.streaming) && (
           <View
             style={[
               styles.bubble,
@@ -615,7 +634,7 @@ export function AgentChatScreen() {
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: text || `Sent ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`,
+      content: text,
       attachments,
       createdAt: Date.now(),
     };
@@ -671,6 +690,26 @@ export function AgentChatScreen() {
       }
 
       if (responseInterruptedRef.current) return;
+
+      if (!streamSucceeded) {
+        if (instanceId) {
+          try {
+            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current);
+            const proxyReply = typeof proxyResult?.reply === 'string'
+              ? proxyResult.reply
+              : proxyResult?.reply?.content || '';
+
+            if (proxyReply) {
+              streamSucceeded = true;
+              resetVoicePhaseAfterResponse();
+              appendToStreamingMessage(assistantMsgId, proxyReply);
+              enqueueStreamedSpeech(proxyReply, true);
+            }
+          } catch {
+            // Keep the final fallback below, but avoid silently losing agent capabilities when proxy chat works.
+          }
+        }
+      }
 
       if (!streamSucceeded) {
         // Fallback: direct Claude via backend Bedrock key (always available)
@@ -1095,7 +1134,11 @@ export function AgentChatScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pendingAttachmentRow}>
             {pendingAttachments.map((attachment) => (
               <View key={attachment.fileName} style={styles.pendingAttachmentChip}>
-                <Text style={styles.pendingAttachmentIcon}>{attachment.isImage ? '🖼️' : '📎'}</Text>
+                {attachment.isImage ? (
+                  <Image source={{ uri: attachment.publicUrl }} style={styles.pendingAttachmentThumb} resizeMode="cover" />
+                ) : (
+                  <Text style={styles.pendingAttachmentIcon}>📎</Text>
+                )}
                 <View style={styles.pendingAttachmentMeta}>
                   <Text style={styles.pendingAttachmentName} numberOfLines={1}>{attachment.originalName}</Text>
                   <Text style={styles.pendingAttachmentSub}>{formatAttachmentSize(attachment.size)}</Text>
@@ -1174,10 +1217,10 @@ export function AgentChatScreen() {
 
         {!voiceMode && !!input.length && (
           <TouchableOpacity
-            style={styles.attachBtn}
+            style={styles.utilityBtn}
             onPress={handleCopyDraft}
           >
-            <Text style={styles.attachBtnIcon}>⧉</Text>
+            <Text style={styles.utilityBtnText}>{t({ en: 'Copy', zh: '复制' })}</Text>
           </TouchableOpacity>
         )}
 
@@ -1377,6 +1420,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     maxWidth: 240,
   },
+  pendingAttachmentThumb: { width: 28, height: 28, borderRadius: 8 },
   pendingAttachmentIcon: { fontSize: 16 },
   pendingAttachmentMeta: { flex: 1, minWidth: 0 },
   pendingAttachmentName: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
@@ -1393,6 +1437,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   attachBtnIcon: { fontSize: 18 },
+  utilityBtn: {
+    minWidth: 54,
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  utilityBtnText: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
   input: {
     flex: 1,
     backgroundColor: colors.bgCard,

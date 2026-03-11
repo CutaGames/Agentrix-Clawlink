@@ -144,14 +144,28 @@ export function AgentPermissionsScreen() {
     retry: false,
   });
 
-  const activeAgent = agentAccountId
-    ? agents.find((a) => a.id === agentAccountId)
-    : agents[0];
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(agentAccountId);
+
+  useEffect(() => {
+    if (agentAccountId) {
+      setSelectedAgentId(agentAccountId);
+      return;
+    }
+    if (!selectedAgentId && agents[0]?.id) {
+      setSelectedAgentId(agents[0].id);
+    }
+  }, [agentAccountId, agents, selectedAgentId]);
+
+  const activeAgent = (selectedAgentId
+    ? agents.find((a) => a.id === selectedAgentId)
+    : undefined) ?? agents[0];
 
   const [perms, setPerms] = useState<PermissionState>(DEFAULT_PERMISSIONS);
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
   const [isSaving, setIsSaving] = useState(false);
+
+  const expectedPermissionsJson = JSON.stringify(normalizePermissions(perms));
 
   useEffect(() => {
     const nextPermissions = normalizePermissions(activeAgent?.permissions);
@@ -191,8 +205,17 @@ export function AgentPermissionsScreen() {
           permissions: perms,
         }),
       });
-      queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-      Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions updated successfully.', zh: '权限已更新。' }));
+
+      const verified = await apiFetch<{ success: boolean; data: AgentAccount }>(`/agent-accounts/${activeAgent.id}`);
+      const verifiedPermissions = normalizePermissions(verified.data?.permissions);
+      if (JSON.stringify(verifiedPermissions) !== expectedPermissionsJson) {
+        throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
+      }
+
+      setPerms(verifiedPermissions);
+      setThresholdInput(String(verifiedPermissions.confirmationThreshold));
+      await queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+      Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions were saved and verified from the server.', zh: '权限已保存，并已从服务器回读校验。' }));
     } catch (e: any) {
       Alert.alert(t({ en: 'Save Failed', zh: '保存失败' }), e?.message || t({ en: 'Failed to update permissions.', zh: '更新权限失败。' }));
     } finally {
@@ -237,6 +260,29 @@ export function AgentPermissionsScreen() {
       ) : (
         <View style={styles.noAgentBox}>
           <Text style={styles.noAgentText}>{t({ en: 'No agent selected. Go to Agent Accounts to set one up.', zh: '当前未选择智能体。请前往“智能体账户”先创建或选择一个。' })}</Text>
+        </View>
+      )}
+
+      {agents.length > 1 && (
+        <View style={styles.accountPickerWrap}>
+          <Text style={styles.accountPickerTitle}>{t({ en: 'Choose the account to configure', zh: '选择要配置的账户' })}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountPickerRow}>
+            {agents.map((agent) => {
+              const selected = agent.id === activeAgent?.id;
+              return (
+                <TouchableOpacity
+                  key={agent.id}
+                  style={[styles.accountChip, selected && styles.accountChipActive]}
+                  onPress={() => setSelectedAgentId(agent.id)}
+                >
+                  <Text style={[styles.accountChipText, selected && styles.accountChipTextActive]}>{agent.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          {!agentAccountId && (
+            <Text style={styles.accountPickerHint}>{t({ en: 'Permissions are saved to the selected Agent Account and verified after saving.', zh: '权限会保存到当前选中的智能体账户，并在保存后回读校验。' })}</Text>
+          )}
         </View>
       )}
 
@@ -425,6 +471,21 @@ export function AgentPermissionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
+  accountPickerWrap: { gap: 10, marginBottom: 4 },
+  accountPickerTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  accountPickerRow: { gap: 8 },
+  accountChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  accountChipActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
+  accountChipText: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  accountChipTextActive: { color: colors.accent },
+  accountPickerHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   agentBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
