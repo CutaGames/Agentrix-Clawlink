@@ -177,4 +177,45 @@ export class DeviceBridgingService {
       throw new Error(error.message || 'Failed to pick file');
     }
   }
+
+  /**
+   * Take a photo using the device camera.
+   */
+  static async takeCameraPhoto(): Promise<ImageAttachment | null> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ImagePicker = require('expo-image-picker');
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Camera permission denied by user.');
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        return {
+          uri: asset.uri,
+          width: asset.width ?? null,
+          height: asset.height ?? null,
+          fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
+          mimeType: asset.mimeType ?? 'image/jpeg',
+          size: asset.fileSize ?? null,
+        };
+      }
+
+      return null;
+    } catch (error: any) {
+      if (String(error?.message || '').toLowerCase().includes('cancel')) {
+        return null;
+      }
+      console.error('Failed to take camera photo:', error);
+      throw new Error(error.message || 'Failed to take camera photo');
+    }
+  }
 }
