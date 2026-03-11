@@ -1,6 +1,6 @@
 // 🔐 Agent Permissions & Security Screen
 // Shows and manages all permission boundaries for the active AgentAccount
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Switch, Alert, TextInput,
@@ -23,6 +23,7 @@ interface AgentAccount {
   agentUniqueId: string;
   status: string;
   walletAddress?: string;
+  permissions?: Partial<PermissionState>;
   spendingLimits?: {
     singleTxLimit: number;
     dailyLimit: number;
@@ -69,6 +70,25 @@ const DEFAULT_PERMISSIONS: PermissionState = {
   telegramEnabled: true,
   mcpToolCount: 3,
 };
+
+function normalizePermissions(value?: Partial<PermissionState> | null): PermissionState {
+  return {
+    ...DEFAULT_PERMISSIONS,
+    ...(value || {}),
+    allowedCurrencies: Array.isArray(value?.allowedCurrencies) && value?.allowedCurrencies.length
+      ? value.allowedCurrencies.filter((currency): currency is string => typeof currency === 'string')
+      : DEFAULT_PERMISSIONS.allowedCurrencies,
+    gpsAccuracy:
+      value?.gpsAccuracy === 'district' || value?.gpsAccuracy === 'exact'
+        ? value.gpsAccuracy
+        : DEFAULT_PERMISSIONS.gpsAccuracy,
+    mcpToolCount: typeof value?.mcpToolCount === 'number' ? value.mcpToolCount : DEFAULT_PERMISSIONS.mcpToolCount,
+    confirmationThreshold:
+      typeof value?.confirmationThreshold === 'number'
+        ? value.confirmationThreshold
+        : DEFAULT_PERMISSIONS.confirmationThreshold,
+  };
+}
 
 const CURRENCY_OPTIONS = ['USDT', 'ETH', 'USD'];
 
@@ -133,6 +153,12 @@ export function AgentPermissionsScreen() {
   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    const nextPermissions = normalizePermissions(activeAgent?.permissions);
+    setPerms(nextPermissions);
+    setThresholdInput(String(nextPermissions.confirmationThreshold));
+  }, [activeAgent?.id, activeAgent?.permissions]);
+
   const updatePerm = <K extends keyof PermissionState>(key: K, value: PermissionState[K]) => {
     setPerms((p) => ({ ...p, [key]: value }));
   };
@@ -152,9 +178,9 @@ export function AgentPermissionsScreen() {
     if (!activeAgent) return;
     try {
       setIsSaving(true);
-      // Persist spending limits to backend via PATCH /agent-accounts/:id
+      // Persist spending limits and permissions to backend.
       await apiFetch(`/agent-accounts/${activeAgent.id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify({
           spendingLimits: {
             singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,

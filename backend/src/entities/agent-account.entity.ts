@@ -187,6 +187,12 @@ export class AgentAccount {
   capabilities?: string[];
 
   /**
+   * 运行时权限配置
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  permissions?: Record<string, any>;
+
+  /**
    * 支出限制
    */
   @Column({ type: 'jsonb', nullable: true })

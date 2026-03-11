@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
-  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView,
+  FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, Linking,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
@@ -60,6 +60,24 @@ function serializeMessageForModel(message: Message) {
   return buildOutgoingMessageContent(message.content, message.attachments || []);
 }
 
+function dedupeUrls(urls: string[]) {
+  return [...new Set(urls)];
+}
+
+function extractUrlsFromMessage(content: string) {
+  const markdownImageUrls = Array.from(content.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)).map((match) => match[1]);
+  const plainUrls = Array.from(content.matchAll(/https?:\/\/[^\s)]+/g)).map((match) => match[0].replace(/[),.;]+$/, ''));
+  const allUrls = dedupeUrls([...markdownImageUrls, ...plainUrls]);
+  const imageUrls = allUrls.filter((url) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
+  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
+  return { imageUrls, fileUrls };
+}
+
+function getCopyableMessageText(message: Message) {
+  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl}`);
+  return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
+}
+
 // Strip basic markdown: **bold** -> bold, *italic* -> italic
 function renderContent(text: string) {
   return text
@@ -74,6 +92,23 @@ const MessageBubble = ({ item }: { item: Message }) => {
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
   const bubbleText = renderContent(item.content) || (item.streaming ? '...' : '');
+  const { imageUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
+
+  const handleCopy = useCallback(async () => {
+    const text = getCopyableMessageText(item);
+    if (!text) return;
+    await DeviceBridgingService.writeClipboard(text);
+    Haptics.selectionAsync().catch(() => {});
+    Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Message copied to clipboard.', zh: '消息已复制到剪贴板。' }));
+  }, [item, t]);
+
+  const openExternalUrl = useCallback(async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(t({ en: 'Open Failed', zh: '打开失败' }), url);
+    }
+  }, [t]);
 
   return (
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
@@ -139,18 +174,29 @@ const MessageBubble = ({ item }: { item: Message }) => {
                 isUser && styles.bubbleTextUser,
                 item.streaming && !item.content && styles.bubbleTextPending,
               ]}
+              selectable
             >
               {bubbleText}
             </Text>
             {item.streaming && (
               <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
             )}
+            {!item.streaming && !!getCopyableMessageText(item) && (
+              <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
+                <Text style={styles.copyBtnText}>{t({ en: 'Copy', zh: '复制' })}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
         {!!item.attachments?.length && (
           <View style={styles.attachmentList}>
             {item.attachments.map((attachment) => (
-              <View key={`${item.id}-${attachment.fileName}`} style={styles.attachmentCard}>
+              <TouchableOpacity
+                key={`${item.id}-${attachment.fileName}`}
+                style={styles.attachmentCard}
+                activeOpacity={0.8}
+                onPress={() => openExternalUrl(attachment.publicUrl)}
+              >
                 {attachment.isImage ? (
                   <Image source={{ uri: attachment.publicUrl }} style={styles.attachmentImage} resizeMode="cover" />
                 ) : (
@@ -164,7 +210,35 @@ const MessageBubble = ({ item }: { item: Message }) => {
                     {attachment.mimetype} · {formatAttachmentSize(attachment.size)}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        {!!imageUrls.length && (
+          <View style={styles.attachmentList}>
+            {imageUrls.map((url) => (
+              <TouchableOpacity key={`${item.id}-${url}`} style={styles.attachmentCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
+                <Image source={{ uri: url }} style={styles.attachmentImage} resizeMode="cover" />
+                <View style={styles.attachmentMeta}>
+                  <Text style={styles.attachmentName} numberOfLines={1}>{t({ en: 'Generated image', zh: '生成图片' })}</Text>
+                  <Text style={styles.attachmentSub} numberOfLines={1}>{url}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        {!!fileUrls.length && (
+          <View style={styles.attachmentList}>
+            {fileUrls.map((url) => (
+              <TouchableOpacity key={`${item.id}-${url}`} style={styles.attachmentCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
+                <View style={styles.attachmentFileIconWrap}>
+                  <Text style={styles.attachmentFileIcon}>📎</Text>
+                </View>
+                <View style={styles.attachmentMeta}>
+                  <Text style={styles.attachmentName} numberOfLines={1}>{t({ en: 'Generated file', zh: '生成文件' })}</Text>
+                  <Text style={styles.attachmentSub} numberOfLines={1}>{url}</Text>
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -843,8 +917,14 @@ export function AgentChatScreen() {
           }
         }
       },
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' }
+    ]);
+  };
+
+  const handleAttachmentAction = () => {
+    Alert.alert(t({ en: 'Attach', zh: '添加附件' }), t({ en: 'Choose what to upload', zh: '选择要上传的内容' }), [
       {
-        text: t({ en: '🖼️ Analyze Photo', zh: '🖼️ 分析图片' }),
+        text: t({ en: '🖼️ Insert Photo', zh: '🖼️ 插入图片' }),
         onPress: async () => {
           try {
             const image = await DeviceBridgingService.pickImageAttachment();
@@ -858,7 +938,7 @@ export function AgentChatScreen() {
           } catch (e: any) {
             Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
           }
-        }
+        },
       },
       {
         text: t({ en: '📎 Insert File', zh: '📎 插入文件' }),
@@ -875,11 +955,22 @@ export function AgentChatScreen() {
           } catch (e: any) {
             Alert.alert(t({ en: 'File Error', zh: '文件错误' }), e.message);
           }
-        }
+        },
       },
-      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' }
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
     ]);
   };
+
+  const handleCopyDraft = useCallback(async () => {
+    if (!input) return;
+    try {
+      await DeviceBridgingService.writeClipboard(input);
+      Haptics.selectionAsync().catch(() => {});
+      Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Draft copied to clipboard.', zh: '未发送内容已复制到剪贴板。' }));
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Copy Failed', zh: '复制失败' }), error?.message || t({ en: 'Failed to copy draft.', zh: '复制草稿失败。' }));
+    }
+  }, [input, t]);
 
   const handleClearChat = () => {
     Alert.alert(t({ en: 'Start new session?', zh: '开始新会话？' }), t({ en: 'Chat history will be cleared.', zh: '当前聊天记录将被清空。' }), [
@@ -1067,6 +1158,29 @@ export function AgentChatScreen() {
           />
         )}
 
+        {!voiceMode && (
+          <TouchableOpacity
+            style={[styles.attachBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
+            onPress={handleAttachmentAction}
+            disabled={sending || uploadingAttachment}
+          >
+            {uploadingAttachment ? (
+              <ActivityIndicator size="small" color={colors.textPrimary} />
+            ) : (
+              <Text style={styles.attachBtnIcon}>📎</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {!voiceMode && !!input.length && (
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={handleCopyDraft}
+          >
+            <Text style={styles.attachBtnIcon}>⧉</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Right: Device Action or Send */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
@@ -1209,6 +1323,15 @@ const styles = StyleSheet.create({
   bubbleText: { color: colors.textPrimary, fontSize: 15, lineHeight: 22 },
   bubbleTextUser: { color: '#fff' },
   bubbleTextPending: { opacity: 0.72 },
+  copyBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: colors.bgSecondary,
+  },
+  copyBtnText: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
   voiceStatusBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1259,6 +1382,17 @@ const styles = StyleSheet.create({
   pendingAttachmentName: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
   pendingAttachmentSub: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
   pendingAttachmentRemove: { color: colors.textMuted, fontSize: 12, paddingHorizontal: 2 },
+  attachBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  attachBtnIcon: { fontSize: 18 },
   input: {
     flex: 1,
     backgroundColor: colors.bgCard,
