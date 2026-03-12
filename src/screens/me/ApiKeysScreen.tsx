@@ -126,7 +126,7 @@ export function ApiKeysScreen() {
     }
     setTesting(provider.id);
     try {
-      const res = await apiFetch<{ ok: boolean; latencyMs?: number; error?: string }>('/ai-providers/test', {
+      const res = await apiFetch<{ success: boolean; latencyMs?: number; error?: string }>('/ai-providers/test', {
         method: 'POST',
         body: JSON.stringify({
           providerId: provider.id,
@@ -137,7 +137,7 @@ export function ApiKeysScreen() {
           model: form.selectedModel,
         }),
       });
-      if (res.ok) {
+      if (res.success) {
         Alert.alert('✅ ' + t({ en: 'Connected', zh: '连接成功' }),
           t({ en: `Latency: ${res.latencyMs}ms`, zh: `延迟: ${res.latencyMs}ms` }));
       } else {

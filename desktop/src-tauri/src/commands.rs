@@ -111,7 +111,7 @@ pub fn get_workspace_dir() -> Result<Option<String>, String> {
     Ok(ws.as_ref().map(|p| p.display().to_string()))
 }
 
-pub fn list_workspace_dir(relative_path: String) -> Result<Vec<crate::FileEntry>, String> {
+pub fn list_workspace_dir(relative_path: String) -> Result<Vec<FileEntry>, String> {
     let ws = WORKSPACE_DIR.lock().map_err(|e| e.to_string())?;
     let workspace = ws.as_ref().ok_or("No workspace directory set")?;
     let target = if relative_path.is_empty() {
@@ -128,7 +128,7 @@ pub fn list_workspace_dir(relative_path: String) -> Result<Vec<crate::FileEntry>
         let name = entry.file_name().to_string_lossy().to_string();
         let ft = entry.file_type().map_err(|e| e.to_string())?;
         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-        entries.push(crate::FileEntry {
+        entries.push(FileEntry {
             name,
             is_dir: ft.is_dir(),
             size,
