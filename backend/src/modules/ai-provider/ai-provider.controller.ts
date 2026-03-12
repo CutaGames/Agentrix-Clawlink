@@ -51,6 +51,12 @@ export class AiProviderController {
     return config ? { providerId: config.providerId, selectedModel: config.selectedModel } : null;
   }
 
+  /** 获取当前用户可用的模型列表（平台默认 + 已配置厂商的模型） */
+  @Get('available-models')
+  async getAvailableModels(@Req() req: any) {
+    return this.service.getAvailableModels(req.user.id || req.user.sub);
+  }
+
   /** 测试 API Key 连通性 */
   @Post('test')
   async testProvider(@Req() req: any, @Body() body: {

@@ -22,6 +22,7 @@ interface StreamChatOptions {
   onChunk: ChunkCallback;
   onDone: DoneCallback;
   onError: ErrorCallback;
+  onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
 }
 
 /**
@@ -72,7 +73,8 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
             if (data === '[DONE]') { opts.onDone(); return; }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.chunk) opts.onChunk(parsed.chunk);
+              if (parsed.meta && opts.onMeta) opts.onMeta(parsed.meta);
+              else if (parsed.chunk) opts.onChunk(parsed.chunk);
               else if (parsed.error) { opts.onError(parsed.error); return; }
             } catch {
               if (data) opts.onChunk(data);

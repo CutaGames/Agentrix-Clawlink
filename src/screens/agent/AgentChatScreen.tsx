@@ -7,7 +7,7 @@ import {
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
+import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
@@ -18,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
 import { useI18n } from '../../stores/i18nStore';
-import { uploadChatAttachment, type UploadedChatAttachment } from '../../services/api';
+import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -363,6 +363,15 @@ export function AgentChatScreen() {
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
 
+  // Dynamic model list from backend (platform default + user's configured providers)
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>(SUPPORTED_MODELS);
+  // The ACTUAL model this agent is running on (resolved by backend)
+  const [resolvedModelLabel, setResolvedModelLabel] = useState<string | null>(null);
+  // Per-agent preferred model (from agent account)
+  const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
+  // The effective model ID to display and send
+  const effectiveModelId = agentPreferredModel || selectedModelId;
+
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
@@ -544,6 +553,35 @@ export function AgentChatScreen() {
   const total = quota?.totalQuota ?? 100000;
   const tokenPct = quota?.energyLevel ?? (total > 0 ? Math.min(100, (used / total) * 100) : 0);
   const tokenBarColor = tokenPct > 80 ? '#ef4444' : tokenPct > 50 ? '#f59e0b' : '#22c55e';
+
+  // Fetch dynamic model list from backend and per-agent model
+  useEffect(() => {
+    (async () => {
+      try {
+        const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
+        if (Array.isArray(models) && models.length > 0) {
+          setAvailableModels(models.map((m) => ({
+            id: m.id,
+            label: m.label,
+            provider: m.provider,
+            icon: m.isDefault ? '🤖' : '💎',
+            availability: 'available' as const,
+            costTier: m.costTier,
+          })));
+        }
+      } catch {}
+      // Load per-agent preferred model from the bound agent account
+      try {
+        const agentAccountId = activeInstance?.metadata?.agentAccountId;
+        if (agentAccountId) {
+          const res = await apiFetch<{ success: boolean; data: { preferredModel?: string } }>(`/agent-accounts/${agentAccountId}`);
+          if (res.data?.preferredModel) {
+            setAgentPreferredModel(res.data.preferredModel);
+          }
+        }
+      } catch {}
+    })();
+  }, [instanceId, activeInstance?.metadata?.agentAccountId]);
 
   // Load chat history on mount — first from local storage (instant), then try API
   useEffect(() => {
@@ -778,7 +816,10 @@ export function AgentChatScreen() {
             message: outgoingText,
             sessionId: sessionIdRef.current,
             token,
-            model: selectedModelId,
+            model: effectiveModelId,
+            onMeta: (meta) => {
+              if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
+            },
             onChunk: (chunk) => {
               streamSucceeded = true;
               resetVoicePhaseAfterResponse();
@@ -821,7 +862,7 @@ export function AgentChatScreen() {
           const ac = streamDirectClaude({
             messages: history,
             token,
-            model: selectedModelId,
+            model: effectiveModelId,
             sessionId: sessionIdRef.current,
             onChunk: (chunk) => {
               streamSucceeded = true;
@@ -1182,7 +1223,7 @@ export function AgentChatScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={openModelPicker} style={styles.modelBtn}>
             <Text style={styles.modelBtnText} numberOfLines={1}>
-              {SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId}
+              {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
@@ -1407,43 +1448,39 @@ export function AgentChatScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Model picker modal — enhanced with availability & backend sync */}
+      {/* Model picker modal — dynamic models from user's configured providers */}
       <Modal visible={showModelPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
           <View style={styles.modelSheet}>
             <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
-            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Applies to this agent (cloud & local)', zh: '应用到当前智能体（云端 / 本地）' })}</Text>
+            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Applies to this agent only', zh: '仅应用到当前智能体' })}</Text>
             <ScrollView>
-              {SUPPORTED_MODELS.map((m) => {
-                const isActive = m.id === selectedModelId;
-                const isAvailable = m.availability === 'available';
-                const isComingSoon = m.availability === 'coming_soon';
+              {availableModels.map((m) => {
+                const isActive = m.id === effectiveModelId;
                 return (
                   <TouchableOpacity
                     key={m.id}
                     style={[
                       styles.modelOption,
                       isActive && styles.modelOptionActive,
-                      !isAvailable && styles.modelOptionDisabled,
                     ]}
                     onPress={async () => {
-                      if (!isAvailable) {
-                        Alert.alert(m.label, isComingSoon ? t({ en: 'This model is coming soon!', zh: '该模型即将上线！' }) : t({ en: 'Requires API key configuration.', zh: '需要先配置 API Key。' }));
-                        return;
-                      }
-                      setSelectedModel(m.id);
+                      setAgentPreferredModel(m.id);
+                      setResolvedModelLabel(m.label);
                       setShowModelPicker(false);
-                      // Sync to backend for the active instance
-                      if (instanceId) {
+                      // Save per-agent model to backend
+                      const agentAccountId = activeInstance?.metadata?.agentAccountId;
+                      if (agentAccountId) {
                         try {
-                          const result = await switchInstanceModel(instanceId, m.id);
-                          // Subtle toast-like feedback — don't block the UI
-                          if (result.message) {
-                            // Optional: show brief notification
-                          }
-                        } catch (err: any) {
-                          // Model still set locally — backend sync is best-effort
-                        }
+                          await apiFetch(`/agent-accounts/${agentAccountId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ preferredModel: m.id }),
+                          });
+                        } catch {}
+                      }
+                      // Also sync to instance
+                      if (instanceId) {
+                        try { await switchInstanceModel(instanceId, m.id); } catch {}
                       }
                     }}
                   >
@@ -1451,12 +1488,10 @@ export function AgentChatScreen() {
                       <Text style={styles.modelOptionIcon}>{m.icon}</Text>
                       <View style={styles.modelOptionInfo}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={[styles.modelOptionLabel, !isAvailable && { color: colors.textMuted }]}>{m.label}</Text>
+                          <Text style={styles.modelOptionLabel}>{m.label}</Text>
                           {m.badge && (
-                            <View style={[styles.modelBadge, isComingSoon && { backgroundColor: colors.textMuted + '30' }]}>
-                              <Text style={[styles.modelBadgeText, isComingSoon && { color: colors.textMuted }]}>
-                                {isComingSoon ? t({ en: 'Soon', zh: '即将上线' }) : m.badge}
-                              </Text>
+                            <View style={styles.modelBadge}>
+                              <Text style={styles.modelBadgeText}>{m.badge}</Text>
                             </View>
                           )}
                         </View>
@@ -1467,6 +1502,11 @@ export function AgentChatScreen() {
                   </TouchableOpacity>
                 );
               })}
+              {availableModels.length <= 1 && (
+                <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 16, fontSize: 13 }}>
+                  {t({ en: 'Configure API keys in Settings → API Keys to unlock more models', zh: '前往 设置 → API密钥 配置厂商密钥以解锁更多模型' })}
+                </Text>
+              )}
             </ScrollView>
           </View>
         </TouchableOpacity>

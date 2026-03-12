@@ -86,18 +86,29 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'bedrock', name: 'AWS Bedrock', icon: '☁️', region: 'international', currency: 'USD',
+    id: 'bedrock', name: 'AWS Bedrock (国际区)', icon: '☁️', region: 'international', currency: 'USD',
     requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
     placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'us-east-1' },
     models: [
-      { id: 'us.anthropic.claude-opus-4-6-v1:0', label: 'Claude Opus 4.6 (Bedrock)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
-      { id: 'us.anthropic.claude-sonnet-4-6-v1:0', label: 'Claude Sonnet 4.6 (Bedrock)', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
-      { id: 'us.anthropic.claude-haiku-4-5-v1:0', label: 'Claude Haiku 4.5 (Bedrock)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
-      { id: 'us.meta.llama4-maverick-v1:0', label: 'Llama 4 Maverick (Bedrock)', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.20', outputPrice: '$0.60', positioning: '开源/私有化部署' },
-      { id: 'us.deepseek.deepseek-v3.2-v1:0', label: 'DeepSeek V3.2 (Bedrock)', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.50', outputPrice: '$1.50', positioning: '理科推理/极致性价比' },
+      { id: 'us.anthropic.claude-opus-4-6-v1:0', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
+      { id: 'us.anthropic.claude-sonnet-4-6-v1:0', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
+      { id: 'us.anthropic.claude-haiku-4-5-v1:0', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
+      { id: 'us.meta.llama4-maverick-v1:0', label: 'Llama 4 Maverick', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.20', outputPrice: '$0.60', positioning: '开源/私有化部署' },
+      { id: 'us.deepseek.deepseek-v3.2-v1:0', label: 'DeepSeek V3.2', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.50', outputPrice: '$1.50', positioning: '理科推理/极致性价比' },
       { id: 'us.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro', contextWindow: 300000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.80', outputPrice: '$3.20', positioning: '通用/AWS原生' },
       { id: 'us.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite', contextWindow: 300000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.06', outputPrice: '$0.24', positioning: '极致低成本' },
-      { id: 'mistral.mistral-large-v1:0', label: 'Mistral Large (Bedrock)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.00', outputPrice: '$6.00', positioning: '欧洲开源/代码/多语言' },
+      { id: 'mistral.mistral-large-v1:0', label: 'Mistral Large', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.00', outputPrice: '$6.00', positioning: '欧洲开源/代码/多语言' },
+    ],
+  },
+  {
+    id: 'bedrock-cn', name: 'AWS Bedrock (中国区)', icon: '☁️', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
+    placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'cn-northwest-1' },
+    models: [
+      { id: 'anthropic.claude-sonnet-4-v1:0', label: 'Claude Sonnet 4 (中国区)', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥21.0', outputPrice: '¥105.0', positioning: '均衡/默认/中国区可用' },
+      { id: 'anthropic.claude-haiku-4-v1:0', label: 'Claude Haiku 4 (中国区)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥35.0', positioning: '轻量/快速/中国区可用' },
+      { id: 'meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B (中国区)', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '¥6.3', outputPrice: '¥6.3', positioning: '开源/中国区可用' },
+      { id: 'mistral.mistral-large-2411-v1:0', label: 'Mistral Large (中国区)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '¥14.0', outputPrice: '¥42.0', positioning: '多语言/代码/中国区可用' },
     ],
   },
   // ─── 🇨🇳 China ───
@@ -136,7 +147,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     placeholder: { apiKey: 'sk-...' },
     baseUrl: 'https://api.moonshot.cn/v1',
     models: [
-      { id: 'kimi-k2.5', label: 'Kimi K2.5 (最强)', contextWindow: 256000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥4.0', outputPrice: '¥21.0', positioning: '长文本/多智能体/数学', freeApi: true, freeNote: '个人永久免费' },
+      { id: 'kimi-k2.5', label: 'Kimi K2.5 (最强)', contextWindow: 256000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥4.0', outputPrice: '¥21.0', positioning: '长文本/多智能体/数学', freeApi: true, freeNote: '新用户100万token免费' },
     ],
   },
   {
@@ -351,6 +362,41 @@ export class AiProviderService {
 
   // ─── Test connectivity ──────────
 
+  /** Get all models available to the user: platform default + user's configured provider models */
+  async getAvailableModels(userId: string): Promise<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>> {
+    const models: Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }> = [];
+
+    // Platform default model (always available)
+    models.push({
+      id: 'claude-haiku-4-5',
+      label: 'Claude Haiku 4.5 (Default)',
+      provider: 'Agentrix Platform',
+      providerId: 'platform',
+      costTier: 'free_trial',
+      positioning: '平台默认/免费额度',
+      isDefault: true,
+    });
+
+    // User's configured provider models
+    const configs = await this.repo.find({ where: { userId, isActive: true } });
+    for (const config of configs) {
+      const providerDef = this.getProviderDef(config.providerId);
+      if (!providerDef) continue;
+      for (const model of providerDef.models) {
+        models.push({
+          id: model.id,
+          label: model.label,
+          provider: providerDef.name,
+          providerId: config.providerId,
+          costTier: model.costTier,
+          positioning: model.positioning,
+        });
+      }
+    }
+
+    return models;
+  }
+
   async testProvider(userId: string, dto: { providerId: string; apiKey: string; secretKey?: string; baseUrl?: string; region?: string; model: string }): Promise<{ success: boolean; latencyMs: number; error?: string }> {
     const provider = this.getProviderDef(dto.providerId);
     if (!provider) throw new BadRequestException(`Unknown provider: ${dto.providerId}`);
@@ -441,7 +487,8 @@ export class AiProviderService {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);
         break;
       }
-      case 'bedrock': {
+      case 'bedrock':
+      case 'bedrock-cn': {
         if (!dto.apiKey || !dto.secretKey || !dto.region) {
           throw new Error('AWS Access Key, Secret Key, and Region are all required');
         }

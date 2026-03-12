@@ -583,6 +583,40 @@ export class OpenClawProxyService {
     const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
     const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
+
+    // Resolve model & provider FIRST so we can inject identity into system prompt
+    const agentAccount = permissionProfile?.agentAccountId
+      ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
+      : null;
+    let resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    let resolvedProvider = agentAccount?.preferredProvider || undefined;
+
+    // If no per-agent override, use user's default provider config
+    if (!resolvedProvider) {
+      const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
+      if (defaultConfig) {
+        resolvedProvider = defaultConfig.providerId;
+        if (!agentAccount?.preferredModel && !dto.model) {
+          resolvedModel = defaultConfig.selectedModel;
+        }
+      }
+    }
+
+    // If user has a custom provider config for this provider, use their API key
+    let userApiKey: string | undefined;
+    if (resolvedProvider) {
+      const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
+      if (providerConfig) {
+        userApiKey = providerConfig.apiKey;
+      }
+    }
+
+    // Resolve a human-friendly model label for the system prompt
+    const catalog = this.aiProviderService.getCatalog();
+    const resolvedModelLabel = catalog
+      .flatMap((p: any) => p.models)
+      .find((m: any) => m.id === resolvedModel)?.label || resolvedModel;
+
     const messages = [
       {
         role: 'system' as const,
@@ -645,37 +679,11 @@ export class OpenClawProxyService {
           `8. When the user asks about wallet balance, funds, or financial status: call get_balance or asset_overview. NEVER guess balances.\n` +
           `${permissionProfile
             ? `9. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
-            : '9. No Agent Account permission profile is currently bound to this instance.'}`,
+            : '9. No Agent Account permission profile is currently bound to this instance.'}\n` +
+          `10. You are currently running on model: ${resolvedModelLabel}. When a user asks what model you are, identify yourself truthfully with this model name. Do not make up a different identity.`,
       },
       { role: 'user' as const, content: this.buildUserContent(dto.message) },
     ];
-
-    // Resolve model & provider: per-agent override > client request > instance default > platform default
-    const agentAccount = permissionProfile?.agentAccountId
-      ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
-      : null;
-    let resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
-    let resolvedProvider = agentAccount?.preferredProvider || undefined;
-
-    // If no per-agent override, use user's default provider config
-    if (!resolvedProvider) {
-      const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
-      if (defaultConfig) {
-        resolvedProvider = defaultConfig.providerId;
-        if (!agentAccount?.preferredModel && !dto.model) {
-          resolvedModel = defaultConfig.selectedModel;
-        }
-      }
-    }
-
-    // If user has a custom provider config for this provider, use their API key
-    let userApiKey: string | undefined;
-    if (resolvedProvider) {
-      const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
-      if (providerConfig) {
-        userApiKey = providerConfig.apiKey;
-      }
-    }
 
     const result = await this.claudeIntegrationService.chatWithFunctions(messages, {
       model: resolvedModel,
@@ -694,6 +702,8 @@ export class OpenClawProxyService {
 
     return {
       sessionId,
+      resolvedModel,
+      resolvedModelLabel,
       reply: {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -722,6 +732,12 @@ export class OpenClawProxyService {
     try {
       const result = await this.runPlatformHostedChat(userId, instance, dto);
       const text = result.reply?.content || 'Sorry, I could not generate a response.';
+      // Send resolved model info as first event so the client can update its UI
+      const resultAny = result as any;
+      if (resultAny.resolvedModel && !res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ meta: { resolvedModel: resultAny.resolvedModel, resolvedModelLabel: resultAny.resolvedModelLabel } })}\n\n`);
+        if ((res as any).flush) (res as any).flush();
+      }
       const chunks = text.match(/.{1,12}/gs) || [text];
       for (const chunk of chunks) {
         if (res.writableEnded) break;
