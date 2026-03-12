@@ -1,4 +1,4 @@
-import { CSSProperties, useState, useCallback, useRef } from "react";
+import { CSSProperties, useState, useCallback, useRef, useEffect } from "react";
 import agentrixLogo from "../assets/agentrix-logo.png";
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
@@ -12,8 +12,22 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
   const [hovered, setHovered] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pressing, setPressing] = useState(false);
+  const [idleFaded, setIdleFaded] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLongPress = useRef(false);
+
+  // Idle auto-transparency: fade to 40% after 30s of idle state
+  useEffect(() => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    if (state === "idle" && !hovered) {
+      idleTimer.current = setTimeout(() => setIdleFaded(true), 30000);
+    } else {
+      setIdleFaded(false);
+    }
+    return () => { if (idleTimer.current) clearTimeout(idleTimer.current); };
+  }, [state, hovered]);
 
   const handlePointerDown = useCallback(() => {
     setPressing(true);
@@ -40,6 +54,22 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
     if (!isLongPress.current) onTap();
   }, [onTap]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  // Close context menu on any outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [contextMenu]);
+
   const animationStyle: CSSProperties =
     state === "recording"
       ? { animation: "breathe 1.5s ease-in-out infinite" }
@@ -49,9 +79,10 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
           ? { animation: "ripple 1.2s ease-out infinite" }
           : {};
 
-  const baseOpacity = hovered ? 1 : 0.85;
+  const baseOpacity = hovered ? 1 : idleFaded ? 0.4 : 0.85;
 
   return (
+    <>
     <div
       style={{
         width: 56,
@@ -75,7 +106,8 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onClick={handleClick}
-      title="Agentrix — Click to chat, hold for voice"
+      onContextMenu={handleContextMenu}
+      title="Agentrix — Click to chat, hold for voice, right-click for menu"
     >
       {/* Logo */}
       <img
@@ -107,5 +139,48 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
         />
       )}
     </div>
+
+    {/* Right-click context menu */}
+    {contextMenu && (
+      <div
+        style={{
+          position: "fixed",
+          top: contextMenu.y,
+          left: contextMenu.x,
+          background: "var(--bg-panel, #1e1e2e)",
+          border: "1px solid var(--border, #333)",
+          borderRadius: 8,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          zIndex: 10000,
+          minWidth: 160,
+          padding: "4px 0",
+          fontSize: 13,
+        }}
+        onClick={closeContextMenu}
+      >
+        {[
+          { label: "💬 Open Chat", action: () => onTap() },
+          { label: "🆕 New Chat", action: () => window.dispatchEvent(new CustomEvent("agentrix:new-chat")) },
+          { label: "🎤 Voice Input", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:voice-start")), 200); } },
+          { label: "⚙️ Settings", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-settings")), 200); } },
+        ].map((item) => (
+          <div
+            key={item.label}
+            onClick={item.action}
+            style={{
+              padding: "8px 16px",
+              cursor: "pointer",
+              color: "var(--text, #eee)",
+              transition: "background 0.1s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            {item.label}
+          </div>
+        ))}
+      </div>
+    )}
+    </>
   );
 }

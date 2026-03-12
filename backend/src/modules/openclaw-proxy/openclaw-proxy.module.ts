@@ -10,6 +10,7 @@ import { OpenClawConnectionModule } from '../openclaw-connection/openclaw-connec
 import { TokenQuotaModule } from '../token-quota/token-quota.module';
 import { SkillModule } from '../skill/skill.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
+import { AiProviderModule } from '../ai-provider/ai-provider.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integra
     TokenQuotaModule,
     forwardRef(() => SkillModule),
     forwardRef(() => ClaudeIntegrationModule),
+    AiProviderModule,
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],

@@ -39,6 +39,8 @@ export interface UpdateAgentAccountDto {
   avatarUrl?: string;
   capabilities?: string[];
   permissions?: Record<string, any>;
+  preferredModel?: string;
+  preferredProvider?: string;
   spendingLimits?: {
     singleTxLimit: number;
     dailyLimit: number;
@@ -186,6 +188,8 @@ export class AgentAccountService {
     if (dto.avatarUrl !== undefined) agent.avatarUrl = dto.avatarUrl;
     if (dto.capabilities !== undefined) agent.capabilities = dto.capabilities;
     if (dto.permissions !== undefined) agent.permissions = dto.permissions;
+    if (dto.preferredModel !== undefined) agent.preferredModel = dto.preferredModel || undefined;
+    if (dto.preferredProvider !== undefined) agent.preferredProvider = dto.preferredProvider || undefined;
     if (dto.spendingLimits !== undefined) agent.spendingLimits = dto.spendingLimits;
     if (dto.callbacks !== undefined) agent.callbacks = dto.callbacks;
     if (dto.metadata !== undefined) agent.metadata = { ...agent.metadata, ...dto.metadata };

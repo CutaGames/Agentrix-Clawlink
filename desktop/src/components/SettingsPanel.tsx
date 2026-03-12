@@ -1,5 +1,6 @@
-import { useState, type CSSProperties } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
+import { pickWorkspaceFolder, getWorkspaceDir } from "../services/workspace";
 
 interface Props {
   ttsEnabled: boolean;
@@ -10,6 +11,19 @@ interface Props {
 export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Props) {
   const { user, logout } = useAuthStore();
   const [autoStart, setAutoStart] = useState(true);
+  const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    getWorkspaceDir().then(setWorkspaceDir).catch(() => {});
+  }, []);
+
+  const handlePickWorkspace = async () => {
+    const dir = await pickWorkspaceFolder();
+    if (dir) {
+      setWorkspaceDir(dir);
+      window.dispatchEvent(new CustomEvent("agentrix:workspace-changed"));
+    }
+  };
 
   const handleToggleAutoStart = async (enabled: boolean) => {
     setAutoStart(enabled);
@@ -70,6 +84,28 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Prop
           <div style={hotkeyRow}>
             <span>Panel</span>
             <kbd style={kbdStyle}>Ctrl+Shift+S</kbd>
+          </div>
+        </div>
+
+        {/* Workspace / Coding Agent */}
+        <div style={section}>
+          <div style={sectionTitle}>Workspace (Coding Agent)</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {workspaceDir ? (
+                <div style={{ fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  📁 {workspaceDir}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>No workspace selected</div>
+              )}
+            </div>
+            <button onClick={handlePickWorkspace} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
+              {workspaceDir ? "Change" : "Select Folder"}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 0" }}>
+            Agent can read/edit files in this folder for coding tasks.
           </div>
         </div>
 

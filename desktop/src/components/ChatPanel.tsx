@@ -27,6 +27,12 @@ import {
   SentenceAccumulator,
   detectLang,
 } from "../services/AudioQueuePlayer";
+import {
+  getWorkspaceDir,
+  listWorkspaceDir,
+  readWorkspaceFile,
+  writeWorkspaceFile,
+} from "../services/workspace";
 
 interface Props {
   onClose: () => void;
@@ -46,8 +52,10 @@ export default function ChatPanel({ onClose }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
@@ -56,6 +64,14 @@ export default function ChatPanel({ onClose }: Props) {
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
   // Track whether the current send was voice-initiated for auto-TTS
   const voiceInitiatedRef = useRef(false);
+
+  // Load workspace directory
+  useEffect(() => {
+    getWorkspaceDir().then(setWorkspaceDirState).catch(() => {});
+    const onSettings = () => getWorkspaceDir().then(setWorkspaceDirState).catch(() => {});
+    window.addEventListener("agentrix:workspace-changed", onSettings);
+    return () => window.removeEventListener("agentrix:workspace-changed", onSettings);
+  }, []);
 
   useEffect(() => {
     if (token) {
@@ -97,15 +113,22 @@ export default function ChatPanel({ onClose }: Props) {
   const serializeMessageForModel = useCallback(
     (content: string, attachments: ChatAttachment[] = []) => {
       const trimmed = content.trim();
-      if (attachments.length === 0) return trimmed;
-      const attachmentLines = attachments.map((attachment, index) => {
-        const label = attachment.kind === "image" ? "Image" : "File";
-        return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatBytes(attachment.size)})\nURL: ${attachment.publicUrl}`;
-      });
-      const prefix = trimmed ? `${trimmed}\n\n` : "";
-      return `${prefix}[User Attachments]\n${attachmentLines.join("\n\n")}\nUse the attachment URLs when relevant.`;
+      let result = trimmed;
+      if (attachments.length > 0) {
+        const attachmentLines = attachments.map((attachment, index) => {
+          const label = attachment.kind === "image" ? "Image" : "File";
+          return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatBytes(attachment.size)})\nURL: ${attachment.publicUrl}`;
+        });
+        const prefix = trimmed ? `${trimmed}\n\n` : "";
+        result = `${prefix}[User Attachments]\n${attachmentLines.join("\n\n")}\nUse the attachment URLs when relevant.`;
+      }
+      // Add workspace context for coding tasks
+      if (workspaceDir) {
+        result += `\n\n[Desktop Workspace: ${workspaceDir}]\nYou have access to read and write files in this workspace. When performing coding tasks, reference files by relative path. Use code blocks with file paths to suggest edits.`;
+      }
+      return result;
     },
-    [],
+    [workspaceDir],
   );
 
   const appendChunk = useCallback((msgId: string, chunk: string) => {
@@ -124,11 +147,109 @@ export default function ChatPanel({ onClose }: Props) {
     );
   }, []);
 
+  // Handle slash commands locally
+  const handleSlashCommand = useCallback(async (text: string): Promise<boolean> => {
+    const trimmed = text.trim();
+
+    // /new — new chat
+    if (trimmed === "/new" || trimmed === "/clear") {
+      abortRef.current?.abort();
+      audioPlayerRef.current?.stopAll();
+      sentenceAccRef.current?.reset();
+      sessionIdRef.current = `session-${Date.now()}`;
+      setMessages([]);
+      setPendingAttachments([]);
+      setBallState("idle");
+      return true;
+    }
+
+    // /ls [path] — list workspace directory
+    if (trimmed.startsWith("/ls")) {
+      const relPath = trimmed.slice(3).trim();
+      try {
+        const entries = await listWorkspaceDir(relPath);
+        const listing = entries.map(e => `${e.is_dir ? "📁" : "📄"} ${e.name}${e.is_dir ? "/" : ` (${formatBytes(e.size)})`}`).join("\n");
+        addSystemMessage(`📂 ${relPath || "."}\n\n${listing || "(empty)"}`);
+      } catch (err: any) {
+        addSystemMessage(`❌ ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /read <path> — read file content
+    if (trimmed.startsWith("/read ")) {
+      const relPath = trimmed.slice(6).trim();
+      try {
+        const content = await readWorkspaceFile(relPath);
+        const ext = relPath.split(".").pop() || "";
+        addSystemMessage(`📄 ${relPath}\n\n\`\`\`${ext}\n${content}\n\`\`\``);
+      } catch (err: any) {
+        addSystemMessage(`❌ ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /write <path> <content> — write file (content after first space of path)
+    if (trimmed.startsWith("/write ")) {
+      const rest = trimmed.slice(7).trim();
+      const spaceIdx = rest.indexOf(" ");
+      if (spaceIdx < 0) {
+        addSystemMessage("Usage: /write <path> <content>");
+        return true;
+      }
+      const relPath = rest.slice(0, spaceIdx);
+      const content = rest.slice(spaceIdx + 1);
+      try {
+        await writeWorkspaceFile(relPath, content);
+        addSystemMessage(`✅ Written to ${relPath}`);
+      } catch (err: any) {
+        addSystemMessage(`❌ ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /model <name> — switch model
+    if (trimmed.startsWith("/model ")) {
+      const modelArg = trimmed.slice(7).trim();
+      const match = models.find(m => m.id === modelArg || m.label?.toLowerCase().includes(modelArg.toLowerCase()));
+      if (match) {
+        setSelectedModel(match.id);
+        addSystemMessage(`✅ Switched to model: ${match.label || match.id}`);
+      } else {
+        addSystemMessage(`❌ Model not found. Available: ${models.map(m => m.id).join(", ")}`);
+      }
+      return true;
+    }
+
+    // /history — show session info
+    if (trimmed === "/history") {
+      addSystemMessage(`Session: ${sessionIdRef.current}\nMessages: ${messages.length}\nInstance: ${activeInstanceId || "none"}`);
+      return true;
+    }
+
+    return false;
+  }, [models, messages, activeInstanceId]);
+
+  const addSystemMessage = useCallback((content: string) => {
+    setMessages(prev => [...prev, {
+      id: `sys-${Date.now()}`,
+      role: "assistant" as const,
+      content,
+      createdAt: Date.now(),
+    }]);
+  }, []);
+
   const handleSend = useCallback(
     async (overrideText?: string) => {
       const text = (overrideText || input).trim();
       if ((!text && pendingAttachments.length === 0) || sending || uploadingAttachments) return;
       if (!overrideText) setInput("");
+
+      // Handle slash commands locally
+      if (text.startsWith("/") && pendingAttachments.length === 0) {
+        const handled = await handleSlashCommand(text);
+        if (handled) return;
+      }
 
       const outboundText = serializeMessageForModel(text, pendingAttachments);
 
@@ -258,6 +379,7 @@ export default function ChatPanel({ onClose }: Props) {
       ttsEnabled,
       serializeMessageForModel,
       uploadingAttachments,
+      handleSlashCommand,
     ],
   );
 
@@ -287,6 +409,41 @@ export default function ChatPanel({ onClose }: Props) {
 
   const removePendingAttachment = useCallback((fileName: string) => {
     setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      const files = Array.from(e.dataTransfer.files);
+      if (!files.length || !token) return;
+      try {
+        setUploadingAttachments(true);
+        const uploaded = await Promise.all(files.map((file) => uploadChatAttachment(file, token)));
+        setPendingAttachments((prev) => [...prev, ...uploaded]);
+      } catch (error: any) {
+        window.alert(error?.message || "Failed to upload attachment");
+      } finally {
+        setUploadingAttachments(false);
+      }
+    },
+    [token],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only hide overlay when leaving the panel itself
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
   }, []);
 
   // Sync voiceState with ballState
@@ -325,7 +482,20 @@ export default function ChatPanel({ onClose }: Props) {
     setBallState("idle");
   };
 
+  // Listen for custom events from tray / floating ball context menu
+  useEffect(() => {
+    const onNewChat = () => handleNewChat();
+    const onOpenSettings = () => setSettingsOpen(true);
+    window.addEventListener("agentrix:new-chat", onNewChat);
+    window.addEventListener("agentrix:open-settings", onOpenSettings);
+    return () => {
+      window.removeEventListener("agentrix:new-chat", onNewChat);
+      window.removeEventListener("agentrix:open-settings", onOpenSettings);
+    };
+  }, []);
+
   const panel: CSSProperties = {
+    position: "relative",
     width: "100%",
     maxWidth: 480,
     height: "100%",
@@ -341,7 +511,34 @@ export default function ChatPanel({ onClose }: Props) {
   };
 
   return (
-    <div style={panel}>
+    <div
+      style={panel}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag-and-drop overlay */}
+      {isDragOver && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(99, 102, 241, 0.15)",
+            border: "2px dashed var(--accent)",
+            borderRadius: "inherit",
+            zIndex: 999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)" }}>
+            Drop files here to attach
+          </div>
+        </div>
+      )}
+
       {/* Title bar */}
       <div
         style={{
@@ -441,7 +638,7 @@ export default function ChatPanel({ onClose }: Props) {
             <div style={{ fontSize: 32, marginBottom: 12 }}>🤖</div>
             <div>Ask me anything</div>
             <div style={{ fontSize: 12, marginTop: 6 }}>
-              Ctrl+Shift+A for voice
+              Ctrl+Shift+A for voice · Type / for commands
             </div>
           </div>
         )}
@@ -509,7 +706,7 @@ export default function ChatPanel({ onClose }: Props) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message... (Shift+Enter for new line)"
+          placeholder="Type a message... (/ for commands)"
           rows={1}
           style={{
             flex: 1,

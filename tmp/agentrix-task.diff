@@ -1,0 +1,1457 @@
+commit 38e042d7c9df4dc979bd250b79ce3bf6d95a01d6
+Author: Agentrix Dev <dev@agentrix.top>
+Date:   Tue Mar 10 23:42:31 2026 +0800
+
+    Fix agent chat attachments and commerce fallback
+
+diff --git a/backend/src/modules/ai-capability/services/capability-registry.service.ts b/backend/src/modules/ai-capability/services/capability-registry.service.ts
+index b0416f62..65be549a 100644
+--- a/backend/src/modules/ai-capability/services/capability-registry.service.ts
++++ b/backend/src/modules/ai-capability/services/capability-registry.service.ts
+@@ -378,10 +378,11 @@ export class CapabilityRegistryService {
+       parameters: {
+         type: 'object',
+         properties: {
+-          product_id: { type: 'string', description: '商品ID' },
++          product_id: { type: 'string', description: '商品ID、商品名称或商品 slug' },
++          product_name: { type: 'string', description: '商品名称或商品 slug（可选）' },
+           quantity: { type: 'number', description: '数量' },
+         },
+-        required: ['product_id'],
++        required: [],
+       },
+       enabled: true,
+     });
+diff --git a/backend/src/modules/ai-integration/claude/claude-integration.service.ts b/backend/src/modules/ai-integration/claude/claude-integration.service.ts
+index 5261c150..aa88cc48 100644
+--- a/backend/src/modules/ai-integration/claude/claude-integration.service.ts
++++ b/backend/src/modules/ai-integration/claude/claude-integration.service.ts
+@@ -3,7 +3,7 @@ import { ModuleRef } from '@nestjs/core';
+ import { ConfigService } from '@nestjs/config';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import { Repository } from 'typeorm';
+-import { Product } from '../../../entities/product.entity';
++import { Product, ProductStatus } from '../../../entities/product.entity';
+ import { Order } from '../../../entities/order.entity';
+ import { CapabilityRegistryService } from '../../ai-capability/services/capability-registry.service';
+ import { CapabilityExecutorService } from '../../ai-capability/services/capability-executor.service';
+@@ -166,14 +166,21 @@ export class ClaudeIntegrationService {
+         input_schema: {
+           type: 'object',
+           properties: {
+-            product_id: { type: 'string', description: '商品ID（必需）' },
++            product_id: {
++              type: 'string',
++              description: '商品ID、商品名称或商品 slug（任选其一）',
++            },
++            product_name: {
++              type: 'string',
++              description: '商品名称或 slug（可选，未提供 product_id 时可用）',
++            },
+             quantity: {
+               type: 'number',
+               description: '数量（可选，默认：1）',
+               minimum: 1,
+             },
+           },
+-          required: ['product_id'],
++          required: [],
+         },
+       },
+       {
+@@ -203,7 +210,11 @@ export class ClaudeIntegrationService {
+           properties: {
+             product_id: {
+               type: 'string',
+-              description: '商品ID（从搜索结果中获取）',
++              description: '商品ID、商品名称或商品 slug（任选其一）',
++            },
++            product_name: {
++              type: 'string',
++              description: '商品名称或 slug（可选，未提供 product_id 时可用）',
+             },
+             quantity: {
+               type: 'number',
+@@ -232,7 +243,7 @@ export class ClaudeIntegrationService {
+               description: '区块链网络（NFT类商品需要）',
+             },
+           },
+-          required: ['product_id'],
++          required: [],
+         },
+       },
+       {
+@@ -1049,11 +1060,87 @@ export class ClaudeIntegrationService {
+   }
+ 
+   // 以下方法与 Gemini 服务相同，可以复用
++  private normalizeProductReference(value?: string): string | null {
++    const normalized = String(value || '').trim();
++    return normalized ? normalized : null;
++  }
++
++  private looksLikeUuid(value: string): boolean {
++    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
++      value,
++    );
++  }
++
++  private async resolveProductFromReference(params: {
++    product_id?: string;
++    product_name?: string;
++  }): Promise<Product> {
++    const references = [
++      this.normalizeProductReference(params.product_id),
++      this.normalizeProductReference(params.product_name),
++    ].filter((value, index, list): value is string => !!value && list.indexOf(value) === index);
++
++    if (references.length === 0) {
++      throw new Error('缺少商品标识，请提供 product_id 或 product_name');
++    }
++
++    for (const reference of references) {
++      if (!this.looksLikeUuid(reference)) {
++        continue;
++      }
++
++      try {
++        return await this.productService.getProduct(reference);
++      } catch {
++        // Fall through to name/slug lookup.
++      }
++    }
++
++    for (const reference of references) {
++      const normalized = reference.toLowerCase();
++
++      const exactMatch = await this.productRepository
++        .createQueryBuilder('product')
++        .where('product.status = :status', { status: ProductStatus.ACTIVE })
++        .andWhere(
++          '(LOWER(product.name) = :normalized OR LOWER(product.externalId) = :normalized)',
++          { normalized },
++        )
++        .orderBy('product.stock', 'DESC')
++        .addOrderBy('product.createdAt', 'DESC')
++        .getOne();
++
++      if (exactMatch) {
++        return exactMatch;
++      }
++
++      const fuzzyPattern = `%${normalized}%`;
++      const fuzzyMatch = await this.productRepository
++        .createQueryBuilder('product')
++        .where('product.status = :status', { status: ProductStatus.ACTIVE })
++        .andWhere(
++          '(LOWER(product.name) LIKE :pattern OR LOWER(product.externalId) LIKE :pattern)',
++          { pattern: fuzzyPattern },
++        )
++        .orderBy('product.stock', 'DESC')
++        .addOrderBy('product.createdAt', 'DESC')
++        .getOne();
++
++      if (fuzzyMatch) {
++        return fuzzyMatch;
++      }
++    }
++
++    throw new Error(
++      `商品不存在：${references.join(' / ')}。请先搜索商品，或提供准确的商品 ID、名称或 slug。`,
++    );
++  }
++
+   private async addToCart(
+-    params: { product_id: string; quantity?: number },
++    params: { product_id?: string; product_name?: string; quantity?: number },
+     context: { userId?: string; sessionId?: string },
+   ): Promise<any> {
+-    const { product_id, quantity = 1 } = params;
++    const { quantity = 1 } = params;
+     const cartIdentifier = context.userId || context.sessionId;
+     const isSessionId = !context.userId;
+ 
+@@ -1061,14 +1148,11 @@ export class ClaudeIntegrationService {
+       throw new Error('无法识别用户身份');
+     }
+ 
+-    const product = await this.productService.getProduct(product_id);
+-    if (!product) {
+-      throw new Error('商品不存在');
+-    }
++    const product = await this.resolveProductFromReference(params);
+ 
+     const cart = await this.cartService.addToCart(
+       cartIdentifier,
+-      product_id,
++      product.id,
+       quantity,
+       isSessionId,
+     );
+@@ -1172,7 +1256,8 @@ export class ClaudeIntegrationService {
+ 
+   private async buyProduct(
+     params: {
+-      product_id: string;
++      product_id?: string;
++      product_name?: string;
+       quantity?: number;
+       shipping_address?: string;
+       appointment_time?: string;
+@@ -1196,14 +1281,11 @@ export class ClaudeIntegrationService {
+       throw new Error('购买需要登录');
+     }
+ 
+-    const product = await this.productService.getProduct(product_id);
+-    if (!product) {
+-      throw new Error('商品不存在');
+-    }
++    const product = await this.resolveProductFromReference(params);
+ 
+     const order = await this.orderService.createOrder(context.userId, {
+       merchantId: product.merchantId,
+-      productId: product_id,
++      productId: product.id,
+       amount: Number(product.price) * quantity,
+       currency: (product.metadata as any)?.currency || 'CNY',
+       metadata: {
+diff --git a/backend/src/modules/upload/upload.controller.ts b/backend/src/modules/upload/upload.controller.ts
+index 3320c2b0..841cf350 100644
+--- a/backend/src/modules/upload/upload.controller.ts
++++ b/backend/src/modules/upload/upload.controller.ts
+@@ -38,4 +38,27 @@ export class UploadController {
+     }
+     return this.uploadService.uploadProductImage(file);
+   }
++
++  @Post('chat-attachment')
++  @UseGuards(JwtAuthGuard)
++  @UseInterceptors(FileInterceptor('file'))
++  @ApiOperation({ summary: 'Upload a chat attachment' })
++  @ApiConsumes('multipart/form-data')
++  @ApiBody({
++    schema: {
++      type: 'object',
++      properties: {
++        file: {
++          type: 'string',
++          format: 'binary',
++        },
++      },
++    },
++  })
++  async uploadChatAttachment(@UploadedFile() file: Express.Multer.File) {
++    if (!file) {
++      throw new BadRequestException('File is required');
++    }
++    return this.uploadService.uploadChatAttachment(file);
++  }
+ }
+diff --git a/backend/src/modules/upload/upload.service.ts b/backend/src/modules/upload/upload.service.ts
+index a168cb67..95575181 100644
+--- a/backend/src/modules/upload/upload.service.ts
++++ b/backend/src/modules/upload/upload.service.ts
+@@ -6,41 +6,88 @@ import { v4 as uuidv4 } from 'uuid';
+ @Injectable()
+ export class UploadService {
+   private readonly uploadDir = path.join(process.cwd(), 'uploads', 'products');
++  private readonly chatUploadDir = path.join(process.cwd(), 'uploads', 'chat');
++  private readonly maxAttachmentSize = 15 * 1024 * 1024;
+ 
+   constructor() {
+-    if (!fs.existsSync(this.uploadDir)) {
+-      fs.mkdirSync(this.uploadDir, { recursive: true });
+-    }
++    this.ensureDir(this.uploadDir);
++    this.ensureDir(this.chatUploadDir);
+   }
+ 
+-  async uploadProductImage(file: Express.Multer.File) {
+-    if (!file) {
+-      throw new BadRequestException('No file uploaded');
+-    }
+-
+-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+-    if (!allowedMimeTypes.includes(file.mimetype)) {
+-      throw new BadRequestException('Invalid file type. Only images are allowed.');
++  private ensureDir(dirPath: string) {
++    if (!fs.existsSync(dirPath)) {
++      fs.mkdirSync(dirPath, { recursive: true });
+     }
++  }
+ 
++  private saveFile(file: Express.Multer.File, dirPath: string, publicPrefix: string) {
+     const fileExt = path.extname(file.originalname);
+     const fileName = `${uuidv4()}${fileExt}`;
+-    const filePath = path.join(this.uploadDir, fileName);
++    const filePath = path.join(dirPath, fileName);
+ 
+     try {
+       fs.writeFileSync(filePath, file.buffer);
+-      
+-      // Return the URL that can be used to access the file
+-      // The prefix /api/uploads/ is configured in main.ts
+       return {
+-        url: `/api/uploads/products/${fileName}`,
+-        fileName: fileName,
++        url: `${publicPrefix}/${fileName}`,
++        fileName,
+         originalName: file.originalname,
+         mimetype: file.mimetype,
+         size: file.size,
+       };
+-    } catch (error) {
++    } catch {
+       throw new BadRequestException('Failed to save file');
+     }
+   }
++
++  async uploadProductImage(file: Express.Multer.File) {
++    if (!file) {
++      throw new BadRequestException('No file uploaded');
++    }
++
++    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
++    if (!allowedMimeTypes.includes(file.mimetype)) {
++      throw new BadRequestException('Invalid file type. Only images are allowed.');
++    }
++
++    return this.saveFile(file, this.uploadDir, '/api/uploads/products');
++  }
++
++  async uploadChatAttachment(file: Express.Multer.File) {
++    if (!file) {
++      throw new BadRequestException('No file uploaded');
++    }
++
++    if (file.size > this.maxAttachmentSize) {
++      throw new BadRequestException('Attachment is too large. Max size is 15 MB.');
++    }
++
++    const allowedMimeTypes = [
++      'image/jpeg',
++      'image/png',
++      'image/gif',
++      'image/webp',
++      'application/pdf',
++      'text/plain',
++      'text/markdown',
++      'text/csv',
++      'application/json',
++      'application/msword',
++      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
++      'application/vnd.ms-excel',
++      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
++      'application/vnd.ms-powerpoint',
++      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
++    ];
++
++    if (!allowedMimeTypes.includes(file.mimetype)) {
++      throw new BadRequestException('Unsupported attachment type.');
++    }
++
++    const saved = this.saveFile(file, this.chatUploadDir, '/api/uploads/chat');
++    return {
++      ...saved,
++      kind: file.mimetype.startsWith('image/') ? 'image' : 'file',
++      isImage: file.mimetype.startsWith('image/'),
++    };
++  }
+ }
+diff --git a/desktop/src/components/ChatPanel.tsx b/desktop/src/components/ChatPanel.tsx
+index e90b049e..b96131f3 100644
+--- a/desktop/src/components/ChatPanel.tsx
++++ b/desktop/src/components/ChatPanel.tsx
+@@ -3,8 +3,10 @@ import {
+   useEffect,
+   useRef,
+   useCallback,
++  useMemo,
+   type CSSProperties,
+   type KeyboardEvent,
++  type ChangeEvent,
+ } from "react";
+ import {
+   useAuthStore,
+@@ -12,6 +14,8 @@ import {
+   streamDirectChat,
+   fetchModels,
+   type ChatMessage,
++  type ChatAttachment,
++  uploadChatAttachment,
+ } from "../services/store";
+ import MessageBubble from "./MessageBubble";
+ import VoiceButton from "./VoiceButton";
+@@ -40,11 +44,14 @@ export default function ChatPanel({ onClose }: Props) {
+   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+   const [ttsEnabled, setTtsEnabled] = useState(true);
+   const [settingsOpen, setSettingsOpen] = useState(false);
++  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
++  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+   const [models, setModels] = useState<any[]>([]);
+   const [selectedModel, setSelectedModel] = useState("");
+   const sessionIdRef = useRef(`session-${Date.now()}`);
+   const abortRef = useRef<AbortController | null>(null);
+   const listEndRef = useRef<HTMLDivElement>(null);
++  const fileInputRef = useRef<HTMLInputElement | null>(null);
+   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
+   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
+   // Track whether the current send was voice-initiated for auto-TTS
+@@ -87,6 +94,20 @@ export default function ChatPanel({ onClose }: Props) {
+     }
+   }, [activeInstanceId]);
+ 
++  const serializeMessageForModel = useCallback(
++    (content: string, attachments: ChatAttachment[] = []) => {
++      const trimmed = content.trim();
++      if (attachments.length === 0) return trimmed;
++      const attachmentLines = attachments.map((attachment, index) => {
++        const label = attachment.kind === "image" ? "Image" : "File";
++        return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatBytes(attachment.size)})\nURL: ${attachment.publicUrl}`;
++      });
++      const prefix = trimmed ? `${trimmed}\n\n` : "";
++      return `${prefix}[User Attachments]\n${attachmentLines.join("\n\n")}\nUse the attachment URLs when relevant.`;
++    },
++    [],
++  );
++
+   const appendChunk = useCallback((msgId: string, chunk: string) => {
+     setMessages((prev) =>
+       prev.map((m) =>
+@@ -106,13 +127,16 @@ export default function ChatPanel({ onClose }: Props) {
+   const handleSend = useCallback(
+     async (overrideText?: string) => {
+       const text = (overrideText || input).trim();
+-      if (!text || sending) return;
++      if ((!text && pendingAttachments.length === 0) || sending || uploadingAttachments) return;
+       if (!overrideText) setInput("");
+ 
++      const outboundText = serializeMessageForModel(text, pendingAttachments);
++
+       const userMsg: ChatMessage = {
+         id: `u-${Date.now()}`,
+         role: "user",
+-        content: text,
++        content: text || `Sent ${pendingAttachments.length} attachment${pendingAttachments.length > 1 ? "s" : ""}`,
++        attachments: pendingAttachments,
+         createdAt: Date.now(),
+       };
+       const assistantId = `a-${Date.now()}`;
+@@ -125,6 +149,7 @@ export default function ChatPanel({ onClose }: Props) {
+       };
+ 
+       setMessages((prev) => [...prev, userMsg, assistantMsg]);
++      setPendingAttachments([]);
+       setSending(true);
+       setBallState("thinking");
+ 
+@@ -153,7 +178,7 @@ export default function ChatPanel({ onClose }: Props) {
+           await new Promise<void>((resolve) => {
+             const ac = streamChat({
+               instanceId: activeInstanceId,
+-              message: text,
++              message: outboundText,
+               sessionId: sessionIdRef.current,
+               token,
+               model: selectedModel,
+@@ -179,9 +204,9 @@ export default function ChatPanel({ onClose }: Props) {
+       if (!succeeded && token) {
+         const history = messages.slice(-10).map((m) => ({
+           role: m.role,
+-          content: m.content,
++          content: serializeMessageForModel(m.content, m.attachments || []),
+         }));
+-        history.push({ role: "user", content: text });
++        history.push({ role: "user", content: outboundText });
+ 
+         await new Promise<void>((resolve) => {
+           const ac = streamDirectChat({
+@@ -227,12 +252,43 @@ export default function ChatPanel({ onClose }: Props) {
+       token,
+       selectedModel,
+       messages,
++      pendingAttachments,
+       appendChunk,
+       finalizeMessage,
+       ttsEnabled,
++      serializeMessageForModel,
++      uploadingAttachments,
+     ],
+   );
+ 
++  const pendingAttachmentSummary = useMemo(
++    () => pendingAttachments.map((attachment) => attachment.originalName).join(", "),
++    [pendingAttachments],
++  );
++
++  const handleAttachmentChange = useCallback(
++    async (event: ChangeEvent<HTMLInputElement>) => {
++      const files = Array.from(event.target.files || []);
++      event.target.value = "";
++      if (!files.length || !token) return;
++
++      try {
++        setUploadingAttachments(true);
++        const uploaded = await Promise.all(files.map((file) => uploadChatAttachment(file, token)));
++        setPendingAttachments((prev) => [...prev, ...uploaded]);
++      } catch (error: any) {
++        window.alert(error?.message || "Failed to upload attachment");
++      } finally {
++        setUploadingAttachments(false);
++      }
++    },
++    [token],
++  );
++
++  const removePendingAttachment = useCallback((fileName: string) => {
++    setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
++  }, []);
++
+   // Sync voiceState with ballState
+   useEffect(() => {
+     if (voiceState === "recording") setBallState("recording");
+@@ -265,6 +321,7 @@ export default function ChatPanel({ onClose }: Props) {
+     sentenceAccRef.current?.reset();
+     sessionIdRef.current = `session-${Date.now()}`;
+     setMessages([]);
++    setPendingAttachments([]);
+     setBallState("idle");
+   };
+ 
+@@ -409,10 +466,45 @@ export default function ChatPanel({ onClose }: Props) {
+           padding: "12px 16px",
+           borderTop: "1px solid var(--border)",
+           display: "flex",
++          flexDirection: "column",
+           gap: 8,
+-          alignItems: "flex-end",
+         }}
+       >
++        {!!pendingAttachments.length && (
++          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} title={pendingAttachmentSummary}>
++            {pendingAttachments.map((attachment) => (
++              <div
++                key={attachment.fileName}
++                style={{
++                  display: "flex",
++                  alignItems: "center",
++                  gap: 8,
++                  padding: "6px 10px",
++                  borderRadius: 999,
++                  background: "rgba(255,255,255,0.06)",
++                  border: "1px solid var(--border)",
++                  maxWidth: 260,
++                }}
++              >
++                <span style={{ fontSize: 14 }}>{attachment.isImage ? "🖼️" : "📎"}</span>
++                <div style={{ minWidth: 0 }}>
++                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
++                    {attachment.originalName}
++                  </div>
++                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatBytes(attachment.size)}</div>
++                </div>
++                <button onClick={() => removePendingAttachment(attachment.fileName)} style={chipCloseBtnStyle}>✕</button>
++              </div>
++            ))}
++          </div>
++        )}
++        <div
++          style={{
++            display: "flex",
++            gap: 8,
++            alignItems: "flex-end",
++          }}
++        >
+         <textarea
+           value={input}
+           onChange={(e) => setInput(e.target.value)}
+@@ -434,6 +526,30 @@ export default function ChatPanel({ onClose }: Props) {
+             fontFamily: "inherit",
+           }}
+         />
++        <input
++          ref={fileInputRef}
++          type="file"
++          multiple
++          onChange={handleAttachmentChange}
++          style={{ display: "none" }}
++          accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
++        />
++        <button
++          onClick={() => fileInputRef.current?.click()}
++          disabled={!token || uploadingAttachments}
++          style={{
++            ...iconBtnStyle,
++            width: 40,
++            height: 40,
++            borderRadius: "50%",
++            background: "var(--bg-input)",
++            border: "1px solid var(--border)",
++            opacity: !token || uploadingAttachments ? 0.5 : 1,
++          }}
++          title="Attach image or file"
++        >
++          {uploadingAttachments ? "⏳" : "📎"}
++        </button>
+         <VoiceButton
+           onTranscript={handleVoiceTranscript}
+           voiceState={voiceState}
+@@ -441,16 +557,16 @@ export default function ChatPanel({ onClose }: Props) {
+         />
+         <button
+           onClick={() => handleSend()}
+-          disabled={!input.trim() || sending}
++          disabled={(!input.trim() && pendingAttachments.length === 0) || sending || uploadingAttachments}
+           style={{
+             width: 40,
+             height: 40,
+             borderRadius: "50%",
+             background:
+-              input.trim() && !sending ? "var(--accent)" : "var(--bg-input)",
++              (input.trim() || pendingAttachments.length > 0) && !sending && !uploadingAttachments ? "var(--accent)" : "var(--bg-input)",
+             color: "white",
+             border: "none",
+-            cursor: input.trim() && !sending ? "pointer" : "default",
++            cursor: (input.trim() || pendingAttachments.length > 0) && !sending && !uploadingAttachments ? "pointer" : "default",
+             fontSize: 18,
+             display: "flex",
+             alignItems: "center",
+@@ -459,13 +575,21 @@ export default function ChatPanel({ onClose }: Props) {
+             flexShrink: 0,
+           }}
+         >
+-          {sending ? "⏳" : "➤"}
++          {sending || uploadingAttachments ? "⏳" : "➤"}
+         </button>
++        </div>
+       </div>
+     </div>
+   );
+ }
+ 
++function formatBytes(size: number) {
++  if (!size) return "Unknown size";
++  if (size < 1024) return `${size} B`;
++  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
++  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
++}
++
+ const iconBtnStyle: CSSProperties = {
+   width: 28,
+   height: 28,
+@@ -480,3 +604,12 @@ const iconBtnStyle: CSSProperties = {
+   justifyContent: "center",
+   WebkitAppRegion: "no-drag",
+ };
++
++const chipCloseBtnStyle: CSSProperties = {
++  background: "transparent",
++  border: "none",
++  color: "var(--text-dim)",
++  cursor: "pointer",
++  fontSize: 12,
++  padding: 0,
++};
+diff --git a/desktop/src/components/MessageBubble.tsx b/desktop/src/components/MessageBubble.tsx
+index 764e8445..1cd3d983 100644
+--- a/desktop/src/components/MessageBubble.tsx
++++ b/desktop/src/components/MessageBubble.tsx
+@@ -39,6 +39,91 @@ export default function MessageBubble({ message, onRetry }: Props) {
+     >
+       {renderContent(message.content, message.streaming)}
+ 
++      {!!message.attachments?.length && (
++        <div
++          style={{
++            marginTop: message.content ? 10 : 0,
++            display: "flex",
++            flexDirection: "column",
++            gap: 8,
++          }}
++        >
++          {message.attachments.map((attachment) => (
++            <a
++              key={`${message.id}-${attachment.fileName}`}
++              href={attachment.publicUrl}
++              target="_blank"
++              rel="noreferrer"
++              style={{
++                display: "flex",
++                alignItems: "center",
++                gap: 10,
++                padding: 8,
++                borderRadius: 10,
++                border: "1px solid rgba(255,255,255,0.08)",
++                background: "rgba(255,255,255,0.04)",
++                color: "inherit",
++                textDecoration: "none",
++              }}
++            >
++              {attachment.isImage ? (
++                <img
++                  src={attachment.publicUrl}
++                  alt={attachment.originalName}
++                  style={{
++                    width: 56,
++                    height: 56,
++                    borderRadius: 8,
++                    objectFit: "cover",
++                    flexShrink: 0,
++                  }}
++                />
++              ) : (
++                <div
++                  style={{
++                    width: 56,
++                    height: 56,
++                    borderRadius: 8,
++                    display: "flex",
++                    alignItems: "center",
++                    justifyContent: "center",
++                    background: "rgba(0,0,0,0.24)",
++                    flexShrink: 0,
++                    fontSize: 22,
++                  }}
++                >
++                  📎
++                </div>
++              )}
++              <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
++                <span
++                  style={{
++                    fontSize: 12,
++                    fontWeight: 600,
++                    overflow: "hidden",
++                    textOverflow: "ellipsis",
++                    whiteSpace: "nowrap",
++                  }}
++                >
++                  {attachment.originalName}
++                </span>
++                <span
++                  style={{
++                    fontSize: 11,
++                    color: "var(--text-dim)",
++                    overflow: "hidden",
++                    textOverflow: "ellipsis",
++                    whiteSpace: "nowrap",
++                  }}
++                >
++                  {attachment.mimetype} · {formatBytes(attachment.size)}
++                </span>
++              </div>
++            </a>
++          ))}
++        </div>
++      )}
++
+       {/* Retry button for error messages */}
+       {isError && onRetry && (
+         <button
+@@ -95,6 +180,13 @@ export default function MessageBubble({ message, onRetry }: Props) {
+   );
+ }
+ 
++function formatBytes(size: number) {
++  if (!size) return "Unknown size";
++  if (size < 1024) return `${size} B`;
++  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
++  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
++}
++
+ /**
+  * Simple markdown-like rendering for code blocks and bold.
+  * Keeps it lightweight without pulling in a large markdown lib for the MVP.
+diff --git a/desktop/src/services/store.ts b/desktop/src/services/store.ts
+index 481b4447..b139fa6b 100644
+--- a/desktop/src/services/store.ts
++++ b/desktop/src/services/store.ts
+@@ -1,10 +1,10 @@
+ import { create } from "zustand";
+ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+ 
+-const API_BASE = "https://api.agentrix.top/api";
++export const API_BASE = "https://api.agentrix.top/api";
+ 
+ // Use Tauri HTTP plugin (bypasses CORS) when available, else standard fetch
+-async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
++export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+   try {
+     return await tauriFetch(url, init as any);
+   } catch {
+@@ -12,6 +12,42 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+   }
+ }
+ 
++export interface ChatAttachment {
++  url: string;
++  publicUrl: string;
++  fileName: string;
++  originalName: string;
++  mimetype: string;
++  size: number;
++  kind: 'image' | 'file';
++  isImage: boolean;
++}
++
++export async function uploadChatAttachment(file: File, token: string): Promise<ChatAttachment> {
++  const formData = new FormData();
++  formData.append('file', file);
++
++  const response = await fetch(`${API_BASE}/upload/chat-attachment`, {
++    method: 'POST',
++    headers: {
++      Authorization: `Bearer ${token}`,
++    },
++    body: formData,
++  });
++
++  if (!response.ok) {
++    const text = await response.text().catch(() => '');
++    throw new Error(text || `Upload failed: ${response.status}`);
++  }
++
++  const uploaded = await response.json();
++  const publicBase = API_BASE.replace(/\/api\/?$/, '');
++  return {
++    ...uploaded,
++    publicUrl: uploaded.url.startsWith('http') ? uploaded.url : `${publicBase}${uploaded.url}`,
++  };
++}
++
+ // ─── Auth Store ────────────────────────────────────────
+ interface AuthState {
+   token: string | null;
+@@ -114,6 +150,7 @@ export interface ChatMessage {
+   id: string;
+   role: "user" | "assistant" | "system";
+   content: string;
++  attachments?: ChatAttachment[];
+   streaming?: boolean;
+   error?: boolean;
+   createdAt: number;
+diff --git a/src/screens/agent/AgentChatScreen.tsx b/src/screens/agent/AgentChatScreen.tsx
+index 78c9e116..0891aef2 100644
+--- a/src/screens/agent/AgentChatScreen.tsx
++++ b/src/screens/agent/AgentChatScreen.tsx
+@@ -1,6 +1,6 @@
+ import React, { useState, useRef, useEffect, useCallback } from 'react';
+ import {
+-  View, Text, TextInput, TouchableOpacity, StyleSheet,
++  View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
+   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView,
+ } from 'react-native';
+ import { useRoute, RouteProp } from '@react-navigation/native';
+@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
+ import AsyncStorage from '@react-native-async-storage/async-storage';
+ import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
+ import { useI18n } from '../../stores/i18nStore';
++import { uploadChatAttachment, type UploadedChatAttachment } from '../../services/api';
+ 
+ // expo-av: graceful degrade if missing
+ let Audio: any = null;
+@@ -28,12 +29,37 @@ interface Message {
+   id: string;
+   role: 'user' | 'assistant' | 'system';
+   content: string;
++  attachments?: UploadedChatAttachment[];
+   streaming?: boolean;
+   error?: boolean;
+   createdAt: number;
+   thoughts?: string[]; // Added for Thought Chain UI
+ }
+ 
++function formatAttachmentSize(size?: number | null) {
++  if (!size) return 'Unknown size';
++  if (size < 1024) return `${size} B`;
++  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
++  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
++}
++
++function buildOutgoingMessageContent(text: string, attachments: UploadedChatAttachment[]) {
++  const trimmed = text.trim();
++  if (attachments.length === 0) return trimmed;
++
++  const attachmentLines = attachments.map((attachment, index) => {
++    const label = attachment.kind === 'image' ? 'Image' : 'File';
++    return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatAttachmentSize(attachment.size)})\nURL: ${attachment.publicUrl}`;
++  });
++
++  const prefix = trimmed ? `${trimmed}\n\n` : '';
++  return `${prefix}[User Attachments]\n${attachmentLines.join('\n\n')}\nUse the attachment URLs when relevant.`;
++}
++
++function serializeMessageForModel(message: Message) {
++  return buildOutgoingMessageContent(message.content, message.attachments || []);
++}
++
+ // Strip basic markdown: **bold** -> bold, *italic* -> italic
+ function renderContent(text: string) {
+   return text
+@@ -121,6 +147,27 @@ const MessageBubble = ({ item }: { item: Message }) => {
+             )}
+           </View>
+         )}
++        {!!item.attachments?.length && (
++          <View style={styles.attachmentList}>
++            {item.attachments.map((attachment) => (
++              <View key={`${item.id}-${attachment.fileName}`} style={styles.attachmentCard}>
++                {attachment.isImage ? (
++                  <Image source={{ uri: attachment.publicUrl }} style={styles.attachmentImage} resizeMode="cover" />
++                ) : (
++                  <View style={styles.attachmentFileIconWrap}>
++                    <Text style={styles.attachmentFileIcon}>📎</Text>
++                  </View>
++                )}
++                <View style={styles.attachmentMeta}>
++                  <Text style={styles.attachmentName} numberOfLines={1}>{attachment.originalName}</Text>
++                  <Text style={styles.attachmentSub} numberOfLines={1}>
++                    {attachment.mimetype} · {formatAttachmentSize(attachment.size)}
++                  </Text>
++                </View>
++              </View>
++            ))}
++          </View>
++        )}
+       </View>
+     </View>
+   );
+@@ -160,6 +207,8 @@ export function AgentChatScreen() {
+   const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>('hold');
+   const [duplexMode, setDuplexMode] = useState(false);
+   const [showModelPicker, setShowModelPicker] = useState(false);
++  const [pendingAttachments, setPendingAttachments] = useState<UploadedChatAttachment[]>([]);
++  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+   const [isSpeaking, setIsSpeaking] = useState(false);
+   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
+   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
+@@ -358,6 +407,7 @@ export function AgentChatScreen() {
+           id: m.id || `hist-${Math.random()}`,
+           role: m.role,
+           content: m.content,
++          attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
+           createdAt: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
+         }));
+         setMessages(historyMessages);
+@@ -447,13 +497,42 @@ export function AgentChatScreen() {
+     [
+       ...msgs
+         .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
+-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
++        .map((m) => ({ role: m.role as 'user' | 'assistant', content: serializeMessageForModel(m) })),
+       { role: 'user' as const, content: newText },
+     ];
+ 
+-  const handleSend = async (overrideText?: string | any) => {
+-    const text = (typeof overrideText === 'string' ? overrideText : input).trim();
+-    if (!text || sending) return;
++  const enqueueAttachment = useCallback(async (localAttachment: {
++    uri: string;
++    fileName: string;
++    mimeType: string;
++  }) => {
++    try {
++      setUploadingAttachment(true);
++      const uploaded = await uploadChatAttachment({
++        uri: localAttachment.uri,
++        name: localAttachment.fileName,
++        type: localAttachment.mimeType,
++      });
++      setPendingAttachments((prev) => [...prev, uploaded]);
++      await Haptics.selectionAsync();
++    } catch (error: any) {
++      Alert.alert(t({ en: 'Attachment Error', zh: '附件错误' }), error?.message || t({ en: 'Failed to upload attachment.', zh: '上传附件失败。' }));
++    } finally {
++      setUploadingAttachment(false);
++    }
++  }, [t]);
++
++  const removePendingAttachment = useCallback((fileName: string) => {
++    setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
++  }, []);
++
++  const handleSend = async (overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => {
++    const rawText = typeof overrideText === 'string' ? overrideText : input;
++    const text = rawText.trim();
++    const attachments = overrideAttachments ?? pendingAttachments;
++    if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
++
++    const outgoingText = buildOutgoingMessageContent(text, attachments);
+ 
+     if (voiceMode || voicePhase !== 'idle') {
+       setVoicePhase('thinking');
+@@ -462,7 +541,8 @@ export function AgentChatScreen() {
+     const userMsg: Message = {
+       id: `user-${Date.now()}`,
+       role: 'user',
+-      content: text,
++      content: text || `Sent ${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`,
++      attachments,
+       createdAt: Date.now(),
+     };
+ 
+@@ -483,6 +563,7 @@ export function AgentChatScreen() {
+     activeAssistantMessageIdRef.current = assistantMsgId;
+     setMessages((prev) => [...prev, userMsg, assistantMsg]);
+     setInput('');
++    setPendingAttachments([]);
+     AsyncStorage.removeItem(draftStorageKey).catch(() => {});
+     setTranscriptPreview('');
+     setSending(true);
+@@ -498,7 +579,7 @@ export function AgentChatScreen() {
+         await new Promise<void>((resolve) => {
+           const ac = streamProxyChatSSE({
+             instanceId,
+-            message: text,
++            message: outgoingText,
+             sessionId: sessionIdRef.current,
+             token,
+             model: selectedModelId,
+@@ -519,7 +600,7 @@ export function AgentChatScreen() {
+ 
+       if (!streamSucceeded) {
+         // Fallback: direct Claude via backend Bedrock key (always available)
+-        const history = buildHistory(currentMsgs, text);
++        const history = buildHistory(currentMsgs, outgoingText);
+         await new Promise<void>((resolve) => {
+           const ac = streamDirectClaude({
+             messages: history,
+@@ -766,18 +847,36 @@ export function AgentChatScreen() {
+         text: t({ en: '🖼️ Analyze Photo', zh: '🖼️ 分析图片' }),
+         onPress: async () => {
+           try {
+-            const base64 = await DeviceBridgingService.pickImageAsBase64();
+-            if (base64) {
+-              // Note: Sending base64 directly might be too large for typical chat prompts.
+-              // For a production app, you might upload it first and send a URL.
+-              handleSend(`[System: User attached an image]\n${base64.substring(0, 50)}... (base64 truncated)`);
+-              Alert.alert(t({ en: 'Image Attached', zh: '图片已附加' }), t({ en: 'Image data prepared for the agent.', zh: '图片数据已准备好，可发送给智能体。' }));
++            const image = await DeviceBridgingService.pickImageAttachment();
++            if (image?.uri) {
++              await enqueueAttachment({
++                uri: image.uri,
++                fileName: image.fileName || `image-${Date.now()}.jpg`,
++                mimeType: image.mimeType || 'image/jpeg',
++              });
+             }
+           } catch (e: any) {
+             Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
+           }
+         }
+       },
++      {
++        text: t({ en: '📎 Insert File', zh: '📎 插入文件' }),
++        onPress: async () => {
++          try {
++            const file = await DeviceBridgingService.pickFileAttachment();
++            if (file?.uri) {
++              await enqueueAttachment({
++                uri: file.uri,
++                fileName: file.fileName,
++                mimeType: file.mimeType,
++              });
++            }
++          } catch (e: any) {
++            Alert.alert(t({ en: 'File Error', zh: '文件错误' }), e.message);
++          }
++        }
++      },
+       { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' }
+     ]);
+   };
+@@ -900,6 +999,23 @@ export function AgentChatScreen() {
+       )}
+ 
+       {/* Input bar — WeChat / Doubao style */}
++      <View style={styles.inputArea}>
++        {!!pendingAttachments.length && (
++          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pendingAttachmentRow}>
++            {pendingAttachments.map((attachment) => (
++              <View key={attachment.fileName} style={styles.pendingAttachmentChip}>
++                <Text style={styles.pendingAttachmentIcon}>{attachment.isImage ? '🖼️' : '📎'}</Text>
++                <View style={styles.pendingAttachmentMeta}>
++                  <Text style={styles.pendingAttachmentName} numberOfLines={1}>{attachment.originalName}</Text>
++                  <Text style={styles.pendingAttachmentSub}>{formatAttachmentSize(attachment.size)}</Text>
++                </View>
++                <TouchableOpacity onPress={() => removePendingAttachment(attachment.fileName)}>
++                  <Text style={styles.pendingAttachmentRemove}>✕</Text>
++                </TouchableOpacity>
++              </View>
++            ))}
++          </ScrollView>
++        )}
+       <View style={styles.inputRow}>
+         {/* Left: voice/keyboard toggle */}
+         <TouchableOpacity
+@@ -952,13 +1068,13 @@ export function AgentChatScreen() {
+         )}
+ 
+         {/* Right: Device Action or Send */}
+-        {input.trim().length > 0 && !voiceMode ? (
++        {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
+           <TouchableOpacity
+-            style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
++            style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
+             onPress={() => handleSend()}
+-            disabled={sending}
++            disabled={sending || uploadingAttachment}
+           >
+-            {sending ? (
++            {sending || uploadingAttachment ? (
+               <ActivityIndicator size="small" color="#fff" />
+             ) : (
+               <Text style={styles.sendIcon}>⬆</Text>
+@@ -981,6 +1097,7 @@ export function AgentChatScreen() {
+           )
+         )}
+       </View>
++      </View>
+ 
+       {/* Model picker modal — enhanced with availability & backend sync */}
+       <Modal visible={showModelPicker} transparent animationType="slide">
+@@ -1108,16 +1225,40 @@ const styles = StyleSheet.create({
+   voiceStatusDots: { color: colors.accent, fontSize: 18, fontWeight: '700', lineHeight: 18 },
+   voiceStatusText: { color: colors.textMuted, fontSize: 13, flex: 1 },
+   voiceTranscriptPreview: { color: colors.textPrimary, fontSize: 12, marginTop: 4, lineHeight: 18 },
++  inputArea: {
++    backgroundColor: colors.bgSecondary,
++    borderTopWidth: 1,
++    borderTopColor: colors.border,
++  },
+   inputRow: {
+     flexDirection: 'row',
+     alignItems: 'flex-end',
+     padding: 12,
+     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+-    backgroundColor: colors.bgSecondary,
+-    borderTopWidth: 1,
+-    borderTopColor: colors.border,
+     gap: 10,
+   },
++  pendingAttachmentRow: {
++    paddingHorizontal: 12,
++    paddingTop: 10,
++    gap: 8,
++  },
++  pendingAttachmentChip: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 8,
++    backgroundColor: colors.bgCard,
++    borderRadius: 14,
++    borderWidth: 1,
++    borderColor: colors.border,
++    paddingHorizontal: 10,
++    paddingVertical: 8,
++    maxWidth: 240,
++  },
++  pendingAttachmentIcon: { fontSize: 16 },
++  pendingAttachmentMeta: { flex: 1, minWidth: 0 },
++  pendingAttachmentName: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
++  pendingAttachmentSub: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
++  pendingAttachmentRemove: { color: colors.textMuted, fontSize: 12, paddingHorizontal: 2 },
+   input: {
+     flex: 1,
+     backgroundColor: colors.bgCard,
+@@ -1213,4 +1354,28 @@ const styles = StyleSheet.create({
+   thoughtItemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+   thoughtIcon: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+   thoughtItemText: { fontSize: 12, color: colors.textMuted, flex: 1, lineHeight: 16 },
++  attachmentList: { marginTop: 8, gap: 8 },
++  attachmentCard: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 10,
++    padding: 10,
++    borderRadius: 12,
++    backgroundColor: colors.bgCard,
++    borderWidth: 1,
++    borderColor: colors.border,
++  },
++  attachmentImage: { width: 52, height: 52, borderRadius: 10 },
++  attachmentFileIconWrap: {
++    width: 52,
++    height: 52,
++    borderRadius: 10,
++    backgroundColor: colors.bgSecondary,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  attachmentFileIcon: { fontSize: 22 },
++  attachmentMeta: { flex: 1, minWidth: 0 },
++  attachmentName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
++  attachmentSub: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+ });
+diff --git a/src/screens/agent/AgentConsoleScreen.tsx b/src/screens/agent/AgentConsoleScreen.tsx
+index 121f5ee8..7689cbc9 100755
+--- a/src/screens/agent/AgentConsoleScreen.tsx
++++ b/src/screens/agent/AgentConsoleScreen.tsx
+@@ -423,7 +423,14 @@ export function AgentConsoleScreen() {
+               <TouchableOpacity
+                 key={item.route}
+                 style={styles.quickAction}
+-                onPress={() => navigation.navigate(item.route as any, 'params' in item ? item.params : undefined)}
++                onPress={() => navigation.navigate(
++                  item.route as any,
++                  item.route === 'VoiceChat'
++                    ? { instanceId: activeInstance.id, instanceName: activeInstance.name }
++                    : 'params' in item
++                      ? item.params
++                      : undefined,
++                )}
+                 activeOpacity={0.7}
+               >
+                 <Text style={styles.quickActionIcon}>{item.icon}</Text>
+diff --git a/src/screens/agent/AgentPermissionsScreen.tsx b/src/screens/agent/AgentPermissionsScreen.tsx
+index 58ff03be..ccb608d3 100644
+--- a/src/screens/agent/AgentPermissionsScreen.tsx
++++ b/src/screens/agent/AgentPermissionsScreen.tsx
+@@ -131,6 +131,7 @@ export function AgentPermissionsScreen() {
+   const [perms, setPerms] = useState<PermissionState>(DEFAULT_PERMISSIONS);
+   const [editingThreshold, setEditingThreshold] = useState(false);
+   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
++  const [isSaving, setIsSaving] = useState(false);
+ 
+   const updatePerm = <K extends keyof PermissionState>(key: K, value: PermissionState[K]) => {
+     setPerms((p) => ({ ...p, [key]: value }));
+@@ -150,6 +151,7 @@ export function AgentPermissionsScreen() {
+   const handleSave = async () => {
+     if (!activeAgent) return;
+     try {
++      setIsSaving(true);
+       // Persist spending limits to backend via PATCH /agent-accounts/:id
+       await apiFetch(`/agent-accounts/${activeAgent.id}`, {
+         method: 'PATCH',
+@@ -166,8 +168,9 @@ export function AgentPermissionsScreen() {
+       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+       Alert.alert(t({ en: 'Saved ✅', zh: '已保存 ✅' }), t({ en: 'Permissions updated successfully.', zh: '权限已更新。' }));
+     } catch (e: any) {
+-      // Graceful: permissions stored locally even if backend doesn't return 200 yet
+-      Alert.alert(t({ en: 'Saved locally', zh: '已在本地保存' }), t({ en: 'Settings saved on device. Backend sync will resume on reconnect.', zh: '设置已保存在设备上，恢复连接后会继续同步到后端。' }));
++      Alert.alert(t({ en: 'Save Failed', zh: '保存失败' }), e?.message || t({ en: 'Failed to update permissions.', zh: '更新权限失败。' }));
++    } finally {
++      setIsSaving(false);
+     }
+   };
+ 
+@@ -365,8 +368,12 @@ export function AgentPermissionsScreen() {
+       </View>
+ 
+       {/* Save Button */}
+-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+-        <Text style={styles.saveBtnText}>💾 {t({ en: 'Save Permissions', zh: '保存权限设置' })}</Text>
++      <TouchableOpacity
++        style={[styles.saveBtn, (isSaving || !activeAgent) && styles.saveBtnDisabled]}
++        onPress={handleSave}
++        disabled={isSaving || !activeAgent}
++      >
++        <Text style={styles.saveBtnText}>{isSaving ? '⏳ ' : '💾 '}{t({ en: 'Save Permissions', zh: '保存权限设置' })}</Text>
+       </TouchableOpacity>
+ 
+       {/* ── Danger Zone ── */}
+@@ -453,6 +460,7 @@ const styles = StyleSheet.create({
+     backgroundColor: colors.primary, borderRadius: 14, padding: 15,
+     alignItems: 'center', marginTop: 4,
+   },
++  saveBtnDisabled: { opacity: 0.6 },
+   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+   dangerRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+   dangerBtn: {
+diff --git a/src/services/api.ts b/src/services/api.ts
+index 009138de..7292cc2e 100755
+--- a/src/services/api.ts
++++ b/src/services/api.ts
+@@ -21,6 +21,17 @@ export interface ApiConfig {
+   token?: string;
+ }
+ 
++export interface UploadedChatAttachment {
++  url: string;
++  publicUrl: string;
++  fileName: string;
++  originalName: string;
++  mimetype: string;
++  size: number;
++  kind: 'image' | 'file';
++  isImage: boolean;
++}
++
+ let config: ApiConfig = {
+   baseUrl: API_BASE,
+ };
+@@ -68,12 +79,18 @@ export const clearToken = async () => {
+ 
+ export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+   const url = `${config.baseUrl}${path}`;
+-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+   const headers: Record<string, string> = {
+     ...(options.headers as Record<string, string>),
+   };
+ 
+-  if (!isFormData && !headers['Content-Type']) {
++  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
++  const contentTypeHeader = Object.keys(headers).find((key) => key.toLowerCase() === 'content-type');
++
++  if (isFormData) {
++    if (contentTypeHeader) {
++      delete headers[contentTypeHeader];
++    }
++  } else if (!contentTypeHeader) {
+     headers['Content-Type'] = 'application/json';
+   }
+ 
+@@ -99,9 +116,33 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
+     throw new Error(errorMessage);
+   }
+ 
++  if (res.status === 204) {
++    return undefined as T;
++  }
++
+   return res.json();
+ }
+ 
++export async function uploadChatAttachment(file: {
++  uri: string;
++  name: string;
++  type: string;
++}): Promise<UploadedChatAttachment> {
++  const formData = new FormData();
++  formData.append('file', file as any);
++
++  const uploaded = await apiFetch<Omit<UploadedChatAttachment, 'publicUrl'>>('/upload/chat-attachment', {
++    method: 'POST',
++    body: formData,
++  });
++
++  const publicBase = (config.baseUrl || API_BASE).replace(/\/api\/?$/, '');
++  return {
++    ...uploaded,
++    publicUrl: uploaded.url.startsWith('http') ? uploaded.url : `${publicBase}${uploaded.url}`,
++  };
++}
++
+ // ========== Memory API ==========
+ 
+ export const memoryApi = {
+diff --git a/src/services/deviceBridging.service.ts b/src/services/deviceBridging.service.ts
+index 9b9d0a91..5a4fbfcf 100644
+--- a/src/services/deviceBridging.service.ts
++++ b/src/services/deviceBridging.service.ts
+@@ -1,6 +1,7 @@
+ import * as Location from 'expo-location';
+ import * as Clipboard from 'expo-clipboard';
+-// expo-image-picker is required lazily (inside pickImageAsBase64) to avoid
++import { File as ExpoFile } from 'expo-file-system';
++// expo-image-picker is required lazily (inside pickImageAttachment) to avoid
+ // loading the ExponentImagePicker native module at JS bundle evaluation time,
+ // which crashes on HarmonyOS before the native bridge is fully initialised.
+ 
+@@ -11,6 +12,22 @@ export interface LocationData {
+   altitude: number | null;
+ }
+ 
++export interface ImageAttachment {
++  uri: string;
++  width: number | null;
++  height: number | null;
++  fileName: string | null;
++  mimeType: string | null;
++  size: number | null;
++}
++
++export interface FileAttachment {
++  uri: string;
++  fileName: string;
++  mimeType: string;
++  size: number | null;
++}
++
+ export class DeviceBridgingService {
+   /**
+    * Get current device location (GPS)
+@@ -69,10 +86,9 @@ export class DeviceBridgingService {
+   }
+ 
+   /**
+-   * Pick an image from the device's photo album
+-   * @returns Base64 string of the image, or null if canceled
++   * Pick an image from the device's photo album without loading base64 into JS memory.
+    */
+-  static async pickImageAsBase64(): Promise<string | null> {
++  static async pickImageAttachment(): Promise<ImageAttachment | null> {
+     try {
+       // Lazy require: only load expo-image-picker native module when this
+       // function is actually called (not at startup), preventing HarmonyOS crash.
+@@ -87,15 +103,19 @@ export class DeviceBridgingService {
+         mediaTypes: ['images'],
+         allowsEditing: true,
+         quality: 0.8,
+-        base64: true, 
++        base64: false,
+       });
+ 
+       if (!result.canceled && result.assets && result.assets.length > 0) {
+         const asset = result.assets[0];
+-        if (asset.base64) {
+-          // Return base64 string formatted for data URI
+-          return `data:image/jpeg;base64,${asset.base64}`;
+-        }
++        return {
++          uri: asset.uri,
++          width: asset.width ?? null,
++          height: asset.height ?? null,
++          fileName: asset.fileName ?? null,
++          mimeType: asset.mimeType ?? null,
++          size: asset.fileSize ?? null,
++        };
+       }
+       
+       return null;
+@@ -104,4 +124,31 @@ export class DeviceBridgingService {
+       throw new Error(error.message || 'Failed to pick image');
+     }
+   }
++
++  /**
++   * Pick a general document/file from the device.
++   */
++  static async pickFileAttachment(): Promise<FileAttachment | null> {
++    try {
++      const selected = await ExpoFile.pickFileAsync();
++      const file = Array.isArray(selected) ? selected[0] : selected;
++
++      if (!file) {
++        return null;
++      }
++
++      return {
++        uri: file.uri,
++        fileName: file.uri.split('/').pop() || 'attachment',
++        mimeType: file.type || 'application/octet-stream',
++        size: typeof file.size === 'number' ? file.size : null,
++      };
++    } catch (error: any) {
++      if (String(error?.message || '').toLowerCase().includes('cancel')) {
++        return null;
++      }
++      console.error('Failed to pick file:', error);
++      throw new Error(error.message || 'Failed to pick file');
++    }
++  }
+ }
+diff --git a/tests/e2e/commerce-all-modules.spec.ts b/tests/e2e/commerce-all-modules.spec.ts
+index 708ccb4b..b14f6bcf 100644
+--- a/tests/e2e/commerce-all-modules.spec.ts
++++ b/tests/e2e/commerce-all-modules.spec.ts
+@@ -96,7 +96,9 @@ test.describe('Phase 3 – Social Callback Status', () => {
+     const body = await res.json();
+     // Bot token is set in production .env
+     expect(body.platforms.telegram.connected).toBe(true);
+-    expect(body.platforms.telegram.webhookUrl).toContain('/social/callback/telegram');
++    expect(body.platforms.telegram.webhookUrl).toMatch(
++      /\/(social\/callback|openclaw-connection\/webhook)\/telegram$/,
++    );
+   });
+ 
+   test('Discord platform shows connected when DISCORD keys are set', async ({ request }) => {

@@ -98,6 +98,8 @@ import { WebSocketModule } from './modules/websocket/websocket.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 // ERC-4337 Account Abstraction (gasless txns)
 import { AccountAbstractionModule } from './modules/account-abstraction/account-abstraction.module';
+// AI Provider custom API key management
+import { AiProviderModule } from './modules/ai-provider/ai-provider.module';
 
 @Module({
   imports: [
@@ -204,6 +206,8 @@ import { AccountAbstractionModule } from './modules/account-abstraction/account-
     WorkflowModule,
     // ERC-4337: Account Abstraction (gasless txns, smart accounts)
     AccountAbstractionModule,
+    // AI Provider custom API key management
+    AiProviderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

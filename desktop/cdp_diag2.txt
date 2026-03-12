@@ -1,0 +1,11 @@
+TARGET: http://tauri.localhost/ | login:token:unrecognized:{&quot;resolved&quot;:false}
+CONNECTED
+HAS_IPC: YES
+HAS_POSTMESSAGE: YES
+HAS_PATTERN: YES_{"pattern":"brownfield"}
+HAS_METADATA: YES
+METADATA_LABEL: main
+INTERNALS_KEYS: plugins,postMessage,metadata,__TAURI_PATTERN__,ipc,convertFileSrc,transformCallback,unregisterCallback,runCallback,callbacks,invoke
+IS_TAURI: true
+WINDOW_CUSTOM_PROTO: http://ipc.localhost/test
+DONE

@@ -1,9 +1,9 @@
 // 🔐 Agent Permissions & Security Screen
 // Shows and manages all permission boundaries for the active AgentAccount
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Switch, Alert, TextInput,
+  Switch, Alert, TextInput, Modal, FlatList,
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -25,6 +25,8 @@ interface AgentAccount {
   agentUniqueId: string;
   status: string;
   walletAddress?: string;
+  preferredModel?: string;
+  preferredProvider?: string;
   permissions?: Partial<PermissionState>;
   spendingLimits?: {
     singleTxLimit: number;
@@ -32,6 +34,22 @@ interface AgentAccount {
     monthlyLimit: number;
     currency: string;
   };
+}
+
+interface CatalogModel {
+  id: string;
+  label: string;
+  contextWindow: number;
+  costTier: 'free' | 'low' | 'medium' | 'high';
+  capabilities: string[];
+}
+
+interface CatalogProvider {
+  id: string;
+  name: string;
+  icon: string;
+  region: 'international' | 'china';
+  models: CatalogModel[];
 }
 
 interface PermissionState {
@@ -219,6 +237,29 @@ export function AgentPermissionsScreen() {
   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
   const [isSaving, setIsSaving] = useState(false);
 
+  // Per-agent model selection
+  const [catalog, setCatalog] = useState<CatalogProvider[]>([]);
+  const [preferredProvider, setPreferredProvider] = useState<string | undefined>(undefined);
+  const [preferredModel, setPreferredModel] = useState<string | undefined>(undefined);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+
+  useEffect(() => {
+    apiFetch<CatalogProvider[]>('/ai-providers/catalog').then(setCatalog).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (activeAgent) {
+      setPreferredProvider(activeAgent.preferredProvider);
+      setPreferredModel(activeAgent.preferredModel);
+    }
+  }, [activeAgent?.id, activeAgent?.preferredProvider, activeAgent?.preferredModel]);
+
+  const selectedProviderObj = catalog.find(p => p.id === preferredProvider);
+  const selectedModelObj = selectedProviderObj?.models.find(m => m.id === preferredModel);
+  const modelDisplayLabel = selectedModelObj
+    ? `${selectedProviderObj?.icon || ''} ${selectedModelObj.label}`
+    : t({ en: 'Platform Default', zh: '平台默认' });
+
   const expectedPermissionsJson = JSON.stringify(normalizePermissions(perms));
 
   useEffect(() => {
@@ -257,6 +298,8 @@ export function AgentPermissionsScreen() {
             currency: 'USD',
           },
           permissions: perms,
+          preferredModel: preferredModel || undefined,
+          preferredProvider: preferredProvider || undefined,
         }),
       });
 
@@ -357,6 +400,83 @@ export function AgentPermissionsScreen() {
           )}
         </View>
       )}
+
+      {/* ── AI Model Preference ── */}
+      <SectionHeader icon="🧠" title={t({ en: 'AI Model Preference', zh: 'AI 模型偏好' })} />
+      <View style={styles.section}>
+        <View style={styles.permRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.permLabel}>{t({ en: 'Preferred Model', zh: '首选模型' })}</Text>
+            <Text style={styles.permSub}>
+              {t({ en: 'Override the global model for this agent', zh: '为此智能体指定专属模型（覆盖全局设置）' })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.divider} />
+        <TouchableOpacity
+          style={[styles.permRow, { paddingVertical: 14 }]}
+          onPress={() => setShowModelPicker(true)}
+        >
+          <Text style={{ fontSize: 14, color: colors.textPrimary, flex: 1 }}>{modelDisplayLabel}</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>▸</Text>
+        </TouchableOpacity>
+        {preferredModel && (
+          <>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={[styles.permRow, { paddingVertical: 10 }]}
+              onPress={() => { setPreferredProvider(undefined); setPreferredModel(undefined); }}
+            >
+              <Text style={{ fontSize: 13, color: colors.error }}>
+                {t({ en: '✕ Reset to Platform Default', zh: '✕ 恢复为平台默认' })}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Model picker modal */}
+      <Modal visible={showModelPicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalTopRow}>
+              <Text style={styles.modalTopTitle}>{t({ en: 'Select Model', zh: '选择模型' })}</Text>
+              <TouchableOpacity onPress={() => setShowModelPicker(false)}>
+                <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={catalog}
+              keyExtractor={p => p.id}
+              renderItem={({ item: prov }) => (
+                <View>
+                  <Text style={styles.modelGroupHeader}>{prov.icon} {prov.name}</Text>
+                  {prov.models.map(m => {
+                    const isSelected = preferredProvider === prov.id && preferredModel === m.id;
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={[styles.modelPickRow, isSelected && { backgroundColor: colors.primary + '10' }]}
+                        onPress={() => {
+                          setPreferredProvider(prov.id);
+                          setPreferredModel(m.id);
+                          setShowModelPicker(false);
+                        }}
+                      >
+                        <Text style={[styles.modelPickLabel, isSelected && { color: colors.primary }]}>{m.label}</Text>
+                        <Text style={styles.modelPickCaps}>
+                          {m.capabilities.join(' · ')}  •  {(m.contextWindow / 1000).toFixed(0)}K
+                        </Text>
+                        {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>✓</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Payment Permissions ── */}
       <SectionHeader icon="💳" title={t({ en: 'Payment Permissions', zh: '支付权限' })} />
@@ -786,4 +906,28 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#f59e0b66',
   },
   dangerBtnText: { color: '#f59e0b', fontWeight: '700', fontSize: 14 },
+  // Model picker modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: colors.bgPrimary, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    maxHeight: '65%', paddingBottom: 30,
+  },
+  modalTopRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  modalTopTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  modelGroupHeader: {
+    fontSize: 13, fontWeight: '700', color: colors.textMuted,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+    backgroundColor: colors.bgSecondary,
+  },
+  modelPickRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+  },
+  modelPickLabel: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, flex: 1 },
+  modelPickCaps: { fontSize: 11, color: colors.textMuted },
 });

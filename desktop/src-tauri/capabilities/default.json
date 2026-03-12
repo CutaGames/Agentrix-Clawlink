@@ -5,6 +5,7 @@
   "windows": ["main", "chat-panel"],
   "permissions": [
     "core:default",
+    "desktop-commands",
     "core:window:default",
     "core:window:allow-close",
     "core:window:allow-show",
@@ -20,6 +21,7 @@
     "autostart:default",
     "store:default",
     "updater:default",
+    "dialog:default",
     {
       "identifier": "http:default",
       "allow": [

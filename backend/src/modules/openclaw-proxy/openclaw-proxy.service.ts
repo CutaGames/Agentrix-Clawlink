@@ -18,6 +18,7 @@ import { TokenQuotaService, estimateTokens } from '../token-quota/token-quota.se
 import { SkillExecutorService, ExecutionContext } from '../skill/skill-executor.service';
 import { AGENT_PRESET_SKILLS, getDefaultEnabledSkills, PresetSkill } from '../skill/agent-preset-skills.config';
 import { SkillService } from '../skill/skill.service';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { RelayRegistry } from '../openclaw-connection/telegram-bot.service';
 import { Response } from 'express';
 
@@ -49,6 +50,7 @@ export class OpenClawProxyService {
     private readonly skillExecutorService: SkillExecutorService,
     @Inject(forwardRef(() => SkillService))
     private readonly skillService: SkillService,
+    private readonly aiProviderService: AiProviderService,
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
     @InjectRepository(AgentAccount)
@@ -648,11 +650,28 @@ export class OpenClawProxyService {
       { role: 'user' as const, content: this.buildUserContent(dto.message) },
     ];
 
+    // Resolve model & provider: per-agent override > client request > instance default > platform default
+    const agentAccount = permissionProfile?.agentAccountId
+      ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
+      : null;
+    const resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    const resolvedProvider = agentAccount?.preferredProvider || undefined;
+
+    // If user has a custom provider config for this provider, use their API key
+    let userApiKey: string | undefined;
+    if (resolvedProvider) {
+      const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
+      if (providerConfig) {
+        userApiKey = providerConfig.apiKey;
+      }
+    }
+
     const result = await this.claudeIntegrationService.chatWithFunctions(messages, {
-      model: dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+      model: resolvedModel,
       context: { userId, sessionId },
       additionalTools,
       onToolCall,
+      userApiKey,
     });
 
     const text = result?.text || '';

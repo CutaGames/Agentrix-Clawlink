@@ -311,6 +311,16 @@ export class AgentAccount {
     authCallbackUrl?: string;
   };
 
+  // ========== AI 模型偏好 ==========
+
+  /** 覆盖全局默认模型 */
+  @Column({ name: 'preferred_model', length: 100, nullable: true })
+  preferredModel?: string;
+
+  /** 覆盖全局默认厂商 */
+  @Column({ name: 'preferred_provider', length: 50, nullable: true })
+  preferredProvider?: string;
+
   // ========== 元数据 ==========
 
   /**

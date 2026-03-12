@@ -1,9 +1,5 @@
-use serde::{Deserialize, Serialize};
-use tauri::{
-    AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
-    menu::{MenuBuilder, MenuItemBuilder},
-    tray::TrayIconBuilder,
-};
+﻿use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 mod commands;
 
@@ -13,65 +9,82 @@ pub struct BallPosition {
     pub y: f64,
 }
 
-fn create_chat_panel(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(win) = app.get_webview_window("chat-panel") {
-        win.show()?;
-        win.set_focus()?;
-        return Ok(());
-    }
-    let _panel = WebviewWindowBuilder::new(app, "chat-panel", WebviewUrl::App("/chat".into()))
-        .title("Agentrix")
-        .inner_size(480.0, 640.0)
-        .min_inner_size(360.0, 480.0)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(true)
-        .build()?;
-    Ok(())
+#[tauri::command]
+async fn desktop_bridge_open_chat_panel(app: AppHandle) -> Result<(), String> {
+    commands::open_chat_panel(app)
 }
 
-fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show = MenuItemBuilder::with_id("show", "Show Agentrix").build(app)?;
-    let hide = MenuItemBuilder::with_id("hide", "Hide").build(app)?;
-    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-    let menu = MenuBuilder::new(app)
-        .item(&show)
-        .separator()
-        .item(&hide)
-        .separator()
-        .item(&quit)
-        .build()?;
-    let _tray = TrayIconBuilder::new()
-        .menu(&menu)
-        .tooltip("Agentrix Desktop")
-        .on_menu_event(move |app, event| match event.id().as_ref() {
-            "show" => {
-                if let Some(win) = app.get_webview_window("floating-ball") {
-                    let _ = win.show();
-                }
-            }
-            "hide" => {
-                if let Some(win) = app.get_webview_window("floating-ball") {
-                    let _ = win.hide();
-                }
-                if let Some(win) = app.get_webview_window("chat-panel") {
-                    let _ = win.hide();
-                }
-            }
-            "quit" => {
-                app.exit(0);
-            }
-            _ => {}
-        })
-        .build(app)?;
-    Ok(())
+#[tauri::command]
+async fn desktop_bridge_close_chat_panel(app: AppHandle) -> Result<(), String> {
+    commands::close_chat_panel(app)
 }
 
+#[tauri::command]
+fn desktop_bridge_set_ball_position(x: f64, y: f64) -> Result<(), String> {
+    commands::set_ball_position(x, y)
+}
+
+#[tauri::command]
+fn desktop_bridge_get_ball_position() -> Result<Option<BallPosition>, String> {
+    commands::get_ball_position()
+}
+
+#[tauri::command]
+async fn desktop_bridge_set_panel_position_near_ball(app: AppHandle) -> Result<(), String> {
+    commands::set_panel_position_near_ball(app)
+}
+
+/// Auto-grant microphone/camera/notification permissions in WebView2.
+#[cfg(target_os = "windows")]
+pub(crate) fn grant_webview2_permissions(webview: &tauri::WebviewWindow) {
+    let _ = webview.with_webview(|platform_webview| {
+        unsafe {
+            use webview2_com::Microsoft::Web::WebView2::Win32::*;
+            use webview2_com::PermissionRequestedEventHandler;
+
+            let controller = platform_webview.controller();
+            let core_wv2 = match controller.CoreWebView2() {
+                Ok(wv) => wv,
+                Err(_) => return,
+            };
+
+            let handler = PermissionRequestedEventHandler::create(Box::new(
+                move |_sender, args| {
+                    if let Some(args) = args {
+                        let mut kind =
+                            COREWEBVIEW2_PERMISSION_KIND_UNKNOWN_PERMISSION;
+                        let _ = args.PermissionKind(&mut kind);
+                        // Auto-allow microphone, camera, clipboard, notifications
+                        let state = match kind {
+                            COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
+                            | COREWEBVIEW2_PERMISSION_KIND_CAMERA
+                            | COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ
+                            | COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS => {
+                                COREWEBVIEW2_PERMISSION_STATE_ALLOW
+                            }
+                            _ => COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
+                        };
+                        let _ = args.SetState(state);
+                    }
+                    Ok(())
+                },
+            ));
+
+            // EventRegistrationToken is an i64 output param
+            let mut token: i64 = 0;
+            let _ = core_wv2.add_PermissionRequested(
+                &handler,
+                &mut token as *mut i64 as *mut _,
+            );
+        }
+    });
+}
+
+/// Ensure WebView2 can find a working browser runtime.
 #[cfg(target_os = "windows")]
 fn ensure_webview2_runtime() {
     use std::path::Path;
+
     let tmp = std::env::temp_dir();
     let mut log = String::new();
 
@@ -101,18 +114,8 @@ fn ensure_webview2_runtime() {
     };
     version_dirs.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
 
-    for (i, dir) in version_dirs.iter().enumerate() {
-        let has_dll = dir.path().join("msedge.dll").exists();
-        let has_exe = dir.path().join("msedgewebview2.exe").exists();
-        log.push_str(&format!(
-            "WV2[{}]: {} dll={} wv2exe={}\n",
-            i, dir.file_name().to_string_lossy(), has_dll, has_exe
-        ));
-    }
-
     if let Some(latest) = version_dirs.first() {
         if latest.path().join("msedge.dll").exists() {
-            log.push_str("latest WV2 intact, no fallback needed\n");
             std::fs::write(tmp.join("tauri_wv2.txt"), &log).ok();
             return;
         }
@@ -129,7 +132,6 @@ fn ensure_webview2_runtime() {
         }
     }
 
-    log.push_str("WARNING: no working WebView2 version found!\n");
     std::fs::write(tmp.join("tauri_wv2.txt"), &log).ok();
 }
 
@@ -138,20 +140,29 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     ensure_webview2_runtime();
 
-    let tmp = std::env::temp_dir();
-    std::fs::write(tmp.join("tauri_s1.txt"), "STEP1_reached").ok();
-
     tauri::Builder::default()
-        .setup(move |app| {
-            std::fs::write(tmp.join("tauri_s2.txt"), "STEP2_setup_reached").ok();
-
-            if let Some(win) = app.get_webview_window("main") {
-                let url = win.url().map(|u| u.to_string()).unwrap_or_default();
-                std::fs::write(tmp.join("tauri_url.txt"), &url).ok();
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_http::init())
+        .invoke_handler(tauri::generate_handler![
+            desktop_bridge_open_chat_panel,
+            desktop_bridge_close_chat_panel,
+            desktop_bridge_set_ball_position,
+            desktop_bridge_get_ball_position,
+            desktop_bridge_set_panel_position_near_ball,
+        ])
+        .setup(|app| {
+            // Grant WebView2 permissions (microphone, camera, etc.) on the main window
+            #[cfg(target_os = "windows")]
+            if let Some(main_window) = app.get_webview_window("main") {
+                grant_webview2_permissions(&main_window);
             }
-
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Agentrix Desktop");
 }
+

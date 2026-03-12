@@ -3,6 +3,46 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 export const API_BASE = "https://api.agentrix.top/api";
 
+// ─── Secure Token Storage ──────────────────────────────
+// Use Tauri Store plugin (encrypted on-disk) when available, else localStorage fallback
+let _tauriStore: any = null;
+async function getTauriStore() {
+  if (_tauriStore) return _tauriStore;
+  try {
+    const { load } = await import("@tauri-apps/plugin-store");
+    _tauriStore = await load("credentials.json", { autoSave: true, defaults: {} });
+    return _tauriStore;
+  } catch {
+    return null;
+  }
+}
+
+async function secureGetToken(): Promise<string | null> {
+  const store = await getTauriStore();
+  if (store) {
+    const val = await store.get("agentrix_token");
+    if (val) return val as string;
+  }
+  // Fallback: localStorage (for dev / browser)
+  return localStorage.getItem("agentrix_token");
+}
+
+async function secureSetToken(token: string): Promise<void> {
+  const store = await getTauriStore();
+  if (store) {
+    await store.set("agentrix_token", token);
+  }
+  localStorage.setItem("agentrix_token", token);
+}
+
+async function secureClearToken(): Promise<void> {
+  const store = await getTauriStore();
+  if (store) {
+    await store.delete("agentrix_token");
+  }
+  localStorage.removeItem("agentrix_token");
+}
+
 // Use Tauri HTTP plugin (bypasses CORS) when available, else standard fetch
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   try {
@@ -24,15 +64,32 @@ export interface ChatAttachment {
 }
 
 export async function uploadChatAttachment(file: File, token: string): Promise<ChatAttachment> {
-  const formData = new FormData();
-  formData.append('file', file);
+  // Derive mime type from extension if the File object doesn't provide one
+  const mimeFromExt: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown',
+    csv: 'text/csv', json: 'application/json',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  };
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const type = file.type || mimeFromExt[ext] || 'application/octet-stream';
 
-  const response = await fetch(`${API_BASE}/upload/chat-attachment`, {
+  // Read File into ArrayBuffer for reliable Tauri IPC serialization
+  const arrayBuffer = await file.arrayBuffer();
+  const blob = new Blob([arrayBuffer], { type });
+
+  const formData = new FormData();
+  formData.append('file', blob, file.name);
+
+  const response = await apiFetch(`${API_BASE}/upload/chat-attachment`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
     },
-    body: formData,
+    body: formData as any,
   });
 
   if (!response.ok) {
@@ -59,7 +116,7 @@ interface AuthState {
   login: (email: string, code: string) => Promise<boolean>;
   sendCode: (email: string) => Promise<boolean>;
   enterGuest: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   setActiveInstance: (id: string) => void;
 }
 
@@ -72,7 +129,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   loadToken: async () => {
     try {
-      const stored = localStorage.getItem("agentrix_token");
+      const stored = await secureGetToken();
       if (!stored) return;
       set({ token: stored });
       // Fetch user info (use text+JSON.parse for tauriFetch compat)
@@ -81,10 +138,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       const status = res.status;
       if (status === 401 || status === 403) {
-        // Token is genuinely invalid — clear it
-        console.warn("[loadToken] /auth/me returned", status, "— clearing token");
-        localStorage.removeItem("agentrix_token");
-        set({ token: null });
+        // Only clear if the token hasn't been replaced while we were fetching
+        const current = get().token;
+        if (current === stored) {
+          console.warn("[loadToken] /auth/me returned", status, "— clearing token");
+          await secureClearToken();
+          set({ token: null });
+        } else {
+          console.warn("[loadToken] /auth/me returned", status, "— token already replaced, keeping new token");
+        }
         return;
       }
       if (status < 200 || status >= 300) {
@@ -128,15 +190,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const data = JSON.parse(text);
     const token = data.token || data.access_token;
     if (!token) return false;
-    localStorage.setItem("agentrix_token", token);
+    await secureSetToken(token);
     set({ token });
     // Fetch full user + instances
     await get().loadToken();
     return true;
   },
 
-  logout: () => {
-    localStorage.removeItem("agentrix_token");
+  logout: async () => {
+    await secureClearToken();
     set({ token: null, user: null, isGuest: false, instances: [], activeInstanceId: null });
   },
 
@@ -170,7 +232,7 @@ export function streamChat(opts: {
   const ac = new AbortController();
   const url = `${API_BASE}/openclaw/proxy/${opts.instanceId}/stream`;
 
-  fetch(url, {
+  const fetchInit: RequestInit = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -183,7 +245,18 @@ export function streamChat(opts: {
       model: opts.model,
     }),
     signal: ac.signal,
-  })
+  };
+
+  // Use tauriFetch (bypasses CORS) with fallback to window.fetch
+  const doFetch = async () => {
+    try {
+      return await tauriFetch(url, fetchInit as any);
+    } catch {
+      return await fetch(url, fetchInit);
+    }
+  };
+
+  doFetch()
     .then(async (res) => {
       if (!res.ok || !res.body) {
         opts.onError(`HTTP ${res.status}`);
@@ -207,6 +280,24 @@ export function streamChat(opts: {
             if (data === "[DONE]") {
               opts.onDone();
               return;
+            }
+            // Parse JSON SSE chunks: {"chunk":"text"} or {"error":"msg"}
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed && typeof parsed === "object") {
+                if (parsed.error) {
+                  opts.onError(parsed.error);
+                  return;
+                }
+                // Extract text from known fields
+                const text = parsed.chunk ?? parsed.text ?? parsed.content;
+                if (text !== undefined) {
+                  opts.onChunk(String(text));
+                  continue;
+                }
+              }
+            } catch {
+              // Not JSON — pass through as-is
             }
             opts.onChunk(data);
           }
@@ -234,7 +325,7 @@ export function streamDirectChat(opts: {
 }): AbortController {
   const ac = new AbortController();
 
-  fetch(`${API_BASE}/claude/chat`, {
+  const fetchInit: RequestInit = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -245,13 +336,28 @@ export function streamDirectChat(opts: {
       sessionId: opts.sessionId,
     }),
     signal: ac.signal,
-  })
+  };
+
+  // Use tauriFetch (bypasses CORS) with fallback to window.fetch
+  const doFetch = async () => {
+    try {
+      return await tauriFetch(`${API_BASE}/claude/chat`, fetchInit as any);
+    } catch {
+      return await fetch(`${API_BASE}/claude/chat`, fetchInit);
+    }
+  };
+
+  doFetch()
     .then(async (res) => {
       if (!res.ok) {
         opts.onError(`HTTP ${res.status}`);
         return;
       }
       const data = await res.json();
+      if (data.error) {
+        opts.onError(data.error);
+        return;
+      }
       const reply = data.reply || data.content || data.message || "";
       // Simulate streaming for consistency
       const words = reply.split(" ");
@@ -270,11 +376,13 @@ export function streamDirectChat(opts: {
 
 /** Fetch available AI models */
 export async function fetchModels(token: string) {
-  const res = await fetch(`${API_BASE}/openclaw/models`, {
+  const res = await apiFetch(`${API_BASE}/openclaw/models`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
-  return res.json();
+  const text = await res.text();
+  if (!text) return [];
+  return JSON.parse(text);
 }
 
 /** Fetch chat history */
@@ -283,10 +391,12 @@ export async function fetchHistory(
   sessionId: string,
   token: string,
 ) {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/openclaw/proxy/${instanceId}/history?sessionId=${sessionId}&limit=50`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) return [];
-  return res.json();
+  const text = await res.text();
+  if (!text) return [];
+  return JSON.parse(text);
 }

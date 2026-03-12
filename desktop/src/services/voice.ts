@@ -3,6 +3,8 @@
  * Uses browser MediaRecorder for audio capture and backend /voice/* endpoints.
  */
 
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+
 const API_BASE = "https://api.agentrix.top/api";
 
 let mediaRecorder: MediaRecorder | null = null;
@@ -75,18 +77,32 @@ export async function speechToText(
   token: string,
   lang?: "zh" | "en",
 ): Promise<string> {
+  // Read blob to ArrayBuffer for reliable Tauri IPC serialization
+  const arrayBuffer = await audioBlob.arrayBuffer();
+  const blob = new Blob([arrayBuffer], { type: audioBlob.type });
+
   const formData = new FormData();
-  formData.append("audio", audioBlob, `recording.${getExtension(audioBlob.type)}`);
+  formData.append("audio", blob, `recording.${getExtension(audioBlob.type)}`);
 
   const langParam = lang ? `?lang=${lang}` : "";
-  const res = await fetch(`${API_BASE}/voice/transcribe${langParam}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
+  let res: Response;
+  try {
+    res = await tauriFetch(`${API_BASE}/voice/transcribe${langParam}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` } as any,
+      body: formData as any,
+    } as any);
+  } catch {
+    res = await fetch(`${API_BASE}/voice/transcribe${langParam}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+  }
 
   if (!res.ok) throw new Error(`STT failed: ${res.status}`);
-  const data = await res.json();
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
   return data.transcript || data.text || "";
 }
 
@@ -106,8 +122,16 @@ export function playTTS(text: string, token: string, lang?: "zh" | "en"): Promis
     const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(truncated)}${langParam}`;
     currentAudio = new Audio();
 
-    // Fetch with auth header then play via blob URL
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    // Fetch with auth header then play via blob URL (use tauriFetch to bypass CORS)
+    const doFetch = async () => {
+      try {
+        return await tauriFetch(url, { headers: { Authorization: `Bearer ${token}` } as any } as any);
+      } catch {
+        return await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      }
+    };
+
+    doFetch()
       .then((res) => {
         if (!res.ok) throw new Error("TTS failed");
         return res.blob();
