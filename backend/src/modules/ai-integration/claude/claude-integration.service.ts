@@ -440,7 +440,120 @@ export class ClaudeIntegrationService {
       },
     ];
 
-    return [...claudeTools, ...basicTools, ...skillTools, ...taskTools, ...publishTools, ...shareTools];
+    // Wallet & finance tools
+    const walletTools = [
+      {
+        name: 'get_balance',
+        description: 'Check the agent wallet balance and available funds across all chains. ALWAYS call this when the user asks about their balance, funds, or wallet.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            chain: { type: 'string', description: 'Blockchain network to check (optional, checks all if omitted)' },
+            currency: { type: 'string', description: 'Specific token/currency to check (optional)' },
+          },
+        },
+      },
+      {
+        name: 'asset_overview',
+        description: 'Get a comprehensive overview of wallet assets including balances across chains, protocol positions, and portfolio summary.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            includeProtocols: { type: 'boolean', description: 'Include DeFi protocol positions (default true)' },
+          },
+        },
+      },
+    ];
+
+    // Agent-to-Agent (A2A) tools
+    const agentTools = [
+      {
+        name: 'agent_discover',
+        description: 'Discover other agents on the Agentrix network. Search by capability, name, or specialty.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query — capability, agent name, or specialty' },
+            capability: { type: 'string', description: 'Filter by specific capability' },
+            limit: { type: 'number', description: 'Max results (default 10)' },
+          },
+        },
+      },
+      {
+        name: 'agent_invoke',
+        description: 'Invoke another agent to perform a task via the A2A protocol. Use agent_discover first to find suitable agents.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            agentId: { type: 'string', description: 'Target agent ID' },
+            task: { type: 'string', description: 'Task description for the agent' },
+            input: { type: 'object', description: 'Structured input data for the agent' },
+            maxBudget: { type: 'number', description: 'Maximum budget for the task (optional)' },
+          },
+          required: ['agentId', 'task'],
+        },
+      },
+    ];
+
+    // Advanced commerce tools
+    const advancedCommerceTools = [
+      {
+        name: 'resource_search',
+        description: 'Search for resources, APIs, datasets, models, and services on the marketplace.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+            resourceType: { type: 'string', enum: ['api', 'dataset', 'model', 'workflow', 'service', 'product'], description: 'Resource type filter' },
+            limit: { type: 'number', description: 'Max results (default 10)' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'create_order',
+        description: 'Create a new order for a product, service, or resource on the marketplace.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            itemId: { type: 'string', description: 'Product/resource ID' },
+            itemType: { type: 'string', enum: ['product', 'skill', 'resource', 'service'], description: 'Type of item' },
+            quantity: { type: 'number', description: 'Quantity (default 1)' },
+            paymentMethod: { type: 'string', description: 'Payment method (e.g. USDC, SOL)' },
+          },
+          required: ['itemId'],
+        },
+      },
+      {
+        name: 'x402_pay',
+        description: 'Execute an x402 protocol payment for paywalled content or API access.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'The x402-protected resource URL' },
+            maxAmount: { type: 'number', description: 'Maximum payment amount willing to authorize' },
+            currency: { type: 'string', description: 'Payment currency (default USDC)' },
+          },
+          required: ['url'],
+        },
+      },
+      {
+        name: 'quickpay_execute',
+        description: 'Execute a quick payment or transfer between wallets. Supports crypto and fiat payment rails.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            to: { type: 'string', description: 'Recipient address or username' },
+            amount: { type: 'number', description: 'Amount to send' },
+            currency: { type: 'string', description: 'Currency (default USDC)' },
+            memo: { type: 'string', description: 'Payment memo/note' },
+          },
+          required: ['to', 'amount'],
+        },
+      },
+    ];
+
+    return [...claudeTools, ...basicTools, ...skillTools, ...taskTools, ...publishTools, ...shareTools, ...walletTools, ...agentTools, ...advancedCommerceTools];
   }
 
   /** Lazily get SkillExecutorService to avoid circular dependency */

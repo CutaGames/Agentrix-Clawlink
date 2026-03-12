@@ -53,6 +53,29 @@ interface PermissionState {
   twitterEnabled: boolean;
   telegramEnabled: boolean;
   mcpToolCount: number;
+  // Skills
+  skillSearchEnabled: boolean;
+  skillInstallEnabled: boolean;
+  skillExecuteEnabled: boolean;
+  skillPublishEnabled: boolean;
+  // Commerce
+  commerceBrowseEnabled: boolean;
+  commercePurchaseEnabled: boolean;
+  orderManageEnabled: boolean;
+  walletReadEnabled: boolean;
+  quickpayEnabled: boolean;
+  x402PayEnabled: boolean;
+  // Agent-to-Agent (A2A)
+  a2aDiscoverEnabled: boolean;
+  a2aInvokeEnabled: boolean;
+  // Task Marketplace
+  taskSearchEnabled: boolean;
+  taskPostEnabled: boolean;
+  taskAcceptEnabled: boolean;
+  taskSubmitEnabled: boolean;
+  // Resource
+  resourceSearchEnabled: boolean;
+  resourcePublishEnabled: boolean;
 }
 
 const DEFAULT_PERMISSIONS: PermissionState = {
@@ -71,6 +94,29 @@ const DEFAULT_PERMISSIONS: PermissionState = {
   twitterEnabled: true,
   telegramEnabled: true,
   mcpToolCount: 3,
+  // Skills — all enabled by default
+  skillSearchEnabled: true,
+  skillInstallEnabled: true,
+  skillExecuteEnabled: true,
+  skillPublishEnabled: false,
+  // Commerce
+  commerceBrowseEnabled: true,
+  commercePurchaseEnabled: true,
+  orderManageEnabled: true,
+  walletReadEnabled: true,
+  quickpayEnabled: false,
+  x402PayEnabled: false,
+  // A2A
+  a2aDiscoverEnabled: true,
+  a2aInvokeEnabled: false,
+  // Task Marketplace
+  taskSearchEnabled: true,
+  taskPostEnabled: false,
+  taskAcceptEnabled: false,
+  taskSubmitEnabled: true,
+  // Resources
+  resourceSearchEnabled: true,
+  resourcePublishEnabled: false,
 };
 
 function normalizePermissions(value?: Partial<PermissionState> | null): PermissionState {
@@ -463,6 +509,154 @@ export function AgentPermissionsScreen() {
             <Text style={styles.manageBtnText}>{t({ en: 'Manage →', zh: '管理 →' })}</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* ── Skill Management ── */}
+      <SectionHeader icon="🛠" title={t({ en: 'Skill Management', zh: '技能管理' })} />
+      <View style={styles.section}>
+        <PermRow
+          label={t({ en: '🔎 Search Skills', zh: '🔎 搜索技能' })}
+          sub={t({ en: 'Agent can search for AI skills and plugins', zh: '智能体可搜索 AI 技能和插件' })}
+          value={perms.skillSearchEnabled}
+          onChange={(v) => updatePerm('skillSearchEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '📥 Install Skills', zh: '📥 安装技能' })}
+          sub={t({ en: 'Agent can install skills from marketplace', zh: '智能体可从市场安装技能' })}
+          value={perms.skillInstallEnabled}
+          onChange={(v) => updatePerm('skillInstallEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '▶️ Execute Skills', zh: '▶️ 执行技能' })}
+          sub={t({ en: 'Agent can run installed skills', zh: '智能体可运行已安装的技能' })}
+          value={perms.skillExecuteEnabled}
+          onChange={(v) => updatePerm('skillExecuteEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '📤 Publish Skills', zh: '📤 发布技能' })}
+          sub={t({ en: 'Agent can publish new skills to marketplace', zh: '智能体可向市场发布新技能' })}
+          value={perms.skillPublishEnabled}
+          onChange={(v) => updatePerm('skillPublishEnabled', v)}
+        />
+      </View>
+
+      {/* ── Commerce & Wallet ── */}
+      <SectionHeader icon="🛒" title={t({ en: 'Commerce & Wallet', zh: '商城与钱包' })} />
+      <View style={styles.section}>
+        <PermRow
+          label={t({ en: '🏪 Browse Marketplace', zh: '🏪 浏览商城' })}
+          sub={t({ en: 'Agent can search products, resources, and services', zh: '智能体可搜索商品、资源和服务' })}
+          value={perms.commerceBrowseEnabled}
+          onChange={(v) => updatePerm('commerceBrowseEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '🛍 Purchase Items', zh: '🛍 购买商品' })}
+          sub={t({ en: 'Agent can buy and checkout items', zh: '智能体可购买并结算商品' })}
+          value={perms.commercePurchaseEnabled}
+          onChange={(v) => updatePerm('commercePurchaseEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '📦 Manage Orders', zh: '📦 管理订单' })}
+          sub={t({ en: 'Agent can check order status and details', zh: '智能体可查看订单状态和详情' })}
+          value={perms.orderManageEnabled}
+          onChange={(v) => updatePerm('orderManageEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '💰 View Wallet Balance', zh: '💰 查看钱包余额' })}
+          sub={t({ en: 'Agent can read wallet balance and asset overview', zh: '智能体可读取钱包余额和资产概览' })}
+          value={perms.walletReadEnabled}
+          onChange={(v) => updatePerm('walletReadEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '⚡ Quick Pay / Transfer', zh: '⚡ 快速支付/转账' })}
+          sub={t({ en: 'Agent can send payments and transfers', zh: '智能体可发送付款和转账' })}
+          value={perms.quickpayEnabled}
+          onChange={(v) => updatePerm('quickpayEnabled', v)}
+          destructive
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '🔐 x402 Paywall Access', zh: '🔐 x402 付费墙访问' })}
+          sub={t({ en: 'Agent can pay for paywalled content/APIs', zh: '智能体可支付付费内容/API 访问' })}
+          value={perms.x402PayEnabled}
+          onChange={(v) => updatePerm('x402PayEnabled', v)}
+          destructive
+        />
+      </View>
+
+      {/* ── Agent-to-Agent (A2A) ── */}
+      <SectionHeader icon="🤖" title={t({ en: 'Agent-to-Agent (A2A)', zh: '智能体协作 (A2A)' })} />
+      <View style={styles.section}>
+        <PermRow
+          label={t({ en: '🔍 Discover Agents', zh: '🔍 发现智能体' })}
+          sub={t({ en: 'Agent can find other agents on the network', zh: '智能体可在网络上发现其他智能体' })}
+          value={perms.a2aDiscoverEnabled}
+          onChange={(v) => updatePerm('a2aDiscoverEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '🤝 Invoke Agents', zh: '🤝 调用智能体' })}
+          sub={t({ en: 'Agent can delegate tasks to other agents', zh: '智能体可将任务委托给其他智能体' })}
+          value={perms.a2aInvokeEnabled}
+          onChange={(v) => updatePerm('a2aInvokeEnabled', v)}
+        />
+      </View>
+
+      {/* ── Task Marketplace ── */}
+      <SectionHeader icon="📋" title={t({ en: 'Task Marketplace', zh: '任务市场' })} />
+      <View style={styles.section}>
+        <PermRow
+          label={t({ en: '🔎 Search Tasks', zh: '🔎 搜索任务' })}
+          sub={t({ en: 'Agent can browse tasks and bounties', zh: '智能体可浏览任务和悬赏' })}
+          value={perms.taskSearchEnabled}
+          onChange={(v) => updatePerm('taskSearchEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '📝 Post Tasks', zh: '📝 发布任务' })}
+          sub={t({ en: 'Agent can create new tasks and bounties', zh: '智能体可创建新任务和悬赏' })}
+          value={perms.taskPostEnabled}
+          onChange={(v) => updatePerm('taskPostEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '✅ Accept Tasks', zh: '✅ 接受任务' })}
+          sub={t({ en: 'Agent can accept tasks from marketplace', zh: '智能体可从市场接受任务' })}
+          value={perms.taskAcceptEnabled}
+          onChange={(v) => updatePerm('taskAcceptEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '📤 Submit Deliverables', zh: '📤 提交交付物' })}
+          sub={t({ en: 'Agent can submit completed work', zh: '智能体可提交完成的工作' })}
+          value={perms.taskSubmitEnabled}
+          onChange={(v) => updatePerm('taskSubmitEnabled', v)}
+        />
+      </View>
+
+      {/* ── Resources ── */}
+      <SectionHeader icon="📦" title={t({ en: 'Resources & Publishing', zh: '资源与发布' })} />
+      <View style={styles.section}>
+        <PermRow
+          label={t({ en: '🔎 Search Resources', zh: '🔎 搜索资源' })}
+          sub={t({ en: 'Agent can find APIs, datasets, models', zh: '智能体可搜索 API、数据集、模型' })}
+          value={perms.resourceSearchEnabled}
+          onChange={(v) => updatePerm('resourceSearchEnabled', v)}
+        />
+        <View style={styles.divider} />
+        <PermRow
+          label={t({ en: '📤 Publish Resources', zh: '📤 发布资源' })}
+          sub={t({ en: 'Agent can publish resources to marketplace', zh: '智能体可向市场发布资源' })}
+          value={perms.resourcePublishEnabled}
+          onChange={(v) => updatePerm('resourcePublishEnabled', v)}
+        />
       </View>
 
       {/* Save Button */}

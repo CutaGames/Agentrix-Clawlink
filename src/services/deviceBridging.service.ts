@@ -188,51 +188,66 @@ export class DeviceBridgingService {
       const ImagePicker = require('expo-image-picker');
 
       // Check if camera hardware is available before requesting permissions
-      const available = await ImagePicker.getCameraPermissionsAsync();
-      const { status } = available.status === 'granted'
-        ? available
-        : await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Camera permission denied by user.');
+      let cameraAvailable = true;
+      try {
+        const available = await ImagePicker.getCameraPermissionsAsync();
+        const { status } = available.status === 'granted'
+          ? available
+          : await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          throw new Error('Camera permission denied by user.');
+        }
+      } catch (permErr: any) {
+        if (String(permErr?.message || '').toLowerCase().includes('permission denied')) {
+          throw permErr;
+        }
+        // Permission check itself failed (no camera hardware, etc.)
+        cameraAvailable = false;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: false,
-        quality: 0.8,
-        base64: false,
-        exif: false,
-      });
+      if (cameraAvailable) {
+        try {
+          const result = await ImagePicker.launchCameraAsync({
+            allowsEditing: false,
+            quality: 0.8,
+            base64: false,
+            exif: false,
+          });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        return {
-          uri: asset.uri,
-          width: asset.width ?? null,
-          height: asset.height ?? null,
-          fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
-          mimeType: asset.mimeType ?? 'image/jpeg',
-          size: asset.fileSize ?? null,
-        };
+          if (!result.canceled && result.assets && result.assets.length > 0) {
+            const asset = result.assets[0];
+            return {
+              uri: asset.uri,
+              width: asset.width ?? null,
+              height: asset.height ?? null,
+              fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
+              mimeType: asset.mimeType ?? 'image/jpeg',
+              size: asset.fileSize ?? null,
+            };
+          }
+
+          return null;
+        } catch (launchErr: any) {
+          // Camera launch crashed — fall through to album fallback
+          console.warn('Camera launch failed, falling back to album:', launchErr?.message);
+        }
       }
 
-      return null;
+      // Fallback: album picker when camera is unavailable or crashed
+      console.warn('Camera unavailable — falling back to photo album');
+      const { Alert } = require('react-native');
+      Alert.alert(
+        '📷',
+        'Camera unavailable — opening photo album instead.',
+        [{ text: 'OK' }],
+      );
+      return await DeviceBridgingService.pickImageAttachment();
     } catch (error: any) {
       if (String(error?.message || '').toLowerCase().includes('cancel')) {
         return null;
       }
       console.error('Failed to take camera photo:', error);
-      // If camera launch crashes for any reason, fall back to album picker
-      // This covers HarmonyOS, missing native modules, activity resolution failures, etc.
-      const msg = String(error?.message || '').toLowerCase();
-      if (msg.includes('permission')) {
-        throw new Error(error.message || 'Camera permission denied.');
-      }
-      console.warn('Camera unavailable — falling back to photo album');
-      try {
-        return await DeviceBridgingService.pickImageAttachment();
-      } catch (fallbackErr: any) {
-        throw new Error(fallbackErr?.message || 'Failed to take camera photo');
-      }
+      throw new Error(error?.message || 'Failed to take camera photo');
     }
   }
 }

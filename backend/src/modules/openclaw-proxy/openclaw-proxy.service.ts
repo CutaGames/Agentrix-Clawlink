@@ -148,6 +148,86 @@ export class OpenClawProxyService {
         },
         required: ['title', 'description'],
       },
+      task_accept: {
+        properties: {
+          taskId: { type: 'string', description: 'Task ID to accept' },
+        },
+        required: ['taskId'],
+      },
+      task_submit: {
+        properties: {
+          taskId: { type: 'string', description: 'Task ID' },
+          message: { type: 'string', description: 'Submission message or notes' },
+          deliverables: { type: 'array', items: { type: 'string' }, description: 'URLs or descriptions of deliverables' },
+        },
+        required: ['taskId'],
+      },
+      get_balance: {
+        properties: {
+          chain: { type: 'string', description: 'Blockchain network (optional, default: all chains)' },
+        },
+      },
+      resource_search: {
+        properties: {
+          query: { type: 'string', description: 'Search query for resources, services, APIs' },
+          category: { type: 'string', description: 'Category filter' },
+          limit: { type: 'number', description: 'Max results' },
+        },
+        required: ['query'],
+      },
+      create_order: {
+        properties: {
+          productId: { type: 'string', description: 'Product or resource ID to order' },
+          quantity: { type: 'number', description: 'Quantity (default 1)' },
+          shippingAddress: { type: 'string', description: 'Shipping address (for physical goods)' },
+        },
+        required: ['productId'],
+      },
+      x402_pay: {
+        properties: {
+          url: { type: 'string', description: 'X402 payment URL or resource endpoint' },
+          amount: { type: 'number', description: 'Payment amount' },
+          currency: { type: 'string', description: 'Currency (USDC, ETH, etc.)' },
+        },
+      },
+      quickpay_execute: {
+        properties: {
+          amount: { type: 'number', description: 'Payment amount' },
+          currency: { type: 'string', description: 'Currency' },
+          recipient: { type: 'string', description: 'Recipient address or agent ID' },
+          description: { type: 'string', description: 'Payment description' },
+        },
+      },
+      agent_discover: {
+        properties: {
+          query: { type: 'string', description: 'Search query for finding agents' },
+          capability: { type: 'string', description: 'Required agent capability' },
+          limit: { type: 'number', description: 'Max results' },
+        },
+      },
+      agent_invoke: {
+        properties: {
+          agentId: { type: 'string', description: 'Target agent ID to invoke' },
+          task: { type: 'string', description: 'Task description for the agent' },
+          input: { type: 'object', description: 'Structured input for the agent' },
+        },
+        required: ['agentId', 'task'],
+      },
+      asset_overview: {
+        properties: {
+          chain: { type: 'string', description: 'Blockchain network filter (optional)' },
+        },
+      },
+      resource_publish: {
+        properties: {
+          name: { type: 'string', description: 'Resource name' },
+          description: { type: 'string', description: 'Detailed description' },
+          resourceType: { type: 'string', enum: ['api', 'dataset', 'model', 'workflow', 'service', 'product'], description: 'Resource type' },
+          price: { type: 'number', description: 'Price' },
+          currency: { type: 'string', description: 'Currency (default USDC)' },
+        },
+        required: ['name', 'description'],
+      },
     };
 
     const specific = schemas[skill.handlerName];
@@ -432,13 +512,43 @@ export class OpenClawProxyService {
           `- **skill_execute**: Run/execute a skill with input parameters.\n` +
           `- **skill_recommend**: Get personalized skill recommendations.\n` +
           `- **skill_publish**: Publish a new skill to the marketplace.\n` +
+          `- **resource_publish**: Publish resources, APIs, datasets, or workflows to the marketplace.\n` +
           `- **marketplace_purchase**: Purchase a paid skill or resource.\n\n` +
+          `## Commerce & Payment\n` +
+          `You have FULL payment and commerce capabilities:\n` +
+          `- **search_products**: Search physical goods, digital resources, paid services.\n` +
+          `- **resource_search**: Search resources, APIs, and service listings.\n` +
+          `- **create_order**: Place orders for products and services.\n` +
+          `- **get_balance**: Check the agent's wallet balance, funds, and available currencies.\n` +
+          `- **asset_overview**: Get comprehensive view of wallet assets, balances, and X402 status.\n` +
+          `- **x402_pay**: Execute X402 protocol payments for paid APIs and services.\n` +
+          `- **quickpay_execute**: One-click micro-payments.\n\n` +
+          `## Task Marketplace\n` +
+          `Full task/bounty lifecycle:\n` +
+          `- **task_search**: Browse available tasks and bounties.\n` +
+          `- **task_post**: Post new tasks with budgets.\n` +
+          `- **task_accept**: Accept available tasks.\n` +
+          `- **task_submit**: Submit deliverables for completed tasks.\n\n` +
+          `## Agent-to-Agent (A2A)\n` +
+          `- **agent_discover**: Find other agents for collaboration or delegation.\n` +
+          `- **agent_invoke**: Delegate tasks to other agents via A2A protocol.\n\n` +
           `## Client UI Capabilities\n` +
           `The chat client is a rich mobile app, NOT a plain-text terminal:\n` +
           `- **Images**: Any image URL (ending in .png/.jpg/.gif/.webp etc.) or markdown image syntax ![alt](url) you include in your reply will be rendered as an inline image card. ALWAYS include image URLs directly in your text when you generate or reference images.\n` +
           `- **Audio/TTS**: Every assistant message has a "Play Audio" button. The client will use TTS to read your reply aloud. Voice recording/playback is fully handled by the client. NEVER say the chat cannot play audio.\n` +
           `- **Files**: File URLs (pdf/txt/csv etc.) are rendered as downloadable file cards.\n` +
           `- **User Attachments**: Users can send images, photos, and files as attachments. Treat attachment URLs as usable inputs.\n\n` +
+          `## Image Generation\n` +
+          `You CAN generate images. To do so:\n` +
+          `1. Call skill_search to find image generation skills (e.g. "image generation", "DALL-E", "stable diffusion").\n` +
+          `2. If not installed, call skill_install to install the skill.\n` +
+          `3. Call skill_execute with the image prompt to generate the image.\n` +
+          `4. Include the returned image URL in your reply using ![description](url) so the client renders it.\n` +
+          `NEVER say "I cannot generate images" or "I don't have image generation capability". Use skill_search to find and use one.\n\n` +
+          `## Screenshot & Browser Automation\n` +
+          `You CAN take screenshots and automate browsers via installable skills:\n` +
+          `- Call skill_search for "screenshot", "browser automation", "puppeteer", "selenium".\n` +
+          `- Install and execute the appropriate skill. NEVER say screenshots are unavailable.\n\n` +
           `## Rules\n` +
           `1. When the user asks to search, install, execute, buy, pay for, publish, or manage skills: ALWAYS use the appropriate tool. NEVER say you cannot access the marketplace.\n` +
           `2. When the user asks to generate, analyze, edit, upload, or send images/files/media: use skill_search, skill_install, or skill_execute to obtain that capability. NEVER say you are a "text-only interface" or that the chat "does not support" images, audio, or media. The client renders all of these.\n` +
@@ -447,9 +557,10 @@ export class OpenClawProxyService {
           `5. When tool results are returned, summarize them clearly. Do not claim lack of access.\n` +
           `6. If a search returns no results, suggest different keywords or broader queries.\n` +
           `7. Reply in the same language as the user, stay concise, and focus on getting the task done.\n` +
+          `8. When the user asks about wallet balance, funds, or financial status: call get_balance or asset_overview. NEVER guess balances.\n` +
           `${permissionProfile
-            ? `8. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
-            : '8. No Agent Account permission profile is currently bound to this instance.'}`,
+            ? `9. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
+            : '9. No Agent Account permission profile is currently bound to this instance.'}`,
       },
       { role: 'user' as const, content: dto.message },
     ];
