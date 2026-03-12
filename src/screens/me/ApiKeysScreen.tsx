@@ -15,6 +15,12 @@ interface ModelDef {
   contextWindow: number;
   costTier: 'free' | 'low' | 'medium' | 'high';
   capabilities: string[];
+  multimodal: boolean;
+  inputPrice?: string;
+  outputPrice?: string;
+  positioning?: string;
+  freeApi?: boolean;
+  freeNote?: string;
 }
 
 interface ProviderDef {
@@ -22,6 +28,7 @@ interface ProviderDef {
   name: string;
   icon: string;
   region: 'international' | 'china';
+  currency: string;
   requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
@@ -36,6 +43,7 @@ interface SavedConfig {
   baseUrl?: string;
   region?: string;
   isActive: boolean;
+  isDefault: boolean;
   lastTestedAt?: string;
   lastTestResult?: string;
   apiKeyPrefix?: string;
@@ -52,10 +60,15 @@ interface ProviderForm {
 }
 
 const COST_BADGE: Record<string, { label: string; color: string }> = {
-  free: { label: 'Free', color: '#22c55e' },
+  free: { label: '🆓 Free', color: '#22c55e' },
   low: { label: '$', color: '#3b82f6' },
   medium: { label: '$$', color: '#f59e0b' },
   high: { label: '$$$', color: '#ef4444' },
+};
+
+const formatCtx = (n: number) => {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}M`;
+  return `${(n / 1000).toFixed(0)}K`;
 };
 
 // ─── Component ──────────────────────────────────────────────────
@@ -115,6 +128,23 @@ export function ApiKeysScreen() {
   };
 
   const getSaved = (providerId: string) => savedConfigs.find(c => c.providerId === providerId);
+  const configuredCount = savedConfigs.length;
+  const defaultConfig = savedConfigs.find(c => c.isDefault);
+  const defaultProvider = defaultConfig ? catalog.find(p => p.id === defaultConfig.providerId) : null;
+
+  // ─── Set default provider ──────
+
+  const handleSetDefault = async (providerId: string) => {
+    try {
+      await apiFetch('/ai-providers/default', {
+        method: 'POST',
+        body: JSON.stringify({ providerId }),
+      });
+      await loadData();
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
+  };
 
   // ─── Test connectivity ──────
 
@@ -158,7 +188,6 @@ export function ApiKeysScreen() {
       Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: 'Please enter an API key', zh: '请先输入 API Key' }));
       return;
     }
-    // Validate required fields
     for (const field of provider.requiredFields) {
       if (field === 'apiKey' && !form.apiKey && !getSaved(provider.id)) {
         Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), `${field} is required`);
@@ -202,9 +231,9 @@ export function ApiKeysScreen() {
       t({ en: 'Remove Provider', zh: '移除厂商' }),
       t({ en: `Remove ${provider.name} configuration?`, zh: `确定移除 ${provider.name}？` }),
       [
-        { text: t({ en: 'Cancel', zh: '取消'}), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Remove', zh: '移除'}), style: 'destructive',
+          text: t({ en: 'Remove', zh: '移除' }), style: 'destructive',
           onPress: async () => {
             try {
               await apiFetch(`/ai-providers/configs/${provider.id}`, { method: 'DELETE' });
@@ -233,9 +262,11 @@ export function ApiKeysScreen() {
     const saved = getSaved(provider.id);
     const isExpanded = expandedId === provider.id;
     const form = forms[provider.id];
+    const isDefault = saved?.isDefault === true;
+    const selectedModel = provider.models.find(m => m.id === form?.selectedModel);
 
     return (
-      <View key={provider.id} style={[styles.card, saved && styles.cardActive]}>
+      <View key={provider.id} style={[styles.card, saved && styles.cardActive, isDefault && styles.cardDefault]}>
         {/* Header row */}
         <TouchableOpacity
           style={styles.cardHeader}
@@ -244,11 +275,20 @@ export function ApiKeysScreen() {
         >
           <Text style={styles.providerIcon}>{provider.icon}</Text>
           <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.providerName}>{provider.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.providerName}>{provider.name}</Text>
+              {isDefault && <Text style={styles.defaultBadge}>⭐ {t({ en: 'Default', zh: '默认' })}</Text>}
+            </View>
             {saved && (
               <Text style={styles.keyHint}>
                 {t({ en: 'Key: ', zh: '密钥: ' })}{saved.apiKeyPrefix || '••••'}
-                {saved.lastTestResult === 'ok' ? '  ✅' : ''}
+                {saved.lastTestResult === 'success' ? '  ✅' : ''}
+                {selectedModel ? `  ·  ${selectedModel.label}` : ''}
+              </Text>
+            )}
+            {!saved && provider.models.some(m => m.freeApi) && (
+              <Text style={styles.freeBadge}>
+                🆓 {t({ en: 'Free API available', zh: '有免费API' })}
               </Text>
             )}
           </View>
@@ -323,7 +363,12 @@ export function ApiKeysScreen() {
               style={styles.modelSelector}
               onPress={() => setModelPickerProvider(provider)}
             >
-              <Text style={styles.modelSelectorText}>{getModelLabel(provider.id)}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modelSelectorText}>{getModelLabel(provider.id)}</Text>
+                {selectedModel?.positioning && (
+                  <Text style={styles.modelSelectorSub}>{selectedModel.positioning}</Text>
+                )}
+              </View>
               <Text style={styles.chevronSmall}>▸</Text>
             </TouchableOpacity>
 
@@ -354,10 +399,29 @@ export function ApiKeysScreen() {
                   style={[styles.btn, styles.btnDelete]}
                   onPress={() => handleDelete(provider)}
                 >
-                  <Text style={styles.btnText}>{t({ en: '🗑 Remove', zh: '🗑 移除' })}</Text>
+                  <Text style={styles.btnText}>{t({ en: '🗑', zh: '🗑' })}</Text>
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Set as default / Default indicator */}
+            {saved && !isDefault && (
+              <TouchableOpacity
+                style={styles.setDefaultBtn}
+                onPress={() => handleSetDefault(provider.id)}
+              >
+                <Text style={styles.setDefaultText}>
+                  ⭐ {t({ en: 'Set as Default for All Agents', zh: '设为所有 Agent 的默认' })}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {isDefault && (
+              <View style={styles.defaultIndicator}>
+                <Text style={styles.defaultIndicatorText}>
+                  ⭐ {t({ en: 'Default provider — used by all agents unless overridden per-agent', zh: '默认厂商 — 所有 Agent 使用此API，除非单独配置' })}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -383,10 +447,27 @@ export function ApiKeysScreen() {
         <Text style={styles.title}>{t({ en: 'AI Provider Management', zh: 'AI 厂商管理' })}</Text>
         <Text style={styles.desc}>
           {t({
-            en: 'Configure your own API keys for different AI providers. Keys are encrypted and stored securely on the server. Test connectivity before saving.',
-            zh: '为不同 AI 厂商配置您自己的 API 密钥。密钥以加密方式安全存储在服务器端。保存前可先测试连通性。',
+            en: 'Configure your own API keys. The default provider applies to all agents; override per-agent in Agent Permissions.',
+            zh: '配置您的 API 密钥。默认厂商适用于所有 Agent；可在 Agent 权限中为不同 Agent 指定不同厂商。',
           })}
         </Text>
+
+        {/* Summary card */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLine}>
+            📊 {t({ en: `${configuredCount} provider(s) configured`, zh: `已配置 ${configuredCount} 个厂商` })}
+          </Text>
+          {defaultProvider ? (
+            <Text style={styles.summaryLine}>
+              ⭐ {t({ en: 'Default: ', zh: '默认: ' })}{defaultProvider.icon} {defaultProvider.name}
+              {defaultConfig ? ` · ${catalog.find(p => p.id === defaultConfig.providerId)?.models.find(m => m.id === defaultConfig.selectedModel)?.label || defaultConfig.selectedModel}` : ''}
+            </Text>
+          ) : (
+            <Text style={[styles.summaryLine, { color: colors.textMuted }]}>
+              {t({ en: '💡 Save a provider to set a default for all agents', zh: '💡 保存一个厂商即可设为所有 Agent 的默认' })}
+            </Text>
+          )}
+        </View>
 
         {/* International providers */}
         <Text style={styles.sectionTitle}>{t({ en: '🌍 International', zh: '🌍 国际厂商' })}</Text>
@@ -412,6 +493,12 @@ export function ApiKeysScreen() {
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
+            {modelPickerProvider && (
+              <Text style={styles.modalCurrencyHint}>
+                {t({ en: 'Prices per million tokens', zh: '价格为每百万 token' })}
+                {modelPickerProvider.currency === 'CNY' ? ' (¥ CNY)' : ' ($ USD)'}
+              </Text>
+            )}
             <FlatList
               data={modelPickerProvider?.models || []}
               keyExtractor={m => m.id}
@@ -427,17 +514,39 @@ export function ApiKeysScreen() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.modelLabel, isSelected && { color: colors.primary }]}>
-                        {m.label}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
+                        <Text style={[styles.modelLabel, isSelected && { color: colors.primary }]}>
+                          {m.label}
+                        </Text>
+                        {m.freeApi && (
+                          <View style={[styles.freeBadgePill, { marginLeft: 6 }]}>
+                            <Text style={styles.freeBadgePillText}>🆓 {m.freeNote || 'Free'}</Text>
+                          </View>
+                        )}
+                      </View>
+                      {/* Pricing */}
+                      {m.inputPrice || m.outputPrice ? (
+                        <Text style={styles.modelPricing}>
+                          📥 {m.inputPrice}  📤 {m.outputPrice}
+                        </Text>
+                      ) : m.costTier === 'free' ? (
+                        <Text style={[styles.modelPricing, { color: '#22c55e' }]}>
+                          {t({ en: 'Free', zh: '免费' })}
+                        </Text>
+                      ) : null}
+                      {/* Positioning & context */}
                       <Text style={styles.modelCaps}>
-                        {m.capabilities.join(' · ')}  •  {(m.contextWindow / 1000).toFixed(0)}K ctx
+                        {formatCtx(m.contextWindow)} ctx
+                        {m.multimodal ? '  ·  🖼 多模态' : ''}
+                        {m.positioning ? `  ·  ${m.positioning}` : ''}
                       </Text>
                     </View>
-                    <View style={[styles.costBadge, { backgroundColor: badge.color + '22' }]}>
-                      <Text style={[styles.costBadgeText, { color: badge.color }]}>{badge.label}</Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <View style={[styles.costBadge, { backgroundColor: badge.color + '22' }]}>
+                        <Text style={[styles.costBadgeText, { color: badge.color }]}>{badge.label}</Text>
+                      </View>
+                      {isSelected && <Text style={{ marginTop: 4, color: colors.primary, fontWeight: '700' }}>✓</Text>}
                     </View>
-                    {isSelected && <Text style={{ marginLeft: 8, color: colors.primary }}>✓</Text>}
                   </TouchableOpacity>
                 );
               }}
@@ -455,8 +564,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16 },
   title: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },
-  desc: { fontSize: 13, color: colors.textSecondary, marginBottom: 20, lineHeight: 19 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginTop: 20, marginBottom: 10 },
+  desc: { fontSize: 13, color: colors.textSecondary, marginBottom: 16, lineHeight: 19 },
+
+  // Summary
+  summaryCard: {
+    backgroundColor: colors.bgSecondary, borderRadius: 12,
+    padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  summaryLine: { fontSize: 13, color: colors.textPrimary, marginBottom: 4, lineHeight: 20 },
+
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginTop: 16, marginBottom: 10 },
 
   // Card
   card: {
@@ -465,12 +583,15 @@ const styles = StyleSheet.create({
     borderRadius: 12, marginBottom: 10, overflow: 'hidden',
   },
   cardActive: { borderColor: colors.primary, borderWidth: 1.5 },
+  cardDefault: { borderColor: '#f59e0b', borderWidth: 2 },
   cardHeader: {
     flexDirection: 'row', alignItems: 'center', padding: 14,
   },
   providerIcon: { fontSize: 24 },
   providerName: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
   keyHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  defaultBadge: { fontSize: 11, color: '#f59e0b', fontWeight: '600', marginLeft: 8 },
+  freeBadge: { fontSize: 11, color: '#22c55e', marginTop: 2 },
   chevron: { fontSize: 14, color: colors.textMuted },
 
   // Card body
@@ -491,6 +612,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 11,
   },
   modelSelectorText: { fontSize: 14, color: colors.textPrimary },
+  modelSelectorSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   chevronSmall: { fontSize: 12, color: colors.textMuted },
 
   // Action row
@@ -498,8 +620,21 @@ const styles = StyleSheet.create({
   btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   btnTest: { backgroundColor: '#6366f1' },
   btnSave: { backgroundColor: colors.primary },
-  btnDelete: { backgroundColor: '#ef4444', flex: 0.6 },
+  btnDelete: { backgroundColor: '#ef4444', flex: 0.4 },
   btnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  // Default
+  setDefaultBtn: {
+    marginTop: 10, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 8, borderWidth: 1, borderColor: '#f59e0b',
+    alignItems: 'center',
+  },
+  setDefaultText: { fontSize: 13, color: '#f59e0b', fontWeight: '600' },
+  defaultIndicator: {
+    marginTop: 10, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 8, backgroundColor: '#f59e0b15',
+  },
+  defaultIndicatorText: { fontSize: 12, color: '#f59e0b', lineHeight: 18 },
 
   // Modal
   modalOverlay: {
@@ -509,7 +644,7 @@ const styles = StyleSheet.create({
   modalSheet: {
     backgroundColor: colors.bgPrimary,
     borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    maxHeight: '65%', paddingBottom: 30,
+    maxHeight: '75%', paddingBottom: 30,
   },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -518,6 +653,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   modalClose: { fontSize: 18, color: colors.textMuted, padding: 4 },
+  modalCurrencyHint: { fontSize: 11, color: colors.textMuted, paddingHorizontal: 16, paddingTop: 8 },
 
   // Model row
   modelRow: {
@@ -527,7 +663,10 @@ const styles = StyleSheet.create({
   },
   modelRowSelected: { backgroundColor: colors.primary + '10' },
   modelLabel: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
-  modelCaps: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  modelPricing: { fontSize: 12, color: colors.textSecondary, marginBottom: 2 },
+  modelCaps: { fontSize: 11, color: colors.textMuted },
   costBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   costBadgeText: { fontSize: 11, fontWeight: '700' },
+  freeBadgePill: { backgroundColor: '#22c55e18', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
+  freeBadgePillText: { fontSize: 10, color: '#22c55e', fontWeight: '600' },
 });

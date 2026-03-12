@@ -5,14 +5,20 @@ import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 
-// ─── Provider & Model Catalog ────────────────────────────────────
+// ─── Provider & Model Catalog (2026-03-12 latest) ───────────────
 
 export interface ModelDef {
   id: string;
   label: string;
   contextWindow: number;
   costTier: 'free' | 'low' | 'medium' | 'high';
-  capabilities: string[]; // e.g. ['chat', 'vision', 'function_calling']
+  capabilities: string[];
+  multimodal: boolean;
+  inputPrice?: string;   // per million tokens, e.g. "$2.50" or "¥2.5"
+  outputPrice?: string;
+  positioning?: string;  // brief positioning tag
+  freeApi?: boolean;
+  freeNote?: string;     // e.g. "每日250次"
 }
 
 export interface ProviderDef {
@@ -20,7 +26,8 @@ export interface ProviderDef {
   name: string;
   icon: string;
   region: 'international' | 'china';
-  requiredFields: string[]; // e.g. ['apiKey'], ['apiKey', 'secretKey', 'region']
+  currency: string;      // "USD" or "CNY"
+  requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
   baseUrl?: string;
@@ -28,113 +35,144 @@ export interface ProviderDef {
 }
 
 export const PROVIDER_CATALOG: ProviderDef[] = [
-  // ─── International ───
+  // ─── 🌍 International ───
   {
-    id: 'anthropic', name: 'Anthropic (Claude)', icon: '🤖', region: 'international',
-    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
-    placeholder: { apiKey: 'sk-ant-api03-...' },
-    models: [
-      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'claude-opus-4', label: 'Claude Opus 4', contextWindow: 200000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'] },
-    ],
-  },
-  {
-    id: 'openai', name: 'OpenAI', icon: '🧠', region: 'international',
+    id: 'openai', name: 'OpenAI', icon: '🧠', region: 'international', currency: 'USD',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-proj-...' },
     models: [
-      { id: 'gpt-4o', label: 'GPT-4o', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'gpt-4o-mini', label: 'GPT-4o Mini', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'gpt-4.5-preview', label: 'GPT-4.5 Preview', contextWindow: 128000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'o3-mini', label: 'o3-mini', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'function_calling'] },
+      { id: 'gpt-5.4', label: 'GPT-5.4 (旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$2.50', outputPrice: '$15.00', positioning: '全能旗舰/电脑操作/Agent' },
+      { id: 'gpt-5.3-instant', label: 'GPT-5.3 Instant', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.75', outputPrice: '$14.00', positioning: '日常对话/性价比' },
+      { id: 'gpt-5-mini', label: 'GPT-5 mini', contextWindow: 270000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.25', outputPrice: '$2.00', positioning: '极致低成本/高并发' },
     ],
   },
   {
-    id: 'gemini', name: 'Google Gemini', icon: '✨', region: 'international',
+    id: 'gemini', name: 'Google Gemini', icon: '✨', region: 'international', currency: 'USD',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'AIzaSy...' },
     models: [
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'] },
+      { id: 'gemini-3.1-ultra', label: 'Gemini 3.1 Ultra (最强)', contextWindow: 20000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$4.00', outputPrice: '$20.00', positioning: '科学/视频/超长上下文' },
+      { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$2.00', outputPrice: '$12.00', positioning: '全能商用/性价比之王' },
+      { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.25', outputPrice: '$1.50', positioning: '极速/超低成本/高频', freeApi: true, freeNote: '2.5系列免费' },
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (免费)', contextWindow: 1000000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '个人免费API首选', freeApi: true, freeNote: '每日250次' },
     ],
   },
   {
-    id: 'bedrock', name: 'AWS Bedrock', icon: '☁️', region: 'international',
-    requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
-    placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'us-east-1' },
-    models: [
-      { id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5 (Bedrock)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'us.anthropic.claude-sonnet-4-5-20250514-v1:0', label: 'Claude Sonnet 4.5 (Bedrock)', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'us.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro', contextWindow: 300000, costTier: 'medium', capabilities: ['chat', 'function_calling'] },
-      { id: 'us.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite', contextWindow: 300000, costTier: 'low', capabilities: ['chat'] },
-      { id: 'us.meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B (Bedrock)', contextWindow: 128000, costTier: 'low', capabilities: ['chat'] },
-    ],
-  },
-  {
-    id: 'deepseek', name: 'DeepSeek', icon: '🔬', region: 'international',
+    id: 'anthropic', name: 'Anthropic (Claude)', icon: '🤖', region: 'international', currency: 'USD',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
-    placeholder: { apiKey: 'sk-...' },
-    baseUrl: 'https://api.deepseek.com',
+    placeholder: { apiKey: 'sk-ant-api03-...' },
     models: [
-      { id: 'deepseek-chat', label: 'DeepSeek V3', contextWindow: 64000, costTier: 'low', capabilities: ['chat', 'function_calling'] },
-      { id: 'deepseek-reasoner', label: 'DeepSeek R1', contextWindow: 64000, costTier: 'low', capabilities: ['chat'] },
+      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6 (最强)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
+      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
     ],
   },
   {
-    id: 'groq', name: 'Groq', icon: '⚡', region: 'international',
+    id: 'xai', name: 'xAI (Grok)', icon: '🚀', region: 'international', currency: 'USD',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    placeholder: { apiKey: 'xai-...' },
+    baseUrl: 'https://api.x.ai/v1',
+    models: [
+      { id: 'grok-4.2-beta', label: 'Grok 4.2 Beta', contextWindow: 512000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.50', outputPrice: '$7.50', positioning: '实时信息/硬核推理' },
+    ],
+  },
+  {
+    id: 'meta', name: 'Meta (Llama)', icon: '🦙', region: 'international', currency: 'USD',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'gsk_...' },
     baseUrl: 'https://api.groq.com/openai/v1',
     models: [
-      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'] },
-      { id: 'llama-3.1-405b-reasoning', label: 'Llama 3.1 405B', contextWindow: 128000, costTier: 'low', capabilities: ['chat'] },
-      { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B', contextWindow: 32768, costTier: 'free', capabilities: ['chat', 'function_calling'] },
+      { id: 'llama-4-maverick', label: 'Llama 4 Maverick', contextWindow: 1000000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '私有化部署/极致性价比', freeApi: true, freeNote: '开源免费(via Groq)' },
     ],
   },
-  // ─── China providers ───
   {
-    id: 'zhipu', name: '智谱 AI (GLM)', icon: '🧪', region: 'china',
-    requiredFields: ['apiKey'], optionalFields: [],
-    placeholder: { apiKey: 'zhipu-api-key...' },
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    id: 'bedrock', name: 'AWS Bedrock', icon: '☁️', region: 'international', currency: 'USD',
+    requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
+    placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'us-east-1' },
     models: [
-      { id: 'glm-4-plus', label: 'GLM-4-Plus', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'glm-4-flash', label: 'GLM-4-Flash', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'] },
-      { id: 'glm-4-long', label: 'GLM-4-Long', contextWindow: 1000000, costTier: 'low', capabilities: ['chat'] },
+      { id: 'us.anthropic.claude-opus-4-6-v1:0', label: 'Claude Opus 4.6 (Bedrock)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
+      { id: 'us.anthropic.claude-sonnet-4-6-v1:0', label: 'Claude Sonnet 4.6 (Bedrock)', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
+      { id: 'us.anthropic.claude-haiku-4-5-v1:0', label: 'Claude Haiku 4.5 (Bedrock)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
+      { id: 'us.meta.llama4-maverick-v1:0', label: 'Llama 4 Maverick (Bedrock)', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.20', outputPrice: '$0.60', positioning: '开源/私有化部署' },
+      { id: 'us.deepseek.deepseek-v3.2-v1:0', label: 'DeepSeek V3.2 (Bedrock)', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.50', outputPrice: '$1.50', positioning: '理科推理/极致性价比' },
+      { id: 'us.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro', contextWindow: 300000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.80', outputPrice: '$3.20', positioning: '通用/AWS原生' },
+      { id: 'us.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite', contextWindow: 300000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.06', outputPrice: '$0.24', positioning: '极致低成本' },
+      { id: 'mistral.mistral-large-v1:0', label: 'Mistral Large (Bedrock)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.00', outputPrice: '$6.00', positioning: '欧洲开源/代码/多语言' },
     ],
   },
+  // ─── 🇨🇳 China ───
   {
-    id: 'moonshot', name: 'Moonshot (Kimi)', icon: '🌙', region: 'china',
-    requiredFields: ['apiKey'], optionalFields: [],
+    id: 'bytedance', name: '字节跳动 (豆包)', icon: '🔥', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-...' },
-    baseUrl: 'https://api.moonshot.cn/v1',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     models: [
-      { id: 'moonshot-v1-8k', label: 'Moonshot V1 8K', contextWindow: 8000, costTier: 'low', capabilities: ['chat', 'function_calling'] },
-      { id: 'moonshot-v1-32k', label: 'Moonshot V1 32K', contextWindow: 32000, costTier: 'low', capabilities: ['chat', 'function_calling'] },
-      { id: 'moonshot-v1-128k', label: 'Moonshot V1 128K', contextWindow: 128000, costTier: 'medium', capabilities: ['chat'] },
+      { id: 'doubao-seed-2.0-pro', label: '豆包 Seed 2.0 Pro (最强)', contextWindow: 256000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥3.2', outputPrice: '¥16.0', positioning: '国产综合第一/多模态' },
+      { id: 'doubao-2.0-lite', label: '豆包 2.0 Lite', contextWindow: 256000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥0.6', outputPrice: '¥3.6', positioning: '轻量/高性价比' },
     ],
   },
   {
-    id: 'baidu', name: '百度文心', icon: '🐻', region: 'china',
-    requiredFields: ['apiKey', 'secretKey'], optionalFields: [],
-    placeholder: { apiKey: 'app-key...', secretKey: 'app-secret...' },
-    models: [
-      { id: 'ernie-4.0-8k', label: 'ERNIE 4.0', contextWindow: 8000, costTier: 'medium', capabilities: ['chat', 'function_calling'] },
-      { id: 'ernie-3.5-128k', label: 'ERNIE 3.5 128K', contextWindow: 128000, costTier: 'low', capabilities: ['chat'] },
-      { id: 'ernie-speed-128k', label: 'ERNIE Speed 128K', contextWindow: 128000, costTier: 'free', capabilities: ['chat'] },
-    ],
-  },
-  {
-    id: 'alibaba', name: '阿里通义千问', icon: '🐜', region: 'china',
+    id: 'alibaba', name: '阿里通义千问 (Qwen)', icon: '🐜', region: 'china', currency: 'CNY',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-...' },
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
-      { id: 'qwen-max', label: 'Qwen Max', contextWindow: 32000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'] },
-      { id: 'qwen-plus', label: 'Qwen Plus', contextWindow: 131000, costTier: 'low', capabilities: ['chat', 'function_calling'] },
-      { id: 'qwen-turbo', label: 'Qwen Turbo', contextWindow: 131000, costTier: 'free', capabilities: ['chat', 'function_calling'] },
+      { id: 'qwen-3.5-max', label: 'Qwen 3.5 Max (最强)', contextWindow: 252000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥2.5', outputPrice: '¥10.0', positioning: '开源榜第一/全能', freeApi: true, freeNote: '新用户100万免费' },
+      { id: 'qwen-flash', label: 'Qwen Flash', contextWindow: 256000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥0.15', outputPrice: '¥1.5', positioning: '极速/超低成本' },
+    ],
+  },
+  {
+    id: 'zhipu', name: '智谱 AI (GLM)', icon: '🧪', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey'], optionalFields: [],
+    placeholder: { apiKey: 'zhipu-api-key...' },
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    models: [
+      { id: 'glm-5-opus', label: 'GLM-5 Opus (最强)', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥2.8', outputPrice: '¥11.2', positioning: 'MoE/代码/工具调用强', freeApi: true, freeNote: '新用户500万免费' },
+    ],
+  },
+  {
+    id: 'moonshot', name: '月之暗面 (Kimi)', icon: '🌙', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey'], optionalFields: [],
+    placeholder: { apiKey: 'sk-...' },
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: [
+      { id: 'kimi-k2.5', label: 'Kimi K2.5 (最强)', contextWindow: 256000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥4.0', outputPrice: '¥21.0', positioning: '长文本/多智能体/数学', freeApi: true, freeNote: '个人永久免费' },
+    ],
+  },
+  {
+    id: 'minimax', name: 'MiniMax', icon: '🤖', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    placeholder: { apiKey: 'eyJ...' },
+    baseUrl: 'https://api.minimax.chat/v1',
+    models: [
+      { id: 'minimax-m2.5', label: 'MiniMax M2.5', contextWindow: 205000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥0.5', outputPrice: '¥2.2', positioning: '全球调用量第一/Agent/低成本' },
+    ],
+  },
+  {
+    id: 'deepseek', name: 'DeepSeek', icon: '🔬', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    placeholder: { apiKey: 'sk-...' },
+    baseUrl: 'https://api.deepseek.com',
+    models: [
+      { id: 'deepseek-v3.2', label: 'DeepSeek V3.2 (最强)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥2.0', outputPrice: '¥3.0', positioning: '理科推理/极致性价比' },
+    ],
+  },
+  {
+    id: 'baidu', name: '百度文心', icon: '🐻', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey', 'secretKey'], optionalFields: [],
+    placeholder: { apiKey: 'app-key...', secretKey: 'app-secret...' },
+    models: [
+      { id: 'ernie-6.0', label: '文心一言 6.0 (最强)', contextWindow: 128000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥4.0', outputPrice: '¥16.0', positioning: '中文/合规/医疗/数学' },
+      { id: 'ernie-3.5-turbo', label: 'ERNIE 3.5 Turbo (免费)', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'], multimodal: false, positioning: '文本对话/免费入门', freeApi: true, freeNote: '永久免费' },
+    ],
+  },
+  {
+    id: 'iflytek', name: '科大讯飞 (星火)', icon: '🗣️', region: 'china', currency: 'CNY',
+    requiredFields: ['apiKey'], optionalFields: [],
+    placeholder: { apiKey: 'Bearer token...' },
+    baseUrl: 'https://spark-api-open.xf-yun.com/v1',
+    models: [
+      { id: 'spark-x1', label: '星火 X1 (最强)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥3.0', outputPrice: '¥12.0', positioning: '语音/教育/医疗垂直', freeApi: true, freeNote: '每月200万免费' },
     ],
   },
 ];
@@ -194,6 +232,7 @@ export class AiProviderService {
       baseUrl: c.baseUrl,
       region: c.region,
       isActive: c.isActive,
+      isDefault: c.metadata?.isDefault === true,
       lastTestedAt: c.lastTestedAt,
       lastTestResult: c.lastTestResult,
       apiKeyPrefix: this.getKeyPrefix(c),
@@ -240,13 +279,57 @@ export class AiProviderService {
     config.isActive = true;
 
     await this.repo.save(config);
+
+    // Auto-set as default if this is the first config
+    const allConfigs = await this.repo.find({ where: { userId } });
+    const hasDefault = allConfigs.some(c => c.metadata?.isDefault === true);
+    if (!hasDefault) {
+      config.metadata = { ...(config.metadata || {}), isDefault: true };
+      await this.repo.save(config);
+    }
+
     return { id: config.id, providerId: config.providerId, selectedModel: config.selectedModel };
   }
 
   async deleteConfig(userId: string, providerId: string) {
-    const result = await this.repo.delete({ userId, providerId });
-    if (result.affected === 0) throw new NotFoundException(`No config found for provider "${providerId}"`);
+    const config = await this.repo.findOne({ where: { userId, providerId } });
+    if (!config) throw new NotFoundException(`No config found for provider "${providerId}"`);
+
+    const wasDefault = config.metadata?.isDefault === true;
+    await this.repo.delete({ userId, providerId });
+
+    // If deleted config was default, promote next config
+    if (wasDefault) {
+      const remaining = await this.repo.find({ where: { userId, isActive: true }, order: { createdAt: 'ASC' } });
+      if (remaining.length > 0) {
+        remaining[0].metadata = { ...(remaining[0].metadata || {}), isDefault: true };
+        await this.repo.save(remaining[0]);
+      }
+    }
+
     return { success: true };
+  }
+
+  // ─── Default provider ──────────
+
+  async setDefaultProvider(userId: string, providerId: string) {
+    const configs = await this.repo.find({ where: { userId } });
+    const target = configs.find(c => c.providerId === providerId);
+    if (!target) throw new NotFoundException(`No config found for provider "${providerId}"`);
+
+    for (const c of configs) {
+      const shouldBeDefault = c.providerId === providerId;
+      if ((c.metadata?.isDefault === true) !== shouldBeDefault) {
+        c.metadata = { ...(c.metadata || {}), isDefault: shouldBeDefault };
+        await this.repo.save(c);
+      }
+    }
+    return { success: true, defaultProvider: providerId };
+  }
+
+  async getDefaultConfig(userId: string): Promise<UserProviderConfig | null> {
+    const configs = await this.repo.find({ where: { userId, isActive: true } });
+    return configs.find(c => c.metadata?.isDefault === true) || configs[0] || null;
   }
 
   /** Get decrypted API key for a user + provider (used internally by chat flow) */
@@ -277,7 +360,6 @@ export class AiProviderService {
       await this.doTestCall(dto);
       const latencyMs = Date.now() - start;
 
-      // Update last test result in DB if config exists
       const config = await this.repo.findOne({ where: { userId, providerId: dto.providerId } });
       if (config) {
         config.lastTestedAt = new Date();
@@ -317,16 +399,26 @@ export class AiProviderService {
       }
       case 'openai':
       case 'deepseek':
-      case 'groq':
+      case 'xai':
+      case 'meta':
       case 'moonshot':
-      case 'alibaba': {
+      case 'alibaba':
+      case 'bytedance':
+      case 'minimax':
+      case 'iflytek':
+      case 'zhipu': {
         // All OpenAI-compatible APIs
         const defaultUrls: Record<string, string> = {
           openai: 'https://api.openai.com/v1',
           deepseek: 'https://api.deepseek.com',
-          groq: 'https://api.groq.com/openai/v1',
+          xai: 'https://api.x.ai/v1',
+          meta: 'https://api.groq.com/openai/v1',
           moonshot: 'https://api.moonshot.cn/v1',
           alibaba: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          bytedance: 'https://ark.cn-beijing.volces.com/api/v3',
+          minimax: 'https://api.minimax.chat/v1',
+          iflytek: 'https://spark-api-open.xf-yun.com/v1',
+          zhipu: 'https://open.bigmodel.cn/api/paas/v4',
         };
         const base = dto.baseUrl || defaultUrls[dto.providerId] || 'https://api.openai.com/v1';
         const resp = await fetch(`${base}/chat/completions`, {
@@ -349,29 +441,16 @@ export class AiProviderService {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);
         break;
       }
-      case 'zhipu': {
-        const resp = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dto.apiKey}` },
-          body: JSON.stringify({ model: dto.model, max_tokens: 10, messages: testMessage }),
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);
-        break;
-      }
       case 'bedrock': {
-        // For Bedrock we test with SigV4 — simplified: just check credentials are valid format
         if (!dto.apiKey || !dto.secretKey || !dto.region) {
           throw new Error('AWS Access Key, Secret Key, and Region are all required');
         }
         if (dto.apiKey.length < 16) throw new Error('Invalid AWS Access Key format');
         if (dto.secretKey.length < 16) throw new Error('Invalid AWS Secret Key format');
-        // A full SigV4 test would require aws-sdk; for now we validate format
         this.logger.log(`Bedrock credentials format validated for region ${dto.region}`);
         break;
       }
       case 'baidu': {
-        // Baidu uses API Key + Secret Key to get an access token first
         if (!dto.apiKey || !dto.secretKey) throw new Error('API Key and Secret Key are required for Baidu');
         const tokenUrl = `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${encodeURIComponent(dto.apiKey)}&client_secret=${encodeURIComponent(dto.secretKey)}`;
         const tokenResp = await fetch(tokenUrl, { method: 'POST', signal: AbortSignal.timeout(10000) });

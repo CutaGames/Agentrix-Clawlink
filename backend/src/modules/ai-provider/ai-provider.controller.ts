@@ -38,6 +38,19 @@ export class AiProviderController {
     return this.service.deleteConfig(req.user.id || req.user.sub, providerId);
   }
 
+  /** 设置默认厂商 */
+  @Post('default')
+  async setDefault(@Req() req: any, @Body() body: { providerId: string }) {
+    return this.service.setDefaultProvider(req.user.id || req.user.sub, body.providerId);
+  }
+
+  /** 获取默认厂商 */
+  @Get('default')
+  async getDefault(@Req() req: any) {
+    const config = await this.service.getDefaultConfig(req.user.id || req.user.sub);
+    return config ? { providerId: config.providerId, selectedModel: config.selectedModel } : null;
+  }
+
   /** 测试 API Key 连通性 */
   @Post('test')
   async testProvider(@Req() req: any, @Body() body: {

@@ -654,8 +654,19 @@ export class OpenClawProxyService {
     const agentAccount = permissionProfile?.agentAccountId
       ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
       : null;
-    const resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
-    const resolvedProvider = agentAccount?.preferredProvider || undefined;
+    let resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    let resolvedProvider = agentAccount?.preferredProvider || undefined;
+
+    // If no per-agent override, use user's default provider config
+    if (!resolvedProvider) {
+      const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
+      if (defaultConfig) {
+        resolvedProvider = defaultConfig.providerId;
+        if (!agentAccount?.preferredModel && !dto.model) {
+          resolvedModel = defaultConfig.selectedModel;
+        }
+      }
+    }
 
     // If user has a custom provider config for this provider, use their API key
     let userApiKey: string | undefined;

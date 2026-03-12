@@ -42,6 +42,12 @@ interface CatalogModel {
   contextWindow: number;
   costTier: 'free' | 'low' | 'medium' | 'high';
   capabilities: string[];
+  multimodal?: boolean;
+  inputPrice?: string;
+  outputPrice?: string;
+  positioning?: string;
+  freeApi?: boolean;
+  freeNote?: string;
 }
 
 interface CatalogProvider {
@@ -49,7 +55,14 @@ interface CatalogProvider {
   name: string;
   icon: string;
   region: 'international' | 'china';
+  currency?: string;
   models: CatalogModel[];
+}
+
+interface UserSavedConfig {
+  providerId: string;
+  selectedModel: string;
+  isDefault: boolean;
 }
 
 interface PermissionState {
@@ -239,12 +252,19 @@ export function AgentPermissionsScreen() {
 
   // Per-agent model selection
   const [catalog, setCatalog] = useState<CatalogProvider[]>([]);
+  const [userConfigs, setUserConfigs] = useState<UserSavedConfig[]>([]);
   const [preferredProvider, setPreferredProvider] = useState<string | undefined>(undefined);
   const [preferredModel, setPreferredModel] = useState<string | undefined>(undefined);
   const [showModelPicker, setShowModelPicker] = useState(false);
 
   useEffect(() => {
-    apiFetch<CatalogProvider[]>('/ai-providers/catalog').then(setCatalog).catch(() => {});
+    Promise.all([
+      apiFetch<CatalogProvider[]>('/ai-providers/catalog'),
+      apiFetch<UserSavedConfig[]>('/ai-providers/configs'),
+    ]).then(([cat, configs]) => {
+      setCatalog(cat);
+      setUserConfigs(configs);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -254,11 +274,17 @@ export function AgentPermissionsScreen() {
     }
   }, [activeAgent?.id, activeAgent?.preferredProvider, activeAgent?.preferredModel]);
 
+  const configuredProviderIds = userConfigs.map(c => c.providerId);
+  const configuredProviders = catalog.filter(p => configuredProviderIds.includes(p.id));
+  const defaultUserConfig = userConfigs.find(c => c.isDefault);
+
   const selectedProviderObj = catalog.find(p => p.id === preferredProvider);
   const selectedModelObj = selectedProviderObj?.models.find(m => m.id === preferredModel);
   const modelDisplayLabel = selectedModelObj
     ? `${selectedProviderObj?.icon || ''} ${selectedModelObj.label}`
-    : t({ en: 'Platform Default', zh: '平台默认' });
+    : defaultUserConfig
+      ? t({ en: 'Use Default', zh: '使用默认' }) + ` (${catalog.find(p => p.id === defaultUserConfig.providerId)?.icon || ''} ${defaultUserConfig.selectedModel})`
+      : t({ en: 'Platform Default', zh: '平台默认' });
 
   const expectedPermissionsJson = JSON.stringify(normalizePermissions(perms));
 
@@ -440,19 +466,31 @@ export function AgentPermissionsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalTopRow}>
-              <Text style={styles.modalTopTitle}>{t({ en: 'Select Model', zh: '选择模型' })}</Text>
+              <Text style={styles.modalTopTitle}>{t({ en: 'Select Model for Agent', zh: '为 Agent 选择模型' })}</Text>
               <TouchableOpacity onPress={() => setShowModelPicker(false)}>
                 <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>✕</Text>
               </TouchableOpacity>
             </View>
             <FlatList
-              data={catalog}
+              data={configuredProviders.length > 0 ? configuredProviders : catalog}
               keyExtractor={p => p.id}
+              ListHeaderComponent={
+                configuredProviders.length > 0 ? (
+                  <Text style={{ fontSize: 11, color: colors.textMuted, paddingHorizontal: 16, paddingTop: 8 }}>
+                    {t({ en: 'Showing your configured providers. Configure more in AI Settings.', zh: '显示已配置的厂商。可在 AI 设置中配置更多。' })}
+                  </Text>
+                ) : (
+                  <Text style={{ fontSize: 11, color: colors.textMuted, paddingHorizontal: 16, paddingTop: 8 }}>
+                    {t({ en: 'No providers configured yet. Configure API keys in Settings first.', zh: '尚未配置厂商。请先在设置中配置 API 密钥。' })}
+                  </Text>
+                )
+              }
               renderItem={({ item: prov }) => (
                 <View>
-                  <Text style={styles.modelGroupHeader}>{prov.icon} {prov.name}</Text>
+                  <Text style={styles.modelGroupHeader}>{prov.icon} {prov.name}{userConfigs.find(c => c.providerId === prov.id)?.isDefault ? ' ⭐' : ''}</Text>
                   {prov.models.map(m => {
                     const isSelected = preferredProvider === prov.id && preferredModel === m.id;
+                    const fmtCtx = m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(m.contextWindow % 1000000 === 0 ? 0 : 1)}M` : `${(m.contextWindow / 1000).toFixed(0)}K`;
                     return (
                       <TouchableOpacity
                         key={m.id}
@@ -463,10 +501,15 @@ export function AgentPermissionsScreen() {
                           setShowModelPicker(false);
                         }}
                       >
-                        <Text style={[styles.modelPickLabel, isSelected && { color: colors.primary }]}>{m.label}</Text>
-                        <Text style={styles.modelPickCaps}>
-                          {m.capabilities.join(' · ')}  •  {(m.contextWindow / 1000).toFixed(0)}K
-                        </Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.modelPickLabel, isSelected && { color: colors.primary }]}>{m.label}</Text>
+                          {(m.inputPrice || m.outputPrice) ? (
+                            <Text style={styles.modelPickCaps}>📥 {m.inputPrice}  📤 {m.outputPrice}  ·  {fmtCtx} ctx{m.multimodal ? '  ·  🖼' : ''}</Text>
+                          ) : (
+                            <Text style={styles.modelPickCaps}>{fmtCtx} ctx{m.multimodal ? '  ·  🖼 多模态' : ''}{m.freeApi ? `  ·  🆓 ${m.freeNote || 'Free'}` : ''}</Text>
+                          )}
+                          {m.positioning && <Text style={styles.modelPickCaps}>{m.positioning}</Text>}
+                        </View>
                         {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>✓</Text>}
                       </TouchableOpacity>
                     );
