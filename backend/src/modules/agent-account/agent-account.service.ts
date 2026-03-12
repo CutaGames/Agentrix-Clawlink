@@ -110,7 +110,8 @@ export class AgentAccountService {
       spendingLimits: dto.spendingLimits,
       callbacks: dto.callbacks,
       metadata: dto.metadata,
-      status: AgentAccountStatus.DRAFT,
+      status: AgentAccountStatus.ACTIVE,
+      activatedAt: new Date(),
       creditScore: 500, // 初始信用评分
       riskLevel: AgentRiskLevel.MEDIUM,
     });

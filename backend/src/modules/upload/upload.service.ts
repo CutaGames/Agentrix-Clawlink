@@ -66,6 +66,15 @@ export class UploadService {
       'image/png',
       'image/gif',
       'image/webp',
+      'audio/mpeg',
+      'audio/mp4',
+      'audio/m4a',
+      'audio/wav',
+      'audio/webm',
+      'audio/ogg',
+      'audio/aac',
+      'video/mp4',
+      'video/webm',
       'application/pdf',
       'text/plain',
       'text/markdown',
@@ -84,10 +93,13 @@ export class UploadService {
     }
 
     const saved = this.saveFile(file, this.chatUploadDir, '/api/uploads/chat');
+    const isImage = file.mimetype.startsWith('image/');
+    const isAudio = file.mimetype.startsWith('audio/');
     return {
       ...saved,
-      kind: file.mimetype.startsWith('image/') ? 'image' : 'file',
-      isImage: file.mimetype.startsWith('image/'),
+      kind: isImage ? 'image' : isAudio ? 'audio' : 'file',
+      isImage,
+      isAudio,
     };
   }
 }

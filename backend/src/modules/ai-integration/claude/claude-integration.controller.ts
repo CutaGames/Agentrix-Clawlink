@@ -193,7 +193,23 @@ Always reply in the same language the user uses. When the user asks to do someth
       ...messages,
     ];
 
-    const allMessages = baseMessages;
+    // Convert image attachment URLs in user messages to Claude multimodal content blocks
+    const allMessages = baseMessages.map(m => {
+      if (m.role !== 'user' || typeof m.content !== 'string') return m;
+      const imageUrlPattern = /URL:\s*(https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?)/gi;
+      const imageUrls: string[] = [];
+      let match: RegExpExecArray | null;
+      while ((match = imageUrlPattern.exec(m.content)) !== null) {
+        imageUrls.push(match[1]);
+      }
+      if (imageUrls.length === 0) return m;
+      const contentBlocks: any[] = [];
+      for (const url of imageUrls) {
+        contentBlocks.push({ type: 'image', source: { type: 'url', url } });
+      }
+      contentBlocks.push({ type: 'text', text: m.content });
+      return { ...m, content: contentBlocks };
+    });
 
     const result = await this.claudeService.chatWithFunctions(allMessages, {
       ...options,

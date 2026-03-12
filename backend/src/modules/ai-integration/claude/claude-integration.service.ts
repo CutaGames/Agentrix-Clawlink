@@ -874,7 +874,7 @@ export class ClaudeIntegrationService {
    * 调用 Claude API（带 Function Calling）
    */
   async chatWithFunctions(
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
     options?: {
       model?: string;
       temperature?: number;
@@ -949,7 +949,12 @@ export class ClaudeIntegrationService {
             }
           }
 
-          const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
+          const lastUserContent = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
+          const lastUserMessage = typeof lastUserContent === 'string'
+            ? lastUserContent
+            : Array.isArray(lastUserContent)
+              ? lastUserContent.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+              : String(lastUserContent);
           const toolFallbackText = this.buildToolFallbackText(toolResults);
 
           // Second Bedrock call with tool results

@@ -267,22 +267,77 @@ export class OpenClawProxyService {
       return null;
     }
 
-    const permissions = agentAccount.permissions || {};
+    const p = agentAccount.permissions || {} as any;
     const deniedToolNames = new Set<string>();
 
-    if (agentAccount.status !== AgentAccountStatus.ACTIVE) {
+    // Only fully deny tools for SUSPENDED or REVOKED accounts
+    // DRAFT and ACTIVE accounts get full tool access (gated by granular permissions below)
+    if (agentAccount.status === AgentAccountStatus.SUSPENDED || agentAccount.status === AgentAccountStatus.REVOKED) {
       AGENT_PRESET_SKILLS.forEach((skill) => deniedToolNames.add(skill.handlerName));
     }
-    if (permissions.autonomousPaymentEnabled === false) {
-      ['create_order', 'x402_pay', 'quickpay_execute', 'marketplace_purchase', 'resource_publish', 'task_post'].forEach((name) => deniedToolNames.add(name));
+
+    // Granular permission checks — only deny when EXPLICITLY set to false
+    if (p.skillSearchEnabled === false) {
+      ['skill_search', 'skill_recommend'].forEach((n) => deniedToolNames.add(n));
     }
-    if (permissions.webSearchEnabled === false) {
-      ['skill_search', 'search_products', 'resource_search', 'task_search', 'skill_recommend'].forEach((name) => deniedToolNames.add(name));
+    if (p.skillInstallEnabled === false) {
+      deniedToolNames.add('skill_install');
     }
-    if (permissions.telegramEnabled === false) {
+    if (p.skillExecuteEnabled === false) {
+      deniedToolNames.add('skill_execute');
+    }
+    if (p.skillPublishEnabled === false) {
+      deniedToolNames.add('skill_publish');
+    }
+    if (p.commerceBrowseEnabled === false) {
+      ['search_products', 'resource_search'].forEach((n) => deniedToolNames.add(n));
+    }
+    if (p.commercePurchaseEnabled === false) {
+      ['marketplace_purchase', 'create_order'].forEach((n) => deniedToolNames.add(n));
+    }
+    if (p.walletReadEnabled === false) {
+      ['get_balance', 'asset_overview'].forEach((n) => deniedToolNames.add(n));
+    }
+    if (p.quickpayEnabled === false) {
+      deniedToolNames.add('quickpay_execute');
+    }
+    if (p.x402PayEnabled === false) {
+      deniedToolNames.add('x402_pay');
+    }
+    if (p.autonomousPaymentEnabled === false) {
+      ['create_order', 'x402_pay', 'quickpay_execute', 'marketplace_purchase'].forEach((n) => deniedToolNames.add(n));
+    }
+    if (p.a2aDiscoverEnabled === false) {
+      deniedToolNames.add('agent_discover');
+    }
+    if (p.a2aInvokeEnabled === false) {
       deniedToolNames.add('agent_invoke');
     }
-    if (permissions.twitterEnabled === false) {
+    if (p.taskSearchEnabled === false) {
+      deniedToolNames.add('task_search');
+    }
+    if (p.taskPostEnabled === false) {
+      deniedToolNames.add('task_post');
+    }
+    if (p.taskAcceptEnabled === false) {
+      deniedToolNames.add('task_accept');
+    }
+    if (p.taskSubmitEnabled === false) {
+      deniedToolNames.add('task_submit');
+    }
+    if (p.resourceSearchEnabled === false) {
+      deniedToolNames.add('resource_search');
+    }
+    if (p.resourcePublishEnabled === false) {
+      deniedToolNames.add('resource_publish');
+    }
+    if (p.webSearchEnabled === false) {
+      deniedToolNames.add('search_web');
+    }
+    if (p.telegramEnabled === false) {
+      deniedToolNames.add('agent_invoke');
+    }
+    if (p.twitterEnabled === false) {
       deniedToolNames.add('resource_publish');
     }
 
@@ -485,6 +540,34 @@ export class OpenClawProxyService {
     return null;
   }
 
+  /**
+   * Parse user message for image attachment URLs and build Claude multimodal content blocks.
+   * If images are found, returns an array of content blocks; otherwise returns the plain string.
+   */
+  private buildUserContent(message: string): string | Array<{ type: string; [k: string]: any }> {
+    const imageUrlPattern = /URL:\s*(https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?)/gi;
+    const imageUrls: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = imageUrlPattern.exec(message)) !== null) {
+      imageUrls.push(match[1]);
+    }
+
+    if (imageUrls.length === 0) {
+      return message;
+    }
+
+    // Build multimodal content blocks for Claude vision
+    const contentBlocks: Array<{ type: string; [k: string]: any }> = [];
+    for (const url of imageUrls) {
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'url', url },
+      });
+    }
+    contentBlocks.push({ type: 'text', text: message });
+    return contentBlocks;
+  }
+
   private async runPlatformHostedChat(
     userId: string,
     instance: OpenClawInstance,
@@ -562,7 +645,7 @@ export class OpenClawProxyService {
             ? `9. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
             : '9. No Agent Account permission profile is currently bound to this instance.'}`,
       },
-      { role: 'user' as const, content: dto.message },
+      { role: 'user' as const, content: this.buildUserContent(dto.message) },
     ];
 
     const result = await this.claudeIntegrationService.chatWithFunctions(messages, {

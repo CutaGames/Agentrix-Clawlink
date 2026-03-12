@@ -110,7 +110,7 @@ export class BedrockIntegrationService {
     this.logger.log(`Bedrock chatWithFunctions: ${modelId} (Region: ${region})`);
 
     try {
-      // 构造 Claude 格式的消息
+      // 构造 Claude 格式的消息 — preserve multimodal content arrays
       const claudeMessages = messages.filter(m => m.role !== 'system').map(m => ({
         role: m.role,
         content: m.content
