@@ -113,7 +113,23 @@ export function AgentConsoleScreen() {
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const [showEngineModal, setShowEngineModal] = useState(false);
-  const selectedModelLabel = SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId;
+  const [dynamicModels, setDynamicModels] = useState<Array<{ id: string; label: string }>>([]);
+
+  // Fetch dynamic model list from backend
+  useEffect(() => {
+    (async () => {
+      try {
+        const models = await apiFetch<Array<{ id: string; label: string }>>('/ai-providers/available-models');
+        if (Array.isArray(models) && models.length > 0) {
+          setDynamicModels(models);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const selectedModelLabel = dynamicModels.find((m) => m.id === selectedModelId)?.label
+    ?? SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label
+    ?? selectedModelId;
 
   // Auto-mark onboarding step 1 when user has an active instance
   useEffect(() => {

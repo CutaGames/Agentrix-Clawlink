@@ -15,6 +15,7 @@ import { LogisticsModule } from '../../logistics/logistics.module';
 import { PaymentModule } from '../../payment/payment.module';
 import { ModelRouterModule } from '../model-router/model-router.module';
 import { BedrockIntegrationModule } from '../bedrock/bedrock-integration.module';
+import { AiProviderModule } from '../../ai-provider/ai-provider.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { BedrockIntegrationModule } from '../bedrock/bedrock-integration.module'
     forwardRef(() => PaymentModule),
     ModelRouterModule,
     BedrockIntegrationModule,
+    AiProviderModule,
   ],
   controllers: [ClaudeIntegrationController],
   providers: [ClaudeIntegrationService],

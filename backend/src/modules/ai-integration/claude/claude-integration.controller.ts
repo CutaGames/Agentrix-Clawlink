@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeIntegrationService } from './claude-integration.service';
+import { AiProviderService } from '../../ai-provider/ai-provider.service';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
@@ -10,6 +11,7 @@ export class ClaudeIntegrationController {
     private claudeService: ClaudeIntegrationService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private aiProviderService: AiProviderService,
   ) {}
 
   /** Best-effort userId extraction from Bearer token (no guard — stays public). */
@@ -211,10 +213,25 @@ Always reply in the same language the user uses. When the user asks to do someth
       return { ...m, content: contentBlocks };
     });
 
+    // Resolve user provider credentials from DB if user is authenticated
+    let userCreds: { apiKey: string; secretKey?: string; region?: string; baseUrl?: string; providerId: string; model?: string } | undefined;
+    if (context.userId) {
+      try {
+        const defaultConfig = await this.aiProviderService.getDefaultConfig(context.userId);
+        if (defaultConfig) {
+          const decrypted = await this.aiProviderService.getDecryptedKey(context.userId, defaultConfig.providerId);
+          if (decrypted) {
+            userCreds = { ...decrypted, providerId: defaultConfig.providerId };
+          }
+        }
+      } catch {}
+    }
+
     const result = await this.claudeService.chatWithFunctions(allMessages, {
       ...options,
       context,
       userApiKey: anthropicApiKey,
+      userCredentials: userCreds,
     });
 
     return result;

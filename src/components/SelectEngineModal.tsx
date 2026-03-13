@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Dimensions } from 'react-native';
 import { colors } from '../theme/colors';
-import { SUPPORTED_MODELS, ModelId } from '../stores/settingsStore';
+import { SUPPORTED_MODELS, ModelId, ModelOption } from '../stores/settingsStore';
 import { useI18n } from '../stores/i18nStore';
+import { apiFetch } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -15,7 +16,32 @@ interface SelectEngineModalProps {
 
 export function SelectEngineModal({ visible, onClose, selectedModelId, onSelect }: SelectEngineModalProps) {
   const { t } = useI18n();
-  const availableModels = SUPPORTED_MODELS.filter(m => m.availability === 'available');
+  const [dynamicModels, setDynamicModels] = useState<ModelOption[]>([]);
+
+  useEffect(() => {
+    if (!visible) return;
+    (async () => {
+      try {
+        const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
+        if (Array.isArray(models) && models.length > 0) {
+          setDynamicModels(models.map((m) => ({
+            id: m.id,
+            label: m.label,
+            provider: m.provider,
+            icon: m.isDefault ? '🤖' : '💎',
+            availability: 'available' as const,
+            costTier: m.costTier,
+          })));
+        }
+      } catch {
+        // Fallback to static models
+      }
+    })();
+  }, [visible]);
+
+  const availableModels = dynamicModels.length > 0
+    ? dynamicModels.filter(m => m.availability === 'available')
+    : SUPPORTED_MODELS.filter(m => m.availability === 'available');
 
   return (
     <Modal visible={visible} transparent animationType="slide">

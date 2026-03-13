@@ -870,7 +870,7 @@ export function AgentChatScreen() {
       if (!streamSucceeded) {
         if (instanceId) {
           try {
-            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current);
+            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current, effectiveModelId);
             const proxyReply = typeof proxyResult?.reply === 'string'
               ? proxyResult.reply
               : proxyResult?.reply?.content || '';

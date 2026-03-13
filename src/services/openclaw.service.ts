@@ -111,13 +111,13 @@ export async function getInstanceStatus(instanceId: string): Promise<{
 }
 
 // Send a chat message to an agent via the instance
-export async function sendAgentMessage(instanceId: string, message: string, sessionId?: string): Promise<{
+export async function sendAgentMessage(instanceId: string, message: string, sessionId?: string, model?: string): Promise<{
   sessionId: string;
   reply: ChatMessage;
 }> {
   return apiFetch(`/openclaw/proxy/${instanceId}/chat`, {
     method: 'POST',
-    body: JSON.stringify({ message, sessionId }),
+    body: JSON.stringify({ message, sessionId, model }),
   });
 }
 

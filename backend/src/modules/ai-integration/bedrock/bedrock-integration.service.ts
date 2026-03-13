@@ -37,13 +37,31 @@ export class BedrockIntegrationService {
   }
 
   /**
-   * Map short model names to full Bedrock IDs. Only remap when the model ID
-   * is NOT already a full Bedrock qualifier (e.g. 'us.anthropic.claude-...:0').
+   * Remap legacy/incorrect model IDs to verified Bedrock model IDs.
+   * Handles backward compat for IDs stored in user DB from old catalog.
+   */
+  private static readonly MODEL_ID_REMAP: Record<string, string> = {
+    'us.anthropic.claude-opus-4-6-v1:0':   'us.anthropic.claude-opus-4-20250514-v1:0',
+    'us.anthropic.claude-sonnet-4-6-v1:0':  'us.anthropic.claude-sonnet-4-20250514-v1:0',
+    'us.anthropic.claude-haiku-4-5-v1:0':   'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'us.meta.llama4-maverick-v1:0':         'us.meta.llama4-maverick-17b-instruct-v1:0',
+    'us.deepseek.deepseek-v3.2-v1:0':       'us.deepseek.r1-v1:0',
+    'mistral.mistral-large-v1:0':           'mistral.mistral-large-2402-v1:0',
+    'anthropic.claude-sonnet-4-v1:0':       'anthropic.claude-sonnet-4-20250514-v1:0',
+    'anthropic.claude-haiku-4-v1:0':        'anthropic.claude-3-5-haiku-20241022-v1:0',
+  };
+
+  /**
+   * Map short model names to full Bedrock IDs. Also remaps legacy IDs.
    */
   private resolveModelId(modelId: string): string {
+    // First check the remap table for legacy/incorrect IDs
+    const remapped = BedrockIntegrationService.MODEL_ID_REMAP[modelId];
+    if (remapped) return remapped;
+
     if (this.isFullBedrockModelId(modelId)) return modelId;
-    if (modelId.includes('opus')) return 'us.anthropic.claude-opus-4-6-v1:0';
-    if (modelId.includes('sonnet')) return 'us.anthropic.claude-sonnet-4-6-v1:0';
+    if (modelId.includes('opus')) return 'us.anthropic.claude-opus-4-20250514-v1:0';
+    if (modelId.includes('sonnet')) return 'us.anthropic.claude-sonnet-4-20250514-v1:0';
     if (modelId.includes('haiku')) return 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
     return modelId;
   }
