@@ -27,6 +27,7 @@ interface AgentAccount {
   walletAddress?: string;
   preferredModel?: string;
   preferredProvider?: string;
+  metadata?: any;
   permissions?: Partial<PermissionState>;
   spendingLimits?: {
     singleTxLimit: number;
@@ -255,7 +256,11 @@ export function AgentPermissionsScreen() {
   const [userConfigs, setUserConfigs] = useState<UserSavedConfig[]>([]);
   const [preferredProvider, setPreferredProvider] = useState<string | undefined>(undefined);
   const [preferredModel, setPreferredModel] = useState<string | undefined>(undefined);
+  const [agentVoice, setAgentVoice] = useState<string | undefined>(undefined);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
+
+  const availableVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 
   useEffect(() => {
     Promise.all([
@@ -271,8 +276,9 @@ export function AgentPermissionsScreen() {
     if (activeAgent) {
       setPreferredProvider(activeAgent.preferredProvider);
       setPreferredModel(activeAgent.preferredModel);
+      setAgentVoice(activeAgent.metadata?.voice_id);
     }
-  }, [activeAgent?.id, activeAgent?.preferredProvider, activeAgent?.preferredModel]);
+  }, [activeAgent?.id, activeAgent?.preferredProvider, activeAgent?.preferredModel, activeAgent?.metadata?.voice_id]);
 
   const configuredProviderIds = userConfigs.map(c => c.providerId);
   const configuredProviders = catalog.filter(p => configuredProviderIds.includes(p.id));
@@ -326,6 +332,10 @@ export function AgentPermissionsScreen() {
           permissions: perms,
           preferredModel: preferredModel || undefined,
           preferredProvider: preferredProvider || undefined,
+          metadata: {
+            ...activeAgent.metadata,
+            voice_id: agentVoice || undefined,
+          }
         }),
       });
 
@@ -460,6 +470,77 @@ export function AgentPermissionsScreen() {
           </>
         )}
       </View>
+
+      {/* ── Voice Preference ── */}
+      <SectionHeader icon="🎙️" title={t({ en: 'Agent Voice', zh: '智能体音色' })} />
+      <View style={styles.section}>
+        <View style={styles.permRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.permLabel}>{t({ en: 'Selected Voice', zh: '已选音色' })}</Text>
+            <Text style={styles.permSub}>
+              {t({ en: 'Configure TTS voice personality', zh: '配置文本转语音的个性发音' })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.divider} />
+        <TouchableOpacity
+          style={[styles.permRow, { paddingVertical: 14 }]}
+          onPress={() => setShowVoicePicker(true)}
+        >
+          <Text style={{ fontSize: 14, color: colors.textPrimary, flex: 1, textTransform: 'capitalize' }}>
+            {agentVoice || t({ en: 'Default Server Voice', zh: '默认服务器音色' })}
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>▸</Text>
+        </TouchableOpacity>
+        {agentVoice && (
+          <>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={[styles.permRow, { paddingVertical: 10 }]}
+              onPress={() => setAgentVoice(undefined)}
+            >
+              <Text style={{ fontSize: 13, color: colors.error }}>
+                {t({ en: '✕ Reset to Default', zh: '✕ 恢复默认' })}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Voice picker modal */}
+      <Modal visible={showVoicePicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalTopRow}>
+              <Text style={styles.modalTopTitle}>{t({ en: 'Select Agent Voice', zh: '选择语音音色' })}</Text>
+              <TouchableOpacity onPress={() => setShowVoicePicker(false)}>
+                <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={availableVoices}
+              keyExtractor={v => v}
+              renderItem={({ item: v }) => {
+                const isSelected = agentVoice === v;
+                return (
+                  <TouchableOpacity
+                    style={[styles.modelPickRow, isSelected && { backgroundColor: colors.primary + '10' }]}
+                    onPress={() => {
+                      setAgentVoice(v);
+                      setShowVoicePicker(false);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.modelPickLabel, isSelected && { color: colors.primary }, { textTransform: 'capitalize' }]}>{v}</Text>
+                    </View>
+                    {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Model picker modal */}
       <Modal visible={showModelPicker} transparent animationType="slide">

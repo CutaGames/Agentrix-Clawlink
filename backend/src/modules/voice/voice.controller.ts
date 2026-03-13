@@ -17,6 +17,7 @@ export class VoiceController {
   async synthesizeTTS(
     @Query('text') text: string,
     @Query('lang') lang: string,
+    @Query('voice') requestedVoice: string,
     @Res() res: Response,
   ) {
     if (!text) throw new BadRequestException('Text is required');
@@ -31,25 +32,70 @@ export class VoiceController {
 
       // Auto-detect language from text content if not specified
       const isChinese = lang === 'zh' || (!lang && /[\u4e00-\u9fff]/.test(text));
-      const voiceId = isChinese ? 'Zhiyu' : 'Matthew';
+      let voiceId = isChinese ? 'Zhiyu' : 'Matthew';
+      
+      // If a specific voice is requested, map it logically for Polly
+      if (requestedVoice) {
+        // We'll treat our "alloy, echo..." as conceptual mappings to Polly, or allow direct Polly IDs.
+        const voiceMap: Record<string, any> = {
+          alloy: { en: 'Matthew', zh: 'Zhiyu' },     // fallback mapped to default
+          echo: { en: 'Stephen', zh: 'Zhiqiang' },   // male alternative
+          fable: { en: 'Kendra', zh: 'Zhiyu' },      // female alt
+          onyx: { en: 'Kevin', zh: 'Zhiqiang' },     // male deep
+          nova: { en: 'Ruth', zh: 'Zhiyu' },         // female warm
+          shimmer: { en: 'Salli', zh: 'Zhiyu' }      // female bright
+        };
+        const mapping = voiceMap[requestedVoice.toLowerCase()];
+        if (mapping) {
+          voiceId = isChinese ? mapping.zh : mapping.en;
+        } else {
+          // If they pass an exact Polly voice ID like "Joanna", respect it
+          voiceId = requestedVoice;
+        }
+      }
+
       const languageCode = isChinese ? 'cmn-CN' : 'en-US';
 
-      const command = new SynthesizeSpeechCommand({
-        Engine: 'neural',
-        VoiceId: voiceId,
-        LanguageCode: languageCode,
-        OutputFormat: 'mp3',
-        Text: text,
-      });
-      const response = await polly.send(command);
-      if (response.AudioStream) {
-         res.set({
-          'Content-Type': 'audio/mpeg',
-          'Transfer-Encoding': 'chunked'
+      try {
+        const command = new SynthesizeSpeechCommand({
+          Engine: 'neural',
+          VoiceId: voiceId,
+          LanguageCode: languageCode,
+          OutputFormat: 'mp3',
+          Text: text,
         });
-        (response.AudioStream as any).pipe(res);
-      } else {
-        throw new Error('No audio stream returned');
+        const response = await polly.send(command);
+        if (response.AudioStream) {
+           res.set({
+            'Content-Type': 'audio/mpeg',
+            'Transfer-Encoding': 'chunked'
+          });
+          (response.AudioStream as any).pipe(res);
+        } else {
+          throw new Error('No audio stream returned');
+        }
+      } catch (err: any) {
+        if (err.name === 'ValidationException') {
+          const fallbackCommand = new SynthesizeSpeechCommand({
+            Engine: 'standard',
+            VoiceId: voiceId,
+            LanguageCode: languageCode,
+            OutputFormat: 'mp3',
+            Text: text,
+          });
+          const response = await polly.send(fallbackCommand);
+          if (response.AudioStream) {
+             res.set({
+              'Content-Type': 'audio/mpeg',
+              'Transfer-Encoding': 'chunked'
+            });
+            (response.AudioStream as any).pipe(res);
+          } else {
+            throw new Error('No audio stream returned on fallback');
+          }
+        } else {
+          throw err;
+        }
       }
     } catch (error) {
       console.error('TTS Synthesis error', error);
