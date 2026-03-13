@@ -59,7 +59,7 @@ export class VoiceController {
       try {
         const command = new SynthesizeSpeechCommand({
           Engine: 'neural',
-          VoiceId: voiceId,
+          VoiceId: voiceId as any,
           LanguageCode: languageCode,
           OutputFormat: 'mp3',
           Text: text,
@@ -78,7 +78,7 @@ export class VoiceController {
         if (err.name === 'ValidationException') {
           const fallbackCommand = new SynthesizeSpeechCommand({
             Engine: 'standard',
-            VoiceId: voiceId,
+            VoiceId: voiceId as any,
             LanguageCode: languageCode,
             OutputFormat: 'mp3',
             Text: text,

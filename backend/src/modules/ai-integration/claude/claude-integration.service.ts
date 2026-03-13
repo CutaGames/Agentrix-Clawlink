@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import axios from 'axios';
 import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -982,6 +983,46 @@ export class ClaudeIntegrationService {
   /**
    * 调用 Claude API（带 Function Calling）
    */
+  private async sanitizeContentForAnthropic(content: any): Promise<any> {
+    if (!Array.isArray(content)) return content;
+    return Promise.all(content.map(async (block: any) => {
+      if (block.type === 'image_url' && block.image_url?.url) {
+        return this.fetchImageAsBase64Block(block.image_url.url);
+      }
+      if (block.type === 'image' && block.source?.type === 'url' && block.source?.url) {
+        return this.fetchImageAsBase64Block(block.source.url);
+      }
+      if (block.type === 'input_audio') {
+        return { type: 'text', text: `[Audio attachment: ${block.input_audio?.url || 'audio'}]` };
+      }
+      return block;
+    }));
+  }
+
+  private async fetchImageAsBase64Block(url: string): Promise<any> {
+    try {
+      const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
+      const buffer = Buffer.from(resp.data);
+      
+      // Some storage engines might return the URL string directly instead of pixels
+      const textData = buffer.toString('utf8');
+      if (textData.startsWith('http://') || textData.startsWith('https://')) {
+        this.logger.log(`URL returned a redirect URL, fetching actual image: ${textData}`);
+        return this.fetchImageAsBase64Block(textData.trim());
+      }
+
+      const contentType = resp.headers['content-type'] || 'image/png';
+      const mediaType = contentType.split(';')[0].trim();
+      return {
+        type: 'image',
+        source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') },
+      };
+    } catch (err: any) {
+      this.logger.warn(`Failed to fetch image for base64 conversion: ${err.message} (url: ${url})`);
+      return { type: 'text', text: `[Image: ${url}]` };
+    }
+  }
+
   async chatWithFunctions(
     messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
     options?: {
@@ -1008,7 +1049,15 @@ export class ClaudeIntegrationService {
     const effectiveStandard = (options?.additionalTools?.length)
       ? standardTools.filter(t => !ECOMMERCE_STANDARD_TOOLS.has(t.name))
       : standardTools;
-    const mergedTools = [...effectiveStandard, ...(options?.additionalTools || [])];
+      
+    // Deduplicate merged tools by name to prevent "Tool names must be unique" error from LLMs
+    const rawMerged = [...effectiveStandard, ...(options?.additionalTools || [])];
+    const seenNames = new Set<string>();
+    const mergedTools = rawMerged.filter(t => {
+      if (seenNames.has(t.name)) return false;
+      seenNames.add(t.name);
+      return true;
+    });
 
     // ── Provider-aware routing ──
     const creds = options?.userCredentials;
@@ -1097,12 +1146,12 @@ export class ClaudeIntegrationService {
         .map((msg) => msg.content)
         .join('\n');
 
-      const conversationMessages = messages
+      const conversationMessages = await Promise.all(messages
         .filter((msg) => msg.role !== 'system')
-        .map((msg) => ({
+        .map(async (msg) => ({
           role: msg.role === 'assistant' ? 'assistant' : 'user',
-          content: msg.content,
-        }));
+          content: await this.sanitizeContentForAnthropic(msg.content),
+        })));
 
       // 调用 Claude API
       const response = await anthropicClient.messages.create({

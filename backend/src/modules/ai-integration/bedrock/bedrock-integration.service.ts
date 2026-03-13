@@ -144,6 +144,13 @@ export class BedrockIntegrationService {
     try {
       const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
       const buffer = Buffer.from(resp.data);
+      
+      const textData = buffer.toString('utf8');
+      if (textData.startsWith('http://') || textData.startsWith('https://')) {
+        this.logger.log(`URL returned a redirect URL, fetching actual image: ${textData}`);
+        return this.fetchImageAsBase64Block(textData.trim());
+      }
+      
       const contentType = resp.headers['content-type'] || 'image/png';
       const mediaType = contentType.split(';')[0].trim();
       return {
@@ -330,7 +337,7 @@ export class BedrockIntegrationService {
           .map((tool: any) => ({
             name: tool.name,
             description: tool.description,
-            input_schema: tool.parameters,
+            input_schema: tool.input_schema || tool.parameters,
           }));
       }
 

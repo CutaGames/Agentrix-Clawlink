@@ -78,7 +78,7 @@ export class DesktopSyncService {
     };
 
     this.userMap(this.devices, userId).set(dto.deviceId, next);
-    this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:presence', next);
+    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:presence', next);
 
     return {
       ok: true,
@@ -104,7 +104,7 @@ export class DesktopSyncService {
     };
 
     this.userMap(this.tasks, userId).set(dto.taskId, record);
-    this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:task', record);
+    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:task', record);
 
     return {
       ok: true,
@@ -136,7 +136,7 @@ export class DesktopSyncService {
       dto.timelineEntryId,
       DesktopTimelineStatus.WAITING_APPROVAL,
     );
-    this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:approval', record);
+    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:approval', record);
 
     const message = this.formatApprovalMessage(record);
     await this.notificationService.createNotification(userId, {
@@ -183,7 +183,7 @@ export class DesktopSyncService {
         : DesktopTimelineStatus.REJECTED,
     );
 
-    this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:approval-response', approval);
+    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:approval-response', approval);
 
     return {
       ok: true,
@@ -257,7 +257,7 @@ export class DesktopSyncService {
     }
 
     task.updatedAt = new Date().toISOString();
-    this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:task', task);
+    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:task', task);
   }
 
   private formatApprovalMessage(approval: DesktopApprovalRecord) {
