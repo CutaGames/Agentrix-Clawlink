@@ -51,6 +51,7 @@
     "docs:server": "node scripts/docs-server-8080.js"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1003.0",
     "@aws-sdk/client-polly": "^3.1003.0",
     "@aws-sdk/client-transcribe-streaming": "^3.1003.0",
     "@ethereum-attestation-service/eas-sdk": "^2.9.0",

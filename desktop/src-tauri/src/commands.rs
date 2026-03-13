@@ -138,6 +138,61 @@ pub fn snap_ball_to_edge(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Return a list of all available monitors with positions and sizes.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MonitorInfo {
+    pub name: Option<String>,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
+}
+
+pub fn get_monitors(app: AppHandle) -> Result<Vec<MonitorInfo>, String> {
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    Ok(monitors
+        .into_iter()
+        .map(|m| MonitorInfo {
+            name: m.name().map(|n| n.to_string()),
+            x: m.position().x,
+            y: m.position().y,
+            width: m.size().width,
+            height: m.size().height,
+            scale: m.scale_factor(),
+        })
+        .collect())
+}
+
+/// Move the floating-ball to the given monitor (by index) and snap to the nearest edge.
+pub fn move_ball_to_monitor(app: AppHandle, monitor_index: usize) -> Result<(), String> {
+    let monitors: Vec<_> = app.available_monitors().map_err(|e| e.to_string())?;
+    let target = monitors.get(monitor_index).ok_or("Monitor index out of range")?;
+    let win = app.get_webview_window("main").ok_or("main window not found")?;
+
+    // Place ball at center-right of the target monitor initially
+    let mx = target.position().x as f64;
+    let my = target.position().y as f64;
+    let mw = target.size().width as f64;
+    let mh = target.size().height as f64;
+    let size = win.outer_size().map_err(|e| e.to_string())?;
+    let ww = size.width as f64;
+
+    let new_x = mx + mw - ww * 0.65; // right edge, partially hidden
+    let new_y = my + mh / 2.0 - 28.0; // vertically centered
+
+    win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+        x: new_x as i32,
+        y: new_y as i32,
+    }))
+    .map_err(|e| e.to_string())?;
+
+    let mut ball = BALL_POS.lock().map_err(|e| e.to_string())?;
+    *ball = Some(BallPosition { x: new_x, y: new_y });
+
+    Ok(())
+}
+
 // ─── Workspace / Coding Agent Filesystem Commands ───────
 
 /// Validate that a path is safely within the workspace root (no traversal)

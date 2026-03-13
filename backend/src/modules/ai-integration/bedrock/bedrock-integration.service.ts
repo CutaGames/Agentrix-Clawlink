@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+
+export interface BedrockUserCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+}
 
 @Injectable()
 export class BedrockIntegrationService {
@@ -19,55 +26,92 @@ export class BedrockIntegrationService {
   }
 
   /**
+   * Check if a model ID is already a full Bedrock model ARN/ID (e.g. 'us.anthropic.claude-sonnet-4-6-v1:0')
+   * vs a short friendly name like 'claude-haiku-4-5'.
+   */
+  private isFullBedrockModelId(modelId: string): boolean {
+    return modelId.includes('.anthropic.') || modelId.includes('.meta.') ||
+           modelId.includes('.deepseek.') || modelId.includes('.amazon.') ||
+           modelId.includes('.mistral.') || modelId.startsWith('anthropic.') ||
+           modelId.startsWith('meta.') || modelId.startsWith('mistral.');
+  }
+
+  /**
+   * Map short model names to full Bedrock IDs. Only remap when the model ID
+   * is NOT already a full Bedrock qualifier (e.g. 'us.anthropic.claude-...:0').
+   */
+  private resolveModelId(modelId: string): string {
+    if (this.isFullBedrockModelId(modelId)) return modelId;
+    if (modelId.includes('opus')) return 'us.anthropic.claude-opus-4-6-v1:0';
+    if (modelId.includes('sonnet')) return 'us.anthropic.claude-sonnet-4-6-v1:0';
+    if (modelId.includes('haiku')) return 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
+    return modelId;
+  }
+
+  /**
+   * Invoke Bedrock model using user's own AWS credentials (SigV4 signing).
+   */
+  private async invokeWithUserCredentials(modelId: string, body: any, credentials: BedrockUserCredentials): Promise<any> {
+    const client = new BedrockRuntimeClient({
+      region: credentials.region,
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+      },
+    });
+    const command = new InvokeModelCommand({
+      modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(body),
+    });
+    const response = await client.send(command);
+    return JSON.parse(new TextDecoder().decode(response.body));
+  }
+
+  /**
+   * Invoke Bedrock model using platform Bearer token.
+   */
+  private async invokeWithPlatformToken(modelId: string, body: any, region: string): Promise<any> {
+    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
+    const response = await axios.post(
+      `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`,
+      body,
+      {
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        httpsAgent,
+        proxy: false,
+        timeout: 60000,
+      },
+    );
+    return response.data;
+  }
+
+  /**
    * 简单的 Bedrock 调用实现 (作为紧急备选)
    */
-  async invokeModel(prompt: string, modelId: string = 'anthropic.claude-3-5-sonnet-20241022-v2:0'): Promise<string> {
-    if (!this.token) {
-      this.logger.error('No Bedrock token available.');
-      return 'Bedrock token missing';
-    }
+  async invokeModel(prompt: string, modelId: string = 'us.anthropic.claude-haiku-4-5-20251001-v1:0', userCredentials?: BedrockUserCredentials): Promise<string> {
+    const finalModelId = this.resolveModelId(modelId);
+    const region = userCredentials?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    this.logger.log(`Calling Bedrock: ${finalModelId} (Region: ${region}, UserCreds: ${!!userCredentials})`);
 
-    // 处理模型 ID 映射和兼容性
-    let finalModelId = modelId;
-    if (finalModelId.includes('opus')) {
-      finalModelId = 'anthropic.claude-3-opus-20240229-v1:0';
-    } else if (finalModelId.includes('sonnet')) {
-      finalModelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
-    } else if (finalModelId.includes('haiku')) {
-      finalModelId = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
-    }
+    const body = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 2000,
+      messages: [{ role: "user", content: prompt }],
+    };
 
-    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
-    const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-    
-    this.logger.log(`Calling Bedrock: ${finalModelId} (Region: ${region}, Proxy: ${this.proxy ? 'YES' : 'NO'})`);
-    
     try {
-      const response = await axios.post(
-        `https://bedrock-runtime.${region}.amazonaws.com/model/${finalModelId}/invoke`,
-        {
-          anthropic_version: "bedrock-2023-05-31",
-          max_tokens: 2000,
-          messages: [{ role: "user", content: prompt }]
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          httpsAgent,
-          proxy: false,
-          timeout: 30000
-        }
-      );
-      return response.data.content[0].text;
+      const data = userCredentials
+        ? await this.invokeWithUserCredentials(finalModelId, body, userCredentials)
+        : await this.invokeWithPlatformToken(finalModelId, body, region);
+      return data.content[0].text;
     } catch (e: any) {
       this.logger.error(`Bedrock invokeModel failed: ${e.message}`);
-      if (e.response) {
-        this.logger.error(`Response status: ${e.response.status}`);
-        this.logger.error(`Response data: ${JSON.stringify(e.response.data)}`);
-      }
       throw e;
     }
   }
@@ -88,26 +132,16 @@ export class BedrockIntegrationService {
    * 支持 Function Calling 的对话接口
    */
   async chatWithFunctions(messages: any[], options: any = {}): Promise<any> {
-    if (!this.token) {
-      throw new Error('AWS_BEARER_TOKEN_BEDROCK is not configured');
+    const userCreds: BedrockUserCredentials | undefined = options.userCredentials;
+
+    if (!this.token && !userCreds) {
+      throw new Error('No Bedrock credentials available (neither platform token nor user credentials)');
     }
 
-    // 默认使用 3.5 Sonnet
-    let modelId = options.model || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+    const modelId = this.resolveModelId(options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0');
+    const region = userCreds?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
     
-    // 映射模型 ID
-    if (modelId.includes('opus')) {
-      modelId = 'anthropic.claude-3-opus-20240229-v1:0';
-    } else if (modelId.includes('sonnet')) {
-      modelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
-    } else if (modelId.includes('haiku')) {
-      modelId = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
-    }
-
-    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
-    const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-    
-    this.logger.log(`Bedrock chatWithFunctions: ${modelId} (Region: ${region})`);
+    this.logger.log(`Bedrock chatWithFunctions: ${modelId} (Region: ${region}, UserCreds: ${!!userCreds})`);
 
     try {
       // 构造 Claude 格式的消息 — preserve multimodal content arrays
@@ -138,22 +172,11 @@ export class BedrockIntegrationService {
         }));
       }
 
-      const response = await axios.post(
-        `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`,
-        body,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          httpsAgent,
-          proxy: false,
-          timeout: 60000
-        }
-      );
+      const data = userCreds
+        ? await this.invokeWithUserCredentials(modelId, body, userCreds)
+        : await this.invokeWithPlatformToken(modelId, body, region);
 
-      const content = response.data.content;
+      const content = data.content;
       let text = '';
       const toolCalls: any[] = [];
 

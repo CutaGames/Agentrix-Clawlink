@@ -5,6 +5,10 @@ import LoginPanel from "./components/LoginPanel";
 import OnboardingPanel from "./components/OnboardingPanel";
 import agentrixLogo from "./assets/agentrix-logo.png";
 import { useAuthStore } from "./services/store";
+import { initSessionSync, destroySessionSync } from "./services/sessionSync";
+import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
+import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
+import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
 
 // Determine view from Tauri window label without importing @tauri-apps/api/window
 // (static import can crash if Tauri internals aren't ready)
@@ -22,12 +26,56 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
 
   useEffect(() => {
     loadToken();
   }, [loadToken]);
 
   const loggedIn = !!token || isGuest;
+
+  // Initialize services when logged in
+  useEffect(() => {
+    if (!loggedIn) return;
+
+    // Network monitor
+    startNetworkMonitor();
+    const unsub = onNetworkStatusChange(setNetworkStatus);
+
+    // Clipboard watch
+    startClipboardWatch();
+
+    // Analytics
+    initAnalytics(token);
+
+    // Session sync (needs real token, not guest)
+    if (token) {
+      initSessionSync(token, {
+        onSessionUpdated: (snapshot) => {
+          // Store remote sessions to localStorage so ChatPanel can access them
+          localStorage.setItem(
+            `chat_session_${snapshot.sessionId}`,
+            JSON.stringify(snapshot.messages),
+          );
+          // Notify ChatPanel that a remote session was updated
+          window.dispatchEvent(new CustomEvent("agentrix:session-synced", { detail: snapshot }));
+        },
+        onConnectionChange: (connected) => {
+          window.dispatchEvent(new CustomEvent("agentrix:sync-status", { detail: { connected } }));
+        },
+      });
+    }
+
+    trackEvent("session_start");
+
+    return () => {
+      stopNetworkMonitor();
+      unsub();
+      stopClipboardWatch();
+      destroyAnalytics();
+      destroySessionSync();
+    };
+  }, [loggedIn, token]);
 
   // Global keyboard shortcuts (within webview)
   useEffect(() => {
@@ -129,6 +177,17 @@ export default function App() {
       initBallPosition();
     }
 
+    // Multi-monitor: listen for monitor switch requests from tray/shortcuts
+    const handleMonitorSwitch = async (e: Event) => {
+      try {
+        const idx = (e as CustomEvent).detail?.monitorIndex ?? 0;
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("desktop_bridge_move_ball_to_monitor", { monitorIndex: idx });
+      } catch {}
+    };
+    window.addEventListener("agentrix:move-monitor", handleMonitorSwitch);
+    // Cleanup not needed for floating ball (it's the whole window lifecycle)
+
     return (
       <div
         data-tauri-drag-region
@@ -194,6 +253,7 @@ export default function App() {
             setPanelOpen(false);
           }
         }}
+        networkStatus={networkStatus}
       />
     );
   }
@@ -217,7 +277,7 @@ export default function App() {
   return (
     <div style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}>
       {panelOpen ? (
-        <ChatPanel onClose={() => setPanelOpen(false)} />
+        <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
       ) : (
         <div
           style={{

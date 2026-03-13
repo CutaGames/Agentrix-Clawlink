@@ -33,6 +33,9 @@ import {
   readWorkspaceFile,
   writeWorkspaceFile,
 } from "../services/workspace";
+import { pushSessionSync, isSessionSyncConnected } from "../services/sessionSync";
+import { trackEvent } from "../services/analytics";
+import type { NetworkStatus } from "../services/network";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -52,11 +55,12 @@ async function notifyIfBackground(title: string, body: string) {
 
 interface Props {
   onClose: () => void;
+  networkStatus?: NetworkStatus;
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
 
-export default function ChatPanel({ onClose }: Props) {
+export default function ChatPanel({ onClose, networkStatus = "online" }: Props) {
   const { token, activeInstanceId, instances, setActiveInstance } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -73,6 +77,7 @@ export default function ChatPanel({ onClose }: Props) {
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
+  const [syncConnected, setSyncConnected] = useState(isSessionSyncConnected());
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
@@ -105,7 +110,7 @@ export default function ChatPanel({ onClose }: Props) {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Persist current session to localStorage
+  // Persist current session to localStorage + push to cross-device sync
   useEffect(() => {
     if (messages.length > 0) {
       localStorage.setItem(
@@ -114,6 +119,10 @@ export default function ChatPanel({ onClose }: Props) {
       );
       // Update session index
       saveSessionToIndex(sessionIdRef.current, messages);
+      // Push to cross-device sync (debounced by nature of React batching)
+      const firstUser = messages.find(m => m.role === "user");
+      const title = firstUser?.content?.slice(0, 50) || "New Chat";
+      pushSessionSync(sessionIdRef.current, messages, title);
     }
   }, [messages]);
 
@@ -381,6 +390,7 @@ export default function ChatPanel({ onClose }: Props) {
       setPendingAttachments([]);
       setSending(true);
       setBallState("thinking");
+      trackEvent("chat_send", { hasAttachments: pendingAttachments.length > 0, model: selectedModel });
 
       // Set up streaming TTS if enabled and voice-initiated
       const shouldStreamTTS = ttsEnabled && token && voiceInitiatedRef.current;
@@ -627,6 +637,42 @@ export default function ChatPanel({ onClose }: Props) {
     };
   }, []);
 
+  // Listen for sync connection status changes
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { connected } = (e as CustomEvent).detail || {};
+      setSyncConnected(!!connected);
+    };
+    window.addEventListener("agentrix:sync-status", handler);
+    return () => window.removeEventListener("agentrix:sync-status", handler);
+  }, []);
+
+  // Listen for clipboard quick-action sends from FloatingBall
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { prompt } = (e as CustomEvent).detail || {};
+      if (prompt) {
+        trackEvent("clipboard_action");
+        handleSend(prompt);
+      }
+    };
+    window.addEventListener("agentrix:clipboard-send", handler);
+    return () => window.removeEventListener("agentrix:clipboard-send", handler);
+  }, [handleSend]);
+
+  // Listen for remote session sync updates
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const snapshot = (e as CustomEvent).detail;
+      if (snapshot?.sessionId === sessionIdRef.current && snapshot?.messages) {
+        // Merge remote messages into current session if it's the active one
+        setMessages(snapshot.messages);
+      }
+    };
+    window.addEventListener("agentrix:session-synced", handler);
+    return () => window.removeEventListener("agentrix:session-synced", handler);
+  }, []);
+
   // Auto-close chat-panel window when it loses focus (click outside)
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -759,10 +805,45 @@ export default function ChatPanel({ onClose }: Props) {
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
+        {/* Sync status indicator */}
+        <div
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: syncConnected ? "#00D2D3" : "var(--text-dim)",
+            opacity: syncConnected ? 1 : 0.3,
+            transition: "background 0.3s, opacity 0.3s",
+          }}
+          title={syncConnected ? "Synced across devices" : "Sync disconnected"}
+        />
         <button onClick={onClose} style={iconBtnStyle} title="Close (Esc)">
           ✕
         </button>
       </div>
+
+      {/* Offline / degraded banner */}
+      {networkStatus !== "online" && (
+        <div
+          style={{
+            padding: "6px 16px",
+            background: networkStatus === "offline" ? "#FF6B6B22" : "#FECA5722",
+            borderBottom: "1px solid var(--border)",
+            fontSize: 12,
+            color: networkStatus === "offline" ? "#FF6B6B" : "#FECA57",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span>{networkStatus === "offline" ? "⚡" : "⚠️"}</span>
+          <span>
+            {networkStatus === "offline"
+              ? "You're offline — messages will sync when reconnected"
+              : "Connection unstable — some features may be limited"}
+          </span>
+        </div>
+      )}
 
       {/* Settings overlay */}
       {settingsOpen && (

@@ -16,7 +16,17 @@ import { PayIntentService } from '../../payment/pay-intent.service';
 import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
 import { ModelRouterService, ModelType } from '../model-router/model-router.service';
-import { BedrockIntegrationService } from '../bedrock/bedrock-integration.service';
+import { BedrockIntegrationService, BedrockUserCredentials } from '../bedrock/bedrock-integration.service';
+
+/** Credentials resolved from the user's provider config */
+export interface UserProviderCredentials {
+  apiKey: string;
+  secretKey?: string;
+  region?: string;
+  baseUrl?: string;
+  providerId: string;
+  model?: string;
+}
 
 // 动态导入 Anthropic SDK（如果已安装）
 let Anthropic: any;
@@ -871,6 +881,105 @@ export class ClaudeIntegrationService {
   }
 
   /**
+   * Handle chat via Bedrock with user's own AWS credentials (SigV4) or platform token.
+   * Shared logic for both user-credential and platform-fallback Bedrock paths.
+   */
+  private async handleBedrockChat(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
+    mergedTools: any[],
+    options: any,
+    userCredentials?: BedrockUserCredentials,
+  ): Promise<any> {
+    const modelId = options.model || 'claude-haiku-4-5';
+    this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}`);
+
+    const bedrockTools = mergedTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.input_schema || t.parameters,
+    }));
+
+    const bedrockResult = await this.bedrockService.chatWithFunctions(messages, {
+      model: modelId,
+      tools: bedrockTools,
+      userCredentials,
+    });
+
+    // If Bedrock returned tool calls, execute them and do a second LLM call
+    if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
+      this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s)`);
+      const toolResults: any[] = [];
+      for (const tc of bedrockResult.functionCalls) {
+        const fnName = tc.function?.name || tc.name;
+        const fnArgs = tc.function?.arguments
+          ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
+          : tc.input || {};
+        try {
+          let result: any;
+          if (options?.onToolCall) {
+            result = await options.onToolCall(fnName, fnArgs);
+          }
+          if (result === undefined) {
+            result = await this.executeFunctionCall(fnName, fnArgs, options?.context || {});
+          }
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: tc.id || `tool-${Date.now()}`,
+            content: JSON.stringify(result),
+          });
+        } catch (err: any) {
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: tc.id || `tool-${Date.now()}`,
+            content: JSON.stringify({ success: false, error: err.message }),
+          });
+        }
+      }
+
+      const lastUserContent = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+      const lastUserMessage = typeof lastUserContent === 'string'
+        ? lastUserContent
+        : Array.isArray(lastUserContent)
+          ? lastUserContent.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+          : String(lastUserContent);
+      const toolFallbackText = this.buildToolFallbackText(toolResults);
+
+      const followUpMessages = [
+        ...messages,
+        { role: 'assistant' as const, content: bedrockResult.text || 'I used the available tools and received the results.' },
+        {
+          role: 'user' as const,
+          content:
+            `Answer the original request using the tool results below. ` +
+            `Do not say you lack web access or tool access when tool results are present.\n\n` +
+            `Original request:\n${lastUserMessage}\n\n` +
+            `Tool results:\n${toolResults.map(r => r.content).join('\n')}`,
+        },
+      ];
+      try {
+        const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
+          model: modelId,
+          userCredentials,
+        });
+        const finalText = finalResult.text?.trim();
+        return {
+          text: !finalText || this.looksLikeToolAccessRefusal(finalText)
+            ? (toolFallbackText || finalText || bedrockResult.text)
+            : finalText,
+          toolCalls: bedrockResult.functionCalls,
+        };
+      } catch {
+        return {
+          text: toolFallbackText || (bedrockResult.text + '\n\n' + toolResults.map(r => r.content).join('\n')),
+          toolCalls: bedrockResult.functionCalls,
+        };
+      }
+    }
+
+    return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
+  }
+
+  /**
    * 调用 Claude API（带 Function Calling）
    */
   async chatWithFunctions(
@@ -880,7 +989,8 @@ export class ClaudeIntegrationService {
       temperature?: number;
       maxTokens?: number;
       context?: { userId?: string; sessionId?: string };
-      userApiKey?: string; // 用户提供的 API Key（可选）
+      userApiKey?: string; // 用户提供的 API Key（可选）— backward compat
+      userCredentials?: UserProviderCredentials; // Full provider credentials (preferred)
       enableModelRouting?: boolean; // 是否启用模型路由（默认启用）
       additionalTools?: any[]; //HQ 专属工具箱支持
       onToolCall?: (name: string, args: any) => Promise<any>;
@@ -900,97 +1010,24 @@ export class ClaudeIntegrationService {
       : standardTools;
     const mergedTools = [...effectiveStandard, ...(options?.additionalTools || [])];
 
-    if (!this.anthropic && !options?.userApiKey) {
-      // Fallback to AWS Bedrock (uses AWS_BEARER_TOKEN_BEDROCK)
+    // ── Provider-aware routing ──
+    const creds = options?.userCredentials;
+    const isBedrockProvider = creds?.providerId?.startsWith('bedrock');
+
+    // Route 1: User has Bedrock credentials → SigV4 path
+    if (isBedrockProvider && creds?.secretKey) {
+      return this.handleBedrockChat(messages, mergedTools, options || {}, {
+        accessKeyId: creds.apiKey,
+        secretAccessKey: creds.secretKey,
+        region: creds.region || 'us-east-1',
+      });
+    }
+
+    // Route 2: No platform Anthropic key AND no user direct API key → platform Bedrock fallback
+    const userDirectKey = (creds && !isBedrockProvider) ? creds.apiKey : options?.userApiKey;
+    if (!this.anthropic && !userDirectKey) {
       try {
-        const modelId = (options && options.model) ? options.model : 'claude-3-haiku';
-        this.logger.log(`Bedrock fallback model: ${modelId} with ${mergedTools.length} tools`);
-
-        // Convert Claude tool format (input_schema) to Bedrock format (parameters)
-        const bedrockTools = mergedTools.map(t => ({
-          name: t.name,
-          description: t.description,
-          parameters: t.input_schema || t.parameters,
-        }));
-
-        const bedrockResult = await this.bedrockService.chatWithFunctions(messages, {
-          model: modelId,
-          tools: bedrockTools,
-        });
-
-        // If Bedrock returned tool calls, execute them and do a second LLM call
-        if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
-          this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s)`);
-          const toolResults: any[] = [];
-          for (const tc of bedrockResult.functionCalls) {
-            const fnName = tc.function?.name || tc.name;
-            const fnArgs = tc.function?.arguments
-              ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
-              : tc.input || {};
-            try {
-              let result: any;
-              if (options?.onToolCall) {
-                result = await options.onToolCall(fnName, fnArgs);
-              }
-              if (result === undefined) {
-                result = await this.executeFunctionCall(fnName, fnArgs, options?.context || {});
-              }
-              toolResults.push({
-                type: 'tool_result',
-                tool_use_id: tc.id || `tool-${Date.now()}`,
-                content: JSON.stringify(result),
-              });
-            } catch (err: any) {
-              toolResults.push({
-                type: 'tool_result',
-                tool_use_id: tc.id || `tool-${Date.now()}`,
-                content: JSON.stringify({ success: false, error: err.message }),
-              });
-            }
-          }
-
-          const lastUserContent = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
-          const lastUserMessage = typeof lastUserContent === 'string'
-            ? lastUserContent
-            : Array.isArray(lastUserContent)
-              ? lastUserContent.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
-              : String(lastUserContent);
-          const toolFallbackText = this.buildToolFallbackText(toolResults);
-
-          // Second Bedrock call with tool results
-          const followUpMessages = [
-            ...messages,
-            { role: 'assistant' as const, content: bedrockResult.text || 'I used the available tools and received the results.' },
-            {
-              role: 'user' as const,
-              content:
-                `Answer the original request using the tool results below. ` +
-                `Do not say you lack web access or tool access when tool results are present.\n\n` +
-                `Original request:\n${lastUserMessage}\n\n` +
-                `Tool results:\n${toolResults.map(r => r.content).join('\n')}`,
-            },
-          ];
-          try {
-            const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
-              model: modelId,
-            });
-            const finalText = finalResult.text?.trim();
-            return {
-              text: !finalText || this.looksLikeToolAccessRefusal(finalText)
-                ? (toolFallbackText || finalText || bedrockResult.text)
-                : finalText,
-              toolCalls: bedrockResult.functionCalls,
-            };
-          } catch {
-            // If second call fails, return the tool results directly
-            return {
-              text: toolFallbackText || (bedrockResult.text + '\n\n' + toolResults.map(r => r.content).join('\n')),
-              toolCalls: bedrockResult.functionCalls,
-            };
-          }
-        }
-
-        return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
+        return await this.handleBedrockChat(messages, mergedTools, options || {});
       } catch (bedrockErr: any) {
         this.logger.error(`Bedrock fallback failed: ${bedrockErr.message}`);
         throw new Error(
@@ -1000,9 +1037,9 @@ export class ClaudeIntegrationService {
       }
     }
 
-    // 如果用户提供了 API Key，创建新的 Anthropic 实例
-    const anthropicClient = options?.userApiKey
-      ? new Anthropic({ apiKey: options.userApiKey })
+    // Route 3: 如果用户提供了 Anthropic/直接 API Key，创建新的 Anthropic 实例
+    const anthropicClient = userDirectKey
+      ? new Anthropic({ apiKey: userDirectKey })
       : this.anthropic;
 
     try {

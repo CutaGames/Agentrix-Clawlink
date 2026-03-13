@@ -1,5 +1,6 @@
 import { CSSProperties, useState, useCallback, useRef, useEffect } from "react";
 import agentrixLogo from "../assets/agentrix-logo.png";
+import { type ClipboardCapture, type ClipboardAction, buildClipboardPrompt } from "../services/clipboard";
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
 
@@ -16,8 +17,42 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showGuide, setShowGuide] = useState(() => localStorage.getItem("agentrix_guided") !== "1");
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [clipboardText, setClipboardText] = useState<string | null>(null);
+  const [clipboardMenu, setClipboardMenu] = useState(false);
+  const clipboardFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLongPress = useRef(false);
+
+  // Listen for clipboard captures
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ClipboardCapture>).detail;
+      if (detail?.text) {
+        setClipboardText(detail.text);
+        setClipboardMenu(false);
+        // Auto-hide clipboard badge after 8 seconds
+        if (clipboardFadeTimer.current) clearTimeout(clipboardFadeTimer.current);
+        clipboardFadeTimer.current = setTimeout(() => setClipboardText(null), 8000);
+      }
+    };
+    window.addEventListener("agentrix:clipboard-capture", handler);
+    return () => {
+      window.removeEventListener("agentrix:clipboard-capture", handler);
+      if (clipboardFadeTimer.current) clearTimeout(clipboardFadeTimer.current);
+    };
+  }, []);
+
+  const handleClipboardAction = useCallback((action: ClipboardAction) => {
+    if (!clipboardText) return;
+    const prompt = buildClipboardPrompt(action, clipboardText);
+    // Open chat and send the prompt
+    onTap();
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("agentrix:clipboard-send", { detail: { prompt } }));
+    }, 150);
+    setClipboardText(null);
+    setClipboardMenu(false);
+  }, [clipboardText, onTap]);
 
   // Idle auto-transparency: fade to 40% after 30s of idle state
   useEffect(() => {
@@ -145,7 +180,82 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
           }}
         />
       )}
+
+      {/* Clipboard badge */}
+      {clipboardText && state === "idle" && (
+        <div
+          onClick={(e) => { e.stopPropagation(); setClipboardMenu(!clipboardMenu); }}
+          style={{
+            position: "absolute",
+            bottom: -4,
+            right: -4,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: "#00D2D3",
+            color: "#fff",
+            fontSize: 11,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            border: "2px solid #1a1a2e",
+            animation: "guideFloat 1.5s ease-in-out infinite",
+            zIndex: 10,
+          }}
+          title="Clipboard actions"
+        >
+          📋
+        </div>
+      )}
     </div>
+
+    {/* Clipboard quick-action menu */}
+    {clipboardMenu && clipboardText && (
+      <div
+        style={{
+          position: "absolute",
+          bottom: 64,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "var(--bg-panel, #1e1e2e)",
+          border: "1px solid var(--border, #333)",
+          borderRadius: 12,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+          zIndex: 10001,
+          padding: "6px 0",
+          minWidth: 150,
+          fontSize: 13,
+        }}
+      >
+        <div style={{ padding: "6px 14px", fontSize: 11, color: "var(--text-dim, #888)", borderBottom: "1px solid var(--border, #333)", marginBottom: 2 }}>
+          {clipboardText.slice(0, 40)}{clipboardText.length > 40 ? "..." : ""}
+        </div>
+        {([
+          { action: "translate" as ClipboardAction, label: "🌐 Translate" },
+          { action: "summarize" as ClipboardAction, label: "📝 Summarize" },
+          { action: "explain" as ClipboardAction, label: "💡 Explain" },
+          { action: "rewrite" as ClipboardAction, label: "✏️ Rewrite" },
+          { action: "ask" as ClipboardAction, label: "💬 Ask about this" },
+        ]).map((item) => (
+          <div
+            key={item.action}
+            onClick={(e) => { e.stopPropagation(); handleClipboardAction(item.action); }}
+            style={{
+              padding: "8px 14px",
+              cursor: "pointer",
+              color: "var(--text, #eee)",
+              transition: "background 0.1s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            {item.label}
+          </div>
+        ))}
+      </div>
+    )}
 
     {/* Right-click context menu */}
     {contextMenu && (

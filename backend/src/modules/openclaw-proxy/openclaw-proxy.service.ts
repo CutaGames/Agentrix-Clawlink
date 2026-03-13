@@ -602,12 +602,12 @@ export class OpenClawProxyService {
       }
     }
 
-    // If user has a custom provider config for this provider, use their API key
-    let userApiKey: string | undefined;
+    // If user has a custom provider config for this provider, extract full credentials
+    let userCredentials: { apiKey: string; secretKey?: string; region?: string; baseUrl?: string; providerId: string; model?: string } | undefined;
     if (resolvedProvider) {
       const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
       if (providerConfig) {
-        userApiKey = providerConfig.apiKey;
+        userCredentials = { ...providerConfig, providerId: resolvedProvider };
       }
     }
 
@@ -690,7 +690,7 @@ export class OpenClawProxyService {
       context: { userId, sessionId },
       additionalTools,
       onToolCall,
-      userApiKey,
+      userCredentials,
     });
 
     const text = result?.text || '';
