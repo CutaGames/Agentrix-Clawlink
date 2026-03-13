@@ -90,9 +90,29 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
     placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'us-east-1' },
     models: [
+      // ── Anthropic Claude ──
       { id: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
       { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
       { id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
+      // ── Meta Llama ──
+      { id: 'us.meta.llama4-maverick-17b-instruct-v1:0', label: 'Llama 4 Maverick 17B', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.17', outputPrice: '$0.68', positioning: '开源旗舰/多模态/超长上下文' },
+      { id: 'us.meta.llama4-scout-17b-instruct-v1:0', label: 'Llama 4 Scout 17B', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.17', outputPrice: '$0.68', positioning: '开源/多模态/高性价比' },
+      { id: 'us.meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.72', outputPrice: '$0.72', positioning: '开源/代码/多语言' },
+      // ── DeepSeek ──
+      { id: 'us.deepseek.r1-v1:0', label: 'DeepSeek R1', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$1.35', outputPrice: '$5.40', positioning: '深度推理/数学/代码' },
+      // ── Mistral AI ──
+      { id: 'mistral.mistral-large-2411-v1:0', label: 'Mistral Large 24.11', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.00', outputPrice: '$6.00', positioning: '多语言/代码/欧洲' },
+      { id: 'mistral.mistral-small-2503-v1:0', label: 'Mistral Small 25.03', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.10', outputPrice: '$0.30', positioning: '极低成本/快速/代码' },
+      // ── Amazon Nova ──
+      { id: 'us.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro', contextWindow: 300000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.80', outputPrice: '$3.20', positioning: 'AWS原生/多模态/性价比' },
+      { id: 'us.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision'], multimodal: true, inputPrice: '$0.06', outputPrice: '$0.24', positioning: 'AWS原生/极低成本/多模态' },
+      { id: 'us.amazon.nova-micro-v1:0', label: 'Amazon Nova Micro', contextWindow: 128000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.035', outputPrice: '$0.14', positioning: 'AWS原生/纯文本/极速' },
+      // ── Cohere ──
+      { id: 'cohere.command-r-plus-v1:0', label: 'Cohere Command R+', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.50', outputPrice: '$10.00', positioning: 'RAG/搜索增强/企业' },
+      { id: 'cohere.command-r-v1:0', label: 'Cohere Command R', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.15', outputPrice: '$0.60', positioning: 'RAG/多语言/性价比' },
+      // ── AI21 Labs ──
+      { id: 'ai21.jamba-1-5-large-v1:0', label: 'AI21 Jamba 1.5 Large', contextWindow: 256000, costTier: 'medium', capabilities: ['chat'], multimodal: false, inputPrice: '$2.00', outputPrice: '$8.00', positioning: '超长上下文/企业/结构化' },
+      { id: 'ai21.jamba-1-5-mini-v1:0', label: 'AI21 Jamba 1.5 Mini', contextWindow: 256000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.20', outputPrice: '$0.40', positioning: '超长上下文/性价比' },
     ],
   },
   {
@@ -104,6 +124,8 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', label: 'Claude Haiku 4.5 (中国区)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥35.0', positioning: '轻量/快速/中国区可用' },
       { id: 'meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B (中国区)', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '¥6.3', outputPrice: '¥6.3', positioning: '开源/中国区可用' },
       { id: 'mistral.mistral-large-2411-v1:0', label: 'Mistral Large (中国区)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '¥14.0', outputPrice: '¥42.0', positioning: '多语言/代码/中国区可用' },
+      { id: 'amazon.nova-pro-v1:0', label: 'Amazon Nova Pro (中国区)', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥22.4', positioning: 'AWS原生/多模态/中国区可用' },
+      { id: 'amazon.nova-lite-v1:0', label: 'Amazon Nova Lite (中国区)', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision'], multimodal: true, inputPrice: '¥0.42', outputPrice: '¥1.68', positioning: 'AWS原生/极低成本/中国区可用' },
     ],
   },
   // ─── 🇨🇳 China ───

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 
 export interface BedrockUserCredentials {
   accessKeyId: string;
@@ -109,6 +109,76 @@ export class BedrockIntegrationService {
     return response.data;
   }
 
+  /** Check if model is Claude/Anthropic (uses native Anthropic format) vs others (use Converse API) */
+  private isClaudeModel(modelId: string): boolean {
+    return modelId.includes('anthropic');
+  }
+
+  /** Invoke non-Claude model via Bedrock Converse API (unified format for Llama, Mistral, Nova, etc.) */
+  private async converseWithUserCredentials(
+    modelId: string,
+    messages: any[],
+    system?: string,
+    tools?: any[],
+    credentials?: BedrockUserCredentials,
+  ): Promise<{ text: string; toolCalls: any[] }> {
+    const region = credentials?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const client = new BedrockRuntimeClient({
+      region,
+      ...(credentials ? {
+        credentials: {
+          accessKeyId: credentials.accessKeyId,
+          secretAccessKey: credentials.secretAccessKey,
+        },
+      } : {}),
+    });
+
+    // Convert messages to Converse format: content must be array of ContentBlock
+    const converseMessages = messages.map((m: any) => ({
+      role: m.role,
+      content: Array.isArray(m.content)
+        ? m.content.map((block: any) => {
+            if (block.type === 'text') return { text: block.text };
+            if (block.type === 'image' && block.source?.url) return { text: `[Image: ${block.source.url}]` };
+            return { text: typeof block === 'string' ? block : JSON.stringify(block) };
+          })
+        : [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
+    }));
+
+    const input: any = {
+      modelId,
+      messages: converseMessages,
+      inferenceConfig: { maxTokens: 4000 },
+    };
+    if (system) {
+      input.system = [{ text: system }];
+    }
+    if (tools && tools.length > 0) {
+      input.toolConfig = {
+        tools: tools.map((t: any) => ({
+          toolSpec: { name: t.name, description: t.description, inputSchema: { json: t.input_schema || t.parameters } },
+        })),
+      };
+    }
+
+    const command = new ConverseCommand(input);
+    const response = await client.send(command);
+
+    let text = '';
+    const toolCalls: any[] = [];
+    for (const block of response.output?.message?.content || []) {
+      if (block.text) text += block.text;
+      if (block.toolUse) {
+        toolCalls.push({
+          id: block.toolUse.toolUseId,
+          type: 'function',
+          function: { name: block.toolUse.name, arguments: JSON.stringify(block.toolUse.input) },
+        });
+      }
+    }
+    return { text, toolCalls };
+  }
+
   /**
    * 简单的 Bedrock 调用实现 (作为紧急备选)
    */
@@ -163,10 +233,44 @@ export class BedrockIntegrationService {
     this.logger.log(`Bedrock chatWithFunctions: ${rawModel} → ${modelId} (Region: ${region}, UserCreds: ${!!userCreds})`);
 
     try {
-      // 构造 Claude 格式的消息 — preserve multimodal content arrays
+      // Non-Claude models → Bedrock Converse API (unified format)
+      if (!this.isClaudeModel(modelId)) {
+        const systemMessage = messages.find(m => m.role === 'system');
+        const nonSystemMessages = messages.filter(m => m.role !== 'system');
+        // Deduplicate tools
+        let deduped: any[] | undefined;
+        if (options.tools?.length) {
+          const seen = new Set<string>();
+          deduped = options.tools.filter((t: any) => { if (seen.has(t.name)) return false; seen.add(t.name); return true; });
+        }
+        const converseResult = await this.converseWithUserCredentials(
+          modelId, nonSystemMessages, systemMessage?.content, deduped, userCreds,
+        );
+        return {
+          text: converseResult.text,
+          functionCalls: converseResult.toolCalls.length > 0 ? converseResult.toolCalls : null,
+          model: modelId,
+        };
+      }
+
+      // Claude models → native Anthropic format via InvokeModel
+      // Sanitize content blocks: convert OpenAI image_url → Claude image format
+      const sanitizeContent = (content: any): any => {
+        if (!Array.isArray(content)) return content;
+        return content.map((block: any) => {
+          if (block.type === 'image_url' && block.image_url?.url) {
+            return { type: 'image', source: { type: 'url', url: block.image_url.url } };
+          }
+          if (block.type === 'input_audio') {
+            return { type: 'text', text: `[Audio attachment: ${block.input_audio?.url || 'audio'}]` };
+          }
+          return block;
+        });
+      };
+
       const claudeMessages = messages.filter(m => m.role !== 'system').map(m => ({
         role: m.role,
-        content: m.content
+        content: sanitizeContent(m.content),
       }));
 
       const systemMessage = messages.find(m => m.role === 'system');
@@ -183,12 +287,20 @@ export class BedrockIntegrationService {
       }
 
       // 如果有工具定义，添加工具 (Bedrock Anthropic Tool Use 格式)
+      // Deduplicate by name — Bedrock rejects duplicate tool names
       if (options.tools && options.tools.length > 0) {
-        body.tools = options.tools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          input_schema: tool.parameters
-        }));
+        const seen = new Set<string>();
+        body.tools = options.tools
+          .filter((tool: any) => {
+            if (seen.has(tool.name)) return false;
+            seen.add(tool.name);
+            return true;
+          })
+          .map((tool: any) => ({
+            name: tool.name,
+            description: tool.description,
+            input_schema: tool.parameters,
+          }));
       }
 
       const data = userCreds

@@ -56,8 +56,8 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
   attachments.forEach((attachment, index) => {
     if (attachment.kind === 'image') {
       multimodalContent.push({
-        type: 'image_url',
-        image_url: { url: attachment.publicUrl }
+        type: 'image',
+        source: { type: 'url', url: attachment.publicUrl },
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
       multimodalContent.push({
