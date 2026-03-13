@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Req, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +7,8 @@ import { AiProviderService } from '../../ai-provider/ai-provider.service';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
+  private readonly logger = new Logger(ClaudeIntegrationController.name);
+
   constructor(
     private claudeService: ClaudeIntegrationService,
     private jwtService: JwtService,
@@ -224,7 +226,9 @@ Always reply in the same language the user uses. When the user asks to do someth
             userCreds = { ...decrypted, providerId: defaultConfig.providerId };
           }
         }
-      } catch {}
+      } catch (e) {
+        this.logger.warn(`Failed to resolve user credentials for userId=${context.userId}: ${e.message}`);
+      }
     }
 
     const result = await this.claudeService.chatWithFunctions(allMessages, {
