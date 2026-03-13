@@ -1031,8 +1031,7 @@ export class ClaudeIntegrationService {
       } catch (bedrockErr: any) {
         this.logger.error(`Bedrock fallback failed: ${bedrockErr.message}`);
         throw new Error(
-          'AI service unavailable: Neither ANTHROPIC_API_KEY nor AWS_BEARER_TOKEN_BEDROCK is configured. ' +
-          'Please contact the administrator.',
+          `AI service error: ${bedrockErr.message}`,
         );
       }
     }

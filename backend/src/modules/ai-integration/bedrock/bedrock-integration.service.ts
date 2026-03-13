@@ -156,10 +156,11 @@ export class BedrockIntegrationService {
       throw new Error('No Bedrock credentials available (neither platform token nor user credentials)');
     }
 
-    const modelId = this.resolveModelId(options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0');
+    const rawModel = options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
+    const modelId = this.resolveModelId(rawModel);
     const region = userCreds?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
     
-    this.logger.log(`Bedrock chatWithFunctions: ${modelId} (Region: ${region}, UserCreds: ${!!userCreds})`);
+    this.logger.log(`Bedrock chatWithFunctions: ${rawModel} → ${modelId} (Region: ${region}, UserCreds: ${!!userCreds})`);
 
     try {
       // 构造 Claude 格式的消息 — preserve multimodal content arrays

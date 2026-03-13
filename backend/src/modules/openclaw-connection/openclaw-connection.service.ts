@@ -85,13 +85,13 @@ export const PLATFORM_MODELS: AvailableModel[] = [
     costTier: 'free_trial',
   },
   {
-    id: 'claude-sonnet-4-5',
-    label: 'Claude Sonnet 4.5',
+    id: 'claude-sonnet-4-6',
+    label: 'Claude Sonnet 4.6',
     provider: 'AWS Bedrock',
-    bedrockModelId: 'anthropic.claude-sonnet-4-5-20250514-v1:0',
+    bedrockModelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
     icon: '💎',
     badge: 'Pro',
-    availability: 'coming_soon',
+    availability: 'available',
     costTier: 'pro',
   },
   {
@@ -130,12 +130,13 @@ export const PLATFORM_MODELS: AvailableModel[] = [
     costTier: 'pro',
   },
   {
-    id: 'claude-opus-4',
-    label: 'Claude Opus 4',
+    id: 'claude-opus-4-6',
+    label: 'Claude Opus 4.6',
     provider: 'AWS Bedrock',
+    bedrockModelId: 'us.anthropic.claude-opus-4-20250514-v1:0',
     icon: '🏆',
     badge: 'Max',
-    availability: 'coming_soon',
+    availability: 'available',
     costTier: 'pro',
   },
 ];
@@ -570,9 +571,18 @@ export class OpenClawConnectionService implements OnModuleInit {
     pushed: boolean;
     message: string;
   }> {
-    const model = PLATFORM_MODELS.find(m => m.id === modelId);
+    // Accept both platform short IDs and user-configured provider model IDs (e.g. full Bedrock ARNs)
+    let model = PLATFORM_MODELS.find(m => m.id === modelId);
     if (!model) {
-      throw new BadRequestException(`Unknown model: "${modelId}". Available: ${PLATFORM_MODELS.map(m => m.id).join(', ')}`);
+      // Build a synthetic AvailableModel for user-configured provider models
+      model = {
+        id: modelId,
+        label: modelId.replace(/^us\.anthropic\.|^anthropic\.|:0$/g, '').replace(/-/g, ' '),
+        provider: 'User Provider',
+        icon: '💎',
+        availability: 'available',
+        costTier: 'pro',
+      };
     }
     if (model.availability === 'coming_soon') {
       throw new BadRequestException(`Model "${model.label}" is coming soon and not yet available.`);
@@ -596,7 +606,7 @@ export class OpenClawConnectionService implements OnModuleInit {
           },
           body: JSON.stringify({
             modelId,
-            bedrockModelId: model.bedrockModelId,
+            bedrockModelId: (model as any).bedrockModelId,
             provider: model.provider,
           }),
           signal: AbortSignal.timeout(8_000),
