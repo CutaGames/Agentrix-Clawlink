@@ -888,7 +888,16 @@ export class OpenClawProxyService {
 
   /** Get chat history from the instance */
   async getChatHistory(userId: string, instanceId: string, sessionId?: string) {
-    const instance = await this.resolveInstance(userId, instanceId);
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
+    if (this.isPlatformHosted(instance)) {
+      return []; // Platform-hosted chat history is managed client-side
+    }
+    if (instance.status !== OpenClawInstanceStatus.ACTIVE) {
+      throw new BadGatewayException(`Instance "${instance.name}" is not active (status: ${instance.status})`);
+    }
+    if (!instance.instanceUrl) {
+      throw new BadGatewayException('Instance has no URL configured');
+    }
     const url = sessionId
       ? `${instance.instanceUrl}/api/sessions/${sessionId}/history`
       : `${instance.instanceUrl}/api/sessions`;

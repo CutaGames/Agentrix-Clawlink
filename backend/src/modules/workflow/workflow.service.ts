@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, NotFoundException, ForbiddenException,
+  Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -46,6 +46,9 @@ export class WorkflowService {
   }
 
   async create(userId: string, dto: CreateWorkflowDto): Promise<Workflow> {
+    if (dto.triggerType === 'cron' && dto.cronExpression) {
+      this.validateCronFrequency(dto.cronExpression);
+    }
     const wf = this.workflowRepo.create({
       userId,
       name: dto.name,
@@ -63,6 +66,9 @@ export class WorkflowService {
   }
 
   async update(id: string, userId: string, dto: UpdateWorkflowDto): Promise<Workflow> {
+    if (dto.cronExpression !== undefined) {
+      this.validateCronFrequency(dto.cronExpression);
+    }
     const wf = await this.findOne(id, userId);
     Object.assign(wf, {
       ...(dto.name !== undefined && { name: dto.name }),
@@ -148,6 +154,22 @@ export class WorkflowService {
         lastRunStatus: 'error' as WorkflowRunStatus,
       });
       throw err;
+    }
+  }
+
+  /**
+   * Reject cron expressions that fire more frequently than every 5 minutes.
+   * Prevents runaway workflows from burning API quota.
+   */
+  private validateCronFrequency(cron: string): void {
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 5) return; // malformed — let cron lib handle it
+    const minuteField = parts[0];
+    // "* * * * *" or "*/1 * * * *" or similar patterns that fire every 1–4 minutes
+    if (minuteField === '*' || /^\*\/[1-4]$/.test(minuteField)) {
+      throw new BadRequestException(
+        'Cron expression fires too frequently. Minimum interval is every 5 minutes (e.g. "*/5 * * * *").',
+      );
     }
   }
 
