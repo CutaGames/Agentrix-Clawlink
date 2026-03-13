@@ -14,6 +14,7 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
   const [pressing, setPressing] = useState(false);
   const [idleFaded, setIdleFaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showGuide, setShowGuide] = useState(() => localStorage.getItem("agentrix_guided") !== "1");
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLongPress = useRef(false);
@@ -51,8 +52,14 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
   }, []);
 
   const handleClick = useCallback(() => {
-    if (!isLongPress.current) onTap();
-  }, [onTap]);
+    if (!isLongPress.current) {
+      if (showGuide) {
+        setShowGuide(false);
+        localStorage.setItem("agentrix_guided", "1");
+      }
+      onTap();
+    }
+  }, [onTap, showGuide]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -179,6 +186,45 @@ export default function FloatingBall({ onTap, state = "idle" }: Props) {
             {item.label}
           </div>
         ))}
+      </div>
+    )}
+
+    {/* First-use guide bubble */}
+    {showGuide && state === "idle" && (
+      <div
+        onClick={() => { setShowGuide(false); localStorage.setItem("agentrix_guided", "1"); onTap(); }}
+        style={{
+          position: "absolute",
+          top: -48,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "var(--accent, #6C5CE7)",
+          color: "white",
+          padding: "8px 14px",
+          borderRadius: 12,
+          fontSize: 13,
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          boxShadow: "0 4px 16px rgba(108, 92, 231, 0.5)",
+          cursor: "pointer",
+          animation: "guideFloat 2s ease-in-out infinite",
+          zIndex: 100,
+          pointerEvents: "auto",
+        }}
+      >
+        点击我开始对话 👋
+        {/* Arrow pointing down */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: -6,
+            left: "50%",
+            transform: "translateX(-50%) rotate(45deg)",
+            width: 12,
+            height: 12,
+            background: "var(--accent, #6C5CE7)",
+          }}
+        />
       </div>
     )}
     </>

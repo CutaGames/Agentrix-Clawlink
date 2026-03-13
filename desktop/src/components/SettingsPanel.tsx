@@ -1,4 +1,4 @@
-import { useState, useEffect, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir } from "../services/workspace";
 
@@ -12,6 +12,8 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Prop
   const { user, logout } = useAuthStore();
   const [autoStart, setAutoStart] = useState(true);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "downloading" | "up-to-date" | "error">("idle");
+  const [updateVersion, setUpdateVersion] = useState("");
 
   useEffect(() => {
     getWorkspaceDir().then(setWorkspaceDir).catch(() => {});
@@ -35,6 +37,38 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Prop
       // Not in Tauri
     }
   };
+
+  const handleCheckUpdate = useCallback(async () => {
+    setUpdateStatus("checking");
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (update) {
+        setUpdateStatus("available");
+        setUpdateVersion(update.version);
+      } else {
+        setUpdateStatus("up-to-date");
+      }
+    } catch {
+      setUpdateStatus("error");
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    setUpdateStatus("downloading");
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (update) {
+        await update.downloadAndInstall();
+        // Relaunch after install
+        const { relaunch } = await import("@tauri-apps/plugin-process");
+        await relaunch();
+      }
+    } catch {
+      setUpdateStatus("error");
+    }
+  }, []);
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -109,10 +143,35 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Prop
           </div>
         </div>
 
-        {/* Version */}
+        {/* Version & Update */}
         <div style={{ ...section, borderBottom: "none" }}>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", textAlign: "center" }}>
-            Agentrix Desktop v0.1.0
+          <div style={sectionTitle}>About</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Agentrix Desktop v0.1.0</span>
+            {updateStatus === "idle" && (
+              <button onClick={handleCheckUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
+                Check for Updates
+              </button>
+            )}
+            {updateStatus === "checking" && (
+              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Checking...</span>
+            )}
+            {updateStatus === "up-to-date" && (
+              <span style={{ fontSize: 11, color: "#4ade80" }}>✓ Up to date</span>
+            )}
+            {updateStatus === "available" && (
+              <button onClick={handleInstallUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--accent)", color: "var(--accent)" }}>
+                Update to {updateVersion}
+              </button>
+            )}
+            {updateStatus === "downloading" && (
+              <span style={{ fontSize: 11, color: "var(--accent-light)" }}>Downloading...</span>
+            )}
+            {updateStatus === "error" && (
+              <button onClick={handleCheckUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
+                Retry
+              </button>
+            )}
           </div>
         </div>
 

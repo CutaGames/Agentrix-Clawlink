@@ -60,3 +60,4 @@ desktop/dist/
 desktop/*.ps1
 desktop/*.png
 desktop/*.tar.gz
+desktop/src-tauri/keys/agentrix.key

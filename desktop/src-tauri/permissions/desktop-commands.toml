@@ -7,4 +7,10 @@ commands.allow = [
   "desktop_bridge_set_ball_position",
   "desktop_bridge_get_ball_position",
   "desktop_bridge_set_panel_position_near_ball",
+  "desktop_bridge_snap_ball_to_edge",
+  "desktop_bridge_set_workspace_dir",
+  "desktop_bridge_get_workspace_dir",
+  "desktop_bridge_list_workspace_dir",
+  "desktop_bridge_read_workspace_file",
+  "desktop_bridge_write_workspace_file",
 ]

@@ -34,6 +34,22 @@ import {
   writeWorkspaceFile,
 } from "../services/workspace";
 
+// Send desktop notification when app is in background
+async function notifyIfBackground(title: string, body: string) {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    const focused = await win.isFocused();
+    if (!focused) {
+      const { sendNotification, isPermissionGranted, requestPermission } =
+        await import("@tauri-apps/plugin-notification");
+      let permitted = await isPermissionGranted();
+      if (!permitted) permitted = (await requestPermission()) === "granted";
+      if (permitted) sendNotification({ title, body: body.slice(0, 100) });
+    }
+  } catch {}
+}
+
 interface Props {
   onClose: () => void;
 }
@@ -50,6 +66,7 @@ export default function ChatPanel({ onClose }: Props) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -88,27 +105,27 @@ export default function ChatPanel({ onClose }: Props) {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Persist to localStorage
+  // Persist current session to localStorage
   useEffect(() => {
     if (messages.length > 0) {
       localStorage.setItem(
-        `chat_${activeInstanceId}`,
+        `chat_session_${sessionIdRef.current}`,
         JSON.stringify(messages.slice(-80)),
       );
+      // Update session index
+      saveSessionToIndex(sessionIdRef.current, messages);
     }
-  }, [messages, activeInstanceId]);
+  }, [messages]);
 
-  // Load persisted messages
+  // Load persisted messages for current session
   useEffect(() => {
-    const stored = localStorage.getItem(`chat_${activeInstanceId}`);
+    const stored = localStorage.getItem(`chat_session_${sessionIdRef.current}`);
     if (stored) {
       try {
         setMessages(JSON.parse(stored));
       } catch {}
-    } else {
-      setMessages([]);
     }
-  }, [activeInstanceId]);
+  }, []);
 
   const serializeMessageForModel = useCallback(
     (content: string, attachments: ChatAttachment[] = []) => {
@@ -140,11 +157,17 @@ export default function ChatPanel({ onClose }: Props) {
   }, []);
 
   const finalizeMessage = useCallback((msgId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
+    setMessages((prev) => {
+      const updated = prev.map((m) =>
         m.id === msgId ? { ...m, streaming: false } : m,
-      ),
-    );
+      );
+      // Notify if window not focused
+      const msg = updated.find((m) => m.id === msgId);
+      if (msg) {
+        notifyIfBackground("Agentrix", msg.content.slice(0, 100));
+      }
+      return updated;
+    });
   }, []);
 
   // Handle slash commands locally
@@ -218,6 +241,91 @@ export default function ChatPanel({ onClose }: Props) {
       } else {
         addSystemMessage(`❌ Model not found. Available: ${models.map(m => m.id).join(", ")}`);
       }
+      return true;
+    }
+
+    // /search <query> — web search via backend
+    if (trimmed.startsWith("/search ")) {
+      const query = trimmed.slice(8).trim();
+      if (!query) { addSystemMessage("Usage: /search <query>"); return true; }
+      addSystemMessage(`🔍 Searching: "${query}"...`);
+      try {
+        const { apiFetch, API_BASE } = await import("../services/store");
+        const res = await apiFetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const results = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+        if (results.length === 0) {
+          addSystemMessage(`🔍 No results found for "${query}"`);
+        } else {
+          const formatted = results.slice(0, 5).map((r: any, i: number) =>
+            `${i + 1}. **${r.title || r.name || "Result"}**\n   ${r.snippet || r.description || r.url || ""}`
+          ).join("\n\n");
+          addSystemMessage(`🔍 Search results for "${query}":\n\n${formatted}`);
+        }
+      } catch (err: any) {
+        addSystemMessage(`❌ Search error: ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /skill [name] — list or use marketplace skills
+    if (trimmed === "/skill" || trimmed.startsWith("/skill ")) {
+      const skillArg = trimmed.slice(6).trim();
+      try {
+        const { apiFetch, API_BASE } = await import("../services/store");
+        if (!skillArg) {
+          // List available skills
+          const res = await apiFetch(`${API_BASE}/skills`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const skills = Array.isArray(data.skills) ? data.skills : (Array.isArray(data) ? data : []);
+          if (skills.length === 0) {
+            addSystemMessage("🧩 No skills available. Visit the marketplace to install skills.");
+          } else {
+            const list = skills.slice(0, 10).map((s: any) =>
+              `• **${s.name || s.id}** — ${s.description || "No description"}`
+            ).join("\n");
+            addSystemMessage(`🧩 Available Skills:\n\n${list}\n\nUse \`/skill <name>\` to activate.`);
+          }
+        } else {
+          // Activate a specific skill
+          addSystemMessage(`🧩 Activating skill: "${skillArg}"...`);
+          const res = await apiFetch(`${API_BASE}/skills/${encodeURIComponent(skillArg)}/activate`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          addSystemMessage(`✅ Skill "${skillArg}" activated. ${data.message || ""}`);
+        }
+      } catch (err: any) {
+        addSystemMessage(`❌ Skill error: ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /help — show available commands
+    if (trimmed === "/help") {
+      addSystemMessage(
+        "📖 **Available Commands:**\n\n" +
+        "• `/new` or `/clear` — Start new chat\n" +
+        "• `/ls [path]` — List workspace directory\n" +
+        "• `/read <path>` — Read file content\n" +
+        "• `/write <path> <content>` — Write to file\n" +
+        "• `/model <name>` — Switch AI model\n" +
+        "• `/search <query>` — Web search\n" +
+        "• `/skill [name]` — List or activate skills\n" +
+        "• `/history` — Show session info\n" +
+        "• `/help` — Show this help"
+      );
       return true;
     }
 
@@ -480,7 +588,32 @@ export default function ChatPanel({ onClose }: Props) {
     setMessages([]);
     setPendingAttachments([]);
     setBallState("idle");
+    setHistoryOpen(false);
   };
+
+  const loadSession = useCallback((sid: string) => {
+    const stored = localStorage.getItem(`chat_session_${sid}`);
+    if (stored) {
+      try {
+        abortRef.current?.abort();
+        audioPlayerRef.current?.stopAll();
+        sentenceAccRef.current?.reset();
+        sessionIdRef.current = sid;
+        setMessages(JSON.parse(stored));
+        setPendingAttachments([]);
+        setBallState("idle");
+        setHistoryOpen(false);
+      } catch {}
+    }
+  }, []);
+
+  const deleteSession = useCallback((sid: string) => {
+    localStorage.removeItem(`chat_session_${sid}`);
+    removeSessionFromIndex(sid);
+    // Force re-render by closing and reopening history
+    setHistoryOpen(false);
+    setTimeout(() => setHistoryOpen(true), 0);
+  }, []);
 
   // Listen for custom events from tray / floating ball context menu
   useEffect(() => {
@@ -493,6 +626,27 @@ export default function ChatPanel({ onClose }: Props) {
       window.removeEventListener("agentrix:open-settings", onOpenSettings);
     };
   }, []);
+
+  // Auto-close chat-panel window when it loses focus (click outside)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        if (win.label === "chat-panel") {
+          unlisten = await win.onFocusChanged(({ payload: focused }) => {
+            if (!focused) {
+              onClose();
+            }
+          });
+        }
+      } catch {
+        // Not in Tauri — no-op
+      }
+    })();
+    return () => unlisten?.();
+  }, [onClose]);
 
   const panel: CSSProperties = {
     position: "relative",
@@ -599,6 +753,9 @@ export default function ChatPanel({ onClose }: Props) {
         <button onClick={handleNewChat} style={iconBtnStyle} title="New Chat">
           ＋
         </button>
+        <button onClick={() => setHistoryOpen(!historyOpen)} style={iconBtnStyle} title="Chat History">
+          📋
+        </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
@@ -614,6 +771,73 @@ export default function ChatPanel({ onClose }: Props) {
           onTtsToggle={setTtsEnabled}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {/* History sidebar */}
+      {historyOpen && (
+        <div style={{
+          position: "absolute",
+          top: 52,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "var(--bg-panel)",
+          zIndex: 50,
+          display: "flex",
+          flexDirection: "column",
+          borderTop: "1px solid var(--border)",
+        }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Chat History</span>
+            <button onClick={() => setHistoryOpen(false)} style={iconBtnStyle}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+            {getSessionIndex().length === 0 ? (
+              <div style={{ textAlign: "center", color: "var(--text-dim)", padding: 40, fontSize: 13 }}>
+                No saved conversations yet
+              </div>
+            ) : (
+              getSessionIndex()
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .map((s) => (
+                <div
+                  key={s.id}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    background: s.id === sessionIdRef.current ? "rgba(108,92,231,0.15)" : "transparent",
+                    border: s.id === sessionIdRef.current ? "1px solid rgba(108,92,231,0.3)" : "1px solid transparent",
+                    marginBottom: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    transition: "background 0.15s",
+                  }}
+                  onClick={() => loadSession(s.id)}
+                  onMouseEnter={(e) => { if (s.id !== sessionIdRef.current) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                  onMouseLeave={(e) => { if (s.id !== sessionIdRef.current) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                      {s.messageCount} messages · {new Date(s.updatedAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                    style={{ ...iconBtnStyle, width: 20, height: 20, fontSize: 10, opacity: 0.5 }}
+                    title="Delete"
+                  >
+                    🗑
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
 
       {/* Messages */}
@@ -786,6 +1010,53 @@ function formatBytes(size: number) {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+// ─── Session history index (localStorage) ───────────────
+interface SessionEntry {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messageCount: number;
+}
+
+const SESSION_INDEX_KEY = "agentrix_sessions";
+
+function getSessionIndex(): SessionEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_INDEX_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveSessionToIndex(sessionId: string, messages: ChatMessage[]) {
+  const index = getSessionIndex();
+  const firstUserMsg = messages.find((m) => m.role === "user");
+  const title = firstUserMsg
+    ? firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? "..." : "")
+    : "New Chat";
+  const existing = index.findIndex((s) => s.id === sessionId);
+  const entry: SessionEntry = {
+    id: sessionId,
+    title,
+    updatedAt: Date.now(),
+    messageCount: messages.length,
+  };
+  if (existing >= 0) {
+    index[existing] = entry;
+  } else {
+    index.unshift(entry);
+  }
+  // Keep at most 50 sessions
+  const trimmed = index.slice(0, 50);
+  localStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(trimmed));
+}
+
+function removeSessionFromIndex(sessionId: string) {
+  const index = getSessionIndex().filter((s) => s.id !== sessionId);
+  localStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(index));
+}
+// ──────────────────────────────────────────────────────
 
 const iconBtnStyle: CSSProperties = {
   width: 28,

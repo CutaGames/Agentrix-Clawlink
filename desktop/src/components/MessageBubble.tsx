@@ -1,5 +1,8 @@
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useState, useCallback, useMemo } from "react";
 import type { ChatMessage } from "../services/store";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 
 interface Props {
   message: ChatMessage;
@@ -10,6 +13,19 @@ export default function MessageBubble({ message, onRetry }: Props) {
   const [hovering, setHovering] = useState(false);
   const isUser = message.role === "user";
   const isError = message.error;
+
+  // Extract <think>...</think> blocks for collapsible thinking display
+  const { thinkContent, displayContent } = useMemo(() => {
+    const text = message.content;
+    const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*/);
+    if (thinkMatch) {
+      return {
+        thinkContent: thinkMatch[1].trim(),
+        displayContent: text.slice(thinkMatch[0].length),
+      };
+    }
+    return { thinkContent: null, displayContent: text };
+  }, [message.content]);
 
   const bubble: CSSProperties = {
     maxWidth: "85%",
@@ -25,7 +41,6 @@ export default function MessageBubble({ message, onRetry }: Props) {
     fontSize: 14,
     lineHeight: 1.55,
     wordBreak: "break-word",
-    whiteSpace: "pre-wrap",
     animation: "fadeInUp 0.2s ease-out",
     position: "relative",
     border: isError ? "1px solid rgba(239, 68, 68, 0.3)" : "none",
@@ -37,7 +52,48 @@ export default function MessageBubble({ message, onRetry }: Props) {
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
-      {renderContent(message.content, message.streaming)}
+      {/* Collapsible thinking block */}
+      {thinkContent && <ThinkBlock content={thinkContent} />}
+
+      {/* Markdown content — user messages render as plain text, assistant uses full markdown */}
+      {displayContent && (
+        isUser ? (
+          <span style={{ whiteSpace: "pre-wrap" }}>{displayContent}</span>
+        ) : (
+          <div className="md-body">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+              components={{
+                pre({ children, ...props }) {
+                  return <pre style={preStyle} {...props}>{children}</pre>;
+                },
+                code({ children, className, ...props }) {
+                  const isInline = !className;
+                  if (isInline) {
+                    return <code style={inlineCodeStyle} {...props}>{children}</code>;
+                  }
+                  return <code {...props} className={className}>{children}</code>;
+                },
+                a({ children, href, ...props }) {
+                  return <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--accent-light)" }} {...props}>{children}</a>;
+                },
+                table({ children, ...props }) {
+                  return <table style={tableStyle} {...props}>{children}</table>;
+                },
+                th({ children, ...props }) {
+                  return <th style={thStyle} {...props}>{children}</th>;
+                },
+                td({ children, ...props }) {
+                  return <td style={tdStyle} {...props}>{children}</td>;
+                },
+              }}
+            >
+              {displayContent}
+            </ReactMarkdown>
+          </div>
+        )
+      )}
 
       {!!message.attachments?.length && (
         <div
@@ -187,87 +243,99 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/**
- * Simple markdown-like rendering for code blocks and bold.
- * Keeps it lightweight without pulling in a large markdown lib for the MVP.
- */
-function renderContent(text: string, streaming?: boolean) {
-  if (!text) return null;
-
-  // Split by code blocks
-  const parts = text.split(/(```[\s\S]*?```)/g);
-
-  return parts.map((part, i) => {
-    if (part.startsWith("```") && part.endsWith("```")) {
-      const inner = part.slice(3, -3);
-      const newlineIdx = inner.indexOf("\n");
-      const lang = newlineIdx > 0 ? inner.slice(0, newlineIdx).trim() : "";
-      const code = newlineIdx > 0 ? inner.slice(newlineIdx + 1) : inner;
-
-      return (
-        <pre
-          key={i}
-          style={{
-            background: "rgba(0,0,0,0.3)",
-            borderRadius: 8,
-            padding: "10px 12px",
-            margin: "6px 0",
-            overflowX: "auto",
-            fontSize: 12,
-            fontFamily: '"Fira Code", "Cascadia Code", "Consolas", monospace',
-            lineHeight: 1.5,
-          }}
-        >
-          {lang && (
-            <div
-              style={{
-                fontSize: 10,
-                color: "var(--text-dim)",
-                marginBottom: 4,
-                textTransform: "uppercase",
-              }}
-            >
-              {lang}
-            </div>
-          )}
-          <code>{code}</code>
-        </pre>
-      );
-    }
-
-    // Inline code
-    const inlineParts = part.split(/(`[^`]+`)/g);
-    return (
-      <span key={i}>
-        {inlineParts.map((ip, j) => {
-          if (ip.startsWith("`") && ip.endsWith("`")) {
-            return (
-              <code
-                key={j}
-                style={{
-                  background: "rgba(0,0,0,0.25)",
-                  borderRadius: 4,
-                  padding: "1px 5px",
-                  fontSize: 12,
-                  fontFamily: '"Fira Code", "Cascadia Code", monospace',
-                }}
-              >
-                {ip.slice(1, -1)}
-              </code>
-            );
-          }
-          // Bold
-          const boldParts = ip.split(/(\*\*[^*]+\*\*)/g);
-          return boldParts.map((bp, k) => {
-            if (bp.startsWith("**") && bp.endsWith("**")) {
-              return (
-                <strong key={`${j}-${k}`}>{bp.slice(2, -2)}</strong>
-              );
-            }
-            return <span key={`${j}-${k}`}>{bp}</span>;
-          });
-        })}
-      </span>
-    );
-  });
+function ThinkBlock({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      style={{
+        marginBottom: 8,
+        padding: "6px 10px",
+        borderRadius: 8,
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        fontSize: 12,
+        color: "var(--text-dim)",
+      }}
+    >
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+        💭 Thinking{open ? "" : "..."}
+      </summary>
+      <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+        {content}
+      </div>
+    </details>
+  );
 }
+
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+  return (
+    <button onClick={handleCopy} style={copyCodeBtnStyle} title="Copy code">
+      {copied ? "✓" : "📋"}
+    </button>
+  );
+}
+
+const preStyle: CSSProperties = {
+  background: "rgba(0,0,0,0.3)",
+  borderRadius: 8,
+  padding: "10px 12px",
+  margin: "6px 0",
+  overflowX: "auto",
+  fontSize: 12,
+  fontFamily: '"Fira Code", "Cascadia Code", "Consolas", monospace',
+  lineHeight: 1.5,
+  position: "relative",
+};
+
+const inlineCodeStyle: CSSProperties = {
+  background: "rgba(0,0,0,0.25)",
+  borderRadius: 4,
+  padding: "1px 5px",
+  fontSize: 12,
+  fontFamily: '"Fira Code", "Cascadia Code", monospace',
+};
+
+const tableStyle: CSSProperties = {
+  borderCollapse: "collapse",
+  width: "100%",
+  margin: "8px 0",
+  fontSize: 12,
+};
+
+const thStyle: CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.15)",
+  padding: "6px 8px",
+  textAlign: "left",
+  background: "rgba(255,255,255,0.05)",
+  fontWeight: 600,
+};
+
+const tdStyle: CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.1)",
+  padding: "5px 8px",
+};
+
+const copyCodeBtnStyle: CSSProperties = {
+  position: "absolute",
+  top: 4,
+  right: 4,
+  width: 24,
+  height: 24,
+  borderRadius: 4,
+  background: "rgba(255,255,255,0.08)",
+  color: "var(--text-dim)",
+  border: "none",
+  cursor: "pointer",
+  fontSize: 11,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};

@@ -33,6 +33,7 @@ pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
             .decorations(false)
             .always_on_top(true)
             .visible(true)
+            .drag_and_drop(false)
             .build()
         {
             // Grant WebView2 permissions (microphone, etc.) to the new chat-panel
@@ -74,6 +75,66 @@ pub fn set_panel_position_near_ball(app: AppHandle) -> Result<(), String> {
             }))
             .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+/// Snap the floating-ball window to the nearest screen edge (half-hidden).
+pub fn snap_ball_to_edge(app: AppHandle) -> Result<(), String> {
+    let win = app.get_webview_window("main").ok_or("main window not found")?;
+    let pos = win.outer_position().map_err(|e| e.to_string())?;
+    let size = win.outer_size().map_err(|e| e.to_string())?;
+
+    // Get monitor the window is on
+    let monitor = win.current_monitor().map_err(|e| e.to_string())?
+        .ok_or("No monitor found")?;
+    let screen_pos = monitor.position();
+    let screen_size = monitor.size();
+
+    let wx = pos.x as f64;
+    let wy = pos.y as f64;
+    let ww = size.width as f64;
+    let wh = size.height as f64;
+    let sx = screen_pos.x as f64;
+    let sy = screen_pos.y as f64;
+    let sw = screen_size.width as f64;
+    let sh = screen_size.height as f64;
+
+    // Center of the window
+    let cx = wx + ww / 2.0;
+    let cy = wy + wh / 2.0;
+
+    // Distances to each edge from center
+    let d_left = cx - sx;
+    let d_right = (sx + sw) - cx;
+    let d_top = cy - sy;
+    let d_bottom = (sy + sh) - cy;
+
+    let min_d = d_left.min(d_right).min(d_top).min(d_bottom);
+    let half_hide = ww * 0.35; // hide 35% of the ball on the edge
+
+    let (snap_x, snap_y) = if min_d == d_left {
+        (sx - half_hide, wy) // left edge
+    } else if min_d == d_right {
+        (sx + sw - ww + half_hide, wy) // right edge
+    } else if min_d == d_top {
+        (wx, sy - half_hide) // top edge
+    } else {
+        (wx, sy + sh - wh + half_hide) // bottom edge
+    };
+
+    // Clamp vertical within screen bounds
+    let final_y = snap_y.max(sy - half_hide).min(sy + sh - wh + half_hide);
+    let final_x = snap_x.max(sx - half_hide).min(sx + sw - ww + half_hide);
+
+    win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+        x: final_x as i32,
+        y: final_y as i32,
+    })).map_err(|e| e.to_string())?;
+
+    // Also save the snapped position
+    let mut ball = BALL_POS.lock().map_err(|e| e.to_string())?;
+    *ball = Some(BallPosition { x: final_x, y: final_y });
+
     Ok(())
 }
 

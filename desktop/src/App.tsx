@@ -93,12 +93,41 @@ export default function App() {
     const handleBallClick = async () => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("open_chat_panel");
-        await invoke("set_panel_position_near_ball");
+        await invoke("desktop_bridge_open_chat_panel");
+        await invoke("desktop_bridge_set_panel_position_near_ball");
       } catch (err) {
         console.error("open_chat_panel failed:", err);
       }
     };
+
+    // Restore saved position on mount and snap after drag
+    const initBallPosition = async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const pos = await invoke("desktop_bridge_get_ball_position") as { x: number; y: number } | null;
+        if (pos) {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          await getCurrentWindow().setPosition(new (await import("@tauri-apps/api/dpi")).PhysicalPosition(pos.x, pos.y));
+        }
+        // Listen for window moved events to snap to edge
+        const { getCurrentWindow: getCW } = await import("@tauri-apps/api/window");
+        const win = getCW();
+        let dragTimer: ReturnType<typeof setTimeout> | null = null;
+        await win.onMoved(() => {
+          if (dragTimer) clearTimeout(dragTimer);
+          dragTimer = setTimeout(async () => {
+            try {
+              const { invoke: inv } = await import("@tauri-apps/api/core");
+              await inv("desktop_bridge_snap_ball_to_edge");
+            } catch {}
+          }, 300); // debounce 300ms after drag stops
+        });
+      } catch {}
+    };
+    // Fire-and-forget init
+    if (typeof window !== "undefined") {
+      initBallPosition();
+    }
 
     return (
       <div
@@ -160,7 +189,7 @@ export default function App() {
         onClose={async () => {
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("close_chat_panel");
+            await invoke("desktop_bridge_close_chat_panel");
           } catch {
             setPanelOpen(false);
           }

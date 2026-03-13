@@ -7,23 +7,23 @@ export interface FileEntry {
 }
 
 export async function setWorkspaceDir(path: string): Promise<string> {
-  return invoke<string>("set_workspace_dir", { path });
+  return invoke<string>("desktop_bridge_set_workspace_dir", { path });
 }
 
 export async function getWorkspaceDir(): Promise<string | null> {
-  return invoke<string | null>("get_workspace_dir");
+  return invoke<string | null>("desktop_bridge_get_workspace_dir");
 }
 
 export async function listWorkspaceDir(relativePath: string = ""): Promise<FileEntry[]> {
-  return invoke<FileEntry[]>("list_workspace_dir", { relativePath });
+  return invoke<FileEntry[]>("desktop_bridge_list_workspace_dir", { relativePath });
 }
 
 export async function readWorkspaceFile(relativePath: string): Promise<string> {
-  return invoke<string>("read_workspace_file", { relativePath });
+  return invoke<string>("desktop_bridge_read_workspace_file", { relativePath });
 }
 
 export async function writeWorkspaceFile(relativePath: string, content: string): Promise<void> {
-  return invoke<void>("write_workspace_file", { relativePath, content });
+  return invoke<void>("desktop_bridge_write_workspace_file", { relativePath, content });
 }
 
 export async function pickWorkspaceFolder(): Promise<string | null> {
