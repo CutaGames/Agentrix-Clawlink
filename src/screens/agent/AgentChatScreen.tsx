@@ -48,17 +48,41 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
   const trimmed = text.trim();
   if (attachments.length === 0) return trimmed;
 
-  const attachmentLines = attachments.map((attachment, index) => {
-    const label = attachment.kind === 'image' ? 'Image' : 'File';
-    return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatAttachmentSize(attachment.size)})\nURL: ${attachment.publicUrl}`;
+  const multimodalContent: any[] = [];
+  if (trimmed) {
+    multimodalContent.push({ type: 'text', text: trimmed });
+  }
+
+  attachments.forEach((attachment, index) => {
+    if (attachment.kind === 'image') {
+      multimodalContent.push({
+        type: 'image_url',
+        image_url: { url: attachment.publicUrl }
+      });
+    } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
+      multimodalContent.push({
+        type: 'input_audio',
+        input_audio: { url: attachment.publicUrl }
+      });
+    } else {
+      multimodalContent.push({
+        type: 'text',
+        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`
+      });
+    }
   });
 
-  const prefix = trimmed ? `${trimmed}\n\n` : '';
-  return `${prefix}[User Attachments]\n${attachmentLines.join('\n\n')}\nUse the attachment URLs when relevant.`;
+  return multimodalContent;
 }
 
 function serializeMessageForModel(message: Message) {
-  return buildOutgoingMessageContent(message.content, message.attachments || []);
+  const content = buildOutgoingMessageContent(message.content, message.attachments || []);
+  if (typeof content === 'string') return content;
+  // If array (multimodal), we try to format as text for direct claude fallback
+  // The SSE proxy can handle the array directly.
+  return typeof message.content === 'string' ? message.content 
+    + (message.attachments ? '\n' + message.attachments.map(a => `[Attachment: ${a.publicUrl}]`).join('\n') : '')
+    : '[Multimodal Message]';
 }
 
 function dedupeUrls(urls: string[]) {
@@ -369,6 +393,7 @@ export function AgentChatScreen() {
   const [resolvedModelLabel, setResolvedModelLabel] = useState<string | null>(null);
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
+  const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   // The effective model ID to display and send
   const effectiveModelId = agentPreferredModel || selectedModelId;
 
@@ -481,9 +506,10 @@ export function AgentChatScreen() {
       const trimmed = s.trim();
       if (!trimmed || trimmed.length < 2) continue;
       const encoded = encodeURIComponent(trimmed);
-      audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encoded}`);
+      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
+      audioPlayerRef.current?.enqueue(url);
     }
-  }, []);
+  }, [agentVoiceId]);
 
   const stopSpeaking = useCallback(() => {
     audioPlayerRef.current?.stopAll();
@@ -528,7 +554,8 @@ export function AgentChatScreen() {
       setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
       streamedTtsStartedRef.current = true;
       for (const sentence of segmentsToSpeak) {
-        audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}`);
+        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
+        audioPlayerRef.current?.enqueue(url);
       }
       if (!shouldEarlyFlush) {
         pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
@@ -541,11 +568,12 @@ export function AgentChatScreen() {
         setIsSpeaking(true);
         setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
         streamedTtsStartedRef.current = true;
-        audioPlayerRef.current?.enqueue(`${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}`);
+        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
+        audioPlayerRef.current?.enqueue(url);
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode]);
+  }, [autoSpeak, voiceMode, agentVoiceId]);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -574,9 +602,12 @@ export function AgentChatScreen() {
       try {
         const agentAccountId = activeInstance?.metadata?.agentAccountId;
         if (agentAccountId) {
-          const res = await apiFetch<{ success: boolean; data: { preferredModel?: string } }>(`/agent-accounts/${agentAccountId}`);
+          const res = await apiFetch<{ success: boolean; data: { preferredModel?: string; metadata?: any } }>(`/agent-accounts/${agentAccountId}`);
           if (res.data?.preferredModel) {
             setAgentPreferredModel(res.data.preferredModel);
+          }
+          if (res.data?.metadata?.voice_id) {
+            setAgentVoiceId(res.data.metadata.voice_id);
           }
         }
       } catch {}
@@ -817,6 +848,7 @@ export function AgentChatScreen() {
             sessionId: sessionIdRef.current,
             token,
             model: effectiveModelId,
+            voiceId: agentVoiceId || undefined,
             onMeta: (meta) => {
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
             },
@@ -1001,44 +1033,48 @@ export function AgentChatScreen() {
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
+          let transcript = '';
+          const formData = new FormData();
+          formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+          const ac = new AbortController();
+          const timeout = setTimeout(() => ac.abort(), 35_000);
           try {
-            const formData = new FormData();
-            formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
-            const ac = new AbortController();
-            const timeout = setTimeout(() => ac.abort(), 35_000);
-            let resp: Response;
-            try {
-              resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
-                signal: ac.signal,
-              });
-            } finally {
-              clearTimeout(timeout);
-            }
+            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: formData,
+              signal: ac.signal,
+            });
             if (resp.ok) {
               const data = await resp.json();
-              const transcript = data?.text || data?.transcript || '';
-              if (transcript) {
-                setTranscriptPreview(transcript);
-                setVoicePhase('thinking');
-                setTimeout(() => handleSend(transcript), 80);
-              } else {
-                setVoicePhase('idle');
-                Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到语音' }), t({ en: 'Could not detect any speech. Please try again or type your message.', zh: '没有识别到有效语音，请重试或直接输入文字。' }));
-              }
-            } else {
-              const errText = await resp.text().catch(() => '');
-              setVoicePhase('idle');
-              Alert.alert(t({ en: 'Transcription Failed', zh: '转写失败' }), `${t({ en: 'Server returned', zh: '服务器返回' })} ${resp.status}. ${errText ? errText.slice(0, 100) : t({ en: 'Try typing instead.', zh: '请改用文字输入。' })}`);
+              transcript = data?.text || data?.transcript || '';
             }
-          } catch (fetchErr: any) {
+          } catch (err) {
+             console.warn("Transcription failed", err);
+          } finally {
+            clearTimeout(timeout);
+          }
+
+          // Upload the original audio file as an attachment
+          let uploadedAudio = null;
+          try {
+            uploadedAudio = await uploadChatAttachment({
+              uri,
+              name: `voice-${Date.now()}.m4a`,
+              type: 'audio/m4a'
+            });
+          } catch (upErr) {
+            console.warn("Audio upload failed", upErr);
+          }
+
+          if (transcript || uploadedAudio) {
+            setTranscriptPreview(transcript || '[Voice Message]');
+            setVoicePhase('thinking');
+            const attachList = uploadedAudio ? [uploadedAudio as UploadedChatAttachment] : undefined;
+            setTimeout(() => handleSend(transcript, attachList), 80);
+          } else {
             setVoicePhase('idle');
-            const msg = fetchErr?.name === 'AbortError'
-              ? t({ en: 'Transcription timed out. Try again or type your message.', zh: '语音转写超时，请重试或直接输入文字。' })
-              : t({ en: `Could not reach voice service: ${fetchErr?.message || 'Network error'}`, zh: `无法连接语音服务：${fetchErr?.message || '网络错误'}` });
-            Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), msg);
+            Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到有效语音' }), t({ en: 'Could not detect any speech or upload audio.', zh: '无法识别语音且上传失败。' }));
           }
         } else {
           setVoicePhase('idle');

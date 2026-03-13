@@ -20,6 +20,9 @@
       "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
         "CFBundleDisplayName": "Agentrix",
+        "NSCameraUsageDescription": "Allow Agentrix to access your camera for visual AI context.",
+        "NSMicrophoneUsageDescription": "Allow Agentrix to access your microphone for voice commands.",
+        "NSPhotoLibraryUsageDescription": "Allow Agentrix to access your photo library for visual AI context.",
         "LSApplicationQueriesSchemes": [
           "metamask",
           "okx",

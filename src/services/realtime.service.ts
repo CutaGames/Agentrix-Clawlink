@@ -15,10 +15,11 @@ type ErrorCallback = (err: string) => void;
 
 interface StreamChatOptions {
   instanceId: string;
-  message: string;
+  message: string | any[];
   sessionId?: string;
   token: string;
   model?: string;
+  voiceId?: string;
   onChunk: ChunkCallback;
   onDone: DoneCallback;
   onError: ErrorCallback;
@@ -46,6 +47,7 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
           message: opts.message,
           sessionId: opts.sessionId,
           model: opts.model,
+          voiceId: opts.voiceId,
         }),
         signal: ac.signal,
       });
