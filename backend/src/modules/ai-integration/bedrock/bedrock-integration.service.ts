@@ -114,6 +114,48 @@ export class BedrockIntegrationService {
     return modelId.includes('anthropic');
   }
 
+  /**
+   * Sanitize content blocks for Bedrock:
+   * - Convert image_url (OpenAI) → image/base64 (Claude)
+   * - Convert image source.type:'url' → fetch & base64
+   * - Convert unsupported types to text placeholders
+   */
+  private async sanitizeContentForBedrock(content: any): Promise<any> {
+    if (!Array.isArray(content)) return content;
+    return Promise.all(content.map(async (block: any) => {
+      // OpenAI image_url format
+      if (block.type === 'image_url' && block.image_url?.url) {
+        return this.fetchImageAsBase64Block(block.image_url.url);
+      }
+      // Claude URL source (Bedrock doesn't support URL, only base64)
+      if (block.type === 'image' && block.source?.type === 'url' && block.source?.url) {
+        return this.fetchImageAsBase64Block(block.source.url);
+      }
+      // Audio → text placeholder (Bedrock Claude doesn't support audio natively)
+      if (block.type === 'input_audio') {
+        return { type: 'text', text: `[Audio attachment: ${block.input_audio?.url || 'audio'}]` };
+      }
+      return block;
+    }));
+  }
+
+  /** Download an image URL and return a base64 image content block for Bedrock */
+  private async fetchImageAsBase64Block(url: string): Promise<any> {
+    try {
+      const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
+      const buffer = Buffer.from(resp.data);
+      const contentType = resp.headers['content-type'] || 'image/png';
+      const mediaType = contentType.split(';')[0].trim();
+      return {
+        type: 'image',
+        source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') },
+      };
+    } catch (err: any) {
+      this.logger.warn(`Failed to fetch image for base64 conversion: ${err.message} (url: ${url})`);
+      return { type: 'text', text: `[Image: ${url}]` };
+    }
+  }
+
   /** Invoke non-Claude model via Bedrock Converse API (unified format for Llama, Mistral, Nova, etc.) */
   private async converseWithUserCredentials(
     modelId: string,
@@ -254,24 +296,13 @@ export class BedrockIntegrationService {
       }
 
       // Claude models → native Anthropic format via InvokeModel
-      // Sanitize content blocks: convert OpenAI image_url → Claude image format
-      const sanitizeContent = (content: any): any => {
-        if (!Array.isArray(content)) return content;
-        return content.map((block: any) => {
-          if (block.type === 'image_url' && block.image_url?.url) {
-            return { type: 'image', source: { type: 'url', url: block.image_url.url } };
-          }
-          if (block.type === 'input_audio') {
-            return { type: 'text', text: `[Audio attachment: ${block.input_audio?.url || 'audio'}]` };
-          }
-          return block;
-        });
-      };
-
-      const claudeMessages = messages.filter(m => m.role !== 'system').map(m => ({
-        role: m.role,
-        content: sanitizeContent(m.content),
-      }));
+      // Sanitize content: download image URLs → base64 (Bedrock rejects URL sources)
+      const claudeMessages = await Promise.all(
+        messages.filter(m => m.role !== 'system').map(async (m) => ({
+          role: m.role,
+          content: await this.sanitizeContentForBedrock(m.content),
+        })),
+      );
 
       const systemMessage = messages.find(m => m.role === 'system');
 

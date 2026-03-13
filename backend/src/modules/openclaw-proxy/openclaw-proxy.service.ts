@@ -23,10 +23,11 @@ import { RelayRegistry } from '../openclaw-connection/telegram-bot.service';
 import { Response } from 'express';
 
 export interface ChatMessageDto {
-  message: string;
+  message: string | any[];
   sessionId?: string;
   context?: Record<string, any>;
   model?: string;
+  voiceId?: string;
 }
 
 interface RuntimePermissionProfile {
@@ -558,7 +559,8 @@ export class OpenClawProxyService {
       return message;
     }
 
-    // Build multimodal content blocks for Claude vision
+    // Build multimodal content blocks — use URL format; the Bedrock service
+    // will convert to base64 automatically before calling the API.
     const contentBlocks: Array<{ type: string; [k: string]: any }> = [];
     for (const url of imageUrls) {
       contentBlocks.push({
@@ -575,7 +577,10 @@ export class OpenClawProxyService {
     instance: OpenClawInstance,
     dto: ChatMessageDto,
   ) {
-    const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, dto.message);
+    const messageText = Array.isArray(dto.message)
+      ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+      : dto.message;
+    const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText);
     if (directSkillIntent) {
       return directSkillIntent;
     }
@@ -682,7 +687,7 @@ export class OpenClawProxyService {
             : '9. No Agent Account permission profile is currently bound to this instance.'}\n` +
           `10. You are currently running on model: ${resolvedModelLabel}. When a user asks what model you are, identify yourself truthfully with this model name. Do not make up a different identity.`,
       },
-      { role: 'user' as const, content: this.buildUserContent(dto.message) },
+      { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
     const result = await this.claudeIntegrationService.chatWithFunctions(messages, {
@@ -694,7 +699,7 @@ export class OpenClawProxyService {
     });
 
     const text = result?.text || '';
-    const inputTokens = estimateTokens(dto.message);
+    const inputTokens = estimateTokens(messageText);
     const outputTokens = estimateTokens(text);
     this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
       (err) => this.logger.warn(`Token deduct failed: ${err.message}`),
@@ -802,7 +807,10 @@ export class OpenClawProxyService {
       const result = await resp.json();
 
       // Deduct tokens (estimate = prompt + response text length / 4)
-      const inputTokens = estimateTokens(dto.message);
+      const msgText = Array.isArray(dto.message)
+        ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+        : dto.message;
+      const inputTokens = estimateTokens(msgText);
       const outputTokens = estimateTokens(
         typeof result?.reply === 'string' ? result.reply :
         typeof result?.message === 'string' ? result.message : '',

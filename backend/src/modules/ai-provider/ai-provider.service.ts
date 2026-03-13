@@ -107,12 +107,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       { id: 'us.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro', contextWindow: 300000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.80', outputPrice: '$3.20', positioning: 'AWS原生/多模态/性价比' },
       { id: 'us.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision'], multimodal: true, inputPrice: '$0.06', outputPrice: '$0.24', positioning: 'AWS原生/极低成本/多模态' },
       { id: 'us.amazon.nova-micro-v1:0', label: 'Amazon Nova Micro', contextWindow: 128000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.035', outputPrice: '$0.14', positioning: 'AWS原生/纯文本/极速' },
-      // ── Cohere ──
-      { id: 'cohere.command-r-plus-v1:0', label: 'Cohere Command R+', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.50', outputPrice: '$10.00', positioning: 'RAG/搜索增强/企业' },
-      { id: 'cohere.command-r-v1:0', label: 'Cohere Command R', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.15', outputPrice: '$0.60', positioning: 'RAG/多语言/性价比' },
-      // ── AI21 Labs ──
-      { id: 'ai21.jamba-1-5-large-v1:0', label: 'AI21 Jamba 1.5 Large', contextWindow: 256000, costTier: 'medium', capabilities: ['chat'], multimodal: false, inputPrice: '$2.00', outputPrice: '$8.00', positioning: '超长上下文/企业/结构化' },
-      { id: 'ai21.jamba-1-5-mini-v1:0', label: 'AI21 Jamba 1.5 Mini', contextWindow: 256000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.20', outputPrice: '$0.40', positioning: '超长上下文/性价比' },
+
     ],
   },
   {
