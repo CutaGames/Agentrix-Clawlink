@@ -23,7 +23,7 @@ export interface ModelOption {
 
 /** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
-  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
+  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 
 interface SettingsState {

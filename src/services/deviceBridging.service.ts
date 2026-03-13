@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { File as ExpoFile } from 'expo-file-system';
+import { Platform } from 'react-native';
 // expo-image-picker is required lazily (inside pickImageAttachment) to avoid
 // loading the ExponentImagePicker native module at JS bundle evaluation time,
 // which crashes on HarmonyOS before the native bridge is fully initialised.
@@ -184,6 +185,11 @@ export class DeviceBridgingService {
    */
   static async takeCameraPhoto(): Promise<ImageAttachment | null> {
     try {
+      if (Platform.OS === 'android') {
+        console.warn('Camera capture temporarily routed to album on Android to avoid native launcher crashes');
+        return await DeviceBridgingService.pickImageAttachment();
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const ImagePicker = require('expo-image-picker');
 

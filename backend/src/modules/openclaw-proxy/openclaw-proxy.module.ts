@@ -1,6 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgentAccount } from '../../entities/agent-account.entity';
+import { AgentMessage } from '../../entities/agent-message.entity';
+import { AgentSession } from '../../entities/agent-session.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
 import { Skill } from '../../entities/skill.entity';
@@ -14,7 +16,7 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OpenClawInstance, UserInstalledSkill, Skill, AgentAccount]),
+    TypeOrmModule.forFeature([OpenClawInstance, UserInstalledSkill, Skill, AgentAccount, AgentSession, AgentMessage]),
     OpenClawConnectionModule,
     TokenQuotaModule,
     forwardRef(() => SkillModule),
