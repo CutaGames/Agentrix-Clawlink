@@ -258,6 +258,98 @@ export class OpenClawProxyService {
       .replace(/^_+|_+$/g, '')}`;
   }
 
+  private getModelFamily(modelId?: string): string | null {
+    const normalized = String(modelId || '').toLowerCase();
+    if (!normalized) return null;
+    if (normalized.includes('opus')) return 'opus';
+    if (normalized.includes('sonnet')) return 'sonnet';
+    if (normalized.includes('haiku')) return 'haiku';
+    if (normalized.includes('gpt')) return 'gpt';
+    if (normalized.includes('gemini')) return 'gemini';
+    if (normalized.includes('llama')) return 'llama';
+    if (normalized.includes('deepseek')) return 'deepseek';
+    if (normalized.includes('mistral')) return 'mistral';
+    if (normalized.includes('nova')) return 'nova';
+    return null;
+  }
+
+  private inferProviderFromModelId(modelId?: string): string | undefined {
+    if (!modelId) return undefined;
+
+    const catalogProvider = this.aiProviderService
+      .getCatalog()
+      .find((provider: any) => provider.models?.some((model: any) => model.id === modelId));
+    if (catalogProvider) {
+      return catalogProvider.id;
+    }
+
+    if (['claude-haiku-4-5', 'claude-sonnet-4-6'].includes(modelId)) {
+      return 'platform';
+    }
+
+    return undefined;
+  }
+
+  private normalizeModelForProvider(modelId: string, providerId?: string, fallbackModel?: string): string {
+    if (!providerId || providerId === 'platform') {
+      return modelId;
+    }
+
+    const provider = this.aiProviderService.getCatalog().find((item: any) => item.id === providerId);
+    if (!provider?.models?.length) {
+      return modelId;
+    }
+
+    if (provider.models.some((model: any) => model.id === modelId)) {
+      return modelId;
+    }
+
+    const family = this.getModelFamily(modelId);
+    const familyMatch = family
+      ? provider.models.find((model: any) => `${model.id} ${model.label}`.toLowerCase().includes(family))
+      : undefined;
+
+    if (familyMatch?.id) {
+      return familyMatch.id;
+    }
+
+    if (fallbackModel && provider.models.some((model: any) => model.id === fallbackModel)) {
+      return fallbackModel;
+    }
+
+    return provider.models[0]?.id || modelId;
+  }
+
+  private formatDirectMarketplaceSearch(
+    toolName: 'skill_search' | 'task_search' | 'resource_search',
+    searchResult: any,
+  ): string | null {
+    if (toolName === 'task_search') {
+      const tasks = Array.isArray(searchResult?.tasks) ? searchResult.tasks : [];
+      if (tasks.length === 0) return null;
+      return `Found ${searchResult.total || tasks.length} tasks:\n` + tasks
+        .slice(0, 10)
+        .map((task: any, index: number) => `${index + 1}. **${task.title || task.id}**${task.budget ? ` - ${task.budget} ${task.currency || ''}` : ''} - ${task.description || 'No description'}`)
+        .join('\n');
+    }
+
+    if (toolName === 'resource_search') {
+      const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
+      if (products.length === 0) return null;
+      return `Found ${searchResult.total || products.length} resources:\n` + products
+        .slice(0, 10)
+        .map((product: any, index: number) => `${index + 1}. **${product.name || product.title || product.id}**${product.price ? ` - ${product.price} ${product.currency || ''}` : ''} - ${product.description || 'No description'}`)
+        .join('\n');
+    }
+
+    const skills = Array.isArray(searchResult?.skills) ? searchResult.skills : [];
+    if (skills.length === 0) return null;
+    return `Found ${searchResult.total || skills.length} skills:\n` + skills
+      .slice(0, 10)
+      .map((skill: any, index: number) => `${index + 1}. **${skill.name || skill.id}**${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
+      .join('\n');
+  }
+
   private async resolveRuntimePermissionProfile(userId: string, instance: OpenClawInstance): Promise<RuntimePermissionProfile | null> {
     const agentAccountId = typeof instance.metadata?.agentAccountId === 'string'
       ? instance.metadata.agentAccountId
@@ -426,15 +518,18 @@ export class OpenClawProxyService {
   private extractSkillIntentQuery(message: string): string {
     let q = String(message || '')
       .replace(/(?:帮我|请|麻烦|能否|可以|could you|please)/gi, ' ')
-      .replace(/(?:在|从)?\s*(?:openclaw|clawhub)\s*(?:hub|市场)?/gi, ' ')
-      .replace(/(?:install|add|enable|search|find|look for|retrieve|use|装上|安装|添加|启用|搜索|检索|查找|找一下)/gi, ' ')
+      .replace(/(?:在|从)?\s*(?:openclaw|clawhub)\s*(?:hub|市场|marketplace)?/gi, ' ')
+      .replace(/(?:install|add|enable|search|find|look for|retrieve|use|browse|list|show|装上|安装|添加|启用|搜索|检索|查找|找一下|找找|浏览|看看|有什么|有哪些)/gi, ' ')
+      .replace(/(?:任务市场|资源市场|技能市场|marketplace|market|hub|skill|skills|技能|任务|task|tasks|资源|resource|resources)/gi, ' ')
+      .replace(/(?:里的|里面的|里面|中的|中|里|上|一下|一下子)/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    // If stripping removed everything (e.g. "搜索openclaw skill"), keep original minus action words
-    if (!q || q === 'skill' || q === 'skills' || q === '技能') {
+    if (!q || q === 'skill' || q === 'skills' || q === '技能' || q === '任务' || q === '资源') {
       q = String(message || '')
         .replace(/(?:帮我|请|麻烦|能否|可以|could you|please)/gi, ' ')
-        .replace(/(?:install|add|enable|search|find|look for|retrieve|use|装上|安装|添加|启用|搜索|检索|查找|找一下)/gi, ' ')
+        .replace(/(?:在|从)?\s*(?:openclaw|clawhub)\s*(?:hub|市场|marketplace)?/gi, ' ')
+        .replace(/(?:install|add|enable|search|find|look for|retrieve|use|browse|list|show|装上|安装|添加|启用|搜索|检索|查找|找一下|找找|浏览|看看|有什么|有哪些)/gi, ' ')
+        .replace(/(?:skill|skills|技能|任务|task|tasks|资源|resource|resources|市场|marketplace|hub)/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
     }
@@ -452,8 +547,13 @@ export class OpenClawProxyService {
     platformHosted: true;
   } | null> {
     const normalized = String(message || '').toLowerCase();
-    const mentionsHub = /(openclaw|clawhub|技能|skill|市场|marketplace|hub)/i.test(message);
-    if (!mentionsHub) return null;
+    const mentionsMarketplace = /(openclaw|clawhub|技能|skill|市场|marketplace|hub|任务|task|resources?|资源)/i.test(message);
+    if (!mentionsMarketplace) return null;
+
+    const wantsTaskSearch = /(任务|task|tasks|bounty|悬赏)/i.test(message);
+    const wantsResourceSearch = /(资源|resource|resources|商品|服务|service|products?|goods|api|dataset)/i.test(message);
+    const wantsSkillSearch = /(技能|skill|skills|plugin|插件|tool|tools|capabilit)/i.test(message)
+      || /(openclaw|clawhub|hub)/i.test(message);
 
     const ctx: ExecutionContext = {
       userId,
@@ -485,14 +585,23 @@ export class OpenClawProxyService {
 
     if (/(search|find|look for|retrieve|搜索|搜一下|搜搜|检索|查找|找一下|找找|浏览|看看|有什么|有哪些|browse|list|show)/i.test(normalized)) {
       try {
-        const searchResult = await this.skillExecutorService.executeInternal('skill_search', { query, limit: 10 }, ctx);
-        const skills = Array.isArray(searchResult?.skills) ? searchResult.skills : [];
-        const content = skills.length > 0
-          ? `Found ${searchResult.total || skills.length} skills:\n` + skills
-              .slice(0, 10)
-              .map((skill: any, index: number) => `${index + 1}. **${skill.name || skill.id}**${skill.source ? ` [${skill.source}]` : ''} - ${skill.description || 'No description'}`)
-              .join('\n')
-          : `No matching skills found for "${query}". Try broader keywords.`;
+        const toolName = wantsTaskSearch
+          ? 'task_search'
+          : wantsResourceSearch && !wantsSkillSearch
+            ? 'resource_search'
+            : wantsSkillSearch
+              ? 'skill_search'
+              : null;
+
+        if (!toolName) {
+          return null;
+        }
+
+        const searchResult = await this.skillExecutorService.executeInternal(toolName, { query, limit: 10 }, ctx);
+        const content = this.formatDirectMarketplaceSearch(toolName, searchResult);
+        if (!content) {
+          return null;
+        }
 
         return {
           sessionId: ctx.sessionId!,
@@ -502,7 +611,7 @@ export class OpenClawProxyService {
             content,
             createdAt: new Date().toISOString(),
           },
-          toolCalls: [{ name: 'skill_search', input: { query, limit: 10 }, output: searchResult }],
+          toolCalls: [{ name: toolName, input: { query, limit: 10 }, output: searchResult }],
           platformHosted: true,
         };
       } catch (err: any) {
@@ -588,6 +697,7 @@ export class OpenClawProxyService {
     const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
     const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
+    const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
 
     // Resolve model & provider FIRST so we can inject identity into system prompt
     const agentAccount = permissionProfile?.agentAccountId
@@ -595,16 +705,23 @@ export class OpenClawProxyService {
       : null;
     let resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
+    const requestedProvider = this.inferProviderFromModelId(dto.model);
+    const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
 
-    // If no per-agent override, use user's default provider config
-    if (!resolvedProvider) {
-      const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
-      if (defaultConfig) {
-        resolvedProvider = defaultConfig.providerId;
-        if (!agentAccount?.preferredModel && !dto.model) {
-          resolvedModel = defaultConfig.selectedModel;
-        }
+    // Explicit chat model selection must win over any stored default provider.
+    if (dto.model && requestedProvider) {
+      resolvedProvider = requestedProvider === 'platform' ? undefined : requestedProvider;
+    } else if (modelBoundProvider) {
+      resolvedProvider = modelBoundProvider === 'platform' ? undefined : modelBoundProvider;
+    } else if (!resolvedProvider && defaultConfig) {
+      resolvedProvider = defaultConfig.providerId;
+      if (!agentAccount?.preferredModel && !dto.model) {
+        resolvedModel = defaultConfig.selectedModel;
       }
+    }
+
+    if (resolvedProvider) {
+      resolvedModel = this.normalizeModelForProvider(resolvedModel, resolvedProvider, defaultConfig?.selectedModel);
     }
 
     // If user has a custom provider config for this provider, extract full credentials
