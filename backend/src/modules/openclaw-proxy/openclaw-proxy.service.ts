@@ -11,6 +11,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AgentAccount, AgentAccountStatus } from '../../entities/agent-account.entity';
+import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-message.entity';
+import { AgentSession, SessionStatus } from '../../entities/agent-session.entity';
 import { OpenClawInstance, OpenClawInstanceStatus } from '../../entities/openclaw-instance.entity';
 import { OpenClawConnectionService } from '../openclaw-connection/openclaw-connection.service';
 import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
@@ -56,6 +58,10 @@ export class OpenClawProxyService {
     private instanceRepo: Repository<OpenClawInstance>,
     @InjectRepository(AgentAccount)
     private agentAccountRepo: Repository<AgentAccount>,
+    @InjectRepository(AgentSession)
+    private sessionRepo: Repository<AgentSession>,
+    @InjectRepository(AgentMessage)
+    private messageRepo: Repository<AgentMessage>,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -75,6 +81,137 @@ export class OpenClawProxyService {
 
   private isPlatformHosted(instance: OpenClawInstance): boolean {
     return !instance.instanceUrl || !!(instance.capabilities as any)?.platformHosted;
+  }
+
+  private async getOrCreatePlatformHostedSession(
+    userId: string,
+    instance: OpenClawInstance,
+    clientSessionId?: string,
+  ): Promise<AgentSession> {
+    const resolvedClientSessionId = clientSessionId || `platform-${Date.now()}`;
+    const existingSession = await this.sessionRepo.findOne({
+      where: {
+        userId,
+        sessionId: resolvedClientSessionId,
+      },
+    });
+
+    if (existingSession) {
+      const instanceId = existingSession.metadata?.instanceId;
+      if (!instanceId || instanceId === instance.id) {
+        return existingSession;
+      }
+    }
+
+    const session = this.sessionRepo.create({
+      userId,
+      sessionId: resolvedClientSessionId,
+      agentId: typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined,
+      title: instance.name || 'OpenClaw Agent',
+      status: SessionStatus.ACTIVE,
+      metadata: {
+        source: 'openclaw-platform-hosted',
+        instanceId: instance.id,
+        instanceName: instance.name,
+      },
+      context: {
+        intent: null,
+        entities: {},
+        userProfile: {},
+      },
+      lastMessageAt: new Date(),
+    });
+
+    return this.sessionRepo.save(session);
+  }
+
+  private async savePlatformHostedMessage(
+    session: AgentSession,
+    userId: string,
+    role: MessageRole,
+    content: string,
+    metadata?: Record<string, any>,
+  ): Promise<void> {
+    if (!content?.trim()) {
+      return;
+    }
+
+    const sequenceNumber = (await this.messageRepo.count({ where: { sessionId: session.id } })) + 1;
+    const message = this.messageRepo.create({
+      session,
+      sessionId: session.id,
+      userId,
+      role,
+      type: MessageType.TEXT,
+      content,
+      metadata,
+      sequenceNumber,
+    });
+
+    await this.messageRepo.save(message);
+    await this.sessionRepo.update(session.id, { lastMessageAt: new Date() });
+  }
+
+  private async getPlatformConversationHistory(
+    userId: string,
+    instanceId: string,
+    limit: number = 24,
+  ): Promise<AgentMessage[]> {
+    const messages = await this.messageRepo
+      .createQueryBuilder('message')
+      .innerJoinAndSelect('message.session', 'session')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.status = :status', { status: SessionStatus.ACTIVE })
+      .andWhere(`session.metadata ->> 'instanceId' = :instanceId`, { instanceId })
+      .orderBy('message.sequenceNumber', 'DESC')
+      .addOrderBy('message.createdAt', 'DESC')
+      .take(limit)
+      .getMany();
+
+    return messages.reverse();
+  }
+
+  private buildPlatformHistoryMessages(history: AgentMessage[]) {
+    return history
+      .filter((message) => message.role === MessageRole.USER || message.role === MessageRole.ASSISTANT)
+      .filter((message) => !!message.content?.trim())
+      .map((message) => ({
+        role: message.role as 'user' | 'assistant',
+        content: message.content,
+      }));
+  }
+
+  private async getPlatformHostedHistoryPayload(
+    userId: string,
+    instanceId: string,
+    clientSessionId?: string,
+  ) {
+    let sessionMessages: AgentMessage[] = [];
+
+    if (clientSessionId) {
+      sessionMessages = await this.messageRepo
+        .createQueryBuilder('message')
+        .innerJoinAndSelect('message.session', 'session')
+        .where('session.userId = :userId', { userId })
+        .andWhere('session.sessionId = :sessionId', { sessionId: clientSessionId })
+        .andWhere(`session.metadata ->> 'instanceId' = :instanceId`, { instanceId })
+        .orderBy('message.sequenceNumber', 'ASC')
+        .addOrderBy('message.createdAt', 'ASC')
+        .take(80)
+        .getMany();
+    }
+
+    const messages = sessionMessages.length > 0
+      ? sessionMessages
+      : await this.getPlatformConversationHistory(userId, instanceId, 80);
+
+    return messages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      createdAt: message.createdAt,
+      metadata: message.metadata,
+    }));
   }
 
   private buildPlatformToolSchema(skill: PresetSkill) {
@@ -540,6 +677,7 @@ export class OpenClawProxyService {
     userId: string,
     instance: OpenClawInstance,
     message: string,
+    sessionId?: string,
   ): Promise<{
     sessionId: string;
     reply: { id: string; role: 'assistant'; content: string; createdAt: string };
@@ -557,7 +695,7 @@ export class OpenClawProxyService {
 
     const ctx: ExecutionContext = {
       userId,
-      sessionId: `platform-${Date.now()}`,
+      sessionId: sessionId || `platform-${Date.now()}`,
       metadata: { instanceId: instance.id, source: 'platform-hosted-chat' },
     };
 
@@ -686,18 +824,30 @@ export class OpenClawProxyService {
     instance: OpenClawInstance,
     dto: ChatMessageDto,
   ) {
+    const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messageText = Array.isArray(dto.message)
       ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
       : dto.message;
-    const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText);
+    const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
+    const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
     if (directSkillIntent) {
+      await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
+        source: 'platform-hosted-chat',
+        instanceId: instance.id,
+        directSkillIntent: true,
+      });
+      await this.savePlatformHostedMessage(session, userId, MessageRole.ASSISTANT, directSkillIntent.reply.content, {
+        source: 'platform-hosted-chat',
+        instanceId: instance.id,
+        toolCalls: directSkillIntent.toolCalls,
+      });
       return directSkillIntent;
     }
 
     const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
     const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
-    const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
+    const persistedHistory = await this.getPlatformConversationHistory(userId, instance.id);
 
     // Resolve model & provider FIRST so we can inject identity into system prompt
     const agentAccount = permissionProfile?.agentAccountId
@@ -802,8 +952,10 @@ export class OpenClawProxyService {
           `${permissionProfile
             ? `9. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
             : '9. No Agent Account permission profile is currently bound to this instance.'}\n` +
-          `10. You are currently running on model: ${resolvedModelLabel}. When a user asks what model you are, identify yourself truthfully with this model name. Do not make up a different identity.`,
+          `10. You are currently running on model: ${resolvedModelLabel}. When a user asks what model you are, identify yourself truthfully with this model name. Do not make up a different identity.\n` +
+          `11. Conversation memory is shared across this user's chats for this same agent instance. Use prior user-provided facts from earlier turns when they are relevant, even if the current window was reopened.`,
       },
+      ...this.buildPlatformHistoryMessages(persistedHistory),
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
@@ -821,6 +973,18 @@ export class OpenClawProxyService {
     this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
       (err) => this.logger.warn(`Token deduct failed: ${err.message}`),
     );
+
+    await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
+      source: 'platform-hosted-chat',
+      instanceId: instance.id,
+      model: resolvedModel,
+    });
+    await this.savePlatformHostedMessage(session, userId, MessageRole.ASSISTANT, text, {
+      source: 'platform-hosted-chat',
+      instanceId: instance.id,
+      model: resolvedModel,
+      toolCalls: result?.toolCalls || null,
+    });
 
     return {
       sessionId,
@@ -1007,7 +1171,7 @@ export class OpenClawProxyService {
   async getChatHistory(userId: string, instanceId: string, sessionId?: string) {
     const instance = await this.ensureOwnedInstance(userId, instanceId);
     if (this.isPlatformHosted(instance)) {
-      return []; // Platform-hosted chat history is managed client-side
+      return this.getPlatformHostedHistoryPayload(userId, instance.id, sessionId);
     }
     if (instance.status !== OpenClawInstanceStatus.ACTIVE) {
       throw new BadGatewayException(`Instance "${instance.name}" is not active (status: ${instance.status})`);

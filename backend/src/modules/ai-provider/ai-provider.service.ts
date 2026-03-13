@@ -94,20 +94,6 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       { id: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
       { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
       { id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
-      // ── Meta Llama ──
-      { id: 'us.meta.llama4-maverick-17b-instruct-v1:0', label: 'Llama 4 Maverick 17B', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.17', outputPrice: '$0.68', positioning: '开源旗舰/多模态/超长上下文' },
-      { id: 'us.meta.llama4-scout-17b-instruct-v1:0', label: 'Llama 4 Scout 17B', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.17', outputPrice: '$0.68', positioning: '开源/多模态/高性价比' },
-      { id: 'us.meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.72', outputPrice: '$0.72', positioning: '开源/代码/多语言' },
-      // ── DeepSeek ──
-      { id: 'us.deepseek.r1-v1:0', label: 'DeepSeek R1', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$1.35', outputPrice: '$5.40', positioning: '深度推理/数学/代码' },
-      // ── Mistral AI ──
-      { id: 'mistral.mistral-large-2411-v1:0', label: 'Mistral Large 24.11', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$2.00', outputPrice: '$6.00', positioning: '多语言/代码/欧洲' },
-      { id: 'mistral.mistral-small-2503-v1:0', label: 'Mistral Small 25.03', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '$0.10', outputPrice: '$0.30', positioning: '极低成本/快速/代码' },
-      // ── Amazon Nova ──
-      { id: 'us.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro', contextWindow: 300000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.80', outputPrice: '$3.20', positioning: 'AWS原生/多模态/性价比' },
-      { id: 'us.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision'], multimodal: true, inputPrice: '$0.06', outputPrice: '$0.24', positioning: 'AWS原生/极低成本/多模态' },
-      { id: 'us.amazon.nova-micro-v1:0', label: 'Amazon Nova Micro', contextWindow: 128000, costTier: 'low', capabilities: ['chat'], multimodal: false, inputPrice: '$0.035', outputPrice: '$0.14', positioning: 'AWS原生/纯文本/极速' },
-
     ],
   },
   {
@@ -117,10 +103,6 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     models: [
       { id: 'anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4.6 (中国区)', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥21.0', outputPrice: '¥105.0', positioning: '均衡/默认/中国区可用' },
       { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', label: 'Claude Haiku 4.5 (中国区)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥35.0', positioning: '轻量/快速/中国区可用' },
-      { id: 'meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B (中国区)', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '¥6.3', outputPrice: '¥6.3', positioning: '开源/中国区可用' },
-      { id: 'mistral.mistral-large-2411-v1:0', label: 'Mistral Large (中国区)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, inputPrice: '¥14.0', outputPrice: '¥42.0', positioning: '多语言/代码/中国区可用' },
-      { id: 'amazon.nova-pro-v1:0', label: 'Amazon Nova Pro (中国区)', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥22.4', positioning: 'AWS原生/多模态/中国区可用' },
-      { id: 'amazon.nova-lite-v1:0', label: 'Amazon Nova Lite (中国区)', contextWindow: 300000, costTier: 'low', capabilities: ['chat', 'vision'], multimodal: true, inputPrice: '¥0.42', outputPrice: '¥1.68', positioning: 'AWS原生/极低成本/中国区可用' },
     ],
   },
   // ─── 🇨🇳 China ───
@@ -377,17 +359,19 @@ export class AiProviderService {
   /** Get all models available to the user: platform default + user's configured provider models */
   async getAvailableModels(userId: string): Promise<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>> {
     const models: Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }> = [];
+    const seenLabels = new Set<string>();
 
     // Platform default model (always available)
     models.push({
       id: 'claude-haiku-4-5',
-      label: 'Claude Haiku 4.5 (Default)',
+      label: 'Claude Haiku 4.5 (平台默认 API)',
       provider: 'Agentrix Platform',
       providerId: 'platform',
       costTier: 'free_trial',
       positioning: '平台默认/免费额度',
       isDefault: true,
     });
+    seenLabels.add('claude haiku 4.5');
 
     // User's configured provider models
     const configs = await this.repo.find({ where: { userId, isActive: true } });
@@ -395,9 +379,14 @@ export class AiProviderService {
       const providerDef = this.getProviderDef(config.providerId);
       if (!providerDef) continue;
       for (const model of providerDef.models) {
+        const normalizedLabel = model.label.replace(/\s*\([^)]*\)\s*$/g, '').trim().toLowerCase();
+        const label = seenLabels.has(normalizedLabel)
+          ? `${model.label} (${providerDef.name})`
+          : model.label;
+        seenLabels.add(normalizedLabel);
         models.push({
           id: model.id,
-          label: model.label,
+          label,
           provider: providerDef.name,
           providerId: config.providerId,
           costTier: model.costTier,

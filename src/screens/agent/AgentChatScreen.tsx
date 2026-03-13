@@ -19,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
 import { useI18n } from '../../stores/i18nStore';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -428,13 +429,17 @@ export function AgentChatScreen() {
   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
   const [transcriptPreview, setTranscriptPreview] = useState('');
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [capturingPhoto, setCapturingPhoto] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const cameraRef = useRef<any>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const isNearBottomRef = useRef(true);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const responseInterruptedRef = useRef(false);
   const pendingTtsSentenceRef = useRef('');
   const streamedTtsStartedRef = useRef(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const voiceRecordingOptions = Audio ? {
     android: {
@@ -507,9 +512,9 @@ export function AgentChatScreen() {
       if (!trimmed || trimmed.length < 2) continue;
       const encoded = encodeURIComponent(trimmed);
       const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-      audioPlayerRef.current?.enqueue(url);
+      audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
     }
-  }, [agentVoiceId]);
+  }, [agentVoiceId, voiceLanguageHint]);
 
   const stopSpeaking = useCallback(() => {
     audioPlayerRef.current?.stopAll();
@@ -555,7 +560,7 @@ export function AgentChatScreen() {
       streamedTtsStartedRef.current = true;
       for (const sentence of segmentsToSpeak) {
         const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-        audioPlayerRef.current?.enqueue(url);
+          audioPlayerRef.current?.enqueue(url, sentence, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
       }
       if (!shouldEarlyFlush) {
         pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
@@ -569,11 +574,11 @@ export function AgentChatScreen() {
         setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
         streamedTtsStartedRef.current = true;
         const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-        audioPlayerRef.current?.enqueue(url);
+        audioPlayerRef.current?.enqueue(url, remainder, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode, agentVoiceId]);
+  }, [autoSpeak, voiceMode, agentVoiceId, voiceLanguageHint]);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -1055,16 +1060,17 @@ export function AgentChatScreen() {
             clearTimeout(timeout);
           }
 
-          // Upload the original audio file as an attachment
           let uploadedAudio = null;
-          try {
-            uploadedAudio = await uploadChatAttachment({
-              uri,
-              name: `voice-${Date.now()}.m4a`,
-              type: 'audio/m4a'
-            });
-          } catch (upErr) {
-            console.warn("Audio upload failed", upErr);
+          if (!transcript) {
+            try {
+              uploadedAudio = await uploadChatAttachment({
+                uri,
+                name: `voice-${Date.now()}.m4a`,
+                type: 'audio/m4a'
+              });
+            } catch (upErr) {
+              console.warn("Audio upload failed", upErr);
+            }
           }
 
           if (transcript || uploadedAudio) {
@@ -1136,24 +1142,63 @@ export function AgentChatScreen() {
     setShowAttachToolbar((prev) => !prev);
   };
 
-  const handleAttachCamera = async () => {
+  const openInAppCamera = useCallback(async () => {
     setShowAttachToolbar(false);
     try {
-      const image = await DeviceBridgingService.takeCameraPhoto();
-      if (image?.uri) {
-        await enqueueAttachment({
-          uri: image.uri,
-          fileName: image.fileName || `photo-${Date.now()}.jpg`,
-          mimeType: image.mimeType || 'image/jpeg',
-        });
+      const permission = cameraPermission?.granted
+        ? cameraPermission
+        : await requestCameraPermission();
+
+      if (!permission?.granted) {
+        Alert.alert(
+          t({ en: 'Camera Permission Required', zh: '需要相机权限' }),
+          t({ en: 'Allow camera access to take a photo.', zh: '请先授予相机权限后再拍照。' }),
+        );
+        return;
       }
-    } catch (e: any) {
-      Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), e.message);
+
+      setShowCameraModal(true);
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), error?.message || t({ en: 'Failed to open camera.', zh: '打开相机失败。' }));
     }
+  }, [cameraPermission, requestCameraPermission, t]);
+
+  const handleCaptureCameraPhoto = useCallback(async () => {
+    if (capturingPhoto || !cameraRef.current) return;
+
+    try {
+      setCapturingPhoto(true);
+      const captured = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        exif: false,
+        skipProcessing: false,
+      });
+
+      if (!captured?.uri) {
+        return;
+      }
+
+      await enqueueAttachment({
+        uri: captured.uri,
+        fileName: `photo-${Date.now()}.jpg`,
+        mimeType: 'image/jpeg',
+      });
+      Haptics.selectionAsync().catch(() => {});
+      setShowCameraModal(false);
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), error?.message || t({ en: 'Failed to capture photo.', zh: '拍照失败。' }));
+    } finally {
+      setCapturingPhoto(false);
+    }
+  }, [capturingPhoto, enqueueAttachment, t]);
+
+  const handleAttachCamera = async () => {
+    await openInAppCamera();
   };
 
   const handleAttachAlbum = async () => {
     setShowAttachToolbar(false);
+    setShowCameraModal(false);
     try {
       const image = await DeviceBridgingService.pickImageAttachment();
       if (image?.uri) {
@@ -1469,6 +1514,48 @@ export function AgentChatScreen() {
         )}
       </View>
       </View>
+
+      <Modal visible={showCameraModal} animationType="fade" onRequestClose={() => !capturingPhoto && setShowCameraModal(false)}>
+        <View style={styles.cameraModalRoot}>
+          {cameraPermission?.granted ? (
+            <CameraView
+              ref={cameraRef}
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              mode="picture"
+            />
+          ) : (
+            <View style={styles.cameraPermissionState}>
+              <Text style={styles.cameraPermissionTitle}>{t({ en: 'Camera Permission Required', zh: '需要相机权限' })}</Text>
+              <Text style={styles.cameraPermissionText}>{t({ en: 'Enable camera access, then try again.', zh: '开启相机权限后再重试。' })}</Text>
+            </View>
+          )}
+
+          <View style={styles.cameraTopBar}>
+            <TouchableOpacity
+              style={styles.cameraCloseBtn}
+              onPress={() => !capturingPhoto && setShowCameraModal(false)}
+              disabled={capturingPhoto}
+            >
+              <Text style={styles.cameraCloseBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.cameraBottomBar}>
+            <TouchableOpacity style={styles.cameraAuxBtn} onPress={handleAttachAlbum} disabled={capturingPhoto}>
+              <Text style={styles.cameraAuxBtnText}>{t({ en: 'Album', zh: '相册' })}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cameraCaptureBtn, capturingPhoto && styles.cameraCaptureBtnDisabled]}
+              onPress={handleCaptureCameraPhoto}
+              disabled={capturingPhoto || !cameraPermission?.granted}
+            >
+              {capturingPhoto ? <ActivityIndicator color="#111827" /> : <View style={styles.cameraCaptureBtnInner} />}
+            </TouchableOpacity>
+            <View style={styles.cameraAuxSpacer} />
+          </View>
+        </View>
+      </Modal>
 
       {/* Image preview modal */}
       <Modal visible={!!previewImageUri} transparent animationType="fade" onRequestClose={() => setPreviewImageUri(null)}>
@@ -1851,4 +1938,92 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   imagePreviewCloseText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  cameraModalRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  cameraPermissionState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  cameraPermissionTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  cameraPermissionText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  cameraTopBar: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 56 : 24,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  cameraCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraCloseBtnText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  cameraBottomBar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: Platform.OS === 'ios' ? 34 : 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cameraAuxBtn: {
+    minWidth: 72,
+    paddingHorizontal: 16,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraAuxBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  cameraCaptureBtn: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraCaptureBtnDisabled: {
+    opacity: 0.7,
+  },
+  cameraCaptureBtnInner: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 3,
+    borderColor: '#111827',
+    backgroundColor: '#fff',
+  },
+  cameraAuxSpacer: {
+    width: 72,
+  },
 });
