@@ -5,6 +5,9 @@ on:
     branches: [main, master, build*]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-ios-simulator:
     uses: ./.github/workflows/build-ios-simulator.yml

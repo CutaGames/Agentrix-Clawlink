@@ -5,6 +5,10 @@ on:
     branches: [main, master, build*]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  checks: write
+
 jobs:
   build-apk:
     uses: ./.github/workflows/build-apk.yml
