@@ -1,4 +1,4 @@
-name: Build iOS Simulator
+name: Reusable iOS Simulator Build
 
 # Trigger manually from GitHub Actions UI, or on push to main.
 # EAS Cloud builds on Expo's macOS fleet — no Apple Developer account needed
@@ -10,8 +10,7 @@ name: Build iOS Simulator
 # ────────────────────────────────────────────────────────────────────────────
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master, build*]
+  workflow_call:
 
 permissions:
   contents: write
