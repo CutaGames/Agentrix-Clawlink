@@ -11,7 +11,7 @@ name: Build iOS Simulator
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, build*]
 
 permissions:
   contents: write

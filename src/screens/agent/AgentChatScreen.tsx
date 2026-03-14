@@ -17,6 +17,12 @@ import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
+import {
+  isLiveSpeechRecognitionAvailable,
+  requestLiveSpeechPermissions,
+  startLiveSpeechRecognition,
+  type LiveSpeechController,
+} from '../../services/liveSpeech.service';
 import { useI18n } from '../../stores/i18nStore';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -428,6 +434,9 @@ export function AgentChatScreen() {
   const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
   const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
   const [transcriptPreview, setTranscriptPreview] = useState('');
+  const [liveVoiceAvailable, setLiveVoiceAvailable] = useState(false);
+  const [liveListening, setLiveListening] = useState(false);
+  const [liveVoiceVolume, setLiveVoiceVolume] = useState(-2);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturingPhoto, setCapturingPhoto] = useState(false);
@@ -439,6 +448,13 @@ export function AgentChatScreen() {
   const responseInterruptedRef = useRef(false);
   const pendingTtsSentenceRef = useRef('');
   const streamedTtsStartedRef = useRef(false);
+  const liveSpeechRef = useRef<LiveSpeechController | null>(null);
+  const liveSpeechManualStopRef = useRef(false);
+  const lastLiveFinalTranscriptRef = useRef('');
+  const duplexModeRef = useRef(duplexMode);
+  const sendingRef = useRef(false);
+  const handleSendRef = useRef<(overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => Promise<void>>(async () => {});
+  const resumeLiveSpeechRef = useRef<() => void>(() => {});
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const voiceRecordingOptions = Audio ? {
@@ -466,15 +482,47 @@ export function AgentChatScreen() {
 
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
+  useEffect(() => {
+    duplexModeRef.current = duplexMode;
+  }, [duplexMode]);
+
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+
+  useEffect(() => {
+    setLiveVoiceAvailable(isLiveSpeechRecognitionAvailable());
+  }, []);
+
+  const stopLiveSpeech = useCallback((abort = false, manual = false) => {
+    liveSpeechManualStopRef.current = manual;
+    const liveSpeech = liveSpeechRef.current;
+    liveSpeechRef.current = null;
+    setLiveListening(false);
+    setLiveVoiceVolume(-2);
+    if (!liveSpeech) return;
+    try {
+      if (abort) {
+        liveSpeech.abort();
+      } else {
+        liveSpeech.stop();
+      }
+    } catch {}
+  }, []);
+
   // Init TTS audio queue player
   useEffect(() => {
     audioPlayerRef.current = new AudioQueuePlayer(() => {
       setIsSpeaking(false);
       setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
       activeAssistantMessageIdRef.current = null;
+      resumeLiveSpeechRef.current();
     });
-    return () => { audioPlayerRef.current?.stopAll(); };
-  }, []);
+    return () => {
+      audioPlayerRef.current?.stopAll();
+      stopLiveSpeech(true, true);
+    };
+  }, [stopLiveSpeech]);
 
   useEffect(() => {
     if (voiceModeRequested) {
@@ -487,8 +535,9 @@ export function AgentChatScreen() {
       setVoicePhase('idle');
       setIsRecording(false);
       isRecordingRef.current = false;
+      stopLiveSpeech(true, true);
     }
-  }, [voiceMode]);
+  }, [stopLiveSpeech, voiceMode]);
 
   useEffect(() => {
     if (duplexMode) {
@@ -503,6 +552,9 @@ export function AgentChatScreen() {
   // TTS helper — speaks text via backend /voice/tts endpoint
   const speakText = useCallback((text: string) => {
     if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
+    if (duplexModeRef.current) {
+      stopLiveSpeech(true, false);
+    }
     setIsSpeaking(true);
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
     // Split sentences for streaming playback
@@ -514,7 +566,7 @@ export function AgentChatScreen() {
       const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
       audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
     }
-  }, [agentVoiceId, voiceLanguageHint]);
+  }, [agentVoiceId, stopLiveSpeech, voiceLanguageHint]);
 
   const stopSpeaking = useCallback(() => {
     audioPlayerRef.current?.stopAll();
@@ -532,6 +584,10 @@ export function AgentChatScreen() {
 
   const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
     if (!(voiceMode || autoSpeak)) return;
+
+    if (duplexModeRef.current) {
+      stopLiveSpeech(true, false);
+    }
 
     if (chunk) {
       pendingTtsSentenceRef.current += chunk;
@@ -578,7 +634,7 @@ export function AgentChatScreen() {
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode, agentVoiceId, voiceLanguageHint]);
+  }, [autoSpeak, voiceMode, agentVoiceId, stopLiveSpeech, voiceLanguageHint]);
 
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
@@ -741,6 +797,108 @@ export function AgentChatScreen() {
 
     activeAssistantMessageIdRef.current = null;
   }, [t]);
+
+  const startLiveSpeech = useCallback(async () => {
+    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailable || !voiceMode) {
+      return;
+    }
+
+    const permission = await requestLiveSpeechPermissions();
+    if (!permission?.granted) {
+      Alert.alert(
+        t({ en: 'Speech Permission', zh: '语音权限' }),
+        t({ en: 'Realtime voice needs microphone and speech recognition permissions.', zh: '实时语音需要麦克风和语音识别权限。' }),
+      );
+      return;
+    }
+
+    liveSpeechManualStopRef.current = false;
+    lastLiveFinalTranscriptRef.current = '';
+    liveSpeechRef.current = startLiveSpeechRecognition(
+      voiceLanguageHint,
+      {
+        onStart: () => {
+          setLiveListening(true);
+          setVoicePhase('recording');
+          setTranscriptPreview('');
+        },
+        onEnd: () => {
+          liveSpeechRef.current = null;
+          setLiveListening(false);
+          setLiveVoiceVolume(-2);
+          if (!duplexModeRef.current || liveSpeechManualStopRef.current) {
+            setVoicePhase((prev) => (prev === 'recording' ? 'idle' : prev));
+            return;
+          }
+          if (sendingRef.current || isSpeaking) {
+            return;
+          }
+          setTimeout(() => {
+            void startLiveSpeech();
+          }, 300);
+        },
+        onSpeechStart: () => {
+          if (isSpeaking) {
+            stopSpeaking();
+          }
+        },
+        onInterimResult: (transcript) => {
+          setTranscriptPreview(transcript);
+          setVoicePhase('recording');
+        },
+        onFinalResult: (transcript) => {
+          const normalized = transcript.trim();
+          if (!normalized || normalized === lastLiveFinalTranscriptRef.current) {
+            return;
+          }
+          lastLiveFinalTranscriptRef.current = normalized;
+          setTranscriptPreview(normalized);
+          stopLiveSpeech(true, false);
+          if (isSpeaking) {
+            stopSpeaking();
+          }
+          stopCurrentResponse(true);
+          setVoicePhase('thinking');
+          setTimeout(() => {
+            void handleSendRef.current(normalized);
+          }, 60);
+        },
+        onError: (error) => {
+          if (error?.error === 'aborted' || error?.error === 'no-speech') {
+            return;
+          }
+          setLiveListening(false);
+          setVoicePhase('idle');
+          setTranscriptPreview('');
+        },
+        onVolumeChange: (value) => {
+          setLiveVoiceVolume(value);
+        },
+      },
+      [instanceName, agentVoiceId || '', 'Agentrix', 'OpenClaw'],
+    );
+  }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, stopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint, voiceMode]);
+
+  resumeLiveSpeechRef.current = () => {
+    if (!duplexModeRef.current || sendingRef.current || isSpeaking || !voiceMode) {
+      return;
+    }
+    void startLiveSpeech();
+  };
+
+  useEffect(() => {
+    if (duplexMode) {
+      void startLiveSpeech();
+      return;
+    }
+    stopLiveSpeech(true, true);
+  }, [duplexMode, startLiveSpeech, stopLiveSpeech]);
+
+  useEffect(() => {
+    if (duplexMode && voiceMode && !sending && !isSpeaking) {
+      void startLiveSpeech();
+    }
+  }, [duplexMode, isSpeaking, sending, startLiveSpeech, voiceMode]);
 
   const appendToStreamingMessage = (msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -963,8 +1121,13 @@ export function AgentChatScreen() {
       resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
+      if (!streamedTtsStartedRef.current) {
+        resumeLiveSpeechRef.current();
+      }
     }
   };
+
+  handleSendRef.current = handleSend;
 
   const startVoiceRecording = useCallback(async () => {
     if (!Audio) {
@@ -1108,12 +1271,26 @@ export function AgentChatScreen() {
   };
 
   const handleVoiceTapToggle = useCallback(async () => {
+    if (duplexMode) {
+      if (liveSpeechRef.current) {
+        stopLiveSpeech(true, true);
+        setVoicePhase('idle');
+        setTranscriptPreview('');
+        return;
+      }
+      if (isSpeaking) {
+        stopSpeaking();
+      }
+      stopCurrentResponse(true);
+      await startLiveSpeech();
+      return;
+    }
     if (isRecordingRef.current) {
       await stopVoiceRecording();
       return;
     }
     await startVoiceRecording();
-  }, [startVoiceRecording, stopVoiceRecording]);
+  }, [duplexMode, isSpeaking, startLiveSpeech, startVoiceRecording, stopCurrentResponse, stopLiveSpeech, stopSpeaking, stopVoiceRecording]);
 
   const openModelPicker = () => setShowModelPicker(true);
 
@@ -1124,17 +1301,6 @@ export function AgentChatScreen() {
       handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
     } catch (e: any) {
       Alert.alert(t({ en: 'Location Error', zh: '定位错误' }), e.message);
-    }
-  };
-
-  const handleDeviceClipboard = async () => {
-    setShowAttachToolbar(false);
-    try {
-      const text = await DeviceBridgingService.readClipboard();
-      if (!text) return Alert.alert(t({ en: 'Clipboard Empty', zh: '剪贴板为空' }), t({ en: 'Nothing to paste.', zh: '没有可粘贴的内容。' }));
-      setInput((prev) => prev ? `${prev}\n${text}` : text);
-    } catch (e: any) {
-      Alert.alert(t({ en: 'Clipboard Error', zh: '剪贴板错误' }), e.message);
     }
   };
 
@@ -1286,11 +1452,20 @@ export function AgentChatScreen() {
         <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <TouchableOpacity
-            onPress={() => setDuplexMode((prev) => !prev)}
+            onPress={() => {
+              if (!liveVoiceAvailable && !duplexMode) {
+                Alert.alert(
+                  t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                  t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
+                );
+                return;
+              }
+              setDuplexMode((prev) => !prev);
+            }}
             style={[styles.chatBarBtn, duplexMode && { backgroundColor: colors.accent + '30' }]}
           >
             <Text style={[styles.chatBarBtnText, duplexMode && { color: colors.accent }]}>
-              {duplexMode ? t({ en: 'Duplex', zh: '双工' }) : t({ en: 'Simple', zh: '基础' })}
+              {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1348,7 +1523,9 @@ export function AgentChatScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.voiceStatusText}>
                 {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
-                  ? t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
+                  ? duplexMode
+                    ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                    : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
                   : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
               {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
               {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
@@ -1359,6 +1536,11 @@ export function AgentChatScreen() {
             {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
               <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
                 {transcriptPreview}
+              </Text>
+            )}
+            {duplexMode && liveListening && (
+              <Text style={styles.voiceTranscriptPreview} numberOfLines={1}>
+                {t({ en: `Input level ${Math.max(0, liveVoiceVolume).toFixed(1)}`, zh: `输入音量 ${Math.max(0, liveVoiceVolume).toFixed(1)}` })}
               </Text>
             )}
           </View>
@@ -1406,10 +1588,6 @@ export function AgentChatScreen() {
             <Text style={styles.attachToolbarIcon}>📍</Text>
             <Text style={styles.attachToolbarLabel}>{t({ en: 'GPS', zh: '位置' })}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleDeviceClipboard}>
-            <Text style={styles.attachToolbarIcon}>📋</Text>
-            <Text style={styles.attachToolbarLabel}>{t({ en: 'Clipboard', zh: '剪贴板' })}</Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -1430,11 +1608,13 @@ export function AgentChatScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
-                {isRecording
+                {duplexMode
+                  ? liveListening
+                    ? t({ en: '🛑  Stop Live Voice', zh: '🛑  停止实时语音' })
+                    : t({ en: '🎙  Start Live Voice', zh: '🎙  开始实时语音' })
+                  : isRecording
                   ? t({ en: '🔴  Tap to Send', zh: '🔴  点击发送' })
-                  : duplexMode
-                    ? t({ en: '🎙  Tap to Talk (Duplex)', zh: '🎙  点击说话（双工）' })
-                    : t({ en: '🎙  Tap to Talk', zh: '🎙  点击说话' })}
+                  : t({ en: '🎙  Tap to Talk', zh: '🎙  点击说话' })}
               </Text>
             </TouchableOpacity>
           ) : (

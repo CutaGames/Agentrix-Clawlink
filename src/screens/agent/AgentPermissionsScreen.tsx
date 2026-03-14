@@ -75,7 +75,6 @@ interface PermissionState {
   fileReadEnabled: boolean;
   fileReadScope: string;
   programLaunchEnabled: boolean;
-  clipboardEnabled: boolean;
   screenshotEnabled: boolean;
   gpsEnabled: boolean;
   gpsAccuracy: 'city' | 'district' | 'exact';
@@ -117,7 +116,6 @@ const DEFAULT_PERMISSIONS: PermissionState = {
   fileReadEnabled: true,
   fileReadScope: '~/Documents',
   programLaunchEnabled: true,
-  clipboardEnabled: true,
   screenshotEnabled: true,
   gpsEnabled: true,
   gpsAccuracy: 'city',
@@ -692,12 +690,6 @@ export function AgentPermissionsScreen() {
           label={t({ en: '🖥 Launch Programs', zh: '🖥 启动程序' })}
           value={perms.programLaunchEnabled}
           onChange={(v) => updatePerm('programLaunchEnabled', v)}
-        />
-        <View style={styles.divider} />
-        <PermRow
-          label={t({ en: '📋 Clipboard Read/Write', zh: '📋 剪贴板读写' })}
-          value={perms.clipboardEnabled}
-          onChange={(v) => updatePerm('clipboardEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow

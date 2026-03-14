@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Agentrix",
-    "slug": "agentrix-claw",
+    "slug": "agentrix-mobile",
     "scheme": "agentrix",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -20,9 +20,6 @@
       "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
         "CFBundleDisplayName": "Agentrix",
-        "NSCameraUsageDescription": "Allow Agentrix to access your camera for visual AI context.",
-        "NSMicrophoneUsageDescription": "Allow Agentrix to access your microphone for voice commands.",
-        "NSPhotoLibraryUsageDescription": "Allow Agentrix to access your photo library for visual AI context.",
         "LSApplicationQueriesSchemes": [
           "metamask",
           "okx",
@@ -71,16 +68,8 @@
     "web": {
       "favicon": "./frontend/public/brand/agentrix-logo.png"
     },
-    "newArchEnabled": false,
-    "autolinking": {
-      "exclude": [
-        "react-native-reanimated",
-        "react-native-worklets"
-      ]
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+      "newArchEnabled": true,
+    "runtimeVersion": "1.1.0",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -92,7 +81,7 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": false,
+            "newArchEnabled": true,
             "ndkVersion": "27.0.12077973"
           }
         }
@@ -107,6 +96,18 @@
       ],
       "expo-updates",
       "expo-image-picker",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Agentrix to use the microphone for realtime voice conversations.",
+          "speechRecognitionPermission": "Allow Agentrix to use speech recognition for realtime conversations.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts",
+            "com.google.android.as"
+          ]
+        }
+      ],
       [
         "expo-location",
         {
