@@ -10,12 +10,12 @@ permissions:
   checks: write
 
 jobs:
-  # 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-  # JOB 1 鈥?Build debug APK (fast, auto-signed, for device testing)
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 1 — Build debug APK (fast, auto-signed, for device testing)
   #          + release APK (for the download link)
-  # 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+  # ═══════════════════════════════════════════════════════════════════
   build:
-    name: 馃敤 Build APK
+    name: 🔨 Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 75
     outputs:
@@ -59,20 +59,20 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      - name: Verify native animation packages
-        run: |
-          node -e "const p=require('./package.json'); const deps={...(p.dependencies||{}), ...(p.devDependencies||{})}; if (!deps['react-native-reanimated'] || !deps['react-native-worklets']) { console.error('[ci] Expected react-native-reanimated and react-native-worklets to be installed'); process.exit(1) }"
+        - name: Verify native animation packages
+          run: |
+            node -e "const p=require('./package.json'); const deps={...(p.dependencies||{}), ...(p.devDependencies||{})}; if (!deps['react-native-reanimated'] || !deps['react-native-worklets']) { console.error('[ci] Expected react-native-reanimated and react-native-worklets to be installed'); process.exit(1) }"
 
       # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
       # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
-      # this !! null-assertion. Patch is idempotent 鈥?won't double-apply if !! already present.
+      # this !! null-assertion. Patch is idempotent — won't double-apply if !! already present.
       - name: Patch expo-image for Kotlin 2.x compatibility
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
           filepath = 'node_modules/expo-image/android/src/main/java/expo/modules/image/okhttp/GlideUrlWrapperLoader.kt'
           if not os.path.exists(filepath):
-              print(f"[skip] {filepath} not found 鈥?expo-image may have been updated")
+              print(f"[skip] {filepath} not found — expo-image may have been updated")
               sys.exit(0)
           with open(filepath, 'r') as f:
               content = f.read()
@@ -103,7 +103,7 @@ jobs:
 
       # Inject signingConfigs into build.gradle if signing secrets exist.
       # This is needed because expo prebuild regenerates build.gradle and would wipe any manual edits.
-      - name: Patch build.gradle 鈥?add signingConfig (only when keystore is available)
+      - name: Patch build.gradle — add signingConfig (only when keystore is available)
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -111,7 +111,7 @@ jobs:
           import os, re
           keystore_b64 = os.environ.get('KEYSTORE_B64', '')
           if not keystore_b64:
-              print('[skip] No keystore secret 鈥?skipping signingConfig patch')
+              print('[skip] No keystore secret — skipping signingConfig patch')
               exit(0)
           filepath = 'android/app/build.gradle'
           if not os.path.exists(filepath):
@@ -145,9 +145,9 @@ jobs:
 
       # Restrict C++ builds to arm64-v8a + x86_64 only.
       # Drops legacy 32-bit targets (armeabi-v7a, x86) that almost no modern device needs.
-      # Cuts CMake compilation time from ~20 min 鈫?~8 min (4 ABIs 鈫?2).
+      # Cuts CMake compilation time from ~20 min → ~8 min (4 ABIs → 2).
       # Idempotent: skips if ndk block already present.
-      - name: Patch android/app/build.gradle 鈥?restrict ABI targets
+      - name: Patch android/app/build.gradle — restrict ABI targets
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
@@ -158,7 +158,7 @@ jobs:
           with open(filepath) as f:
               content = f.read()
           if 'abiFilters' in content:
-              print('[ok] abiFilters already present 鈥?skipping')
+              print('[ok] abiFilters already present — skipping')
               sys.exit(0)
           # Insert ndk block as first line inside defaultConfig
           fixed = re.sub(
@@ -167,7 +167,7 @@ jobs:
               content, count=1
           )
           if fixed == content:
-              print('[warn] Could not find defaultConfig block 鈥?skipping')
+              print('[warn] Could not find defaultConfig block — skipping')
           else:
               with open(filepath, 'w') as f:
                   f.write(fixed)
@@ -177,7 +177,7 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x android/gradlew
 
-      # Free disk space 鈥?GitHub runners only have ~14 GB free.
+      # Free disk space — GitHub runners only have ~14 GB free.
       # Remove large pre-installed SDKs we don't need to ensure Gradle has room.
       - name: Free disk space
         run: |
@@ -194,8 +194,8 @@ jobs:
           key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      # 鈹€鈹€ Keystore signing (requires 4 GitHub Secrets to be set) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-      # To enable: go to Settings 鈫?Secrets 鈫?Actions and add:
+      # ── Keystore signing (requires 4 GitHub Secrets to be set) ──────────────
+      # To enable: go to Settings → Secrets → Actions and add:
       #   ANDROID_KEYSTORE_BASE64  (base64 of your .keystore file)
       #   KEY_ALIAS                (key alias used when creating the keystore)
       #   KEY_PASSWORD             (key password)
@@ -218,12 +218,12 @@ jobs:
               echo "MYAPP_UPLOAD_STORE_PASSWORD=${STORE_PASSWORD}"
               echo "MYAPP_UPLOAD_KEY_PASSWORD=${KEY_PASSWORD}"
             } >> android/gradle.properties
-            echo "[ci] Keystore decoded 鈥?APK will be signed"
+            echo "[ci] Keystore decoded — APK will be signed"
           else
-            echo "[ci] No ANDROID_KEYSTORE_BASE64 secret 鈥?building unsigned APK"
+            echo "[ci] No ANDROID_KEYSTORE_BASE64 secret — building unsigned APK"
           fi
 
-      # Build a single release APK 鈥?used for both UI tests and the download link.
+      # Build a single release APK — used for both UI tests and the download link.
       # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
       # Unsigned release APK installs fine on any emulator or test device.
       - name: Build APK
@@ -251,7 +251,7 @@ jobs:
           cp "$APK" artifacts/ClawLink-build-${{ github.run_number }}.apk
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
 
-      # 鈹€鈹€ Deploy + Release BEFORE artifact upload 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+      # ── Deploy + Release BEFORE artifact upload ──────────────────
       # Artifact upload may hit GitHub storage quota and crash the job,
       # so we do the critical deploy/release steps first.
 
@@ -287,16 +287,16 @@ jobs:
             "cp ${DEST}/clawlink-agent.apk ${DEST}/clawlink-agent.apk.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
           scp $OPTS "$APK" "ubuntu@18.139.157.116:${DEST}/clawlink-agent.apk"
           scp $OPTS "$APK" "ubuntu@18.139.157.116:${DEST}/ClawLink-latest.apk"
-          echo "鉁?Deployed ClawLink build-${{ github.run_number }} to server"
+          echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: build-${{ github.run_number }}
-          name: "鉁?ClawLink Build #${{ github.run_number }}"
+          name: "✅ ClawLink Build #${{ github.run_number }}"
           body: |
-            ## ClawLink APK 鈥?Build #${{ github.run_number }}
+            ## ClawLink APK — Build #${{ github.run_number }}
 
             | | |
             |---|---|
@@ -304,16 +304,16 @@ jobs:
             | Branch | `${{ github.ref_name }}` |
             | Author | ${{ github.actor }} |
 
-            ### 馃摜 Install on Android
+            ### 📥 Install on Android
             1. Download **ClawLink-build-${{ github.run_number }}.apk** below
-            2. On your Android device: **Settings 鈫?Security 鈫?Install unknown apps** 鈫?enable for your browser
+            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
             3. Open the APK and tap Install
           files: artifacts/ClawLink-build-${{ github.run_number }}.apk
           fail_on_unmatched_files: false
           draft: false
           prerelease: false
 
-      # 鈹€鈹€ Artifact upload (optional 鈥?only for UI test job) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+      # ── Artifact upload (optional — only for UI test job) ────────
       # Storage quota may be exceeded; this step must not block deploy/release.
       # GitHub recalculates quota every 6-12h, so aggressive cleanup is needed.
       - name: Delete old artifacts (free quota)
@@ -370,11 +370,11 @@ jobs:
             echo "[ci] Artifact upload failed or was skipped; UI test job will be skipped"
           fi
 
-  # 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-  # JOB 2 鈥?Spin up Android emulator, install APK, run Maestro UI tests
-  # 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 2 — Spin up Android emulator, install APK, run Maestro UI tests
+  # ═══════════════════════════════════════════════════════════════════
   ui-test:
-    name: 馃 UI Automation (Maestro)
+    name: 🤖 UI Automation (Maestro)
     runs-on: ubuntu-latest     # Linux runner (10x cheaper than macOS)
     needs: build
     if: ${{ always() && needs.build.outputs.artifact-ready == 'true' }}
@@ -409,7 +409,7 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          # ubuntu-latest is x86_64 鈥?must use x86_64 AVD (QEMU2 cannot emulate arm64-v8a on x86_64 host)
+          # ubuntu-latest is x86_64 — must use x86_64 AVD (QEMU2 cannot emulate arm64-v8a on x86_64 host)
           key: avd-api30-x86_64-${{ runner.os }}
 
       - name: Create AVD (if not cached)
@@ -434,7 +434,7 @@ jobs:
           adb wait-for-device
           adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
 
-          # 鈹€鈹€ Launch smoke test: detect immediate crash (flash-quit on tap) 鈹€鈹€鈹€鈹€鈹€鈹€
+          # ── Launch smoke test: detect immediate crash (flash-quit on tap) ──────
           # Clear crash log buffer, launch app, wait 8 seconds, then check for FATAL
           echo "=== Launch smoke test (crash detection) ==="
           PACKAGE="app.clawlink.mobile"
@@ -447,15 +447,15 @@ jobs:
             > maestro-output/runtime.log 2>&1 || true
           # Check for fatal crash
           if grep -qE "FATAL EXCEPTION|Process.*${PACKAGE}.*died|signal (6|11)" maestro-output/crash.log maestro-output/runtime.log 2>/dev/null; then
-            echo "鉂?APP CRASHED ON LAUNCH (flash-crash detected)"
-            echo "鈹€鈹€ crash.log 鈹€鈹€"
+            echo "❌ APP CRASHED ON LAUNCH (flash-crash detected)"
+            echo "── crash.log ──"
             cat maestro-output/crash.log
-            echo "鈹€鈹€ runtime.log 鈹€鈹€"
+            echo "── runtime.log ──"
             cat maestro-output/runtime.log
             echo "LAUNCH_CRASH=true" >> $GITHUB_ENV
-            # Don't fail here 鈥?continue to upload logs, then fail at summary
+            # Don't fail here — continue to upload logs, then fail at summary
           else
-            echo "鉁?App launched without immediate crash"
+            echo "✅ App launched without immediate crash"
             echo "LAUNCH_CRASH=false" >> $GITHUB_ENV
           fi
 
@@ -465,10 +465,10 @@ jobs:
           for flow in .maestro/*.yaml; do
             echo "--- Running: $flow ---"
             if maestro test "$flow" --output "maestro-output/$(basename $flow .yaml)-report.xml" --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
-              echo "鉁?PASS: $flow"
+              echo "✅ PASS: $flow"
               PASS=$((PASS + 1))
             else
-              echo "鉂?FAIL: $flow"
+              echo "❌ FAIL: $flow"
               FAIL=$((FAIL + 1))
               ERRORS="$ERRORS\n- \`$flow\`"
             fi
@@ -486,7 +486,7 @@ jobs:
           echo "=== Results: $PASS passed, $FAIL failed ==="
           # Fail if launch crash OR test failures
           if [ "${LAUNCH_CRASH}" = "true" ]; then
-            echo "鉂?Blocked by launch crash 鈥?see crash.log in maestro-results artifact"
+            echo "❌ Blocked by launch crash — see crash.log in maestro-results artifact"
             exit 1
           fi
           [ "$FAIL" -eq 0 ] || exit 1
@@ -505,7 +505,7 @@ jobs:
           disable-animations: true
           script: ./run_tests.sh
 
-      # 鈹€鈹€ Always: upload test artifacts (screenshots + logs) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+      # ── Always: upload test artifacts (screenshots + logs) ────────────
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -514,12 +514,12 @@ jobs:
           path: maestro-output/
           retention-days: 14
 
-      # 鈹€鈹€ On failure: write detailed error report to job summary 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+      # ── On failure: write detailed error report to job summary ─────────
       - name: Failure report
         if: failure()
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
-          ## 鉂?UI Test Failed 鈥?Build #${{ github.run_number }}
+          ## ❌ UI Test Failed — Build #${{ github.run_number }}
 
           **Commit:** `${{ github.sha }}`
           **Branch:** `${{ github.ref_name }}`
@@ -531,8 +531,8 @@ jobs:
           ### Results
           | Status | Count |
           |--------|-------|
-          | 鉁?Passed | ${{ env.MAESTRO_PASS }} |
-          | 鉂?Failed | ${{ env.MAESTRO_FAIL }} |
+          | ✅ Passed | ${{ env.MAESTRO_PASS }} |
+          | ❌ Failed | ${{ env.MAESTRO_FAIL }} |
 
           ### Artifacts
           Screenshots and logs are attached to this workflow run under
@@ -548,17 +548,17 @@ jobs:
           ```
           SUMMARY
 
-      # 鈹€鈹€ On success: write success summary 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+      # ── On success: write success summary ──────────────────────────────
       - name: Success summary
         if: success()
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
-          ## 鉁?All UI Tests Passed 鈥?Build #${{ github.run_number }}
+          ## ✅ All UI Tests Passed — Build #${{ github.run_number }}
 
           | Status | Count |
           |--------|-------|
-          | 鉁?Passed | ${{ env.MAESTRO_PASS }} |
-          | 鉂?Failed | 0 |
+          | ✅ Passed | ${{ env.MAESTRO_PASS }} |
+          | ❌ Failed | 0 |
 
           Screenshots captured during tests are in the **maestro-results** artifact.
           SUMMARY

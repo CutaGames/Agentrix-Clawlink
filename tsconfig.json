@@ -9,5 +9,12 @@
     "skipLibCheck": true,
     "strict": false
   },
-  "extends": "expo/tsconfig.base"
+  "extends": "expo/tsconfig.base",
+  "exclude": [
+    "node_modules",
+    "desktop/src-tauri/target",
+    "desktop/dist",
+    "frontend/.next",
+    "backend/dist"
+  ]
 }
