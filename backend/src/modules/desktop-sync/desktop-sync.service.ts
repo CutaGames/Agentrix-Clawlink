@@ -1,18 +1,34 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../../entities/notification.entity';
-import { WebSocketGateway } from '../websocket/websocket.gateway';
 import {
+  DesktopSession,
+  DesktopTask,
+  DesktopApproval,
+  DesktopCommand,
+} from '../../entities/desktop-sync.entity';
+import {
+  ClaimDesktopCommandDto,
+  CompleteDesktopCommandDto,
+  CreateDesktopCommandDto,
   CreateDesktopApprovalDto,
+  DesktopCommandStatus,
+  DesktopCommandKind,
   DesktopApprovalDecision,
   DesktopApprovalRiskLevel,
   DesktopHeartbeatDto,
+  DesktopSessionDeviceType,
+  DesktopSessionMessageDto,
   DesktopTaskStatus,
   DesktopTimelineStatus,
   DesktopTimelineEntryDto,
   RespondDesktopApprovalDto,
+  UpsertDesktopSessionDto,
   UpsertDesktopTaskDto,
 } from './dto/desktop-sync.dto';
+import { emitDesktopSyncEvent } from './desktop-sync.events';
 
 interface DesktopDeviceRecord {
   deviceId: string;
@@ -22,50 +38,22 @@ interface DesktopDeviceRecord {
   lastSeenAt: string;
 }
 
-interface DesktopTaskRecord {
-  taskId: string;
-  deviceId: string;
-  sessionId?: string;
-  title: string;
-  summary?: string;
-  status: DesktopTaskStatus;
-  startedAt: number;
-  finishedAt?: number;
-  updatedAt: string;
-  timeline: DesktopTimelineEntryDto[];
-  context?: UpsertDesktopTaskDto['context'];
-}
-
-type DesktopApprovalStatus = 'pending' | 'approved' | 'rejected';
-
-interface DesktopApprovalRecord {
-  approvalId: string;
-  deviceId: string;
-  taskId: string;
-  timelineEntryId?: string;
-  title: string;
-  description: string;
-  riskLevel: DesktopApprovalRiskLevel;
-  sessionKey?: string;
-  status: DesktopApprovalStatus;
-  requestedAt: string;
-  respondedAt?: string;
-  responseDeviceId?: string;
-  rememberForSession: boolean;
-  context?: CreateDesktopApprovalDto['context'];
-  metadata?: Record<string, unknown>;
-}
-
 @Injectable()
 export class DesktopSyncService {
   private readonly logger = new Logger(DesktopSyncService.name);
+  // Devices are transient presence data — keep in memory
   private readonly devices = new Map<string, Map<string, DesktopDeviceRecord>>();
-  private readonly tasks = new Map<string, Map<string, DesktopTaskRecord>>();
-  private readonly approvals = new Map<string, Map<string, DesktopApprovalRecord>>();
 
   constructor(
     private readonly notificationService: NotificationService,
-    private readonly wsGateway: WebSocketGateway,
+    @InjectRepository(DesktopSession)
+    private readonly sessionRepo: Repository<DesktopSession>,
+    @InjectRepository(DesktopTask)
+    private readonly taskRepo: Repository<DesktopTask>,
+    @InjectRepository(DesktopApproval)
+    private readonly approvalRepo: Repository<DesktopApproval>,
+    @InjectRepository(DesktopCommand)
+    private readonly commandRepo: Repository<DesktopCommand>,
   ) {}
 
   async heartbeat(userId: string, dto: DesktopHeartbeatDto) {
@@ -78,7 +66,7 @@ export class DesktopSyncService {
     };
 
     this.userMap(this.devices, userId).set(dto.deviceId, next);
-    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:presence', next);
+    emitDesktopSyncEvent(userId, 'desktop-sync:presence', next);
 
     return {
       ok: true,
@@ -88,60 +76,60 @@ export class DesktopSyncService {
   }
 
   async upsertTask(userId: string, dto: UpsertDesktopTaskDto) {
-    const existing = this.userMap(this.tasks, userId).get(dto.taskId);
-    const record: DesktopTaskRecord = {
-      taskId: dto.taskId,
-      deviceId: dto.deviceId,
-      sessionId: dto.sessionId,
-      title: dto.title,
-      summary: dto.summary,
-      status: dto.status,
-      startedAt: dto.startedAt ?? existing?.startedAt ?? Date.now(),
-      finishedAt: dto.finishedAt,
-      updatedAt: new Date().toISOString(),
-      timeline: this.normalizeTimeline(dto.timeline ?? existing?.timeline ?? []),
-      context: dto.context,
-    };
+    let entity = await this.taskRepo.findOne({ where: { userId, taskId: dto.taskId } });
+    if (!entity) {
+      entity = this.taskRepo.create({ userId, taskId: dto.taskId });
+    }
 
-    this.userMap(this.tasks, userId).set(dto.taskId, record);
-    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:task', record);
+    entity.deviceId = dto.deviceId;
+    entity.sessionId = dto.sessionId;
+    entity.title = dto.title;
+    entity.summary = dto.summary;
+    entity.status = dto.status as any;
+    entity.startedAt = dto.startedAt ?? entity.startedAt ?? Date.now();
+    entity.finishedAt = dto.finishedAt;
+    entity.timeline = this.normalizeTimeline(dto.timeline ?? entity.timeline ?? []);
+    entity.context = this.toJsonRecord(dto.context);
 
-    return {
-      ok: true,
-      task: record,
-    };
+    entity = await this.taskRepo.save(entity);
+
+    const record = this.taskEntityToRecord(entity);
+    emitDesktopSyncEvent(userId, 'desktop-sync:task', record);
+
+    return { ok: true, task: record };
   }
 
   async createApproval(userId: string, dto: CreateDesktopApprovalDto) {
-    const approvalId = crypto.randomUUID();
-    const record: DesktopApprovalRecord = {
-      approvalId,
-      deviceId: dto.deviceId,
-      taskId: dto.taskId,
-      timelineEntryId: dto.timelineEntryId,
-      title: dto.title,
-      description: dto.description,
-      riskLevel: dto.riskLevel,
-      sessionKey: dto.sessionKey,
-      status: 'pending',
-      requestedAt: new Date().toISOString(),
-      rememberForSession: false,
-      context: dto.context,
-    };
+    const entity = this.approvalRepo.create();
+    entity.userId = userId;
+    entity.deviceId = dto.deviceId;
+    entity.taskId = dto.taskId;
+    entity.timelineEntryId = dto.timelineEntryId;
+    entity.title = dto.title;
+    entity.description = dto.description;
+    entity.riskLevel = dto.riskLevel;
+    entity.sessionKey = dto.sessionKey;
+    entity.status = 'pending';
+    entity.rememberForSession = false;
+    entity.context = this.toJsonRecord(dto.context);
 
-    this.userMap(this.approvals, userId).set(approvalId, record);
-    this.bumpTaskStatusForApproval(
+    const saved = await this.approvalRepo.save(entity);
+    const approvalId = saved.id;
+
+    await this.bumpTaskStatusForApproval(
       userId,
       dto.taskId,
       dto.timelineEntryId,
       DesktopTimelineStatus.WAITING_APPROVAL,
     );
-    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:approval', record);
 
-    const message = this.formatApprovalMessage(record);
+    const record = this.approvalEntityToRecord(saved);
+    emitDesktopSyncEvent(userId, 'desktop-sync:approval', record);
+
+    const message = this.formatApprovalMessage(saved);
     await this.notificationService.createNotification(userId, {
       type: NotificationType.SYSTEM,
-      title: `Desktop approval required · ${record.riskLevel}`,
+      title: `Desktop approval required · ${saved.riskLevel}`,
       message,
     });
     await this.notificationService.sendPushNotification(userId, {
@@ -156,67 +144,207 @@ export class DesktopSyncService {
       channelId: 'developer',
     });
 
-    return {
-      ok: true,
-      approval: record,
-    };
+    return { ok: true, approval: record };
   }
 
   async respondToApproval(userId: string, approvalId: string, dto: RespondDesktopApprovalDto) {
-    const approval = this.userMap(this.approvals, userId).get(approvalId);
-    if (!approval) {
+    const entity = await this.approvalRepo.findOne({ where: { userId, id: approvalId } });
+    if (!entity) {
       throw new NotFoundException('Approval request not found');
     }
 
-    approval.status = dto.decision === DesktopApprovalDecision.APPROVED ? 'approved' : 'rejected';
-    approval.respondedAt = new Date().toISOString();
-    approval.responseDeviceId = dto.deviceId;
-    approval.rememberForSession = Boolean(dto.rememberForSession);
-    approval.metadata = dto.metadata;
+    entity.status = dto.decision === DesktopApprovalDecision.APPROVED ? 'approved' : 'rejected';
+    entity.respondedAt = new Date();
+    entity.responseDeviceId = dto.deviceId;
+    entity.rememberForSession = Boolean(dto.rememberForSession);
+    entity.metadata = dto.metadata;
 
-    this.bumpTaskStatusForApproval(
+    await this.approvalRepo.save(entity);
+
+    await this.bumpTaskStatusForApproval(
       userId,
-      approval.taskId,
-      approval.timelineEntryId,
+      entity.taskId,
+      entity.timelineEntryId,
       dto.decision === DesktopApprovalDecision.APPROVED
         ? DesktopTimelineStatus.RUNNING
         : DesktopTimelineStatus.REJECTED,
     );
 
-    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:approval-response', approval);
+    const record = this.approvalEntityToRecord(entity);
+    emitDesktopSyncEvent(userId, 'desktop-sync:approval-response', record);
 
-    return {
-      ok: true,
-      approval,
-    };
+    return { ok: true, approval: record };
   }
 
-  getState(userId: string) {
+  async getState(userId: string) {
     const devices = Array.from(this.userMap(this.devices, userId).values()).sort((a, b) =>
       b.lastSeenAt.localeCompare(a.lastSeenAt),
     );
-    const tasks = Array.from(this.userMap(this.tasks, userId).values()).sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt),
-    );
-    const approvals = Array.from(this.userMap(this.approvals, userId).values()).sort((a, b) =>
-      b.requestedAt.localeCompare(a.requestedAt),
-    );
+
+    const taskEntities = await this.taskRepo.find({ where: { userId }, order: { updatedAt: 'DESC' }, take: 100 });
+    const tasks = taskEntities.map((e) => this.taskEntityToRecord(e));
+
+    const approvalEntities = await this.approvalRepo.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 100 });
+    const approvals = approvalEntities.map((e) => this.approvalEntityToRecord(e));
+
+    const sessions = await this.listSessions(userId);
+    const commands = await this.listCommands(userId);
 
     return {
       devices,
       tasks,
       approvals,
+      sessions,
+      commands,
       pendingApprovalCount: approvals.filter((item) => item.status === 'pending').length,
       serverTime: new Date().toISOString(),
     };
   }
 
-  getPendingApprovals(userId: string, deviceId?: string) {
-    return Array.from(this.userMap(this.approvals, userId).values())
-      .filter((item) => item.status === 'pending')
-      .filter((item) => !deviceId || item.deviceId === deviceId)
-      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  async getPendingApprovals(userId: string, deviceId?: string) {
+    const qb = this.approvalRepo.createQueryBuilder('a')
+      .where('a.userId = :userId', { userId })
+      .andWhere('a.status = :status', { status: 'pending' })
+      .orderBy('a.createdAt', 'DESC');
+
+    if (deviceId) {
+      qb.andWhere('a.deviceId = :deviceId', { deviceId });
+    }
+
+    const entities = await qb.getMany();
+    return entities.map((e) => this.approvalEntityToRecord(e));
   }
+
+  async upsertSession(userId: string, dto: UpsertDesktopSessionDto) {
+    let entity = await this.sessionRepo.findOne({ where: { userId, sessionId: dto.sessionId } });
+    if (!entity) {
+      entity = this.sessionRepo.create({ userId, sessionId: dto.sessionId });
+    }
+
+    entity.title = dto.title;
+    entity.messageCount = dto.messages.length;
+    entity.deviceId = dto.deviceId;
+    entity.deviceType = dto.deviceType;
+    entity.messages = dto.messages.slice(-80);
+
+    entity = await this.sessionRepo.save(entity);
+
+    const meta = this.sessionEntityToMeta(entity);
+    emitDesktopSyncEvent(userId, 'session:updated', {
+      sessionId: entity.sessionId,
+      messages: entity.messages,
+      meta,
+    });
+
+    return { ok: true, session: entity };
+  }
+
+  async listSessions(userId: string) {
+    const entities = await this.sessionRepo.find({
+      where: { userId },
+      order: { updatedAt: 'DESC' },
+      take: 50,
+      select: ['id', 'sessionId', 'title', 'messageCount', 'updatedAt', 'deviceId', 'deviceType'],
+    });
+    return entities.map((e) => this.sessionEntityToMeta(e));
+  }
+
+  async getSession(userId: string, sessionId: string) {
+    const entity = await this.sessionRepo.findOne({ where: { userId, sessionId } });
+    if (!entity) {
+      throw new NotFoundException('Desktop session not found');
+    }
+
+    return {
+      sessionId: entity.sessionId,
+      messages: entity.messages,
+      meta: this.sessionEntityToMeta(entity),
+    };
+  }
+
+  async createCommand(userId: string, dto: CreateDesktopCommandDto) {
+    const entity = this.commandRepo.create({
+      userId,
+      title: dto.title,
+      kind: dto.kind,
+      status: DesktopCommandStatus.PENDING,
+      targetDeviceId: dto.targetDeviceId,
+      requesterDeviceId: dto.requesterDeviceId,
+      sessionId: dto.sessionId,
+      payload: dto.payload,
+    });
+
+    const saved = await this.commandRepo.save(entity);
+    const record = this.commandEntityToRecord(saved);
+    emitDesktopSyncEvent(userId, 'desktop-sync:command', record);
+
+    return { ok: true, command: record };
+  }
+
+  async listCommands(userId: string, deviceId?: string) {
+    const qb = this.commandRepo.createQueryBuilder('c')
+      .where('c.userId = :userId', { userId })
+      .orderBy('c.updatedAt', 'DESC')
+      .take(60);
+
+    if (deviceId) {
+      qb.andWhere('(c.targetDeviceId IS NULL OR c.targetDeviceId = :deviceId)', { deviceId });
+    }
+
+    const entities = await qb.getMany();
+    return entities.map((e) => this.commandEntityToRecord(e));
+  }
+
+  async getPendingCommands(userId: string, deviceId?: string) {
+    const all = await this.listCommands(userId, deviceId);
+    return all.filter((command) => command.status === DesktopCommandStatus.PENDING);
+  }
+
+  async claimCommand(userId: string, commandId: string, dto: ClaimDesktopCommandDto) {
+    const entity = await this.commandRepo.findOne({ where: { userId, id: commandId } });
+    if (!entity) {
+      throw new NotFoundException('Desktop command not found');
+    }
+
+    if (entity.targetDeviceId && entity.targetDeviceId !== dto.deviceId) {
+      throw new NotFoundException('Desktop command is not targeted to this device');
+    }
+
+    if (entity.status !== DesktopCommandStatus.PENDING) {
+      return { ok: true, command: this.commandEntityToRecord(entity) };
+    }
+
+    entity.status = DesktopCommandStatus.CLAIMED;
+    entity.claimedAt = new Date();
+    entity.claimedByDeviceId = dto.deviceId;
+    await this.commandRepo.save(entity);
+
+    const record = this.commandEntityToRecord(entity);
+    emitDesktopSyncEvent(userId, 'desktop-sync:command-updated', record);
+
+    return { ok: true, command: record };
+  }
+
+  async completeCommand(userId: string, commandId: string, dto: CompleteDesktopCommandDto) {
+    const entity = await this.commandRepo.findOne({ where: { userId, id: commandId } });
+    if (!entity) {
+      throw new NotFoundException('Desktop command not found');
+    }
+
+    entity.status = dto.status;
+    entity.completedAt = new Date();
+    entity.claimedByDeviceId = entity.claimedByDeviceId ?? dto.deviceId;
+    entity.result = dto.result;
+    entity.error = dto.error;
+    await this.commandRepo.save(entity);
+
+    const record = this.commandEntityToRecord(entity);
+    emitDesktopSyncEvent(userId, 'desktop-sync:command-updated', record);
+
+    return { ok: true, command: record };
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
 
   private userMap<T>(root: Map<string, Map<string, T>>, userId: string) {
     if (!root.has(userId)) {
@@ -231,37 +359,110 @@ export class DesktopSyncService {
       .slice(-40);
   }
 
-  private bumpTaskStatusForApproval(
+  private toJsonRecord(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  }
+
+  private async bumpTaskStatusForApproval(
     userId: string,
     taskId: string,
     timelineEntryId: string | undefined,
     timelineStatus: DesktopTimelineEntryDto['status'],
   ) {
-    const task = this.userMap(this.tasks, userId).get(taskId);
-    if (!task) {
-      return;
-    }
+    const entity = await this.taskRepo.findOne({ where: { userId, taskId } });
+    if (!entity) return;
 
     if (timelineEntryId) {
-      task.timeline = task.timeline.map((entry) =>
+      entity.timeline = (entity.timeline || []).map((entry: any) =>
         entry.id === timelineEntryId ? { ...entry, status: timelineStatus } : entry,
       );
     }
 
     if (timelineStatus === 'waiting-approval') {
-      task.status = DesktopTaskStatus.NEED_APPROVE;
+      entity.status = DesktopTaskStatus.NEED_APPROVE as any;
     } else if (timelineStatus === 'running') {
-      task.status = DesktopTaskStatus.EXECUTING;
+      entity.status = DesktopTaskStatus.EXECUTING as any;
     } else if (timelineStatus === 'rejected') {
-      task.status = DesktopTaskStatus.FAILED;
+      entity.status = DesktopTaskStatus.FAILED as any;
     }
 
-    task.updatedAt = new Date().toISOString();
-    // this.wsGateway.sendDesktopSyncEvent(userId, 'desktop-sync:task', task);
+    await this.taskRepo.save(entity);
+    emitDesktopSyncEvent(userId, 'desktop-sync:task', this.taskEntityToRecord(entity));
   }
 
-  private formatApprovalMessage(approval: DesktopApprovalRecord) {
-    const deviceLabel = approval.context?.workspaceHint || approval.deviceId;
+  private formatApprovalMessage(approval: DesktopApproval) {
+    const deviceLabel = (approval.context as any)?.workspaceHint || approval.deviceId;
     return `${approval.title} on ${deviceLabel}. ${approval.description.slice(0, 120)}`;
+  }
+
+  private sessionEntityToMeta(e: DesktopSession) {
+    return {
+      sessionId: e.sessionId,
+      title: e.title,
+      messageCount: e.messageCount,
+      updatedAt: e.updatedAt?.getTime?.() ?? Date.now(),
+      deviceId: e.deviceId,
+      deviceType: e.deviceType,
+    };
+  }
+
+  private taskEntityToRecord(e: DesktopTask) {
+    return {
+      taskId: e.taskId,
+      deviceId: e.deviceId,
+      sessionId: e.sessionId,
+      title: e.title,
+      summary: e.summary,
+      status: e.status,
+      startedAt: e.startedAt ? Number(e.startedAt) : undefined,
+      finishedAt: e.finishedAt ? Number(e.finishedAt) : undefined,
+      updatedAt: e.updatedAt?.toISOString?.() ?? new Date().toISOString(),
+      timeline: e.timeline || [],
+      context: e.context,
+    };
+  }
+
+  private approvalEntityToRecord(e: DesktopApproval) {
+    return {
+      approvalId: e.id,
+      deviceId: e.deviceId,
+      taskId: e.taskId,
+      timelineEntryId: e.timelineEntryId,
+      title: e.title,
+      description: e.description,
+      riskLevel: e.riskLevel,
+      sessionKey: e.sessionKey,
+      status: e.status,
+      requestedAt: e.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      respondedAt: e.respondedAt?.toISOString?.(),
+      responseDeviceId: e.responseDeviceId,
+      rememberForSession: e.rememberForSession,
+      context: e.context,
+      metadata: e.metadata,
+    };
+  }
+
+  private commandEntityToRecord(e: DesktopCommand) {
+    return {
+      commandId: e.id,
+      title: e.title,
+      kind: e.kind,
+      status: e.status,
+      targetDeviceId: e.targetDeviceId,
+      requesterDeviceId: e.requesterDeviceId,
+      sessionId: e.sessionId,
+      payload: e.payload,
+      createdAt: e.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      updatedAt: e.updatedAt?.toISOString?.() ?? new Date().toISOString(),
+      claimedAt: e.claimedAt?.toISOString?.(),
+      claimedByDeviceId: e.claimedByDeviceId,
+      completedAt: e.completedAt?.toISOString?.(),
+      result: e.result,
+      error: e.error,
+    };
   }
 }

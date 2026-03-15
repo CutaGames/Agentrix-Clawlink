@@ -22,7 +22,12 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { SocialService, CreatePostDto, CreateCommentDto, GetFeedQuery } from './social.service';
-import { SocialPostType } from '../../entities/social.entity';
+import {
+  SocialPostType,
+  SocialEventPlatform,
+  SocialReplyStatus,
+  ReplyStrategy,
+} from '../../entities/social.entity';
 
 @ApiTags('social')
 @Controller('social')
@@ -160,5 +165,115 @@ export class SocialController {
   async isFollowing(@Request() req: any, @Param('userId') userId: string) {
     const following = await this.socialService.isFollowing(req.user.id, userId);
     return { following };
+  }
+
+  // ===== Agent Reputation =====
+
+  @Get('users/:userId/reputation')
+  @Public()
+  @ApiOperation({ summary: 'Get agent reputation stats for a user' })
+  async getAgentReputation(@Param('userId') userId: string) {
+    const reputation = await this.socialService.getAgentReputation(userId);
+    return { ok: true, data: reputation };
+  }
+
+  // ===== Agent Showcase Feed =====
+
+  @Get('showcase')
+  @ApiOperation({ summary: 'Get Agent Showcase feed (agent-generated content prioritized)' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['hot', 'latest', 'following'] })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getShowcaseFeed(
+    @Request() req: any,
+    @Query('sort') sort?: 'hot' | 'latest' | 'following',
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit?: number,
+  ) {
+    return this.socialService.getShowcaseFeed(req.user.id, { sort, page, limit });
+  }
+
+  @Post('showcase/auto')
+  @ApiOperation({ summary: 'Create an auto-generated showcase post (internal / webhook)' })
+  async createAutoPost(@Request() req: any, @Body() body: {
+    type: SocialPostType;
+    content: string;
+    referenceId?: string;
+    referenceName?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+  }) {
+    return this.socialService.createAutoPost({
+      userId: req.user.id,
+      authorName: req.user.name || req.user.email || 'Agent',
+      authorAvatar: req.user.avatar,
+      ...body,
+    });
+  }
+
+  // ===== Social Events =====
+
+  @Get('events')
+  @ApiOperation({ summary: 'Get social listener events for current user' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getEvents(
+    @Request() req: any,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
+  ) {
+    const events = await this.socialService.getSocialEvents(req.user.id, limit);
+    return { ok: true, events };
+  }
+
+  @Get('events/pending')
+  @ApiOperation({ summary: 'Get events pending reply approval' })
+  async getPendingApprovals(@Request() req: any) {
+    const events = await this.socialService.getPendingApprovals(req.user.id);
+    return { ok: true, events };
+  }
+
+  @Post('events/:eventId/approve')
+  @ApiOperation({ summary: 'Approve an agent draft reply' })
+  async approveReply(
+    @Request() req: any,
+    @Param('eventId') eventId: string,
+    @Body() body: { finalReply?: string },
+  ) {
+    return this.socialService.updateEventReply(eventId, {
+      replyStatus: SocialReplyStatus.APPROVED,
+      finalReply: body.finalReply,
+    });
+  }
+
+  @Post('events/:eventId/reject')
+  @ApiOperation({ summary: 'Reject an agent draft reply' })
+  async rejectReply(@Param('eventId') eventId: string) {
+    return this.socialService.updateEventReply(eventId, {
+      replyStatus: SocialReplyStatus.REJECTED,
+    });
+  }
+
+  // ===== Reply Config =====
+
+  @Get('reply-config')
+  @ApiOperation({ summary: 'Get social auto-reply configs for all platforms' })
+  async getReplyConfigs(@Request() req: any) {
+    const configs = await this.socialService.getReplyConfigs(req.user.id);
+    return { ok: true, configs };
+  }
+
+  @Post('reply-config/:platform')
+  @ApiOperation({ summary: 'Save auto-reply config for a platform' })
+  async saveReplyConfig(
+    @Request() req: any,
+    @Param('platform') platform: SocialEventPlatform,
+    @Body() body: {
+      strategy?: ReplyStrategy;
+      replyPrompt?: string;
+      replyLanguage?: string;
+      enabled?: boolean;
+    },
+  ) {
+    const config = await this.socialService.saveReplyConfig(req.user.id, platform, body);
+    return { ok: true, config };
   }
 }
