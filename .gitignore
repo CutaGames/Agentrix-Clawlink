@@ -46,7 +46,9 @@ frontend/.next/
 *.sh
 *.py
 *.cmd
-scripts/
+scripts/*
+!scripts/public-build/
+!scripts/public-build/**
 !backend/build.sh
 !pre-push-validate.sh
 

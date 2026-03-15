@@ -59,9 +59,9 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-        - name: Verify native animation packages
-          run: |
-            node -e "const p=require('./package.json'); const deps={...(p.dependencies||{}), ...(p.devDependencies||{})}; if (!deps['react-native-reanimated'] || !deps['react-native-worklets']) { console.error('[ci] Expected react-native-reanimated and react-native-worklets to be installed'); process.exit(1) }"
+      - name: Verify native animation packages
+        run: |
+          node -e "const p=require('./package.json'); const deps={...(p.dependencies||{}), ...(p.devDependencies||{})}; if (!deps['react-native-reanimated'] || !deps['react-native-worklets']) { console.error('[ci] Expected react-native-reanimated and react-native-worklets to be installed'); process.exit(1) }"
 
       # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
       # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
