@@ -2,19 +2,10 @@
 import { apiFetch } from './api';
 import { useAuthStore, AuthUser } from '../stores/authStore';
 import { setApiConfig, saveTokenToStorage } from './api';
-import { Platform } from 'react-native';
 
 // ========== Types ==========
 
 export type WalletProvider = 'walletconnect' | 'metamask' | 'tokenpocket' | 'okx';
-
-export interface WalletCallbackPayload {
-  address?: string;
-  signature?: string;
-  message?: string;
-  token?: string;
-  walletType?: WalletProvider;
-}
 
 interface WalletLoginResponse {
   access_token: string;
@@ -131,28 +122,4 @@ export function getWalletProviders(): { provider: WalletProvider; name: string; 
       description: 'Scan QR code with any wallet',
     },
   ];
-}
-
-export function getWalletDeepLink(provider: WalletProvider): string {
-  return WALLET_DEEP_LINKS[provider]?.[Platform.OS === 'ios' ? 'ios' : 'android'] || '';
-}
-
-export function buildWalletConnectLoginUrl(callbackUrl: string): string {
-  const baseUrl = 'https://www.agentrix.top';
-  return `${baseUrl}/auth/login?tab=wallet&mobile=1&callback=${encodeURIComponent(callbackUrl)}`;
-}
-
-export function parseWalletCallbackUrl(rawUrl: string): WalletCallbackPayload {
-  try {
-    const parsed = new URL(rawUrl);
-    return {
-      address: parsed.searchParams.get('address') || undefined,
-      signature: parsed.searchParams.get('signature') || undefined,
-      message: parsed.searchParams.get('message') || undefined,
-      token: parsed.searchParams.get('token') || undefined,
-      walletType: (parsed.searchParams.get('walletType') as WalletProvider | null) || undefined,
-    };
-  } catch {
-    return {};
-  }
 }

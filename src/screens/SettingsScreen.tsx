@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, Text, TextInput, View, Alert, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, Text, TextInput, View, Alert, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
@@ -8,6 +9,28 @@ import { useAuthStore } from '../stores/authStore';
 import { useI18n, Language } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+// ─── App Version Check ──────────────────────────────────────────
+interface AppVersionInfo {
+  latestVersion: string;
+  buildNumber: number;
+  apkUrl: string;
+  forceUpdate: boolean;
+  releaseNotes: string;
+  releasedAt: string;
+}
+
+const fetchAppVersion = () => apiFetch<AppVersionInfo>('/app/version');
+
+function compareVersions(v1: string, v2: string): number {
+  const p1 = v1.split('.').map(Number);
+  const p2 = v2.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (p1[i] || 0) - (p2[i] || 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
 
 // ─── API Key Types ─────────────────────────────────────────────
 interface ApiKey {
@@ -40,6 +63,39 @@ export const SettingsScreen: React.FC = () => {
   const customApiKeys = useSettingsStore((s) => s.customApiKeys) || {};
   const setCustomApiKey = useSettingsStore((s) => s.setCustomApiKey);
   const queryClient = useQueryClient();
+
+  // ── Current version from app.json ──
+  const currentVersion: string = ((Constants.expoConfig?.version ?? (Constants as any).manifest?.version) || '1.0.0') as string;
+
+  // ── Update check ──
+  const { data: versionInfo } = useQuery({
+    queryKey: ['app-version'],
+    queryFn: fetchAppVersion,
+    staleTime: 1000 * 60 * 30,
+    retry: 1,
+  });
+
+  const hasUpdate = versionInfo ? compareVersions(versionInfo.latestVersion, currentVersion) > 0 : false;
+
+  const handleUpdate = () => {
+    if (!versionInfo?.apkUrl) return;
+    if (Platform.OS !== 'android') {
+      Alert.alert(
+        t({ en: 'Update Available', zh: '有新版本' }),
+        t({ en: 'Please update via the App Store / TestFlight.', zh: '请通过 App Store / TestFlight 更新。' }),
+      );
+      return;
+    }
+    Alert.alert(
+      t({ en: `Update to v${versionInfo.latestVersion}`, zh: `更新至 v${versionInfo.latestVersion}` }),
+      (versionInfo.releaseNotes ? versionInfo.releaseNotes + '\n\n' : '') +
+        t({ en: 'The APK will open in your browser. Tap "Install" when prompted.', zh: '将在浏览器下载 APK，提示时请点击"安装"。' }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        { text: t({ en: 'Download & Install', zh: '下载并安装' }), onPress: () => Linking.openURL(versionInfo.apkUrl) },
+      ],
+    );
+  };
 
   // Custom model API key local state
   const [editingKey, setEditingKey] = useState<Record<string, string>>({});
@@ -330,10 +386,39 @@ export const SettingsScreen: React.FC = () => {
         <Text style={settingsStyles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
 
+      {/* ── App Version & Update ── */}
+      <TouchableOpacity
+        onPress={hasUpdate ? handleUpdate : undefined}
+        activeOpacity={hasUpdate ? 0.7 : 1}
+        style={[
+          settingsStyles.versionCard,
+          hasUpdate && settingsStyles.versionCardUpdate,
+        ]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>
+            Agentrix Claw
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+            {t({ en: 'Current', zh: '当前版本' })}: v{currentVersion}
+            {versionInfo && !hasUpdate ? `  ·  ${t({ en: 'Up to date ✓', zh: '已是最新 ✓' })}` : ''}
+          </Text>
+          {hasUpdate && versionInfo && (
+            <Text style={{ color: '#10b981', fontSize: 12, marginTop: 3, fontWeight: '600' }}>
+              {t({ en: `v${versionInfo.latestVersion} available — tap to update`, zh: `v${versionInfo.latestVersion} 可更新 — 点击升级` })}
+            </Text>
+          )}
+        </View>
+        {hasUpdate && (
+          <View style={settingsStyles.updateBadge}>
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+              {t({ en: 'UPDATE', zh: '更新' })}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
       <View style={{ height: 20 }} />
-      <Text style={{ color: colors.muted, fontSize: 11, textAlign: 'center' }}>
-        Agentrix v2.0.0
-      </Text>
     </ScrollView>
   );
 };
@@ -388,5 +473,26 @@ const settingsStyles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 16,
     fontWeight: '600',
+  },
+  versionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.cardAlt,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  versionCardUpdate: {
+    borderColor: '#10b98150',
+    backgroundColor: '#10b98108',
+  },
+  updateBadge: {
+    backgroundColor: '#ef4444',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 10,
   },
 });

@@ -17,6 +17,10 @@ export interface OpenClawInstance {
   relayToken?: string;   // set for relay-mode connections (ClawLink Agent)
   wsRelayUrl?: string;  // wss:// relay endpoint
   lastSyncAt?: string;
+  metadata?: {
+    agentAccountId?: string;
+    [key: string]: any;
+  };
 }
 
 export interface AuthUser {
@@ -97,6 +101,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           await SecureStore.deleteItemAsync('clawlink_token');
           await SecureStore.deleteItemAsync('mpc_shard_a');
+          await SecureStore.deleteItemAsync('mpc_recovery_code');
+          await SecureStore.deleteItemAsync('mpc_backup_confirmed');
         } catch (e) {
           console.warn('Failed to clear SecureStore:', e);
         }

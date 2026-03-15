@@ -11,6 +11,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, memoryApi } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { useI18n } from '../../stores/i18nStore';
 
 // ─── Types ────────────────────────────────────────────────────
 interface KnowledgeFile {
@@ -124,6 +125,7 @@ function AddKnowledgeSheet({
   loading: boolean;
   isPref?: boolean;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [content, setContent] = useState('');
   const valid = isPref ? content.trim().length > 0 : (name.trim().length > 0 && content.trim().length > 0);
@@ -131,12 +133,12 @@ function AddKnowledgeSheet({
   return (
     <View style={sheet.container}>
       <View style={sheet.header}>
-        <Text style={sheet.title}>{isPref ? 'Add Memory Preference' : 'Add Knowledge'}</Text>
+        <Text style={sheet.title}>{isPref ? t({ en: 'Add Memory Preference', zh: '添加记忆偏好' }) : t({ en: 'Add Knowledge', zh: '添加知识' })}</Text>
         <TouchableOpacity onPress={onClose}><Text style={sheet.close}>✕</Text></TouchableOpacity>
       </View>
       {!isPref && (
         <>
-          <Text style={sheet.label}>File name (e.g. product-docs.md)</Text>
+          <Text style={sheet.label}>{t({ en: 'File name (e.g. product-docs.md)', zh: '文件名（例如 product-docs.md）' })}</Text>
           <TextInput
             value={name}
             onChangeText={setName}
@@ -146,13 +148,13 @@ function AddKnowledgeSheet({
           />
         </>
       )}
-      <Text style={sheet.label}>{isPref ? 'Preference Content' : 'Content (Markdown / plain text)'}</Text>
+      <Text style={sheet.label}>{isPref ? t({ en: 'Preference Content', zh: '偏好内容' }) : t({ en: 'Content (Markdown / plain text)', zh: '内容（Markdown / 纯文本）' })}</Text>
       <TextInput
         value={content}
         onChangeText={setContent}
         multiline
         numberOfLines={8}
-        placeholder={isPref ? "I always prefer code in TypeScript..." : "Paste or type the knowledge content your agent should remember..."}
+        placeholder={isPref ? t({ en: 'I always prefer code in TypeScript...', zh: '我总是更偏好 TypeScript 代码…' }) : t({ en: 'Paste or type the knowledge content your agent should remember...', zh: '粘贴或输入希望智能体记住的知识内容…' })}
         placeholderTextColor={colors.textMuted}
         style={[sheet.input, { height: 160, textAlignVertical: 'top' }]}
       />
@@ -163,7 +165,7 @@ function AddKnowledgeSheet({
       >
         {loading
           ? <ActivityIndicator size="small" color="#fff" />
-          : <Text style={sheet.submitText}>Save to Memory</Text>
+          : <Text style={sheet.submitText}>{t({ en: 'Save to Memory', zh: '保存到记忆' })}</Text>
         }
       </TouchableOpacity>
     </View>
@@ -172,9 +174,19 @@ function AddKnowledgeSheet({
 
 // ─── Main Screen ──────────────────────────────────────────────
 export function MemoryManagementScreen() {
+  const { t, language } = useI18n();
   const [showAdd, setShowAdd] = useState(false);
   const [tab, setTab] = useState<'knowledge' | 'preferences'>('knowledge');
   const queryClient = useQueryClient();
+
+  const formatTimeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(diff / 86400000);
+    const hrs = Math.floor((diff % 86400000) / 3600000);
+    if (days > 0) return language === 'zh' ? `${days} 天前` : `${days}d ago`;
+    if (hrs > 0) return language === 'zh' ? `${hrs} 小时前` : `${hrs}h ago`;
+    return t({ en: 'just now', zh: '刚刚' });
+  };
 
   const { data: knowledgeFiles, isLoading: knowledgeLoading, refetch: refetchKnowledge, isRefetching: isRefetchingKnowledge } = useQuery({
     queryKey: ['knowledge-files'],
@@ -191,7 +203,7 @@ export function MemoryManagementScreen() {
   const deleteKnowledgeMut = useMutation({
     mutationFn: deleteKnowledge,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge-files'] }),
-    onError: (e: any) => Alert.alert('Error', e.message || 'Delete failed'),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message || t({ en: 'Delete failed', zh: '删除失败' })),
   });
 
   const createKnowledgeMut = useMutation({
@@ -201,13 +213,13 @@ export function MemoryManagementScreen() {
       queryClient.invalidateQueries({ queryKey: ['knowledge-files'] });
       setShowAdd(false);
     },
-    onError: (e: any) => Alert.alert('Error', e.message || 'Upload failed'),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message || t({ en: 'Upload failed', zh: '上传失败' })),
   });
 
   const deletePrefMut = useMutation({
     mutationFn: memoryApi.deletePreference,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['memory-preferences'] }),
-    onError: (e: any) => Alert.alert('Error', e.message || 'Delete failed'),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message || t({ en: 'Delete failed', zh: '删除失败' })),
   });
 
   const createPrefMut = useMutation({
@@ -216,20 +228,20 @@ export function MemoryManagementScreen() {
       queryClient.invalidateQueries({ queryKey: ['memory-preferences'] });
       setShowAdd(false);
     },
-    onError: (e: any) => Alert.alert('Error', e.message || 'Add preference failed'),
+    onError: (e: any) => Alert.alert(t({ en: 'Error', zh: '错误' }), e.message || t({ en: 'Add preference failed', zh: '添加偏好失败' })),
   });
 
   const confirmDeleteKnowledge = (file: KnowledgeFile) => {
-    Alert.alert('Delete Knowledge', `Remove "${file.fileName}" from memory?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteKnowledgeMut.mutate(file.id) },
+    Alert.alert(t({ en: 'Delete Knowledge', zh: '删除知识' }), t({ en: `Remove "${file.fileName}" from memory?`, zh: `要从记忆中移除“${file.fileName}”吗？` }), [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+      { text: t({ en: 'Delete', zh: '删除' }), style: 'destructive', onPress: () => deleteKnowledgeMut.mutate(file.id) },
     ]);
   };
 
   const confirmDeletePref = (pref: MemoryPreference) => {
-    Alert.alert('Delete Preference', `Remove this memory preference?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deletePrefMut.mutate(pref.id) },
+    Alert.alert(t({ en: 'Delete Preference', zh: '删除偏好' }), t({ en: 'Remove this memory preference?', zh: '要移除此条记忆偏好吗？' }), [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+      { text: t({ en: 'Delete', zh: '删除' }), style: 'destructive', onPress: () => deletePrefMut.mutate(pref.id) },
     ]);
   };
 
@@ -241,22 +253,24 @@ export function MemoryManagementScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>🧠 Memory Hub</Text>
+          <Text style={styles.headerTitle}>🧠 {t({ en: 'Memory Hub', zh: '记忆中心' })}</Text>
           <Text style={styles.headerSub}>
-            {tab === 'knowledge' ? `${files.length} files · ${files.reduce((a, f) => a + f.chunks, 0)} chunks indexed` : `${prefs.length} memory preferences`}
+            {tab === 'knowledge'
+              ? t({ en: `${files.length} files · ${files.reduce((a, f) => a + f.chunks, 0)} chunks indexed`, zh: `${files.length} 个文件 · 已索引 ${files.reduce((a, f) => a + f.chunks, 0)} 个分块` })
+              : t({ en: `${prefs.length} memory preferences`, zh: `${prefs.length} 条记忆偏好` })}
           </Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
-          <Text style={styles.addBtnText}>+ Add</Text>
+          <Text style={styles.addBtnText}>+ {t({ en: 'Add', zh: '添加' })}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.tabsRow}>
         <TouchableOpacity style={[styles.tabBtn, tab === 'knowledge' && styles.tabBtnActive]} onPress={() => setTab('knowledge')}>
-          <Text style={[styles.tabText, tab === 'knowledge' && styles.tabTextActive]}>Knowledge Base</Text>
+          <Text style={[styles.tabText, tab === 'knowledge' && styles.tabTextActive]}>{t({ en: 'Knowledge Base', zh: '知识库' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, tab === 'preferences' && styles.tabBtnActive]} onPress={() => setTab('preferences')}>
-          <Text style={[styles.tabText, tab === 'preferences' && styles.tabTextActive]}>Preferences</Text>
+          <Text style={[styles.tabText, tab === 'preferences' && styles.tabTextActive]}>{t({ en: 'Preferences', zh: '偏好' })}</Text>
         </TouchableOpacity>
       </View>
 
@@ -264,8 +278,8 @@ export function MemoryManagementScreen() {
       <View style={styles.infoBanner}>
         <Text style={styles.infoBannerText}>
           {tab === 'knowledge' 
-            ? '🔍 Knowledge files are chunked and vectorised. Your agent searches them automatically during conversations.'
-            : '💡 Memory preferences tell your agent how to behave and what to remember about you.'}
+            ? t({ en: '🔍 Knowledge files are chunked and vectorised. Your agent searches them automatically during conversations.', zh: '🔍 知识文件会被切分并向量化，智能体会在对话中自动检索它们。' })
+            : t({ en: '💡 Memory preferences tell your agent how to behave and what to remember about you.', zh: '💡 记忆偏好会告诉智能体该如何行动，以及需要记住你的哪些信息。' })}
         </Text>
       </View>
 
@@ -292,17 +306,17 @@ export function MemoryManagementScreen() {
           {knowledgeLoading ? (
             <View style={styles.loadingWrap}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.loadingText}>Loading memory...</Text>
+              <Text style={styles.loadingText}>{t({ en: 'Loading memory...', zh: '正在加载记忆…' })}</Text>
             </View>
           ) : files.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyIcon}>🧠</Text>
-              <Text style={styles.emptyTitle}>No knowledge files</Text>
+              <Text style={styles.emptyTitle}>{t({ en: 'No knowledge files', zh: '暂无知识文件' })}</Text>
               <Text style={styles.emptySub}>
-                Add documents, FAQs, or context files. Your agent will reference them automatically.
+                {t({ en: 'Add documents, FAQs, or context files. Your agent will reference them automatically.', zh: '添加文档、FAQ 或上下文文件后，智能体会自动引用它们。' })}
               </Text>
               <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowAdd(true)}>
-                <Text style={styles.primaryBtnText}>Add First Knowledge File</Text>
+                <Text style={styles.primaryBtnText}>{t({ en: 'Add First Knowledge File', zh: '添加第一个知识文件' })}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -315,7 +329,7 @@ export function MemoryManagementScreen() {
                   <View style={styles.fileInfo}>
                     <Text style={styles.fileName}>{item.fileName}</Text>
                     <Text style={styles.fileMeta}>
-                      {formatBytes(item.sizeBytes)} · {item.chunks} chunks · {timeAgo(item.createdAt)}
+                      {formatBytes(item.sizeBytes)} · {t({ en: `${item.chunks} chunks`, zh: `${item.chunks} 个分块` })} · {formatTimeAgo(item.createdAt)}
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => confirmDeleteKnowledge(item)} style={styles.deleteBtn}>
@@ -339,17 +353,17 @@ export function MemoryManagementScreen() {
           {prefsLoading ? (
             <View style={styles.loadingWrap}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.loadingText}>Loading preferences...</Text>
+              <Text style={styles.loadingText}>{t({ en: 'Loading preferences...', zh: '正在加载偏好…' })}</Text>
             </View>
           ) : prefs.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyIcon}>💭</Text>
-              <Text style={styles.emptyTitle}>No preferences</Text>
+              <Text style={styles.emptyTitle}>{t({ en: 'No preferences', zh: '暂无偏好' })}</Text>
               <Text style={styles.emptySub}>
-                Add preferences for your agent to remember about you or your tasks.
+                {t({ en: 'Add preferences for your agent to remember about you or your tasks.', zh: '添加偏好，让智能体记住关于你或任务的信息。' })}
               </Text>
               <TouchableOpacity style={styles.primaryBtn} onPress={() => setShowAdd(true)}>
-                <Text style={styles.primaryBtnText}>Add Preference</Text>
+                <Text style={styles.primaryBtnText}>{t({ en: 'Add Preference', zh: '添加偏好' })}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -361,7 +375,7 @@ export function MemoryManagementScreen() {
                   <Text style={styles.fileIcon}>💭</Text>
                   <View style={styles.fileInfo}>
                     <Text style={styles.fileName} numberOfLines={3}>{item.content}</Text>
-                    <Text style={styles.fileMeta}>{timeAgo(item.createdAt)}</Text>
+                    <Text style={styles.fileMeta}>{formatTimeAgo(item.createdAt)}</Text>
                   </View>
                   <TouchableOpacity onPress={() => confirmDeletePref(item)} style={styles.deleteBtn}>
                     {deletePrefMut.isPending && deletePrefMut.variables === item.id

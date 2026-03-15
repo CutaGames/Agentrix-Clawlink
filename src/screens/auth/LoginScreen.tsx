@@ -7,7 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { loginWithGoogle, loginWithApple, loginWithX, loginWithTelegram, loginWithEmail, registerWithEmail } from '../../services/auth';
+import { useI18n } from '../../stores/i18nStore';
+import { loginWithGoogle, loginWithApple, loginWithDiscord, loginWithEmail, registerWithEmail } from '../../services/auth';
 import { loginWithOpenClaw } from '../../services/auth';
 import type { AuthStackParamList } from '../../navigation/types';
 
@@ -25,14 +26,13 @@ const WALLET_PROVIDERS = [
 
 const SOCIAL_PROVIDERS = [
   { id: 'google', label: 'Google', emoji: '🌐', color: '#4285f4' },
-  { id: 'x', label: 'X (Twitter)', emoji: '🐦', color: '#1d9bf0' },
-  { id: 'telegram', label: 'Telegram', emoji: '✈️', color: '#229ed9' },
   { id: 'discord', label: 'Discord', emoji: '🎮', color: '#5865f2' },
 ];
 
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const { setAuth } = useAuthStore.getState();
+  const { t, language } = useI18n();
   const [mode, setMode] = useState<'web25' | 'openclaw' | 'email'>('web25');
   const [isSignUp, setIsSignUp] = useState(false);
   const [instanceUrl, setInstanceUrl] = useState('');
@@ -61,26 +61,18 @@ export function LoginScreen() {
   };
 
   const handleWalletLogin = async (wallet?: typeof WALLET_PROVIDERS[0]) => {
-    if (!wallet && detectedWallets.length > 1) {
-      setShowWalletModal(true);
-      return;
-    }
-    
-    const target = wallet || detectedWallets[0];
-    if (target) {
-      // Navigate to WalletConnect screen which handles the full nonce→sign→verify flow
-      (navigation as any).navigate('WalletConnect', { walletId: target.id });
-    } else {
-      // No wallet detected — show WalletConnect screen for manual entry
-      (navigation as any).navigate('WalletConnect');
-    }
+    // Always enter the dedicated wallet-connect flow so users can:
+    // 1) pick an installed wallet and deep-link into it,
+    // 2) install a wallet if none is present,
+    // 3) fall back to WalletConnect QR.
+    (navigation as any).navigate('WalletConnect', wallet ? { walletId: wallet.id } : undefined);
     setShowWalletModal(false);
   };
 
   const handleOpenClawLogin = async () => {
     const url = instanceUrl.trim();
     if (!url) {
-      Alert.alert('OpenClaw URL required', 'Enter your OpenClaw instance URL (e.g. http://localhost:3001)');
+      Alert.alert(t({ en: 'OpenClaw URL required', zh: '请输入 OpenClaw URL' }), t({ en: 'Enter your OpenClaw instance URL (e.g. http://localhost:3001)', zh: '请输入你的 OpenClaw 实例地址（如 http://localhost:3001）' }));
       return;
     }
     try {
@@ -91,34 +83,8 @@ export function LoginScreen() {
       }
     } catch (err: any) {
       Alert.alert(
-        'Connection Failed',
-        err?.message || 'Could not connect to OpenClaw instance. The server might be offline. Do you want to force bind it anyway?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Force Bind',
-            style: 'destructive',
-            onPress: async () => {
-              // Mock a successful login for demo/testing purposes
-              const mockUser = {
-                id: 'mock-user-id',
-                agentrixId: 'mock-agentrix-id',
-                nickname: 'OpenClaw User',
-                roles: ['user'],
-                provider: 'openclaw' as const,
-                openClawInstances: [{
-                  id: 'mock-instance-id',
-                  name: 'My OpenClaw',
-                  instanceUrl: url,
-                  status: 'active' as const,
-                  deployType: 'cloud' as const,
-                }],
-                activeInstanceId: 'mock-instance-id',
-              };
-              await setAuth(mockUser, 'mock-token-123');
-            }
-          }
-        ]
+        t({ en: 'Connection Failed', zh: '连接失败' }),
+        err?.message || t({ en: 'Could not connect to OpenClaw instance. Please verify the instance URL and try again.', zh: '无法连接到 OpenClaw 实例，请检查实例地址后重试。' }),
       );
     } finally {
       setLoading(false);
@@ -130,33 +96,15 @@ export function LoginScreen() {
       setLoadingProvider(provider);
       let result: any;
       if (provider === 'google') result = await loginWithGoogle();
-      else if (provider === 'x') result = await loginWithX();
-      else if (provider === 'telegram') result = await loginWithTelegram();
+      else if (provider === 'discord') result = await loginWithDiscord();
       else if (provider === 'apple') result = await loginWithApple();
       else return;
-      if (result?.user && result?.token) {
-        await setAuth(result.user, result.token);
-      }
+      // handleLoginResult (inside loginWith*) already calls setAuth + fetches instances.
+      // Do NOT call setAuth again here — it would overwrite instances.
     } catch (err: any) {
       Alert.alert(
-        'Login Failed', 
-        err?.message || `${provider} login failed. Do you want to mock login for testing?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Mock Login',
-            onPress: async () => {
-              const mockUser = {
-                id: `mock-${provider}-user`,
-                agentrixId: `mock-${provider}-agentrix`,
-                nickname: `${provider} User`,
-                roles: ['user'],
-                provider: provider as any,
-              };
-              await setAuth(mockUser, `mock-${provider}-token`);
-            }
-          }
-        ]
+        t({ en: 'Login Failed', zh: '登录失败' }), 
+        err?.message || `${provider} ${t({ en: 'login failed. Please try again later.', zh: '登录失败，请稍后重试。' })}`,
       );
     } finally {
       setLoadingProvider(null);
@@ -165,7 +113,7 @@ export function LoginScreen() {
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing Fields', 'Enter your email and password');
+      Alert.alert(t({ en: 'Missing Fields', zh: '请填写完整' }), t({ en: 'Enter your email and password', zh: '请输入邮箱和密码' }));
       return;
     }
     try {
@@ -173,11 +121,10 @@ export function LoginScreen() {
       const result = isSignUp 
         ? await registerWithEmail(email.trim(), password.trim()) as any
         : await loginWithEmail(email.trim(), password.trim()) as any;
-      if (result?.user && result?.token) {
-        await setAuth(result.user, result.token);
-      }
+      // handleLoginResult (inside loginWithEmail/registerWithEmail) already calls setAuth.
+      // Do NOT call setAuth again here — it would overwrite instances.
     } catch (err: any) {
-      Alert.alert(isSignUp ? 'Registration Failed' : 'Login Failed', err?.message || 'Invalid credentials');
+      Alert.alert(isSignUp ? t({ en: 'Registration Failed', zh: '注册失败' }) : t({ en: 'Login Failed', zh: '登录失败' }), err?.message || t({ en: 'Invalid credentials', zh: '账号或密码错误' }));
     } finally {
       setLoading(false);
     }
@@ -188,17 +135,21 @@ export function LoginScreen() {
       {/* Brand Header */}
       <View style={styles.header}>
         <View style={styles.logoCircle}>
-          <Text style={styles.logoInitials}>AX</Text>
+          <Image
+            source={require('../../../Agentrix Logo/agentrix_logo_square_transparent.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
         </View>
-        <Text style={styles.logoText}>Agentrix</Text>
-        <Text style={styles.tagline}>Intelligent Agents at your Fingertips</Text>
+        <Text style={styles.logoText}>Agentrix Claw</Text>
+        <Text style={styles.tagline}>Intelligent agents, smoother everywhere</Text>
       </View>
 
       {/* Web2.5 Main Login Area */}
       {mode === 'web25' && (
         <View style={styles.section}>
-          <Text style={styles.web25Title}>Welcome Back</Text>
-          <Text style={styles.web25Sub}>Choose your preferred sign-in method</Text>
+          <Text style={styles.web25Title}>{t({ en: 'Welcome Back', zh: '欢迎回来' })}</Text>
+          <Text style={styles.web25Sub}>{t({ en: 'Choose your preferred sign-in method', zh: '选择你偏好的登录方式' })}</Text>
 
           {/* Primary Wallet Login */}
           <TouchableOpacity 
@@ -213,16 +164,18 @@ export function LoginScreen() {
               {detectedWallets.length === 0 && <Text style={styles.walletBadge}>💼</Text>}
             </View>
             <Text style={styles.walletMainText}>
-              {detectedWallets.length > 0 ? 'Connect Wallet' : 'Connect Crypto Wallet'}
+              {detectedWallets.length > 0 ? t({ en: 'Connect Wallet', zh: '连接钱包' }) : t({ en: 'Connect Crypto Wallet', zh: '连接加密钱包' })}
             </Text>
             {detectedWallets.length > 0 && (
-              <Text style={styles.walletDetectedText}>Detected: {detectedWallets.map(w => w.label).join(', ')}</Text>
+              <Text style={styles.walletDetectedText}>
+                {t({ en: `Detected: ${detectedWallets.map(w => w.label).join(', ')}`, zh: `已检测到：${detectedWallets.map(w => w.label).join('、')}` })}
+              </Text>
             )}
           </TouchableOpacity>
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or social sign-in</Text>
+            <Text style={styles.dividerText}>{t({ en: 'or social sign-in', zh: '或社交账号登录' })}</Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -248,7 +201,7 @@ export function LoginScreen() {
           </View>
 
           <TouchableOpacity style={styles.linkRow} onPress={() => setMode('email')}>
-            <Text style={styles.linkText}>Use Email Address instead →</Text>
+            <Text style={styles.linkText}>{t({ en: 'Use Email Address instead →', zh: '改用邮箱登录 →' })}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -256,9 +209,9 @@ export function LoginScreen() {
       {/* OpenClaw Mode */}
       {mode === 'openclaw' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Connect OpenClaw Instance</Text>
+          <Text style={styles.sectionTitle}>{t({ en: 'Connect OpenClaw Instance', zh: '连接 OpenClaw 实例' })}</Text>
           <Text style={styles.sectionSub}>
-            Enter your instance URL to sign in directly.
+            {t({ en: 'Enter your instance URL to sign in directly.', zh: '输入你的实例地址直接登录。' })}
           </Text>
           <TextInput
             style={styles.input}
@@ -277,12 +230,12 @@ export function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.primaryBtnText}>Connect & Sign In</Text>
+              <Text style={styles.primaryBtnText}>{t({ en: 'Connect & Sign In', zh: '连接并登录' })}</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.backBtn} onPress={() => setMode('web25')}>
-            <Text style={styles.backBtnText}>← Back to Web2.5 Login</Text>
+            <Text style={styles.backBtnText}>← {t({ en: 'Back to Web2.5 Login', zh: '返回 Web2.5 登录' })}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -290,10 +243,10 @@ export function LoginScreen() {
       {/* Email Mode */}
       {mode === 'email' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{isSignUp ? 'Create Account' : 'Sign In with Email'}</Text>
+          <Text style={styles.sectionTitle}>{isSignUp ? t({ en: 'Create Account', zh: '注册账号' }) : t({ en: 'Sign In with Email', zh: '邮箱登录' })}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Email"
+            placeholder={t({ en: 'Email', zh: '邮箱' })}
             placeholderTextColor={colors.textMuted}
             value={email}
             onChangeText={setEmail}
@@ -302,7 +255,7 @@ export function LoginScreen() {
           />
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder={t({ en: 'Password', zh: '密码' })}
             placeholderTextColor={colors.textMuted}
             value={password}
             onChangeText={setPassword}
@@ -316,18 +269,18 @@ export function LoginScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.primaryBtnText}>{isSignUp ? 'Create Account' : 'Sign In'}</Text>
+              <Text style={styles.primaryBtnText}>{isSignUp ? t({ en: 'Create Account', zh: '注册账号' }) : t({ en: 'Sign In', zh: '登录' })}</Text>
             )}
           </TouchableOpacity>
           
           <TouchableOpacity style={{ marginTop: 12, alignItems: 'center' }} onPress={() => setIsSignUp(!isSignUp)}>
             <Text style={{ color: colors.accent, fontSize: 14 }}>
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+              {isSignUp ? t({ en: 'Already have an account? Sign In', zh: '已有账号？登录' }) : t({ en: "Don't have an account? Sign Up", zh: '没有账号？注册' })}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.backBtn} onPress={() => setMode('web25')}>
-            <Text style={styles.backBtnText}>← Back to Web2.5 Login</Text>
+            <Text style={styles.backBtnText}>← {t({ en: 'Back to Web2.5 Login', zh: '返回 Web2.5 登录' })}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -335,7 +288,7 @@ export function LoginScreen() {
       <Modal visible={showWalletModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Wallet</Text>
+            <Text style={styles.modalTitle}>{t({ en: 'Select Wallet', zh: '选择钱包' })}</Text>
             <View style={styles.modalGrid}>
               {detectedWallets.map(w => (
                 <TouchableOpacity key={w.id} style={styles.modalItem} onPress={() => { setShowWalletModal(false); handleWalletLogin(w); }}>
@@ -345,40 +298,54 @@ export function LoginScreen() {
               ))}
             </View>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowWalletModal(false)}>
-              <Text style={styles.modalCloseText}>Cancel</Text>
+              <Text style={styles.modalCloseText}>{t({ en: 'Cancel', zh: '取消' })}</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Instance Bind Link - Hidden for regular users */}
+      {/* OpenClaw Instance Bind Link - Highlighted */}
       <TouchableOpacity 
-        style={{ marginTop: 40, alignSelf: 'center' }} 
+        style={styles.openclawEntryCard} 
         onPress={() => setMode('openclaw')}
+        activeOpacity={0.8}
       >
-        <Text style={{ color: colors.textMuted, fontSize: 12, textDecorationLine: 'underline' }}>
-          Legacy OpenClaw Login
-        </Text>
+        <View style={styles.openclawEntryIconBox}>
+          <Text style={styles.openclawEntryEmoji}>🦞</Text>
+        </View>
+        <View style={styles.openclawEntryContent}>
+          <Text style={styles.openclawEntryTitle}>{t({ en: 'OpenClaw Instance', zh: '连接私有龙虾实例' })}</Text>
+          <Text style={styles.openclawEntrySub}>{t({ en: 'Bind your self-hosted AI agent node', zh: '绑定你自行托管的 AI 智能体节点' })}</Text>
+        </View>
+        <Text style={styles.openclawEntryArrow}>→</Text>
       </TouchableOpacity>
 
       <Text style={styles.footer}>
-        By continuing you agree to Agentrix Terms of Service and Privacy Policy.
+        {t({ en: 'By continuing you agree to Agentrix Terms of Service and Privacy Policy.', zh: '继续即表示你同意 Agentrix 服务条款和隐私政策。' })}
       </Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
-  content: { padding: 24, paddingTop: 80, paddingBottom: 40 },
+  container: { flex: 1, backgroundColor: '#000000' },
+  content: { padding: 24, paddingTop: 100, paddingBottom: 40 },
   header: { alignItems: 'center', marginBottom: 48 },
-  logoCircle: { width: 72, height: 72, borderRadius: 20, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 4 },
-  logoInitials: { fontSize: 30, fontWeight: '900', color: '#fff', letterSpacing: -1 },
-  logoText: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, letterSpacing: -0.5 },
-  tagline: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
+  logoCircle: { 
+    width: 88, 
+    height: 88, 
+    backgroundColor: 'transparent', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginBottom: 12,
+    borderRadius: 22
+  },
+  brandLogo: { width: 88, height: 88 },
+  logoText: { fontSize: 14, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
+  tagline: { fontSize: 9, color: '#888888', marginTop: 6, letterSpacing: 0.1 },
   
-  web25Title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
-  web25Sub: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginBottom: 32 },
+  web25Title: { fontSize: 24, fontWeight: '700', color: '#ffffff', textAlign: 'center', marginBottom: 8 },
+  web25Sub: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 32 },
   
   walletMainBtn: { backgroundColor: colors.primary, borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
   walletIconRow: { flexDirection: 'row', gap: -8, marginBottom: 12 },
@@ -440,6 +407,31 @@ const styles = StyleSheet.create({
   modalLabel: { color: colors.textPrimary, fontSize: 12, textAlign: 'center' },
   modalClose: { marginTop: 32, padding: 16, borderRadius: 16, backgroundColor: colors.bgCard, alignItems: 'center' },
   modalCloseText: { color: colors.textSecondary, fontWeight: '600' },
+
+  openclawEntryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 69, 58, 0.1)', // Subtle red/orange tint
+    borderWidth: 1,
+    borderColor: 'rgba(255, 69, 58, 0.3)',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 40,
+  },
+  openclawEntryIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 69, 58, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  openclawEntryEmoji: { fontSize: 24 },
+  openclawEntryContent: { flex: 1 },
+  openclawEntryTitle: { fontSize: 16, fontWeight: '700', color: '#ff6b6b', marginBottom: 2 },
+  openclawEntrySub: { fontSize: 12, color: colors.textSecondary },
+  openclawEntryArrow: { fontSize: 20, color: '#ff6b6b', fontWeight: '500' },
 
   footer: { marginTop: 40, textAlign: 'center', fontSize: 12, color: colors.textMuted, lineHeight: 20 },
 });

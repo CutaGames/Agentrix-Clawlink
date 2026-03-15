@@ -9,7 +9,7 @@
  *  - Share button → ShareCard screen
  *  - Bottom CTA: Install / Buy Now + Promote & Earn
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, Alert, ActivityIndicator, Share,
@@ -17,13 +17,15 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { marketplaceApi, ReviewItem } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
-import type { MarketStackParamList } from '../../navigation/types';
+import { useI18n, type Language } from '../../stores/i18nStore';
+import { useSettingsStore } from '../../stores/settingsStore';
+import type { MarketStackParamList, ShareCardRouteParams } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
 type RouteT = RouteProp<MarketStackParamList, 'SkillDetail'>;
@@ -53,14 +55,49 @@ const formatDate = (dateStr: string) => {
   return `${Math.floor(diff / 30)}mo ago`;
 };
 
+const buildSkillShareCardParams = (skill: any, skillId: string, language: Language, refId?: string): ShareCardRouteParams => {
+  const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${refId || 'guest'}`;
+  const isResource = skill?.category === 'resources';
+  const title = skill?.displayName || skill?.name || 'Agentrix Listing';
+  const authorName = typeof skill?.author === 'string'
+    ? skill.author
+    : skill?.author?.nickname || skill?.vendorName || 'Agentrix Creator';
+  const price = skill?.pricing?.pricePerCall ?? skill?.price ?? 0;
+  const priceUnit = skill?.pricing?.currency ?? skill?.priceUnit ?? 'USD';
+  const rating = Number(skill?.rating || 0);
+  const installs = skill?.installCount ?? skill?.usageCount ?? skill?.callCount ?? 0;
+
+  return {
+    shareUrl,
+    title,
+    userName: authorName,
+    subtitle: isResource
+      ? (language === 'zh' ? '面向 AI 工作流的优质资源' : 'Premium resource for your AI workflow')
+      : (language === 'zh' ? '为你的智能体打造的高转化 AI 技能' : 'High-conversion AI skill for your agent'),
+    headerEmoji: skill?.icon || (isResource ? '📦' : '⚡'),
+    categoryLabel: isResource ? (language === 'zh' ? '资源' : 'RESOURCE') : (language === 'zh' ? '技能' : 'SKILL'),
+    priceLabel: price === 0 ? (language === 'zh' ? '免费' : 'Free') : `$${price < 1 ? price.toFixed(4) : price.toFixed(2)} / ${priceUnit}`,
+    statsLabel: `${rating.toFixed(1)}★ · ${formatCount(installs)} installs`,
+    description: skill?.description || skill?.longDescription || undefined,
+    tags: skill?.tags || [],
+    ctaLabel: isResource
+      ? (language === 'zh' ? '扫码解锁这个资源' : 'Scan to unlock this resource')
+      : (language === 'zh' ? '扫码安装这个技能' : 'Scan to install this skill'),
+    accentFrom: isResource ? '#0F766E' : '#2563EB',
+    accentTo: isResource ? '#14B8A6' : '#7C3AED',
+  };
+};
+
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export function ClawSkillDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteT>();
+  const { language } = useI18n();
   const { skillId } = route.params;
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const queryClient = useQueryClient();
   const [installing, setInstalling] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -77,17 +114,18 @@ export function ClawSkillDetailScreen() {
       return marketplaceApi.getDetail(skillId);
     },
     enabled: !!skillId,
-    onSuccess: (data: any) => {
-      if (data) {
-        setLiked(data.isLiked || false);
-        setLikeCount(data.likeCount || 0);
-        setFavorited(data.isFavorited || false);
-      }
-    },
   });
 
+  useEffect(() => {
+    if (skill) {
+      setLiked(skill.isLiked || false);
+      setLikeCount(skill.likeCount || 0);
+      setFavorited(skill.isFavorited || false);
+    }
+  }, [skill]);
+
   // ── Load reviews ──
-  const { data: reviewsData } = useQuery({
+  const { data: reviewsData } = useQuery<{ reviews: ReviewItem[]; total: number }>({
     queryKey: ['skill-reviews', skillId],
     queryFn: () => marketplaceApi.getReviews(skillId),
     enabled: !!skillId,
@@ -98,22 +136,15 @@ export function ClawSkillDetailScreen() {
 
   const handleShare = useCallback(() => {
     if (!skill) return;
-    const authorName = typeof skill.author === 'string'
-      ? skill.author
-      : skill.author?.nickname || skill.vendorName || 'ClawLink Creator';
     try {
-      navigation.navigate('ShareCard' as any, {
-        shareUrl: `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
-        title: skill.displayName || skill.name,
-        userName: authorName,
-      });
+      navigation.navigate('ShareCard', buildSkillShareCardParams(skill, skillId, language, activeInstance?.id));
     } catch {
       // Fallback to native share
       Share.share({
-        message: `Check out "${skill.displayName || skill.name}" on ClawLink!\nhttps://clawlink.app/skill/${skillId}`,
+        message: `Check out "${skill.displayName || skill.name}" on Agentrix Claw!\nhttps://agentrix.top/skill/${skillId}`,
       });
     }
-  }, [skill, skillId, activeInstance, navigation]);
+  }, [skill, skillId, activeInstance, language, navigation]);
 
   const handleLike = useCallback(async () => {
     if (!skill) return;
@@ -143,7 +174,14 @@ export function ClawSkillDetailScreen() {
 
   const handleInstallToAgent = useCallback(async () => {
     if (!activeInstance) {
-      Alert.alert('No Agent', 'Connect an OpenClaw instance first to install skills.');
+      Alert.alert(
+        'No Agent',
+        'Connect an OpenClaw instance first to install skills.',
+        [
+          { text: 'Connect Agent', onPress: () => (navigation as any).navigate('Agent', { screen: 'DeploySelect' }) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
       return;
     }
     if (!isAuthenticated) {
@@ -152,8 +190,22 @@ export function ClawSkillDetailScreen() {
     }
     setInstalling(true);
     try {
-      await installSkillToInstance(activeInstance.id, skillId);
-      Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}`);
+      const result = await installSkillToInstance(activeInstance.id, skillId);
+      const skillName = skill?.name || skill?.displayName || 'Skill';
+
+      void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
+      void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
+
+      // Both dbRecorded (marketplace) and pendingDeploy (live push) are acceptable success states
+      if (result?.dbRecorded || result?.pendingDeploy) {
+        Alert.alert(
+          '✅ Installed!',
+          `${skillName} has been added to ${activeInstance.name}.${result?.pendingDeploy ? '\n\nIt will sync automatically when the agent reconnects.' : ''}`,
+        );
+      } else {
+        Alert.alert('✅ Installed!', `${skillName} has been installed to ${activeInstance.name}!`);
+      }
+      useSettingsStore.getState().markOnboardingStep('installedSkill');
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
       if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {
@@ -173,19 +225,52 @@ export function ClawSkillDetailScreen() {
 
   const handlePromote = useCallback(async () => {
     if (!skill) return;
-    const shareUrl = `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
-    const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || '';
-    try {
-      navigation.navigate('ShareCard' as any, {
-        shareUrl,
-        title: `${skill.displayName || skill.name} — Promote & Earn`,
-        userName: authorName,
-      });
-    } catch {
-      await Share.share({
-        message: `🔥 Promote & Earn commission!\n"${skill.displayName || skill.name}" on ClawLink\n${shareUrl}`,
-      });
-    }
+    const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
+    const skillDisplayName = skill.displayName || skill.name;
+    const shareCardParams = buildSkillShareCardParams(skill, skillId, language, activeInstance?.id);
+    
+    // Show share options: Social post, Native share, and Poster
+    Alert.alert(
+      '🔗 Share & Promote',
+      `Share "${skillDisplayName}" to earn commission!`,
+      [
+        {
+          text: '📱 Share via Apps',
+          onPress: async () => {
+            await Share.share({
+              message: `🔥 Check out "${skillDisplayName}" on Agentrix Claw!\n\nDownload Agentrix: https://agentrix.top/download\n\nSkill link: ${shareUrl}`,
+              url: shareUrl,
+              title: skillDisplayName,
+            });
+          },
+        },
+        {
+          text: '🖼️ Share Poster',
+          onPress: () => {
+            try {
+              navigation.navigate('ShareCard', shareCardParams);
+            } catch {
+              Share.share({
+                message: `🔥 "${skillDisplayName}" on Agentrix Claw\n\nDownload: https://agentrix.top/download\n${shareUrl}`,
+              });
+            }
+          },
+        },
+        {
+          text: '📋 Copy Link',
+          onPress: async () => {
+            try {
+              const Clipboard = require('expo-clipboard');
+              await Clipboard.setStringAsync(shareUrl);
+              Alert.alert('Copied!', 'Share link copied to clipboard');
+            } catch {
+              Alert.alert('Share Link', shareUrl);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   }, [skill, skillId, activeInstance, navigation]);
 
   // ── Loading / Error states ──

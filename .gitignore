@@ -65,3 +65,7 @@ wait_*.sh
 # Gradle local
 android/.gradle/
 android/local.properties
+# Also exclude bundles and archives
+*.bundle
+*.tar.gz
+gen_jwt.js

@@ -8,6 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
 import { setApiConfig, loadTokenFromStorage } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
+import { getMyInstances } from './src/services/openclaw.service';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { colors } from './src/theme/colors';
 import { useNotificationStore } from './src/stores/notificationStore';
@@ -109,6 +110,30 @@ function AppNavigator() {
           const user = await fetchCurrentUser();
           if (user) {
             await setAuth(user, token);
+
+            // Restore OpenClaw instances (session restore path – mirrors handleLoginResult)
+            try {
+              const instances = await getMyInstances();
+              if (instances && instances.length > 0) {
+                const storeInstances = instances.map((inst: any) => ({
+                  id: inst.id,
+                  name: inst.name || 'My Agent',
+                  instanceUrl: inst.instanceUrl || '',
+                  status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
+                  deployType: (inst.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
+                  version: inst.version,
+                  lastSyncAt: inst.lastSyncAt,
+                }));
+                const currentState = useAuthStore.getState();
+                currentState.updateUser({ openClawInstances: storeInstances });
+                if (!currentState.activeInstance && storeInstances.length > 0) {
+                  useAuthStore.setState({ activeInstance: storeInstances[0] ?? null });
+                }
+              }
+            } catch (instanceErr) {
+              console.warn('Failed to restore instances during session restore:', instanceErr);
+            }
+
             // Start notification polling and register push token after successful auth
             startNotificationPolling(token);
             const pushToken = await registerForPushNotifications();
@@ -165,7 +190,10 @@ function AppNavigator() {
 
 // Deep link config
 const linking = {
-  prefixes: [Linking.createURL('/'), 'clawlink://', 'https://clawlink.app'],
+  // Production: Linking.createURL('/') resolves to "agentrix://" (scheme from app.json).
+  // Development (Expo Go): resolves to "exp://...". Both are included so QR pairing
+  // works on both dev and production builds.
+  prefixes: [Linking.createURL('/'), 'agentrix://', 'clawlink://', 'https://clawlink.app', 'https://agentrix.top'],
   config: {
     screens: {
       Auth: {
@@ -183,7 +211,16 @@ const linking = {
       },
       Main: {
         screens: {
-          Agent: { screens: { AgentConsole: 'agent', AgentChat: 'agent/chat', OpenClawBind: 'agent/bind' } },
+          Agent: {
+            screens: {
+              AgentConsole: 'agent',
+              AgentChat: 'agent/chat',
+              OpenClawBind: 'agent/bind',
+              // Desktop installer QR code deep link:
+              // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
+              LocalConnect: 'connect',
+            },
+          },
           Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
           Social: { screens: { Feed: 'social' } },
           Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },

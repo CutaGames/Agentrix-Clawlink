@@ -4,17 +4,22 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '../components/Card';
 import { colors } from '../theme/colors';
+import { useIdentityStore } from '../stores/identityStore';
 import { useI18n } from '../stores/i18nStore';
-import { useAuthStore } from '../stores/authStore';
 
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { t, language } = useI18n();
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.clearAuth);
-  const displayName = user?.nickname || user?.email || user?.agentrixId || 'Agentrix User';
-  const displayEmail = user?.email || 'No email linked';
-  const displayWallet = user?.walletAddress || 'No wallet connected';
+  const user = useIdentityStore((s) => s.user);
+  const logout = useIdentityStore((s) => s.logout);
+
+  // Mock 用户数据
+  const mockUser = {
+    name: 'Kevin Wang',
+    email: 'kevin@example.com',
+    avatar: null,
+    walletAddress: '0x1234...5678',
+  };
 
   const menuItems = [
     { icon: '🔔', title: t({ en: 'Notification Settings', zh: '通知设置' }), screen: 'Settings' },
@@ -32,13 +37,13 @@ export const ProfileScreen: React.FC = () => {
         <View style={styles.userHeader}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {displayName.charAt(0).toUpperCase()}
+              {mockUser.name.charAt(0).toUpperCase()}
             </Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{displayName}</Text>
-            <Text style={styles.userEmail}>{displayEmail}</Text>
-            <Text style={styles.userWallet}>{displayWallet}</Text>
+            <Text style={styles.userName}>{mockUser.name}</Text>
+            <Text style={styles.userEmail}>{mockUser.email}</Text>
+            <Text style={styles.userWallet}>{mockUser.walletAddress}</Text>
           </View>
           <TouchableOpacity style={styles.editBtn}>
             <Text style={styles.editIcon}>✏️</Text>
@@ -95,7 +100,7 @@ export const ProfileScreen: React.FC = () => {
       </Card>
 
       {/* 退出登录 */}
-      <TouchableOpacity style={styles.logoutBtn} onPress={() => logout()}>
+      <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
         <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
 

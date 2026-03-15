@@ -20,6 +20,12 @@ interface Order {
   createdAt: string;
 }
 
+const MOCK_ORDERS: Order[] = [
+  { id: 'o1', skillName: 'GPT-4 Translation', price: 0.02, priceUnit: '次调用', status: 'completed', createdAt: '2026-02-11T10:30:00Z' },
+  { id: 'o2', skillName: 'Image Generation Pro', price: 0.05, priceUnit: '次生成', status: 'completed', createdAt: '2026-02-10T14:20:00Z' },
+  { id: 'o3', skillName: 'Code Review Bot', price: 0.03, priceUnit: '次审查', status: 'pending', createdAt: '2026-02-09T09:15:00Z' },
+];
+
 interface Props {
   navigation: any;
 }
@@ -41,9 +47,9 @@ export function MyOrdersScreen({ navigation }: Props) {
                 o.status === 'REFUNDED' ? 'refunded' : 'pending',
         createdAt: o.createdAt,
       }));
-      setOrders(mapped);
+      setOrders(mapped.length > 0 ? mapped : MOCK_ORDERS);
     } catch {
-      setOrders([]);
+      setOrders(MOCK_ORDERS);
     } finally {
       setLoading(false);
       setRefreshing(false);

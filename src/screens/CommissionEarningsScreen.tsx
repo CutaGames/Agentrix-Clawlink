@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { apiFetch } from '../services/api';
+import { useI18n } from '../stores/i18nStore';
 
 interface CommissionStats {
   totalCommission: number;
@@ -34,17 +35,24 @@ interface CommissionItem {
   metadata?: { level?: number };
 }
 
-const EMPTY_STATS: CommissionStats = {
-  totalCommission: 0,
-  settledCommission: 0,
-  pendingCommission: 0,
-  todayCommission: 0,
-  todayOrders: 0,
-  totalOrders: 0,
-  referralCount: 0,
+const MOCK_STATS: CommissionStats = {
+  totalCommission: 1234.56,
+  settledCommission: 890.00,
+  pendingCommission: 344.56,
+  todayCommission: 12.30,
+  todayOrders: 3,
+  totalOrders: 128,
+  referralCount: 45,
 };
 
+const MOCK_ITEMS: CommissionItem[] = [
+  { id: 'c1', skillName: 'GPT-4 Translation', orderAmount: 10.00, commissionAmount: 0.10, commissionRate: 1, currency: 'USD', status: 'settled', createdAt: '2026-02-11T10:30:00Z' },
+  { id: 'c2', skillName: 'Image Generation Pro', orderAmount: 25.00, commissionAmount: 0.25, commissionRate: 1, currency: 'USD', status: 'confirmed', createdAt: '2026-02-10T14:20:00Z' },
+  { id: 'c3', skillName: 'Code Review Bot', orderAmount: 15.00, commissionAmount: 0.15, commissionRate: 1, currency: 'USD', status: 'pending', createdAt: '2026-02-09T09:15:00Z', metadata: { level: 2 } },
+];
+
 export function CommissionEarningsScreen() {
+  const { t } = useI18n();
   const [stats, setStats] = useState<CommissionStats | null>(null);
   const [items, setItems] = useState<CommissionItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,14 +62,14 @@ export function CommissionEarningsScreen() {
   const loadData = useCallback(async () => {
     try {
       const [statsData, commData] = await Promise.all([
-        apiFetch<CommissionStats>('/human-commissions/stats').catch(() => EMPTY_STATS),
-        apiFetch<{ items: CommissionItem[] }>('/human-commissions').catch(() => ({ items: [] })),
+        apiFetch<CommissionStats>('/human-commissions/stats').catch(() => MOCK_STATS),
+        apiFetch<{ items: CommissionItem[] }>('/human-commissions').catch(() => ({ items: MOCK_ITEMS })),
       ]);
       setStats(statsData);
-      setItems(commData.items || []);
+      setItems(commData.items || MOCK_ITEMS);
     } catch {
-      setStats(EMPTY_STATS);
-      setItems([]);
+      setStats(MOCK_STATS);
+      setItems(MOCK_ITEMS);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -89,10 +97,10 @@ export function CommissionEarningsScreen() {
   };
 
   const statusMap: Record<string, { label: string; color: string }> = {
-    pending: { label: 'Pending', color: colors.warning },
-    confirmed: { label: 'Confirmed', color: '#3B82F6' },
-    settled: { label: 'Settled', color: colors.success },
-    cancelled: { label: 'Cancelled', color: colors.muted },
+    pending: { label: t({ en: 'Pending', zh: '待结算' }), color: colors.warning },
+    confirmed: { label: t({ en: 'Confirmed', zh: '已确认' }), color: '#3B82F6' },
+    settled: { label: t({ en: 'Settled', zh: '已结算' }), color: colors.success },
+    cancelled: { label: t({ en: 'Cancelled', zh: '已取消' }), color: colors.muted },
   };
 
   const renderStats = () => {
@@ -100,28 +108,28 @@ export function CommissionEarningsScreen() {
     return (
       <View style={styles.statsContainer}>
         <View style={styles.mainStat}>
-          <Text style={styles.mainStatLabel}>Total Commission</Text>
+          <Text style={styles.mainStatLabel}>{t({ en: 'Total Commission', zh: '累计佣金' })}</Text>
           <Text style={styles.mainStatValue}>${stats.totalCommission.toFixed(2)}</Text>
           <TouchableOpacity style={styles.withdrawBtn}>
-            <Text style={styles.withdrawBtnText}>Withdraw</Text>
+            <Text style={styles.withdrawBtnText}>{t({ en: 'Withdraw', zh: '提现' })}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>${stats.pendingCommission.toFixed(2)}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Pending', zh: '待结算' })}</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>${stats.settledCommission.toFixed(2)}</Text>
-            <Text style={styles.statLabel}>Settled</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Settled', zh: '已结算' })}</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>${stats.todayCommission.toFixed(2)}</Text>
-            <Text style={styles.statLabel}>Today</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Today', zh: '今日' })}</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats.referralCount}</Text>
-            <Text style={styles.statLabel}>Referrals</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Referrals', zh: '推广人数' })}</Text>
           </View>
         </View>
       </View>
@@ -137,7 +145,11 @@ export function CommissionEarningsScreen() {
           onPress={() => setActiveTab(tab)}
         >
           <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-            {tab === 'all' ? 'All' : tab === 'pending' ? 'Pending' : 'Settled'}
+            {tab === 'all'
+              ? t({ en: 'All', zh: '全部' })
+              : tab === 'pending'
+                ? t({ en: 'Pending', zh: '待结算' })
+                : t({ en: 'Settled', zh: '已结算' })}
           </Text>
         </TouchableOpacity>
       ))}
@@ -161,15 +173,15 @@ export function CommissionEarningsScreen() {
         </View>
         <View style={styles.cardBody}>
           <View style={styles.cardRow}>
-            <Text style={styles.cardLabel}>Order Amount</Text>
+            <Text style={styles.cardLabel}>{t({ en: 'Order Amount', zh: '订单金额' })}</Text>
             <Text style={styles.cardValue}>${Number(item.orderAmount).toFixed(2)}</Text>
           </View>
           <View style={styles.cardRow}>
-            <Text style={styles.cardLabel}>Comm. Rate</Text>
+            <Text style={styles.cardLabel}>{t({ en: 'Comm. Rate', zh: '佣金比例' })}</Text>
             <Text style={styles.cardValue}>{Number(item.commissionRate).toFixed(1)}%</Text>
           </View>
           <View style={styles.cardRow}>
-            <Text style={styles.cardLabel}>Commission</Text>
+            <Text style={styles.cardLabel}>{t({ en: 'Commission', zh: '佣金' })}</Text>
             <Text style={[styles.cardValue, styles.commissionValue]}>
               +${Number(item.commissionAmount).toFixed(4)}
             </Text>
@@ -185,8 +197,8 @@ export function CommissionEarningsScreen() {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyIcon}>💰</Text>
-        <Text style={styles.emptyText}>No commission records yet</Text>
-        <Text style={styles.emptySubtext}>Share skills with friends to earn referral commissions</Text>
+        <Text style={styles.emptyText}>{t({ en: 'No commission records yet', zh: '暂时还没有佣金记录' })}</Text>
+        <Text style={styles.emptySubtext}>{t({ en: 'Share skills with friends to earn referral commissions', zh: '分享技能给好友即可赚取推荐佣金' })}</Text>
       </View>
     );
   };

@@ -6,11 +6,13 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
 import { getReferralStats, getMyLinks, createShareLink, buildShareText } from '../../services/sharing.service';
 import * as Clipboard from 'expo-clipboard';
 
 export function ReferralDashboardScreen() {
   const user = useAuthStore((s) => s.user);
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -38,7 +40,7 @@ export function ReferralDashboardScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Referrals & Earnings</Text>
+      <Text style={styles.title}>{t({ en: 'Referrals & Earnings', zh: '推广与收益' })}</Text>
 
       {/* Stats Row */}
       {statsLoading ? (
@@ -47,76 +49,76 @@ export function ReferralDashboardScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statVal}>{stats?.totalReferrals ?? 0}</Text>
-            <Text style={styles.statLbl}>Referrals</Text>
+            <Text style={styles.statLbl}>{t({ en: 'Referrals', zh: '推广人数' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statVal, { color: colors.success }]}>
               ${(stats?.totalEarnings ?? 0).toFixed(2)}
             </Text>
-            <Text style={styles.statLbl}>Earned</Text>
+            <Text style={styles.statLbl}>{t({ en: 'Earned', zh: '已到账' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statVal, { color: colors.warning }]}>
               ${(stats?.pendingEarnings ?? 0).toFixed(2)}
             </Text>
-            <Text style={styles.statLbl}>Pending</Text>
+            <Text style={styles.statLbl}>{t({ en: 'Pending', zh: '待结算' })}</Text>
           </View>
         </View>
       )}
 
       {/* My Referral Link */}
       <View style={styles.linkSection}>
-        <Text style={styles.sectionTitle}>Your Referral Link</Text>
+        <Text style={styles.sectionTitle}>{t({ en: 'Your Referral Link', zh: '你的推荐链接' })}</Text>
         <View style={styles.linkBox}>
           <Text style={styles.linkText} numberOfLines={1}>
             https://agentrix.top/i/{user?.agentrixId}
           </Text>
           <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-            <Text style={styles.copyBtnText}>{copied ? '✅ Copied' : '📋 Copy'}</Text>
+            <Text style={styles.copyBtnText}>{copied ? t({ en: '✅ Copied', zh: '✅ 已复制' }) : t({ en: '📋 Copy', zh: '📋 复制' })}</Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-          <Text style={styles.shareBtnText}>🦀 Share Agentrix Claw (Earn 30%)</Text>
+          <Text style={styles.shareBtnText}>{t({ en: '🦀 Share Agentrix Claw (Earn 30%)', zh: '🦀 分享 Agentrix Claw（赚取 30%）' })}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Commission Rules */}
       <View style={styles.rulesBox}>
-        <Text style={styles.rulesTitle}>💰 Commission Structure</Text>
+        <Text style={styles.rulesTitle}>{t({ en: '💰 Commission Structure', zh: '💰 佣金结构' })}</Text>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Skill Purchase</Text>
-          <Text style={styles.ruleValue}>30% commission</Text>
+          <Text style={styles.ruleLabel}>{t({ en: 'Skill Purchase', zh: '技能购买' })}</Text>
+          <Text style={styles.ruleValue}>{t({ en: '30% commission', zh: '30% 佣金' })}</Text>
         </View>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Cloud Subscription</Text>
-          <Text style={styles.ruleValue}>20% recurring</Text>
+          <Text style={styles.ruleLabel}>{t({ en: 'Cloud Subscription', zh: '云订阅' })}</Text>
+          <Text style={styles.ruleValue}>{t({ en: '20% recurring', zh: '20% 持续分成' })}</Text>
         </View>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>New User Referral</Text>
-          <Text style={styles.ruleValue}>$5 bonus</Text>
+          <Text style={styles.ruleLabel}>{t({ en: 'New User Referral', zh: '新用户邀请' })}</Text>
+          <Text style={styles.ruleValue}>{t({ en: '$5 bonus', zh: '$5 奖励' })}</Text>
         </View>
         <View style={styles.ruleRow}>
-          <Text style={styles.ruleLabel}>Level 2 Referral</Text>
-          <Text style={styles.ruleValue}>10% commission</Text>
+          <Text style={styles.ruleLabel}>{t({ en: 'Level 2 Referral', zh: '二级推荐' })}</Text>
+          <Text style={styles.ruleValue}>{t({ en: '10% commission', zh: '10% 佣金' })}</Text>
         </View>
       </View>
 
       {/* Link History */}
-      <Text style={styles.sectionTitle}>Share Links</Text>
+      <Text style={styles.sectionTitle}>{t({ en: 'Share Links', zh: '分享链接' })}</Text>
       {linksLoading ? (
         <ActivityIndicator color={colors.accent} />
       ) : (!links?.length) ? (
-        <Text style={styles.emptyText}>Share Agentrix-Claw to create your first link!</Text>
+        <Text style={styles.emptyText}>{t({ en: 'Share Agentrix-Claw to create your first link!', zh: '分享 Agentrix-Claw，创建你的第一条链接吧！' })}</Text>
       ) : (
         links.map((link: any) => (
           <View key={link.id} style={styles.linkRow}>
             <View>
-              <Text style={styles.linkRowName}>{link.type || 'referral'}</Text>
+              <Text style={styles.linkRowName}>{link.type || t({ en: 'referral', zh: '推荐' })}</Text>
               <Text style={styles.linkRowUrl}>agentrix.top/i/{link.shortCode}</Text>
             </View>
             <View style={styles.linkRowStats}>
-              <Text style={styles.clicksText}>{link.clickCount || 0} clicks</Text>
-              <Text style={styles.conversionsText}>{link.conversionCount || 0} conversions</Text>
+              <Text style={styles.clicksText}>{t({ en: `${link.clickCount || 0} clicks`, zh: `${link.clickCount || 0} 次点击` })}</Text>
+              <Text style={styles.conversionsText}>{t({ en: `${link.conversionCount || 0} conversions`, zh: `${link.conversionCount || 0} 次转化` })}</Text>
             </View>
           </View>
         ))

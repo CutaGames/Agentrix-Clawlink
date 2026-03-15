@@ -5,55 +5,56 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { UiComplexity } from '../../stores/settingsStore';
-
-const UI_MODES: { id: UiComplexity; icon: string; label: string; desc: string }[] = [
-  { id: 'beginner', icon: '🌱', label: 'Beginner', desc: 'Chat, basic skills, simple setup' },
-  { id: 'advanced', icon: '🔧', label: 'Advanced', desc: '+ Workflows, Memory Hub, API Keys, Teams' },
-  { id: 'professional', icon: '⚡', label: 'Professional', desc: '+ Permissions Matrix, Custom LLM, MCP Tools' },
-];
-
-const SETTING_GROUPS = [
-  {
-    title: 'Agent',
-    items: [
-      { id: 'lang', icon: '🌐', label: 'Language', value: 'English' },
-      { id: 'notify', icon: '🔔', label: 'Notifications', value: 'On' },
-      { id: 'theme', icon: '🎨', label: 'Theme', value: 'Dark' },
-    ],
-  },
-  {
-    title: 'Developer',
-    items: [
-      { id: 'api', icon: '🔑', label: 'API Keys', value: '' },
-      { id: 'logs', icon: '📋', label: 'Debug Logs', value: '' },
-    ],
-  },
-  {
-    title: 'About',
-    items: [
-      { id: 'version', icon: 'ℹ️', label: 'App Version', value: '1.0.0' },
-      { id: 'terms', icon: '📜', label: 'Terms of Service', value: '' },
-      { id: 'privacy', icon: '🔒', label: 'Privacy Policy', value: '' },
-    ],
-  },
-];
+import { useI18n, type Language } from '../../stores/i18nStore';
 
 export function ClawSettingsScreen() {
   const navigation = useNavigation();
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const setUiComplexity = useSettingsStore((s) => s.setUiComplexity);
+  const { language, setLanguage, t } = useI18n();
+
+  const uiModes: { id: UiComplexity; icon: string; label: string; desc: string }[] = [
+    { id: 'beginner', icon: '🌱', label: t({ en: 'Beginner', zh: '入门' }), desc: t({ en: 'Chat, basic skills, simple setup', zh: '聊天、基础技能、简化设置' }) },
+    { id: 'advanced', icon: '🔧', label: t({ en: 'Advanced', zh: '进阶' }), desc: t({ en: '+ Workflows, Memory Hub, API Keys, Teams', zh: '+ 工作流、记忆中心、API 密钥、团队功能' }) },
+    { id: 'professional', icon: '⚡', label: t({ en: 'Professional', zh: '专业' }), desc: t({ en: '+ Permissions Matrix, Custom LLM, MCP Tools', zh: '+ 权限矩阵、自定义 LLM、MCP 工具' }) },
+  ];
+
+  const settingGroups = [
+    {
+      title: t({ en: 'Agent', zh: '智能体' }),
+      items: [
+        { id: 'notify', icon: '🔔', label: t({ en: 'Notifications', zh: '通知' }), value: t({ en: 'On', zh: '开启' }) },
+        { id: 'theme', icon: '🎨', label: t({ en: 'Theme', zh: '主题' }), value: t({ en: 'Dark', zh: '深色' }) },
+      ],
+    },
+    {
+      title: t({ en: 'Developer', zh: '开发者' }),
+      items: [
+        { id: 'api', icon: '🔑', label: t({ en: 'API Keys', zh: 'API 密钥' }), value: '' },
+        { id: 'logs', icon: '📋', label: t({ en: 'Debug Logs', zh: '调试日志' }), value: '' },
+      ],
+    },
+    {
+      title: t({ en: 'About', zh: '关于' }),
+      items: [
+        { id: 'version', icon: 'ℹ️', label: t({ en: 'App Version', zh: '应用版本' }), value: '1.0.0' },
+        { id: 'terms', icon: '📜', label: t({ en: 'Terms of Service', zh: '服务条款' }), value: '' },
+        { id: 'privacy', icon: '🔒', label: t({ en: 'Privacy Policy', zh: '隐私政策' }), value: '' },
+      ],
+    },
+  ];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 
       {/* UI Complexity Selector */}
       <View style={styles.group}>
-        <Text style={styles.groupTitle}>Interface Mode</Text>
+        <Text style={styles.groupTitle}>{t({ en: 'Interface Mode', zh: '界面模式' })}</Text>
         <View style={styles.modeCard}>
-          <Text style={styles.modeDesc}>Choose how much of the app is visible</Text>
+          <Text style={styles.modeDesc}>{t({ en: 'Choose how much of the app is visible', zh: '选择你想看到的功能复杂度' })}</Text>
           <View style={styles.modeRow}>
-            {UI_MODES.map((mode) => (
+            {uiModes.map((mode) => (
               <TouchableOpacity
                 key={mode.id}
                 style={[styles.modeBtn, uiComplexity === mode.id && styles.modeBtnActive]}
@@ -66,16 +67,43 @@ export function ClawSettingsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          {UI_MODES.find((m) => m.id === uiComplexity) && (
+          {uiModes.find((m) => m.id === uiComplexity) && (
             <Text style={styles.modeCurrentDesc}>
-              {UI_MODES.find((m) => m.id === uiComplexity)!.icon} {' '}
-              {UI_MODES.find((m) => m.id === uiComplexity)!.desc}
+              {uiModes.find((m) => m.id === uiComplexity)!.icon} {' '}
+              {uiModes.find((m) => m.id === uiComplexity)!.desc}
             </Text>
           )}
         </View>
       </View>
 
-      {SETTING_GROUPS.map((group) => (
+      <View style={styles.group}>
+        <Text style={styles.groupTitle}>{t({ en: 'Language', zh: '语言' })}</Text>
+        <View style={styles.modeCard}>
+          <Text style={styles.modeDesc}>{t({ en: 'Switch the entire app language here', zh: '在这里切换整个 App 的显示语言' })}</Text>
+          <View style={styles.modeRow}>
+            {([
+              { code: 'en' as Language, icon: '🇺🇸', label: 'English' },
+              { code: 'zh' as Language, icon: '🇨🇳', label: '中文' },
+            ]).map((item) => (
+              <TouchableOpacity
+                key={item.code}
+                style={[styles.modeBtn, language === item.code && styles.modeBtnActive]}
+                onPress={() => setLanguage(item.code)}
+              >
+                <Text style={styles.modeIcon}>{item.icon}</Text>
+                <Text style={[styles.modeLabel, language === item.code && styles.modeLabelActive]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.modeCurrentDesc}>
+            {language === 'zh'
+              ? t({ en: 'Current language: Chinese', zh: '当前语言：中文' })
+              : t({ en: 'Current language: English', zh: '当前语言：English' })}
+          </Text>
+        </View>
+      </View>
+
+      {settingGroups.map((group) => (
         <View key={group.title} style={styles.group}>
           <Text style={styles.groupTitle}>{group.title}</Text>
           <View style={styles.groupItems}>
@@ -101,12 +129,12 @@ export function ClawSettingsScreen() {
 
       <TouchableOpacity
         style={styles.dangerBtn}
-        onPress={() => Alert.alert('Sign Out', 'Are you sure?', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign Out', style: 'destructive', onPress: clearAuth },
+        onPress={() => Alert.alert(t({ en: 'Sign Out', zh: '退出登录' }), t({ en: 'Are you sure?', zh: '确定要退出登录吗？' }), [
+          { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+          { text: t({ en: 'Sign Out', zh: '退出登录' }), style: 'destructive', onPress: clearAuth },
         ])}
       >
-        <Text style={styles.dangerBtnText}>Sign Out</Text>
+        <Text style={styles.dangerBtnText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

@@ -15,6 +15,7 @@ import { referralApi, ReferralStats, ReferralLink } from '../services/referral.a
 import { marketplaceApi, SkillItem } from '../services/marketplace.api';
 import { QrCode } from '../components/common/QrCode';
 import { ShareSheet } from '../components/promote/ShareSheet';
+import { useI18n } from '../stores/i18nStore';
 
 // Clipboard — graceful fallback
 let Clipboard: any = null;
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export function PromoteScreen({ navigation }: Props) {
+  const { t } = useI18n();
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [myLink, setMyLink] = useState('');
   const [links, setLinks] = useState<ReferralLink[]>([]);
@@ -33,6 +35,7 @@ export function PromoteScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [showShare, setShowShare] = useState(false);
   const [shareTarget, setShareTarget] = useState<{ name: string; shortUrl: string; price?: number; priceUnit?: string } | null>(null);
+  const tr = (en: string, zh: string) => t({ en, zh });
 
   const loadData = useCallback(async () => {
     try {
@@ -67,12 +70,12 @@ export function PromoteScreen({ navigation }: Props) {
     try {
       if (Clipboard?.setStringAsync) {
         await Clipboard.setStringAsync(myLink);
-        Alert.alert('Copied', 'Referral link copied to clipboard');
+        Alert.alert(tr('Copied', '已复制'), tr('Referral link copied to clipboard', '推荐链接已复制到剪贴板'));
       } else {
-        Alert.alert('Referral Link', myLink);
+        Alert.alert(tr('Referral Link', '推荐链接'), myLink);
       }
     } catch {
-      Alert.alert('Copy Failed');
+      Alert.alert(tr('Copy Failed', '复制失败'));
     }
   };
 
@@ -118,16 +121,16 @@ export function PromoteScreen({ navigation }: Props) {
       >
         {/* 今日数据高亮 */}
         <View style={styles.todayBanner}>
-          <Text style={styles.todayLabel}>Today</Text>
+          <Text style={styles.todayLabel}>{tr('Today', '今日')}</Text>
           <View style={styles.todayStats}>
             <View style={styles.todayStat}>
               <Text style={styles.todayValue}>{stats?.todayClicks ?? 0}</Text>
-              <Text style={styles.todayStatLabel}>Clicks</Text>
+              <Text style={styles.todayStatLabel}>{tr('Clicks', '点击')}</Text>
             </View>
             <View style={styles.todayDivider} />
             <View style={styles.todayStat}>
               <Text style={styles.todayValue}>{stats?.todayConversions ?? 0}</Text>
-              <Text style={styles.todayStatLabel}>Conversions</Text>
+              <Text style={styles.todayStatLabel}>{tr('Conversions', '转化')}</Text>
             </View>
           </View>
         </View>
@@ -136,15 +139,15 @@ export function PromoteScreen({ navigation }: Props) {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{stats?.totalInvites ?? '-'}</Text>
-            <Text style={styles.statLabel}>Invites</Text>
+            <Text style={styles.statLabel}>{tr('Invites', '邀请')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{stats ? formatMoney(stats.totalClicks).replace('.00', '') : '-'}</Text>
-            <Text style={styles.statLabel}>Clicks</Text>
+            <Text style={styles.statLabel}>{tr('Clicks', '点击')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{stats ? stats.conversionRate + '%' : '-'}</Text>
-            <Text style={styles.statLabel}>Conv. Rate</Text>
+            <Text style={styles.statLabel}>{tr('Conv. Rate', '转化率')}</Text>
           </View>
         </View>
 
@@ -152,13 +155,13 @@ export function PromoteScreen({ navigation }: Props) {
         <View style={styles.commissionCard}>
           <View style={styles.commissionRow}>
             <View>
-              <Text style={styles.commissionLabel}>Total Commission</Text>
+              <Text style={styles.commissionLabel}>{tr('Total Commission', '累计佣金')}</Text>
               <Text style={styles.commissionValue}>
                 $ {stats ? formatMoney(stats.totalCommission) : '0.00'}
               </Text>
             </View>
             <View style={styles.commissionPendingBox}>
-              <Text style={styles.commissionPendingLabel}>Pending</Text>
+              <Text style={styles.commissionPendingLabel}>{tr('Pending', '待结算')}</Text>
               <Text style={styles.commissionPendingValue}>
                 $ {stats ? formatMoney(stats.pendingCommission) : '0.00'}
               </Text>
@@ -168,7 +171,7 @@ export function PromoteScreen({ navigation }: Props) {
 
         {/* 专属推广链接 + QR码 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Referral Link</Text>
+          <Text style={styles.sectionTitle}>{tr('Your Referral Link', '你的专属推荐链接')}</Text>
           <View style={styles.linkCard}>
             <TouchableOpacity onPress={handleCopyLink} activeOpacity={0.7}>
               <Text style={styles.linkUrl} numberOfLines={1}>{myLink}</Text>
@@ -177,29 +180,29 @@ export function PromoteScreen({ navigation }: Props) {
             {/* QR 码 */}
             <View style={styles.qrContainer}>
               <QrCode value={myLink || 'https://agentrix.top'} size={140} />
-              <Text style={styles.qrLabel}>Scan to promote</Text>
+              <Text style={styles.qrLabel}>{tr('Scan to promote', '扫码推广')}</Text>
             </View>
 
             {/* 操作按钮 */}
             <View style={styles.linkActions}>
               <TouchableOpacity style={styles.linkActionBtn} onPress={handleCopyLink}>
                 <Text style={styles.linkActionIcon}>📋</Text>
-                <Text style={styles.linkActionText}>Copy</Text>
+                <Text style={styles.linkActionText}>{tr('Copy', '复制')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.linkActionBtn} onPress={handleOpenShare}>
                 <Text style={styles.linkActionIcon}>📱</Text>
-                <Text style={styles.linkActionText}>Share</Text>
+                <Text style={styles.linkActionText}>{tr('Share', '分享')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.linkActionBtn} onPress={handleOpenShare}>
                 <Text style={styles.linkActionIcon}>💬</Text>
-                <Text style={styles.linkActionText}>Social</Text>
+                <Text style={styles.linkActionText}>{tr('Social', '社交')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.linkActionBtn}
                 onPress={() => navigation.navigate('MyLinks')}
               >
                 <Text style={styles.linkActionIcon}>🔗</Text>
-                <Text style={styles.linkActionText}>Links</Text>
+                <Text style={styles.linkActionText}>{tr('Links', '链接')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -207,7 +210,7 @@ export function PromoteScreen({ navigation }: Props) {
 
         {/* 快速推广热门技能 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Promote Trending Skills</Text>
+          <Text style={styles.sectionTitle}>{tr('Promote Trending Skills', '推广热门技能')}</Text>
           <View style={styles.hotSkillsRow}>
             {hotSkills.map(skill => (
               <TouchableOpacity
@@ -217,13 +220,13 @@ export function PromoteScreen({ navigation }: Props) {
               >
                 <Text style={styles.hotSkillName} numberOfLines={1}>{skill.name}</Text>
                 <Text style={styles.hotSkillStats}>
-                  {Number(skill.usageCount) > 1000 ? (Number(skill.usageCount) / 1000).toFixed(1) + 'K' : skill.usageCount} users
+                  {t({ en: `${Number(skill.usageCount) > 1000 ? (Number(skill.usageCount) / 1000).toFixed(1) + 'K' : skill.usageCount} users`, zh: `${Number(skill.usageCount) > 1000 ? (Number(skill.usageCount) / 1000).toFixed(1) + 'K' : skill.usageCount} 位用户` })}
                 </Text>
                 <Text style={styles.hotSkillCommission}>
-                  Commission ${(Number(skill.price || 0) * 0.01).toFixed(4)}/call
+                  {t({ en: `Commission $${(Number(skill.price || 0) * 0.01).toFixed(4)}/call`, zh: `佣金 $${(Number(skill.price || 0) * 0.01).toFixed(4)}/次调用` })}
                 </Text>
                 <View style={styles.hotSkillActionBtn}>
-                  <Text style={styles.hotSkillAction}>Promote</Text>
+                  <Text style={styles.hotSkillAction}>{tr('Promote', '推广')}</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -233,9 +236,9 @@ export function PromoteScreen({ navigation }: Props) {
         {/* 我的链接 (前3条) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Referral Links</Text>
+            <Text style={styles.sectionTitle}>{tr('My Referral Links', '我的推荐链接')}</Text>
             <TouchableOpacity onPress={() => navigation.navigate('MyLinks')}>
-              <Text style={styles.seeAll}>See All ›</Text>
+              <Text style={styles.seeAll}>{tr('See All ›', '查看全部 ›')}</Text>
             </TouchableOpacity>
           </View>
           {links.slice(0, 3).map(link => (
@@ -245,14 +248,14 @@ export function PromoteScreen({ navigation }: Props) {
                 <Text style={styles.linkItemUrl} numberOfLines={1}>{link.shortUrl}</Text>
               </View>
               <View style={styles.linkItemRight}>
-                <Text style={styles.linkItemStat}>{link.clicks} clicks</Text>
+                <Text style={styles.linkItemStat}>{t({ en: `${link.clicks} clicks`, zh: `${link.clicks} 次点击` })}</Text>
                 <Text style={styles.linkItemCommission}>${Number(link.commission || 0).toFixed(2)}</Text>
               </View>
             </View>
           ))}
           {links.length === 0 && !loading && (
             <View style={styles.emptyLinks}>
-              <Text style={styles.emptyLinksText}>No referral links yet — find skills to promote in the marketplace</Text>
+              <Text style={styles.emptyLinksText}>{tr('No referral links yet — find skills to promote in the marketplace', '还没有推荐链接——去市场里找技能开始推广吧')}</Text>
             </View>
           )}
         </View>
@@ -262,7 +265,7 @@ export function PromoteScreen({ navigation }: Props) {
           style={styles.rulesBtn}
           onPress={() => navigation.navigate('CommissionRules')}
         >
-          <Text style={styles.rulesBtnText}>Commission Rules</Text>
+          <Text style={styles.rulesBtnText}>{tr('Commission Rules', '佣金规则')}</Text>
           <Text style={styles.rulesBtnArrow}>›</Text>
         </TouchableOpacity>
 

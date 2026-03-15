@@ -15,13 +15,15 @@ type ErrorCallback = (err: string) => void;
 
 interface StreamChatOptions {
   instanceId: string;
-  message: string;
+  message: string | any[];
   sessionId?: string;
   token: string;
   model?: string;
+  voiceId?: string;
   onChunk: ChunkCallback;
   onDone: DoneCallback;
   onError: ErrorCallback;
+  onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
 }
 
 /**
@@ -45,6 +47,7 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
           message: opts.message,
           sessionId: opts.sessionId,
           model: opts.model,
+          voiceId: opts.voiceId,
         }),
         signal: ac.signal,
       });
@@ -72,7 +75,8 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
             if (data === '[DONE]') { opts.onDone(); return; }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.chunk) opts.onChunk(parsed.chunk);
+              if (parsed.meta && opts.onMeta) opts.onMeta(parsed.meta);
+              else if (parsed.chunk) opts.onChunk(parsed.chunk);
               else if (parsed.error) { opts.onError(parsed.error); return; }
             } catch {
               if (data) opts.onChunk(data);

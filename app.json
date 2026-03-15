@@ -1,47 +1,57 @@
 {
   "expo": {
-    "name": "ClawLink",
-    "slug": "clawlink",
-    "scheme": "clawlink",
+    "name": "Agentrix",
+    "slug": "agentrix-claw",
+    "scheme": "agentrix",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./Agentrix Logo/agentrix_logo_square_transparent.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0B1220"
+      "backgroundColor": "#000000"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.clawlink.mobile",
+      "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
+        "CFBundleDisplayName": "Agentrix",
+        "NSCameraUsageDescription": "Allow Agentrix to access your camera for visual AI context.",
+        "NSMicrophoneUsageDescription": "Allow Agentrix to access your microphone for voice commands.",
+        "NSPhotoLibraryUsageDescription": "Allow Agentrix to access your photo library for visual AI context.",
         "LSApplicationQueriesSchemes": [
           "metamask",
-          "okx", "okex", "imtokenv2", "tpoutside", "bitkeep", "tokenpocket", "trust",
+          "okx",
+          "okex",
           "trust",
           "rainbow",
           "twitter",
           "twitterauth",
           "discord",
           "tg",
-          "telegram"
+          "telegram",
+          "imtokenv2",
+          "tpoutside",
+          "bitkeep",
+          "ledgerlive",
+          "bnc"
         ],
-        "NSCameraUsageDescription": "ClawLink uses the camera to scan QR codes for binding your OpenClaw instance.",
-        "NSMicrophoneUsageDescription": "ClawLink uses the microphone for voice commands to your AI agent.",
-        "NSPhotoLibraryAddUsageDescription": "ClawLink saves share cards to your photo library.",
-        "NSPhotoLibraryUsageDescription": "ClawLink reads the photo library to select images."
+        "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
+        "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
+        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B1220"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#000000"
       },
-      "package": "app.clawlink.mobile",
+      "package": "app.agentrix.claw",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -53,15 +63,30 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "clawlink" }, { "scheme": "https", "host": "clawlink.app" }],
+          "data": [{ "scheme": "agentrix" }, { "scheme": "https", "host": "agentrix.top" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.png"
     },
     "newArchEnabled": false,
+    "autolinking": {
+      "exclude": [
+        "react-native-reanimated",
+        "react-native-worklets"
+      ]
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 5000,
+      "url": "https://u.expo.dev/96a641e0-ce03-45ff-9de7-2cd89c488236"
+    },
     "plugins": [
       [
         "expo-build-properties",
@@ -80,6 +105,7 @@
           "sounds": []
         }
       ],
+      "expo-updates",
       "expo-image-picker",
       [
         "expo-location",

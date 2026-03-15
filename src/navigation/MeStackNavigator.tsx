@@ -13,11 +13,16 @@ import { NotificationCenterScreen } from '../screens/notifications/NotificationC
 import { ShareCardScreen } from '../screens/ShareCardScreen';
 import { WalletConnectScreen } from '../screens/WalletConnectScreen';
 import { WalletBackupScreen } from '../screens/me/WalletBackupScreen';
+import { WalletSetupScreen } from '../screens/me/WalletSetupScreen';
 import { SocialListenerScreen } from '../screens/social/SocialListenerScreen';
+import { ScanScreen } from '../screens/me/ScanScreen';
+import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
 
 export function MeStackNavigator() {
+  const { t } = useI18n();
+
   return (
     <Stack.Navigator id={undefined}
       screenOptions={{
@@ -27,18 +32,20 @@ export function MeStackNavigator() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Me' }} />
-      <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} options={{ title: 'Referrals & Earnings' }} />
-      <Stack.Screen name="Settings" component={ClawSettingsScreen} options={{ title: 'Settings' }} />
-      <Stack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: 'Custom API Keys' }} />
-      <Stack.Screen name="Account" component={AccountScreen} options={{ title: 'Account' }} />
-      <Stack.Screen name="MySkills" component={MySkillsScreen} options={{ title: 'My Skills' }} />
-      <Stack.Screen name="MyOrders" component={MyOrdersScreen} options={{ title: 'My Orders' }} />
-      <Stack.Screen name="WalletConnect" component={WalletConnectScreen} options={{ title: 'Wallet' }} />
-      <Stack.Screen name="WalletBackup" component={WalletBackupScreen} options={{ title: 'Wallet Backup' }} />
-      <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} options={{ title: 'Notifications' }} />
-      <Stack.Screen name="ShareCard" component={ShareCardScreen} options={{ title: 'Share' }} />
-      <Stack.Screen name="SocialListener" component={SocialListenerScreen} options={{ title: 'Social Listener' }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: t({ en: 'Me', zh: '我的' }) }} />
+      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
+      <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} options={{ title: t({ en: 'Referrals & Earnings', zh: '推广与收益' }) }} />
+      <Stack.Screen name="Settings" component={ClawSettingsScreen} options={{ title: t({ en: 'Settings', zh: '设置' }) }} />
+      <Stack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: t({ en: 'Custom API Keys', zh: '自定义 API 密钥' }) }} />
+      <Stack.Screen name="Account" component={AccountScreen} options={{ title: t({ en: 'Account', zh: '账户' }) }} />
+      <Stack.Screen name="MySkills" component={MySkillsScreen} options={{ title: t({ en: 'My Skills', zh: '我的技能' }) }} />
+      <Stack.Screen name="MyOrders" component={MyOrdersScreen} options={{ title: t({ en: 'My Orders', zh: '我的订单' }) }} />
+      <Stack.Screen name="WalletConnect" component={WalletConnectScreen} options={{ title: t({ en: 'Wallet', zh: '钱包' }) }} />
+      <Stack.Screen name="WalletSetup" component={WalletSetupScreen} options={{ title: t({ en: 'Wallet Setup', zh: '钱包设置' }) }} />
+      <Stack.Screen name="WalletBackup" component={WalletBackupScreen} options={{ title: t({ en: 'Wallet Backup', zh: '钱包备份' }) }} />
+      <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} options={{ title: t({ en: 'Notifications', zh: '通知' }) }} />
+      <Stack.Screen name="ShareCard" component={ShareCardScreen} options={{ title: t({ en: 'Share', zh: '分享' }) }} />
+      <Stack.Screen name="SocialListener" component={SocialListenerScreen} options={{ title: t({ en: 'Social Listener', zh: '社交监听' }) }} />
     </Stack.Navigator>
   );
 }

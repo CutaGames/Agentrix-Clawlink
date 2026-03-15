@@ -10,32 +10,56 @@ export type OnboardingStackParamList = {
   DeploySelect: undefined;
   CloudDeploy: undefined;
   ConnectExisting: undefined;
-  LocalDeploy: undefined;
+  LocalDeploy: { directScan?: boolean } | undefined;
   SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
 export type AgentStackParamList = {
   AgentConsole: undefined;
-  AgentChat: { instanceId?: string; instanceName?: string };
+  AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean };
+  WearableHub: undefined;
   OpenClawBind: undefined;
+  /** Deep-link target for the desktop installer QR code: agentrix://connect?instanceId=...&token=...&host=...&port=... */
+  LocalConnect: { instanceId?: string; token?: string; host?: string; port?: string };
+  Scan: undefined;
   SkillInstall: { skillId: string; skillName: string };
   StoragePlan: undefined;
   AgentLogs: undefined;
+  DesktopControl: undefined;
   MemoryManagement: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
   AgentAccount: undefined;
   AgentPermissions: { agentAccountId?: string } | undefined;
+  AgentTools: { instanceId?: string };
+  // Agent Space (collaboration rooms)
+  AgentSpace: { spaceId: string; spaceName: string };
   // Layer 2
-  VoiceChat: { instanceId?: string };
+  VoiceChat: { instanceId?: string; instanceName?: string };
   TeamSpace: undefined;
   TeamInvite: { workspaceId: string; workspaceName: string };
   // From Onboarding reuse
   DeploySelect: undefined;
   CloudDeploy: undefined;
   ConnectExisting: undefined;
-  LocalDeploy: undefined;
+  LocalDeploy: { directScan?: boolean } | undefined;
   SocialBind: { instanceId: string; platform?: 'telegram' };
+};
+
+export type ShareCardRouteParams = {
+  shareUrl: string;
+  title?: string;
+  userName?: string;
+  subtitle?: string;
+  headerEmoji?: string;
+  categoryLabel?: string;
+  priceLabel?: string;
+  statsLabel?: string;
+  description?: string;
+  tags?: string[];
+  ctaLabel?: string;
+  accentFrom?: string;
+  accentTo?: string;
 };
 
 export type MarketStackParamList = {
@@ -48,19 +72,17 @@ export type MarketStackParamList = {
   PostTask: undefined;
   CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };
   SkillInstall: { skillId: string; skillName: string };
-  ShareCard: { shareUrl: string; title?: string; userName?: string };
+  ShareCard: ShareCardRouteParams;
 };
 
 export type SocialStackParamList = {
-  // Feed
+  // Agent Showcase Feed
   Feed: undefined;
   PostDetail: { postId: string };
+  ShowcaseDetail: { postId: string };
   UserProfile: { userId: string };
-  CreatePost: undefined;
-  // Merged Chat (moved from standalone Chat tab)
-  ChatList: undefined;
-  DirectMessage: { userId: string; userName: string; userAvatar?: string };
-  GroupChat: { groupId: string; groupName: string };
+  // Agent Social Bridge
+  SocialListener: undefined;
 };
 
 export type ChatStackParamList = {
@@ -71,6 +93,7 @@ export type ChatStackParamList = {
 
 export type MeStackParamList = {
   Profile: undefined;
+  Scan: undefined;
   ReferralDashboard: undefined;
   Settings: undefined;
   ApiKeys: undefined;
@@ -78,16 +101,17 @@ export type MeStackParamList = {
   MySkills: undefined;
   MyOrders: undefined;
   WalletConnect: undefined;
+  WalletSetup: undefined;
   WalletBackup: undefined;
   NotificationCenter: undefined;
-  ShareCard: { shareUrl: string; title?: string; userName?: string };
+  ShareCard: ShareCardRouteParams;
   SocialListener: undefined;
 };
 
 export type MainTabParamList = {
   Agent: undefined;
   Explore: undefined;   // was: Market
-  Social: undefined;   // merged: Feed + Chat + Groups
+  Social: undefined;   // Agent Showcase + Social Bridge
   Me: undefined;
 };
 

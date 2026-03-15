@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '../stores/authStore';
 import { AuthStackParamList, OnboardingStackParamList, RootStackParamList } from './types';
 import { MainTabNavigator } from './MainTabNavigator';
-import { LoginScreen } from '../screens/LoginScreen';
+import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
 import { InvitationGateScreen } from '../screens/auth/InvitationGateScreen';
 import { WalletConnectScreen } from '../screens/WalletConnectScreen';

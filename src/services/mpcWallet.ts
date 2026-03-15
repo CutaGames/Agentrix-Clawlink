@@ -4,6 +4,7 @@ import { apiFetch } from './api';
 
 const MPC_SHARD_A_KEY = 'mpc_shard_a';
 const MPC_RECOVERY_CODE_KEY = 'mpc_recovery_code';
+const MPC_BACKUP_CONFIRMED_KEY = 'mpc_backup_confirmed';
 
 interface MPCWalletCheckResult {
   hasWallet: boolean;
@@ -50,6 +51,7 @@ export async function createMPCWalletForSocialLogin(
 
   // 安全存储恢复码（分片 C）
   await storeRecoveryCode(result.encryptedShardC);
+  await resetBackupConfirmation();
 
   return result;
 }
@@ -103,12 +105,48 @@ export async function getRecoveryCode(): Promise<string | null> {
 }
 
 /**
+ * 标记用户已完成恢复码备份
+ */
+export async function markMPCBackupCompleted(): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(MPC_BACKUP_CONFIRMED_KEY, '1');
+  } catch (e) {
+    console.warn('Failed to persist MPC backup confirmation:', e);
+  }
+}
+
+/**
+ * 检查用户是否确认已备份恢复码
+ */
+export async function isMPCBackupCompleted(): Promise<boolean> {
+  try {
+    const value = await SecureStore.getItemAsync(MPC_BACKUP_CONFIRMED_KEY);
+    return value === '1';
+  } catch (e) {
+    console.warn('Failed to read MPC backup confirmation:', e);
+    return false;
+  }
+}
+
+/**
+ * 重置备份完成标记（新建钱包或重新生成恢复码时调用）
+ */
+export async function resetBackupConfirmation(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(MPC_BACKUP_CONFIRMED_KEY);
+  } catch (e) {
+    console.warn('Failed to reset MPC backup confirmation:', e);
+  }
+}
+
+/**
  * 清除所有 MPC 钱包数据（登出时调用）
  */
 export async function clearMPCWalletData(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(MPC_SHARD_A_KEY);
     await SecureStore.deleteItemAsync(MPC_RECOVERY_CODE_KEY);
+    await SecureStore.deleteItemAsync(MPC_BACKUP_CONFIRMED_KEY);
   } catch (e) {
     console.warn('Failed to clear MPC wallet data:', e);
   }

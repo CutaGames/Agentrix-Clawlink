@@ -82,12 +82,11 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
-  const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
-  const contentTypeHeader = Object.keys(headers).find(
-    (key) => key.toLowerCase() === 'content-type',
-  );
 
-  if (isFormDataBody) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const contentTypeHeader = Object.keys(headers).find((key) => key.toLowerCase() === 'content-type');
+
+  if (isFormData) {
     if (contentTypeHeader) {
       delete headers[contentTypeHeader];
     }

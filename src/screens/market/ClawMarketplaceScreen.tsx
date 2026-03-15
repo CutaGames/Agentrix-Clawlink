@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { searchOpenClawHub, invalidateHubCache } from '../../services/openclawHub.service';
+import { useI18n } from '../../stores/i18nStore';
 import type { MarketStackParamList } from '../../navigation/types';
 import TaskMarketScreen from '../TaskMarketScreen';
 
@@ -46,10 +47,11 @@ const FALLBACK_RESOURCES = [
 // OpenClaw Hub skills tab — uses the OpenClaw Hub search service
 function OpenClawSkillsTab() {
   const navigation = useNavigation<Nav>();
+  const { t, language } = useI18n();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['openclawSkills', category, search],
     queryFn: async () => {
       try {
@@ -75,7 +77,7 @@ function OpenClawSkillsTab() {
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search OpenClaw skills..."
+          placeholder={t({ en: 'Search OpenClaw skills...', zh: '搜索 OpenClaw 技能...' })}
           placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={setSearch}
@@ -107,10 +109,11 @@ function OpenClawSkillsTab() {
           data={skills}
           keyExtractor={(s: any) => String(s.id ?? s._id ?? s.name)}
           numColumns={2}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={{ gap: 12 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} tintColor={colors.accent} />}
           renderItem={({ item: skill }: { item: any }) => (
             <TouchableOpacity
               style={styles.skillCard}
@@ -144,10 +147,11 @@ function OpenClawSkillsTab() {
 // Resources & Goods tab — paid APIs/compute, falls back to mock data
 function ResourcesTab() {
   const navigation = useNavigation<Nav>();
+  const { t, language } = useI18n();
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['resources', category, search],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -180,10 +184,17 @@ function ResourcesTab() {
 
   return (
     <View style={styles.tabContainer}>
+      {/* TEST zone banner for Resources */}
+      <View style={{ backgroundColor: '#ef444418', borderBottomWidth: 1, borderBottomColor: '#ef444433', paddingVertical: 6, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <View style={{ backgroundColor: '#ef4444', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>TEST</Text>
+        </View>
+        <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>Resource marketplace is under development</Text>
+      </View>
       <View style={styles.searchRow}>
-        <TextInput
+          <TextInput
           style={styles.searchInput}
-          placeholder="Search resources & goods..."
+          placeholder={t({ en: 'Search resources & goods...', zh: '搜索资源和商品...' })}
           placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={setSearch}
@@ -215,10 +226,11 @@ function ResourcesTab() {
           data={resources}
           keyExtractor={(s: any) => String(s.id ?? s._id ?? s.name)}
           numColumns={2}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.grid}
           columnWrapperStyle={{ gap: 12 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
+          refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} tintColor={colors.accent} />}
           renderItem={({ item: res }: { item: any }) => (
             <TouchableOpacity
               style={styles.skillCard}
@@ -247,6 +259,7 @@ function ResourcesTab() {
 }
 
 export function ClawMarketplaceScreen() {
+  const { t, language } = useI18n();
   const [activeTab, setActiveTab] = useState<'skills' | 'tasks' | 'resources'>('skills');
 
   return (
@@ -257,19 +270,19 @@ export function ClawMarketplaceScreen() {
           style={[styles.tabItem, activeTab === 'skills' && styles.tabItemActive]}
           onPress={() => setActiveTab('skills')}
         >
-          <Text style={[styles.tabText, activeTab === 'skills' && styles.tabTextActive]}>OpenClaw Skills</Text>
+          <Text style={[styles.tabText, activeTab === 'skills' && styles.tabTextActive]}>{t({ en: 'OpenClaw Skills', zh: 'OpenClaw 技能' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabItem, activeTab === 'tasks' && styles.tabItemActive]}
           onPress={() => setActiveTab('tasks')}
         >
-          <Text style={[styles.tabText, activeTab === 'tasks' && styles.tabTextActive]}>Task Market</Text>
+          <Text style={[styles.tabText, activeTab === 'tasks' && styles.tabTextActive]}>{t({ en: 'Task Market', zh: '任务市场' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabItem, activeTab === 'resources' && styles.tabItemActive]}
           onPress={() => setActiveTab('resources')}
         >
-          <Text style={[styles.tabText, activeTab === 'resources' && styles.tabTextActive]}>Resources & Goods</Text>
+          <Text style={[styles.tabText, activeTab === 'resources' && styles.tabTextActive]}>{t({ en: 'Resources & Goods', zh: '资源与商品' })}</Text>
         </TouchableOpacity>
       </View>
 
