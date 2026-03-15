@@ -615,7 +615,7 @@ export class OpenAIIntegrationService {
    * 支持用户提供自己的 API Key（用于 OpenAI 官网用户）
    */
   async chatWithFunctions(
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
     options?: {
       model?: string;
       temperature?: number;

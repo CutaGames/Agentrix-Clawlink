@@ -32,6 +32,7 @@ interface ProviderDef {
   requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
+  credentialLabel?: string;
   baseUrl?: string;
   models: ModelDef[];
 }
@@ -150,8 +151,9 @@ export function ApiKeysScreen() {
 
   const handleTest = async (provider: ProviderDef) => {
     const form = forms[provider.id];
+    const credentialLabel = provider.credentialLabel || 'API Key';
     if (!form?.apiKey && !getSaved(provider.id)) {
-      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: 'Please enter an API key first', zh: '请先输入 API Key' }));
+      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: `Please enter a ${credentialLabel} first`, zh: `请先输入${credentialLabel}` }));
       return;
     }
     setTesting(provider.id);
@@ -184,8 +186,9 @@ export function ApiKeysScreen() {
 
   const handleSave = async (provider: ProviderDef) => {
     const form = forms[provider.id];
+    const credentialLabel = provider.credentialLabel || 'API Key';
     if (!form.apiKey && !getSaved(provider.id)) {
-      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: 'Please enter an API key', zh: '请先输入 API Key' }));
+      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: `Please enter a ${credentialLabel}`, zh: `请先输入${credentialLabel}` }));
       return;
     }
     for (const field of provider.requiredFields) {
@@ -299,7 +302,7 @@ export function ApiKeysScreen() {
         {isExpanded && form && (
           <View style={styles.cardBody}>
             {/* API Key */}
-            <Text style={styles.fieldLabel}>API Key *</Text>
+            <Text style={styles.fieldLabel}>{provider.credentialLabel || 'API Key'} *</Text>
             <TextInput
               style={styles.input}
               placeholder={saved ? `${saved.apiKeyPrefix || '••••'}  (leave blank to keep)` : provider.placeholder.apiKey || 'Enter API key'}

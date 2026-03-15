@@ -30,9 +30,29 @@ export interface ProviderDef {
   requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
+  credentialLabel?: string;
   baseUrl?: string;
   models: ModelDef[];
 }
+
+interface ResolvedModelCapability {
+  providerId?: string;
+  model?: ModelDef;
+  multimodal: boolean;
+}
+
+const PLATFORM_MODEL_ALIASES: Record<string, { label: string; multimodal: boolean }> = {
+  'claude-haiku-4-5': { label: 'Claude Haiku 4.5 (平台默认 API)', multimodal: true },
+  'claude-sonnet-4-6': { label: 'Claude Sonnet 4.6 (平台默认 API)', multimodal: true },
+};
+
+const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
+  'chatgpt-sub-gpt-5.4': 'gpt-5.4',
+  'chatgpt-sub-gpt-5.3-instant': 'gpt-5.3-instant',
+  'chatgpt-sub-gpt-5-mini': 'gpt-5-mini',
+  'copilot-sub-gpt-5.3-instant': 'gpt-5.3-instant',
+  'copilot-sub-gpt-5-mini': 'gpt-5-mini',
+};
 
 export const PROVIDER_CATALOG: ProviderDef[] = [
   // ─── 🌍 International ───
@@ -44,6 +64,33 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       { id: 'gpt-5.4', label: 'GPT-5.4 (旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$2.50', outputPrice: '$15.00', positioning: '全能旗舰/电脑操作/Agent' },
       { id: 'gpt-5.3-instant', label: 'GPT-5.3 Instant', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.75', outputPrice: '$14.00', positioning: '日常对话/性价比' },
       { id: 'gpt-5-mini', label: 'GPT-5 mini', contextWindow: 270000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.25', outputPrice: '$2.00', positioning: '极致低成本/高并发' },
+    ],
+  },
+  {
+    id: 'chatgpt-subscription', name: 'ChatGPT Subscription', icon: '💬', region: 'international', currency: 'USD',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    credentialLabel: 'Subscription Token',
+    placeholder: {
+      apiKey: 'chatgpt-session-or-relay-token',
+      baseUrl: 'https://your-openclaw-relay.example.com/v1',
+    },
+    models: [
+      { id: 'chatgpt-sub-gpt-5.4', label: 'GPT-5.4 via ChatGPT Subscription', contextWindow: 1000000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '使用你的 ChatGPT 订阅额度' },
+      { id: 'chatgpt-sub-gpt-5.3-instant', label: 'GPT-5.3 Instant via ChatGPT Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '订阅直连/快速响应' },
+      { id: 'chatgpt-sub-gpt-5-mini', label: 'GPT-5 mini via ChatGPT Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '订阅低成本高并发' },
+    ],
+  },
+  {
+    id: 'copilot-subscription', name: 'Microsoft Copilot Subscription', icon: '🪟', region: 'international', currency: 'USD',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    credentialLabel: 'Subscription Token',
+    placeholder: {
+      apiKey: 'copilot-session-or-relay-token',
+      baseUrl: 'https://your-openclaw-relay.example.com/v1',
+    },
+    models: [
+      { id: 'copilot-sub-gpt-5.3-instant', label: 'GPT-5.3 Instant via Copilot Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '使用你的 Copilot 订阅额度' },
+      { id: 'copilot-sub-gpt-5-mini', label: 'GPT-5 mini via Copilot Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: 'Copilot 高并发/低成本' },
     ],
   },
   {
@@ -224,6 +271,51 @@ export class AiProviderService {
 
   getProviderDef(providerId: string): ProviderDef | undefined {
     return PROVIDER_CATALOG.find(p => p.id === providerId);
+  }
+
+  resolveModelCapability(modelId?: string, providerId?: string): ResolvedModelCapability {
+    if (!modelId) {
+      return { providerId, multimodal: false };
+    }
+
+    if (!providerId || providerId === 'platform') {
+      const platformModel = PLATFORM_MODEL_ALIASES[modelId];
+      if (platformModel) {
+        return {
+          providerId: 'platform',
+          multimodal: platformModel.multimodal,
+        };
+      }
+    }
+
+    if (providerId && providerId !== 'platform') {
+      const provider = this.getProviderDef(providerId);
+      const exact = provider?.models.find(model => model.id === modelId);
+      if (exact) {
+        return { providerId, model: exact, multimodal: exact.multimodal };
+      }
+    }
+
+    for (const provider of PROVIDER_CATALOG) {
+      const exact = provider.models.find(model => model.id === modelId);
+      if (exact) {
+        return { providerId: provider.id, model: exact, multimodal: exact.multimodal };
+      }
+    }
+
+    return { providerId, multimodal: false };
+  }
+
+  resolveExecutionModelId(modelId?: string): string | undefined {
+    if (!modelId) {
+      return undefined;
+    }
+
+    return SUBSCRIPTION_MODEL_ALIASES[modelId] || modelId;
+  }
+
+  supportsMultimodal(modelId?: string, providerId?: string): boolean {
+    return this.resolveModelCapability(modelId, providerId).multimodal;
   }
 
   // ─── CRUD ──────────
@@ -445,6 +537,8 @@ export class AiProviderService {
         break;
       }
       case 'openai':
+      case 'chatgpt-subscription':
+      case 'copilot-subscription':
       case 'deepseek':
       case 'xai':
       case 'meta':
@@ -457,6 +551,8 @@ export class AiProviderService {
         // All OpenAI-compatible APIs
         const defaultUrls: Record<string, string> = {
           openai: 'https://api.openai.com/v1',
+          'chatgpt-subscription': '',
+          'copilot-subscription': '',
           deepseek: 'https://api.deepseek.com',
           xai: 'https://api.x.ai/v1',
           meta: 'https://api.groq.com/openai/v1',
@@ -468,10 +564,17 @@ export class AiProviderService {
           zhipu: 'https://open.bigmodel.cn/api/paas/v4',
         };
         const base = dto.baseUrl || defaultUrls[dto.providerId] || 'https://api.openai.com/v1';
+        if ((dto.providerId === 'chatgpt-subscription' || dto.providerId === 'copilot-subscription') && !dto.baseUrl) {
+          if (!dto.apiKey || dto.apiKey.trim().length < 8) {
+            throw new Error('Subscription token is required');
+          }
+          this.logger.log(`Skipping remote probe for ${dto.providerId} without baseUrl; token format accepted`);
+          break;
+        }
         const resp = await fetch(`${base}/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dto.apiKey}` },
-          body: JSON.stringify({ model: dto.model, max_tokens: 10, messages: testMessage }),
+          body: JSON.stringify({ model: this.resolveExecutionModelId(dto.model), max_tokens: 10, messages: testMessage }),
           signal: AbortSignal.timeout(15000),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);
