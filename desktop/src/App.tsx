@@ -6,6 +6,7 @@ import OnboardingPanel from "./components/OnboardingPanel";
 import agentrixLogo from "./assets/agentrix-logo.png";
 import { useAuthStore } from "./services/store";
 import { initSessionSync, destroySessionSync } from "./services/sessionSync";
+import { startDesktopAgentSync, stopDesktopAgentSync } from "./services/desktopAgentSync";
 import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
 import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
@@ -30,6 +31,11 @@ export default function App() {
 
   useEffect(() => {
     loadToken();
+    // Restore saved theme
+    const saved = localStorage.getItem("agentrix_theme");
+    if (saved === "light" || saved === "dark") {
+      document.documentElement.setAttribute("data-theme", saved);
+    }
   }, [loadToken]);
 
   const loggedIn = !!token || isGuest;
@@ -64,6 +70,10 @@ export default function App() {
           window.dispatchEvent(new CustomEvent("agentrix:sync-status", { detail: { connected } }));
         },
       });
+
+      if (windowLabel !== "floating-ball") {
+        startDesktopAgentSync(token);
+      }
     }
 
     trackEvent("session_start");
@@ -74,8 +84,9 @@ export default function App() {
       stopClipboardWatch();
       destroyAnalytics();
       destroySessionSync();
+      stopDesktopAgentSync();
     };
-  }, [loggedIn, token]);
+  }, [loggedIn, token, windowLabel]);
 
   // Global keyboard shortcuts (within webview)
   useEffect(() => {

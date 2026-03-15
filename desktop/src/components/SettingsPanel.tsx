@@ -1,30 +1,77 @@
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
-import { pickWorkspaceFolder, getWorkspaceDir } from "../services/workspace";
+import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
+
+interface ModelOption {
+  id: string;
+  label?: string;
+}
 
 interface Props {
   ttsEnabled: boolean;
   onTtsToggle: (v: boolean) => void;
   onClose: () => void;
+  models?: ModelOption[];
+  selectedModel?: string;
+  onModelChange?: (id: string) => void;
 }
 
-export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Props) {
+export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models = [], selectedModel = "", onModelChange }: Props) {
   const { user, logout } = useAuthStore();
   const [autoStart, setAutoStart] = useState(true);
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceInput, setWorkspaceInput] = useState("");
+  const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("agentrix_theme") as "dark" | "light") || "dark");
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "downloading" | "up-to-date" | "error">("idle");
   const [updateVersion, setUpdateVersion] = useState("");
 
   useEffect(() => {
-    getWorkspaceDir().then(setWorkspaceDir).catch(() => {});
+    getWorkspaceDir()
+      .then((dir) => {
+        setWorkspaceDir(dir);
+        setWorkspaceInput(dir || "");
+      })
+      .catch(() => {});
   }, []);
 
   const handlePickWorkspace = async () => {
-    const dir = await pickWorkspaceFolder();
-    if (dir) {
-      setWorkspaceDir(dir);
-      window.dispatchEvent(new CustomEvent("agentrix:workspace-changed"));
+    setWorkspaceError(null);
+    try {
+      const dir = await pickWorkspaceFolder();
+      if (dir) {
+        setWorkspaceDir(dir);
+        setWorkspaceInput(dir);
+        window.dispatchEvent(new CustomEvent("agentrix:workspace-changed"));
+      }
+    } catch (error: any) {
+      setWorkspaceError(error?.message || "Failed to select a workspace folder.");
     }
+  };
+
+  const handleSaveWorkspacePath = async () => {
+    const trimmed = workspaceInput.trim();
+    if (!trimmed) {
+      setWorkspaceError("Enter a workspace path first.");
+      return;
+    }
+
+    setWorkspaceError(null);
+    try {
+      const dir = await saveWorkspaceDir(trimmed);
+      setWorkspaceDir(dir);
+      setWorkspaceInput(dir);
+      window.dispatchEvent(new CustomEvent("agentrix:workspace-changed"));
+    } catch (error: any) {
+      setWorkspaceError(error?.message || "Failed to save the workspace path.");
+    }
+  };
+
+  const handleToggleTheme = (light: boolean) => {
+    const next = light ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("agentrix_theme", next);
   };
 
   const handleToggleAutoStart = async (enabled: boolean) => {
@@ -98,6 +145,44 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Prop
           />
         </div>
 
+        {/* Appearance */}
+        <div style={section}>
+          <div style={sectionTitle}>Appearance</div>
+          <ToggleRow
+            label="Light mode"
+            value={theme === "light"}
+            onChange={handleToggleTheme}
+          />
+        </div>
+
+        {/* AI Model */}
+        {models.length > 0 && (
+          <div style={section}>
+            <div style={sectionTitle}>AI Model</div>
+            <select
+              value={selectedModel}
+              onChange={(e) => onModelChange?.(e.target.value)}
+              style={{
+                width: "100%",
+                background: "var(--bg-dark)",
+                color: "var(--text)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "8px 10px",
+                fontSize: 12,
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label || m.id}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* System settings */}
         <div style={section}>
           <div style={sectionTitle}>System</div>
@@ -138,8 +223,22 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose }: Prop
               {workspaceDir ? "Change" : "Select Folder"}
             </button>
           </div>
+          <div style={{ display: "flex", gap: 8, paddingTop: 6 }}>
+            <input
+              value={workspaceInput}
+              onChange={(event) => setWorkspaceInput(event.target.value)}
+              placeholder="Paste workspace path, e.g. D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website"
+              style={workspaceInputStyle}
+            />
+            <button onClick={handleSaveWorkspacePath} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", whiteSpace: "nowrap" }}>
+              Use Path
+            </button>
+          </div>
+          {workspaceError ? (
+            <div style={{ fontSize: 11, color: "#f87171", padding: "2px 0" }}>{workspaceError}</div>
+          ) : null}
           <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 0" }}>
-            Agent can read/edit files in this folder for coding tasks.
+            Agent can read/edit files in this folder for coding tasks. If Select Folder fails, paste the path manually.
           </div>
         </div>
 
@@ -294,6 +393,17 @@ const kbdStyle: CSSProperties = {
   fontSize: 11,
   fontFamily: "monospace",
   color: "var(--accent-light)",
+};
+
+const workspaceInputStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  background: "var(--bg-dark)",
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  padding: "6px 8px",
+  fontSize: 11,
+  color: "var(--text)",
 };
 
 const logoutBtn: CSSProperties = {

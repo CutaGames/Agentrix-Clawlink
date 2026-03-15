@@ -1,5 +1,8 @@
 ﻿use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
+
 
 mod commands;
 
@@ -313,6 +316,10 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             // Chat panel
             desktop_bridge_open_chat_panel,
@@ -352,6 +359,72 @@ pub fn run() {
             if let Some(main_window) = app.get_webview_window("main") {
                 grant_webview2_permissions(&main_window);
             }
+
+            // ── System Tray ──────────────────────────────────────
+            let show_hide = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
+            let new_chat  = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
+            let settings  = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            let quit      = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&show_hide)
+                .separator()
+                .item(&new_chat)
+                .item(&settings)
+                .separator()
+                .item(&quit)
+                .build()?;
+
+            let png_bytes = include_bytes!("../icons/32x32.png");
+            let img = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?
+                .into_rgba8();
+            let (w, h) = img.dimensions();
+            let rgba = img.into_raw();
+            let tray_icon = tauri::image::Image::new_owned(rgba, w, h);
+
+            let _tray = TrayIconBuilder::new()
+                .icon(tray_icon)
+                .tooltip("Agentrix Desktop")
+                .menu(&menu)
+                .on_menu_event(move |app_handle, event| {
+                    match event.id().as_ref() {
+                        "show_hide" => {
+                            if let Some(win) = app_handle.get_webview_window("main") {
+                                if win.is_visible().unwrap_or(false) {
+                                    let _ = win.hide();
+                                } else {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                            }
+                            // Also toggle chat-panel
+                            let _ = commands::open_chat_panel(app_handle.clone());
+                        }
+                        "new_chat" => {
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:new-chat'))");
+                            } else {
+                                let _ = commands::open_chat_panel(app_handle.clone());
+                            }
+                        }
+                        "settings" => {
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:open-settings'))");
+                            }
+                        }
+                        "quit" => {
+                            app_handle.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
+
             Ok(())
         })
         .run(tauri::generate_context!())

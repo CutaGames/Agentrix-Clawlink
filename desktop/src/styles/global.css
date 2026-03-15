@@ -1,4 +1,4 @@
-:root {
+:root, [data-theme="dark"] {
   --accent: #6C5CE7;
   --accent-light: #A29BFE;
   --bg-dark: #1a1a2e;
@@ -17,6 +17,18 @@
   -webkit-font-smoothing: antialiased;
 }
 
+[data-theme="light"] {
+  --accent: #6C5CE7;
+  --accent-light: #7C6FF0;
+  --bg-dark: #f0f2f5;
+  --bg-panel: #ffffff;
+  --bg-input: #f5f5f7;
+  --text: #1a1a2e;
+  --text-dim: #6b7280;
+  --border: rgba(0, 0, 0, 0.1);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -27,14 +39,14 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #1a1a2e;
+  background: var(--bg-dark);
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.5); }
 
 /* Animations */
 @keyframes breathe {

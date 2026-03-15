@@ -55,7 +55,7 @@ export class DesktopSyncController {
   @ApiResponse({ status: 200, description: 'Desktop session summaries returned' })
   async listSessions(@Request() req): Promise<any> {
     return {
-      sessions: this.desktopSyncService.listSessions(req.user.id),
+      sessions: await this.desktopSyncService.listSessions(req.user.id),
     };
   }
 
@@ -85,7 +85,7 @@ export class DesktopSyncController {
   @ApiResponse({ status: 200, description: 'Desktop commands returned' })
   async listCommands(@Request() req, @Query('deviceId') deviceId?: string): Promise<any> {
     return {
-      commands: this.desktopSyncService.listCommands(req.user.id, deviceId),
+      commands: await this.desktopSyncService.listCommands(req.user.id, deviceId),
     };
   }
 
@@ -94,7 +94,7 @@ export class DesktopSyncController {
   @ApiResponse({ status: 200, description: 'Pending desktop commands returned' })
   async getPendingCommands(@Request() req, @Query('deviceId') deviceId?: string): Promise<any> {
     return {
-      commands: this.desktopSyncService.getPendingCommands(req.user.id, deviceId),
+      commands: await this.desktopSyncService.getPendingCommands(req.user.id, deviceId),
     };
   }
 
@@ -136,7 +136,7 @@ export class DesktopSyncController {
   @ApiResponse({ status: 200, description: 'Pending approvals returned' })
   async getPendingApprovals(@Request() req, @Query('deviceId') deviceId?: string): Promise<any> {
     return {
-      approvals: this.desktopSyncService.getPendingApprovals(req.user.id, deviceId),
+      approvals: await this.desktopSyncService.getPendingApprovals(req.user.id, deviceId),
     };
   }
 

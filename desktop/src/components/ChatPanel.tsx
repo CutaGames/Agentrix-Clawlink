@@ -21,6 +21,7 @@ import MessageBubble from "./MessageBubble";
 import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
+import FileTreePanel from "./FileTreePanel";
 import { type VoiceState } from "../services/voice";
 import {
   AudioQueuePlayer,
@@ -77,6 +78,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
+  const [fileTreeOpen, setFileTreeOpen] = useState(false);
   const [syncConnected, setSyncConnected] = useState(isSessionSyncConnected());
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const abortRef = useRef<AbortController | null>(null);
@@ -799,7 +801,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         <button onClick={handleNewChat} style={iconBtnStyle} title="New Chat">
           ＋
         </button>
-        <button onClick={() => setHistoryOpen(!historyOpen)} style={iconBtnStyle} title="Chat History">
+        <button onClick={() => { setFileTreeOpen(!fileTreeOpen); setHistoryOpen(false); }} style={iconBtnStyle} title="Workspace Files">
+          📁
+        </button>
+        <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
           📋
         </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
@@ -851,6 +856,28 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           ttsEnabled={ttsEnabled}
           onTtsToggle={setTtsEnabled}
           onClose={() => setSettingsOpen(false)}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+        />
+      )}
+
+      {/* File tree sidebar */}
+      {fileTreeOpen && (
+        <FileTreePanel
+          workspaceDir={workspaceDir}
+          onFileSelect={(path, content) => {
+            const ext = path.split(".").pop() || "";
+            const preview = content.length > 3000 ? content.slice(0, 3000) + "\n... (truncated)" : content;
+            setMessages((prev) => [...prev, {
+              id: `sys-${Date.now()}`,
+              role: "assistant" as const,
+              content: `📄 **${path}**\n\n\`\`\`${ext}\n${preview}\n\`\`\``,
+              createdAt: Date.now(),
+            }]);
+            setFileTreeOpen(false);
+          }}
+          onClose={() => setFileTreeOpen(false)}
         />
       )}
 
