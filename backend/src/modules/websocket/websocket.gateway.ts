@@ -199,13 +199,14 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage('session:list')
-  handleSessionList(@ConnectedSocket() client: AuthenticatedSocket) {
+  async handleSessionList(@ConnectedSocket() client: AuthenticatedSocket) {
     if (!client.userId) {
       return { error: '未认证' };
     }
 
+    const sessions = await this.desktopSyncService.listSessions(client.userId);
     client.emit('session:list:res', {
-      sessions: this.desktopSyncService.listSessions(client.userId),
+      sessions,
     });
     return { ok: true };
   }

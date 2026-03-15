@@ -25,7 +25,7 @@ export class UserProviderConfig {
   @Column({ name: 'user_id' })
   userId: string;
 
-  /** Provider identifier: anthropic, openai, gemini, bedrock, deepseek, groq, zhipu, moonshot, baidu, alibaba */
+  /** Provider identifier: anthropic, openai, chatgpt-subscription, copilot-subscription, gemini, bedrock, deepseek, groq, zhipu, moonshot, baidu, alibaba */
   @Column({ name: 'provider_id', length: 50 })
   providerId: string;
 

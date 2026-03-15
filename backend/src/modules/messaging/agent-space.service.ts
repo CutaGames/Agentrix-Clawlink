@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -29,6 +29,7 @@ export class AgentSpaceService {
     agentInstanceId?: string;
     memberIds?: string[];
   }): Promise<AgentSpace> {
+    const memberIds = Array.from(new Set([params.ownerId, ...(params.memberIds ?? [])]));
     const space = this.spaceRepo.create({
       name: params.name,
       description: params.description,
@@ -36,7 +37,7 @@ export class AgentSpaceService {
       type: params.type ?? SpaceType.GENERAL,
       taskId: params.taskId,
       agentInstanceId: params.agentInstanceId,
-      memberIds: params.memberIds ?? [params.ownerId],
+      memberIds,
     });
     return this.spaceRepo.save(space);
   }
@@ -58,12 +59,21 @@ export class AgentSpaceService {
     return space;
   }
 
-  async archiveSpace(spaceId: string): Promise<void> {
+  async getSpaceForUser(spaceId: string, userId: string): Promise<AgentSpace> {
+    const space = await this.getSpaceById(spaceId);
+    this.assertMember(space, userId);
+    return space;
+  }
+
+  async archiveSpace(spaceId: string, actorId: string): Promise<void> {
+    const space = await this.getSpaceById(spaceId);
+    this.assertOwner(space, actorId);
     await this.spaceRepo.update(spaceId, { status: SpaceStatus.ARCHIVED });
   }
 
-  async addMember(spaceId: string, userId: string): Promise<void> {
+  async addMember(spaceId: string, actorId: string, userId: string): Promise<void> {
     const space = await this.getSpaceById(spaceId);
+    this.assertOwner(space, actorId);
     const members = space.memberIds ?? [];
     if (!members.includes(userId)) {
       members.push(userId);
@@ -71,8 +81,14 @@ export class AgentSpaceService {
     }
   }
 
-  async removeMember(spaceId: string, userId: string): Promise<void> {
+  async removeMember(spaceId: string, actorId: string, userId: string): Promise<void> {
     const space = await this.getSpaceById(spaceId);
+    if (space.ownerId !== actorId && actorId !== userId) {
+      throw new ForbiddenException('Only the space owner can manage other members');
+    }
+    if (space.ownerId === userId) {
+      throw new ForbiddenException('Space owner cannot be removed from the space');
+    }
     const members = (space.memberIds ?? []).filter((id) => id !== userId);
     await this.spaceRepo.update(spaceId, { memberIds: members });
   }
@@ -81,9 +97,11 @@ export class AgentSpaceService {
 
   async getMessages(
     spaceId: string,
+    userId: string,
     page = 1,
     limit = 50,
   ): Promise<{ messages: AgentSpaceMessage[]; total: number }> {
+    await this.getSpaceForUser(spaceId, userId);
     const [messages, total] = await this.msgRepo.findAndCount({
       where: { spaceId },
       order: { createdAt: 'ASC' },
@@ -101,7 +119,11 @@ export class AgentSpaceService {
     content: string;
     type?: SpaceMessageType;
     metadata?: Record<string, any>;
+    bypassAccessCheck?: boolean;
   }): Promise<AgentSpaceMessage> {
+    const space = params.bypassAccessCheck
+      ? await this.getSpaceById(params.spaceId)
+      : await this.getSpaceForUser(params.spaceId, params.senderId);
     const msg = this.msgRepo.create({
       spaceId: params.spaceId,
       senderId: params.senderId,
@@ -113,7 +135,7 @@ export class AgentSpaceService {
     });
     const saved = await this.msgRepo.save(msg);
     // Touch space updatedAt
-    await this.spaceRepo.update(params.spaceId, { updatedAt: new Date() });
+    await this.spaceRepo.update(space.id, { updatedAt: new Date() });
     return saved;
   }
 
@@ -130,6 +152,7 @@ export class AgentSpaceService {
       content: params.content,
       type: SpaceMessageType.AGENT_REPLY,
       metadata: params.metadata,
+      bypassAccessCheck: true,
     });
   }
 
@@ -145,6 +168,25 @@ export class AgentSpaceService {
       content: params.content,
       type: SpaceMessageType.TASK_UPDATE,
       metadata: params.metadata,
+      bypassAccessCheck: true,
     });
+  }
+
+  private assertMember(space: AgentSpace, userId: string) {
+    if (space.ownerId === userId) {
+      return;
+    }
+
+    if ((space.memberIds ?? []).includes(userId)) {
+      return;
+    }
+
+    throw new ForbiddenException('You do not have access to this agent space');
+  }
+
+  private assertOwner(space: AgentSpace, userId: string) {
+    if (space.ownerId !== userId) {
+      throw new ForbiddenException('Only the space owner can manage this agent space');
+    }
   }
 }

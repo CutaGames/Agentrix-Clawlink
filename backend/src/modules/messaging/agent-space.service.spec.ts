@@ -8,7 +8,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AgentSpaceService } from './agent-space.service';
 import {
   AgentSpace,
@@ -116,10 +116,29 @@ describe('AgentSpaceService — P1-C', () => {
     });
   });
 
+  describe('getSpaceForUser', () => {
+    it('should allow a member to load the space', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'owner-1', memberIds: ['user-1'] });
+      const space = await service.getSpaceForUser('s1', 'user-1');
+      expect(space.id).toBe('s1');
+    });
+
+    it('should reject non-members', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'owner-1', memberIds: ['user-2'] });
+      await expect(service.getSpaceForUser('s1', 'user-1')).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe('archiveSpace', () => {
-    it('should set status to ARCHIVED', async () => {
-      await service.archiveSpace('s1');
+    it('should set status to ARCHIVED for the owner', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1'] });
+      await service.archiveSpace('s1', 'user-1');
       expect(spaceRepo.update).toHaveBeenCalledWith('s1', { status: SpaceStatus.ARCHIVED });
+    });
+
+    it('should reject non-owners', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'owner-1', memberIds: ['owner-1', 'user-1'] });
+      await expect(service.archiveSpace('s1', 'user-1')).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -127,27 +146,45 @@ describe('AgentSpaceService — P1-C', () => {
 
   describe('addMember', () => {
     it('should add a new member', async () => {
-      spaceRepo.findOne.mockResolvedValue({ id: 's1', memberIds: ['user-1'] });
-      await service.addMember('s1', 'user-2');
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1'] });
+      await service.addMember('s1', 'user-1', 'user-2');
       expect(spaceRepo.update).toHaveBeenCalledWith('s1', {
         memberIds: ['user-1', 'user-2'],
       });
     });
 
     it('should not add duplicate member', async () => {
-      spaceRepo.findOne.mockResolvedValue({ id: 's1', memberIds: ['user-1', 'user-2'] });
-      await service.addMember('s1', 'user-2');
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1', 'user-2'] });
+      await service.addMember('s1', 'user-1', 'user-2');
       expect(spaceRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject non-owners', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'owner-1', memberIds: ['owner-1', 'user-1'] });
+      await expect(service.addMember('s1', 'user-1', 'user-2')).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe('removeMember', () => {
     it('should remove a member from the list', async () => {
-      spaceRepo.findOne.mockResolvedValue({ id: 's1', memberIds: ['user-1', 'user-2', 'user-3'] });
-      await service.removeMember('s1', 'user-2');
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1', 'user-2', 'user-3'] });
+      await service.removeMember('s1', 'user-1', 'user-2');
       expect(spaceRepo.update).toHaveBeenCalledWith('s1', {
         memberIds: ['user-1', 'user-3'],
       });
+    });
+
+    it('should allow a member to leave their own space membership', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'owner-1', memberIds: ['owner-1', 'user-2'] });
+      await service.removeMember('s1', 'user-2', 'user-2');
+      expect(spaceRepo.update).toHaveBeenCalledWith('s1', {
+        memberIds: ['owner-1'],
+      });
+    });
+
+    it('should reject removing the owner', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1', 'user-2'] });
+      await expect(service.removeMember('s1', 'user-1', 'user-1')).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -155,12 +192,13 @@ describe('AgentSpaceService — P1-C', () => {
 
   describe('getMessages', () => {
     it('should return paginated messages in ASC order', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1'] });
       const mockMsgs = [
         { id: 'm1', content: 'Hello', createdAt: new Date() },
         { id: 'm2', content: 'World', createdAt: new Date() },
       ];
       msgRepo.findAndCount.mockResolvedValue([mockMsgs, 2]);
-      const result = await service.getMessages('s1', 1, 50);
+      const result = await service.getMessages('s1', 'user-1', 1, 50);
       expect(result.messages).toHaveLength(2);
       expect(result.total).toBe(2);
       expect(msgRepo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({
@@ -172,6 +210,7 @@ describe('AgentSpaceService — P1-C', () => {
 
   describe('sendMessage', () => {
     it('should create and save a text message', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1'] });
       const result = await service.sendMessage({
         spaceId: 's1',
         senderId: 'user-1',
@@ -187,10 +226,20 @@ describe('AgentSpaceService — P1-C', () => {
       expect(msgRepo.save).toHaveBeenCalled();
       expect(spaceRepo.update).toHaveBeenCalledWith('s1', expect.objectContaining({ updatedAt: expect.any(Date) }));
     });
+
+    it('should reject senders without access', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'owner-1', memberIds: ['owner-1'] });
+      await expect(service.sendMessage({
+        spaceId: 's1',
+        senderId: 'user-1',
+        content: 'Hello team!',
+      })).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('sendAgentReply', () => {
     it('should send a message with AGENT_REPLY type', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1'] });
       await service.sendAgentReply({
         spaceId: 's1',
         agentName: 'ResearchBot',
@@ -206,6 +255,7 @@ describe('AgentSpaceService — P1-C', () => {
 
   describe('sendTaskUpdate', () => {
     it('should send a message with TASK_UPDATE type', async () => {
+      spaceRepo.findOne.mockResolvedValue({ id: 's1', ownerId: 'user-1', memberIds: ['user-1'] });
       await service.sendTaskUpdate({
         spaceId: 's1',
         content: 'Task progress: 75% complete',

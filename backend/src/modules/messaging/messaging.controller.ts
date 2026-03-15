@@ -115,15 +115,15 @@ export class MessagingController {
 
   @Get('spaces/:spaceId')
   @ApiOperation({ summary: 'Get a specific agent space' })
-  async getSpace(@Param('spaceId') spaceId: string) {
-    const space = await this.agentSpaceService.getSpaceById(spaceId);
+  async getSpace(@Request() req, @Param('spaceId') spaceId: string) {
+    const space = await this.agentSpaceService.getSpaceForUser(spaceId, req.user.id);
     return { success: true, data: space };
   }
 
   @Delete('spaces/:spaceId')
   @ApiOperation({ summary: 'Archive an agent space' })
-  async archiveSpace(@Param('spaceId') spaceId: string) {
-    await this.agentSpaceService.archiveSpace(spaceId);
+  async archiveSpace(@Request() req, @Param('spaceId') spaceId: string) {
+    await this.agentSpaceService.archiveSpace(spaceId, req.user.id);
     return { success: true };
   }
 
@@ -131,20 +131,22 @@ export class MessagingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Add a member to an agent space' })
   async addMember(
+    @Request() req,
     @Param('spaceId') spaceId: string,
     @Body() body: { userId: string },
   ) {
-    await this.agentSpaceService.addMember(spaceId, body.userId);
+    await this.agentSpaceService.addMember(spaceId, req.user.id, body.userId);
     return { success: true };
   }
 
   @Delete('spaces/:spaceId/members/:userId')
   @ApiOperation({ summary: 'Remove a member from an agent space' })
   async removeMember(
+    @Request() req,
     @Param('spaceId') spaceId: string,
     @Param('userId') userId: string,
   ) {
-    await this.agentSpaceService.removeMember(spaceId, userId);
+    await this.agentSpaceService.removeMember(spaceId, req.user.id, userId);
     return { success: true };
   }
 
@@ -153,11 +155,12 @@ export class MessagingController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async getSpaceMessages(
+    @Request() req,
     @Param('spaceId') spaceId: string,
     @Query('page') page = 1,
     @Query('limit') limit = 50,
   ) {
-    const result = await this.agentSpaceService.getMessages(spaceId, Number(page), Number(limit));
+    const result = await this.agentSpaceService.getMessages(spaceId, req.user.id, Number(page), Number(limit));
     return { success: true, data: result.messages, total: result.total };
   }
 
@@ -184,11 +187,12 @@ export class MessagingController {
   @Get('groups/:groupId/messages')
   @ApiOperation({ summary: '[Legacy] Get messages in a group chat — proxies to Agent Space' })
   async getGroupMessages(
+    @Request() req,
     @Param('groupId') groupId: string,
     @Query('page') page = 1,
     @Query('limit') limit = 50,
   ) {
-    const result = await this.agentSpaceService.getMessages(groupId, Number(page), Number(limit));
+    const result = await this.agentSpaceService.getMessages(groupId, req.user.id, Number(page), Number(limit));
     return { success: true, data: result.messages, total: result.total };
   }
 

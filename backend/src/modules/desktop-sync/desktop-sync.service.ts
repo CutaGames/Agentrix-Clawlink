@@ -89,7 +89,7 @@ export class DesktopSyncService {
     entity.startedAt = dto.startedAt ?? entity.startedAt ?? Date.now();
     entity.finishedAt = dto.finishedAt;
     entity.timeline = this.normalizeTimeline(dto.timeline ?? entity.timeline ?? []);
-    entity.context = dto.context;
+    entity.context = this.toJsonRecord(dto.context);
 
     entity = await this.taskRepo.save(entity);
 
@@ -100,19 +100,18 @@ export class DesktopSyncService {
   }
 
   async createApproval(userId: string, dto: CreateDesktopApprovalDto) {
-    const entity = this.approvalRepo.create({
-      userId,
-      deviceId: dto.deviceId,
-      taskId: dto.taskId,
-      timelineEntryId: dto.timelineEntryId,
-      title: dto.title,
-      description: dto.description,
-      riskLevel: dto.riskLevel,
-      sessionKey: dto.sessionKey,
-      status: 'pending',
-      rememberForSession: false,
-      context: dto.context,
-    });
+    const entity = this.approvalRepo.create();
+    entity.userId = userId;
+    entity.deviceId = dto.deviceId;
+    entity.taskId = dto.taskId;
+    entity.timelineEntryId = dto.timelineEntryId;
+    entity.title = dto.title;
+    entity.description = dto.description;
+    entity.riskLevel = dto.riskLevel;
+    entity.sessionKey = dto.sessionKey;
+    entity.status = 'pending';
+    entity.rememberForSession = false;
+    entity.context = this.toJsonRecord(dto.context);
 
     const saved = await this.approvalRepo.save(entity);
     const approvalId = saved.id;
@@ -358,6 +357,14 @@ export class DesktopSyncService {
     return [...entries]
       .sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0))
       .slice(-40);
+  }
+
+  private toJsonRecord(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
   }
 
   private async bumpTaskStatusForApproval(
