@@ -69,3 +69,5 @@ android/local.properties
 *.bundle
 *.tar.gz
 gen_jwt.js
+temp_test*
+tmp_*
