@@ -17,13 +17,12 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { marketplaceApi, ReviewItem } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
-import { useSettingsStore } from '../../stores/settingsStore';
 import type { MarketStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
@@ -62,7 +61,6 @@ export function ClawSkillDetailScreen() {
   const { skillId } = route.params;
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const queryClient = useQueryClient();
   const [installing, setInstalling] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -102,17 +100,17 @@ export function ClawSkillDetailScreen() {
     if (!skill) return;
     const authorName = typeof skill.author === 'string'
       ? skill.author
-      : skill.author?.nickname || skill.vendorName || 'Agentrix Creator';
+      : skill.author?.nickname || skill.vendorName || 'ClawLink Creator';
     try {
       navigation.navigate('ShareCard' as any, {
-        shareUrl: `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
+        shareUrl: `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`,
         title: skill.displayName || skill.name,
         userName: authorName,
       });
     } catch {
       // Fallback to native share
       Share.share({
-        message: `Check out "${skill.displayName || skill.name}" on Agentrix Claw!\nhttps://agentrix.top/skill/${skillId}`,
+        message: `Check out "${skill.displayName || skill.name}" on ClawLink!\nhttps://clawlink.app/skill/${skillId}`,
       });
     }
   }, [skill, skillId, activeInstance, navigation]);
@@ -145,14 +143,7 @@ export function ClawSkillDetailScreen() {
 
   const handleInstallToAgent = useCallback(async () => {
     if (!activeInstance) {
-      Alert.alert(
-        'No Agent',
-        'Connect an OpenClaw instance first to install skills.',
-        [
-          { text: 'Connect Agent', onPress: () => (navigation as any).navigate('Agent', { screen: 'DeploySelect' }) },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+      Alert.alert('No Agent', 'Connect an OpenClaw instance first to install skills.');
       return;
     }
     if (!isAuthenticated) {
@@ -161,26 +152,8 @@ export function ClawSkillDetailScreen() {
     }
     setInstalling(true);
     try {
-      const result = await installSkillToInstance(activeInstance.id, skillId);
-      const skillName = skill?.name || skill?.displayName || 'Skill';
-
-      void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
-      void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
-
-      if (result?.skillActive || result?.platformHosted) {
-        Alert.alert(
-          '✅ Installed!',
-          `${skillName} is now active on ${activeInstance.name} and can be used in chat immediately.`,
-        );
-      } else if (result?.dbRecorded || result?.pendingDeploy) {
-        Alert.alert(
-          '✅ Installed!',
-          `${skillName} has been added to ${activeInstance.name}.${result?.pendingDeploy ? '\n\nIt will sync automatically when the agent reconnects.' : ''}`,
-        );
-      } else {
-        Alert.alert('✅ Installed!', `${skillName} has been installed to ${activeInstance.name}!`);
-      }
-      useSettingsStore.getState().markOnboardingStep('installedSkill');
+      await installSkillToInstance(activeInstance.id, skillId);
+      Alert.alert('✅ Installed!', `${skill?.name || skill?.displayName} has been installed to ${activeInstance.name}`);
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
       if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {
@@ -200,56 +173,19 @@ export function ClawSkillDetailScreen() {
 
   const handlePromote = useCallback(async () => {
     if (!skill) return;
-    const shareUrl = `https://agentrix.top/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
-    const skillDisplayName = skill.displayName || skill.name;
+    const shareUrl = `https://clawlink.app/skill/${skillId}?ref=${activeInstance?.id || 'guest'}`;
     const authorName = typeof skill.author === 'string' ? skill.author : skill.author?.nickname || skill.vendorName || '';
-    
-    // Show share options: Social post, Native share, and Poster
-    Alert.alert(
-      '🔗 Share & Promote',
-      `Share "${skillDisplayName}" to earn commission!`,
-      [
-        {
-          text: '📱 Share via Apps',
-          onPress: async () => {
-            await Share.share({
-              message: `🔥 Check out "${skillDisplayName}" on Agentrix Claw!\n\nDownload Agentrix: https://agentrix.top/download\n\nSkill link: ${shareUrl}`,
-              url: shareUrl,
-              title: skillDisplayName,
-            });
-          },
-        },
-        {
-          text: '🖼️ Share Poster',
-          onPress: () => {
-            try {
-              navigation.navigate('ShareCard' as any, {
-                shareUrl,
-                title: skillDisplayName,
-                userName: authorName,
-              });
-            } catch {
-              Share.share({
-                message: `🔥 "${skillDisplayName}" on Agentrix Claw\n\nDownload: https://agentrix.top/download\n${shareUrl}`,
-              });
-            }
-          },
-        },
-        {
-          text: '📋 Copy Link',
-          onPress: async () => {
-            try {
-              const Clipboard = require('expo-clipboard');
-              await Clipboard.setStringAsync(shareUrl);
-              Alert.alert('Copied!', 'Share link copied to clipboard');
-            } catch {
-              Alert.alert('Share Link', shareUrl);
-            }
-          },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    try {
+      navigation.navigate('ShareCard' as any, {
+        shareUrl,
+        title: `${skill.displayName || skill.name} — Promote & Earn`,
+        userName: authorName,
+      });
+    } catch {
+      await Share.share({
+        message: `🔥 Promote & Earn commission!\n"${skill.displayName || skill.name}" on ClawLink\n${shareUrl}`,
+      });
+    }
   }, [skill, skillId, activeInstance, navigation]);
 
   // ── Loading / Error states ──

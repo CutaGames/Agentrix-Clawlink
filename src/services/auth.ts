@@ -18,7 +18,7 @@ function getBackendBaseUrl(): string {
 // ClawLink deep link scheme
 function getMobileCallbackUrl(): string {
   return AuthSession.makeRedirectUri({
-    scheme: 'agentrix',
+    scheme: 'clawlink',
     path: 'auth/callback',
   });
 }
@@ -87,48 +87,56 @@ async function handleLoginResult(
 
   // 异步创建 MPC 钱包（不阻塞登录）
   if (provider !== 'wallet' && socialId) {
+    const { setMpcInitializing } = useAuthStore.getState();
+    setMpcInitializing(true);
     ensureMPCWallet(socialId)
       .then((walletAddress) => {
         if (walletAddress && !user.walletAddress) {
           const currentState = useAuthStore.getState();
           if (currentState.user) {
-            currentState.updateUser({ walletAddress });
+            currentState.setAuth(
+              { ...currentState.user, walletAddress },
+              currentState.token!,
+            );
           }
         }
       })
       .catch((err) => {
         console.warn('MPC wallet auto-creation failed (non-blocking):', err.message);
+      })
+      .finally(() => {
+        setMpcInitializing(false);
       });
   }
 
-  // Fetch full user profile WITH instances in a single /auth/me call.
-  // No more race condition — /auth/me now returns openClawInstances.
-  // This single call replaces both the old fetchCurrentUser() and getMyInstances().
+  // 异步获取完整用户信息
   fetchCurrentUser().then((fullUser) => {
     if (fullUser) {
       const currentState = useAuthStore.getState();
       if (currentState.token) {
-        // setAuth preserves activeInstance when fullUser has instances
         currentState.setAuth(fullUser, currentState.token);
-        // If for some reason /auth/me didn't return instances, fetch separately
-        if (!fullUser.openClawInstances || fullUser.openClawInstances.length === 0) {
-          getMyInstances().then((instances) => {
-            if (instances && instances.length > 0) {
-              const state = useAuthStore.getState();
-              if (state.user) {
-                const mapped = mapRawInstances(instances);
-                state.updateUser({ openClawInstances: mapped });
-                if (!state.activeInstance && mapped.length > 0) {
-                  useAuthStore.setState({ activeInstance: mapped[0] });
-                }
-              }
-            }
-          }).catch(() => {});
-        } else {
-          // Ensure activeInstance is set from the fetched instances
-          if (!currentState.activeInstance && fullUser.openClawInstances.length > 0) {
-            useAuthStore.setState({ activeInstance: fullUser.openClawInstances[0] });
-          }
+      }
+    }
+  }).catch(() => {});
+
+  // 异步恢复 OpenClaw 实例列表（登录后立即拉取）
+  getMyInstances().then((instances) => {
+    if (instances && instances.length > 0) {
+      const currentState = useAuthStore.getState();
+      if (currentState.user && currentState.token) {
+        const storeInstances = instances.map((inst: any) => ({
+          id: inst.id,
+          name: inst.name || 'My Agent',
+          instanceUrl: inst.instanceUrl || '',
+          status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
+          deployType: (inst.deployType || 'custom') as 'cloud' | 'local' | 'server' | 'existing',
+          version: inst.version,
+          lastSyncAt: inst.lastSyncAt,
+        }));
+        currentState.updateUser({ openClawInstances: storeInstances });
+        // Restore first active instance if none set
+        if (!currentState.activeInstance && storeInstances.length > 0) {
+          useAuthStore.setState({ activeInstance: storeInstances[0] ?? null });
         }
       }
     }
@@ -416,31 +424,12 @@ export async function waitForQrBind(sessionId: string): Promise<OpenClawInstance
   return null;
 }
 
-// Helper: map raw API instance data to OpenClawInstance shape
-function mapRawInstances(raw: any[]): OpenClawInstance[] {
-  return raw.map((inst: any) => ({
-    id: inst.id,
-    name: inst.name || 'My Agent',
-    instanceUrl: inst.instanceUrl || inst.instance_url || '',
-    status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
-    deployType: (inst.instanceType || inst.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
-    relayToken: inst.relayToken || inst.relay_token || undefined,
-    version: inst.version,
-    lastSyncAt: inst.lastSyncAt || inst.updatedAt,
-  }));
-}
-
 // ========== 获取当前用户 ==========
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   try {
     const result = await apiFetch<any>('/auth/me');
     if (!result?.id) return null;
-
-    // Map instances from the /auth/me response (now always included)
-    const openClawInstances = Array.isArray(result.openClawInstances)
-      ? mapRawInstances(result.openClawInstances)
-      : undefined;
 
     return {
       id: result.id,
@@ -450,7 +439,6 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
       avatarUrl: result.avatarUrl,
       walletAddress: result.walletAddress,
       roles: result.roles || ['user'],
-      openClawInstances,
     };
   } catch {
     return null;
@@ -472,18 +460,32 @@ export async function loginWithX(): Promise<AuthUser> {
 
 /** loginWithApple — OAuth via WebBrowser */
 export async function loginWithApple(): Promise<AuthUser> {
-  const redirectUri = getMobileCallbackUrl();
-  const apiBase = getBackendBaseUrl();
-  const result = await WebBrowser.openAuthSessionAsync(
-    `${apiBase}/auth/apple?redirect_uri=${encodeURIComponent(redirectUri)}`,
-    redirectUri,
-  );
-  if (result.type !== 'success') throw new Error('Apple login cancelled');
-  const params = new URL(result.url);
-  const token = params.searchParams.get('token');
-  if (!token) throw new Error('No token from Apple login');
-  const user = await fetchCurrentUserWithToken(token);
-  return { ...user, token } as any;
+  return socialLogin('apple', 'Apple');
+}
+
+/**
+ * loginWithWalletWeb — opens agentrix.top web login page which has WalletConnect built-in.
+ * The web page connects the wallet, signs the nonce, and redirects back to
+ * clawlink://auth/callback?token=JWT — same flow as all social logins.
+ */
+export async function loginWithWalletWeb(): Promise<AuthUser> {
+  const callbackUrl = getMobileCallbackUrl();
+  const entryUrl = `https://agentrix.top/auth/login?method=walletconnect&redirect_uri=${encodeURIComponent(callbackUrl)}&mobile=1`;
+
+  const result = await WebBrowser.openAuthSessionAsync(entryUrl, callbackUrl, {
+    showInRecents: true,
+    preferEphemeralSession: false,
+  });
+
+  if (result.type === 'cancel' || result.type === 'dismiss') {
+    throw new Error('User cancelled wallet login');
+  }
+  if (result.type !== 'success') {
+    throw new Error(`Wallet login failed (${result.type})`);
+  }
+
+  const loginResult = parseCallbackUrl(result.url);
+  return handleLoginResult(loginResult, 'wallet', loginResult.user?.id);
 }
 
 /** handleOAuthCallback — called from AuthCallbackScreen */
@@ -512,11 +514,6 @@ export async function handleOAuthCallback(params: {
 
 async function fetchCurrentUserWithToken(token: string): Promise<AuthUser> {
   const data = await apiFetch<any>('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-
-  const openClawInstances = Array.isArray(data.openClawInstances)
-    ? mapRawInstances(data.openClawInstances)
-    : undefined;
-
   return {
     id: data.id,
     agentrixId: data.agentrixId || data.paymindId || data.id,
@@ -525,7 +522,6 @@ async function fetchCurrentUserWithToken(token: string): Promise<AuthUser> {
     avatarUrl: data.avatarUrl || data.avatar,
     walletAddress: data.walletAddress,
     roles: data.roles || ['user'],
-    openClawInstances,
   };
 }
 

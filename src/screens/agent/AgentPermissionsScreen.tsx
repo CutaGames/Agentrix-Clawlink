@@ -1,11 +1,11 @@
 // 🔐 Agent Permissions & Security Screen
 // Shows and manages all permission boundaries for the active AgentAccount
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Switch, Alert, TextInput,
 } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
@@ -113,7 +113,7 @@ export function AgentPermissionsScreen() {
   const agentAccountId = route.params?.agentAccountId;
   const queryClient = useQueryClient();
 
-  const { data: agents = [] } = useQuery<AgentAccount[]>({
+  const { data: agents = [], isLoading: isLoadingAgents } = useQuery<AgentAccount[]>({
     queryKey: ['agent-accounts'],
     queryFn: async () => {
       const res = await apiFetch<{ success: boolean; data: AgentAccount[] }>('/agent-accounts');
@@ -126,9 +126,32 @@ export function AgentPermissionsScreen() {
     ? agents.find((a) => a.id === agentAccountId)
     : agents[0];
 
+  const navigation = useNavigation();
   const [perms, setPerms] = useState<PermissionState>(DEFAULT_PERMISSIONS);
   const [editingThreshold, setEditingThreshold] = useState(false);
   const [thresholdInput, setThresholdInput] = useState(String(DEFAULT_PERMISSIONS.confirmationThreshold));
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load permissions from backend when agent is available
+  useEffect(() => {
+    if (!activeAgent) return;
+    (async () => {
+      try {
+        const res = await apiFetch<{ data?: { metadata?: { permissions?: Partial<PermissionState> } } }>(
+          `/agent-accounts/${activeAgent.id}`,
+        );
+        const remote = res?.data?.metadata?.permissions;
+        if (remote && typeof remote === 'object') {
+          setPerms((prev) => ({ ...prev, ...remote }));
+          if (remote.confirmationThreshold != null) {
+            setThresholdInput(String(remote.confirmationThreshold));
+          }
+        }
+      } catch {
+        // Keep defaults if backend unreachable
+      }
+    })();
+  }, [activeAgent?.id]);
 
   const updatePerm = <K extends keyof PermissionState>(key: K, value: PermissionState[K]) => {
     setPerms((p) => ({ ...p, [key]: value }));
@@ -146,10 +169,18 @@ export function AgentPermissionsScreen() {
   };
 
   const handleSave = async () => {
-    if (!activeAgent) return;
+    if (!activeAgent) {
+      Alert.alert('No Agent Selected', 'No agent account is available yet. Create or select an agent account first.');
+      return;
+    }
+
+    if (isSaving) {
+      return;
+    }
+
     try {
-      // Current backend support is limited to agent-account fields like spending limits.
-      // Device/network/tool toggles shown on this screen are not yet enforced by the claw runtime.
+      setIsSaving(true);
+      // Persist spending limits to backend via PUT /agent-accounts/:id
       await apiFetch(`/agent-accounts/${activeAgent.id}`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -159,12 +190,15 @@ export function AgentPermissionsScreen() {
             monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
             currency: 'USD',
           },
+          metadata: { permissions: perms },
         }),
       });
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-      Alert.alert('Partially Saved', 'Payment limits and agent account state were saved. Device, network, and tool toggles are not yet enforced server-side.');
+      Alert.alert('Saved ✅', 'Permissions updated successfully.');
     } catch (e: any) {
-      Alert.alert('Save Failed', e?.message || 'Could not save agent account settings.');
+      Alert.alert('Save Failed', e?.message || 'Could not update permissions. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -178,7 +212,7 @@ export function AgentPermissionsScreen() {
         {
           text: 'Suspend', style: 'destructive', onPress: async () => {
             try {
-              await apiFetch(`/agent-accounts/${activeAgent.id}/suspend`, { method: 'PATCH' });
+              await apiFetch(`/agent-accounts/${activeAgent.id}/suspend`, { method: 'POST' });
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
               Alert.alert('Agent Suspended', `${activeAgent.name} is now suspended.`);
             } catch { Alert.alert('Error', 'Failed to suspend agent.'); }
@@ -355,15 +389,37 @@ export function AgentPermissionsScreen() {
             <Text style={styles.permLabel}>🔧 MCP Tools Authorized</Text>
             <Text style={styles.permSub}>{perms.mcpToolCount} tools allowed</Text>
           </View>
-          <TouchableOpacity style={styles.manageBtn}>
+          <TouchableOpacity
+            style={styles.manageBtn}
+            onPress={() => {
+              Alert.alert(
+                'MCP Tools',
+                `${perms.mcpToolCount} tools authorized.\n\nManage tool bindings and authorization scopes from Agent Console → MCP Tools section.`,
+                [
+                  { text: 'OK' },
+                  {
+                    text: 'Go to Console',
+                    onPress: () => navigation.goBack(),
+                  },
+                ],
+              );
+            }}
+          >
             <Text style={styles.manageBtnText}>Manage →</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>💾 Save Permissions</Text>
+      <TouchableOpacity
+        style={[
+          styles.saveBtn,
+          (!activeAgent || isLoadingAgents || isSaving) && styles.saveBtnDisabled,
+        ]}
+        onPress={handleSave}
+        disabled={!activeAgent || isLoadingAgents || isSaving}
+      >
+        <Text style={styles.saveBtnText}>{isSaving ? 'Saving...' : '💾 Save Permissions'}</Text>
       </TouchableOpacity>
 
       {/* ── Danger Zone ── */}
@@ -376,7 +432,19 @@ export function AgentPermissionsScreen() {
           style={[styles.dangerBtn, { borderColor: colors.error }]}
           onPress={() => Alert.alert('Terminate Agent', 'Permanently terminate this agent? This cannot be undone.', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Terminate', style: 'destructive', onPress: () => {} },
+            {
+              text: 'Terminate', style: 'destructive', onPress: async () => {
+                if (!activeAgent) return;
+                try {
+                  await apiFetch(`/agent-accounts/${activeAgent.id}`, { method: 'DELETE' });
+                  queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+                  Alert.alert('Terminated', `${activeAgent.name} has been permanently terminated.`);
+                  navigation.goBack();
+                } catch {
+                  Alert.alert('Error', 'Failed to terminate agent. Try again later.');
+                }
+              },
+            },
           ])}
         >
           <Text style={[styles.dangerBtnText, { color: colors.error }]}>🗑 Terminate Agent</Text>
@@ -449,6 +517,9 @@ const styles = StyleSheet.create({
   saveBtn: {
     backgroundColor: colors.primary, borderRadius: 14, padding: 15,
     alignItems: 'center', marginTop: 4,
+  },
+  saveBtnDisabled: {
+    opacity: 0.55,
   },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   dangerRow: { flexDirection: 'row', gap: 10, marginTop: 4 },

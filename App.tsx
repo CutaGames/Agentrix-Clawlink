@@ -8,7 +8,6 @@ import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
 import { setApiConfig, loadTokenFromStorage } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
-import { getMyInstances } from './src/services/openclaw.service';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { colors } from './src/theme/colors';
 import { useNotificationStore } from './src/stores/notificationStore';
@@ -110,30 +109,6 @@ function AppNavigator() {
           const user = await fetchCurrentUser();
           if (user) {
             await setAuth(user, token);
-
-            // Restore OpenClaw instances (session restore path – mirrors handleLoginResult)
-            try {
-              const instances = await getMyInstances();
-              if (instances && instances.length > 0) {
-                const storeInstances = instances.map((inst: any) => ({
-                  id: inst.id,
-                  name: inst.name || 'My Agent',
-                  instanceUrl: inst.instanceUrl || '',
-                  status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
-                  deployType: (inst.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
-                  version: inst.version,
-                  lastSyncAt: inst.lastSyncAt,
-                }));
-                const currentState = useAuthStore.getState();
-                currentState.updateUser({ openClawInstances: storeInstances });
-                if (!currentState.activeInstance && storeInstances.length > 0) {
-                  useAuthStore.setState({ activeInstance: storeInstances[0] ?? null });
-                }
-              }
-            } catch (instanceErr) {
-              console.warn('Failed to restore instances during session restore:', instanceErr);
-            }
-
             // Start notification polling and register push token after successful auth
             startNotificationPolling(token);
             const pushToken = await registerForPushNotifications();

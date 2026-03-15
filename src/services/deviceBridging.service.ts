@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
-// expo-image-picker is required lazily (inside pickImageAsBase64) to avoid
+import { File as ExpoFile } from 'expo-file-system';
+// expo-image-picker is required lazily (inside pickImageAttachment) to avoid
 // loading the ExponentImagePicker native module at JS bundle evaluation time,
 // which crashes on HarmonyOS before the native bridge is fully initialised.
 
@@ -9,6 +10,22 @@ export interface LocationData {
   longitude: number;
   accuracy: number | null;
   altitude: number | null;
+}
+
+export interface ImageAttachment {
+  uri: string;
+  width: number | null;
+  height: number | null;
+  fileName: string | null;
+  mimeType: string | null;
+  size: number | null;
+}
+
+export interface FileAttachment {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+  size: number | null;
 }
 
 export class DeviceBridgingService {
@@ -69,10 +86,9 @@ export class DeviceBridgingService {
   }
 
   /**
-   * Pick an image from the device's photo album
-   * @returns Base64 string of the image, or null if canceled
+   * Pick an image from the device's photo album without loading base64 into JS memory.
    */
-  static async pickImageAsBase64(): Promise<string | null> {
+  static async pickImageAttachment(): Promise<ImageAttachment | null> {
     try {
       // Lazy require: only load expo-image-picker native module when this
       // function is actually called (not at startup), preventing HarmonyOS crash.
@@ -87,21 +103,52 @@ export class DeviceBridgingService {
         mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.8,
-        base64: true, 
+        base64: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        if (asset.base64) {
-          // Return base64 string formatted for data URI
-          return `data:image/jpeg;base64,${asset.base64}`;
-        }
+        return {
+          uri: asset.uri,
+          width: asset.width ?? null,
+          height: asset.height ?? null,
+          fileName: asset.fileName ?? null,
+          mimeType: asset.mimeType ?? null,
+          size: asset.fileSize ?? null,
+        };
       }
       
       return null;
     } catch (error: any) {
       console.error('Failed to pick image:', error);
       throw new Error(error.message || 'Failed to pick image');
+    }
+  }
+
+  /**
+   * Pick a general document/file from the device.
+   */
+  static async pickFileAttachment(): Promise<FileAttachment | null> {
+    try {
+      const selected = await ExpoFile.pickFileAsync();
+      const file = Array.isArray(selected) ? selected[0] : selected;
+
+      if (!file) {
+        return null;
+      }
+
+      return {
+        uri: file.uri,
+        fileName: file.uri.split('/').pop() || 'attachment',
+        mimeType: file.type || 'application/octet-stream',
+        size: typeof file.size === 'number' ? file.size : null,
+      };
+    } catch (error: any) {
+      if (String(error?.message || '').toLowerCase().includes('cancel')) {
+        return null;
+      }
+      console.error('Failed to pick file:', error);
+      throw new Error(error.message || 'Failed to pick file');
     }
   }
 }

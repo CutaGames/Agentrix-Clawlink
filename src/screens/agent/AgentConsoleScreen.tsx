@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Alert, RefreshControl, Linking,
+  Alert, RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,14 +14,8 @@ import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
-import { SelectEngineModal } from '../../components/SelectEngineModal';
-import { switchInstanceModel } from '../../services/openclaw.service';
-import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
-
-const DESKTOP_DOWNLOAD_PAGE_URL = 'https://agentrix.top/claw/download?platform=cli';
-const WINDOWS_INSTALLER_URL = 'https://api.agentrix.top/downloads/Agentrix-Setup.exe';
 
 const STATUS_COLOR: Record<string, string> = {
   active: colors.success,
@@ -39,13 +33,12 @@ const STATUS_LABEL: Record<string, string> = {
 
 // ── Onboarding Checklist Card ─────────────────────────────────────
 function OnboardingChecklist({ navigation }: { navigation: Nav }) {
-  const { t, language } = useI18n();
   const { onboardingDeployedAgent, onboardingInstalledSkill, onboardingCreatedWorkflow, markOnboardingStep, setUiComplexity } =
     useSettingsStore();
   const steps = [
-    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: t({ en: 'Deploy your first Agent', zh: '部署你的第一个智能体' }), action: undefined, actionLabel: '' },
-    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: t({ en: 'Install your first Skill', zh: '安装第一个技能' }), action: () => (navigation as any).navigate('Explore', { screen: 'Marketplace' }), actionLabel: t({ en: 'Browse Market →', zh: '浏览市场 →' }) },
-    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: t({ en: 'Create your first Workflow', zh: '创建第一个工作流' }), action: () => navigation.navigate('WorkflowList'), actionLabel: t({ en: 'Create →', zh: '创建 →' }) },
+    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: 'Deploy your first Agent', action: undefined, actionLabel: '' },
+    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: 'Install your first Skill', action: () => navigation.navigate('SkillInstall', { skillId: '', skillName: '' }), actionLabel: 'Browse Market →' },
+    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: 'Create your first Workflow', action: () => navigation.navigate('WorkflowList'), actionLabel: 'Create →' },
   ];
   const completedCount = steps.filter((s) => s.done).length;
   if (completedCount === 3) return null; // all done, hide card
@@ -58,7 +51,7 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
 
   return (
     <View style={onboard.card}>
-      <Text style={onboard.title}>{t({ en: '🎯 Complete these steps to unlock Agent full power', zh: '🎯 完成以下步骤解锁智能体全部功能' })}</Text>
+      <Text style={onboard.title}>🎯 Complete these steps to unlock Agent full power</Text>
       {steps.map((step, i) => (
         <View key={step.key} style={onboard.row}>
           <TouchableOpacity
@@ -81,7 +74,7 @@ function OnboardingChecklist({ navigation }: { navigation: Nav }) {
         {[0, 1, 2].map((i) => (
           <View key={i} style={[onboard.dot, i < completedCount && onboard.dotFilled]} />
         ))}
-        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? t({ en: `${2 - completedCount} more to unlock Advanced mode`, zh: `还差${2 - completedCount}步解锁高级模式` }) : t({ en: 'Advanced mode unlocked! 🎉', zh: '高级模式已解锁！🎉' })}</Text>
+        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? `${2 - completedCount} more to unlock Advanced mode` : 'Advanced mode unlocked! 🎉'}</Text>
       </View>
     </View>
   );
@@ -114,7 +107,6 @@ export function AgentConsoleScreen() {
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
-  const [showEngineModal, setShowEngineModal] = useState(false);
   const selectedModelLabel = SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label ?? selectedModelId;
 
   // Auto-mark onboarding step 1 when user has an active instance
@@ -247,7 +239,14 @@ export function AgentConsoleScreen() {
         <Text style={styles.modelLabel}>Current Engine:</Text>
         <TouchableOpacity 
           style={styles.modelSelector}
-          onPress={() => setShowEngineModal(true)}
+          onPress={() => {
+            Alert.alert('Select Engine', 'Choose the AI model for your agent',
+              [
+                ...SUPPORTED_MODELS.map((m) => ({ text: m.label, onPress: () => setSelectedModel(m.id) })),
+                { text: 'Cancel', style: 'cancel' as const },
+              ]
+            );
+          }}
         >
           <Text style={styles.modelSelectorText}>{selectedModelLabel}</Text>
           <Text style={styles.modelSelectorArrow}>▼</Text>
@@ -419,7 +418,13 @@ export function AgentConsoleScreen() {
               <TouchableOpacity
                 key={item.route}
                 style={styles.quickAction}
-                onPress={() => navigation.navigate(item.route as any)}
+                onPress={() => {
+                  if (item.route === 'VoiceChat' && activeInstance) {
+                    navigation.navigate('VoiceChat', { instanceId: activeInstance.id });
+                    return;
+                  }
+                  navigation.navigate(item.route as any);
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.quickActionIcon}>{item.icon}</Text>
@@ -434,11 +439,11 @@ export function AgentConsoleScreen() {
           onPress={() => {
             Alert.alert(
               '💻 Agentrix Desktop',
-              'Open the latest desktop download flow to install Agentrix on Windows, macOS, or Linux, then connect it with your phone.',
+              'Download the Agentrix Desktop app to control your computer with AI, run local agents, and sync with your mobile.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Windows Installer (.exe)', onPress: () => Linking.openURL(WINDOWS_INSTALLER_URL) },
-                { text: 'All desktop downloads', onPress: () => Linking.openURL(DESKTOP_DOWNLOAD_PAGE_URL) },
+                { text: 'Download Standard (.exe)', onPress: () => {} },
+                { text: 'Download AIO (All-in-One)', onPress: () => {} },
               ]
             );
           }}
@@ -447,7 +452,7 @@ export function AgentConsoleScreen() {
           <Text style={styles.downloadBannerIcon}>💻</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.downloadBannerTitle}>Get Agentrix Desktop</Text>
-            <Text style={styles.downloadBannerSub}>Install the latest desktop build and connect your computer agent with mobile</Text>
+            <Text style={styles.downloadBannerSub}>Run AI agents on your computer — one-click AIO installer available</Text>
           </View>
           <Text style={styles.downloadBannerArrow}>↓</Text>
         </TouchableOpacity>
@@ -532,18 +537,6 @@ export function AgentConsoleScreen() {
           </TouchableOpacity>
         </View>
       )}
-
-      <SelectEngineModal 
-        visible={showEngineModal} 
-        onClose={() => setShowEngineModal(false)}
-        selectedModelId={selectedModelId}
-        onSelect={async (id) => {
-          setSelectedModel(id);
-          if (activeInstance?.id) {
-            try { await switchInstanceModel(activeInstance.id, id); } catch (_) {}
-          }
-        }}
-      />
     </ScrollView>
   );
 }

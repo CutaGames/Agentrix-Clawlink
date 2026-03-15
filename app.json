@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Agentrix Claw",
-    "slug": "agentrix-claw",
-    "scheme": "agentrix",
+    "name": "ClawLink",
+    "slug": "clawlink",
+    "scheme": "clawlink",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,44 +10,38 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#0B1220"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.agentrix.claw",
+      "bundleIdentifier": "app.clawlink.mobile",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "metamask",
-          "okx",
-          "okex",
+          "okx", "okex", "imtokenv2", "tpoutside", "bitkeep", "tokenpocket", "trust",
           "trust",
           "rainbow",
           "twitter",
           "twitterauth",
           "discord",
           "tg",
-          "telegram",
-          "imtokenv2",
-          "tpoutside",
-          "bitkeep",
-          "ledgerlive",
-          "bnc"
+          "telegram"
         ],
-        "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
-        "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
-        "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
-        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images."
+        "NSCameraUsageDescription": "ClawLink uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSMicrophoneUsageDescription": "ClawLink uses the microphone for voice commands to your AI agent.",
+        "NSPhotoLibraryAddUsageDescription": "ClawLink saves share cards to your photo library.",
+        "NSPhotoLibraryUsageDescription": "ClawLink reads the photo library to select images."
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#0B1220"
       },
-      "package": "app.agentrix.claw",
+      "package": "app.clawlink.mobile",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -59,7 +53,7 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "agentrix" }, { "scheme": "https", "host": "agentrix.top" }],
+          "data": [{ "scheme": "clawlink" }, { "scheme": "https", "host": "clawlink.app" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
@@ -68,21 +62,6 @@
       "favicon": "./assets/favicon.png"
     },
     "newArchEnabled": false,
-    "autolinking": {
-      "exclude": [
-        "react-native-reanimated",
-        "react-native-worklets"
-      ]
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "enabled": true,
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 5000,
-      "url": "https://u.expo.dev/96a641e0-ce03-45ff-9de7-2cd89c488236"
-    },
     "plugins": [
       [
         "expo-build-properties",
@@ -101,7 +80,6 @@
           "sounds": []
         }
       ],
-      "expo-updates",
       "expo-image-picker",
       [
         "expo-location",

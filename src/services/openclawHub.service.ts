@@ -1,27 +1,29 @@
 /**
- * OpenClaw Skill Hub — V3 (Real ClawHub Integration)
+ * OpenClaw Skill Hub — V2 (Real ClawHub Integration)
  *
- * Queries the Agentrix backend which fetches 5000+ real skills from the
- * official ClawHub API (https://clawhub.ai/api/v1) via incremental sync.
+ * Queries the Agentrix backend which now fetches 4500+ real skills from the
+ * official ClawHub API (https://www.clawhub.ai/api/v1) with cursor-paginated
+ * syncing, DB persistence and in-memory caching.
  *
- * The backend:
- *  - Seeds from a committed snapshot JSON on cold start
- *  - Incrementally fetches new skills every 2 min (3 pages/cycle)
- *  - Persists ALL skills to DB
- *  - Serves them via /api/openclaw/bridge/skill-hub/search (paginated)
+ * Endpoint: GET /api/openclaw/bridge/skill-hub/search
  *
- * This client-side service:
- *  - Fetches the first page from backend for display
- *  - Delegates search/filter/pagination to the backend
- *  - No more client-side caching of full catalog (too large)
+ * Data flow:
+ *   1. fetchFromBridge() → GET /openclaw/bridge/skill-hub/search?limit=200
+ *      (backend returns real ClawHub skills with SkillCategory enum values)
+ *   2. Client-side filter + paginate → return items[] for rendering
+ *   3. Fallback: 12 built-in skills if backend is unreachable
+ *
+ * The rendering in ClawMarketplaceScreen expects items with:
+ *   id, name, description, icon, category, rating, price, installCount, tags
  */
 import { apiFetch } from './api';
 import type { SkillItem } from './marketplace.api';
 
-// Simple TTL cache: refreshes every 10 min to match backend refresh
+// ── Cache ─────────────────────────────────────────────────────────────────────
 let _hubCache: { items: OpenClawHubSkill[]; fetchedAt: number } | null = null;
-const HUB_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+const HUB_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — match backend refresh
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 export interface OpenClawHubSkill {
   id: string;
   name: string;
@@ -36,7 +38,7 @@ export interface OpenClawHubSkill {
   installCount?: number;
   price?: number;
   priceUnit?: string;
-  package?: string;   // ClawHub slug for deep-linking
+  package?: string;
   repoUrl?: string;
   icon?: string;
 }
@@ -56,15 +58,18 @@ export interface OpenClawHubSearchResponse {
 }
 
 // ── Category normalisation ────────────────────────────────────────────────────
-// Backend returns SkillCategory enum values (utility, data, integration, commerce,
-// payment, custom) from real ClawHub skills, plus string categories from built-ins.
+// Backend now returns SkillCategory enum values (utility, data, integration,
+// commerce, payment, custom) from real ClawHub skills, plus some string categories
+// (search, developer, memory, creative...) from built-in fallbacks.
 const CATEGORY_MAP: Record<string, string> = {
+  // SkillCategory enum values from backend
   utility:       'Dev Tools',
   data:          'Data',
   integration:   'Integration',
   commerce:      'Commerce',
   payment:       'Finance',
   custom:        'Creative',
+  // Built-in fallback categories from backend
   search:        'AI Tools',
   developer:     'Dev Tools',
   memory:        'AI Tools',
@@ -72,6 +77,7 @@ const CATEGORY_MAP: Record<string, string> = {
   analytics:     'Data',
   language:      'AI Tools',
   automation:    'Automation',
+  // Legacy / misc
   general:       'General',
   ai:            'AI Tools',
   media:         'Creative',
@@ -83,7 +89,7 @@ const CATEGORY_MAP: Record<string, string> = {
 function normaliseCategory(raw?: string): string {
   if (!raw) return 'General';
   const lower = raw.toLowerCase();
-  return CATEGORY_MAP[lower] ?? raw;
+  return CATEGORY_MAP[lower] ?? raw; // keep as-is if already a display name
 }
 
 // ── Icon map ──────────────────────────────────────────────────────────────────
@@ -100,7 +106,15 @@ const FALLBACK_CATEGORY_ICON: Record<string, string> = {
   General: '⚡',
 };
 
-// ── No more client-side placeholder — backend serves real data from DB ────────
+// ── Minimal fallback (backend has 12 built-ins + 4500+ real ClawHub skills) ───
+const HUB_PLACEHOLDER: OpenClawHubSkill[] = [
+  { id: 'oc-web-search', name: 'Web Search', icon: '🔍', description: 'Search the web with AI-powered relevance ranking', category: 'AI Tools', tags: ['search', 'web'], rating: 4.7, installCount: 15420, price: 0 },
+  { id: 'oc-code-exec', name: 'Code Sandbox', icon: '💻', description: 'Execute Python, JavaScript safely', category: 'Dev Tools', tags: ['code', 'python'], rating: 4.8, installCount: 12300, price: 0 },
+  { id: 'oc-memory', name: 'Long-Term Memory', icon: '🧠', description: 'Persistent memory across conversations', category: 'AI Tools', tags: ['memory', 'context'], rating: 4.9, installCount: 18200, price: 0 },
+  { id: 'oc-data-analysis', name: 'Data Analysis', icon: '📊', description: 'Analyse datasets, generate charts', category: 'Data', tags: ['data', 'analytics'], rating: 4.6, installCount: 6100, price: 0 },
+  { id: 'oc-image-gen', name: 'Image Generator', icon: '🎨', description: 'Generate images from text prompts', category: 'Creative', tags: ['image', 'generation'], rating: 4.3, installCount: 7650, price: 0 },
+  { id: 'oc-api-connector', name: 'API Connector', icon: '🔌', description: 'Connect to any REST/GraphQL API', category: 'Integration', tags: ['api', 'rest'], rating: 4.5, installCount: 4500, price: 0 },
+];
 
 // ── Mapping: OpenClawHubSkill → enriched item for rendering ───────────────────
 function toDisplayItem(s: OpenClawHubSkill): any {
@@ -133,97 +147,65 @@ function toDisplayItem(s: OpenClawHubSkill): any {
     tokenCost: 0,
     installCount: downloads,
     hubCategory: cat,
-    hubSlug: s.package,
+    hubSlug: s.package,       // ClawHub slug for deep-linking
   };
 }
 
-// ── Fetch from Agentrix backend bridge (server-side pagination) ───────────────
-// The backend now has real ClawHub skills in its DB, served via paginated endpoint.
-// We delegate ALL search/filter/pagination to the server.
+// ── Fetch from Agentrix backend bridge (now returns 4500+ real ClawHub skills)
+async function fetchFromBridge(): Promise<OpenClawHubSkill[]> {
+  try {
+    // Backend getSkills() paginates; request a large limit and desc by downloads
+    const resp = await apiFetch<any>(
+      '/openclaw/bridge/skill-hub/search?limit=500&sortBy=callCount&sortOrder=DESC',
+    );
+    const raw: any[] =
+      resp?.items || resp?.skills || resp?.data || (Array.isArray(resp) ? resp : []);
+    if (raw.length === 0) return [];
+    return raw.map((s: any): OpenClawHubSkill => ({
+      id: s.id ?? s.key ?? `oc-${Math.random().toString(36).slice(2, 8)}`,
+      name: s.name ?? s.displayName ?? 'Unknown Skill',
+      displayName: s.displayName ?? s.name,
+      description: s.description ?? 'OpenClaw community skill',
+      author: s.author ?? 'OpenClaw Community',
+      category: s.category ?? 'utility',
+      subCategory: s.subCategory,
+      tags: s.tags ?? [],
+      version: s.version,
+      rating: typeof s.rating === 'number' ? s.rating : parseFloat(s.rating) || 0,
+      installCount: s.callCount ?? s.installCount ?? 0,
+      price: s.price ?? 0,
+      priceUnit: s.priceUnit ?? 'free',
+      package: s.hubSlug ?? s.key ?? s.name,
+      repoUrl: s.repoUrl,
+      icon: s.icon,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 // ── Get hub skills (cached, with progressive loading) ─────────────────────────
-// Light cache for the "all skills" quick browse (first 100 by downloads)
 async function getHubSkills(): Promise<OpenClawHubSkill[]> {
   if (_hubCache && Date.now() - _hubCache.fetchedAt < HUB_CACHE_TTL_MS) {
     return _hubCache.items;
   }
 
-  try {
-    const resp = await apiFetch<any>(
-      '/openclaw/bridge/skill-hub/search?limit=100&sortBy=callCount&sortOrder=DESC',
-    );
-    const raw: any[] =
-      resp?.items || resp?.skills || resp?.data || (Array.isArray(resp) ? resp : []);
-    if (raw.length > 0) {
-      const skills = raw.map(mapRawToSkill);
-      console.log(`[OpenClawHub] Loaded ${skills.length} of ${resp?.total ?? '?'} total skills`);
-      _hubCache = { items: skills, fetchedAt: Date.now() };
-      return skills;
-    }
-    console.warn('[OpenClawHub] Bridge returned 0 skills');
-  } catch (err) {
-    console.error('[OpenClawHub] getHubSkills failed:', err instanceof Error ? err.message : String(err));
+  const bridgeSkills = await fetchFromBridge();
+  if (bridgeSkills.length > 0) {
+    _hubCache = { items: bridgeSkills, fetchedAt: Date.now() };
+    return bridgeSkills;
   }
 
-  return [];
+  // Fallback: minimal placeholder catalog
+  _hubCache = { items: HUB_PLACEHOLDER, fetchedAt: Date.now() };
+  return HUB_PLACEHOLDER;
 }
 
-function mapRawToSkill(s: any): OpenClawHubSkill {
-  return {
-    id: s.id ?? s.key ?? `oc-${Math.random().toString(36).slice(2, 8)}`,
-    name: s.name ?? s.displayName ?? 'Unknown Skill',
-    displayName: s.displayName ?? s.name,
-    description: s.description ?? 'OpenClaw community skill',
-    author: s.author ?? 'OpenClaw Community',
-    category: s.category ?? 'utility',
-    subCategory: s.subCategory,
-    tags: s.tags ?? [],
-    version: s.version,
-    rating: typeof s.rating === 'number' ? s.rating : parseFloat(s.rating) || 0,
-    installCount: s.callCount ?? s.installCount ?? 0,
-    price: s.price ?? 0,
-    priceUnit: s.priceUnit ?? 'free',
-    package: s.hubSlug ?? s.key ?? s.name,
-    repoUrl: s.repoUrl,
-    icon: s.icon,
-  };
-}
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function searchOpenClawHub(
   params: OpenClawHubSearchParams,
 ): Promise<OpenClawHubSearchResponse> {
-  // Delegate search to backend for server-side filtering + pagination
-  try {
-    const qs = new URLSearchParams();
-    if (params.q) qs.set('q', params.q);
-    if (params.category && params.category !== 'All') {
-      // Map display category back to backend enum
-      const backendCat = Object.entries(CATEGORY_MAP).find(([, v]) => v === params.category)?.[0];
-      if (backendCat) qs.set('category', backendCat);
-    }
-    qs.set('page', String(params.page || 1));
-    qs.set('limit', String(params.limit || 30));
-    qs.set('sortBy', 'callCount');
-    qs.set('sortOrder', 'DESC');
-
-    const resp = await apiFetch<any>(`/openclaw/bridge/skill-hub/search?${qs.toString()}`);
-    const raw: any[] = resp?.items ?? [];
-    const total = resp?.total ?? raw.length;
-    const page = resp?.page ?? params.page ?? 1;
-    const limit = params.limit || 30;
-
-    return {
-      items: raw.map(s => toDisplayItem(mapRawToSkill(s))),
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    };
-  } catch (err) {
-    console.error('[OpenClawHub] searchOpenClawHub backend call failed:', err instanceof Error ? err.message : String(err));
-  }
-
-  // Fallback: use cached top skills
   const allSkills = await getHubSkills();
   let list = [...allSkills];
 
@@ -245,7 +227,7 @@ export async function searchOpenClawHub(
     list = list.filter((s) => normaliseCategory(s.category) === cat);
   }
 
-  // Sort by popularity (downloads desc)
+  // Sort by popularity (downloads / callCount desc)
   list.sort((a, b) => (b.installCount ?? 0) - (a.installCount ?? 0));
 
   // Paginate
@@ -265,7 +247,7 @@ export async function searchOpenClawHub(
 export async function getHubSkillDetail(id: string): Promise<any | null> {
   // Try the new slug endpoint first (returns live detail from ClawHub)
   try {
-    const slug = id.replace(/^clawhub-/, '');
+    const slug = id.replace(/^clawhub-/, ''); // strip prefix if present
     const resp = await apiFetch<any>(`/openclaw/bridge/skill-hub/skills/${encodeURIComponent(slug)}`);
     if (resp && (resp.id || resp.key)) {
       return toDisplayItem({
