@@ -9,6 +9,7 @@ import { LocalConnectScreen } from '../screens/agent/LocalConnectScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
 import { StoragePlanScreen } from '../screens/agent/StoragePlanScreen';
 import { AgentLogsScreen } from '../screens/agent/AgentLogsScreen';
+import { DesktopControlScreen } from '../screens/agent/DesktopControlScreen';
 import { MemoryManagementScreen } from '../screens/agent/MemoryManagementScreen';
 import { WorkflowListScreen } from '../screens/agent/WorkflowListScreen';
 import { WorkflowDetailScreen } from '../screens/agent/WorkflowDetailScreen';
@@ -18,6 +19,8 @@ import { TeamInviteScreen } from '../screens/agent/TeamInviteScreen';
 import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 import { AgentPermissionsScreen } from '../screens/agent/AgentPermissionsScreen';
 import { AgentToolsScreen } from '../screens/agent/AgentToolsScreen';
+import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
+import { AgentSpaceScreen } from '../screens/agent/AgentSpaceScreen';
 import { ScanScreen } from '../screens/me/ScanScreen';
 // Deploy screens — reused from Onboarding in post-onboarding context
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
@@ -43,12 +46,14 @@ export function AgentStackNavigator() {
     >
       <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'My Agent', zh: '我的智能体' }) }} />
       <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: t({ en: 'Chat', zh: '对话' }) }} />
+      <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
       <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: t({ en: 'Connect OpenClaw', zh: '连接 OpenClaw' }) }} />
       <Stack.Screen name="LocalConnect" component={LocalConnectScreen} options={{ title: t({ en: 'Link Local Agent', zh: '关联本地智能体' }) }} />
       <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: t({ en: 'Install Skill', zh: '安装技能' }) }} />
       <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: t({ en: 'Storage Plans', zh: '存储方案' }) }} />
       <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: t({ en: 'Activity Logs', zh: '活动日志' }) }} />
+      <Stack.Screen name="DesktopControl" component={DesktopControlScreen} options={{ title: t({ en: 'Desktop Control', zh: '桌面控制' }) }} />
       <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: t({ en: 'Memory Hub', zh: '记忆中心' }) }} />
       <Stack.Screen name="WorkflowList" component={WorkflowListScreen} options={{ title: t({ en: 'Workflows', zh: '工作流' }) }} />
       <Stack.Screen name="WorkflowDetail" component={WorkflowDetailScreen} options={{ title: t({ en: 'Workflow', zh: '工作流' }) }} />
@@ -65,6 +70,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: t({ en: 'Agent Accounts', zh: '智能体账户' }) }} />
       <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: t({ en: 'Permissions & Security', zh: '权限与安全' }) }} />
       <Stack.Screen name="AgentTools" component={AgentToolsScreen} options={{ title: t({ en: 'Agent Tools', zh: '系统工具' }) }} />
+      <Stack.Screen name="AgentSpace" component={AgentSpaceScreen} options={{ title: t({ en: 'Agent Space', zh: 'Agent 协作空间' }) }} />
     </Stack.Navigator>
   );
 }

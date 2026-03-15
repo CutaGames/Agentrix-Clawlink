@@ -40,6 +40,30 @@ export enum DesktopApprovalDecision {
   REJECTED = 'rejected',
 }
 
+export enum DesktopSessionDeviceType {
+  DESKTOP = 'desktop',
+  MOBILE = 'mobile',
+  WEB = 'web',
+}
+
+export enum DesktopCommandKind {
+  CONTEXT = 'context',
+  ACTIVE_WINDOW = 'active-window',
+  LIST_WINDOWS = 'list-windows',
+  RUN_COMMAND = 'run-command',
+  READ_FILE = 'read-file',
+  WRITE_FILE = 'write-file',
+  OPEN_BROWSER = 'open-browser',
+}
+
+export enum DesktopCommandStatus {
+  PENDING = 'pending',
+  CLAIMED = 'claimed',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  REJECTED = 'rejected',
+}
+
 export class DesktopContextDto {
   @ApiPropertyOptional({ description: 'Foreground app/window title' })
   @IsOptional()
@@ -262,4 +286,132 @@ export class RespondDesktopApprovalDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+}
+
+export class DesktopSessionMessageDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(40)
+  role: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(12000)
+  content: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsObject({ each: true })
+  attachments?: Record<string, unknown>[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  streaming?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  error?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  createdAt?: number;
+}
+
+export class UpsertDesktopSessionDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  deviceId: string;
+
+  @ApiProperty({ enum: DesktopSessionDeviceType })
+  @IsEnum(DesktopSessionDeviceType)
+  deviceType: DesktopSessionDeviceType;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  sessionId: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(180)
+  title: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  updatedAt?: number;
+
+  @ApiProperty({ type: [DesktopSessionMessageDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DesktopSessionMessageDto)
+  messages: DesktopSessionMessageDto[];
+}
+
+export class CreateDesktopCommandDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(180)
+  title: string;
+
+  @ApiProperty({ enum: DesktopCommandKind })
+  @IsEnum(DesktopCommandKind)
+  kind: DesktopCommandKind;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  targetDeviceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  requesterDeviceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  sessionId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  payload?: Record<string, unknown>;
+}
+
+export class ClaimDesktopCommandDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  deviceId: string;
+}
+
+export class CompleteDesktopCommandDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  deviceId: string;
+
+  @ApiProperty({ enum: DesktopCommandStatus })
+  @IsEnum(DesktopCommandStatus)
+  status: DesktopCommandStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  result?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  error?: string;
 }

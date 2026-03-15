@@ -100,6 +100,7 @@ import { WorkflowModule } from './modules/workflow/workflow.module';
 import { AccountAbstractionModule } from './modules/account-abstraction/account-abstraction.module';
 // AI Provider custom API key management
 import { AiProviderModule } from './modules/ai-provider/ai-provider.module';
+import { DesktopSyncModule } from './modules/desktop-sync/desktop-sync.module';
 
 @Module({
   imports: [
@@ -202,6 +203,7 @@ import { AiProviderModule } from './modules/ai-provider/ai-provider.module';
     MessagingModule,
     // WebSocket 实时推送
     WebSocketModule,
+    DesktopSyncModule,
     // Workflow automation & cron (Layer 1)
     WorkflowModule,
     // ERC-4337: Account Abstraction (gasless txns, smart accounts)

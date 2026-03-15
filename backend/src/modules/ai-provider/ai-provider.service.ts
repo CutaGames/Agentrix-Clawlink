@@ -34,6 +34,17 @@ export interface ProviderDef {
   models: ModelDef[];
 }
 
+interface ResolvedModelCapability {
+  providerId?: string;
+  model?: ModelDef;
+  multimodal: boolean;
+}
+
+const PLATFORM_MODEL_ALIASES: Record<string, { label: string; multimodal: boolean }> = {
+  'claude-haiku-4-5': { label: 'Claude Haiku 4.5 (平台默认 API)', multimodal: true },
+  'claude-sonnet-4-6': { label: 'Claude Sonnet 4.6 (平台默认 API)', multimodal: true },
+};
+
 export const PROVIDER_CATALOG: ProviderDef[] = [
   // ─── 🌍 International ───
   {
@@ -224,6 +235,43 @@ export class AiProviderService {
 
   getProviderDef(providerId: string): ProviderDef | undefined {
     return PROVIDER_CATALOG.find(p => p.id === providerId);
+  }
+
+  resolveModelCapability(modelId?: string, providerId?: string): ResolvedModelCapability {
+    if (!modelId) {
+      return { providerId, multimodal: false };
+    }
+
+    if (!providerId || providerId === 'platform') {
+      const platformModel = PLATFORM_MODEL_ALIASES[modelId];
+      if (platformModel) {
+        return {
+          providerId: 'platform',
+          multimodal: platformModel.multimodal,
+        };
+      }
+    }
+
+    if (providerId && providerId !== 'platform') {
+      const provider = this.getProviderDef(providerId);
+      const exact = provider?.models.find(model => model.id === modelId);
+      if (exact) {
+        return { providerId, model: exact, multimodal: exact.multimodal };
+      }
+    }
+
+    for (const provider of PROVIDER_CATALOG) {
+      const exact = provider.models.find(model => model.id === modelId);
+      if (exact) {
+        return { providerId: provider.id, model: exact, multimodal: exact.multimodal };
+      }
+    }
+
+    return { providerId, multimodal: false };
+  }
+
+  supportsMultimodal(modelId?: string, providerId?: string): boolean {
+    return this.resolveModelCapability(modelId, providerId).multimodal;
   }
 
   // ─── CRUD ──────────

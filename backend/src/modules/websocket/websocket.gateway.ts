@@ -8,12 +8,16 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
+import { desktopSyncEventBus, DESKTOP_SYNC_EVENT, type DesktopSyncEventEnvelope } from '../desktop-sync/desktop-sync.events';
+import { DesktopSessionDeviceType } from '../desktop-sync/dto/desktop-sync.dto';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
+  desktopDeviceId?: string;
 }
 
 @NestWebSocketGateway({
@@ -23,17 +27,29 @@ interface AuthenticatedSocket extends Socket {
   },
   namespace: '/ws',
 })
-export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(WebSocketGateway.name);
   private connectedClients = new Map<string, Set<string>>(); // userId -> Set of socketIds
+  private readonly desktopSyncListener = (envelope: DesktopSyncEventEnvelope) => {
+    this.sendDesktopSyncEvent(envelope.userId, envelope.event, envelope.payload);
+  };
 
   constructor(
     private jwtService: JwtService,
     private configService: ConfigService,
+    private readonly desktopSyncService: DesktopSyncService,
   ) {}
+
+  onModuleInit() {
+    desktopSyncEventBus.on(DESKTOP_SYNC_EVENT, this.desktopSyncListener);
+  }
+
+  onModuleDestroy() {
+    desktopSyncEventBus.off(DESKTOP_SYNC_EVENT, this.desktopSyncListener);
+  }
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
@@ -103,6 +119,10 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.server.to(`user:${userId}`).emit('notification:unread-count', { count });
   }
 
+  sendDesktopSyncEvent(userId: string, event: string, payload: unknown) {
+    this.server.to(`user:${userId}`).emit(event, payload);
+  }
+
   @SubscribeMessage('payment:subscribe')
   handlePaymentSubscribe(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -130,6 +150,64 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('ping')
   handlePing(@ConnectedSocket() client: AuthenticatedSocket) {
     return { pong: Date.now() };
+  }
+
+  @SubscribeMessage('device:announce')
+  handleDeviceAnnounce(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() data: { deviceId?: string },
+  ) {
+    if (!client.userId) {
+      return { error: '未认证' };
+    }
+
+    if (data?.deviceId) {
+      client.desktopDeviceId = data.deviceId;
+      client.join(`user:${client.userId}:device:${data.deviceId}`);
+    }
+
+    return { ok: true };
+  }
+
+  @SubscribeMessage('session:sync')
+  handleSessionSync(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody()
+    data: {
+      sessionId?: string;
+      messages?: Array<Record<string, unknown>>;
+      meta?: {
+        title?: string;
+        updatedAt?: number;
+        deviceId?: string;
+        deviceType?: DesktopSessionDeviceType;
+      };
+    },
+  ): any {
+    if (!client.userId || !data?.sessionId) {
+      return { error: 'Invalid session payload' };
+    }
+
+    return this.desktopSyncService.upsertSession(client.userId, {
+      deviceId: data.meta?.deviceId || client.desktopDeviceId || client.id,
+      deviceType: data.meta?.deviceType || DesktopSessionDeviceType.DESKTOP,
+      sessionId: data.sessionId,
+      title: data.meta?.title || 'Synced Session',
+      updatedAt: data.meta?.updatedAt || Date.now(),
+      messages: (data.messages || []) as any,
+    });
+  }
+
+  @SubscribeMessage('session:list')
+  handleSessionList(@ConnectedSocket() client: AuthenticatedSocket) {
+    if (!client.userId) {
+      return { error: '未认证' };
+    }
+
+    client.emit('session:list:res', {
+      sessions: this.desktopSyncService.listSessions(client.userId),
+    });
+    return { ok: true };
   }
 
   /** Push streaming chat chunk to client (called from proxy service) */

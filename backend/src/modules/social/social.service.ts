@@ -8,6 +8,12 @@ import {
   SocialComment,
   SocialLike,
   SocialFollow,
+  SocialEvent,
+  SocialEventPlatform,
+  SocialEventType,
+  SocialReplyStatus,
+  SocialReplyConfig,
+  ReplyStrategy,
 } from '../../entities/social.entity';
 
 export interface CreatePostDto {
@@ -41,6 +47,8 @@ export class SocialService {
     @InjectRepository(SocialComment) private commentRepo: Repository<SocialComment>,
     @InjectRepository(SocialLike) private likeRepo: Repository<SocialLike>,
     @InjectRepository(SocialFollow) private followRepo: Repository<SocialFollow>,
+    @InjectRepository(SocialEvent) private eventRepo: Repository<SocialEvent>,
+    @InjectRepository(SocialReplyConfig) private replyConfigRepo: Repository<SocialReplyConfig>,
   ) {}
 
   // ===== Feed =====
@@ -202,5 +210,208 @@ export class SocialService {
 
   async getFollowing(userId: string) {
     return this.followRepo.find({ where: { followerId: userId }, order: { createdAt: 'DESC' } });
+  }
+
+  // ===== Agent Showcase Feed =====
+
+  async getShowcaseFeed(userId: string, query: GetFeedQuery = {}) {
+    const { sort = 'hot', page = 1, limit = 20 } = query;
+    const take = Math.min(limit, 50);
+    const skip = (page - 1) * take;
+
+    const qb = this.postRepo
+      .createQueryBuilder('post')
+      .where('post.status = :status', { status: SocialPostStatus.ACTIVE })
+      .take(take)
+      .skip(skip);
+
+    if (sort === 'following') {
+      const followingIds = await this.getFollowingIds(userId);
+      if (followingIds.length === 0) return { posts: [], total: 0, page, limit: take };
+      qb.andWhere('post.authorId IN (:...ids)', { ids: followingIds });
+      qb.orderBy('post.createdAt', 'DESC');
+    } else if (sort === 'hot') {
+      qb.orderBy(
+        `(post."likeCount" + post."commentCount" * 2 + post."shareCount" * 3)`,
+        'DESC',
+      ).addOrderBy('post.createdAt', 'DESC');
+    } else {
+      qb.orderBy('post.createdAt', 'DESC');
+    }
+
+    const [posts, total] = await qb.getManyAndCount();
+
+    const postIds = posts.map((p) => p.id);
+    const likedIds = postIds.length
+      ? await this.likeRepo
+          .find({ where: { userId, targetType: 'post' } })
+          .then((likes) => new Set(likes.map((l) => l.targetId)))
+      : new Set<string>();
+
+    return {
+      posts: posts.map((p) => ({ ...p, likedByMe: likedIds.has(p.id) })),
+      total,
+      page,
+      limit: take,
+    };
+  }
+
+  // ===== Auto-generated Showcase Posts =====
+
+  async createAutoPost(params: {
+    userId: string;
+    authorName: string;
+    authorAvatar?: string;
+    type: SocialPostType;
+    content: string;
+    referenceId?: string;
+    referenceName?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+  }) {
+    const post = this.postRepo.create({
+      authorId: params.userId,
+      authorName: params.authorName,
+      authorAvatar: params.authorAvatar,
+      type: params.type,
+      content: params.content,
+      referenceId: params.referenceId,
+      referenceName: params.referenceName,
+      tags: params.tags,
+      metadata: params.metadata,
+    });
+    this.logger.log(`Auto-post created: type=${params.type} ref=${params.referenceId}`);
+    return this.postRepo.save(post);
+  }
+
+  // ===== Social Events (persisted) =====
+
+  async createSocialEvent(params: {
+    userId?: string;
+    platform: SocialEventPlatform;
+    eventType: SocialEventType;
+    senderId: string;
+    senderName?: string;
+    text: string;
+    rawPayload?: Record<string, any>;
+  }) {
+    const event = this.eventRepo.create(params);
+    return this.eventRepo.save(event);
+  }
+
+  async getSocialEvents(userId?: string, limit = 50) {
+    const where: any = {};
+    if (userId) where.userId = userId;
+    return this.eventRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: Math.min(limit, 100),
+    });
+  }
+
+  async updateEventReply(eventId: string, data: {
+    replyStatus?: SocialReplyStatus;
+    agentDraftReply?: string;
+    finalReply?: string;
+    repliedAt?: Date;
+  }) {
+    await this.eventRepo.update(eventId, data);
+    return this.eventRepo.findOneBy({ id: eventId });
+  }
+
+  async getPendingApprovals(userId: string) {
+    return this.eventRepo.find({
+      where: { userId, replyStatus: SocialReplyStatus.PENDING },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  // ===== Reply Config =====
+
+  async getReplyConfigs(userId: string) {
+    return this.replyConfigRepo.find({ where: { userId } });
+  }
+
+  async saveReplyConfig(userId: string, platform: SocialEventPlatform, data: {
+    strategy?: ReplyStrategy;
+    replyPrompt?: string;
+    replyLanguage?: string;
+    enabled?: boolean;
+  }) {
+    let config = await this.replyConfigRepo.findOneBy({ userId, platform });
+    if (config) {
+      Object.assign(config, data);
+    } else {
+      config = this.replyConfigRepo.create({ userId, platform, ...data });
+    }
+    return this.replyConfigRepo.save(config);
+  }
+
+  // ===== Agent Reputation =====
+
+  async getAgentReputation(userId: string) {
+    // Aggregate stats from posts, followers, following
+    const [postCount, followerCount, followingCount] = await Promise.all([
+      this.postRepo.count({ where: { authorId: userId, status: SocialPostStatus.ACTIVE } }),
+      this.followRepo.count({ where: { followeeId: userId } }),
+      this.followRepo.count({ where: { followerId: userId } }),
+    ]);
+
+    // Count by post type for breakdown
+    const showcasePosts = await this.postRepo.count({
+      where: { authorId: userId, status: SocialPostStatus.ACTIVE },
+    });
+
+    // Skills published (skill_share type posts)
+    const skillPosts = await this.postRepo.count({
+      where: { authorId: userId, type: SocialPostType.SKILL_SHARE },
+    });
+
+    // Workflow results
+    const workflowPosts = await this.postRepo.count({
+      where: { authorId: userId, type: SocialPostType.WORKFLOW_RESULT },
+    });
+
+    // Tasks completed
+    const taskPosts = await this.postRepo.count({
+      where: { authorId: userId, type: SocialPostType.TASK_COMPLETE },
+    });
+
+    // Agent deployments
+    const agentDeploys = await this.postRepo.count({
+      where: { authorId: userId, type: SocialPostType.AGENT_DEPLOY },
+    });
+
+    // Total likes received on user's posts
+    const userPosts = await this.postRepo.find({
+      where: { authorId: userId, status: SocialPostStatus.ACTIVE },
+      select: ['id', 'likeCount'],
+    });
+    const totalLikesReceived = userPosts.reduce((sum, p) => sum + (p.likeCount ?? 0), 0);
+
+    // Compute a simple reputation score
+    const reputationScore = Math.min(5.0, Math.round(
+      (1.0
+        + Math.min(skillPosts * 0.3, 1.5)
+        + Math.min(taskPosts * 0.1, 1.0)
+        + Math.min(agentDeploys * 0.2, 0.6)
+        + Math.min(totalLikesReceived * 0.01, 0.5)
+        + Math.min(followerCount * 0.005, 0.4)
+      ) * 10
+    ) / 10);
+
+    return {
+      userId,
+      postCount,
+      followerCount,
+      followingCount,
+      showcasePosts,
+      skillsPublished: skillPosts,
+      workflowResults: workflowPosts,
+      tasksCompleted: taskPosts,
+      agentDeploys,
+      totalLikesReceived,
+      reputationScore,
+    };
   }
 }
