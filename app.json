@@ -5,7 +5,7 @@
     "scheme": "agentrix",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./frontend/public/brand/agentrix-logo.png",
+    "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./Agentrix Logo/agentrix_logo_square_transparent.png",
@@ -38,6 +38,7 @@
           "bnc"
         ],
         "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSBluetoothAlwaysUsageDescription": "Agentrix uses Bluetooth to scan and connect to nearby wearable devices.",
         "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
         "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
         "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images."
@@ -45,30 +46,44 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./frontend/public/brand/agentrix-logo.png",
+        "foregroundImage": "./Agentrix Logo/agentrix_app_icon_1024.png",
         "backgroundColor": "#000000"
       },
       "package": "app.agentrix.claw",
       "permissions": [
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION"
       ],
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "agentrix" }, { "scheme": "https", "host": "agentrix.top" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "scheme": "agentrix"
+            },
+            {
+              "scheme": "https",
+              "host": "agentrix.top"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
     "web": {
-      "favicon": "./frontend/public/brand/agentrix-logo.png"
+      "favicon": "./Agentrix Logo/favicon_64.png"
     },
-      "newArchEnabled": true,
+    "newArchEnabled": true,
     "runtimeVersion": "1.1.0",
     "updates": {
       "enabled": true,
@@ -89,7 +104,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./frontend/public/brand/agentrix-logo.png",
+          "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
           "color": "#0B1220",
           "sounds": []
         }
@@ -112,6 +127,12 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Agentrix to access your location for AI context."
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "neverForLocation": false
         }
       ]
     ],
