@@ -1,20 +1,16 @@
 /**
- * SocialCallbackController — Social Listener for Phase 3.1
+ * SocialCallbackController — Agent Social Bridge
  *
  * Receives inbound webhook events from external social platforms
- * (Twitter/X mentions, Telegram messages, Discord messages) and
- * routes them to the appropriate OpenClaw agent for processing.
+ * (Twitter/X mentions, Telegram messages, Discord messages),
+ * persists them to the database, and dispatches to the Agent runtime
+ * for auto-reply drafting based on user's reply strategy config.
  *
  * Endpoints:
  *   POST /social/callback/twitter   — Twitter/X webhook (CRC + events)
  *   POST /social/callback/telegram  — Telegram Bot webhook
  *   POST /social/callback/discord   — Discord Bot webhook
- *
- * Each handler:
- *   1. Verifies the platform signature / challenge
- *   2. Extracts mentions or DMs directed at the agent
- *   3. Pushes the event to the agent execution queue
- *   4. Returns the platform-required response
+ *   GET  /social/callback/status    — Platform connection status
  */
 
 import {
@@ -23,37 +19,33 @@ import {
   Get,
   Body,
   Headers,
-  Query,
   Req,
   Res,
   HttpCode,
   Logger,
+  Query,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Request, Response } from 'express';
 import * as crypto from 'crypto';
+import { Repository } from 'typeorm';
 import { TelegramBotService } from '../openclaw-connection/telegram-bot.service';
+import { SocialService } from './social.service';
+import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
+import { SocialAccount, SocialAccountType } from '../../entities/social-account.entity';
+import {
+  SocialEventPlatform,
+  SocialEventType,
+} from '../../entities/social.entity';
 
 // ── Environment ───────────────────────────────────────────────────────────────
 
-// Match actual .env variable names
 const TWITTER_CONSUMER_SECRET = process.env.TWITTER_APIKEY_SECRET ?? process.env.TWITTER_CONSUMER_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'agentrixnetwork_bot';
 const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY ?? process.env.DISCORD_CLIENT_SECRET ?? '';
 const API_BASE_URL = process.env.BACKEND_URL ?? process.env.APP_URL ?? 'https://api.agentrix.top/api';
-const TELEGRAM_WEBHOOK_URL = `${API_BASE_URL}/openclaw-connection/webhook/telegram`;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface SocialEvent {
-  platform: 'twitter' | 'telegram' | 'discord';
-  eventType: 'mention' | 'dm' | 'message' | 'command';
-  senderId: string;
-  senderName: string;
-  text: string;
-  rawPayload: unknown;
-  timestamp: number;
-}
+const TELEGRAM_WEBHOOK_URL = `${API_BASE_URL}/social/callback/telegram`;
 
 // ── Controller ────────────────────────────────────────────────────────────────
 
@@ -61,27 +53,16 @@ interface SocialEvent {
 export class SocialCallbackController {
   private readonly logger = new Logger(SocialCallbackController.name);
 
-  constructor(private readonly telegramBotService: TelegramBotService) {}
-
-  // In-memory circular buffer of last 100 events (for the frontend dashboard)
-  private readonly eventLog: (SocialEvent & { id: string })[] = [];
-  private readonly MAX_LOG = 100;
-
-  private pushEvent(event: SocialEvent) {
-    const entry = { ...event, id: `${event.platform}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-    this.eventLog.unshift(entry);
-    if (this.eventLog.length > this.MAX_LOG) this.eventLog.length = this.MAX_LOG;
-    return entry;
-  }
+  constructor(
+    private readonly telegramBotService: TelegramBotService,
+    private readonly socialService: SocialService,
+    @InjectRepository(SocialAccount)
+    private readonly socialAccountRepo: Repository<SocialAccount>,
+    @InjectRepository(OpenClawInstance)
+    private readonly openClawInstanceRepo: Repository<OpenClawInstance>,
+  ) {}
 
   // ── Dashboard endpoints ───────────────────────────────────────────────────
-
-  /** GET /social/callback/events — returns recent 50 events for the app dashboard */
-  @Get('events')
-  getEvents(@Query('limit') limit?: string) {
-    const n = Math.min(parseInt(limit ?? '50', 10) || 50, this.MAX_LOG);
-    return { ok: true, events: this.eventLog.slice(0, n) };
-  }
 
   /** GET /social/callback/status — platform connection status */
   @Get('status')
@@ -134,10 +115,6 @@ export class SocialCallbackController {
 
   // ── Twitter / X ─────────────────────────────────────────────────────────────
 
-  /**
-   * Twitter CRC challenge — GET /social/callback/twitter
-   * Twitter sends a crc_token; we must reply with HMAC-SHA256 digest.
-   */
   @Get('twitter')
   twitterCrc(@Query('crc_token') crcToken: string, @Res() res: Response) {
     if (!crcToken) {
@@ -151,9 +128,6 @@ export class SocialCallbackController {
     res.json({ response_token: `sha256=${hash}` });
   }
 
-  /**
-   * Twitter Account Activity API webhook — POST /social/callback/twitter
-   */
   @Post('twitter')
   @HttpCode(200)
   async handleTwitterWebhook(
@@ -161,7 +135,6 @@ export class SocialCallbackController {
     @Headers('x-twitter-webhooks-signature') signature: string,
     @Req() req: Request,
   ) {
-    // Verify signature
     if (TWITTER_CONSUMER_SECRET && signature) {
       const rawBody = (req as any).rawBody as Buffer | undefined;
       if (rawBody) {
@@ -178,35 +151,29 @@ export class SocialCallbackController {
       }
     }
 
-    // Process tweet_create_events (mentions)
     const mentions: any[] = body?.tweet_create_events ?? [];
     for (const tweet of mentions) {
-      const event: SocialEvent = {
-        platform: 'twitter',
-        eventType: 'mention',
+      await this.dispatchEvent({
+        platform: SocialEventPlatform.TWITTER,
+        eventType: SocialEventType.MENTION,
         senderId: tweet.user?.id_str ?? '',
         senderName: tweet.user?.screen_name ?? '',
         text: tweet.text ?? tweet.full_text ?? '',
         rawPayload: tweet,
-        timestamp: Date.now(),
-      };
-      await this.dispatchEvent(event);
+      });
     }
 
-    // Process direct_message_events
     const dms: any[] = body?.direct_message_events ?? [];
     for (const dm of dms) {
       if (dm.type !== 'message_create') continue;
-      const event: SocialEvent = {
-        platform: 'twitter',
-        eventType: 'dm',
+      await this.dispatchEvent({
+        platform: SocialEventPlatform.TWITTER,
+        eventType: SocialEventType.DM,
         senderId: dm.message_create?.sender_id ?? '',
         senderName: '',
         text: dm.message_create?.message_data?.text ?? '',
         rawPayload: dm,
-        timestamp: Date.now(),
-      };
-      await this.dispatchEvent(event);
+      });
     }
 
     return { ok: true };
@@ -214,45 +181,37 @@ export class SocialCallbackController {
 
   // ── Telegram ─────────────────────────────────────────────────────────────────
 
-  /**
-   * Telegram Bot webhook — POST /social/callback/telegram
-   * Set via: PUT https://api.telegram.org/bot<TOKEN>/setWebhook?url=<URL>
-   */
   @Post('telegram')
   @HttpCode(200)
   async handleTelegramWebhook(@Body() body: any) {
     const update = body;
-
     const message = update?.message ?? update?.channel_post ?? null;
+
     if (message) {
-      const text: string = message?.text ?? message?.caption ?? message?.voice?.file_id ?? message?.audio?.file_id ?? '[non-text message]';
+      const text: string =
+        message?.text ?? message?.caption ?? message?.voice?.file_id ??
+        message?.audio?.file_id ?? '[non-text message]';
       const senderId = String(message?.from?.id ?? message?.chat?.id ?? '');
       const senderName =
         message?.from?.username ??
         `${message?.from?.first_name ?? ''} ${message?.from?.last_name ?? ''}`.trim();
 
-      this.pushEvent({
-        platform: 'telegram',
-        eventType: text.startsWith('/') ? 'command' : 'message',
+      await this.dispatchEvent({
+        platform: SocialEventPlatform.TELEGRAM,
+        eventType: text.startsWith('/') ? SocialEventType.COMMAND : SocialEventType.MESSAGE,
         senderId,
         senderName,
         text,
         rawPayload: message,
-        timestamp: Date.now(),
       });
     }
 
     await this.telegramBotService.handleUpdate(update);
-
     return { ok: true };
   }
 
   // ── Discord ──────────────────────────────────────────────────────────────────
 
-  /**
-   * Discord interactions endpoint — POST /social/callback/discord
-   * Handles PING and APPLICATION_COMMAND interactions.
-   */
   @Post('discord')
   @HttpCode(200)
   async handleDiscordWebhook(
@@ -261,7 +220,6 @@ export class SocialCallbackController {
     @Headers('x-signature-timestamp') sigTimestamp: string,
     @Req() req: Request,
   ) {
-    // Verify Discord signature using Ed25519
     if (DISCORD_PUBLIC_KEY && sigEd25519 && sigTimestamp) {
       try {
         const rawBody = (req as any).rawBody as Buffer | undefined;
@@ -283,54 +241,104 @@ export class SocialCallbackController {
       }
     }
 
-    // PING challenge
-    if (body?.type === 1) {
-      return { type: 1 };
-    }
+    if (body?.type === 1) return { type: 1 };
 
-    // APPLICATION_COMMAND (type 2) or MESSAGE_COMPONENT (type 3)
     if (body?.type === 2) {
       const commandName: string = body?.data?.name ?? '';
       const userId: string = body?.member?.user?.id ?? body?.user?.id ?? '';
       const userName: string = body?.member?.user?.username ?? '';
 
-      const event: SocialEvent = {
-        platform: 'discord',
-        eventType: 'command',
+      await this.dispatchEvent({
+        platform: SocialEventPlatform.DISCORD,
+        eventType: SocialEventType.COMMAND,
         senderId: userId,
         senderName: userName,
         text: `/${commandName} ${JSON.stringify(body?.data?.options ?? [])}`,
         rawPayload: body,
-        timestamp: Date.now(),
-      };
-      await this.dispatchEvent(event);
+      });
 
-      // Return deferred response (Discord requires response within 3s)
-      return { type: 5 }; // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+      return { type: 5 };
     }
 
     return { ok: true };
   }
 
-  // ── Internal: Event Dispatch ─────────────────────────────────────────────────
+  // ── Internal: Event Dispatch (now DB-persisted + Agent routing) ────────────
 
-  /**
-   * Routes a normalised SocialEvent to the appropriate agent handler.
-   * In production this would publish to a message queue (BullMQ / Redis).
-   * Here we log and call the OpenClaw execution module directly.
-   */
-  private async dispatchEvent(event: SocialEvent): Promise<void> {
-    const entry = this.pushEvent(event);
+  private async dispatchEvent(params: {
+    platform: SocialEventPlatform;
+    eventType: SocialEventType;
+    senderId: string;
+    senderName?: string;
+    text: string;
+    rawPayload?: Record<string, any>;
+  }): Promise<void> {
     this.logger.log(
-      `[${event.platform}] ${event.eventType} from ${event.senderName}: "${event.text.slice(0, 80)}"`,
+      `[${params.platform}] ${params.eventType} from ${params.senderName}: "${params.text.slice(0, 80)}"`,
     );
 
     try {
-      // TODO: Integrate with execution module
-      // Example: await this.agentExecutionService.handleSocialEvent(event);
-      this.logger.verbose(JSON.stringify(entry));
+      const userId = await this.resolveUserId(params.platform, params.senderId);
+
+      // 1. Persist to database
+      const savedEvent = await this.socialService.createSocialEvent({
+        ...params,
+        userId,
+      });
+
+      if (!userId) {
+        this.logger.warn(
+          `No Agentrix user mapping found for ${params.platform} sender ${params.senderId}`,
+        );
+      }
+
+      // 3. Draft agent reply (async, non-blocking)
+      // In a production setup this would enqueue a BullMQ job.
+      // For now, we mark it as pending so the mobile app can show it in the approval queue.
+      this.logger.verbose(`Event persisted: id=${savedEvent.id} platform=${params.platform}`);
     } catch (err) {
       this.logger.error('Failed to dispatch social event', err);
+    }
+  }
+
+  private async resolveUserId(
+    platform: SocialEventPlatform,
+    senderId: string,
+  ): Promise<string | undefined> {
+    const accountType = this.toSocialAccountType(platform);
+    if (accountType) {
+      const account = await this.socialAccountRepo.findOne({
+        where: { type: accountType, socialId: senderId },
+        select: ['id', 'userId'],
+      });
+      if (account?.userId) {
+        return account.userId;
+      }
+    }
+
+    if (platform === SocialEventPlatform.TELEGRAM) {
+      const instance = await this.openClawInstanceRepo.findOne({
+        where: { telegramChatId: senderId },
+        select: ['id', 'userId'],
+      });
+      return instance?.userId;
+    }
+
+    return undefined;
+  }
+
+  private toSocialAccountType(
+    platform: SocialEventPlatform,
+  ): SocialAccountType | undefined {
+    switch (platform) {
+      case SocialEventPlatform.TWITTER:
+        return SocialAccountType.X;
+      case SocialEventPlatform.TELEGRAM:
+        return SocialAccountType.TELEGRAM;
+      case SocialEventPlatform.DISCORD:
+        return SocialAccountType.DISCORD;
+      default:
+        return undefined;
     }
   }
 }

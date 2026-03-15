@@ -10,29 +10,23 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  Delete,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MessagingService, SendDMDto } from './messaging.service';
-
-// ── In-memory group message store (Phase 1 — replace with DB entity later) ──
-interface GroupMessage {
-  id: string;
-  groupId: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  type: 'text' | 'system';
-  createdAt: string;
-}
-const groupMessages = new Map<string, GroupMessage[]>();
+import { AgentSpaceService } from './agent-space.service';
+import { SpaceType } from '../../entities/agent-space.entity';
 
 @ApiTags('Messaging')
 @Controller('messaging')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class MessagingController {
-  constructor(private readonly messagingService: MessagingService) {}
+  constructor(
+    private readonly messagingService: MessagingService,
+    private readonly agentSpaceService: AgentSpaceService,
+  ) {}
 
   @Get('conversations')
   @ApiOperation({ summary: 'Get all DM conversations for current user' })
@@ -92,45 +86,131 @@ export class MessagingController {
     return { success: true, data: { count } };
   }
 
-  // ── Group Messaging (in-memory Phase 1) ──────────────────────────────
+  // ── Agent Spaces (DB-persisted collaboration rooms) ─────────────────
 
+  @Get('spaces')
+  @ApiOperation({ summary: 'Get all agent spaces for current user' })
+  async getSpaces(@Request() req) {
+    const spaces = await this.agentSpaceService.getSpacesForUser(req.user.id);
+    return { success: true, data: spaces };
+  }
+
+  @Post('spaces')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new agent space' })
+  async createSpace(
+    @Request() req,
+    @Body() body: { name: string; description?: string; type?: string; taskId?: string; agentInstanceId?: string },
+  ) {
+    const space = await this.agentSpaceService.createSpace({
+      name: body.name,
+      description: body.description,
+      ownerId: req.user.id,
+      type: (body.type as SpaceType) || SpaceType.GENERAL,
+      taskId: body.taskId,
+      agentInstanceId: body.agentInstanceId,
+    });
+    return { success: true, data: space };
+  }
+
+  @Get('spaces/:spaceId')
+  @ApiOperation({ summary: 'Get a specific agent space' })
+  async getSpace(@Request() req, @Param('spaceId') spaceId: string) {
+    const space = await this.agentSpaceService.getSpaceForUser(spaceId, req.user.id);
+    return { success: true, data: space };
+  }
+
+  @Delete('spaces/:spaceId')
+  @ApiOperation({ summary: 'Archive an agent space' })
+  async archiveSpace(@Request() req, @Param('spaceId') spaceId: string) {
+    await this.agentSpaceService.archiveSpace(spaceId, req.user.id);
+    return { success: true };
+  }
+
+  @Post('spaces/:spaceId/members')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Add a member to an agent space' })
+  async addMember(
+    @Request() req,
+    @Param('spaceId') spaceId: string,
+    @Body() body: { userId: string },
+  ) {
+    await this.agentSpaceService.addMember(spaceId, req.user.id, body.userId);
+    return { success: true };
+  }
+
+  @Delete('spaces/:spaceId/members/:userId')
+  @ApiOperation({ summary: 'Remove a member from an agent space' })
+  async removeMember(
+    @Request() req,
+    @Param('spaceId') spaceId: string,
+    @Param('userId') userId: string,
+  ) {
+    await this.agentSpaceService.removeMember(spaceId, req.user.id, userId);
+    return { success: true };
+  }
+
+  @Get('spaces/:spaceId/messages')
+  @ApiOperation({ summary: 'Get messages in an agent space' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getSpaceMessages(
+    @Request() req,
+    @Param('spaceId') spaceId: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 50,
+  ) {
+    const result = await this.agentSpaceService.getMessages(spaceId, req.user.id, Number(page), Number(limit));
+    return { success: true, data: result.messages, total: result.total };
+  }
+
+  @Post('spaces/:spaceId/messages')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Send a message to an agent space' })
+  async sendSpaceMessage(
+    @Request() req,
+    @Param('spaceId') spaceId: string,
+    @Body() body: { content: string; type?: string; metadata?: Record<string, any> },
+  ) {
+    const msg = await this.agentSpaceService.sendMessage({
+      spaceId,
+      senderId: req.user.id,
+      senderName: req.user.nickname || req.user.email || req.user.id.substring(0, 8),
+      content: body.content,
+      type: body.type as any,
+      metadata: body.metadata,
+    });
+    return { success: true, data: msg };
+  }
+
+  // Legacy group endpoint — redirects to Agent Space
   @Get('groups/:groupId/messages')
-  @ApiOperation({ summary: 'Get messages in a group chat' })
+  @ApiOperation({ summary: '[Legacy] Get messages in a group chat — proxies to Agent Space' })
   async getGroupMessages(
+    @Request() req,
     @Param('groupId') groupId: string,
     @Query('page') page = 1,
     @Query('limit') limit = 50,
   ) {
-    const all = groupMessages.get(groupId) ?? [];
-    const start = (Number(page) - 1) * Number(limit);
-    const messages = all.slice(start, start + Number(limit));
-    return { success: true, data: messages, total: all.length };
+    const result = await this.agentSpaceService.getMessages(groupId, req.user.id, Number(page), Number(limit));
+    return { success: true, data: result.messages, total: result.total };
   }
 
   @Post('groups/:groupId/messages')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Send a message to a group chat' })
+  @ApiOperation({ summary: '[Legacy] Send a group message — proxies to Agent Space' })
   async sendGroupMessage(
     @Request() req,
     @Param('groupId') groupId: string,
     @Body() body: { content: string; type?: string },
   ) {
-    const msg: GroupMessage = {
-      id: `gm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      groupId,
+    const msg = await this.agentSpaceService.sendMessage({
+      spaceId: groupId,
       senderId: req.user.id,
       senderName: req.user.nickname || req.user.email || req.user.id.substring(0, 8),
       content: body.content,
-      type: (body.type as any) || 'text',
-      createdAt: new Date().toISOString(),
-    };
-    if (!groupMessages.has(groupId)) {
-      groupMessages.set(groupId, []);
-    }
-    groupMessages.get(groupId)!.push(msg);
-    // Keep max 500 messages per group in memory
-    const arr = groupMessages.get(groupId)!;
-    if (arr.length > 500) arr.splice(0, arr.length - 500);
+      type: body.type as any,
+    });
     return { success: true, data: msg };
   }
 }

@@ -21,6 +21,7 @@ import MessageBubble from "./MessageBubble";
 import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
+import FileTreePanel from "./FileTreePanel";
 import { type VoiceState } from "../services/voice";
 import {
   AudioQueuePlayer,
@@ -35,6 +36,13 @@ import {
 } from "../services/workspace";
 import { pushSessionSync, isSessionSyncConnected } from "../services/sessionSync";
 import { trackEvent } from "../services/analytics";
+import {
+  listSessionEntries,
+  loadSessionMessages,
+  persistSession,
+  removeSession,
+  type SessionEntry,
+} from "../services/chatSessionStore";
 import type { NetworkStatus } from "../services/network";
 
 // Send desktop notification when app is in background
@@ -77,7 +85,9 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [models, setModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
+  const [fileTreeOpen, setFileTreeOpen] = useState(false);
   const [syncConnected, setSyncConnected] = useState(isSessionSyncConnected());
+  const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
@@ -86,6 +96,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
   // Track whether the current send was voice-initiated for auto-TTS
   const voiceInitiatedRef = useRef(false);
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryEntries(await listSessionEntries());
+  }, []);
 
   // Load workspace directory
   useEffect(() => {
@@ -113,26 +127,23 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   // Persist current session to localStorage + push to cross-device sync
   useEffect(() => {
     if (messages.length > 0) {
-      localStorage.setItem(
-        `chat_session_${sessionIdRef.current}`,
-        JSON.stringify(messages.slice(-80)),
-      );
-      // Update session index
-      saveSessionToIndex(sessionIdRef.current, messages);
+      void persistSession(sessionIdRef.current, messages).then(() => refreshHistory());
       // Push to cross-device sync (debounced by nature of React batching)
       const firstUser = messages.find(m => m.role === "user");
       const title = firstUser?.content?.slice(0, 50) || "New Chat";
       pushSessionSync(sessionIdRef.current, messages, title);
     }
-  }, [messages]);
+  }, [messages, refreshHistory]);
 
   // Load persisted messages for current session
   useEffect(() => {
-    const stored = localStorage.getItem(`chat_session_${sessionIdRef.current}`);
-    if (stored) {
-      try {
-        setMessages(JSON.parse(stored));
-      } catch {}
+    void loadSessionMessages(sessionIdRef.current).then(setMessages);
+    void refreshHistory();
+  }, [refreshHistory]);
+
+  useEffect(() => {
+    if (historyOpen) {
+      void refreshHistory();
     }
   }, []);
 
@@ -601,29 +612,26 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     setHistoryOpen(false);
   };
 
-  const loadSession = useCallback((sid: string) => {
-    const stored = localStorage.getItem(`chat_session_${sid}`);
-    if (stored) {
-      try {
-        abortRef.current?.abort();
-        audioPlayerRef.current?.stopAll();
-        sentenceAccRef.current?.reset();
-        sessionIdRef.current = sid;
-        setMessages(JSON.parse(stored));
-        setPendingAttachments([]);
-        setBallState("idle");
-        setHistoryOpen(false);
-      } catch {}
-    }
+  const loadSession = useCallback(async (sid: string) => {
+    const stored = await loadSessionMessages(sid);
+    if (stored.length === 0) return;
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+    sessionIdRef.current = sid;
+    setMessages(stored);
+    setPendingAttachments([]);
+    setBallState("idle");
+    setHistoryOpen(false);
   }, []);
 
-  const deleteSession = useCallback((sid: string) => {
-    localStorage.removeItem(`chat_session_${sid}`);
-    removeSessionFromIndex(sid);
-    // Force re-render by closing and reopening history
-    setHistoryOpen(false);
-    setTimeout(() => setHistoryOpen(true), 0);
-  }, []);
+  const deleteSession = useCallback(async (sid: string) => {
+    await removeSession(sid);
+    await refreshHistory();
+    if (sid === sessionIdRef.current) {
+      handleNewChat();
+    }
+  }, [refreshHistory]);
 
   // Listen for custom events from tray / floating ball context menu
   useEffect(() => {
@@ -799,7 +807,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         <button onClick={handleNewChat} style={iconBtnStyle} title="New Chat">
           ＋
         </button>
-        <button onClick={() => setHistoryOpen(!historyOpen)} style={iconBtnStyle} title="Chat History">
+        <button onClick={() => { setFileTreeOpen(!fileTreeOpen); setHistoryOpen(false); }} style={iconBtnStyle} title="Workspace Files">
+          📁
+        </button>
+        <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
           📋
         </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
@@ -851,6 +862,28 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           ttsEnabled={ttsEnabled}
           onTtsToggle={setTtsEnabled}
           onClose={() => setSettingsOpen(false)}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+        />
+      )}
+
+      {/* File tree sidebar */}
+      {fileTreeOpen && (
+        <FileTreePanel
+          workspaceDir={workspaceDir}
+          onFileSelect={(path, content) => {
+            const ext = path.split(".").pop() || "";
+            const preview = content.length > 3000 ? content.slice(0, 3000) + "\n... (truncated)" : content;
+            setMessages((prev) => [...prev, {
+              id: `sys-${Date.now()}`,
+              role: "assistant" as const,
+              content: `📄 **${path}**\n\n\`\`\`${ext}\n${preview}\n\`\`\``,
+              createdAt: Date.now(),
+            }]);
+            setFileTreeOpen(false);
+          }}
+          onClose={() => setFileTreeOpen(false)}
         />
       )}
 
@@ -873,12 +906,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             <button onClick={() => setHistoryOpen(false)} style={iconBtnStyle}>✕</button>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
-            {getSessionIndex().length === 0 ? (
+            {historyEntries.length === 0 ? (
               <div style={{ textAlign: "center", color: "var(--text-dim)", padding: 40, fontSize: 13 }}>
                 No saved conversations yet
               </div>
             ) : (
-              getSessionIndex()
+              historyEntries
                 .sort((a, b) => b.updatedAt - a.updatedAt)
                 .map((s) => (
                 <div
@@ -895,7 +928,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                     gap: 8,
                     transition: "background 0.15s",
                   }}
-                  onClick={() => loadSession(s.id)}
+                  onClick={() => void loadSession(s.id)}
                   onMouseEnter={(e) => { if (s.id !== sessionIdRef.current) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
                   onMouseLeave={(e) => { if (s.id !== sessionIdRef.current) e.currentTarget.style.background = "transparent"; }}
                 >
@@ -908,7 +941,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                     </div>
                   </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                    onClick={(e) => { e.stopPropagation(); void deleteSession(s.id); }}
                     style={{ ...iconBtnStyle, width: 20, height: 20, fontSize: 10, opacity: 0.5 }}
                     title="Delete"
                   >
@@ -1091,53 +1124,6 @@ function formatBytes(size: number) {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-// ─── Session history index (localStorage) ───────────────
-interface SessionEntry {
-  id: string;
-  title: string;
-  updatedAt: number;
-  messageCount: number;
-}
-
-const SESSION_INDEX_KEY = "agentrix_sessions";
-
-function getSessionIndex(): SessionEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_INDEX_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveSessionToIndex(sessionId: string, messages: ChatMessage[]) {
-  const index = getSessionIndex();
-  const firstUserMsg = messages.find((m) => m.role === "user");
-  const title = firstUserMsg
-    ? firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? "..." : "")
-    : "New Chat";
-  const existing = index.findIndex((s) => s.id === sessionId);
-  const entry: SessionEntry = {
-    id: sessionId,
-    title,
-    updatedAt: Date.now(),
-    messageCount: messages.length,
-  };
-  if (existing >= 0) {
-    index[existing] = entry;
-  } else {
-    index.unshift(entry);
-  }
-  // Keep at most 50 sessions
-  const trimmed = index.slice(0, 50);
-  localStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(trimmed));
-}
-
-function removeSessionFromIndex(sessionId: string) {
-  const index = getSessionIndex().filter((s) => s.id !== sessionId);
-  localStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(index));
-}
-// ──────────────────────────────────────────────────────
 
 const iconBtnStyle: CSSProperties = {
   width: 28,
