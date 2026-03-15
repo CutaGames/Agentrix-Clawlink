@@ -131,14 +131,14 @@ git add -A
 
 if git diff --cached --quiet; then
   echo PUBLIC_BUILD_NO_CHANGES
-  git log --oneline -1
+    echo CURRENT_PUBLIC_BUILD_SHA=$(git rev-parse --short HEAD)
   exit 0
 fi
 
 git commit -m '__COMMIT_MESSAGE__' >/dev/null 2>&1
 git push origin "HEAD:$TARGET_BRANCH" >/dev/null 2>&1
 echo PUBLIC_BUILD_PUSH_OK
-git log --oneline -1
+echo CURRENT_PUBLIC_BUILD_SHA=$(git rev-parse --short HEAD)
 '@
 
 $remoteScript = $remoteScript.Replace("__SERVER_TOKEN_PATH__", $ServerTokenPath)
