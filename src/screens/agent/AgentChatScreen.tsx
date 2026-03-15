@@ -1001,6 +1001,7 @@ export function AgentChatScreen() {
       await Haptics.selectionAsync();
 
       let streamSucceeded = false;
+      let proxyFailureMessage: string | null = null;
 
       // Try OpenClaw proxy first (requires active instance)
       if (instanceId) {
@@ -1022,7 +1023,10 @@ export function AgentChatScreen() {
               enqueueStreamedSpeech(chunk);
             },
             onDone: () => resolve(),
-            onError: (_err) => resolve(), // silently fall through to direct Claude
+            onError: (err) => {
+              proxyFailureMessage = err || t({ en: 'OpenClaw agent connection failed.', zh: 'OpenClaw 智能体连接失败。' });
+              resolve();
+            },
           });
           streamAbortRef.current = ac;
         });
@@ -1044,36 +1048,41 @@ export function AgentChatScreen() {
               appendToStreamingMessage(assistantMsgId, proxyReply);
               enqueueStreamedSpeech(proxyReply, true);
             }
-          } catch {
-            // Keep the final fallback below, but avoid silently losing agent capabilities when proxy chat works.
+          } catch (error: any) {
+            proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
           }
         }
       }
 
       if (!streamSucceeded) {
-        // Fallback: direct Claude via backend Bedrock key (always available)
-        const history = buildHistory(currentMsgs, outgoingText);
-        await new Promise<void>((resolve) => {
-          const ac = streamDirectClaude({
-            messages: history,
-            token,
-            model: effectiveModelId,
-            sessionId: sessionIdRef.current,
-            onChunk: (chunk) => {
-              streamSucceeded = true;
-              resetVoicePhaseAfterResponse();
-              appendToStreamingMessage(assistantMsgId, chunk);
-              enqueueStreamedSpeech(chunk);
-            },
-            onDone: () => resolve(),
-            onError: (err) => {
-              resetVoicePhaseAfterResponse();
-              appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
-              resolve();
-            },
+        if (instanceId) {
+          const message = proxyFailureMessage || t({ en: 'OpenClaw agent is offline. Reconnect the agent or try again shortly.', zh: 'OpenClaw 智能体当前离线，请重新连接后再试。' });
+          resetVoicePhaseAfterResponse();
+          appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
+        } else {
+          const history = buildHistory(currentMsgs, outgoingText);
+          await new Promise<void>((resolve) => {
+            const ac = streamDirectClaude({
+              messages: history,
+              token,
+              model: effectiveModelId,
+              sessionId: sessionIdRef.current,
+              onChunk: (chunk) => {
+                streamSucceeded = true;
+                resetVoicePhaseAfterResponse();
+                appendToStreamingMessage(assistantMsgId, chunk);
+                enqueueStreamedSpeech(chunk);
+              },
+              onDone: () => resolve(),
+              onError: (err) => {
+                resetVoicePhaseAfterResponse();
+                appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
+                resolve();
+              },
+            });
+            streamAbortRef.current = ac;
           });
-          streamAbortRef.current = ac;
-        });
+        }
       }
 
       if (responseInterruptedRef.current) return;
