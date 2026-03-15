@@ -32,6 +32,8 @@ export type AgentStackParamList = {
   AgentAccount: undefined;
   AgentPermissions: { agentAccountId?: string } | undefined;
   AgentTools: { instanceId?: string };
+  // Agent Space (collaboration rooms)
+  AgentSpace: { spaceId: string; spaceName: string };
   // Layer 2
   VoiceChat: { instanceId?: string; instanceName?: string };
   TeamSpace: undefined;
@@ -74,15 +76,13 @@ export type MarketStackParamList = {
 };
 
 export type SocialStackParamList = {
-  // Feed
+  // Agent Showcase Feed
   Feed: undefined;
   PostDetail: { postId: string };
+  ShowcaseDetail: { postId: string };
   UserProfile: { userId: string };
-  CreatePost: undefined;
-  // Merged Chat (moved from standalone Chat tab)
-  ChatList: undefined;
-  DirectMessage: { userId: string; userName: string; userAvatar?: string };
-  GroupChat: { groupId: string; groupName: string };
+  // Agent Social Bridge
+  SocialListener: undefined;
 };
 
 export type ChatStackParamList = {
@@ -111,7 +111,7 @@ export type MeStackParamList = {
 export type MainTabParamList = {
   Agent: undefined;
   Explore: undefined;   // was: Market
-  Social: undefined;   // merged: Feed + Chat + Groups
+  Social: undefined;   // Agent Showcase + Social Bridge
   Me: undefined;
 };
 

@@ -79,8 +79,8 @@ export function MainTabNavigator() {
         name="Social"
         component={SocialStackNavigator}
         options={{
-          title: t({ en: 'Social', zh: '社区' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
+          title: t({ en: 'Showcase', zh: '展示墙' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🌐" focused={focused} />,
         }}
       />
       <Tab.Screen

@@ -20,6 +20,7 @@ import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 import { AgentPermissionsScreen } from '../screens/agent/AgentPermissionsScreen';
 import { AgentToolsScreen } from '../screens/agent/AgentToolsScreen';
 import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
+import { AgentSpaceScreen } from '../screens/agent/AgentSpaceScreen';
 import { ScanScreen } from '../screens/me/ScanScreen';
 // Deploy screens — reused from Onboarding in post-onboarding context
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
@@ -69,6 +70,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: t({ en: 'Agent Accounts', zh: '智能体账户' }) }} />
       <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: t({ en: 'Permissions & Security', zh: '权限与安全' }) }} />
       <Stack.Screen name="AgentTools" component={AgentToolsScreen} options={{ title: t({ en: 'Agent Tools', zh: '系统工具' }) }} />
+      <Stack.Screen name="AgentSpace" component={AgentSpaceScreen} options={{ title: t({ en: 'Agent Space', zh: 'Agent 协作空间' }) }} />
     </Stack.Navigator>
   );
 }
