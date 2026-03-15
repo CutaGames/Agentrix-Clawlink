@@ -1,0 +1,12 @@
+App.tsx
+app.json
+babel.config.js
+eas.json
+.easignore
+package.json
+package-lock.json
+tsconfig.json
+.gitignore
+Agentrix Logo
+assets
+src
