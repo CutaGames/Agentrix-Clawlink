@@ -663,12 +663,13 @@ export function AgentChatScreen() {
       try {
         const agentAccountId = activeInstance?.metadata?.agentAccountId;
         if (agentAccountId) {
-          const res = await apiFetch<{ success: boolean; data: { preferredModel?: string; metadata?: any } }>(`/agent-accounts/${agentAccountId}`);
-          if (res.data?.preferredModel) {
-            setAgentPreferredModel(res.data.preferredModel);
+          const { getAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
+          const agent = await getAgentPresenceAccount(agentAccountId);
+          if (agent.preferredModel) {
+            setAgentPreferredModel(agent.preferredModel);
           }
-          if (res.data?.metadata?.voice_id) {
-            setAgentVoiceId(res.data.metadata.voice_id);
+          if (agent.metadata?.voice_id) {
+            setAgentVoiceId(agent.metadata.voice_id);
           }
         }
       } catch {}
@@ -1784,10 +1785,8 @@ export function AgentChatScreen() {
                       const agentAccountId = activeInstance?.metadata?.agentAccountId;
                       if (agentAccountId) {
                         try {
-                          await apiFetch(`/agent-accounts/${agentAccountId}`, {
-                            method: 'PUT',
-                            body: JSON.stringify({ preferredModel: m.id }),
-                          });
+                          const { updateAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
+                          await updateAgentPresenceAccount(agentAccountId, { preferredModel: m.id });
                         } catch {}
                       }
                       // Also sync to instance

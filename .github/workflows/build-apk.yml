@@ -101,6 +101,31 @@ jobs:
             exit 1
           fi
 
+      - name: Patch build.gradle - pin React Native module paths
+        run: |
+          python3 - << 'PYEOF'
+          import os, re, sys
+          filepath = 'android/app/build.gradle'
+          if not os.path.exists(filepath):
+              print(f'[skip] {filepath} not found')
+              sys.exit(0)
+          with open(filepath, 'r', encoding='utf-8') as f:
+              content = f.read()
+          if 'REACT_NATIVE_WORKLETS_NODE_MODULES_DIR' in content:
+              print('[ok] React Native module paths already pinned')
+              sys.exit(0)
+          replacement = '''react {
+    REACT_NATIVE_NODE_MODULES_DIR = new File(rootDir, "../node_modules/react-native")
+    REACT_NATIVE_WORKLETS_NODE_MODULES_DIR = new File(rootDir, "../node_modules/react-native-worklets")'''
+          fixed = re.sub(r'react\s*\{', replacement, content, count=1)
+          if fixed == content:
+              print('[warn] Could not locate react block for path pinning')
+              sys.exit(1)
+          with open(filepath, 'w', encoding='utf-8') as f:
+              f.write(fixed)
+          print('[patched] Added React Native and worklets node_modules paths to android/app/build.gradle')
+          PYEOF
+
       # Inject signingConfigs into build.gradle if signing secrets exist.
       # This is needed because expo prebuild regenerates build.gradle and would wipe any manual edits.
       - name: Patch build.gradle — add signingConfig (only when keystore is available)

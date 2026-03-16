@@ -6,60 +6,29 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
-import { apiFetch } from '../../services/api';
 import { useI18n } from '../../stores/i18nStore';
+import {
+  fetchAgentPresenceAccounts,
+  createAgentPresenceAccount,
+  setAgentPresenceAccountStatus,
+  type MobileAgentAccount as AgentAccount,
+  type CreateMobileAgentAccountDto as CreateAgentDto,
+} from '../../services/agentPresenceAccount';
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
-
-interface AgentAccount {
-  id: string;
-  agentUniqueId: string;
-  name: string;
-  description?: string;
-  agentType: string;
-  status: string;
-  creditScore?: number;
-  balance?: number;
-  balanceCurrency?: string;
-  spendingLimits?: {
-    singleTxLimit: number;
-    dailyLimit: number;
-    monthlyLimit: number;
-    currency: string;
-  };
-  walletAddress?: string;
-  createdAt: string;
-}
-
-interface CreateAgentDto {
-  name: string;
-  description?: string;
-  agentType: string;
-  spendingLimits: {
-    singleTxLimit: number;
-    dailyLimit: number;
-    monthlyLimit: number;
-    currency: string;
-  };
-}
 
 // ──────────────────────────────────────────────
 // API helpers
 // ──────────────────────────────────────────────
 
 async function fetchAgentAccounts(): Promise<AgentAccount[]> {
-  const res = await apiFetch<{ success: boolean; data: AgentAccount[] }>('/agent-accounts');
-  return res.data ?? [];
+  return fetchAgentPresenceAccounts();
 }
 
 async function createAgentAccount(dto: CreateAgentDto): Promise<AgentAccount> {
-  const res = await apiFetch<{ success: boolean; data: AgentAccount }>('/agent-accounts', {
-    method: 'POST',
-    body: JSON.stringify(dto),
-  });
-  return res.data;
+  return createAgentPresenceAccount(dto);
 }
 
 async function openWalletForAgent(agentId: string): Promise<{ walletAddress: string }> {
@@ -72,11 +41,11 @@ async function openWalletForAgent(agentId: string): Promise<{ walletAddress: str
 }
 
 async function suspendAgent(agentId: string): Promise<void> {
-  await apiFetch(`/agent-accounts/${agentId}/suspend`, { method: 'PATCH' });
+  await setAgentPresenceAccountStatus(agentId, 'suspended');
 }
 
 async function resumeAgent(agentId: string): Promise<void> {
-  await apiFetch(`/agent-accounts/${agentId}/resume`, { method: 'PATCH' });
+  await setAgentPresenceAccountStatus(agentId, 'active');
 }
 
 // ──────────────────────────────────────────────

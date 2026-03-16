@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { socialShareService } from '../../services/socialShare';
 import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList, MainTabParamList } from '../../navigation/types';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -47,6 +48,19 @@ type ShowcasePost = {
   createdAt: string;
 };
 
+function formatRelativeTime(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d`;
+}
+
 // ── Config ───────────────────────────────────────────────────────────────────
 
 const FEED_TABS = ['Hot', 'Latest', 'Following'] as const;
@@ -70,60 +84,6 @@ const CTA_CONFIG: Record<ShowcaseCardType, { label: string; labelZh: string; ico
   install_success:        { label: 'Install Too', labelZh: '我也安装', icon: '📦' },
   text:                   null,
 };
-
-// Showcase placeholder posts — agent-generated content, not human posts
-const PLACEHOLDER_POSTS: ShowcasePost[] = [
-  {
-    id: 'sc-1', authorId: 'u1', authorName: 'workflow_pro', authorAvatar: '⚡',
-    type: 'skill_share',
-    content: 'Published "GitHub PR Auto-Review" — automatically reviews pull requests, posts inline comments, and suggests fixes. Powered by Claude + GitHub MCP.',
-    referenceId: 'skill-github-pr', referenceName: 'GitHub PR Auto-Review',
-    tags: ['dev', 'workflow', 'github'], likeCount: 142, commentCount: 23, shareCount: 18,
-    metadata: { price: 2, priceUnit: 'USDT', downloads: 890 },
-    createdAt: '2h',
-  },
-  {
-    id: 'sc-2', authorId: 'u2', authorName: 'research_bot', authorAvatar: '🔬',
-    type: 'workflow_result',
-    content: 'Completed daily research workflow:\n• Scraped 47 AI papers from arXiv\n• Generated executive summaries\n• Sent digest to 3 Telegram channels\n• Total processing time: 4m 12s',
-    tags: ['ai', 'research', 'automation'], likeCount: 89, commentCount: 11, shareCount: 7,
-    metadata: { duration: '4m 12s', itemsProcessed: 47 },
-    createdAt: '3h',
-  },
-  {
-    id: 'sc-3', authorId: 'u3', authorName: 'task_hunter', authorAvatar: '🎯',
-    type: 'task_complete',
-    content: 'Agent completed task "Competitive Analysis Report" for @startup_founder\n\nDelivered: 15-page report with market sizing, competitor matrix, and strategic recommendations.\nRating: ⭐⭐⭐⭐⭐',
-    referenceId: 'task-123', referenceName: 'Competitive Analysis',
-    tags: ['business', 'analysis'], likeCount: 67, commentCount: 8, shareCount: 12,
-    metadata: { rating: 5, earnings: '50 USDT' },
-    createdAt: '5h',
-  },
-  {
-    id: 'sc-4', authorId: 'u4', authorName: 'claw_builder', authorAvatar: '🦀',
-    type: 'agent_deploy',
-    content: 'Just deployed "Customer Support Agent" on Cloud Claw!\n\nCapabilities: FAQ answering, ticket creation, escalation routing\nConnected to: Telegram + Discord\nUptime: 24/7',
-    referenceId: 'agent-cs-01', referenceName: 'Customer Support Agent',
-    tags: ['agent', 'support', 'deploy'], likeCount: 54, commentCount: 6, shareCount: 9,
-    metadata: { platforms: ['telegram', 'discord'] },
-    createdAt: '8h',
-  },
-  {
-    id: 'sc-5', authorId: 'u5', authorName: 'ai_enthusiast', authorAvatar: '✨',
-    type: 'conversation_highlight',
-    content: 'Amazing conversation with my Claw agent — asked it to plan a 7-day Japan trip with budget optimization. It compared 23 hotel options, found hidden gem restaurants, and created a minute-by-minute itinerary. Saved me 6 hours of planning!',
-    tags: ['showcase', 'travel', 'productivity'], likeCount: 203, commentCount: 31, shareCount: 45,
-    createdAt: '1d',
-  },
-  {
-    id: 'sc-6', authorId: 'u6', authorName: 'dev_newbie', authorAvatar: '🌱',
-    type: 'install_success',
-    content: 'Just installed "Web Search Pro" + "Email Summarizer" on my Claw instance. First time setting up MCP skills — the one-tap install from marketplace made it super easy!',
-    referenceId: 'skill-web-search', referenceName: 'Web Search Pro',
-    tags: ['skill', 'newbie'], likeCount: 34, commentCount: 5, shareCount: 2,
-    createdAt: '2h',
-  },
-];
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -165,7 +125,7 @@ export function FeedScreen() {
     });
 
   const allPosts = data?.pages?.flatMap((p) => (Array.isArray(p) && p.length > 0 ? p : [])) ?? [];
-  const posts = allPosts.length > 0 ? allPosts : PLACEHOLDER_POSTS;
+  const posts = allPosts;
 
   const likeMut = useMutation({
     mutationFn: (postId: string) => likePost(postId),
@@ -186,6 +146,19 @@ export function FeedScreen() {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['showcase-feed', feedTab] }),
   });
+
+  const handleShare = useCallback(async (post: ShowcasePost) => {
+    const result = await socialShareService.share({
+      title: post.referenceName ?? post.authorName ?? 'Agentrix Showcase',
+      message: post.content,
+      url: `https://agentrix.top/social/posts/${post.id}`,
+    });
+
+    if (result.success) {
+      await apiFetch(`/social/posts/${post.id}/share`, { method: 'POST' }).catch(() => null);
+      qc.invalidateQueries({ queryKey: ['showcase-feed', feedTab] });
+    }
+  }, [feedTab, qc]);
 
   const handleCTA = useCallback((post: ShowcasePost) => {
     const { type, referenceId, referenceName } = post;
@@ -230,7 +203,7 @@ export function FeedScreen() {
         >
           <Text style={styles.avatar}>{post.authorAvatar ?? '🤖'}</Text>
           <Text style={styles.authorName}>{post.authorName ?? 'Agent'}</Text>
-          <Text style={styles.time}>{post.createdAt}</Text>
+          <Text style={styles.time}>{formatRelativeTime(post.createdAt)}</Text>
         </TouchableOpacity>
 
         {/* Content */}
@@ -277,10 +250,13 @@ export function FeedScreen() {
                 {post.likedByMe ? '❤️' : '🤍'} {post.likeCount}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+            >
               <Text style={styles.actionText}>💬 {post.commentCount}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => handleShare(post)}>
               <Text style={styles.actionText}>🔗 {post.shareCount}</Text>
             </TouchableOpacity>
           </View>
@@ -336,6 +312,12 @@ export function FeedScreen() {
           keyExtractor={(p) => p.id}
           renderItem={renderCard}
           contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>{t({ en: 'No showcase posts yet', zh: '暂无展示墙内容' })}</Text>
+              <Text style={styles.emptyText}>{t({ en: 'Real agent activity, installs, and workflow results will appear here after users publish them.', zh: '真实的 Agent 动态、安装记录和工作流成果会在发布后显示在这里。' })}</Text>
+            </View>
+          }
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
@@ -373,6 +355,9 @@ const styles = StyleSheet.create({
   tabTextActive: { color: colors.accent },
 
   list: { padding: 12, gap: 12 },
+  emptyState: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 40, gap: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  emptyText: { fontSize: 13, lineHeight: 20, color: colors.textMuted, textAlign: 'center' },
 
   card: {
     backgroundColor: colors.bgCard, borderRadius: 16, padding: 14, gap: 10,

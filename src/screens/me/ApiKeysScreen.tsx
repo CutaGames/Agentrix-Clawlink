@@ -450,8 +450,8 @@ export function ApiKeysScreen() {
         <Text style={styles.title}>{t({ en: 'AI Provider Management', zh: 'AI 厂商管理' })}</Text>
         <Text style={styles.desc}>
           {t({
-            en: 'Configure your own API keys. The default provider applies to all agents; override per-agent in Agent Permissions.',
-            zh: '配置您的 API 密钥。默认厂商适用于所有 Agent；可在 Agent 权限中为不同 Agent 指定不同厂商。',
+            en: 'Configure API providers and subscription relays here. The default provider applies to all agents; override per-agent in Agent Permissions.',
+            zh: '在这里统一配置 AI 厂商与订阅中继。默认厂商适用于所有 Agent；可在 Agent 权限中为不同 Agent 单独覆盖。',
           })}
         </Text>
 
@@ -459,6 +459,9 @@ export function ApiKeysScreen() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLine}>
             📊 {t({ en: `${configuredCount} provider(s) configured`, zh: `已配置 ${configuredCount} 个厂商` })}
+          </Text>
+          <Text style={[styles.summaryLine, { color: colors.textMuted }]}> 
+            {t({ en: 'ChatGPT / Copilot subscriptions also use this page. They can use a subscription token alone, or a token + relay Base URL when needed.', zh: 'ChatGPT / Copilot 订阅也走这个入口。可只填订阅 token，也可按需要填写 token + 中继 Base URL。' })}
           </Text>
           {defaultProvider ? (
             <Text style={styles.summaryLine}>

@@ -10,6 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
+import { socialShareService } from '../../services/socialShare';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
@@ -20,41 +21,40 @@ type Nav = NativeStackNavigationProp<SocialStackParamList, 'PostDetail'>;
 type Comment = {
   id: string;
   authorId: string;
-  author: string;
-  avatar?: string;
+  authorName?: string;
+  authorAvatar?: string;
   content: string;
-  likes: number;
-  time: string;
-  isLiked?: boolean;
+  likeCount: number;
+  createdAt: string;
+  likedByMe?: boolean;
 };
 
 type PostDetail = {
   id: string;
   authorId: string;
-  author: string;
-  avatar?: string;
+  authorName?: string;
+  authorAvatar?: string;
   content: string;
   tags?: string[];
-  likes: number;
-  comments: number;
-  time: string;
-  isLiked?: boolean;
-  badges?: string[];
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  createdAt: string;
+  likedByMe?: boolean;
 };
 
-const PLACEHOLDER_POST: PostDetail = {
-  id: '1', authorId: 'u1', author: 'openclaw_fan', avatar: '🦀',
-  content: 'Just deployed my first cloud agent via Agentrix-Claw! Running a research agent 24/7 now 🚀\n\nHere\'s my setup:\n- Web Search skill\n- Summarizer skill\n- Scheduled via Cron trigger\n\nTotal cost: ~$0.03 / day. Absolutely worth it.',
-  tags: ['showcase', 'cloud', 'agent'],
-  likes: 42, comments: 3, time: '2h', isLiked: false,
-  badges: ['Top Creator'],
-};
-
-const PLACEHOLDER_COMMENTS: Comment[] = [
-  { id: 'c1', authorId: 'u2', author: 'ai_builder', avatar: '🤖', content: 'That\'s a great setup! Which Web Search skill did you use?', likes: 5, time: '1h' },
-  { id: 'c2', authorId: 'u3', author: 'claw_dev', avatar: '💻', content: 'Try the "Exa Search" skill — way better for research queries.', likes: 8, time: '45m' },
-  { id: 'c3', authorId: 'u4', author: 'skill_wizard', avatar: '⚡', content: 'Followed! Would love to see your workflow diagram.', likes: 2, time: '20m' },
-];
+function formatRelativeTime(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d`;
+}
 
 async function fetchPost(postId: string): Promise<PostDetail | null> {
   try { return apiFetch<PostDetail>(`/social/posts/${postId}`); }
@@ -70,6 +70,12 @@ async function toggleLikePost(postId: string) {
 async function postComment(postId: string, content: string) {
   return apiFetch(`/social/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ content }) });
 }
+async function toggleLikeComment(commentId: string) {
+  return apiFetch(`/social/comments/${commentId}/like`, { method: 'POST' });
+}
+async function recordShare(postId: string) {
+  return apiFetch(`/social/posts/${postId}/share`, { method: 'POST' });
+}
 
 export function PostDetailScreen() {
   const route = useRoute<RouteT>();
@@ -77,7 +83,7 @@ export function PostDetailScreen() {
   const { postId } = route.params;
   const me = useAuthStore((s) => s.user);
   const qc = useQueryClient();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [comment, setComment] = useState('');
   const inputRef = useRef<TextInput>(null);
 
@@ -85,24 +91,42 @@ export function PostDetailScreen() {
     queryKey: ['post', postId],
     queryFn: () => fetchPost(postId),
     retry: false,
-    select: (d) => d ?? PLACEHOLDER_POST,
   });
 
   const { data: comments, isLoading: commentsLoading } = useQuery({
     queryKey: ['post-comments', postId],
     queryFn: () => fetchComments(postId),
     retry: false,
-    select: (d) => (Array.isArray(d) && d.length > 0 ? d : PLACEHOLDER_COMMENTS),
   });
 
   const likeMut = useMutation({
     mutationFn: () => toggleLikePost(postId),
     onMutate: () => {
       qc.setQueryData(['post', postId], (old: PostDetail | undefined) =>
-        old ? { ...old, likes: old.isLiked ? old.likes - 1 : old.likes + 1, isLiked: !old.isLiked } : old
+        old ? {
+          ...old,
+          likeCount: old.likedByMe ? old.likeCount - 1 : old.likeCount + 1,
+          likedByMe: !old.likedByMe,
+        } : old
       );
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['post', postId] }),
+  });
+
+  const commentLikeMut = useMutation({
+    mutationFn: (commentId: string) => toggleLikeComment(commentId),
+    onMutate: (commentId) => {
+      qc.setQueryData(['post-comments', postId], (old: Comment[] | undefined) =>
+        (old ?? []).map((item) => item.id === commentId
+          ? {
+              ...item,
+              likeCount: item.likedByMe ? item.likeCount - 1 : item.likeCount + 1,
+              likedByMe: !item.likedByMe,
+            }
+          : item)
+      );
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['post-comments', postId] }),
   });
 
   const commentMut = useMutation({
@@ -110,11 +134,11 @@ export function PostDetailScreen() {
     onMutate: async (content) => {
       const opt: Comment = {
         id: `opt-${Date.now()}`, authorId: me?.id ?? 'me',
-        author: me?.nickname ?? 'You', content, likes: 0, time: 'just now',
+        authorName: me?.nickname ?? 'You', content, likeCount: 0, createdAt: new Date().toISOString(),
       };
       qc.setQueryData(['post-comments', postId], (old: Comment[] | undefined) => [...(old ?? []), opt]);
       qc.setQueryData(['post', postId], (old: PostDetail | undefined) =>
-        old ? { ...old, comments: old.comments + 1 } : old
+        old ? { ...old, commentCount: old.commentCount + 1 } : old
       );
     },
     onSettled: () => {
@@ -130,6 +154,19 @@ export function PostDetailScreen() {
     commentMut.mutate(text);
   }, [comment, commentMut]);
 
+  const handleShare = useCallback(async () => {
+    if (!post) return;
+    const result = await socialShareService.share({
+      title: post.authorName ?? 'Agentrix Post',
+      message: post.content,
+      url: `https://agentrix.top/social/posts/${post.id}`,
+    });
+    if (result.success) {
+      await recordShare(post.id).catch(() => null);
+      qc.invalidateQueries({ queryKey: ['post', postId] });
+    }
+  }, [post, postId, qc]);
+
   const ListHeader = () => {
     if (!post) return null;
     return (
@@ -139,17 +176,10 @@ export function PostDetailScreen() {
           style={styles.authorRow}
           onPress={() => navigation.navigate('UserProfile', { userId: post.authorId })}
         >
-          <Text style={styles.avatar}>{post.avatar ?? '👤'}</Text>
+          <Text style={styles.avatar}>{post.authorAvatar ?? '👤'}</Text>
           <View style={{ flex: 1 }}>
-            <View style={styles.authorNameRow}>
-              <Text style={styles.authorName}>{post.author}</Text>
-              {post.badges?.map((b) => (
-                <View key={b} style={styles.badge}>
-                  <Text style={styles.badgeText}>{b === 'Top Creator' ? '⭐' : b === 'Genesis Node' ? '⚡' : '🏅'} {b}</Text>
-                </View>
-              ))}
-            </View>
-            <Text style={styles.postTime}>{post.time}</Text>
+            <Text style={styles.authorName}>{post.authorName ?? 'Agent'}</Text>
+            <Text style={styles.postTime}>{formatRelativeTime(post.createdAt)}</Text>
           </View>
         </TouchableOpacity>
 
@@ -170,15 +200,15 @@ export function PostDetailScreen() {
         {/* Actions */}
         <View style={styles.actions}>
           <TouchableOpacity style={styles.actionBtn} onPress={() => likeMut.mutate()}>
-            <Text style={[styles.actionText, post.isLiked && styles.actionActive]}>
-              {post.isLiked ? '❤️' : '🤍'} {post.likes}
+            <Text style={[styles.actionText, post.likedByMe && styles.actionActive]}>
+              {post.likedByMe ? '❤️' : '🤍'} {post.likeCount}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={() => inputRef.current?.focus()}>
-            <Text style={styles.actionText}>💬 {post.comments}</Text>
+            <Text style={styles.actionText}>💬 {post.commentCount}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn}>
-            <Text style={styles.actionText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+            <Text style={styles.actionText}>🔗 {post.shareCount}</Text>
           </TouchableOpacity>
         </View>
 
@@ -190,15 +220,17 @@ export function PostDetailScreen() {
 
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentRow}>
-      <Text style={styles.commentAvatar}>{item.avatar ?? '👤'}</Text>
+      <Text style={styles.commentAvatar}>{item.authorAvatar ?? '👤'}</Text>
       <View style={styles.commentBody}>
         <View style={styles.commentHeader}>
-          <Text style={styles.commentAuthor}>{item.author}</Text>
-          <Text style={styles.commentTime}>{item.time}</Text>
+          <Text style={styles.commentAuthor}>{item.authorName ?? 'User'}</Text>
+          <Text style={styles.commentTime}>{formatRelativeTime(item.createdAt)}</Text>
         </View>
         <Text style={styles.commentContent}>{item.content}</Text>
-        <TouchableOpacity>
-          <Text style={styles.commentLike}>🤍 {item.likes}</Text>
+        <TouchableOpacity onPress={() => commentLikeMut.mutate(item.id)}>
+          <Text style={[styles.commentLike, item.likedByMe && styles.actionActive]}>
+            {item.likedByMe ? '❤️' : '🤍'} {item.likeCount}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -212,6 +244,14 @@ export function PostDetailScreen() {
     );
   }
 
+  if (!post) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.emptyStateTitle}>{t({ en: 'Post not found', zh: '动态不存在' })}</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
@@ -220,6 +260,7 @@ export function PostDetailScreen() {
           keyExtractor={(c) => c.id}
           renderItem={renderComment}
           ListHeaderComponent={<ListHeader />}
+          ListEmptyComponent={!commentsLoading ? <Text style={styles.emptyComments}>{t({ en: 'No comments yet', zh: '还没有评论' })}</Text> : null}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           ListFooterComponent={commentsLoading ? <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} /> : null}
@@ -292,4 +333,6 @@ const styles = StyleSheet.create({
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { opacity: 0.4 },
   sendIcon: { color: '#fff', fontSize: 17, marginLeft: 2 },
+  emptyComments: { paddingHorizontal: 16, paddingVertical: 20, color: colors.textMuted, textAlign: 'center' },
+  emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
 });
