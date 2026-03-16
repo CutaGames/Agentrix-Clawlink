@@ -17,19 +17,38 @@ export enum MemoryType {
   INTENT = 'intent',
 }
 
+export enum MemoryScope {
+  SESSION = 'session',   // 会话级记忆，会话结束后可归档
+  AGENT = 'agent',       // Agent 级长期记忆
+  USER = 'user',         // 用户级共享记忆（所有 Agent 可读）
+  SHARED = 'shared',     // 定向共享记忆（按策略共享给特定 Agent）
+}
+
 @Entity('agent_memory')
 @Index(['sessionId', 'key'])
 @Index(['sessionId', 'type'])
 @Index(['sessionId', 'createdAt'])
+@Index(['agentId', 'type', 'createdAt'])
+@Index(['agentId', 'scope'])
 export class AgentMemory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => AgentSession, { onDelete: 'CASCADE' })
+  @ManyToOne(() => AgentSession, { onDelete: 'CASCADE', nullable: true })
   session: AgentSession;
 
-  @Column()
+  @Column({ nullable: true })
   sessionId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  agentId?: string;
+
+  @Column({
+    type: 'enum',
+    enum: MemoryScope,
+    default: MemoryScope.SESSION,
+  })
+  scope: MemoryScope;
 
   @Column({
     type: 'enum',
