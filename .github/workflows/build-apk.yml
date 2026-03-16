@@ -114,9 +114,7 @@ jobs:
           if 'REACT_NATIVE_WORKLETS_NODE_MODULES_DIR' in content:
               print('[ok] React Native module paths already pinned')
               sys.exit(0)
-          replacement = '''react {
-    REACT_NATIVE_NODE_MODULES_DIR = new File(rootDir, "../node_modules/react-native")
-    REACT_NATIVE_WORKLETS_NODE_MODULES_DIR = new File(rootDir, "../node_modules/react-native-worklets")'''
+          replacement = "react {\n    REACT_NATIVE_NODE_MODULES_DIR = new File(rootDir, \"../node_modules/react-native\")\n    REACT_NATIVE_WORKLETS_NODE_MODULES_DIR = new File(rootDir, \"../node_modules/react-native-worklets\")"
           fixed = re.sub(r'react\s*\{', replacement, content, count=1)
           if fixed == content:
               print('[warn] Could not locate react block for path pinning')
