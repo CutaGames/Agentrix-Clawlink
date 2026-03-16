@@ -10,11 +10,11 @@ import {
 } from "react";
 import {
   useAuthStore,
-  streamChat,
   streamDirectChat,
   fetchModels,
   type ChatMessage,
   type ChatAttachment,
+  type DesktopAgent,
   uploadChatAttachment,
 } from "../services/store";
 import MessageBubble from "./MessageBubble";
@@ -22,6 +22,10 @@ import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
 import FileTreePanel from "./FileTreePanel";
+import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList } from "../services/git";
+import { captureScreen } from "../services/screenshot";
+import NotificationCenter, { NotificationBadge } from "./NotificationCenter";
+import { subscribe as subscribeNotifications, getUnreadCount } from "../services/notifications";
 import { type VoiceState } from "../services/voice";
 import {
   AudioQueuePlayer,
@@ -41,8 +45,14 @@ import {
   loadSessionMessages,
   persistSession,
   removeSession,
+  loadTabs,
+  saveTabs,
+  loadActiveTabId,
+  saveActiveTabId,
   type SessionEntry,
+  type PersistedTab,
 } from "../services/chatSessionStore";
+import TabBar, { type ChatTab } from "./TabBar";
 import type { NetworkStatus } from "../services/network";
 
 // Send desktop notification when app is in background
@@ -69,7 +79,7 @@ interface Props {
 type BallState = "idle" | "recording" | "thinking" | "speaking";
 
 export default function ChatPanel({ onClose, networkStatus = "online" }: Props) {
-  const { token, activeInstanceId, instances, setActiveInstance } =
+  const { token, activeAgentId, agents, setActiveAgent } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -87,8 +97,22 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
   const [fileTreeOpen, setFileTreeOpen] = useState(false);
   const [syncConnected, setSyncConnected] = useState(isSessionSyncConnected());
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
-  const sessionIdRef = useRef(`session-${Date.now()}`);
+  const activeAgent = useMemo<DesktopAgent | null>(
+    () => agents.find((agent) => agent.id === activeAgentId) || null,
+    [agents, activeAgentId],
+  );
+
+  // ── Multi-tab state ─────────────────────────────────────
+  const defaultTabId = `tab-${Date.now()}`;
+  const defaultSessionId = `session-${Date.now()}`;
+  const [tabs, setTabs] = useState<ChatTab[]>([{ id: defaultTabId, sessionId: defaultSessionId, title: "New Chat", unread: false }]);
+  const [activeTabId, setActiveTabId] = useState(defaultTabId);
+  const tabMessagesCache = useRef<Record<string, ChatMessage[]>>({});
+
+  const sessionIdRef = useRef(defaultSessionId);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -124,22 +148,118 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // ── Tab initialization from persistence ──────────────
+  useEffect(() => {
+    (async () => {
+      const savedTabs = await loadTabs();
+      const savedActiveId = await loadActiveTabId();
+      if (savedTabs.length > 0) {
+        const chatTabs: ChatTab[] = savedTabs.map(t => ({ ...t, unread: false }));
+        setTabs(chatTabs);
+        const activeId = savedActiveId && chatTabs.find(t => t.id === savedActiveId) ? savedActiveId : chatTabs[0].id;
+        setActiveTabId(activeId);
+        const activeTab = chatTabs.find(t => t.id === activeId)!;
+        sessionIdRef.current = activeTab.sessionId;
+        const msgs = await loadSessionMessages(activeTab.sessionId);
+        setMessages(msgs);
+        tabMessagesCache.current[activeTab.sessionId] = msgs;
+      } else {
+        const msgs = await loadSessionMessages(sessionIdRef.current);
+        setMessages(msgs);
+      }
+    })();
+  }, []);
+
+  // ── Tab management helpers ────────────────────────────
+  const createNewTab = useCallback(() => {
+    const id = `tab-${Date.now()}`;
+    const sid = `session-${Date.now()}`;
+    const newTab: ChatTab = { id, sessionId: sid, title: "New Chat", unread: false };
+    // Cache current messages before switching
+    tabMessagesCache.current[sessionIdRef.current] = messages;
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(id);
+    sessionIdRef.current = sid;
+    setMessages([]);
+    setPendingAttachments([]);
+    setBallState("idle");
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+    trackEvent("tab_new");
+  }, [messages]);
+
+  const switchTab = useCallback(async (tabId: string) => {
+    if (tabId === activeTabId) return;
+    // Save current tab's messages to cache
+    tabMessagesCache.current[sessionIdRef.current] = messages;
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+    // Find target tab
+    const target = tabs.find(t => t.id === tabId);
+    if (!target) return;
+    setActiveTabId(tabId);
+    sessionIdRef.current = target.sessionId;
+    // Mark as read
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, unread: false } : t));
+    // Load messages from cache or store
+    const cached = tabMessagesCache.current[target.sessionId];
+    if (cached) {
+      setMessages(cached);
+    } else {
+      const stored = await loadSessionMessages(target.sessionId);
+      setMessages(stored);
+      tabMessagesCache.current[target.sessionId] = stored;
+    }
+    setPendingAttachments([]);
+    setBallState("idle");
+  }, [activeTabId, tabs, messages]);
+
+  const closeTab = useCallback(async (tabId: string) => {
+    if (tabs.length <= 1) return; // keep at least one tab
+    const idx = tabs.findIndex(t => t.id === tabId);
+    const newTabs = tabs.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+    // If closing active tab, switch to adjacent
+    if (tabId === activeTabId) {
+      const nextIdx = Math.min(idx, newTabs.length - 1);
+      const nextTab = newTabs[nextIdx];
+      setActiveTabId(nextTab.id);
+      sessionIdRef.current = nextTab.sessionId;
+      const cached = tabMessagesCache.current[nextTab.sessionId];
+      if (cached) {
+        setMessages(cached);
+      } else {
+        const stored = await loadSessionMessages(nextTab.sessionId);
+        setMessages(stored);
+      }
+      setPendingAttachments([]);
+      setBallState("idle");
+    }
+  }, [tabs, activeTabId]);
+
+  // Persist tabs whenever they change
+  useEffect(() => {
+    const persisted: PersistedTab[] = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
+    void saveTabs(persisted);
+    void saveActiveTabId(activeTabId);
+  }, [tabs, activeTabId]);
+
   // Persist current session to localStorage + push to cross-device sync
   useEffect(() => {
     if (messages.length > 0) {
       void persistSession(sessionIdRef.current, messages).then(() => refreshHistory());
-      // Push to cross-device sync (debounced by nature of React batching)
+      // Update current tab title
       const firstUser = messages.find(m => m.role === "user");
       const title = firstUser?.content?.slice(0, 50) || "New Chat";
+      setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, title } : t));
+      // Update cache
+      tabMessagesCache.current[sessionIdRef.current] = messages;
+      // Push to cross-device sync
       pushSessionSync(sessionIdRef.current, messages, title);
     }
-  }, [messages, refreshHistory]);
-
-  // Load persisted messages for current session
-  useEffect(() => {
-    void loadSessionMessages(sessionIdRef.current).then(setMessages);
-    void refreshHistory();
-  }, [refreshHistory]);
+  }, [messages, refreshHistory, activeTabId]);
 
   useEffect(() => {
     if (historyOpen) {
@@ -332,6 +452,78 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       return true;
     }
 
+    // /git status — show git status
+    if (trimmed === "/git status" || trimmed === "/gs") {
+      try {
+        const st = await gitStatus();
+        const lines = [`🔀 Branch: **${st.branch}**`];
+        if (st.ahead > 0 || st.behind > 0) lines.push(`↑${st.ahead} ↓${st.behind}`);
+        if (st.isClean) {
+          lines.push("✅ Working tree clean");
+        } else {
+          lines.push(`📝 ${st.changes.length} change(s):`);
+          st.changes.slice(0, 20).forEach(c => lines.push(`  ${c.status} ${c.file}`));
+          if (st.changes.length > 20) lines.push(`  ... and ${st.changes.length - 20} more`);
+        }
+        addSystemMessage(lines.join("\n"));
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git diff [--staged] [file] — show diff
+    if (trimmed.startsWith("/git diff") || trimmed === "/gd") {
+      try {
+        const args = trimmed.replace("/gd", "/git diff").slice(10).trim();
+        const staged = args.includes("--staged") || args.includes("--cached");
+        const filePath = args.replace("--staged", "").replace("--cached", "").trim() || undefined;
+        const diff = await gitDiff(staged, filePath);
+        addSystemMessage(diff ? `\`\`\`diff\n${diff.slice(0, 3000)}\n\`\`\`` : "No changes to diff.");
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git log [n] — show recent commits
+    if (trimmed.startsWith("/git log") || trimmed === "/gl") {
+      try {
+        const countArg = trimmed.replace("/gl", "/git log").slice(9).trim();
+        const count = parseInt(countArg) || 10;
+        const entries = await gitLog(count);
+        const lines = entries.map(e => `\`${e.shortHash}\` ${e.message} — *${e.author}* (${e.date.slice(0, 10)})`);
+        addSystemMessage(lines.length ? lines.join("\n") : "No commits found.");
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git commit <message> — add all and commit
+    if (trimmed.startsWith("/git commit ") || trimmed.startsWith("/gc ")) {
+      try {
+        const msg = trimmed.startsWith("/gc ") ? trimmed.slice(4).trim() : trimmed.slice(12).trim();
+        if (!msg) { addSystemMessage("Usage: /git commit <message>"); return true; }
+        const result = await gitCommit(msg, true);
+        addSystemMessage(`✅ Committed \`${result.hash.slice(0, 8)}\`: ${result.message} (${result.filesChanged} file(s))`);
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git branch — list branches
+    if (trimmed === "/git branch" || trimmed === "/gb") {
+      try {
+        const branches = await gitBranchList();
+        addSystemMessage(branches.length ? branches.join("\n") : "No branches found.");
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /screenshot — capture screen
+    if (trimmed === "/screenshot" || trimmed === "/ss") {
+      try {
+        addSystemMessage("📸 Capturing screen...");
+        const result = await captureScreen(true);
+        addSystemMessage(`✅ Screenshot captured (${result.width}×${result.height})${result.filePath ? `\nSaved: ${result.filePath}` : ""}`);
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
     // /help — show available commands
     if (trimmed === "/help") {
       addSystemMessage(
@@ -343,6 +535,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         "• `/model <name>` — Switch AI model\n" +
         "• `/search <query>` — Web search\n" +
         "• `/skill [name]` — List or activate skills\n" +
+        "• `/git status` `/gs` — Git status\n" +
+        "• `/git diff` `/gd` — Git diff\n" +
+        "• `/git log [n]` `/gl` — Recent commits\n" +
+        "• `/git commit <msg>` `/gc` — Commit all\n" +
+        "• `/git branch` `/gb` — List branches\n" +
+        "• `/screenshot` `/ss` — Capture screen\n" +
         "• `/history` — Show session info\n" +
         "• `/help` — Show this help"
       );
@@ -351,12 +549,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
 
     // /history — show session info
     if (trimmed === "/history") {
-      addSystemMessage(`Session: ${sessionIdRef.current}\nMessages: ${messages.length}\nInstance: ${activeInstanceId || "none"}`);
+      addSystemMessage(`Session: ${sessionIdRef.current}\nMessages: ${messages.length}\nAgent: ${activeAgent?.name || activeAgentId || "none"}`);
       return true;
     }
 
     return false;
-  }, [models, messages, activeInstanceId]);
+  }, [models, messages, activeAgent, activeAgentId]);
 
   const addSystemMessage = useCallback((content: string) => {
     setMessages(prev => [...prev, {
@@ -421,41 +619,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         sentenceAccRef.current = sentenceAcc;
       }
 
-      let succeeded = false;
-
-      if (activeInstanceId && token) {
-        try {
-          await new Promise<void>((resolve) => {
-            const ac = streamChat({
-              instanceId: activeInstanceId,
-              message: outboundText,
-              sessionId: sessionIdRef.current,
-              token,
-              model: selectedModel,
-              onChunk: (chunk) => {
-                succeeded = true;
-                if (!audioPlayer?.playing) setBallState("speaking");
-                appendChunk(assistantId, chunk);
-                sentenceAcc?.push(chunk);
-              },
-              onDone: () => {
-                finalizeMessage(assistantId);
-                sentenceAcc?.flush();
-                resolve();
-              },
-              onError: () => resolve(),
-            });
-            abortRef.current = ac;
-          });
-        } catch {}
-      }
-
-      // Fallback to direct Claude
-      if (!succeeded && token) {
+      if (token) {
         const history = messages.slice(-10).map((m) => ({
           role: m.role,
           content: serializeMessageForModel(m.content, m.attachments || []),
         }));
+        if (activeAgent) {
+          history.unshift({
+            role: "system",
+            content: `You are responding as the desktop agent \"${activeAgent.name}\". Keep replies aligned with this agent identity while preserving the user's intent.`,
+          });
+        }
         history.push({ role: "user", content: outboundText });
 
         await new Promise<void>((resolve) => {
@@ -498,7 +672,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     [
       input,
       sending,
-      activeInstanceId,
+      activeAgent,
       token,
       selectedModel,
       messages,
@@ -599,17 +773,22 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     if (e.key === "Escape") {
       onClose();
     }
+    // Ctrl+T → new tab
+    if (e.ctrlKey && e.key === "t") {
+      e.preventDefault();
+      createNewTab();
+    }
+    // Ctrl+W → close current tab
+    if (e.ctrlKey && e.key === "w") {
+      e.preventDefault();
+      closeTab(activeTabId);
+    }
   };
 
   const handleNewChat = () => {
-    abortRef.current?.abort();
-    audioPlayerRef.current?.stopAll();
-    sentenceAccRef.current?.reset();
-    sessionIdRef.current = `session-${Date.now()}`;
-    setMessages([]);
-    setPendingAttachments([]);
-    setBallState("idle");
+    createNewTab();
     setHistoryOpen(false);
+    setFileTreeOpen(false);
   };
 
   const loadSession = useCallback(async (sid: string) => {
@@ -653,6 +832,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     };
     window.addEventListener("agentrix:sync-status", handler);
     return () => window.removeEventListener("agentrix:sync-status", handler);
+  }, []);
+
+  // Subscribe to notification count changes
+  useEffect(() => {
+    return subscribeNotifications(() => setUnreadNotifCount(getUnreadCount()));
   }, []);
 
   // Listen for clipboard quick-action sends from FloatingBall
@@ -747,6 +931,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         </div>
       )}
 
+      {/* Tab bar */}
+      {tabs.length > 1 && (
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelect={switchTab}
+          onClose={closeTab}
+          onNew={createNewTab}
+        />
+      )}
+
       {/* Title bar */}
       <div
         style={{
@@ -760,10 +955,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       >
         <FloatingBall onTap={onClose} state={ballState} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Instance selector */}
+          {/* Agent selector */}
           <select
-            value={activeInstanceId || ""}
-            onChange={(e) => setActiveInstance(e.target.value)}
+            value={activeAgentId || ""}
+            onChange={(e) => setActiveAgent(e.target.value)}
             style={{
               background: "transparent",
               color: "var(--text)",
@@ -775,9 +970,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               WebkitAppRegion: "no-drag",
             }}
           >
-            {instances.map((inst: any) => (
-              <option key={inst.id} value={inst.id}>
-                {inst.name || inst.id.slice(0, 8)}
+            {agents.length === 0 && <option value="">No agent selected</option>}
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name || agent.id.slice(0, 8)}
               </option>
             ))}
           </select>
@@ -813,6 +1009,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
           📋
         </button>
+        <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
@@ -886,6 +1083,9 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           onClose={() => setFileTreeOpen(false)}
         />
       )}
+
+      {/* Notification center */}
+      <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} />
 
       {/* History sidebar */}
       {historyOpen && (
