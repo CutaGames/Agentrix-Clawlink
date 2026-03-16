@@ -33,9 +33,13 @@ import { TelegramBotService } from '../openclaw-connection/telegram-bot.service'
 import { SocialService } from './social.service';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { SocialAccount, SocialAccountType } from '../../entities/social-account.entity';
+import { PresenceRouterService } from '../agent-presence/channel/presence-router.service';
 import {
+  SocialEvent,
   SocialEventPlatform,
   SocialEventType,
+  SocialReplyStatus,
+  ReplyStrategy,
 } from '../../entities/social.entity';
 
 // ── Environment ───────────────────────────────────────────────────────────────
@@ -60,6 +64,7 @@ export class SocialCallbackController {
     private readonly socialAccountRepo: Repository<SocialAccount>,
     @InjectRepository(OpenClawInstance)
     private readonly openClawInstanceRepo: Repository<OpenClawInstance>,
+    private readonly presenceRouter: PresenceRouterService,
   ) {}
 
   // ── Dashboard endpoints ───────────────────────────────────────────────────
@@ -188,6 +193,7 @@ export class SocialCallbackController {
     const message = update?.message ?? update?.channel_post ?? null;
 
     if (message) {
+      const chatId = String(message?.chat?.id ?? '');
       const text: string =
         message?.text ?? message?.caption ?? message?.voice?.file_id ??
         message?.audio?.file_id ?? '[non-text message]';
@@ -196,7 +202,15 @@ export class SocialCallbackController {
         message?.from?.username ??
         `${message?.from?.first_name ?? ''} ${message?.from?.last_name ?? ''}`.trim();
 
-      await this.dispatchEvent({
+      // Dual-write: route through PresenceRouter for unified timeline
+      // This writes to conversation_events if an Agent is bound to this chatId
+      try {
+        await this.presenceRouter.routeInbound('telegram', chatId, update);
+      } catch (err: any) {
+        this.logger.warn(`PresenceRouter telegram dual-write failed: ${err.message}`);
+      }
+
+      const savedEvent = await this.dispatchEvent({
         platform: SocialEventPlatform.TELEGRAM,
         eventType: text.startsWith('/') ? SocialEventType.COMMAND : SocialEventType.MESSAGE,
         senderId,
@@ -204,6 +218,13 @@ export class SocialCallbackController {
         text,
         rawPayload: message,
       });
+
+      const isVoiceLike = !!(message?.voice || message?.audio || (message?.document?.mime_type || '').startsWith('audio/'));
+
+      if (!text.startsWith('/') && !isVoiceLike && savedEvent?.userId) {
+        await this.applyTelegramReplyPolicy(savedEvent, Number(message?.chat?.id ?? senderId));
+        return { ok: true };
+      }
     }
 
     await this.telegramBotService.handleUpdate(update);
@@ -272,7 +293,7 @@ export class SocialCallbackController {
     senderName?: string;
     text: string;
     rawPayload?: Record<string, any>;
-  }): Promise<void> {
+  }): Promise<SocialEvent | null> {
     this.logger.log(
       `[${params.platform}] ${params.eventType} from ${params.senderName}: "${params.text.slice(0, 80)}"`,
     );
@@ -292,12 +313,65 @@ export class SocialCallbackController {
         );
       }
 
-      // 3. Draft agent reply (async, non-blocking)
-      // In a production setup this would enqueue a BullMQ job.
-      // For now, we mark it as pending so the mobile app can show it in the approval queue.
       this.logger.verbose(`Event persisted: id=${savedEvent.id} platform=${params.platform}`);
+      return savedEvent;
     } catch (err) {
       this.logger.error('Failed to dispatch social event', err);
+      return null;
+    }
+  }
+
+  private async applyTelegramReplyPolicy(event: SocialEvent, chatId: number) {
+    const config = await this.socialService.getReplyConfig(event.userId!, SocialEventPlatform.TELEGRAM);
+
+    if (!config.enabled || config.strategy === ReplyStrategy.DISABLED) {
+      await this.socialService.updateEventReply(event.id, {
+        replyStatus: SocialReplyStatus.REJECTED,
+        finalReply: 'Telegram auto-reply is disabled for this account.',
+      });
+      return;
+    }
+
+    if (config.strategy === ReplyStrategy.NOTIFY_ONLY) {
+      await this.socialService.updateEventReply(event.id, {
+        replyStatus: SocialReplyStatus.REJECTED,
+        finalReply: 'Notify-only policy: no reply was sent.',
+      });
+      return;
+    }
+
+    const draft = await this.socialService.generateDraftReply({
+      userId: event.userId!,
+      platform: event.platform,
+      senderName: event.senderName,
+      text: event.text,
+      replyPrompt: config.replyPrompt,
+      replyLanguage: config.replyLanguage,
+    });
+
+    if (config.strategy === ReplyStrategy.APPROVAL) {
+      await this.socialService.updateEventReply(event.id, {
+        replyStatus: SocialReplyStatus.PENDING,
+        agentDraftReply: draft,
+      });
+      return;
+    }
+
+    try {
+      await this.telegramBotService.send(chatId, draft);
+      await this.socialService.updateEventReply(event.id, {
+        replyStatus: SocialReplyStatus.AUTO_SENT,
+        agentDraftReply: draft,
+        finalReply: draft,
+        repliedAt: new Date(),
+      });
+    } catch (error) {
+      this.logger.error('Telegram auto-send failed', error);
+      await this.socialService.updateEventReply(event.id, {
+        replyStatus: SocialReplyStatus.FAILED,
+        agentDraftReply: draft,
+        finalReply: draft,
+      });
     }
   }
 

@@ -1004,7 +1004,7 @@ export class SkillExecutorService {
      */
     this.registerHandler('skill_search', async (params, context) => {
       const query = params.query || params.name || params.title || '';
-      const { category, limit = 10 } = params;
+      const { category, limit = 25 } = params;
       if (!query) throw new BadRequestException('query is required for skill_search');
 
       // 1. Search local published skills
@@ -1025,6 +1025,11 @@ export class SkillExecutorService {
       }
 
       let hubItems: any[] = [];
+      let sourceTotals = {
+        localMarketplace: marketplace.total || marketplace.items?.length || 0,
+        unifiedMarketplace: unifiedItems.length,
+        openClawHub: 0,
+      };
       try {
         const hub = await this.openClawSkillHubService.getSkills({
           query,
@@ -1035,6 +1040,10 @@ export class SkillExecutorService {
           sortOrder: 'DESC',
         });
         hubItems = hub.items || [];
+        sourceTotals = {
+          ...sourceTotals,
+          openClawHub: hubItems.length,
+        };
       } catch (e: any) {
         this.logger.warn(`OpenClaw hub search failed: ${e.message}`);
       }
@@ -1066,6 +1075,10 @@ export class SkillExecutorService {
         category: category || 'all',
         total: results.length,
         skills: results.slice(0, limit),
+        totals: {
+          returned: results.length,
+          ...sourceTotals,
+        },
       };
     });
 
