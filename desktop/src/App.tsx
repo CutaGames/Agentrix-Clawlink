@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
 import FloatingBall from "./components/FloatingBall";
 import ChatPanel from "./components/ChatPanel";
 import LoginPanel from "./components/LoginPanel";
@@ -6,6 +7,8 @@ import OnboardingPanel from "./components/OnboardingPanel";
 import agentrixLogo from "./assets/agentrix-logo.png";
 import { useAuthStore } from "./services/store";
 import { initSessionSync, destroySessionSync } from "./services/sessionSync";
+import { initPresenceSocket, destroyPresenceSocket } from "./services/agentPresence";
+import { startDesktopAgentSync, stopDesktopAgentSync } from "./services/desktopAgentSync";
 import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
 import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
@@ -30,6 +33,11 @@ export default function App() {
 
   useEffect(() => {
     loadToken();
+    // Restore saved theme
+    const saved = localStorage.getItem("agentrix_theme");
+    if (saved === "light" || saved === "dark") {
+      document.documentElement.setAttribute("data-theme", saved);
+    }
   }, [loadToken]);
 
   const loggedIn = !!token || isGuest;
@@ -64,6 +72,26 @@ export default function App() {
           window.dispatchEvent(new CustomEvent("agentrix:sync-status", { detail: { connected } }));
         },
       });
+
+      // Agent Presence realtime (cross-device sync via /presence namespace)
+      initPresenceSocket(token, {
+        onHandoffInitiated: (event) => {
+          window.dispatchEvent(new CustomEvent("agentrix:handoff-incoming", { detail: event }));
+        },
+        onTimelineEvent: (event) => {
+          window.dispatchEvent(new CustomEvent("agentrix:timeline-event", { detail: event }));
+        },
+        onApprovalNew: (event) => {
+          window.dispatchEvent(new CustomEvent("agentrix:approval-new", { detail: event }));
+        },
+        onConnectionChange: (connected) => {
+          window.dispatchEvent(new CustomEvent("agentrix:presence-status", { detail: { connected } }));
+        },
+      });
+
+      if (windowLabel !== "floating-ball") {
+        startDesktopAgentSync(token);
+      }
     }
 
     trackEvent("session_start");
@@ -74,8 +102,10 @@ export default function App() {
       stopClipboardWatch();
       destroyAnalytics();
       destroySessionSync();
+      destroyPresenceSocket();
+      stopDesktopAgentSync();
     };
-  }, [loggedIn, token]);
+  }, [loggedIn, token, windowLabel]);
 
   // Global keyboard shortcuts (within webview)
   useEffect(() => {
@@ -275,22 +305,26 @@ export default function App() {
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}>
-      {panelOpen ? (
-        <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
-      ) : (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <FloatingBall onTap={() => setPanelOpen(true)} />
-        </div>
-      )}
-    </div>
+    <ErrorBoundary>
+      <div
+        style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}
+      >
+        {panelOpen ? (
+          <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <FloatingBall onTap={() => setPanelOpen(true)} />
+          </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }

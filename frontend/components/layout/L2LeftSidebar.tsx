@@ -95,6 +95,8 @@ const userL2Config: Record<string, SubNavItem[]> = {
   ],
   agents: [
     { id: 'my-agents', label: { zh: '我的 Agent', en: 'My Agents' }, icon: Rocket },
+    { id: 'presence', label: { zh: 'Presence', en: 'Presence' }, icon: Globe },
+    { id: 'devices', label: { zh: '设备管理', en: 'Devices' }, icon: RefreshCw },
     { id: 'authorizations', label: { zh: '授权管理', en: 'Authorizations' }, icon: ShieldCheck },
   ],
   earn: [

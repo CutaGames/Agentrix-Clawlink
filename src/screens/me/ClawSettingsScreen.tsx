@@ -31,7 +31,7 @@ export function ClawSettingsScreen() {
     {
       title: t({ en: 'Developer', zh: '开发者' }),
       items: [
-        { id: 'api', icon: '🔑', label: t({ en: 'API Keys', zh: 'API 密钥' }), value: '' },
+        { id: 'api', icon: '🤖', label: t({ en: 'AI Providers & Subscriptions', zh: 'AI 厂商与订阅' }), value: '' },
         { id: 'logs', icon: '📋', label: t({ en: 'Debug Logs', zh: '调试日志' }), value: '' },
       ],
     },

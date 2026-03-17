@@ -8,6 +8,8 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { SessionHandoffService } from './session-handoff.service';
 import { desktopSyncEventBus, DESKTOP_SYNC_EVENT } from '../../desktop-sync/desktop-sync.events';
@@ -31,7 +33,11 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   // Map<socketId, { userId, deviceId }>
   private readonly socketMeta = new Map<string, { userId: string; deviceId: string }>();
 
-  constructor(private readonly handoffService: SessionHandoffService) {}
+  constructor(
+    private readonly handoffService: SessionHandoffService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
 
   afterInit() {
     // Listen to the internal event bus and forward to WebSocket rooms
@@ -52,13 +58,33 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleConnection(socket: Socket) {
     try {
       // Extract auth from handshake
-      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-      const userId = socket.handshake.auth?.userId || socket.handshake.query?.userId;
+      const token =
+        socket.handshake.auth?.token ||
+        socket.handshake.query?.token?.toString() ||
+        socket.handshake.headers?.authorization?.replace('Bearer ', '');
       const deviceId = socket.handshake.auth?.deviceId || socket.handshake.query?.deviceId;
       const deviceType = socket.handshake.auth?.deviceType || socket.handshake.query?.deviceType || 'unknown';
 
-      if (!userId || !deviceId) {
-        this.logger.warn(`Presence socket rejected: missing userId or deviceId`);
+      if (!token) {
+        this.logger.warn(`Presence socket rejected: missing auth token`);
+        socket.disconnect();
+        return;
+      }
+
+      if (!deviceId) {
+        this.logger.warn(`Presence socket rejected: missing deviceId`);
+        socket.disconnect();
+        return;
+      }
+
+      // Verify JWT and extract userId
+      const jwtPayload = await this.jwtService.verifyAsync(token, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+      });
+      const userId = jwtPayload.sub || jwtPayload.id;
+
+      if (!userId) {
+        this.logger.warn(`Presence socket rejected: JWT has no user id`);
         socket.disconnect();
         return;
       }

@@ -1,16 +1,11 @@
 /**
  * Cross-device session synchronization service.
  *
- * Connects to the backend WebSocket gateway (`/ws`) to exchange
- * chat session events between desktop and mobile clients.
- *
- * Protocol:
- *   - "session:sync"     — push a session snapshot (messages, metadata)
- *   - "session:updated"  — receive notification that a session changed on another device
- *   - "session:list"     — request the latest session index across all devices
- *   - "session:list:res" — response with merged session index
+ * Uses the backend Socket.IO namespace (`/ws`) so desktop session sync and
+ * desktop automation events share the same authenticated realtime transport.
  */
 
+import { io, type Socket } from "socket.io-client";
 import { API_BASE, apiFetch, type ChatMessage } from "./store";
 
 // ─── Types ─────────────────────────────────────────────
@@ -38,16 +33,14 @@ type SyncEventHandler = {
 
 // ─── WebSocket Sync Client ─────────────────────────────
 
-const WS_BASE = API_BASE.replace(/^http/, "ws").replace(/\/api\/?$/, "/ws");
+const WS_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 
-let _socket: WebSocket | null = null;
+let _socket: Socket | null = null;
 let _handlers: SyncEventHandler = {};
-let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let _token: string | null = null;
 let _deviceId: string = "";
 let _connected = false;
-let _intentionalClose = false;
 
 function getDeviceId(): string {
   if (_deviceId) return _deviceId;
@@ -67,72 +60,64 @@ export function isSessionSyncConnected(): boolean {
 export function initSessionSync(token: string, handlers: SyncEventHandler) {
   _token = token;
   _handlers = handlers;
-  _intentionalClose = false;
   connect();
 }
 
 export function destroySessionSync() {
-  _intentionalClose = true;
-  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
   if (_socket) {
-    _socket.close();
+    _socket.disconnect();
     _socket = null;
   }
   _connected = false;
 }
 
 function connect() {
-  if (_socket?.readyState === WebSocket.OPEN || _socket?.readyState === WebSocket.CONNECTING) return;
+  if (_socket?.connected) return;
   if (!_token) return;
 
-  try {
-    _socket = new WebSocket(`${WS_BASE}?token=${encodeURIComponent(_token)}`);
-  } catch {
-    scheduleReconnect();
-    return;
-  }
+  _socket = io(`${WS_ORIGIN}/ws`, {
+    auth: { token: _token },
+    transports: ["websocket"],
+    reconnection: true,
+    reconnectionDelay: 3000,
+  });
 
-  _socket.onopen = () => {
+  _socket.on("connect", () => {
     _connected = true;
     _handlers.onConnectionChange?.(true);
-    // Announce device presence
     send("device:announce", { deviceId: getDeviceId(), deviceType: "desktop", platform: navigator.platform });
-    // Start heartbeat (every 25s to keep WS alive)
     if (_heartbeatTimer) clearInterval(_heartbeatTimer);
     _heartbeatTimer = setInterval(() => send("ping", {}), 25000);
-  };
+  });
 
-  _socket.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      handleMessage(data);
-    } catch { /* non-JSON frame, ignore */ }
-  };
-
-  _socket.onclose = () => {
+  _socket.on("disconnect", () => {
     _connected = false;
     _handlers.onConnectionChange?.(false);
     if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
-    if (!_intentionalClose) scheduleReconnect();
-  };
+  });
 
-  _socket.onerror = () => {
-    // onclose will fire after this
-  };
-}
+  _socket.on("connect_error", () => {
+    _connected = false;
+    _handlers.onConnectionChange?.(false);
+  });
 
-function scheduleReconnect() {
-  if (_reconnectTimer) return;
-  _reconnectTimer = setTimeout(() => {
-    _reconnectTimer = null;
-    connect();
-  }, 3000);
+  _socket.on("session:updated", (data) => {
+    handleMessage({ event: "session:updated", data });
+  });
+
+  _socket.on("session:list:res", (data) => {
+    handleMessage({ event: "session:list:res", data });
+  });
+
+  _socket.onAny((event, data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:socket-event", { detail: { event, data } }));
+  });
 }
 
 function send(event: string, payload: any) {
-  if (_socket?.readyState === WebSocket.OPEN) {
-    _socket.send(JSON.stringify({ event, data: payload }));
+  if (_socket?.connected) {
+    _socket.emit(event, payload);
   }
 }
 

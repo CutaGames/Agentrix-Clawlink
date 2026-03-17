@@ -15,6 +15,35 @@ export enum NotificationType {
   PROMOTION = 'promotion',
 }
 
+// ── Device Push Token (persistent push token registry) ────────────────────────
+
+@Entity('device_push_tokens')
+export class DevicePushToken {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'uuid' })
+  userId: string;
+
+  @ManyToOne(() => User)
+  @JoinColumn()
+  user: User;
+
+  @Column({ length: 500 })
+  token: string;
+
+  @Column({ length: 20 })
+  platform: string;
+
+  @Column({ length: 100, nullable: true })
+  deviceId?: string;
+
+  @CreateDateColumn()
+  registeredAt: Date;
+}
+
+// ── Notification ──────────────────────────────────────────────────────────────
+
 @Entity('notifications')
 export class Notification {
   @PrimaryGeneratedColumn('uuid')

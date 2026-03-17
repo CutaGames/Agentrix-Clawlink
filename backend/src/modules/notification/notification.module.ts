@@ -2,10 +2,10 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotificationController } from './notification.controller';
 import { NotificationService } from './notification.service';
-import { Notification } from '../../entities/notification.entity';
+import { Notification, DevicePushToken } from '../../entities/notification.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Notification])],
+  imports: [TypeOrmModule.forFeature([Notification, DevicePushToken])],
   controllers: [NotificationController],
   providers: [NotificationService],
   exports: [NotificationService],

@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { WebSocketGateway } from './websocket.gateway';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
 
 @Module({
   imports: [
+    DesktopSyncModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

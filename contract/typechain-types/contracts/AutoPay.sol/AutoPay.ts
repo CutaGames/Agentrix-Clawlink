@@ -88,7 +88,6 @@ export interface AutoPayInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "autoPayments"
-      | "commissionContract"
       | "createGrant"
       | "emergencyWithdraw"
       | "executeAutoPayment"
@@ -101,10 +100,7 @@ export interface AutoPayInterface extends Interface {
       | "paymentToken"
       | "renounceOwnership"
       | "revokeGrant"
-      | "setCommissionContract"
       | "setPaymentToken"
-      | "setSplitModeEnabled"
-      | "splitModeEnabled"
       | "transferOwnership"
       | "unpause"
   ): FunctionFragment;
@@ -122,10 +118,6 @@ export interface AutoPayInterface extends Interface {
   encodeFunctionData(
     functionFragment: "autoPayments",
     values: [BytesLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "commissionContract",
-    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "createGrant",
@@ -167,20 +159,8 @@ export interface AutoPayInterface extends Interface {
     values: [AddressLike]
   ): string;
   encodeFunctionData(
-    functionFragment: "setCommissionContract",
-    values: [AddressLike]
-  ): string;
-  encodeFunctionData(
     functionFragment: "setPaymentToken",
     values: [AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setSplitModeEnabled",
-    values: [boolean]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "splitModeEnabled",
-    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "transferOwnership",
@@ -190,10 +170,6 @@ export interface AutoPayInterface extends Interface {
 
   decodeFunctionResult(
     functionFragment: "autoPayments",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "commissionContract",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -230,19 +206,7 @@ export interface AutoPayInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "setCommissionContract",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "setPaymentToken",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "setSplitModeEnabled",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "splitModeEnabled",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -417,8 +381,6 @@ export interface AutoPay extends BaseContract {
     "view"
   >;
 
-  commissionContract: TypedContractMethod<[], [string], "view">;
-
   createGrant: TypedContractMethod<
     [
       agent: AddressLike,
@@ -488,25 +450,11 @@ export interface AutoPay extends BaseContract {
 
   revokeGrant: TypedContractMethod<[agent: AddressLike], [void], "nonpayable">;
 
-  setCommissionContract: TypedContractMethod<
-    [_commission: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-
   setPaymentToken: TypedContractMethod<
     [_token: AddressLike],
     [void],
     "nonpayable"
   >;
-
-  setSplitModeEnabled: TypedContractMethod<
-    [_enabled: boolean],
-    [void],
-    "nonpayable"
-  >;
-
-  splitModeEnabled: TypedContractMethod<[], [boolean], "view">;
 
   transferOwnership: TypedContractMethod<
     [newOwner: AddressLike],
@@ -537,9 +485,6 @@ export interface AutoPay extends BaseContract {
     ],
     "view"
   >;
-  getFunction(
-    nameOrSignature: "commissionContract"
-  ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "createGrant"
   ): TypedContractMethod<
@@ -622,17 +567,8 @@ export interface AutoPay extends BaseContract {
     nameOrSignature: "revokeGrant"
   ): TypedContractMethod<[agent: AddressLike], [void], "nonpayable">;
   getFunction(
-    nameOrSignature: "setCommissionContract"
-  ): TypedContractMethod<[_commission: AddressLike], [void], "nonpayable">;
-  getFunction(
     nameOrSignature: "setPaymentToken"
   ): TypedContractMethod<[_token: AddressLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "setSplitModeEnabled"
-  ): TypedContractMethod<[_enabled: boolean], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "splitModeEnabled"
-  ): TypedContractMethod<[], [boolean], "view">;
   getFunction(
     nameOrSignature: "transferOwnership"
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;

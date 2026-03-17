@@ -25,24 +25,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check EXPO_TOKEN
+        id: expo-token
+        run: |
+          if [ -n "${EXPO_TOKEN}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::EXPO_TOKEN is not set; skipping iOS simulator build"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
       - name: Node.js 20
+        if: steps.expo-token.outputs.available == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: npm install
+        if: steps.expo-token.outputs.available == 'true'
         run: npm install --legacy-peer-deps
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       - name: Install EAS CLI
+        if: steps.expo-token.outputs.available == 'true'
         run: npm install -g eas-cli@latest
 
       # ── Start EAS Cloud build (iOS simulator, preview profile) ──────────
       # This submits the build to Expo's macOS cloud servers.
       # eas.json "preview" profile has ios.simulator = true → no signing needed.
       - name: Start EAS Build — iOS Simulator
+        if: steps.expo-token.outputs.available == 'true'
         id: start-build
         run: |
           set -euo pipefail
@@ -68,6 +84,7 @@ jobs:
 
       # ── Poll EAS API until the build finishes (up to 80 minutes) ───────
       - name: Wait for EAS build to complete
+        if: steps.expo-token.outputs.available == 'true'
         id: wait-build
         run: |
           set -euo pipefail
@@ -112,6 +129,7 @@ jobs:
 
       # ── Download the .tar.gz simulator build from EAS ───────────────────
       - name: Download simulator build
+        if: steps.expo-token.outputs.available == 'true'
         run: |
           FILENAME="Agentrix-iOS-Simulator-build-${{ github.run_number }}.tar.gz"
           echo "Downloading from: ${{ steps.wait-build.outputs.build-url }}"
@@ -121,6 +139,7 @@ jobs:
 
       # ── Upload to GitHub Releases ────────────────────────────────────────
       - name: Create GitHub Release
+        if: steps.expo-token.outputs.available == 'true'
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

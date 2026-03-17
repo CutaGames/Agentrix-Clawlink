@@ -10,10 +10,14 @@ import {
 } from '../../entities/social.entity';
 import { SocialAccount } from '../../entities/social-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
+import { User } from '../../entities/user.entity';
+import { Skill } from '../../entities/skill.entity';
 import { SocialService } from './social.service';
 import { SocialController } from './social.controller';
 import { SocialCallbackController } from './social-callback.controller';
 import { OpenClawConnectionModule } from '../openclaw-connection/openclaw-connection.module';
+import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
+import { AgentPresenceModule } from '../agent-presence/agent-presence.module';
 
 @Module({
   imports: [
@@ -26,8 +30,12 @@ import { OpenClawConnectionModule } from '../openclaw-connection/openclaw-connec
       SocialReplyConfig,
       SocialAccount,
       OpenClawInstance,
+      User,
+      Skill,
     ]),
     OpenClawConnectionModule,
+    ClaudeIntegrationModule,
+    AgentPresenceModule,
   ],
   providers: [SocialService],
   controllers: [SocialController, SocialCallbackController],

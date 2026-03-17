@@ -26,15 +26,44 @@ export async function writeWorkspaceFile(relativePath: string, content: string):
   return invoke<void>("desktop_bridge_write_workspace_file", { relativePath, content });
 }
 
+function normalizeDialogSelection(selected: string | string[] | null): string | null {
+  if (!selected) return null;
+  if (typeof selected === "string") return selected;
+  return selected[0] || null;
+}
+
 export async function pickWorkspaceFolder(): Promise<string | null> {
+  let dialogError: unknown = null;
+
   try {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const selected = await open({ directory: true, multiple: false, title: "Select Workspace Folder" });
+    const selected = normalizeDialogSelection(
+      await open({
+        directory: true,
+        multiple: false,
+        title: "Select Workspace Folder",
+      }),
+    );
     if (!selected) return null;
-    const path = typeof selected === "string" ? selected : selected[0];
-    if (!path) return null;
-    return setWorkspaceDir(path);
-  } catch {
-    return null;
+    return setWorkspaceDir(selected);
+  } catch (error: unknown) {
+    dialogError = error;
+  }
+
+  try {
+    return await invoke<string | null>("desktop_bridge_pick_workspace_dir");
+  } catch (bridgeError: any) {
+    const dialogMessage = typeof (dialogError as any)?.message === "string" && (dialogError as any).message.trim()
+      ? (dialogError as any).message.trim()
+      : null;
+    const bridgeMessage = typeof bridgeError?.message === "string" && bridgeError.message.trim()
+      ? bridgeError.message.trim()
+      : null;
+
+    const message = dialogMessage && bridgeMessage
+      ? `Failed to open the workspace picker. dialog=${dialogMessage}; bridge=${bridgeMessage}`
+      : dialogMessage || bridgeMessage || "Failed to open the workspace picker.";
+
+    throw new Error(message);
   }
 }

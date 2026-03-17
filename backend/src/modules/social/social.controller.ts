@@ -28,13 +28,17 @@ import {
   SocialReplyStatus,
   ReplyStrategy,
 } from '../../entities/social.entity';
+import { TelegramBotService } from '../openclaw-connection/telegram-bot.service';
 
 @ApiTags('social')
 @Controller('social')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class SocialController {
-  constructor(private readonly socialService: SocialService) {}
+  constructor(
+    private readonly socialService: SocialService,
+    private readonly telegramBotService: TelegramBotService,
+  ) {}
 
   // ===== Feed =====
 
@@ -72,8 +76,8 @@ export class SocialController {
   @Get('posts/:postId')
   @Public()
   @ApiOperation({ summary: 'Get a post by ID (public)' })
-  async getPost(@Param('postId') postId: string) {
-    return this.socialService.getPostById(postId);
+  async getPost(@Request() req: any, @Param('postId') postId: string) {
+    return this.socialService.getPostById(postId, req.user?.id);
   }
 
   @Delete('posts/:postId')
@@ -89,11 +93,12 @@ export class SocialController {
   @Public()
   @ApiOperation({ summary: 'List comments on a post' })
   async getComments(
+    @Request() req: any,
     @Param('postId') postId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
   ) {
-    return this.socialService.getComments(postId, page, limit);
+    return this.socialService.getComments(postId, page, limit, req.user?.id);
   }
 
   @Post('posts/:postId/comments')
@@ -119,6 +124,12 @@ export class SocialController {
     return this.socialService.toggleLike(req.user.id, postId, 'post');
   }
 
+  @Post('posts/:postId/share')
+  @ApiOperation({ summary: 'Record a successful post share' })
+  async sharePost(@Param('postId') postId: string) {
+    return this.socialService.incrementPostShare(postId);
+  }
+
   @Post('comments/:commentId/like')
   @ApiOperation({ summary: 'Toggle like on a comment' })
   async toggleCommentLike(@Request() req: any, @Param('commentId') commentId: string) {
@@ -127,15 +138,34 @@ export class SocialController {
 
   // ===== User Profiles =====
 
+  @Get('users/:userId')
+  @Public()
+  @ApiOperation({ summary: 'Get a user public profile' })
+  async getUserProfile(@Request() req: any, @Param('userId') userId: string) {
+    return this.socialService.getUserProfile(userId, req.user?.id);
+  }
+
   @Get('users/:userId/posts')
   @Public()
   @ApiOperation({ summary: "Get a user's public posts" })
   async getUserPosts(
+    @Request() req: any,
     @Param('userId') userId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
-    return this.socialService.getUserPosts(userId, page, limit);
+    return this.socialService.getUserPosts(userId, page, limit, req.user?.id);
+  }
+
+  @Get('users/:userId/skills')
+  @Public()
+  @ApiOperation({ summary: "Get a user's published skills" })
+  async getUserSkills(
+    @Param('userId') userId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.socialService.getUserSkills(userId, page, limit);
   }
 
   @Get('users/:userId/followers')
@@ -238,10 +268,33 @@ export class SocialController {
     @Param('eventId') eventId: string,
     @Body() body: { finalReply?: string },
   ) {
-    return this.socialService.updateEventReply(eventId, {
+    const updated = await this.socialService.updateEventReply(eventId, {
       replyStatus: SocialReplyStatus.APPROVED,
       finalReply: body.finalReply,
     });
+
+    const replyText = body.finalReply?.trim() || updated?.agentDraftReply || updated?.finalReply;
+    if (!updated || !replyText) {
+      return updated;
+    }
+
+    if (updated.platform === SocialEventPlatform.TELEGRAM) {
+      try {
+        await this.telegramBotService.send(Number(updated.senderId), replyText);
+        return this.socialService.updateEventReply(eventId, {
+          replyStatus: SocialReplyStatus.SENT,
+          finalReply: replyText,
+          repliedAt: new Date(),
+        });
+      } catch {
+        return this.socialService.updateEventReply(eventId, {
+          replyStatus: SocialReplyStatus.FAILED,
+          finalReply: replyText,
+        });
+      }
+    }
+
+    return updated;
   }
 
   @Post('events/:eventId/reject')

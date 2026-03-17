@@ -98,3 +98,28 @@ export async function removeSession(sessionId: string) {
   const nextIndex = (await listSessionEntries()).filter((entry) => entry.id !== sessionId);
   await writeJson(SESSION_INDEX_KEY, nextIndex);
 }
+
+// ─── Tab Persistence ──────────────────────────────────────
+const TABS_KEY = "agentrix_tabs";
+
+export interface PersistedTab {
+  id: string;
+  sessionId: string;
+  title: string;
+}
+
+export async function loadTabs(): Promise<PersistedTab[]> {
+  return readJson<PersistedTab[]>(TABS_KEY, []);
+}
+
+export async function saveTabs(tabs: PersistedTab[]): Promise<void> {
+  await writeJson(TABS_KEY, tabs);
+}
+
+export async function loadActiveTabId(): Promise<string | null> {
+  return readJson<string | null>("agentrix_active_tab", null);
+}
+
+export async function saveActiveTabId(tabId: string): Promise<void> {
+  await writeJson("agentrix_active_tab", tabId);
+}

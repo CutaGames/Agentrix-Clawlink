@@ -18,6 +18,7 @@ import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
 import { ModelRouterService, ModelType } from '../model-router/model-router.service';
 import { BedrockIntegrationService, BedrockUserCredentials } from '../bedrock/bedrock-integration.service';
+import { AiProviderService } from '../../ai-provider/ai-provider.service';
 
 /** Credentials resolved from the user's provider config */
 export interface UserProviderCredentials {
@@ -76,6 +77,7 @@ export class ClaudeIntegrationService {
     private payIntentService: PayIntentService,
     private modelRouter: ModelRouterService,
     private bedrockService: BedrockIntegrationService,
+    private aiProviderService: AiProviderService,
     private moduleRef: ModuleRef,
   ) {
     // 从环境变量读取模型名称（向后兼容）
@@ -999,6 +1001,99 @@ export class ClaudeIntegrationService {
     }));
   }
 
+  private extractAttachmentUrlsFromText(content: string): string[] {
+    const imageUrlPattern = /URL:\s*(https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?)/gi;
+    const imageUrls: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = imageUrlPattern.exec(content)) !== null) {
+      imageUrls.push(match[1]);
+    }
+    return imageUrls;
+  }
+
+  private downgradeContentForTextOnlyModel(content: any): any {
+    if (typeof content === 'string') {
+      const imageUrls = this.extractAttachmentUrlsFromText(content);
+      if (imageUrls.length === 0) {
+        return content;
+      }
+      return `${content}\n\n[Attachment fallback]\nThe current model cannot inspect image pixels directly. Work from the attachment metadata and ask the user for a visual description when image details are required.\n${imageUrls.map((url, index) => `${index + 1}. Image URL: ${url}`).join('\n')}`;
+    }
+
+    if (!Array.isArray(content)) {
+      return content;
+    }
+
+    const textFragments: string[] = [];
+    const attachmentLines: string[] = [];
+
+    content.forEach((block: any) => {
+      if (block?.type === 'text' && typeof block.text === 'string') {
+        textFragments.push(block.text);
+        return;
+      }
+
+      if (block?.type === 'image_url' && block.image_url?.url) {
+        attachmentLines.push(`Image URL: ${block.image_url.url}`);
+        return;
+      }
+
+      if (block?.type === 'image' && block.source?.url) {
+        attachmentLines.push(`Image URL: ${block.source.url}`);
+        return;
+      }
+
+      if (block?.type === 'input_audio' && block.input_audio?.url) {
+        attachmentLines.push(`Audio URL: ${block.input_audio.url}`);
+        return;
+      }
+
+      try {
+        textFragments.push(JSON.stringify(block));
+      } catch {
+        textFragments.push(String(block));
+      }
+    });
+
+    if (attachmentLines.length === 0) {
+      return textFragments.join('\n').trim();
+    }
+
+    const prefix = textFragments.join('\n').trim();
+    return `${prefix ? `${prefix}\n\n` : ''}[Attachment fallback]\nThe current model cannot inspect image or media bytes directly. Work from the attachment metadata below and ask the user for extra description when needed.\n${attachmentLines.map((line, index) => `${index + 1}. ${line}`).join('\n')}`;
+  }
+
+  private normalizeMessagesForModelCapabilities(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
+    modelId: string,
+    providerId?: string,
+  ) {
+    if (this.aiProviderService.supportsMultimodal(modelId, providerId)) {
+      return messages;
+    }
+
+    return messages.map((message) => {
+      if (message.role !== 'user') {
+        return message;
+      }
+
+      return {
+        ...message,
+        content: this.downgradeContentForTextOnlyModel(message.content),
+      };
+    });
+  }
+
+  private readonly maxInlineImageBytes = 5 * 1024 * 1024;
+
+  private buildOversizedImageFallback(url: string, mediaType: string, sizeBytes: number) {
+    const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+    return {
+      type: 'text',
+      text: `[Image attachment omitted: ${mediaType}, ${sizeMb} MB after download exceeds inline model limit. URL: ${url}]`,
+    };
+  }
+
   private async fetchImageAsBase64Block(url: string): Promise<any> {
     try {
       const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
@@ -1013,6 +1108,12 @@ export class ClaudeIntegrationService {
 
       const contentType = resp.headers['content-type'] || 'image/png';
       const mediaType = contentType.split(';')[0].trim();
+      if (buffer.length > this.maxInlineImageBytes) {
+        this.logger.warn(
+          `Image too large for Claude inline upload (${buffer.length} bytes raw, url: ${url}). Falling back to text metadata.`,
+        );
+        return this.buildOversizedImageFallback(url, mediaType, buffer.length);
+      }
       return {
         type: 'image',
         source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') },
@@ -1140,13 +1241,20 @@ export class ClaudeIntegrationService {
         this.logger.log(`使用指定模型: ${selectedModel}`);
       }
 
+      const effectiveProviderId = creds?.providerId;
+      const normalizedMessages = this.normalizeMessagesForModelCapabilities(
+        messages,
+        selectedModel,
+        effectiveProviderId,
+      );
+
       // 转换消息格式（Claude 使用不同的格式）
-      const systemMessages = messages.filter((msg) => msg.role === 'system');
+      const systemMessages = normalizedMessages.filter((msg) => msg.role === 'system');
       const systemPrompt = systemMessages
         .map((msg) => msg.content)
         .join('\n');
 
-      const conversationMessages = await Promise.all(messages
+      const conversationMessages = await Promise.all(normalizedMessages
         .filter((msg) => msg.role !== 'system')
         .map(async (msg) => ({
           role: msg.role === 'assistant' ? 'assistant' : 'user',

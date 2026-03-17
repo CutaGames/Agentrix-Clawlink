@@ -7,6 +7,40 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+// ── Desktop Device Presence (persistent device online state) ─────────────────
+
+@Entity('desktop_device_presence')
+export class DesktopDevicePresence {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Index()
+  @Column({ type: 'uuid' })
+  userId: string;
+
+  @Index()
+  @Column({ length: 100 })
+  deviceId: string;
+
+  @Column({ length: 50 })
+  platform: string;
+
+  @Column({ length: 30, nullable: true })
+  appVersion?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  context?: Record<string, unknown>;
+
+  @Column({ type: 'timestamptz' })
+  lastSeenAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @CreateDateColumn()
+  createdAt: Date;
+}
+
 // ── Desktop Session (chat history cross-device sync) ─────────────────────────
 
 @Entity('desktop_sessions')

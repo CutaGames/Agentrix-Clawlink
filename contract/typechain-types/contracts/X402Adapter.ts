@@ -62,13 +62,9 @@ export declare namespace X402Adapter {
 export interface X402AdapterInterface extends Interface {
   getFunction(
     nameOrSignature:
-      | "DEFAULT_GAS_SAVED"
-      | "PAYMENT_TYPEHASH"
       | "createSession"
-      | "eip712Domain"
       | "emergencyWithdraw"
       | "executePayment"
-      | "getDomainSeparator"
       | "getSession"
       | "owner"
       | "pause"
@@ -84,7 +80,6 @@ export interface X402AdapterInterface extends Interface {
 
   getEvent(
     nameOrSignatureOrTopic:
-      | "EIP712DomainChanged"
       | "OwnershipTransferred"
       | "Paused"
       | "Unpaused"
@@ -93,20 +88,8 @@ export interface X402AdapterInterface extends Interface {
   ): EventFragment;
 
   encodeFunctionData(
-    functionFragment: "DEFAULT_GAS_SAVED",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "PAYMENT_TYPEHASH",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
     functionFragment: "createSession",
     values: [BytesLike, AddressLike, BigNumberish, BytesLike, BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "eip712Domain",
-    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "emergencyWithdraw",
@@ -115,10 +98,6 @@ export interface X402AdapterInterface extends Interface {
   encodeFunctionData(
     functionFragment: "executePayment",
     values: [BytesLike, BytesLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "getDomainSeparator",
-    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "getSession",
@@ -148,19 +127,7 @@ export interface X402AdapterInterface extends Interface {
   encodeFunctionData(functionFragment: "unpause", values?: undefined): string;
 
   decodeFunctionResult(
-    functionFragment: "DEFAULT_GAS_SAVED",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "PAYMENT_TYPEHASH",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "createSession",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "eip712Domain",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -169,10 +136,6 @@ export interface X402AdapterInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "executePayment",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "getDomainSeparator",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "getSession", data: BytesLike): Result;
@@ -195,16 +158,6 @@ export interface X402AdapterInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "unpause", data: BytesLike): Result;
-}
-
-export namespace EIP712DomainChangedEvent {
-  export type InputTuple = [];
-  export type OutputTuple = [];
-  export interface OutputObject {}
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace OwnershipTransferredEvent {
@@ -340,10 +293,6 @@ export interface X402Adapter extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  DEFAULT_GAS_SAVED: TypedContractMethod<[], [bigint], "view">;
-
-  PAYMENT_TYPEHASH: TypedContractMethod<[], [string], "view">;
-
   createSession: TypedContractMethod<
     [
       paymentId: BytesLike,
@@ -354,22 +303,6 @@ export interface X402Adapter extends BaseContract {
     ],
     [string],
     "nonpayable"
-  >;
-
-  eip712Domain: TypedContractMethod<
-    [],
-    [
-      [string, string, string, bigint, string, string, bigint[]] & {
-        fields: string;
-        name: string;
-        version: string;
-        chainId: bigint;
-        verifyingContract: string;
-        salt: string;
-        extensions: bigint[];
-      }
-    ],
-    "view"
   >;
 
   emergencyWithdraw: TypedContractMethod<
@@ -383,8 +316,6 @@ export interface X402Adapter extends BaseContract {
     [void],
     "nonpayable"
   >;
-
-  getDomainSeparator: TypedContractMethod<[], [string], "view">;
 
   getSession: TypedContractMethod<
     [sessionId: BytesLike],
@@ -451,12 +382,6 @@ export interface X402Adapter extends BaseContract {
   ): T;
 
   getFunction(
-    nameOrSignature: "DEFAULT_GAS_SAVED"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "PAYMENT_TYPEHASH"
-  ): TypedContractMethod<[], [string], "view">;
-  getFunction(
     nameOrSignature: "createSession"
   ): TypedContractMethod<
     [
@@ -468,23 +393,6 @@ export interface X402Adapter extends BaseContract {
     ],
     [string],
     "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "eip712Domain"
-  ): TypedContractMethod<
-    [],
-    [
-      [string, string, string, bigint, string, string, bigint[]] & {
-        fields: string;
-        name: string;
-        version: string;
-        chainId: bigint;
-        verifyingContract: string;
-        salt: string;
-        extensions: bigint[];
-      }
-    ],
-    "view"
   >;
   getFunction(
     nameOrSignature: "emergencyWithdraw"
@@ -500,9 +408,6 @@ export interface X402Adapter extends BaseContract {
     [void],
     "nonpayable"
   >;
-  getFunction(
-    nameOrSignature: "getDomainSeparator"
-  ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "getSession"
   ): TypedContractMethod<
@@ -568,13 +473,6 @@ export interface X402Adapter extends BaseContract {
   ): TypedContractMethod<[], [void], "nonpayable">;
 
   getEvent(
-    key: "EIP712DomainChanged"
-  ): TypedContractEvent<
-    EIP712DomainChangedEvent.InputTuple,
-    EIP712DomainChangedEvent.OutputTuple,
-    EIP712DomainChangedEvent.OutputObject
-  >;
-  getEvent(
     key: "OwnershipTransferred"
   ): TypedContractEvent<
     OwnershipTransferredEvent.InputTuple,
@@ -611,17 +509,6 @@ export interface X402Adapter extends BaseContract {
   >;
 
   filters: {
-    "EIP712DomainChanged()": TypedContractEvent<
-      EIP712DomainChangedEvent.InputTuple,
-      EIP712DomainChangedEvent.OutputTuple,
-      EIP712DomainChangedEvent.OutputObject
-    >;
-    EIP712DomainChanged: TypedContractEvent<
-      EIP712DomainChangedEvent.InputTuple,
-      EIP712DomainChangedEvent.OutputTuple,
-      EIP712DomainChangedEvent.OutputObject
-    >;
-
     "OwnershipTransferred(address,address)": TypedContractEvent<
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,

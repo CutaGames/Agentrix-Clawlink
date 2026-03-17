@@ -40,6 +40,35 @@ export interface DesktopRemoteApproval {
   rememberForSession: boolean;
 }
 
+export type DesktopCommandKind =
+  | "context"
+  | "active-window"
+  | "list-windows"
+  | "run-command"
+  | "read-file"
+  | "write-file"
+  | "open-browser";
+
+export type DesktopCommandStatus = "pending" | "claimed" | "completed" | "failed" | "rejected";
+
+export interface DesktopRemoteCommand {
+  commandId: string;
+  title: string;
+  kind: DesktopCommandKind;
+  status: DesktopCommandStatus;
+  targetDeviceId?: string;
+  requesterDeviceId?: string;
+  sessionId?: string;
+  payload?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  claimedAt?: string;
+  claimedByDeviceId?: string;
+  completedAt?: string;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   return text ? JSON.parse(text) as T : ({} as T);
@@ -136,6 +165,85 @@ export async function createDesktopApproval(
   return readJson<{ ok: boolean; approval: DesktopRemoteApproval }>(response);
 }
 
+export async function createDesktopCommand(
+  token: string,
+  payload: {
+    title: string;
+    kind: DesktopCommandKind;
+    targetDeviceId?: string;
+    requesterDeviceId?: string;
+    sessionId?: string;
+    payload?: Record<string, unknown>;
+  },
+) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/commands`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  return readJson<{ ok: boolean; command: DesktopRemoteCommand }>(response);
+}
+
+export async function fetchDesktopCommands(token: string, deviceId?: string) {
+  const suffix = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : "";
+  const response = await apiFetch(`${API_BASE}/desktop-sync/commands${suffix}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return readJson<{ commands: DesktopRemoteCommand[] }>(response);
+}
+
+export async function fetchPendingDesktopCommands(token: string, deviceId?: string) {
+  const suffix = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : "";
+  const response = await apiFetch(`${API_BASE}/desktop-sync/commands/pending${suffix}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  return readJson<{ commands: DesktopRemoteCommand[] }>(response);
+}
+
+export async function claimDesktopCommand(token: string, commandId: string) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/commands/${commandId}/claim`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      deviceId: getDesktopDeviceId(),
+    }),
+  });
+  return readJson<{ ok: boolean; command: DesktopRemoteCommand }>(response);
+}
+
+export async function completeDesktopCommand(
+  token: string,
+  commandId: string,
+  payload: {
+    status: Extract<DesktopCommandStatus, "completed" | "failed" | "rejected">;
+    result?: Record<string, unknown>;
+    error?: string;
+  },
+) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/commands/${commandId}/complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      deviceId: getDesktopDeviceId(),
+      ...payload,
+    }),
+  });
+  return readJson<{ ok: boolean; command: DesktopRemoteCommand }>(response);
+}
+
 export async function respondDesktopApproval(
   token: string,
   approvalId: string,
@@ -165,6 +273,8 @@ export async function fetchDesktopSyncState(token: string) {
     devices: Array<any>;
     tasks: Array<any>;
     approvals: DesktopRemoteApproval[];
+    sessions: Array<any>;
+    commands: DesktopRemoteCommand[];
     pendingApprovalCount: number;
     serverTime: string;
   }>(response);

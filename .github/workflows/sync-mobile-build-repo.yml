@@ -13,8 +13,10 @@ on:
       - package-lock.json
       - tsconfig.json
       - .gitignore
+      - Agentrix Logo/**
       - assets/**
       - src/**
+      - scripts/public-build/mobile_mirror_paths.txt
       - .github/workflows/build-apk.yml
       - .github/workflows/build-ios-simulator.yml
       - .github/public-workflows/**
@@ -79,17 +81,18 @@ jobs:
             fi
           }
 
-          copy_path "App.tsx"
-          copy_path "app.json"
-          copy_path "babel.config.js"
-          copy_path "eas.json"
-          copy_path ".easignore"
-          copy_path "package.json"
-          copy_path "package-lock.json"
-          copy_path "tsconfig.json"
-          copy_path ".gitignore"
-          copy_path "assets"
-          copy_path "src"
+          while IFS= read -r rel || [ -n "$rel" ]; do
+            if [ -z "$rel" ]; then
+              continue
+            fi
+            copy_path "$rel"
+          done < "$SOURCE_DIR/scripts/public-build/mobile_mirror_paths.txt"
+
+          if [ -e "$TARGET_DIR/backend" ] || [ -e "$TARGET_DIR/frontend" ]; then
+            echo "Public build mirror must not include backend or web frontend content"
+            exit 1
+          fi
+
           copy_path ".github/workflows/build-apk.yml"
           copy_path ".github/workflows/build-ios-simulator.yml"
 

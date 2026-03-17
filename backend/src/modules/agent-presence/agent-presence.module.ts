@@ -1,5 +1,7 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AgentPresenceController } from './agent-presence.controller';
 import { AgentPresenceService } from './agent-presence.service';
 import { UserAgent } from '../../entities/user-agent.entity';
@@ -31,6 +33,11 @@ import { AgentScheduledTask } from '../../entities/agent-scheduled-task.entity';
 import { AgentTaskSchedulerService } from './scheduler/agent-task-scheduler.service';
 import { OperationsDashboardService } from './scheduler/operations-dashboard.service';
 
+// Phase 6: Unified device management (bridges agent-presence + desktop-sync)
+import { DesktopDevicePresence } from '../../entities/desktop-sync.entity';
+import { UnifiedDeviceService } from './unified-device.service';
+import { UnifiedDeviceBridge } from './unified-device-bridge.service';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -41,7 +48,15 @@ import { OperationsDashboardService } from './scheduler/operations-dashboard.ser
       SessionHandoff,
       DevicePresence,
       AgentScheduledTask,
+      DesktopDevicePresence,
     ]),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET', 'default-secret'),
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [AgentPresenceController],
   providers: [
@@ -62,6 +77,9 @@ import { OperationsDashboardService } from './scheduler/operations-dashboard.ser
     // Phase 5
     AgentTaskSchedulerService,
     OperationsDashboardService,
+    // Phase 6
+    UnifiedDeviceService,
+    UnifiedDeviceBridge,
   ],
   exports: [
     AgentPresenceService,
@@ -70,6 +88,7 @@ import { OperationsDashboardService } from './scheduler/operations-dashboard.ser
     SessionHandoffService,
     AgentTaskSchedulerService,
     OperationsDashboardService,
+    UnifiedDeviceService,
   ],
 })
 export class AgentPresenceModule implements OnModuleInit {

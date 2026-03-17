@@ -19,6 +19,7 @@ import { ChannelRegistry } from './channel/channel-registry';
 import { SessionHandoffService } from './handoff/session-handoff.service';
 import { AgentTaskSchedulerService } from './scheduler/agent-task-scheduler.service';
 import { OperationsDashboardService } from './scheduler/operations-dashboard.service';
+import { UnifiedDeviceService } from './unified-device.service';
 import {
   CreateAgentDto,
   UpdateAgentDto,
@@ -41,6 +42,7 @@ export class AgentPresenceController {
     private readonly handoffService: SessionHandoffService,
     private readonly taskScheduler: AgentTaskSchedulerService,
     private readonly dashboard: OperationsDashboardService,
+    private readonly unifiedDevices: UnifiedDeviceService,
   ) {}
 
   // ── Agent CRUD ────────────────────────────────────────────────────────────
@@ -299,6 +301,29 @@ export class AgentPresenceController {
   @ApiResponse({ status: 200, description: 'Online devices' })
   async getOnlineDevices(@Request() req: any) {
     return this.handoffService.getOnlineDevices(req.user?.id);
+  }
+
+  // ── Unified Devices (Phase 6) ──────────────────────────────────────────
+
+  @Get('devices/unified')
+  @ApiOperation({ summary: 'List all devices from both agent-presence and desktop-sync' })
+  @ApiResponse({ status: 200, description: 'Unified device list' })
+  async getUnifiedDevices(@Request() req: any) {
+    return this.unifiedDevices.getAllDevices(req.user?.id);
+  }
+
+  @Get('devices/unified/online')
+  @ApiOperation({ summary: 'List online devices from both systems' })
+  @ApiResponse({ status: 200, description: 'Unified online devices' })
+  async getUnifiedOnlineDevices(@Request() req: any) {
+    return this.unifiedDevices.getOnlineDevices(req.user?.id);
+  }
+
+  @Get('devices/unified/stats')
+  @ApiOperation({ summary: 'Get aggregated device stats across both systems' })
+  @ApiResponse({ status: 200, description: 'Device stats' })
+  async getDeviceStats(@Request() req: any) {
+    return this.unifiedDevices.getDeviceStats(req.user?.id);
   }
 
   // ── Scheduled Tasks (Phase 5) ─────────────────────────────────────────

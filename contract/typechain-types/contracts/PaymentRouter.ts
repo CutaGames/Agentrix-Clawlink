@@ -67,7 +67,6 @@ export interface PaymentRouterInterface extends Interface {
     nameOrSignature:
       | "balances"
       | "completePayment"
-      | "emergencyWithdraw"
       | "getPayment"
       | "owner"
       | "pause"
@@ -99,10 +98,6 @@ export interface PaymentRouterInterface extends Interface {
   encodeFunctionData(
     functionFragment: "completePayment",
     values: [BytesLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "emergencyWithdraw",
-    values: [AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getPayment",
@@ -160,10 +155,6 @@ export interface PaymentRouterInterface extends Interface {
   decodeFunctionResult(functionFragment: "balances", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "completePayment",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "emergencyWithdraw",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "getPayment", data: BytesLike): Result;
@@ -346,12 +337,6 @@ export interface PaymentRouter extends BaseContract {
     "nonpayable"
   >;
 
-  emergencyWithdraw: TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
   getPayment: TypedContractMethod<
     [paymentId: BytesLike],
     [PaymentRouter.PaymentRecordStructOutput],
@@ -468,13 +453,6 @@ export interface PaymentRouter extends BaseContract {
   getFunction(
     nameOrSignature: "completePayment"
   ): TypedContractMethod<[paymentId: BytesLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "emergencyWithdraw"
-  ): TypedContractMethod<
-    [to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
   getFunction(
     nameOrSignature: "getPayment"
   ): TypedContractMethod<

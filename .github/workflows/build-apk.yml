@@ -1,6 +1,16 @@
 name: Reusable APK Build
 
 on:
+  push:
+    branches: [main, 'build*']
+    paths:
+      - 'App.tsx'
+      - 'app.json'
+      - 'src/**'
+      - 'assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
   workflow_call:
 
