@@ -5,6 +5,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as session from 'express-session';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
 
@@ -41,9 +42,23 @@ async function bootstrap() {
   }
   */
   
+  // Security: warn about default JWT secret
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'default-secret') {
+    console.warn('⚠️  JWT_SECRET is not set or using default — THIS IS INSECURE IN PRODUCTION');
+  }
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'agentrix-secret-key-2025') {
+    console.warn('⚠️  SESSION_SECRET is using default value — set a strong random secret in production');
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+
+  // HTTP security headers
+  app.use(helmet({
+    contentSecurityPolicy: false, // CSP managed separately or by frontend
+    crossOriginEmbedderPolicy: false, // Allow embedding for OAuth flows
+  }));
 
   // Trust proxy for secure cookies behind Nginx
   app.set('trust proxy', 1);

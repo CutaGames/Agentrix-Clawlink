@@ -13,16 +13,10 @@ import { sendAgentMessage, switchInstanceModel } from '../../services/openclaw.s
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
+import { useVoiceSession } from '../../hooks/useVoiceSession';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
-import {
-  isLiveSpeechRecognitionAvailable,
-  requestLiveSpeechPermissions,
-  startLiveSpeechRecognition,
-  type LiveSpeechController,
-} from '../../services/liveSpeech.service';
 import { useI18n } from '../../stores/i18nStore';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -408,8 +402,6 @@ export function AgentChatScreen() {
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
-  const recordingRef = useRef<any>(null);
-  const isRecordingRef = useRef(false);  // stable ref for press hold logic
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -422,220 +414,20 @@ export function AgentChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(voiceModeRequested);   // WeChat-style toggle
-  const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>('hold');
-  const [duplexMode, setDuplexMode] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<UploadedChatAttachment[]>([]);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [showAttachToolbar, setShowAttachToolbar] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
-  const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
-  const [transcriptPreview, setTranscriptPreview] = useState('');
-  const [liveVoiceAvailable, setLiveVoiceAvailable] = useState(false);
-  const [liveListening, setLiveListening] = useState(false);
-  const [liveVoiceVolume, setLiveVoiceVolume] = useState(-2);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturingPhoto, setCapturingPhoto] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const cameraRef = useRef<any>(null);
-  const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const isNearBottomRef = useRef(true);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const responseInterruptedRef = useRef(false);
-  const pendingTtsSentenceRef = useRef('');
-  const streamedTtsStartedRef = useRef(false);
-  const liveSpeechRef = useRef<LiveSpeechController | null>(null);
-  const liveSpeechManualStopRef = useRef(false);
-  const lastLiveFinalTranscriptRef = useRef('');
-  const duplexModeRef = useRef(duplexMode);
-  const sendingRef = useRef(false);
   const handleSendRef = useRef<(overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => Promise<void>>(async () => {});
-  const resumeLiveSpeechRef = useRef<() => void>(() => {});
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-
-  const voiceRecordingOptions = Audio ? {
-    android: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-      audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-    },
-    ios: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-      audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-      linearPCMBitDepth: 16,
-      linearPCMIsBigEndian: false,
-      linearPCMIsFloat: false,
-    },
-    web: {},
-  } : null;
-
-  const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
-
-  useEffect(() => {
-    duplexModeRef.current = duplexMode;
-  }, [duplexMode]);
-
-  useEffect(() => {
-    sendingRef.current = sending;
-  }, [sending]);
-
-  useEffect(() => {
-    setLiveVoiceAvailable(isLiveSpeechRecognitionAvailable());
-  }, []);
-
-  const stopLiveSpeech = useCallback((abort = false, manual = false) => {
-    liveSpeechManualStopRef.current = manual;
-    const liveSpeech = liveSpeechRef.current;
-    liveSpeechRef.current = null;
-    setLiveListening(false);
-    setLiveVoiceVolume(-2);
-    if (!liveSpeech) return;
-    try {
-      if (abort) {
-        liveSpeech.abort();
-      } else {
-        liveSpeech.stop();
-      }
-    } catch {}
-  }, []);
-
-  // Init TTS audio queue player
-  useEffect(() => {
-    audioPlayerRef.current = new AudioQueuePlayer(() => {
-      setIsSpeaking(false);
-      setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
-      activeAssistantMessageIdRef.current = null;
-      resumeLiveSpeechRef.current();
-    });
-    return () => {
-      audioPlayerRef.current?.stopAll();
-      stopLiveSpeech(true, true);
-    };
-  }, [stopLiveSpeech]);
-
-  useEffect(() => {
-    if (voiceModeRequested) {
-      setVoiceMode(true);
-    }
-  }, [voiceModeRequested]);
-
-  useEffect(() => {
-    if (!voiceMode) {
-      setVoicePhase('idle');
-      setIsRecording(false);
-      isRecordingRef.current = false;
-      stopLiveSpeech(true, true);
-    }
-  }, [stopLiveSpeech, voiceMode]);
-
-  useEffect(() => {
-    if (duplexMode) {
-      setVoiceMode(true);
-      setAutoSpeak(true);
-      setVoiceInteractionMode('tap');
-    } else if (voiceInteractionMode === 'tap') {
-      setVoiceInteractionMode('hold');
-    }
-  }, [duplexMode, voiceInteractionMode]);
-
-  // TTS helper — speaks text via backend /voice/tts endpoint
-  const speakText = useCallback((text: string) => {
-    if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
-    if (duplexModeRef.current) {
-      stopLiveSpeech(true, false);
-    }
-    setIsSpeaking(true);
-    setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-    // Split sentences for streaming playback
-    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
-    for (const s of sentences) {
-      const trimmed = s.trim();
-      if (!trimmed || trimmed.length < 2) continue;
-      const encoded = encodeURIComponent(trimmed);
-      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-      audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
-    }
-  }, [agentVoiceId, stopLiveSpeech, voiceLanguageHint]);
-
-  const stopSpeaking = useCallback(() => {
-    audioPlayerRef.current?.stopAll();
-    setIsSpeaking(false);
-    setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
-    activeAssistantMessageIdRef.current = null;
-  }, []);
-
-  const handleSpeakMessage = useCallback((message: Message) => {
-    const text = buildDisplayMessageText(message.content);
-    if (!text) return;
-    activeAssistantMessageIdRef.current = message.id;
-    speakText(text);
-  }, [speakText]);
-
-  const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
-    if (!(voiceMode || autoSpeak)) return;
-
-    if (duplexModeRef.current) {
-      stopLiveSpeech(true, false);
-    }
-
-    if (chunk) {
-      pendingTtsSentenceRef.current += chunk;
-    }
-
-    const sentenceRegex = /[^。！？.!?\n]+[。！？.!?\n]+/g;
-    const matches = pendingTtsSentenceRef.current.match(sentenceRegex) || [];
-    const shouldEarlyFlush =
-      !matches.length &&
-      pendingTtsSentenceRef.current.trim().length >= 36 &&
-      /[，,、:;； ]/.test(pendingTtsSentenceRef.current);
-
-    let segmentsToSpeak = matches.map((sentence) => sentence.trim()).filter(Boolean);
-
-    if (shouldEarlyFlush) {
-      const earlySegment = pendingTtsSentenceRef.current.trim();
-      if (earlySegment) {
-        segmentsToSpeak = [earlySegment];
-        pendingTtsSentenceRef.current = '';
-      }
-    }
-
-    if (segmentsToSpeak.length > 0) {
-      setIsSpeaking(true);
-      setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-      streamedTtsStartedRef.current = true;
-      for (const sentence of segmentsToSpeak) {
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-          audioPlayerRef.current?.enqueue(url, sentence, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
-      }
-      if (!shouldEarlyFlush) {
-        pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
-      }
-    }
-
-    if (flush) {
-      const remainder = pendingTtsSentenceRef.current.trim();
-      if (remainder) {
-        setIsSpeaking(true);
-        setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-        streamedTtsStartedRef.current = true;
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-        audioPlayerRef.current?.enqueue(url, remainder, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
-      }
-      pendingTtsSentenceRef.current = '';
-    }
-  }, [autoSpeak, voiceMode, agentVoiceId, stopLiveSpeech, voiceLanguageHint]);
-
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
   const used = quota?.usedTokens ?? 0;
@@ -757,27 +549,10 @@ export function AgentChatScreen() {
     scrollToBottom(lastMessage.role === 'user');
   }, [messages.length, scrollToBottom]);
 
-  const resetVoicePhaseAfterResponse = useCallback(() => {
-    setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
-  }, []);
-
-  const resetAudioModeAfterRecording = useCallback(async () => {
-    if (!Audio) return;
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-      });
-    } catch {}
-  }, [Audio]);
-
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
-    pendingTtsSentenceRef.current = '';
-    streamedTtsStartedRef.current = false;
     setSending(false);
     const activeMessageId = activeAssistantMessageIdRef.current;
     if (!activeMessageId) return;
@@ -799,107 +574,51 @@ export function AgentChatScreen() {
     activeAssistantMessageIdRef.current = null;
   }, [t]);
 
-  const startLiveSpeech = useCallback(async () => {
-    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailable || !voiceMode) {
-      return;
-    }
+  const {
+    voiceMode,
+    setVoiceMode,
+    duplexMode,
+    setDuplexMode,
+    voicePhase,
+    isRecording,
+    isSpeaking,
+    liveListening,
+    liveVoiceVolume,
+    transcriptPreview,
+    voiceInteractionMode,
+    setVoiceInteractionMode,
+    autoSpeak,
+    setAutoSpeak,
+    liveVoiceAvailable,
+    speakingMessageId,
+    handleVoicePressIn,
+    handleVoicePressOut,
+    handleVoiceTapToggle,
+    speakText,
+    stopSpeaking,
+    handleSpeakMessage: speakMessageText,
+    enqueueStreamedSpeech,
+    resetVoicePhaseAfterResponse,
+    resumeLiveSpeech,
+  } = useVoiceSession({
+    token,
+    language,
+    voiceModeRequested,
+    agentVoiceId: agentVoiceId || undefined,
+    instanceName,
+    isSending: sending,
+    onSendMessage: (text, attachments) => {
+      void handleSendRef.current(text, attachments);
+    },
+    onStopCurrentResponse: stopCurrentResponse,
+    t,
+  });
 
-    const permission = await requestLiveSpeechPermissions();
-    if (!permission?.granted) {
-      Alert.alert(
-        t({ en: 'Speech Permission', zh: '语音权限' }),
-        t({ en: 'Realtime voice needs microphone and speech recognition permissions.', zh: '实时语音需要麦克风和语音识别权限。' }),
-      );
-      return;
-    }
-
-    liveSpeechManualStopRef.current = false;
-    lastLiveFinalTranscriptRef.current = '';
-    liveSpeechRef.current = startLiveSpeechRecognition(
-      voiceLanguageHint,
-      {
-        onStart: () => {
-          setLiveListening(true);
-          setVoicePhase('recording');
-          setTranscriptPreview('');
-        },
-        onEnd: () => {
-          liveSpeechRef.current = null;
-          setLiveListening(false);
-          setLiveVoiceVolume(-2);
-          if (!duplexModeRef.current || liveSpeechManualStopRef.current) {
-            setVoicePhase((prev) => (prev === 'recording' ? 'idle' : prev));
-            return;
-          }
-          if (sendingRef.current || isSpeaking) {
-            return;
-          }
-          setTimeout(() => {
-            void startLiveSpeech();
-          }, 300);
-        },
-        onSpeechStart: () => {
-          if (isSpeaking) {
-            stopSpeaking();
-          }
-        },
-        onInterimResult: (transcript) => {
-          setTranscriptPreview(transcript);
-          setVoicePhase('recording');
-        },
-        onFinalResult: (transcript) => {
-          const normalized = transcript.trim();
-          if (!normalized || normalized === lastLiveFinalTranscriptRef.current) {
-            return;
-          }
-          lastLiveFinalTranscriptRef.current = normalized;
-          setTranscriptPreview(normalized);
-          stopLiveSpeech(true, false);
-          if (isSpeaking) {
-            stopSpeaking();
-          }
-          stopCurrentResponse(true);
-          setVoicePhase('thinking');
-          setTimeout(() => {
-            void handleSendRef.current(normalized);
-          }, 60);
-        },
-        onError: (error) => {
-          if (error?.error === 'aborted' || error?.error === 'no-speech') {
-            return;
-          }
-          setLiveListening(false);
-          setVoicePhase('idle');
-          setTranscriptPreview('');
-        },
-        onVolumeChange: (value) => {
-          setLiveVoiceVolume(value);
-        },
-      },
-      [instanceName, agentVoiceId || '', 'Agentrix', 'OpenClaw'],
-    );
-  }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, stopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint, voiceMode]);
-
-  resumeLiveSpeechRef.current = () => {
-    if (!duplexModeRef.current || sendingRef.current || isSpeaking || !voiceMode) {
-      return;
-    }
-    void startLiveSpeech();
-  };
-
-  useEffect(() => {
-    if (duplexMode) {
-      void startLiveSpeech();
-      return;
-    }
-    stopLiveSpeech(true, true);
-  }, [duplexMode, startLiveSpeech, stopLiveSpeech]);
-
-  useEffect(() => {
-    if (duplexMode && voiceMode && !sending && !isSpeaking) {
-      void startLiveSpeech();
-    }
-  }, [duplexMode, isSpeaking, sending, startLiveSpeech, voiceMode]);
+  const handleSpeakMessage = useCallback((message: Message) => {
+    const text = buildDisplayMessageText(message.content);
+    if (!text) return;
+    speakMessageText(text, message.id);
+  }, [speakMessageText]);
 
   const appendToStreamingMessage = (msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -987,8 +706,6 @@ export function AgentChatScreen() {
     // Capture current messages before state update for history
     const currentMsgs = messages;
     responseInterruptedRef.current = false;
-    pendingTtsSentenceRef.current = '';
-    streamedTtsStartedRef.current = false;
     activeAssistantMessageIdRef.current = assistantMsgId;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
@@ -1106,10 +823,6 @@ export function AgentChatScreen() {
         if (finalContent && !finalContent.startsWith('⚠️')) {
           enqueueStreamedSpeech('', true);
         }
-        // Auto-speak agent reply only when the stream did not already start sentence playback.
-        if (finalContent && (voiceMode || autoSpeak) && !finalContent.startsWith('⚠️') && !streamedTtsStartedRef.current) {
-          setTimeout(() => speakText(finalContent), 200);
-        }
         return updated;
       });
     } catch (err: any) {
@@ -1131,176 +844,11 @@ export function AgentChatScreen() {
       resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
-      if (!streamedTtsStartedRef.current) {
-        resumeLiveSpeechRef.current();
-      }
+      resumeLiveSpeech();
     }
   };
 
   handleSendRef.current = handleSend;
-
-  const startVoiceRecording = useCallback(async () => {
-    if (!Audio) {
-      Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available. Please type your message instead.', zh: '当前音频模块不可用，请改用文字输入。' }));
-      return;
-    }
-    if (voicePhase === 'transcribing') {
-      Alert.alert(
-        t({ en: 'Voice Busy', zh: '语音处理中' }),
-        t({ en: 'The previous recording is still being transcribed. Please wait a moment.', zh: '上一段录音还在转写中，请稍等一下。' }),
-      );
-      return;
-    }
-    try {
-      if (!isRecordingRef.current) {
-        // START recording
-        isRecordingRef.current = true;
-        if (isSpeaking) {
-          await audioPlayerRef.current?.stopAll();
-          setIsSpeaking(false);
-        }
-        stopCurrentResponse(true);
-        setVoicePhase('recording');
-        setTranscriptPreview('');
-        const permResult = await Audio.requestPermissionsAsync();
-        if (!permResult.granted) {
-          isRecordingRef.current = false;
-          setVoicePhase('idle');
-          Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in your device settings to use voice input.', zh: '请在设备设置中开启麦克风权限后再使用语音输入。' }));
-          return;
-        }
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-        });
-        if (recordingRef.current) {
-          try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
-          recordingRef.current = null;
-        }
-        const { recording } = await Audio.Recording.createAsync(
-          voiceRecordingOptions || Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        recordingRef.current = recording;
-        setIsRecording(true);
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setVoicePhase('idle');
-      const msg = e?.message || 'Unknown error';
-      if (msg.includes('permission') || msg.includes('Permission')) {
-        Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in Settings to use voice input.', zh: '请在设置中开启麦克风权限后再使用语音输入。' }));
-      } else {
-        Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n请改用文字输入。` }));
-      }
-    }
-  }, [Audio, isSpeaking, stopCurrentResponse, t, voicePhase, voiceRecordingOptions]);
-
-  const stopVoiceRecording = useCallback(async () => {
-    if (!Audio || !isRecordingRef.current) return;
-    try {
-      // STOP and transcribe
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setVoicePhase('transcribing');
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
-        recordingRef.current = null;
-        if (uri) {
-          let transcript = '';
-          const formData = new FormData();
-          formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
-          const ac = new AbortController();
-          const timeout = setTimeout(() => ac.abort(), 35_000);
-          try {
-            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-              signal: ac.signal,
-            });
-            if (resp.ok) {
-              const data = await resp.json();
-              transcript = data?.text || data?.transcript || '';
-            }
-          } catch (err) {
-             console.warn("Transcription failed", err);
-          } finally {
-            clearTimeout(timeout);
-          }
-
-          let uploadedAudio = null;
-          if (!transcript) {
-            try {
-              uploadedAudio = await uploadChatAttachment({
-                uri,
-                name: `voice-${Date.now()}.m4a`,
-                type: 'audio/m4a'
-              });
-            } catch (upErr) {
-              console.warn("Audio upload failed", upErr);
-            }
-          }
-
-          if (transcript || uploadedAudio) {
-            setTranscriptPreview(transcript || '[Voice Message]');
-            setVoicePhase('thinking');
-            const attachList = uploadedAudio ? [uploadedAudio as UploadedChatAttachment] : undefined;
-            setTimeout(() => handleSend(transcript, attachList), 80);
-          } else {
-            setVoicePhase('idle');
-            Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到有效语音' }), t({ en: 'Could not detect any speech or upload audio.', zh: '无法识别语音且上传失败。' }));
-          }
-        } else {
-          setVoicePhase('idle');
-        }
-      }
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setVoicePhase('idle');
-      Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
-    } finally {
-      await resetAudioModeAfterRecording();
-    }
-  }, [Audio, handleSend, resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
-
-  // Voice recording — hold mode wrappers
-  const handleVoicePressIn = async () => {
-    if (voiceInteractionMode !== 'hold') return;
-    await startVoiceRecording();
-  };
-
-  const handleVoicePressOut = async () => {
-    if (voiceInteractionMode !== 'hold') return;
-    await stopVoiceRecording();
-  };
-
-  const handleVoiceTapToggle = useCallback(async () => {
-    if (duplexMode) {
-      if (liveSpeechRef.current) {
-        stopLiveSpeech(true, true);
-        setVoicePhase('idle');
-        setTranscriptPreview('');
-        return;
-      }
-      if (isSpeaking) {
-        stopSpeaking();
-      }
-      stopCurrentResponse(true);
-      await startLiveSpeech();
-      return;
-    }
-    if (isRecordingRef.current) {
-      await stopVoiceRecording();
-      return;
-    }
-    await startVoiceRecording();
-  }, [duplexMode, isSpeaking, startLiveSpeech, startVoiceRecording, stopCurrentResponse, stopLiveSpeech, stopSpeaking, stopVoiceRecording]);
 
   const openModelPicker = () => setShowModelPicker(true);
 
@@ -1445,7 +993,7 @@ export function AgentChatScreen() {
         item={item}
         onSpeak={handleSpeakMessage}
         onStopSpeaking={stopSpeaking}
-        speakingMessageId={activeAssistantMessageIdRef.current}
+        speakingMessageId={speakingMessageId}
         onPreviewImage={(uri) => setPreviewImageUri(uri)}
       />
     );
@@ -1605,7 +1153,7 @@ export function AgentChatScreen() {
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
           style={styles.modeToggleBtn}
-          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); setShowAttachToolbar(false); }}
+          onPress={() => { setVoiceMode(!voiceMode); setShowAttachToolbar(false); }}
         >
           <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
         </TouchableOpacity>

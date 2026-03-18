@@ -103,6 +103,8 @@ import { AiProviderModule } from './modules/ai-provider/ai-provider.module';
 import { DesktopSyncModule } from './modules/desktop-sync/desktop-sync.module';
 // Agent Presence: unified agent identity, timeline, memory, channel binding
 import { AgentPresenceModule } from './modules/agent-presence/agent-presence.module';
+// Wearable Phase 2-3: continuous telemetry + automation triggers
+import { WearableTelemetryModule } from './modules/wearable-telemetry/wearable-telemetry.module';
 
 @Module({
   imports: [
@@ -214,6 +216,8 @@ import { AgentPresenceModule } from './modules/agent-presence/agent-presence.mod
     AiProviderModule,
     // Agent Presence: unified agent identity, timeline, memory, channel binding
     AgentPresenceModule,
+    // Wearable Phase 2-3: continuous telemetry + automation triggers
+    WearableTelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

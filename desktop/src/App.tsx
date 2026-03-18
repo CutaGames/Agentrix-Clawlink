@@ -12,6 +12,7 @@ import { startDesktopAgentSync, stopDesktopAgentSync } from "./services/desktopA
 import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
 import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
+import { DesktopWakeWordService } from "./services/wakeWord";
 
 // Determine view from Tauri window label without importing @tauri-apps/api/window
 // (static import can crash if Tauri internals aren't ready)
@@ -30,6 +31,7 @@ export default function App() {
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
+  const desktopWakeWordKey = (window as any).__AGENTRIX_WAKE_WORD_KEY__ || import.meta.env.VITE_PICOVOICE_ACCESS_KEY || "";
 
   useEffect(() => {
     loadToken();
@@ -161,6 +163,45 @@ export default function App() {
     })();
     return () => cleanup?.();
   }, []);
+
+  useEffect(() => {
+    if (windowLabel === "floating-ball" || !loggedIn || !desktopWakeWordKey || !DesktopWakeWordService.isAvailable()) {
+      return;
+    }
+
+    const wakeWord = new DesktopWakeWordService();
+    let disposed = false;
+
+    const triggerVoiceFlow = async () => {
+      if (disposed) return;
+
+      if (windowLabel === "chat-panel") {
+        window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+        return;
+      }
+
+      setPanelOpen(true);
+      setTimeout(() => {
+        if (!disposed) {
+          window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+        }
+      }, 250);
+    };
+
+    void wakeWord.init({
+      accessKey: desktopWakeWordKey,
+      builtInKeyword: "picovoice",
+      sensitivity: 0.65,
+      onWakeWord: () => {
+        void triggerVoiceFlow();
+      },
+    }).then(() => wakeWord.start());
+
+    return () => {
+      disposed = true;
+      void wakeWord.release();
+    };
+  }, [desktopWakeWordKey, loggedIn, windowLabel]);
 
   // Determine which view based on Tauri window label
   // DEBUG: set document.title to show which branch

@@ -18,20 +18,15 @@ export class VoiceService {
   private readonly groqBaseUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
   private getTranscriptionOrder(): Array<'openai' | 'groq' | 'aws'> {
-    const hasAwsCredentials = Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
-    const defaultOrder: Array<'openai' | 'groq' | 'aws'> = ['aws', 'openai', 'groq'];
+    // Default: Groq first (free tier, fast, whisper-large-v3-turbo quality),
+    // then OpenAI Whisper, then AWS Transcribe Streaming as fallback.
+    const defaultOrder: Array<'openai' | 'groq' | 'aws'> = ['groq', 'openai', 'aws'];
     const configured = (process.env.VOICE_STT_ORDER || '')
       .split(',')
       .map((value) => value.trim().toLowerCase())
       .filter((value): value is 'openai' | 'groq' | 'aws' => value === 'openai' || value === 'groq' || value === 'aws');
 
-    const uniqueProviders = Array.from(new Set<'openai' | 'groq' | 'aws'>(configured.length > 0 ? configured : defaultOrder));
-
-    if (hasAwsCredentials && uniqueProviders.includes('aws')) {
-      return ['aws', ...uniqueProviders.filter((provider) => provider !== 'aws')];
-    }
-
-    return uniqueProviders;
+    return Array.from(new Set<'openai' | 'groq' | 'aws'>(configured.length > 0 ? configured : defaultOrder));
   }
 
   private normalizeLanguageHint(lang?: string): 'zh' | 'en' | undefined {
