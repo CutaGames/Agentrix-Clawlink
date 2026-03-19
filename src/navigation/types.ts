@@ -18,6 +18,7 @@ export type AgentStackParamList = {
   AgentConsole: undefined;
   AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean };
   WearableHub: undefined;
+  WearableMonitor: { deviceId?: string };
   OpenClawBind: undefined;
   /** Deep-link target for the desktop installer QR code: agentrix://connect?instanceId=...&token=...&host=...&port=... */
   LocalConnect: { instanceId?: string; token?: string; host?: string; port?: string };

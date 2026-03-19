@@ -20,6 +20,9 @@
       "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
         "CFBundleDisplayName": "Agentrix",
+        "UIBackgroundModes": [
+          "audio"
+        ],
         "LSApplicationQueriesSchemes": [
           "metamask",
           "okx",
@@ -59,7 +62,9 @@
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "RECORD_AUDIO",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE"
       ],
       "intentFilters": [
         {
@@ -137,6 +142,7 @@
       ]
     ],
     "extra": {
+      "picovoiceAccessKey": "",
       "eas": {
         "projectId": "96a641e0-ce03-45ff-9de7-2cd89c488236"
       }
