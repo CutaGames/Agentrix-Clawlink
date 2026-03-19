@@ -101,7 +101,7 @@ jobs:
             exit 1
           fi
 
-        - name: Skip legacy React Native path patch
+      - name: Skip legacy React Native path patch
         run: |
           echo "[ci] Skipping legacy React Native module path patch; current RN Gradle plugin rejects REACT_NATIVE_NODE_MODULES_DIR"
 
