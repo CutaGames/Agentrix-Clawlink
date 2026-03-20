@@ -771,6 +771,14 @@ export function AgentChatScreen() {
     t,
   });
 
+  // Clear stale voiceMode/duplexMode route params when voice mode is turned off,
+  // so returning to this screen later doesn't re-activate voice.
+  useEffect(() => {
+    if (!voiceMode && (voiceModeRequested || duplexModeRequested)) {
+      navigation.setParams({ voiceMode: undefined, duplexMode: undefined });
+    }
+  }, [voiceMode, voiceModeRequested, duplexModeRequested, navigation]);
+
   const handleSpeakMessage = useCallback((message: Message) => {
     const text = buildDisplayMessageText(message.content);
     if (!text) return;

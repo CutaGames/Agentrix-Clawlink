@@ -149,34 +149,40 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     })
   ).current;
 
-  const navigateToVoiceChat = useCallback(() => {
+  const activateVoiceExperience = useCallback(async () => {
+    setBallState('listening');
+    onVoiceActivate?.();
+
+    // Stop wake word listener and AWAIT release before navigating,
+    // so AgentChat's duplex mode can acquire the microphone cleanly.
+    const listener = wakeListenerRef.current;
+    if (listener) {
+      wakeListenerRef.current = null;
+      await listener.release();
+    }
+
     const activeInstance = require('../stores/authStore').useAuthStore.getState().activeInstance;
 
+    // Navigate directly to AgentChat with voice params.
+    // Avoids the VoiceChatScreen redirect that created duplicate AgentChat screens.
     navigation.navigate('Agent', {
-      screen: 'VoiceChat',
+      screen: 'AgentChat',
       params: {
         instanceId: activeInstance?.id,
         instanceName: activeInstance?.name || 'Agent',
+        voiceMode: true,
+        duplexMode: true,
       },
     });
-  }, [navigation]);
-
-  const activateVoiceExperience = useCallback(() => {
-    setBallState('listening');
-    onVoiceActivate?.();
-    navigateToVoiceChat();
-    setTimeout(() => {
-      setBallState('idle');
-    }, 1200);
-  }, [navigateToVoiceChat, onVoiceActivate]);
+  }, [navigation, onVoiceActivate]);
 
   const handleTap = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
-    activateVoiceExperience();
+    void activateVoiceExperience();
   }, [activateVoiceExperience]);
 
   const handleVoiceActivate = useCallback(() => {
-    activateVoiceExperience();
+    void activateVoiceExperience();
   }, [activateVoiceExperience]);
 
   useEffect(() => {
