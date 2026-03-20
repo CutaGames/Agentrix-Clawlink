@@ -14,6 +14,7 @@ export function VoiceChatScreen() {
         instanceId: route.params?.instanceId,
         instanceName: route.params?.instanceName,
         voiceMode: true,
+        duplexMode: true,
       });
     }, 0);
 

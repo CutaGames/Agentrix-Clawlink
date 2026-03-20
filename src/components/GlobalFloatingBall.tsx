@@ -10,6 +10,11 @@ import {
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '../stores/i18nStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { resolveMobileWakeWordConfig } from '../config/wakeWord';
+import { WakeWordService } from '../services/wakeWord.service';
+import { SpeechWakeWordService } from '../services/speechWakeWord.service';
 
 const BALL_SIZE = 56;
 const EDGE_MARGIN = 12;
@@ -30,7 +35,10 @@ interface Props {
 
 export function GlobalFloatingBall({ onVoiceActivate }: Props) {
   const navigation = useNavigation<any>();
+  const { language } = useI18n();
+  const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
   const { width: screenW, height: screenH } = Dimensions.get('window');
+  const wakeWordConfig = resolveMobileWakeWordConfig(wakeWordSettings);
 
   // Hide on chat screen (chat has its own voice controls)
   const currentRouteName = useNavigationState((state) => {
@@ -57,6 +65,7 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useRef(false);
+  const wakeListenerRef = useRef<WakeWordService | SpeechWakeWordService | null>(null);
 
   // Pulse animation for non-idle states
   useEffect(() => {
@@ -74,22 +83,11 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     }
   }, [ballState, pulseAnim]);
 
-  // Listen for voice state events from chat screen
   useEffect(() => {
-    // These events are dispatched by useVoiceSession hook
-    const handlers = {
-      'agentrix:ball-state': (e: any) => {
-        const state = (e as any)?.detail?.state;
-        if (state && STATE_COLORS[state as BallState]) {
-          setBallState(state as BallState);
-        }
-      },
-    };
-
-    // React Native doesn't have window events, we'll use a simple global emitter approach
-    // For now, ballState stays idle when outside chat
-    return () => {};
-  }, []);
+    if (!shouldHide) {
+      setBallState('idle');
+    }
+  }, [shouldHide]);
 
   const snapToEdge = useCallback((x: number, y: number) => {
     const snapX = x < screenW / 2 ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN;
@@ -163,16 +161,98 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     });
   }, [navigation]);
 
+  const activateVoiceExperience = useCallback(() => {
+    setBallState('listening');
+    onVoiceActivate?.();
+    navigateToVoiceChat();
+    setTimeout(() => {
+      setBallState('idle');
+    }, 1200);
+  }, [navigateToVoiceChat, onVoiceActivate]);
+
   const handleTap = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
-    navigateToVoiceChat();
-  }, [navigateToVoiceChat]);
+    activateVoiceExperience();
+  }, [activateVoiceExperience]);
 
   const handleVoiceActivate = useCallback(() => {
-    onVoiceActivate?.();
+    activateVoiceExperience();
+  }, [activateVoiceExperience]);
 
-    navigateToVoiceChat();
-  }, [navigateToVoiceChat, onVoiceActivate]);
+  useEffect(() => {
+    if (!wakeWordConfig.enabled || shouldHide) {
+      const listener = wakeListenerRef.current;
+      if (listener) {
+        void listener.release();
+        wakeListenerRef.current = null;
+      }
+      return;
+    }
+
+    const shouldUsePicovoice = Boolean(wakeWordConfig.accessKey) && WakeWordService.isAvailable();
+    const listener = shouldUsePicovoice
+      ? new WakeWordService()
+      : SpeechWakeWordService.isAvailable()
+        ? new SpeechWakeWordService()
+        : null;
+
+    if (!listener) {
+      return;
+    }
+
+    wakeListenerRef.current = listener;
+    let cancelled = false;
+
+    void (async () => {
+      if (listener instanceof WakeWordService) {
+        await listener.init({
+          accessKey: wakeWordConfig.accessKey,
+          builtInKeywords: wakeWordConfig.customKeywordPaths.length > 0 ? undefined : wakeWordConfig.builtInKeywords,
+          keywordPaths: wakeWordConfig.customKeywordPaths.length > 0 ? wakeWordConfig.customKeywordPaths : undefined,
+          sensitivity: wakeWordConfig.sensitivity,
+          onWakeWord: () => {
+            if (!cancelled) {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              activateVoiceExperience();
+            }
+          },
+        });
+      } else {
+        await listener.init({
+          phrases: wakeWordConfig.fallbackPhrases,
+          language,
+          onWakeWord: () => {
+            if (!cancelled) {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              activateVoiceExperience();
+            }
+          },
+        });
+      }
+
+      if (!cancelled) {
+        await listener.start();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void listener.release();
+      if (wakeListenerRef.current === listener) {
+        wakeListenerRef.current = null;
+      }
+    };
+  }, [
+    activateVoiceExperience,
+    language,
+    shouldHide,
+    wakeWordConfig.accessKey,
+    wakeWordConfig.builtInKeywords,
+    wakeWordConfig.customKeywordPaths,
+    wakeWordConfig.enabled,
+    wakeWordConfig.fallbackPhrases,
+    wakeWordConfig.sensitivity,
+  ]);
 
   if (shouldHide) return null;
 

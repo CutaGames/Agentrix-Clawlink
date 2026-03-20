@@ -16,6 +16,7 @@ export interface WakeWordSettings {
   accessKey: string;
   builtInKeywords: string[];
   customKeywordPaths: string[];
+  fallbackPhrases: string[];
   displayName: string;
   sensitivity: number;
 }
@@ -82,7 +83,8 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   accessKey: '',
   builtInKeywords: [],
   customKeywordPaths: [],
-  displayName: '',
+  fallbackPhrases: ['Hey Agentrix', 'Hi Agentrix', 'Agentrix', '嘿 Agentrix', '你好 Agentrix'],
+  displayName: 'Hey Agentrix',
   sensitivity: 0.65,
 };
 

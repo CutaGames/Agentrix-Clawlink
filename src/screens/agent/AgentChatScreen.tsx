@@ -391,6 +391,7 @@ export function AgentChatScreen() {
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
   const voiceModeRequested = !!route.params?.voiceMode;
+  const duplexModeRequested = !!route.params?.duplexMode;
   const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
@@ -759,6 +760,7 @@ export function AgentChatScreen() {
     token,
     language,
     voiceModeRequested,
+    duplexModeRequested,
     agentVoiceId: agentVoiceId || undefined,
     instanceName,
     isSending: sending,
@@ -1314,11 +1316,14 @@ export function AgentChatScreen() {
         }
       />
 
-      {voiceMode && voicePhase !== 'idle' && (
+      {voiceMode && (
         <View style={styles.voiceStatusBar}>
           <Text style={styles.voiceStatusDots}>...</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.voiceStatusText}>
+                {voicePhase === 'idle' && (duplexMode
+                  ? t({ en: 'Voice ready. Listening will start automatically. Say your wake phrase or tap stop to pause.', zh: '语音会话已就绪。将自动进入实时聆听；你可以直接说唤醒词，或点停止暂停。' })
+                  : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                 {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                   ? duplexMode
                     ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })

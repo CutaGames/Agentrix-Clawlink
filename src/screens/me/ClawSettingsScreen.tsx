@@ -112,7 +112,7 @@ export function ClawSettingsScreen() {
         <Text style={styles.groupTitle}>{t({ en: 'Wake Word', zh: '唤醒词' })}</Text>
         <View style={styles.modeCard}>
           <Text style={styles.modeDesc}>
-            {t({ en: 'Use a Picovoice access key plus either a built-in keyword or a packaged custom .ppn model.', zh: '使用 Picovoice AccessKey，并配置内置唤醒词或打包好的自定义 .ppn 模型。' })}
+            {t({ en: 'Out of the box the app uses system speech recognition to listen for your wake phrase. If you add a Picovoice access key later, the runtime can switch to Picovoice offline detection.', zh: '默认开箱即用时，App 会使用系统语音识别监听唤醒短语；如果后续补充 Picovoice AccessKey，则可切换为 Picovoice 离线检测。' })}
           </Text>
 
           <TouchableOpacity
@@ -128,7 +128,7 @@ export function ClawSettingsScreen() {
           <TextInput
             value={wakeWordConfig.accessKey}
             onChangeText={(text) => setWakeWordConfig({ accessKey: text })}
-            placeholder={t({ en: 'Picovoice access key', zh: 'Picovoice AccessKey' })}
+            placeholder={t({ en: 'Optional Picovoice access key', zh: '可选的 Picovoice AccessKey' })}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             style={styles.textInput}
@@ -137,15 +137,24 @@ export function ClawSettingsScreen() {
           <TextInput
             value={wakeWordConfig.displayName}
             onChangeText={(text) => setWakeWordConfig({ displayName: text })}
-            placeholder={t({ en: 'Wake word label, e.g. Hey Agentrix', zh: '唤醒词展示名，例如 Hey Agentrix' })}
+            placeholder={t({ en: 'Primary wake phrase, e.g. Hey Agentrix', zh: '主唤醒短语，例如 Hey Agentrix' })}
             placeholderTextColor={colors.textMuted}
+            style={styles.textInput}
+          />
+
+          <TextInput
+            value={wakeWordConfig.fallbackPhrases.join(', ')}
+            onChangeText={(text) => setWakeWordConfig({ fallbackPhrases: text.split(',').map((item) => item.trim()).filter(Boolean) })}
+            placeholder={t({ en: 'System wake phrases, comma separated', zh: '系统唤醒短语，逗号分隔' })}
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
             style={styles.textInput}
           />
 
           <TextInput
             value={wakeWordConfig.builtInKeywords.join(', ')}
             onChangeText={(text) => setWakeWordConfig({ builtInKeywords: text.split(',').map((item) => item.trim()).filter(Boolean) })}
-            placeholder={t({ en: 'Built-in keywords, comma separated', zh: '内置唤醒词，逗号分隔' })}
+            placeholder={t({ en: 'Picovoice built-in keywords, comma separated', zh: 'Picovoice 内置唤醒词，逗号分隔' })}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             style={styles.textInput}
@@ -180,13 +189,13 @@ export function ClawSettingsScreen() {
           <Text style={styles.modeCurrentDesc}>
             {t({ en: 'Current runtime:', zh: '当前运行配置：' })}{' '}
             {effectiveWakeWordConfig.enabled
-              ? `${effectiveWakeWordConfig.displayName} · ${effectiveWakeWordConfig.customKeywordPaths.length > 0 ? t({ en: 'custom model', zh: '自定义模型' }) : effectiveWakeWordConfig.builtInKeywords.join(', ')}`
+              ? `${effectiveWakeWordConfig.displayName} · ${effectiveWakeWordConfig.accessKey ? (effectiveWakeWordConfig.customKeywordPaths.length > 0 ? t({ en: 'Picovoice custom model', zh: 'Picovoice 自定义模型' }) : effectiveWakeWordConfig.builtInKeywords.join(', ')) : effectiveWakeWordConfig.fallbackPhrases.join(', ')}`
               : t({ en: 'disabled', zh: '已关闭' })}
           </Text>
           <Text style={styles.modeCurrentDesc}>
             {effectiveWakeWordConfig.accessKey
-              ? t({ en: 'Access key ready. Empty fields fall back to app.json or EXPO_PUBLIC_* env vars.', zh: 'AccessKey 已就绪。空字段会继续回退到 app.json 或 EXPO_PUBLIC_* 环境变量。' })
-              : t({ en: 'No access key yet. Wake word will stay disabled until a key is provided.', zh: '尚未提供 AccessKey；在配置前自动唤醒不会启动。' })}
+              ? t({ en: 'Picovoice key detected. Empty fields still fall back to app.json or EXPO_PUBLIC_* env vars.', zh: '已检测到 Picovoice key。空字段仍会回退到 app.json 或 EXPO_PUBLIC_* 环境变量。' })
+              : t({ en: 'No Picovoice key required. The packaged build will fall back to system wake-phrase listening after permissions are granted.', zh: '无需 Picovoice key。授予权限后，打包版本会自动回退到系统唤醒短语监听。' })}
           </Text>
 
           <TouchableOpacity
