@@ -27,6 +27,7 @@ export function ProfileScreen() {
     { id: 'skills', icon: '⚡', label: t({ en: 'My Skills', zh: '我的技能' }), route: 'MySkills' },
     { id: 'orders', icon: '📦', label: t({ en: 'My Orders', zh: '我的订单' }), route: 'MyOrders' },
     { id: 'social-listener', icon: '📡', label: t({ en: 'Social Listener', zh: '社交监听' }), route: 'SocialListener' },
+    { id: 'agent-manage', icon: '🤖', label: t({ en: 'Agent Management', zh: '智能体管理' }), route: '__agent_manage__' },
     { id: 'settings', icon: '⚙️', label: t({ en: 'Settings', zh: '设置' }), route: 'Settings' },
   ] as const;
 
@@ -122,7 +123,13 @@ export function ProfileScreen() {
           <TouchableOpacity
             key={item.id}
             style={styles.menuItem}
-            onPress={() => navigation.navigate(item.route as any)}
+            onPress={() => {
+              if (item.route === '__agent_manage__') {
+                (navigation as any).navigate('Agent', { screen: 'AgentConsole' });
+              } else {
+                navigation.navigate(item.route as any);
+              }
+            }}
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>
             <Text style={styles.menuLabel}>{item.label}</Text>

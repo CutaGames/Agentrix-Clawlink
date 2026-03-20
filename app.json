@@ -143,6 +143,16 @@
     ],
     "extra": {
       "picovoiceAccessKey": "",
+      "wakeWord": {
+        "enabled": true,
+        "accessKey": "",
+        "builtInKeywords": [
+          "picovoice"
+        ],
+        "customKeywordPaths": [],
+        "displayName": "Picovoice",
+        "sensitivity": 0.65
+      },
       "eas": {
         "projectId": "96a641e0-ce03-45ff-9de7-2cd89c488236"
       }

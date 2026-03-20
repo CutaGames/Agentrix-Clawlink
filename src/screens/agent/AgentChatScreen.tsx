@@ -4,7 +4,8 @@ import {
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, Linking,
   Dimensions,
 } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
@@ -16,9 +17,11 @@ import { useTokenQuota } from '../../hooks/useTokenQuota';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mmkv } from '../../stores/mmkvStorage';
 import { useI18n } from '../../stores/i18nStore';
+import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
+import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 // expo-av: graceful degrade if missing
@@ -200,7 +203,7 @@ const MessageBubble = ({
   const { t } = useI18n();
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
-  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
+  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
   const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
   const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
@@ -234,18 +237,21 @@ const MessageBubble = ({
         {!isUser && hasThoughts && (
           <View style={styles.thoughtContainer}>
             <TouchableOpacity 
-              style={styles.thoughtHeader} 
+              style={styles.thoughtCapsule} 
               onPress={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
               activeOpacity={0.7}
             >
               {item.streaming ? (
-                <ActivityIndicator size="small" color={colors.textMuted} style={{ transform: [{ scale: 0.7 }] }} />
+                <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.6 }] }} />
               ) : (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{isThoughtsExpanded ? '▼' : '▶'}</Text>
+                <Text style={{ color: colors.accent, fontSize: 10 }}>{'⚡'}</Text>
               )}
-              <Text style={styles.thoughtHeaderText}>
-                {item.streaming ? t({ en: 'Agent is executing workflow...', zh: '智能体正在执行工作流…' }) : t({ en: `Execution Log (${item.thoughts?.length} steps)`, zh: `执行日志（${item.thoughts?.length} 步）` })}
+              <Text style={styles.thoughtCapsuleText} numberOfLines={1}>
+                {item.streaming
+                  ? (item.thoughts?.[item.thoughts.length - 1]?.replace('[Tool Call]', '').trim().slice(0, 40) || t({ en: 'Processing...', zh: '处理中…' }))
+                  : t({ en: `${item.thoughts?.length} steps completed`, zh: `已完成 ${item.thoughts?.length} 步` })}
               </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 10 }}>{isThoughtsExpanded ? '▼' : '›'}</Text>
             </TouchableOpacity>
             
             {isThoughtsExpanded && (
@@ -379,6 +385,7 @@ const MessageBubble = ({
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
+  const navigation = useNavigation<any>();
   const { t, language } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
@@ -387,6 +394,9 @@ export function AgentChatScreen() {
   const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [remoteClipboard, setRemoteClipboard] = useState<MobileDesktopClipboardSnapshot | null>(null);
 
   // Dynamic model list from backend (platform default + user's configured providers)
   const [availableModels, setAvailableModels] = useState<ModelOption[]>(SUPPORTED_MODELS);
@@ -435,6 +445,95 @@ export function AgentChatScreen() {
   const tokenPct = quota?.energyLevel ?? (total > 0 ? Math.min(100, (used / total) * 100) : 0);
   const tokenBarColor = tokenPct > 80 ? '#ef4444' : tokenPct > 50 ? '#f59e0b' : '#22c55e';
 
+  // Offline detection + message queue
+  const [isOffline, setIsOffline] = useState(false);
+  const isOfflineRef = useRef(false);
+  const offlineQueueRef = useRef<Array<{ text: string; attachments: UploadedChatAttachment[] }>>([]);
+  const flushingOfflineQueueRef = useRef(false);
+
+  // Check connectivity periodically
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
+        if (mounted) setIsOffline(!res.ok);
+      } catch {
+        if (mounted) setIsOffline(true);
+      }
+    };
+    check();
+    const timer = setInterval(check, 15000);
+    return () => { mounted = false; clearInterval(timer); };
+  }, []);
+
+  useEffect(() => {
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
+
+  useEffect(() => {
+    if (!token) {
+      setRemoteClipboard(null);
+      return;
+    }
+
+    let cancelled = false;
+    const pollDesktopClipboard = async () => {
+      try {
+        const latest = await fetchLatestDesktopClipboard();
+        if (!cancelled) {
+          setRemoteClipboard((previous) => {
+            if (!latest) return null;
+            if (
+              previous &&
+              previous.deviceId === latest.deviceId &&
+              previous.lastSeenAt === latest.lastSeenAt &&
+              previous.text === latest.text
+            ) {
+              return previous;
+            }
+            return latest;
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setRemoteClipboard(null);
+        }
+      }
+    };
+
+    void pollDesktopClipboard();
+    const timer = setInterval(pollDesktopClipboard, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [token]);
+
+  // Auto-send queued messages when back online
+  useEffect(() => {
+    if (isOffline || flushingOfflineQueueRef.current || offlineQueueRef.current.length === 0) return;
+
+    let cancelled = false;
+    const flushQueuedMessages = async () => {
+      flushingOfflineQueueRef.current = true;
+      try {
+        while (!cancelled && !isOfflineRef.current && offlineQueueRef.current.length > 0) {
+          const item = offlineQueueRef.current.shift();
+          if (!item) break;
+          await handleSendRef.current(item.text, item.attachments);
+        }
+      } finally {
+        flushingOfflineQueueRef.current = false;
+      }
+    };
+
+    void flushQueuedMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOffline]);
+
   // Fetch dynamic model list from backend and per-agent model
   useEffect(() => {
     (async () => {
@@ -468,22 +567,37 @@ export function AgentChatScreen() {
     })();
   }, [instanceId, activeInstance?.metadata?.agentAccountId]);
 
-  // Load chat history on mount — first from local storage (instant), then try API
+  // All messages (persisted) and visible slice for lazy rendering
+  const allMessagesRef = useRef<Message[]>([]);
+  const PAGE_SIZE = 20;
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
+  const loadOlderMessages = useCallback(() => {
+    const all = allMessagesRef.current;
+    if (all.length <= messages.length || loadingOlder) return;
+    setLoadingOlder(true);
+    const currentLen = messages.length;
+    const nextSlice = all.slice(Math.max(0, all.length - currentLen - PAGE_SIZE), all.length - currentLen);
+    setMessages((prev) => [...nextSlice, ...prev]);
+    setLoadingOlder(false);
+  }, [messages.length, loadingOlder]);
+
+  // Load chat history on mount — MMKV is synchronous, then try API
   useEffect(() => {
     if (!instanceId) return;
-    AsyncStorage.getItem(storageKey).then((raw) => {
-      if (raw) {
-        try {
-          const saved: Message[] = JSON.parse(raw);
-          if (Array.isArray(saved) && saved.length > 0) setMessages(saved);
-        } catch {}
-      }
-    });
-    AsyncStorage.getItem(draftStorageKey).then((rawDraft) => {
-      if (typeof rawDraft === 'string') {
-        setInput(rawDraft);
-      }
-    });
+    const raw = mmkv.getString(storageKey);
+    if (raw) {
+      try {
+        const saved: Message[] = JSON.parse(raw);
+        if (Array.isArray(saved) && saved.length > 0) {
+          allMessagesRef.current = saved;
+          // Show only last PAGE_SIZE messages initially
+          setMessages(saved.slice(-PAGE_SIZE));
+        }
+      } catch {}
+    }
+    const draft = mmkv.getString(draftStorageKey);
+    if (draft) setInput(draft);
     loadHistory();
     return () => {
       // Cancel any in-flight stream on unmount
@@ -494,13 +608,32 @@ export function AgentChatScreen() {
   // Persist messages to local storage whenever they change
   useEffect(() => {
     if (messages.length > 1) {
-      const toSave = messages.filter((m) => !m.streaming).slice(-80);
-      AsyncStorage.setItem(storageKey, JSON.stringify(toSave)).catch(() => {});
+      const visibleMessages = messages.filter((m) => !m.streaming);
+      const previousAll = allMessagesRef.current.filter((m) => !m.streaming);
+      const visibleById = new Map(visibleMessages.map((message) => [message.id, message]));
+      const seenIds = new Set<string>();
+
+      const mergedMessages: Message[] = [];
+      for (const message of previousAll) {
+        const nextMessage = visibleById.get(message.id) ?? message;
+        mergedMessages.push(nextMessage);
+        seenIds.add(nextMessage.id);
+      }
+
+      for (const message of visibleMessages) {
+        if (!seenIds.has(message.id)) {
+          mergedMessages.push(message);
+          seenIds.add(message.id);
+        }
+      }
+
+      allMessagesRef.current = mergedMessages;
+      try { mmkv.set(storageKey, JSON.stringify(mergedMessages.slice(-80))); } catch {}
     }
   }, [messages]);
 
   useEffect(() => {
-    AsyncStorage.setItem(draftStorageKey, input).catch(() => {});
+    try { mmkv.set(draftStorageKey, input); } catch {}
   }, [draftStorageKey, input]);
 
   const loadHistory = async () => {
@@ -529,7 +662,8 @@ export function AgentChatScreen() {
           attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
           createdAt: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
         }));
-        setMessages(historyMessages);
+        allMessagesRef.current = historyMessages;
+        setMessages(historyMessages.slice(-PAGE_SIZE));
       }
     } catch {
       // Silently ignore — instance may not support history endpoint
@@ -537,6 +671,27 @@ export function AgentChatScreen() {
       setLoadingHistory(false);
     }
   };
+
+  const handleInsertDesktopClipboard = useCallback(() => {
+    if (!remoteClipboard?.text) return;
+    setInput((previous) => {
+      const next = previous.trim().length > 0
+        ? `${previous.trim()}\n\n${remoteClipboard.text}`
+        : remoteClipboard.text;
+      return next.slice(0, 2000);
+    });
+    Haptics.selectionAsync().catch(() => {});
+  }, [remoteClipboard]);
+
+  const handleCopyDesktopClipboard = useCallback(async () => {
+    if (!remoteClipboard?.text) return;
+    await DeviceBridgingService.writeClipboard(remoteClipboard.text);
+    Haptics.selectionAsync().catch(() => {});
+    Alert.alert(
+      t({ en: 'Desktop Clipboard Copied', zh: '桌面剪贴板已复制' }),
+      t({ en: 'The latest desktop clipboard text is now on your phone.', zh: '最新桌面剪贴板内容已复制到手机剪贴板。' }),
+    );
+  }, [remoteClipboard, t]);
 
   const scrollToBottom = useCallback((force = false) => {
     if (!force && !isNearBottomRef.current) return;
@@ -680,6 +835,16 @@ export function AgentChatScreen() {
     const attachments = overrideAttachments ?? pendingAttachments;
     if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
 
+    // Offline: queue the message instead of streaming
+    if (isOffline) {
+      offlineQueueRef.current.push({ text, attachments });
+      const queueMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, attachments, createdAt: Date.now() };
+      setMessages((prev) => [...prev, queueMsg]);
+      setInput('');
+      setPendingAttachments([]);
+      return;
+    }
+
     const outgoingText = buildOutgoingMessageContent(text, attachments);
 
     if (voiceMode || voicePhase !== 'idle') {
@@ -710,7 +875,7 @@ export function AgentChatScreen() {
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
     setPendingAttachments([]);
-    AsyncStorage.removeItem(draftStorageKey).catch(() => {});
+    try { mmkv.delete(draftStorageKey); } catch {}
     setTranscriptPreview('');
     setSending(true);
     streamAbortRef.current?.abort();
@@ -973,8 +1138,8 @@ export function AgentChatScreen() {
         onPress: () => {
           streamAbortRef.current?.abort();
           sessionIdRef.current = `session-${Date.now()}`;
-          AsyncStorage.removeItem(storageKey).catch(() => {});
-          AsyncStorage.removeItem(draftStorageKey).catch(() => {});
+          try { mmkv.delete(storageKey); } catch {}
+          try { mmkv.delete(draftStorageKey); } catch {}
           setInput('');
           setMessages([{
             id: 'welcome',
@@ -999,63 +1164,123 @@ export function AgentChatScreen() {
     );
   };
 
+  // Sprint 2: Auto-provision — when no agent instance exists, show friendly welcome
+  const handleAutoProvision = useCallback(async () => {
+    if (provisioning) return;
+    setProvisioning(true);
+    try {
+      const result = await apiFetch<{ instance: any }>('/openclaw/auto-provision', { method: 'POST' });
+      if (result?.instance) {
+        useAuthStore.getState().addInstance({
+          id: result.instance.id,
+          name: result.instance.name || 'My Agent',
+          instanceUrl: result.instance.instanceUrl || '',
+          status: 'active',
+          deployType: result.instance.deployType || 'cloud',
+        });
+        useAuthStore.getState().setOnboardingComplete();
+        // Navigate to skill pack for one-tap core skill installation
+        navigation.navigate('SkillPack');
+      }
+    } catch (err: any) {
+      // Fallback: navigate to manual deploy
+      navigation.navigate('DeploySelect');
+    } finally {
+      setProvisioning(false);
+    }
+  }, [provisioning, navigation]);
+
+  // Sprint 1+2: No-instance welcome screen
+  if (!activeInstance && !instanceId) {
+    return (
+      <SafeAreaView style={styles.welcomeContainer}>
+        <View style={styles.welcomeContent}>
+          <Text style={styles.welcomeEmoji}>{'🤖'}</Text>
+          <Text style={styles.welcomeTitle}>{t({ en: 'Hi, I\'m your AI Agent!', zh: '你好，我是你的 AI 智能体！' })}</Text>
+          <Text style={styles.welcomeSubtitle}>
+            {t({ en: 'Let me set up everything for you. One tap and we can start chatting.', zh: '让我帮你准备好一切，一键即可开始对话。' })}
+          </Text>
+          <TouchableOpacity
+            style={styles.welcomeBtn}
+            onPress={handleAutoProvision}
+            disabled={provisioning}
+          >
+            {provisioning ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.welcomeBtnText}>{t({ en: 'Get Started', zh: '立即开始' })}</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.welcomeSecondaryBtn}
+            onPress={() => navigation.navigate('DeploySelect')}
+          >
+            <Text style={styles.welcomeSecondaryText}>{t({ en: 'Advanced Setup', zh: '高级配置' })}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={88}
     >
-      {/* Chat toolbar */}
-      <View style={styles.chatBar}>
-        <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <TouchableOpacity
-            onPress={() => {
-              if (!liveVoiceAvailable && !duplexMode) {
-                Alert.alert(
-                  t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
-                  t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
-                );
-                return;
-              }
-              setDuplexMode((prev) => !prev);
-            }}
-            style={[styles.chatBarBtn, duplexMode && { backgroundColor: colors.accent + '30' }]}
-          >
-            <Text style={[styles.chatBarBtnText, duplexMode && { color: colors.accent }]}>
-              {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
-            </Text>
+      {/* Simplified Chat toolbar */}
+      <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bgCard }}>
+        <View style={styles.chatBar}>
+          <TouchableOpacity onPress={() => navigation.navigate('AgentConsole')} style={styles.chatBarBackBtn}>
+            <Text style={styles.chatBarBackIcon}>{'‹'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              setAutoSpeak(!autoSpeak);
-              if (isSpeaking) { stopSpeaking(); }
-            }}
-            style={[styles.chatBarBtn, autoSpeak && { backgroundColor: colors.primary + '30' }]}
-          >
-            <Text style={styles.chatBarBtnText}>{isSpeaking ? '🔊' : autoSpeak ? '🔈' : '🔇'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={openModelPicker} style={styles.modelBtn}>
-            <Text style={styles.modelBtnText} numberOfLines={1}>
-              {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
-            <Text style={styles.chatBarBtnText}>{t({ en: 'New', zh: '新建' })}</Text>
+          <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
+          <TouchableOpacity onPress={() => setShowSettingsSheet(true)} style={styles.chatBarGearBtn}>
+            <Text style={styles.chatBarGearIcon}>⚙️</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* Compact token energy bar */}
-      <View style={styles.tokenBar}>
-        <View style={[styles.tokenBarFill, { width: `${tokenPct}%` as any, backgroundColor: tokenBarColor }]} />
-        <Text style={styles.tokenBarLabel}>{used.toLocaleString()} / {total.toLocaleString()} tokens</Text>
-      </View>
+      </SafeAreaView>
 
       {loadingHistory && (
         <View style={styles.historyLoader}>
           <ActivityIndicator size="small" color={colors.accent} />
           <Text style={styles.historyLoaderText}>{t({ en: 'Loading history…', zh: '正在加载历史记录…' })}</Text>
+        </View>
+      )}
+
+      <DesktopDiscoveryBanner
+        sessionId={sessionIdRef.current}
+        agentId={activeInstance?.metadata?.agentAccountId || instanceId}
+        instanceName={instanceName}
+        messages={allMessagesRef.current.length > 0 ? allMessagesRef.current.slice(-10) : messages.slice(-10)}
+      />
+
+      {isOffline && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f59e0b', paddingVertical: 6 }}>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
+            {t({ en: 'Offline — messages will be sent when reconnected', zh: '离线模式 — 恢复连接后自动发送' })}
+          </Text>
+        </View>
+      )}
+
+      {!!remoteClipboard?.text && (
+        <View style={styles.remoteClipboardBanner}>
+          <View style={styles.remoteClipboardTextWrap}>
+            <Text style={styles.remoteClipboardTitle}>
+              {t({ en: 'Desktop clipboard available', zh: '检测到桌面剪贴板' })}
+            </Text>
+            <Text style={styles.remoteClipboardSubtitle} numberOfLines={2}>
+              {remoteClipboard.text}
+            </Text>
+          </View>
+          <View style={styles.remoteClipboardActions}>
+            <TouchableOpacity style={styles.remoteClipboardActionBtn} onPress={handleInsertDesktopClipboard}>
+              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Insert', zh: '插入' })}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.remoteClipboardActionBtn} onPress={handleCopyDesktopClipboard}>
+              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Copy', zh: '复制' })}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -1073,6 +1298,20 @@ export function AgentChatScreen() {
           isNearBottomRef.current = distanceFromBottom < 120;
         }}
         scrollEventThrottle={16}
+        initialNumToRender={PAGE_SIZE}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        onStartReached={loadOlderMessages}
+        onStartReachedThreshold={0.3}
+        ListHeaderComponent={
+          allMessagesRef.current.length > messages.length ? (
+            <TouchableOpacity onPress={loadOlderMessages} style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Text style={{ color: colors.accent, fontSize: 13 }}>
+                {t({ en: 'Load older messages', zh: '加载更早消息' })}
+              </Text>
+            </TouchableOpacity>
+          ) : null
+        }
       />
 
       {voiceMode && voicePhase !== 'idle' && (
@@ -1309,6 +1548,84 @@ export function AgentChatScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Settings Bottom Sheet — replaces cluttered chatBar controls */}
+      <Modal visible={showSettingsSheet} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowSettingsSheet(false)} activeOpacity={1}>
+          <View style={styles.settingsSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{t({ en: 'Chat Settings', zh: '对话设置' })}</Text>
+
+            {/* Voice mode toggle */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice Mode', zh: '语音模式' })}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!liveVoiceAvailable && !duplexMode) {
+                    Alert.alert(
+                      t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                      t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
+                    );
+                    return;
+                  }
+                  setDuplexMode((prev) => !prev);
+                }}
+                style={[styles.sheetToggle, duplexMode && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, duplexMode && { color: colors.accent }]}>
+                  {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Auto-speak toggle */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Auto Read Aloud', zh: '自动朗读' })}</Text>
+              <TouchableOpacity
+                onPress={() => { setAutoSpeak(!autoSpeak); if (isSpeaking) stopSpeaking(); }}
+                style={[styles.sheetToggle, autoSpeak && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, autoSpeak && { color: colors.accent }]}>
+                  {autoSpeak ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Model selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Model', zh: '模型' })}</Text>
+              <TouchableOpacity
+                onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowModelPicker(true), 300); }}
+                style={styles.sheetModelBtn}
+              >
+                <Text style={styles.sheetModelText} numberOfLines={1}>
+                  {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Token usage */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Tokens Used', zh: '已用额度' })}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{used.toLocaleString()} / {total.toLocaleString()}</Text>
+            </View>
+
+            {/* New chat */}
+            <TouchableOpacity style={styles.sheetActionBtn} onPress={() => { setShowSettingsSheet(false); handleClearChat(); }}>
+              <Text style={styles.sheetActionText}>{'✨ '}{t({ en: 'New Conversation', zh: '新建对话' })}</Text>
+            </TouchableOpacity>
+
+            {/* Agent management */}
+            <TouchableOpacity
+              style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => { setShowSettingsSheet(false); navigation.navigate('AgentConsole'); }}
+            >
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'⚙️ '}{t({ en: 'Agent Management', zh: '智能体管理' })}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Model picker modal — dynamic models from user's configured providers */}
       <Modal visible={showModelPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
@@ -1329,7 +1646,6 @@ export function AgentChatScreen() {
                       setAgentPreferredModel(m.id);
                       setResolvedModelLabel(m.label);
                       setShowModelPicker(false);
-                      // Save per-agent model to backend
                       const agentAccountId = activeInstance?.metadata?.agentAccountId;
                       if (agentAccountId) {
                         try {
@@ -1337,7 +1653,6 @@ export function AgentChatScreen() {
                           await updateAgentPresenceAccount(agentAccountId, { preferredModel: m.id });
                         } catch {}
                       }
-                      // Also sync to instance
                       if (instanceId) {
                         try { await switchInstanceModel(instanceId, m.id); } catch {}
                       }
@@ -1378,19 +1693,95 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   chatBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    gap: 12,
   },
-  chatBarTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 15 },
+  chatBarTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 16, flex: 1, textAlign: 'center' },
+  chatBarBackBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  chatBarBackIcon: { color: colors.textPrimary, fontSize: 28, fontWeight: '300', marginTop: -2 },
+  chatBarGearBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  chatBarGearIcon: { fontSize: 18 },
   chatBarBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.bgSecondary },
   chatBarBtnText: { color: colors.textMuted, fontSize: 12 },
+  // Welcome screen (no instance)
+  welcomeContainer: { flex: 1, backgroundColor: colors.bgPrimary },
+  welcomeContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  welcomeEmoji: { fontSize: 72, marginBottom: 20 },
+  welcomeTitle: { color: colors.textPrimary, fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
+  welcomeSubtitle: { color: colors.textSecondary, fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  welcomeBtn: {
+    width: '100%', height: 52, borderRadius: 26,
+    backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+  },
+  welcomeBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  welcomeSecondaryBtn: { paddingVertical: 10, paddingHorizontal: 20 },
+  welcomeSecondaryText: { color: colors.textMuted, fontSize: 14 },
+  // Settings Bottom Sheet
+  settingsSheet: {
+    backgroundColor: colors.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingTop: 12, paddingBottom: 40, paddingHorizontal: 20,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border,
+    alignSelf: 'center', marginBottom: 16,
+  },
+  sheetTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 17, marginBottom: 20, textAlign: 'center' },
+  sheetRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  sheetRowLabel: { color: colors.textPrimary, fontSize: 15 },
+  sheetToggle: {
+    paddingVertical: 5, paddingHorizontal: 14, borderRadius: 16,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  sheetToggleActive: { backgroundColor: colors.accent + '20', borderColor: colors.accent + '40' },
+  sheetToggleText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  sheetModelBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border, maxWidth: 200,
+  },
+  sheetModelText: { color: colors.accent, fontSize: 13, fontWeight: '600', flex: 1 },
+  sheetActionBtn: {
+    marginTop: 14, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: colors.primary, alignItems: 'center',
+  },
+  sheetActionText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   historyLoader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, justifyContent: 'center' },
   historyLoaderText: { color: colors.textMuted, fontSize: 13 },
+  remoteClipboardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  remoteClipboardTextWrap: { flex: 1, minWidth: 0 },
+  remoteClipboardTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  remoteClipboardSubtitle: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  remoteClipboardActions: { flexDirection: 'row', gap: 8 },
+  remoteClipboardActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  remoteClipboardActionText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
   messageList: { padding: 16, paddingBottom: 8, gap: 12 },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '85%' },
   msgRowUser: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
@@ -1603,7 +1994,14 @@ const styles = StyleSheet.create({
   modelOptionCheck: { color: colors.accent, fontSize: 16, fontWeight: '700' },
   modelBadge: { backgroundColor: colors.accent + '20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   modelBadgeText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
-  thoughtContainer: { backgroundColor: colors.bg, borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: colors.border },
+  thoughtContainer: { marginBottom: 6 },
+  thoughtCapsule: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.accent + '12', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  thoughtCapsuleText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, flex: 1 },
   thoughtHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   thoughtHeaderText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   thoughtList: { marginTop: 6, gap: 4 },

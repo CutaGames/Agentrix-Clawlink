@@ -15,6 +15,7 @@ import { useNotificationStore } from './src/stores/notificationStore';
 import { startNotificationPolling, stopNotificationPolling } from './src/services/realtime.service';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { checkAndPromptUpdate, silentBackgroundUpdate } from './src/services/appUpdate.service';
+import { migrateFromAsyncStorage } from './src/stores/mmkvStorage';
 
 // Configure how incoming notifications are handled while app is foregrounded
 Notifications.setNotificationHandler({
@@ -84,6 +85,9 @@ function AppNavigator() {
 
     const restoreSession = async () => {
       try {
+        // Migrate AsyncStorage data to MMKV (one-time, on first launch after update)
+        await migrateFromAsyncStorage();
+
         // Load token from SecureStore (key: 'clawlink_token')
         const token = await loadTokenFromStorage();
         if (!token) {
