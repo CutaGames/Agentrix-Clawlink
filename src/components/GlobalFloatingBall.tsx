@@ -1,13 +1,11 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
-  TouchableOpacity,
   StyleSheet,
   Animated,
   PanResponder,
   Dimensions,
   Text,
-  Platform,
 } from 'react-native';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { colors } from '../theme/colors';
@@ -59,7 +57,6 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useRef(false);
-  const lastTapTime = useRef(0);
 
   // Pulse animation for non-idle states
   useEffect(() => {
@@ -154,13 +151,11 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     })
   ).current;
 
-  const handleTap = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+  const navigateToVoiceChat = useCallback(() => {
     const activeInstance = require('../stores/authStore').useAuthStore.getState().activeInstance;
 
-    // Navigate to AgentChat
     navigation.navigate('Agent', {
-      screen: 'AgentChat',
+      screen: 'VoiceChat',
       params: {
         instanceId: activeInstance?.id,
         instanceName: activeInstance?.name || 'Agent',
@@ -168,20 +163,16 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     });
   }, [navigation]);
 
+  const handleTap = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    navigateToVoiceChat();
+  }, [navigateToVoiceChat]);
+
   const handleVoiceActivate = useCallback(() => {
-    const activeInstance = require('../stores/authStore').useAuthStore.getState().activeInstance;
     onVoiceActivate?.();
 
-    // Navigate to AgentChat with voice mode
-    navigation.navigate('Agent', {
-      screen: 'AgentChat',
-      params: {
-        instanceId: activeInstance?.id,
-        instanceName: activeInstance?.name || 'Agent',
-        voiceMode: true,
-      },
-    });
-  }, [navigation, onVoiceActivate]);
+    navigateToVoiceChat();
+  }, [navigateToVoiceChat, onVoiceActivate]);
 
   if (shouldHide) return null;
 
