@@ -76,8 +76,13 @@ jobs:
           copy_path() {
             local rel="$1"
             if [ -e "$SOURCE_DIR/$rel" ]; then
-              mkdir -p "$(dirname "$TARGET_DIR/$rel")"
-              rsync -a "$SOURCE_DIR/$rel" "$TARGET_DIR/$rel"
+              if [ -d "$SOURCE_DIR/$rel" ]; then
+                mkdir -p "$TARGET_DIR/$rel"
+                rsync -a "$SOURCE_DIR/$rel/" "$TARGET_DIR/$rel/"
+              else
+                mkdir -p "$(dirname "$TARGET_DIR/$rel")"
+                rsync -a "$SOURCE_DIR/$rel" "$TARGET_DIR/$rel"
+              fi
             fi
           }
 
