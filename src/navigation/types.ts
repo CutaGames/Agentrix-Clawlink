@@ -16,7 +16,7 @@ export type OnboardingStackParamList = {
 
 export type AgentStackParamList = {
   AgentConsole: undefined;
-  AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean };
+  AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean; duplexMode?: boolean };
   WearableHub: undefined;
   WearableMonitor: { deviceId?: string };
   OpenClawBind: undefined;

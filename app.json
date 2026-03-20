@@ -150,7 +150,14 @@
           "picovoice"
         ],
         "customKeywordPaths": [],
-        "displayName": "Picovoice",
+        "fallbackPhrases": [
+          "Hey Agentrix",
+          "Hi Agentrix",
+          "Agentrix",
+          "嘿 Agentrix",
+          "你好 Agentrix"
+        ],
+        "displayName": "Hey Agentrix",
         "sensitivity": 0.65
       },
       "eas": {

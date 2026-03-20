@@ -19,11 +19,8 @@ import {
   type LiveSpeechController,
 } from '../services/liveSpeech.service';
 import { API_BASE } from '../config/env';
-import { resolveMobileWakeWordConfig } from '../config/wakeWord';
 import type { UploadedChatAttachment } from '../services/api';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
-import { WakeWordService } from '../services/wakeWord.service';
-import { useSettingsStore } from '../stores/settingsStore';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -40,6 +37,7 @@ export interface UseVoiceSessionOptions {
   token: string | null;
   language: string;              // 'zh' | 'en'
   voiceModeRequested?: boolean;
+  duplexModeRequested?: boolean;
   agentVoiceId?: string;
   instanceName?: string;
   isSending?: boolean;
@@ -87,7 +85,7 @@ export interface UseVoiceSessionReturn {
 // ── Hook ───────────────────────────────────────────────────
 
 export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessionReturn {
-  const { token, language, voiceModeRequested, agentVoiceId, instanceName, isSending, onSendMessage, onStopCurrentResponse, t } = options;
+  const { token, language, voiceModeRequested, duplexModeRequested, agentVoiceId, instanceName, isSending, onSendMessage, onStopCurrentResponse, t } = options;
 
   // ── State ──
   const [voiceMode, setVoiceMode] = useState(!!voiceModeRequested);
@@ -102,7 +100,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const [liveListening, setLiveListening] = useState(false);
   const [liveVoiceVolume, setLiveVoiceVolume] = useState(-2);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
-  const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
 
   // ── Refs ──
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
@@ -114,12 +111,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const duplexModeRef = useRef(duplexMode);
   const sendingRef = useRef(false);
   const backgroundVoiceRef = useRef<BackgroundVoiceService | null>(null);
-  const wakeWordRef = useRef<WakeWordService | null>(null);
   const pendingTtsSentenceRef = useRef('');
   const streamedTtsStartedRef = useRef(false);
 
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
-  const wakeWordConfig = resolveMobileWakeWordConfig(wakeWordSettings);
 
   // Keep refs in sync
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
@@ -216,9 +211,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     if (voiceModeRequested) setVoiceMode(true);
   }, [voiceModeRequested]);
 
+  useEffect(() => {
+    if (duplexModeRequested) setDuplexMode(true);
+  }, [duplexModeRequested]);
+
   // voiceMode off → reset
   useEffect(() => {
     if (!voiceMode) {
+      setDuplexMode(false);
       setVoicePhase('idle');
       setIsRecording(false);
       isRecordingRef.current = false;
@@ -413,74 +413,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       [instanceName || '', agentVoiceId || '', 'Agentrix'],
     );
   }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint, voiceMode]);
-
-  useEffect(() => {
-    if (!wakeWordConfig.enabled || !wakeWordConfig.accessKey || !WakeWordService.isAvailable()) {
-      return;
-    }
-
-    const wakeWord = new WakeWordService();
-    wakeWordRef.current = wakeWord;
-    let cancelled = false;
-
-    void (async () => {
-      await wakeWord.init({
-        accessKey: wakeWordConfig.accessKey,
-        builtInKeywords: wakeWordConfig.customKeywordPaths.length > 0 ? undefined : wakeWordConfig.builtInKeywords,
-        keywordPaths: wakeWordConfig.customKeywordPaths.length > 0 ? wakeWordConfig.customKeywordPaths : undefined,
-        sensitivity: wakeWordConfig.sensitivity,
-        onWakeWord: () => {
-          if (cancelled) return;
-          setVoiceMode(true);
-          setDuplexMode(true);
-          setAutoSpeak(true);
-          if (isSpeaking) {
-            stopSpeaking();
-          }
-          onStopCurrentResponse(true);
-          void startLiveSpeechInternal();
-        },
-      });
-
-      if (!cancelled && !isRecording && !liveListening && !isSpeaking) {
-        await wakeWord.start();
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      void wakeWord.release();
-      wakeWordRef.current = null;
-    };
-  }, [
-    isRecording,
-    isSpeaking,
-    liveListening,
-    onStopCurrentResponse,
-    startLiveSpeechInternal,
-    stopSpeaking,
-    wakeWordConfig.accessKey,
-    wakeWordConfig.builtInKeywords,
-    wakeWordConfig.customKeywordPaths,
-    wakeWordConfig.enabled,
-    wakeWordConfig.sensitivity,
-  ]);
-
-  useEffect(() => {
-    const wakeWord = wakeWordRef.current;
-    if (!wakeWord?.isInitialized) {
-      return;
-    }
-
-    const shouldListenForWakeWord = !isRecording && !liveListening && !isSpeaking;
-
-    if (shouldListenForWakeWord) {
-      void wakeWord.start();
-      return;
-    }
-
-    void wakeWord.stop();
-  }, [isRecording, isSpeaking, liveListening]);
 
   // Duplex mode toggle → start/stop live speech
   useEffect(() => {

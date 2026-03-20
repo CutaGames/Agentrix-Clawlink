@@ -5,6 +5,7 @@ export interface MobileWakeWordSettingsOverride {
   accessKey?: string;
   builtInKeywords?: string[];
   customKeywordPaths?: string[];
+  fallbackPhrases?: string[];
   displayName?: string;
   sensitivity?: number;
 }
@@ -14,6 +15,7 @@ export interface MobileWakeWordConfig {
   accessKey: string;
   builtInKeywords: string[];
   customKeywordPaths: string[];
+  fallbackPhrases: string[];
   displayName: string;
   sensitivity: number;
 }
@@ -23,8 +25,26 @@ interface ExpoWakeWordExtra {
   accessKey?: string;
   builtInKeywords?: string[];
   customKeywordPaths?: string[];
+  fallbackPhrases?: string[];
   displayName?: string;
   sensitivity?: number;
+}
+
+function uniqueList(values: string[]): string[] {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+}
+
+function buildDefaultFallbackPhrases(displayName?: string): string[] {
+  const label = displayName?.trim() || 'Hey Agentrix';
+  return uniqueList([
+    label,
+    'Hey Agentrix',
+    'Hi Agentrix',
+    'Agentrix',
+    'Hey Claw',
+    '嘿 Agentrix',
+    '你好 Agentrix',
+  ]);
 }
 
 function parseList(value?: string | string[]): string[] {
@@ -109,18 +129,29 @@ export function resolveMobileWakeWordConfig(settings?: MobileWakeWordSettingsOve
         ? extraWakeWord.customKeywordPaths.map((item) => item.trim()).filter(Boolean)
         : parseList(process.env.EXPO_PUBLIC_PICOVOICE_CUSTOM_KEYWORD_PATHS);
 
-  const fallbackBuiltIns = builtInKeywords.length > 0 ? builtInKeywords : ['picovoice'];
-  const displayName =
+  const configuredDisplayName =
     settings?.displayName?.trim() ||
     extraWakeWord.displayName?.trim() ||
     process.env.EXPO_PUBLIC_PICOVOICE_WAKE_WORD_LABEL ||
-    (customKeywordPaths.length > 0 ? 'Custom wake word' : fallbackBuiltIns.join(', '));
+    'Hey Agentrix';
+
+  const fallbackPhrases =
+    settings?.fallbackPhrases?.length
+      ? settings.fallbackPhrases.map((item) => item.trim()).filter(Boolean)
+      : extraWakeWord.fallbackPhrases?.length
+        ? extraWakeWord.fallbackPhrases.map((item) => item.trim()).filter(Boolean)
+        : parseList(process.env.EXPO_PUBLIC_WAKE_WORD_FALLBACK_PHRASES);
+
+  const fallbackBuiltIns = builtInKeywords.length > 0 ? builtInKeywords : ['picovoice'];
+  const resolvedFallbackPhrases = fallbackPhrases.length > 0 ? uniqueList(fallbackPhrases) : buildDefaultFallbackPhrases(configuredDisplayName);
+  const displayName = configuredDisplayName || (customKeywordPaths.length > 0 ? 'Custom wake word' : resolvedFallbackPhrases[0] || fallbackBuiltIns.join(', '));
 
   return {
     enabled: parseBoolean(settings?.enabled ?? extraWakeWord.enabled ?? process.env.EXPO_PUBLIC_PICOVOICE_WAKE_WORD_ENABLED, true),
     accessKey,
     builtInKeywords: fallbackBuiltIns,
     customKeywordPaths,
+    fallbackPhrases: resolvedFallbackPhrases,
     displayName,
     sensitivity: clampSensitivity(
       parseNumber(settings?.sensitivity ?? extraWakeWord.sensitivity ?? process.env.EXPO_PUBLIC_PICOVOICE_WAKE_WORD_SENSITIVITY, 0.65),
