@@ -32,6 +32,7 @@ import {
   SentenceAccumulator,
   detectLang,
 } from "../services/AudioQueuePlayer";
+import { acceptHandoffWs } from "../services/agentPresence";
 import {
   getWorkspaceDir,
   listWorkspaceDir,
@@ -77,6 +78,23 @@ interface Props {
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
+
+type IncomingHandoffSnapshot = {
+  title?: string;
+  messages?: Array<{
+    role?: "user" | "assistant";
+    content?: string;
+    createdAt?: number;
+  }>;
+};
+
+type IncomingHandoffEvent = {
+  handoffId?: string;
+  sessionId?: string;
+  sourceDeviceId?: string;
+  agentId?: string;
+  contextSnapshot?: IncomingHandoffSnapshot;
+};
 
 export default function ChatPanel({ onClose, networkStatus = "online" }: Props) {
   const { token, activeAgentId, agents, setActiveAgent } =
@@ -266,6 +284,69 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       void refreshHistory();
     }
   }, []);
+
+  const applyIncomingHandoff = useCallback((payload: IncomingHandoffEvent | null | undefined) => {
+    if (!payload) return;
+
+    const snapshot = payload.contextSnapshot;
+    const restoredMessages: ChatMessage[] = Array.isArray(snapshot?.messages)
+      ? snapshot.messages
+          .filter((message) => message?.role === "user" || message?.role === "assistant")
+          .map((message, index) => ({
+            id: `handoff-${Date.now()}-${index}`,
+            role: (message.role || "assistant") as "user" | "assistant",
+            content: message.content || "",
+            createdAt: message.createdAt || Date.now(),
+          }))
+      : [];
+
+    const nextTabId = `tab-${Date.now()}`;
+    const nextSessionId = payload.sessionId || `handoff-${Date.now()}`;
+    const nextTitle = snapshot?.title || `Handoff from ${payload.sourceDeviceId || "mobile"}`;
+
+    tabMessagesCache.current[sessionIdRef.current] = messages;
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+
+    setTabs((prev) => [...prev, { id: nextTabId, sessionId: nextSessionId, title: nextTitle, unread: false }]);
+    setActiveTabId(nextTabId);
+    sessionIdRef.current = nextSessionId;
+    setPendingAttachments([]);
+    setBallState("idle");
+    setMessages(
+      restoredMessages.length > 0
+        ? restoredMessages
+        : [{ id: `sys-${Date.now()}`, role: "assistant", content: `Incoming handoff from ${payload.sourceDeviceId || "mobile"}.`, createdAt: Date.now() }],
+    );
+
+    if (payload.handoffId) {
+      acceptHandoffWs(payload.handoffId);
+    }
+
+    localStorage.removeItem("agentrix_pending_handoff");
+    trackEvent("handoff_received", { sourceDeviceId: payload.sourceDeviceId || "mobile" });
+  }, [messages]);
+
+  useEffect(() => {
+    const consumePendingHandoff = () => {
+      try {
+        const raw = localStorage.getItem("agentrix_pending_handoff");
+        if (!raw) return;
+        applyIncomingHandoff(JSON.parse(raw) as IncomingHandoffEvent);
+      } catch {
+        localStorage.removeItem("agentrix_pending_handoff");
+      }
+    };
+
+    const onIncomingHandoff = (event: Event) => {
+      applyIncomingHandoff((event as CustomEvent<IncomingHandoffEvent>).detail);
+    };
+
+    consumePendingHandoff();
+    window.addEventListener("agentrix:handoff-incoming", onIncomingHandoff as EventListener);
+    return () => window.removeEventListener("agentrix:handoff-incoming", onIncomingHandoff as EventListener);
+  }, [applyIncomingHandoff]);
 
   const serializeMessageForModel = useCallback(
     (content: string, attachments: ChatAttachment[] = []) => {

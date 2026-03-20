@@ -200,9 +200,8 @@ export function ConnectExistingScreen() {
 
   const handleFinish = useCallback(() => {
     setOnboardingComplete();
-    // Navigate directly to AgentConsole — Telegram binding can be set up later
     try {
-      navigation.navigate('AgentConsole');
+      navigation.navigate('AgentChat');
     } catch (_) {
       // In onboarding context: setOnboardingComplete() triggers RootNavigator to show Main
     }

@@ -72,7 +72,9 @@ let _presenceConnected = false;
 export type PresenceEventName =
   | "presence:device_online"
   | "presence:device_offline"
+  | "handoff:request"
   | "handoff:initiated"
+  | "handoff:accepted"
   | "handoff:accept_ok"
   | "handoff:accept_error"
   | "handoff:rejected"
@@ -164,7 +166,9 @@ function connectPresence(token: string) {
   // Event routing
   _presenceSocket.on("presence:device_online", (data) => _presenceHandlers.onDeviceOnline?.(data));
   _presenceSocket.on("presence:device_offline", (data) => _presenceHandlers.onDeviceOffline?.(data?.deviceId));
+  _presenceSocket.on("handoff:request", (data) => _presenceHandlers.onHandoffInitiated?.(data));
   _presenceSocket.on("handoff:initiated", (data) => _presenceHandlers.onHandoffInitiated?.(data));
+  _presenceSocket.on("handoff:accepted", (data) => _presenceHandlers.onHandoffAccepted?.(data));
   _presenceSocket.on("handoff:accept_ok", (data) => _presenceHandlers.onHandoffAccepted?.(data));
   _presenceSocket.on("timeline:new_event", (data) => _presenceHandlers.onTimelineEvent?.(data));
   _presenceSocket.on("approval:new", (data) => _presenceHandlers.onApprovalNew?.(data));

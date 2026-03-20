@@ -462,15 +462,17 @@ pub fn run() {
             }
 
             // ── System Tray ──────────────────────────────────────
-            let show_hide = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
-            let new_chat  = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
-            let settings  = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
-            let quit      = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
+            let show_hide  = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
+            let new_chat   = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
+            let voice_chat = MenuItemBuilder::with_id("voice_chat", "?? Voice Chat (Ctrl+Shift+V)").build(app)?;
+            let settings   = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            let quit       = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show_hide)
                 .separator()
                 .item(&new_chat)
+                .item(&voice_chat)
                 .item(&settings)
                 .separator()
                 .item(&quit)
@@ -511,6 +513,15 @@ pub fn run() {
                                 let _ = commands::open_chat_panel(app_handle.clone());
                             }
                         }
+                        "voice_chat" => {
+                            // Open chat panel and trigger voice mode
+                            let _ = commands::open_chat_panel(app_handle.clone());
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:voice-activate'))");
+                            }
+                        }
                         "settings" => {
                             if let Some(win) = app_handle.get_webview_window("chat-panel") {
                                 let _ = win.show();
@@ -526,9 +537,27 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // ── Global Shortcut: Ctrl+Shift+V → Voice Wake ─────────
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let app_handle = app.handle().clone();
+                let _ = app.global_shortcut().on_shortcut("ctrl+shift+v", move |_app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        let _ = commands::open_chat_panel(app_handle.clone());
+                        if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                            let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:voice-activate'))");
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Agentrix Desktop");
 }
+
+
 

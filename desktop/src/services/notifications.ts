@@ -94,3 +94,32 @@ async function fireOsNotification(title: string, body: string) {
     }
   }
 }
+
+/**
+ * Add a task-completion notification that opens Spotlight when clicked.
+ * Used by agent background tasks finishing their work.
+ */
+export function addTaskCompleteNotification(title: string, body: string, resultText?: string) {
+  addNotification("task", title, body, {
+    label: "View in Spotlight",
+    event: "agentrix:open-spotlight-with-text",
+    payload: { text: resultText || body },
+  });
+}
+
+// Wire notification action clicks to open Spotlight
+if (typeof window !== "undefined") {
+  window.addEventListener("agentrix:notification-action", async (e) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail?.event === "agentrix:open-spotlight-with-text") {
+      try {
+        const text = detail?.payload?.text;
+        if (typeof text === "string" && text.trim()) {
+          localStorage.setItem("agentrix_spotlight_seed_text", text);
+        }
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("desktop_bridge_open_spotlight");
+      } catch {}
+    }
+  });
+}

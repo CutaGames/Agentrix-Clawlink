@@ -164,7 +164,7 @@ export function FeedScreen() {
     const { type, referenceId, referenceName } = post;
     if (type === 'skill_share' || type === 'install_success') {
       if (referenceId) {
-        (navigation as any).navigate('Explore', {
+        (navigation as any).navigate('Discover', {
           screen: 'SkillDetail',
           params: { skillId: referenceId, skillName: referenceName ?? 'Skill' },
         });
@@ -172,7 +172,7 @@ export function FeedScreen() {
     } else if (type === 'agent_deploy' || type === 'conversation_highlight') {
       (navigation as any).navigate('Agent', { screen: 'AgentChat' });
     } else if (type === 'task_complete') {
-      (navigation as any).navigate('Explore', { screen: 'TaskMarket' });
+      (navigation as any).navigate('Discover', { screen: 'TaskMarket' });
     } else if (type === 'workflow_result') {
       (navigation as any).navigate('Agent', { screen: 'WorkflowList' });
     }

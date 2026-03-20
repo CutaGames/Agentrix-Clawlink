@@ -69,8 +69,34 @@ export interface MobileDesktopState {
   serverTime: string;
 }
 
+export interface MobileDesktopClipboardSnapshot {
+  deviceId: string;
+  platform: string;
+  text: string;
+  lastSeenAt: string;
+}
+
 export async function fetchDesktopState(): Promise<MobileDesktopState> {
   return apiFetch('/desktop-sync/state');
+}
+
+export async function fetchLatestDesktopClipboard(): Promise<MobileDesktopClipboardSnapshot | null> {
+  const state = await fetchDesktopState();
+  const candidates = (state.devices || [])
+    .filter((device) => typeof device.context?.clipboardTextPreview === 'string' && device.context.clipboardTextPreview.trim().length > 0)
+    .sort((left, right) => new Date(right.lastSeenAt).getTime() - new Date(left.lastSeenAt).getTime());
+
+  const latest = candidates[0];
+  if (!latest) {
+    return null;
+  }
+
+  return {
+    deviceId: latest.deviceId,
+    platform: latest.platform,
+    text: latest.context?.clipboardTextPreview?.trim() || '',
+    lastSeenAt: latest.lastSeenAt,
+  };
 }
 
 export async function createRemoteDesktopCommand(payload: {

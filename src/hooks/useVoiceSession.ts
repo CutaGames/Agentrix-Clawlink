@@ -11,7 +11,6 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
-import Constants from 'expo-constants';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {
   isLiveSpeechRecognitionAvailable,
@@ -20,9 +19,11 @@ import {
   type LiveSpeechController,
 } from '../services/liveSpeech.service';
 import { API_BASE } from '../config/env';
+import { resolveMobileWakeWordConfig } from '../config/wakeWord';
 import type { UploadedChatAttachment } from '../services/api';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
 import { WakeWordService } from '../services/wakeWord.service';
+import { useSettingsStore } from '../stores/settingsStore';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -101,6 +102,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const [liveListening, setLiveListening] = useState(false);
   const [liveVoiceVolume, setLiveVoiceVolume] = useState(-2);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
 
   // ── Refs ──
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
@@ -117,10 +119,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const streamedTtsStartedRef = useRef(false);
 
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
-  const picovoiceAccessKey =
-    (Constants.expoConfig?.extra as { picovoiceAccessKey?: string } | undefined)?.picovoiceAccessKey ||
-    process.env.EXPO_PUBLIC_PICOVOICE_ACCESS_KEY ||
-    '';
+  const wakeWordConfig = resolveMobileWakeWordConfig(wakeWordSettings);
 
   // Keep refs in sync
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
@@ -416,7 +415,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint, voiceMode]);
 
   useEffect(() => {
-    if (!picovoiceAccessKey || !WakeWordService.isAvailable()) {
+    if (!wakeWordConfig.enabled || !wakeWordConfig.accessKey || !WakeWordService.isAvailable()) {
       return;
     }
 
@@ -426,9 +425,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
     void (async () => {
       await wakeWord.init({
-        accessKey: picovoiceAccessKey,
-        builtInKeywords: ['picovoice'],
-        sensitivity: 0.65,
+        accessKey: wakeWordConfig.accessKey,
+        builtInKeywords: wakeWordConfig.customKeywordPaths.length > 0 ? undefined : wakeWordConfig.builtInKeywords,
+        keywordPaths: wakeWordConfig.customKeywordPaths.length > 0 ? wakeWordConfig.customKeywordPaths : undefined,
+        sensitivity: wakeWordConfig.sensitivity,
         onWakeWord: () => {
           if (cancelled) return;
           setVoiceMode(true);
@@ -452,7 +452,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       void wakeWord.release();
       wakeWordRef.current = null;
     };
-  }, [isRecording, isSpeaking, liveListening, onStopCurrentResponse, picovoiceAccessKey, startLiveSpeechInternal, stopSpeaking]);
+  }, [
+    isRecording,
+    isSpeaking,
+    liveListening,
+    onStopCurrentResponse,
+    startLiveSpeechInternal,
+    stopSpeaking,
+    wakeWordConfig.accessKey,
+    wakeWordConfig.builtInKeywords,
+    wakeWordConfig.customKeywordPaths,
+    wakeWordConfig.enabled,
+    wakeWordConfig.sensitivity,
+  ]);
 
   useEffect(() => {
     const wakeWord = wakeWordRef.current;

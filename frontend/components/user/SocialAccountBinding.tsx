@@ -57,8 +57,8 @@ export function SocialAccountBinding({ onUpdate }: SocialAccountBindingProps) {
       }
 
       if (type === 'apple') {
-        // TODO: 实现 Apple Sign In
-        showError('Apple 登录功能开发中');
+        // Apple Sign In — redirect to backend Apple OAuth entry
+        window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/auth/apple?bind=true`;
         return;
       }
 

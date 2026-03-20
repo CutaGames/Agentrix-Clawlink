@@ -1,7 +1,7 @@
 // 设置 Store
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mmkvStorage } from './mmkvStorage';
 
 type Environment = 'sandbox' | 'production';
 
@@ -10,6 +10,15 @@ export type UiComplexity = 'beginner' | 'advanced' | 'professional';
 
 /** Model ID — now a plain string to support dynamic models from backend providers */
 export type ModelId = string;
+
+export interface WakeWordSettings {
+  enabled: boolean;
+  accessKey: string;
+  builtInKeywords: string[];
+  customKeywordPaths: string[];
+  displayName: string;
+  sensitivity: number;
+}
 
 export interface ModelOption {
   id: string;
@@ -39,10 +48,8 @@ interface SettingsState {
   // Progressive UI complexity
   uiComplexity: UiComplexity;
 
-  // Onboarding checklist flags
-  onboardingDeployedAgent: boolean;
-  onboardingInstalledSkill: boolean;
-  onboardingCreatedWorkflow: boolean;
+  wakeWordConfig: WakeWordSettings;
+
   
   // 通知设置
   notificationsEnabled: boolean;
@@ -58,7 +65,8 @@ interface SettingsState {
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
   setUiComplexity: (level: UiComplexity) => void;
-  markOnboardingStep: (step: 'deployedAgent' | 'installedSkill' | 'createdWorkflow') => void;
+  setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
+  resetWakeWordConfig: () => void;
   toggleNotifications: (enabled: boolean) => void;
   toggleBiometric: (enabled: boolean) => void;
 }
@@ -67,6 +75,15 @@ const API_URLS = {
   sandbox: 'https://sandbox-api.agentrix.io',
   production: 'https://api.agentrix.io',
   local: 'http://localhost:3001/api',
+};
+
+const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
+  enabled: true,
+  accessKey: '',
+  builtInKeywords: [],
+  customKeywordPaths: [],
+  displayName: '',
+  sensitivity: 0.65,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -83,9 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 
       uiComplexity: 'beginner' as UiComplexity,
-      onboardingDeployedAgent: false,
-      onboardingInstalledSkill: false,
-      onboardingCreatedWorkflow: false,
+      wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
       
       notificationsEnabled: true,
       airdropNotifications: true,
@@ -105,15 +120,15 @@ export const useSettingsStore = create<SettingsState>()(
 
       setUiComplexity: (level) => set({ uiComplexity: level }),
 
-      markOnboardingStep: (step) => {
-        const field = {
-          deployedAgent: 'onboardingDeployedAgent',
-          installedSkill: 'onboardingInstalledSkill',
-          createdWorkflow: 'onboardingCreatedWorkflow',
-        }[step] as keyof SettingsState;
-        set({ [field]: true } as any);
-      },
-      
+      setWakeWordConfig: (patch) => set((state) => ({
+        wakeWordConfig: {
+          ...state.wakeWordConfig,
+          ...patch,
+        },
+      })),
+
+      resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
+
       toggleNotifications: (enabled) => set({ 
         notificationsEnabled: enabled,
         airdropNotifications: enabled,
@@ -125,7 +140,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'agentrix-settings-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
     }
   )
 );

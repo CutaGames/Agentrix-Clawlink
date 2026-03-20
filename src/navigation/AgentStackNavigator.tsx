@@ -7,6 +7,7 @@ import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
 import { OpenClawBindScreen } from '../screens/agent/OpenClawBindScreen';
 import { LocalConnectScreen } from '../screens/agent/LocalConnectScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
+import { SkillPackScreen } from '../screens/agent/SkillPackScreen';
 import { StoragePlanScreen } from '../screens/agent/StoragePlanScreen';
 import { AgentLogsScreen } from '../screens/agent/AgentLogsScreen';
 import { DesktopControlScreen } from '../screens/agent/DesktopControlScreen';
@@ -38,6 +39,7 @@ export function AgentStackNavigator() {
 
   return (
     <Stack.Navigator id={undefined}
+      initialRouteName="AgentChat"
       screenOptions={{
         headerStyle: { backgroundColor: colors.bgSecondary },
         headerTintColor: colors.textPrimary,
@@ -45,14 +47,15 @@ export function AgentStackNavigator() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'My Agent', zh: '我的智能体' }) }} />
-      <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: t({ en: 'Chat', zh: '对话' }) }} />
+      <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: t({ en: 'Chat', zh: '对话' }), headerShown: false }} />
+      <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'Agent Settings', zh: '智能体管理' }) }} />
       <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
       <Stack.Screen name="WearableMonitor" component={WearableMonitorScreen} options={{ title: t({ en: 'Wearable Monitor', zh: '穿戴设备监控' }) }} />
       <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: t({ en: 'Connect OpenClaw', zh: '连接 OpenClaw' }) }} />
       <Stack.Screen name="LocalConnect" component={LocalConnectScreen} options={{ title: t({ en: 'Link Local Agent', zh: '关联本地智能体' }) }} />
       <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: t({ en: 'Install Skill', zh: '安装技能' }) }} />
+      <Stack.Screen name="SkillPack" component={SkillPackScreen} options={{ title: t({ en: 'Skill Pack', zh: '技能快充' }), headerShown: false }} />
       <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: t({ en: 'Storage Plans', zh: '存储方案' }) }} />
       <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: t({ en: 'Activity Logs', zh: '活动日志' }) }} />
       <Stack.Screen name="DesktopControl" component={DesktopControlScreen} options={{ title: t({ en: 'Desktop Control', zh: '桌面控制' }) }} />

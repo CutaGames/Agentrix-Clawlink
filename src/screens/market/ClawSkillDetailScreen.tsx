@@ -24,7 +24,6 @@ import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n, type Language } from '../../stores/i18nStore';
-import { useSettingsStore } from '../../stores/settingsStore';
 import type { MarketStackParamList, ShareCardRouteParams } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
@@ -205,7 +204,6 @@ export function ClawSkillDetailScreen() {
       } else {
         Alert.alert('✅ Installed!', `${skillName} has been installed to ${activeInstance.name}!`);
       }
-      useSettingsStore.getState().markOnboardingStep('installedSkill');
     } catch (e: any) {
       const msg = e?.message || 'Install failed';
       if (msg.includes('payment') || msg.includes('balance') || msg.includes('buy') || (skill?.price && skill.price > 0)) {

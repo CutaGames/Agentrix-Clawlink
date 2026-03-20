@@ -62,6 +62,7 @@ pub struct DesktopContextResult {
 
 static BALL_POS: Mutex<Option<BallPosition>> = Mutex::new(None);
 static WORKSPACE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+static SUSPEND_CANCEL: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = Mutex::new(None);
 
 fn workspace_state_file() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
@@ -147,9 +148,18 @@ fn store_workspace_dir(path: PathBuf) -> Result<String, String> {
 }
 
 pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
+    // Cancel any pending suspend timer
+    if let Ok(mut guard) = SUSPEND_CANCEL.lock() {
+        if let Some(flag) = guard.take() {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     if let Some(win) = app.get_webview_window("chat-panel") {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
+        // Resume frontend state if it was suspended
+        let _ = win.eval("window.__agentrix_resume?.()");
         return Ok(());
     }
 
@@ -180,6 +190,27 @@ pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
 pub fn close_chat_panel(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("chat-panel") {
         win.hide().map_err(|e| e.to_string())?;
+
+        // Start 5-minute suspend timer to reclaim WebView memory
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if let Ok(mut guard) = SUSPEND_CANCEL.lock() {
+            // Cancel previous timer if any
+            if let Some(old) = guard.take() {
+                old.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            *guard = Some(cancel.clone());
+        }
+        let app_clone = app.clone();
+        let flag = cancel;
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(300)); // 5 minutes
+            if flag.load(std::sync::atomic::Ordering::Relaxed) {
+                return; // Cancelled — panel was re-opened
+            }
+            if let Some(win) = app_clone.get_webview_window("chat-panel") {
+                let _ = win.eval("window.__agentrix_suspend?.()");
+            }
+        });
     }
     Ok(())
 }
@@ -664,6 +695,18 @@ try {
 "#
 }
 
+#[cfg(target_os = "windows")]
+fn set_clipboard_text(text: &str) -> Result<(), String> {
+    let json = serde_json::to_string(text).map_err(|e| e.to_string())?;
+    let script = format!(
+        r#"
+$value = {json} | ConvertFrom-Json
+Set-Clipboard -Value $value
+"#,
+    );
+    run_powershell_script(&script).map(|_| ())
+}
+
 pub fn get_active_window() -> Result<Option<DesktopWindowInfo>, String> {
     #[cfg(target_os = "windows")]
     {
@@ -1135,4 +1178,129 @@ fn machine_key_bytes() -> Vec<u8> {
         hash[(i + 13) % 32] = hash[(i + 13) % 32].wrapping_add(b);
     }
     hash.to_vec()
+}
+
+// ─── Spotlight Mode (Sprint 5) ─────────────────────────
+
+/// Grab the currently selected text from the foreground application.
+/// Windows: simulates Ctrl+C, waits briefly, then reads clipboard.
+/// macOS: uses AppleScript to get selection.
+pub fn get_selected_text() -> Result<Option<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // Save current clipboard
+        let prev = get_clipboard_text()?;
+
+        let script = r#"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class AgentrixKeys {
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    public const byte VK_CONTROL = 0x11;
+    public const byte VK_C = 0x43;
+    public const uint KEYEVENTF_KEYUP = 0x0002;
+}
+"@;
+[AgentrixKeys]::keybd_event([AgentrixKeys]::VK_CONTROL, 0, 0, [UIntPtr]::Zero)
+[AgentrixKeys]::keybd_event([AgentrixKeys]::VK_C, 0, 0, [UIntPtr]::Zero)
+[AgentrixKeys]::keybd_event([AgentrixKeys]::VK_C, 0, [AgentrixKeys]::KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+[AgentrixKeys]::keybd_event([AgentrixKeys]::VK_CONTROL, 0, [AgentrixKeys]::KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 120
+try { Get-Clipboard -Raw -ErrorAction Stop } catch { "" }
+"#;
+        let output = run_powershell_script(script)?;
+        let text = output.trim().to_string();
+        if let Some(prev_text) = prev.as_ref() {
+            let _ = set_clipboard_text(prev_text);
+        }
+        if text.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(text));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("osascript")
+            .args(["-e", "tell application \"System Events\" to keystroke \"c\" using command down"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Ok(None);
+        }
+        std::thread::sleep(Duration::from_millis(120));
+        let clip = Command::new("pbpaste")
+            .output()
+            .map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&clip.stdout).trim().to_string();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(text));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Ok(None)
+    }
+}
+
+/// Open (or show) the Spotlight window. Creates it if it doesn't exist.
+pub fn open_spotlight(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("spotlight") {
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().map_err(|e| e.to_string())?;
+        // Notify frontend to re-focus input
+        let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:spotlight-focus'))");
+        return Ok(());
+    }
+
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        // Center on primary monitor
+        let (cx, cy) = if let Ok(monitors) = app_clone.available_monitors() {
+            if let Some(m) = monitors.first() {
+                let mx = m.position().x as f64;
+                let my = m.position().y as f64;
+                let mw = m.size().width as f64;
+                let mh = m.size().height as f64;
+                (mx + (mw - 600.0) / 2.0, my + mh * 0.28)
+            } else {
+                (400.0, 200.0)
+            }
+        } else {
+            (400.0, 200.0)
+        };
+
+        if let Ok(win) = WebviewWindowBuilder::new(
+            &app_clone,
+            "spotlight",
+            WebviewUrl::App("index.html".into()),
+        )
+        .title("Agentrix Spotlight")
+        .inner_size(600.0, 400.0)
+        .min_inner_size(400.0, 60.0)
+        .position(cx, cy)
+        .decorations(false)
+        .always_on_top(true)
+        .transparent(true)
+        .visible(true)
+        .drag_and_drop(true)
+        .build()
+        {
+            #[cfg(target_os = "windows")]
+            crate::grant_webview2_permissions(&win);
+        }
+    });
+
+    Ok(())
+}
+
+/// Hide the Spotlight window.
+pub fn close_spotlight(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("spotlight") {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

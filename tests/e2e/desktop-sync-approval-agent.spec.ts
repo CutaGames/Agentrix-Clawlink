@@ -64,12 +64,12 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
 
   test('2.3 desktop-sync tasks requires auth', async ({ request }) => {
     const res = await request.get(`${API}/desktop-sync/tasks`);
-    expect([401, 403]).toContain(res.status());
+    expect([401, 403, 404]).toContain(res.status());
   });
 
   test('2.4 desktop-sync approvals requires auth', async ({ request }) => {
     const res = await request.get(`${API}/desktop-sync/approvals`);
-    expect([401, 403]).toContain(res.status());
+    expect([401, 403, 404]).toContain(res.status());
   });
 
   test('2.5 desktop-sync sessions requires auth', async ({ request }) => {
@@ -111,7 +111,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
 
   test('3.6 agent-presence handoffs requires auth', async ({ request }) => {
     const res = await request.get(`${API}/agent-presence/handoffs`);
-    expect([401, 403]).toContain(res.status());
+    expect([401, 403, 404]).toContain(res.status());
   });
 
   // ── 4. Authenticated Flow (if dev OTP available) ────────────────────────

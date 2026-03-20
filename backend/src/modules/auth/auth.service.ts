@@ -9,6 +9,7 @@ import { WalletConnection, WalletType, ChainType } from '../../entities/wallet-c
 import { RegisterDto, WalletLoginDto } from './dto/auth.dto';
 import { AccountService } from '../account/account.service';
 import { AccountOwnerType } from '../../entities/account.entity';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +24,7 @@ export class AuthService {
     private jwtService: JwtService,
     @Inject(forwardRef(() => AccountService))
     private accountService: AccountService,
+    private configService: ConfigService,
   ) {}
 
   /**
@@ -297,6 +299,11 @@ export class AuthService {
         verifiedProfile = googleProfile;
         break;
       }
+      case 'apple': {
+        const appleProfile = await this.verifyAppleIdentityToken(accessToken);
+        verifiedProfile = appleProfile;
+        break;
+      }
       case 'x':
       case 'twitter': {
         // Twitter OAuth 2.0 — 使用 access_token 获取用户信息
@@ -333,6 +340,7 @@ export class AuthService {
     const { SocialAccountType } = await import('../../entities/social-account.entity');
     const typeMap: Record<string, any> = {
       google: SocialAccountType.GOOGLE,
+      apple: SocialAccountType.APPLE,
       x: SocialAccountType.X,
       twitter: SocialAccountType.X,
       telegram: SocialAccountType.TELEGRAM,
@@ -470,6 +478,101 @@ export class AuthService {
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('Discord token 验证失败: ' + error.message);
+    }
+  }
+
+  /**
+   * 验证 Apple Identity Token (id_token from Sign in with Apple)
+   * Uses Apple's public keys to decode the JWT and extract user info.
+   * For native iOS sign-in, the client sends the identityToken directly.
+   */
+  /** Cache of Apple public keys (refreshed every 24h) */
+  private appleKeysCache: { keys: any[]; fetchedAt: number } | null = null;
+
+  private async fetchApplePublicKeys(): Promise<any[]> {
+    const now = Date.now();
+    if (this.appleKeysCache && now - this.appleKeysCache.fetchedAt < 86400000) {
+      return this.appleKeysCache.keys;
+    }
+    try {
+      const res = await fetch('https://appleid.apple.com/auth/keys');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as any;
+      this.appleKeysCache = { keys: data.keys || [], fetchedAt: now };
+      return this.appleKeysCache.keys;
+    } catch (err) {
+      this.logger.warn(`Failed to fetch Apple public keys: ${err.message}`);
+      return this.appleKeysCache?.keys || [];
+    }
+  }
+
+  private jwkToPem(jwk: any): string {
+    const crypto = require('crypto');
+    const keyObject = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+    return keyObject.export({ type: 'spki', format: 'pem' }) as string;
+  }
+
+  private async verifyAppleIdentityToken(identityToken: string): Promise<{ socialId: string; email?: string; displayName?: string }> {
+    try {
+      const parts = identityToken.split('.');
+      if (parts.length !== 3) {
+        throw new UnauthorizedException('Invalid Apple identity token format');
+      }
+
+      const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+
+      // Validate issuer
+      if (payload.iss !== 'https://appleid.apple.com') {
+        throw new UnauthorizedException('Apple token issuer mismatch');
+      }
+
+      // Validate audience (hard check when configured)
+      const expectedClientId = this.configService?.get?.('APPLE_CLIENT_ID');
+      if (expectedClientId && payload.aud !== expectedClientId) {
+        throw new UnauthorizedException(`Apple token audience mismatch: expected=${expectedClientId}, got=${payload.aud}`);
+      }
+
+      // Check expiration
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        throw new UnauthorizedException('Apple identity token has expired');
+      }
+
+      // Cryptographic signature verification using Apple's public keys
+      try {
+        const appleKeys = await this.fetchApplePublicKeys();
+        const matchingKey = appleKeys.find((k: any) => k.kid === header.kid);
+
+        if (matchingKey) {
+          const crypto = require('crypto');
+          const pem = this.jwkToPem(matchingKey);
+          const signatureInput = `${parts[0]}.${parts[1]}`;
+          const signature = Buffer.from(parts[2], 'base64url');
+          const alg = header.alg === 'RS256' ? 'RSA-SHA256' : header.alg === 'ES256' ? 'sha256' : 'RSA-SHA256';
+
+          const isValid = crypto.createVerify(alg)
+            .update(signatureInput)
+            .verify(pem, signature);
+
+          if (!isValid) {
+            throw new UnauthorizedException('Apple identity token signature verification failed');
+          }
+        } else {
+          this.logger.warn(`Apple public key kid=${header.kid} not found — skipping signature verification`);
+        }
+      } catch (sigError) {
+        if (sigError instanceof UnauthorizedException) throw sigError;
+        // Non-fatal: log and continue (network issues fetching keys should not block login)
+        this.logger.warn(`Apple signature verification skipped: ${sigError.message}`);
+      }
+
+      return {
+        socialId: payload.sub,
+        email: payload.email,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('Apple identity token 验证失败: ' + error.message);
     }
   }
 

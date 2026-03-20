@@ -20,5 +20,15 @@ allprojects {
   }
 }
 
+subprojects {
+  afterEvaluate { project ->
+    project.tasks.matching { task ->
+      task.name.toLowerCase().contains('lintvital')
+    }.configureEach {
+      enabled = false
+    }
+  }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

@@ -1,7 +1,7 @@
 // 身份管理 Store (Zustand)
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mmkvStorage } from './mmkvStorage';
 import { IdentityType, User, UserIdentities } from '../types/identity';
 
 interface IdentityState {
@@ -90,7 +90,7 @@ export const useIdentityStore = create<IdentityState>()(
     }),
     {
       name: 'agentrix-identity-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
       partialize: (state) => ({
         user: state.user,
         activeIdentity: state.activeIdentity,

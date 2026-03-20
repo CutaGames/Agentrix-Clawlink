@@ -41,6 +41,7 @@ let _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let _token: string | null = null;
 let _deviceId: string = "";
 let _connected = false;
+let _clipboardSyncOutListener: EventListener | null = null;
 
 function getDeviceId(): string {
   if (_deviceId) return _deviceId;
@@ -61,10 +62,28 @@ export function initSessionSync(token: string, handlers: SyncEventHandler) {
   _token = token;
   _handlers = handlers;
   connect();
+
+  // Forward local clipboard changes to other devices via socket
+  if (_clipboardSyncOutListener) {
+    window.removeEventListener("agentrix:clipboard-sync-out", _clipboardSyncOutListener);
+  }
+  _clipboardSyncOutListener = ((e: CustomEvent) => {
+    send("clipboard:sync", {
+      deviceId: getDeviceId(),
+      deviceType: "desktop",
+      text: e.detail?.text,
+      timestamp: e.detail?.timestamp || Date.now(),
+    });
+  }) as EventListener;
+  window.addEventListener("agentrix:clipboard-sync-out", _clipboardSyncOutListener);
 }
 
 export function destroySessionSync() {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+  if (_clipboardSyncOutListener) {
+    window.removeEventListener("agentrix:clipboard-sync-out", _clipboardSyncOutListener);
+    _clipboardSyncOutListener = null;
+  }
   if (_socket) {
     _socket.disconnect();
     _socket = null;
@@ -108,6 +127,17 @@ function connect() {
 
   _socket.on("session:list:res", (data) => {
     handleMessage({ event: "session:list:res", data });
+  });
+
+  // Cross-device clipboard sync: receive clipboard from other devices
+  _socket.on("clipboard:synced", (data) => {
+    if (data?.deviceId !== getDeviceId() && data?.text) {
+      window.dispatchEvent(
+        new CustomEvent("agentrix:clipboard-sync-in", {
+          detail: { text: data.text, timestamp: data.timestamp || Date.now() },
+        }),
+      );
+    }
   });
 
   _socket.onAny((event, data) => {

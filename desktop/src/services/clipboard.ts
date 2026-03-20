@@ -28,20 +28,47 @@ export function startClipboardWatch() {
       const text = await readClipboard();
       if (text && text !== _lastClipText && text.trim().length >= 2) {
         _lastClipText = text;
+        const capture: ClipboardCapture = { text: text.slice(0, 2000), timestamp: Date.now() };
         window.dispatchEvent(
           new CustomEvent<ClipboardCapture>("agentrix:clipboard-capture", {
-            detail: { text: text.slice(0, 2000), timestamp: Date.now() },
+            detail: capture,
           }),
+        );
+        // Cross-device clipboard sync: forward to backend via socket event
+        window.dispatchEvent(
+          new CustomEvent("agentrix:clipboard-sync-out", { detail: capture }),
         );
       }
     } catch { /* clipboard read failed, skip */ }
   }, 2000);
+
+  // Listen for clipboard arriving from other devices
+  window.addEventListener("agentrix:clipboard-sync-in", _handleRemoteClip as EventListener);
+}
+
+function _handleRemoteClip(e: CustomEvent<ClipboardCapture>) {
+  const { text } = e.detail;
+  if (text && text !== _lastClipText) {
+    _lastClipText = text;
+    _lastRemoteClip = { text, timestamp: Date.now() };
+    window.dispatchEvent(
+      new CustomEvent("agentrix:clipboard-remote", { detail: _lastRemoteClip }),
+    );
+  }
+}
+
+let _lastRemoteClip: ClipboardCapture | null = null;
+
+/** Get the last clipboard content received from another device */
+export function getRemoteClipboard(): ClipboardCapture | null {
+  return _lastRemoteClip;
 }
 
 /** Stop watching clipboard */
 export function stopClipboardWatch() {
   _polling = false;
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  window.removeEventListener("agentrix:clipboard-sync-in", _handleRemoteClip as EventListener);
 }
 
 async function readClipboard(): Promise<string> {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
+import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
 
 interface ModelOption {
   id: string;
@@ -25,8 +26,23 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("agentrix_theme") as "dark" | "light") || "dark");
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "downloading" | "up-to-date" | "error">("idle");
   const [updateVersion, setUpdateVersion] = useState("");
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+  const [wakeWordAccessKey, setWakeWordAccessKey] = useState("");
+  const [wakeWordBuiltInKeyword, setWakeWordBuiltInKeyword] = useState("picovoice");
+  const [wakeWordCustomKeywordPath, setWakeWordCustomKeywordPath] = useState("");
+  const [wakeWordDisplayName, setWakeWordDisplayName] = useState("Picovoice");
+  const [wakeWordSensitivity, setWakeWordSensitivity] = useState("0.65");
+  const [wakeWordStatus, setWakeWordStatus] = useState("");
 
   useEffect(() => {
+    const config = readDesktopWakeWordConfig();
+    setWakeWordEnabled(config.enabled);
+    setWakeWordAccessKey(config.accessKey);
+    setWakeWordBuiltInKeyword(config.builtInKeyword);
+    setWakeWordCustomKeywordPath(config.customKeywordPath);
+    setWakeWordDisplayName(config.displayName);
+    setWakeWordSensitivity(String(config.sensitivity));
+
     getWorkspaceDir()
       .then((dir) => {
         setWorkspaceDir(dir);
@@ -117,6 +133,30 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
     }
   }, []);
 
+  const handleSaveWakeWord = () => {
+    const saved = saveDesktopWakeWordConfig({
+      enabled: wakeWordEnabled,
+      accessKey: wakeWordAccessKey,
+      builtInKeyword: wakeWordBuiltInKeyword,
+      customKeywordPath: wakeWordCustomKeywordPath,
+      displayName: wakeWordDisplayName,
+      sensitivity: Number(wakeWordSensitivity) || 0.65,
+    });
+    setWakeWordSensitivity(String(saved.sensitivity));
+    setWakeWordStatus(saved.accessKey ? `Saved. Active keyword: ${saved.displayName}` : "Saved. Add an access key to enable wake-word listening.");
+  };
+
+  const handleResetWakeWord = () => {
+    const reset = resetDesktopWakeWordConfig();
+    setWakeWordEnabled(reset.enabled);
+    setWakeWordAccessKey(reset.accessKey);
+    setWakeWordBuiltInKeyword(reset.builtInKeyword);
+    setWakeWordCustomKeywordPath(reset.customKeywordPath);
+    setWakeWordDisplayName(reset.displayName);
+    setWakeWordSensitivity(String(reset.sensitivity));
+    setWakeWordStatus("Reset. Runtime config now falls back to packaged env/window defaults.");
+  };
+
   return (
     <div style={overlay} onClick={onClose}>
       <div style={panel} onClick={(e) => e.stopPropagation()}>
@@ -143,6 +183,59 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
             value={ttsEnabled}
             onChange={onTtsToggle}
           />
+        </div>
+
+        <div style={section}>
+          <div style={sectionTitle}>Wake Word</div>
+          <ToggleRow
+            label="Enable wake-word listening"
+            value={wakeWordEnabled}
+            onChange={setWakeWordEnabled}
+          />
+          <div style={fieldStack}>
+            <input
+              value={wakeWordAccessKey}
+              onChange={(event) => setWakeWordAccessKey(event.target.value)}
+              placeholder="Picovoice access key"
+              style={workspaceInputStyle}
+            />
+            <input
+              value={wakeWordDisplayName}
+              onChange={(event) => setWakeWordDisplayName(event.target.value)}
+              placeholder="Wake-word label, e.g. Hey Agentrix"
+              style={workspaceInputStyle}
+            />
+            <input
+              value={wakeWordBuiltInKeyword}
+              onChange={(event) => setWakeWordBuiltInKeyword(event.target.value)}
+              placeholder="Built-in keyword"
+              style={workspaceInputStyle}
+            />
+            <input
+              value={wakeWordCustomKeywordPath}
+              onChange={(event) => setWakeWordCustomKeywordPath(event.target.value)}
+              placeholder="Custom .ppn path (takes priority when filled)"
+              style={workspaceInputStyle}
+            />
+            <input
+              value={wakeWordSensitivity}
+              onChange={(event) => setWakeWordSensitivity(event.target.value)}
+              placeholder="0.65"
+              style={workspaceInputStyle}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8, paddingTop: 8 }}>
+            <button onClick={handleSaveWakeWord} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", flex: 1 }}>
+              Save Wake Word
+            </button>
+            <button onClick={handleResetWakeWord} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", flex: 1 }}>
+              Reset
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", paddingTop: 6 }}>
+            Fill a custom `.ppn` path to use your own wake word. Leave it empty to use the built-in keyword.
+          </div>
+          {wakeWordStatus ? <div style={{ fontSize: 11, color: "var(--accent-light)", paddingTop: 4 }}>{wakeWordStatus}</div> : null}
         </div>
 
         {/* Appearance */}
@@ -393,6 +486,12 @@ const kbdStyle: CSSProperties = {
   fontSize: 11,
   fontFamily: "monospace",
   color: "var(--accent-light)",
+};
+
+const fieldStack: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  paddingTop: 8,
 };
 
 const workspaceInputStyle: CSSProperties = {

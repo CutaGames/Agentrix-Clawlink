@@ -4,6 +4,7 @@ import FloatingBall from "./components/FloatingBall";
 import ChatPanel from "./components/ChatPanel";
 import LoginPanel from "./components/LoginPanel";
 import OnboardingPanel from "./components/OnboardingPanel";
+import SpotlightPanel from "./components/SpotlightPanel";
 import agentrixLogo from "./assets/agentrix-logo.png";
 import { useAuthStore } from "./services/store";
 import { initSessionSync, destroySessionSync } from "./services/sessionSync";
@@ -13,6 +14,8 @@ import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
 import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
 import { DesktopWakeWordService } from "./services/wakeWord";
+import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/wakeWordConfig";
+import "./services/suspend"; // Register __agentrix_suspend / __agentrix_resume on window
 
 // Determine view from Tauri window label without importing @tauri-apps/api/window
 // (static import can crash if Tauri internals aren't ready)
@@ -31,7 +34,8 @@ export default function App() {
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
-  const desktopWakeWordKey = (window as any).__AGENTRIX_WAKE_WORD_KEY__ || import.meta.env.VITE_PICOVOICE_ACCESS_KEY || "";
+  const [wakeWordRevision, setWakeWordRevision] = useState(0);
+  const desktopWakeWordConfig = readDesktopWakeWordConfig();
 
   useEffect(() => {
     loadToken();
@@ -41,6 +45,12 @@ export default function App() {
       document.documentElement.setAttribute("data-theme", saved);
     }
   }, [loadToken]);
+
+  useEffect(() => {
+    const handleWakeWordConfigChange = () => setWakeWordRevision((prev) => prev + 1);
+    window.addEventListener(DESKTOP_WAKE_WORD_EVENT, handleWakeWordConfigChange);
+    return () => window.removeEventListener(DESKTOP_WAKE_WORD_EVENT, handleWakeWordConfigChange);
+  }, []);
 
   const loggedIn = !!token || isGuest;
 
@@ -78,7 +88,9 @@ export default function App() {
       // Agent Presence realtime (cross-device sync via /presence namespace)
       initPresenceSocket(token, {
         onHandoffInitiated: (event) => {
+          localStorage.setItem("agentrix_pending_handoff", JSON.stringify(event));
           window.dispatchEvent(new CustomEvent("agentrix:handoff-incoming", { detail: event }));
+          void import("@tauri-apps/api/core").then(({ invoke }) => invoke("desktop_bridge_open_chat_panel")).catch(() => {});
         },
         onTimelineEvent: (event) => {
           window.dispatchEvent(new CustomEvent("agentrix:timeline-event", { detail: event }));
@@ -154,6 +166,19 @@ export default function App() {
             setPanelOpen((prev) => !prev);
           }
         });
+        // Register Ctrl/Cmd+K for Spotlight mode
+        await register("CmdOrCtrl+K", (event) => {
+          if (event.state === "Pressed") {
+            (async () => {
+              try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                await invoke("desktop_bridge_open_spotlight");
+              } catch (err) {
+                console.error("open_spotlight failed:", err);
+              }
+            })();
+          }
+        });
         cleanup = () => {
           unregisterAll();
         };
@@ -165,7 +190,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (windowLabel === "floating-ball" || !loggedIn || !desktopWakeWordKey || !DesktopWakeWordService.isAvailable()) {
+    if (
+      windowLabel === "floating-ball" ||
+      !loggedIn ||
+      !desktopWakeWordConfig.enabled ||
+      !desktopWakeWordConfig.accessKey ||
+      !DesktopWakeWordService.isAvailable()
+    ) {
       return;
     }
 
@@ -189,9 +220,10 @@ export default function App() {
     };
 
     void wakeWord.init({
-      accessKey: desktopWakeWordKey,
-      builtInKeyword: "picovoice",
-      sensitivity: 0.65,
+      accessKey: desktopWakeWordConfig.accessKey,
+      builtInKeyword: desktopWakeWordConfig.customKeywordPath ? undefined : desktopWakeWordConfig.builtInKeyword,
+      customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
+      sensitivity: desktopWakeWordConfig.sensitivity,
       onWakeWord: () => {
         void triggerVoiceFlow();
       },
@@ -201,7 +233,16 @@ export default function App() {
       disposed = true;
       void wakeWord.release();
     };
-  }, [desktopWakeWordKey, loggedIn, windowLabel]);
+  }, [
+    desktopWakeWordConfig.accessKey,
+    desktopWakeWordConfig.builtInKeyword,
+    desktopWakeWordConfig.customKeywordPath,
+    desktopWakeWordConfig.enabled,
+    desktopWakeWordConfig.sensitivity,
+    loggedIn,
+    wakeWordRevision,
+    windowLabel,
+  ]);
 
   // Determine which view based on Tauri window label
   // DEBUG: set document.title to show which branch
@@ -297,6 +338,11 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  // Spotlight window — minimal search/chat overlay
+  if (windowLabel === "spotlight") {
+    return <SpotlightPanel />;
   }
 
   // Chat panel window (opened by Tauri command)

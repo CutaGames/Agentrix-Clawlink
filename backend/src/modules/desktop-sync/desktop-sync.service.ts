@@ -357,6 +357,16 @@ export class DesktopSyncService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
+  async listOnlineDevices(userId: string) {
+    const entities = await this.devicePresenceRepo.find({
+      where: { userId },
+      order: { lastSeenAt: 'DESC' },
+    });
+    return entities
+      .map((e) => this.devicePresenceToRecord(e))
+      .filter((d) => d.isOnline);
+  }
+
   private devicePresenceToRecord(e: DesktopDevicePresence) {
     const lastSeenAt = e.lastSeenAt instanceof Date ? e.lastSeenAt.toISOString() : String(e.lastSeenAt);
     const isOnline = (Date.now() - new Date(lastSeenAt).getTime()) < DEVICE_ONLINE_THRESHOLD_MS;

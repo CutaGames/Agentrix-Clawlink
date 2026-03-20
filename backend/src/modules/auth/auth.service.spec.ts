@@ -16,6 +16,7 @@ jest.mock('ethers', () => ({
   isAddress: jest.fn().mockReturnValue(true),
 }));
 
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { User, UserRole } from '../../entities/user.entity';
 import { WalletConnection, ChainType } from '../../entities/wallet-connection.entity';
@@ -52,6 +53,15 @@ const mockAccountService = {
   createUserDefaultAccount: jest.fn().mockResolvedValue({}),
 };
 
+const mockConfigService = {
+  get: jest.fn().mockImplementation((key: string) => {
+    const config: Record<string, string> = {
+      APPLE_CLIENT_ID: 'com.agentrix.app',
+    };
+    return config[key] || undefined;
+  }),
+};
+
 // ── Test Suite ────────────────────────────────────────────────────────────────
 
 describe('AuthService', () => {
@@ -70,6 +80,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(WalletConnection), useValue: walletRepo },
         { provide: JwtService, useValue: mockJwtService },
         { provide: AccountService, useValue: mockAccountService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -359,6 +370,136 @@ describe('AuthService', () => {
       });
 
       expect(result.twitterId).toBe('tw-123');
+    });
+  });
+
+  // ── validateAppleUser ───────────────────────────────────────────────────
+
+  describe('validateAppleUser', () => {
+    it('should create new user for apple login', async () => {
+      userRepo.findOne.mockResolvedValue(null);
+      userRepo.create.mockImplementation((dto: any) => ({ id: 'apple-user', ...dto }));
+      userRepo.save.mockImplementation((u: any) => Promise.resolve(u));
+
+      const result = await service.validateAppleUser({
+        appleId: 'apple-001',
+        email: 'apple@icloud.com',
+        firstName: 'John',
+        lastName: 'Doe',
+      });
+
+      expect(result.appleId).toBe('apple-001');
+      expect(result.email).toBe('apple@icloud.com');
+      expect(userRepo.save).toHaveBeenCalled();
+    });
+
+    it('should update existing user with appleId if missing', async () => {
+      const existing = {
+        id: 'e1',
+        email: 'apple@icloud.com',
+        appleId: null,
+        nickname: null,
+      };
+      userRepo.findOne.mockResolvedValue(existing);
+      userRepo.save.mockImplementation((u: any) => Promise.resolve(u));
+
+      const result = await service.validateAppleUser({
+        appleId: 'apple-002',
+        email: 'apple@icloud.com',
+        firstName: 'Jane',
+        lastName: 'Doe',
+      });
+
+      expect(existing.appleId).toBe('apple-002');
+      expect(existing.nickname).toBe('Jane Doe');
+      expect(userRepo.save).toHaveBeenCalled();
+    });
+
+    it('should not overwrite existing nickname', async () => {
+      const existing = {
+        id: 'e2',
+        email: 'apple@icloud.com',
+        appleId: null,
+        nickname: 'Existing Name',
+      };
+      userRepo.findOne.mockResolvedValue(existing);
+      userRepo.save.mockImplementation((u: any) => Promise.resolve(u));
+
+      await service.validateAppleUser({
+        appleId: 'apple-003',
+        email: 'apple@icloud.com',
+        firstName: 'New',
+        lastName: 'Name',
+      });
+
+      expect(existing.nickname).toBe('Existing Name');
+    });
+  });
+
+  // ── socialTokenLogin (Apple) ────────────────────────────────────────────
+
+  describe('socialTokenLogin — Apple', () => {
+    // Helper to create a fake Apple identity token JWT
+    function fakeAppleJwt(payload: Record<string, any>): string {
+      const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'test' })).toString('base64url');
+      const body = Buffer.from(JSON.stringify({
+        iss: 'https://appleid.apple.com',
+        aud: 'com.agentrix.app',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        sub: 'apple-sub-001',
+        email: 'native@apple.com',
+        ...payload,
+      })).toString('base64url');
+      const sig = Buffer.from('fake-signature').toString('base64url');
+      return `${header}.${body}.${sig}`;
+    }
+
+    it('should login with valid Apple identity token (new user)', async () => {
+      userRepo.findOne.mockResolvedValue(null); // no existing user
+      userRepo.create.mockImplementation((dto: any) => ({ id: 'apple-new', ...dto }));
+      userRepo.save.mockImplementation((u: any) => Promise.resolve({ ...u, id: 'apple-new' }));
+      walletRepo.findOne.mockResolvedValue(null);
+
+      const token = fakeAppleJwt({ sub: 'apple-sub-001', email: 'native@apple.com' });
+      const result = await service.socialTokenLogin({
+        provider: 'apple',
+        accessToken: token,
+      });
+
+      expect(result.access_token).toBe('mock-jwt-token');
+      expect(result.user).toBeDefined();
+    });
+
+    it('should reject expired Apple identity token', async () => {
+      const token = fakeAppleJwt({
+        sub: 'apple-sub-expired',
+        exp: Math.floor(Date.now() / 1000) - 3600, // expired 1 hour ago
+      });
+
+      await expect(
+        service.socialTokenLogin({ provider: 'apple', accessToken: token }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject token with wrong issuer', async () => {
+      const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString('base64url');
+      const body = Buffer.from(JSON.stringify({
+        iss: 'https://evil.com',
+        sub: 'bad-sub',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })).toString('base64url');
+      const sig = Buffer.from('sig').toString('base64url');
+      const token = `${header}.${body}.${sig}`;
+
+      await expect(
+        service.socialTokenLogin({ provider: 'apple', accessToken: token }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject malformed token', async () => {
+      await expect(
+        service.socialTokenLogin({ provider: 'apple', accessToken: 'not-a-jwt' }),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

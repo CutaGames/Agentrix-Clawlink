@@ -108,7 +108,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     factory: () => Promise<T>,
     ttlSeconds: number = 3600,
   ): Promise<T> {
-    const cached = await await this.get<T>(key);
+    const cached = await this.get<T>(key);
     if (cached !== null) {
       return cached;
     }
