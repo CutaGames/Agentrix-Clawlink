@@ -110,6 +110,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const lastLiveFinalTranscriptRef = useRef('');
   const voiceModeRef = useRef(voiceMode);
   const duplexModeRef = useRef(duplexMode);
+  const liveVoiceAvailableRef = useRef(false);
   const sendingRef = useRef(false);
   const backgroundVoiceRef = useRef<BackgroundVoiceService | null>(null);
   const pendingTtsSentenceRef = useRef('');
@@ -148,7 +149,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   // ── Check live speech availability ──
   useEffect(() => {
-    setLiveVoiceAvailable(isLiveSpeechRecognitionAvailable());
+    const available = isLiveSpeechRecognitionAvailable();
+    liveVoiceAvailableRef.current = available;
+    setLiveVoiceAvailable(available);
   }, []);
 
   // ── Live Speech ──
@@ -174,35 +177,41 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   // Init AudioQueuePlayer
   useEffect(() => {
-    audioPlayerRef.current = new AudioQueuePlayer(() => {
-      setIsSpeaking(false);
-      setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
-      setSpeakingMessageId(null);
-      // Live speech restart is handled by the auto-restart effect
-      // that watches isSpeaking → false.
-    });
+    try {
+      audioPlayerRef.current = new AudioQueuePlayer(() => {
+        setIsSpeaking(false);
+        setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
+        setSpeakingMessageId(null);
+      });
+    } catch (err) {
+      console.warn('[useVoiceSession] AudioQueuePlayer init failed:', err);
+    }
     return () => {
-      audioPlayerRef.current?.stopAll();
+      try { audioPlayerRef.current?.stopAll(); } catch {}
       stopLiveSpeech(true, true);
     };
   }, [stopLiveSpeech]);
 
   useEffect(() => {
-    const service = new BackgroundVoiceService();
-    backgroundVoiceRef.current = service;
-    void service.init({
-      onTimeout: () => {
-        setDuplexMode(false);
-        setVoiceMode(false);
-        stopSpeaking();
-        stopLiveSpeech(true, true);
-      },
-    });
+    try {
+      const service = new BackgroundVoiceService();
+      backgroundVoiceRef.current = service;
+      void service.init({
+        onTimeout: () => {
+          setDuplexMode(false);
+          setVoiceMode(false);
+          stopSpeaking();
+          stopLiveSpeech(true, true);
+        },
+      });
 
-    return () => {
-      service.destroy();
-      backgroundVoiceRef.current = null;
-    };
+      return () => {
+        service.destroy();
+        backgroundVoiceRef.current = null;
+      };
+    } catch (err) {
+      console.warn('[useVoiceSession] BackgroundVoiceService init failed:', err);
+    }
   }, [stopLiveSpeech, stopSpeaking]);
 
   // voiceModeRequested sync
@@ -341,7 +350,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   // ── Live Speech Recognition (duplex) ──
 
   const startLiveSpeechInternal = useCallback(async () => {
-    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailable || !voiceModeRef.current) {
+    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailableRef.current || !voiceModeRef.current) {
       return;
     }
 
@@ -418,12 +427,17 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setLiveListening(false);
       setVoicePhase('idle');
     }
-  }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
+  }, [agentVoiceId, instanceName, isSpeaking, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
 
   // Duplex mode toggle → start/stop live speech
   useEffect(() => {
     if (duplexMode) {
-      void startLiveSpeechInternal();
+      // Brief delay so the wake word listener mic can be fully released by
+      // GlobalFloatingBall before we try to acquire it for duplex.
+      const timer = setTimeout(() => {
+        void startLiveSpeechInternal();
+      }, 600);
+      return () => clearTimeout(timer);
     } else {
       stopLiveSpeech(true, true);
     }
