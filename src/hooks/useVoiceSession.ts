@@ -81,6 +81,8 @@ export interface UseVoiceSessionReturn {
   resetVoicePhaseAfterResponse: () => void;
   resumeLiveSpeech: () => void;
   speakingMessageId: string | null;
+  setVoicePhase: (phase: VoicePhase) => void;
+  setTranscriptPreview: (text: string) => void;
 }
 
 // ── Hook ───────────────────────────────────────────────────
@@ -117,13 +119,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const pendingTtsSentenceRef = useRef('');
   const streamedTtsStartedRef = useRef(false);
   const lastLiveSpeechSkipReasonRef = useRef('');
+  const startLiveSpeechInternalRef = useRef<(() => Promise<void>) | null>(null);
 
+  const isSpeakingRef = useRef(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
   // Keep refs in sync
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
   useEffect(() => { sendingRef.current = !!isSending; }, [isSending]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
 
   // ── Recording options ──
   const voiceRecordingOptions = Audio ? {
@@ -182,8 +187,17 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     try {
       audioPlayerRef.current = new AudioQueuePlayer(() => {
         setIsSpeaking(false);
+        isSpeakingRef.current = false;
         setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
         setSpeakingMessageId(null);
+        // Resume duplex listening after TTS finishes
+        if (duplexModeRef.current && voiceModeRef.current && !sendingRef.current) {
+          setTimeout(() => {
+            if (duplexModeRef.current && voiceModeRef.current && !isSpeakingRef.current) {
+              startLiveSpeechInternalRef.current?.();
+            }
+          }, 200);
+        }
       });
     } catch (err) {
       console.warn('[useVoiceSession] AudioQueuePlayer init failed:', err);
@@ -410,11 +424,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           }
           // Auto-restart
           setTimeout(() => {
-            void startLiveSpeechInternal();
+            startLiveSpeechInternalRef.current?.();
           }, 300);
         },
         onSpeechStart: () => {
-          if (isSpeaking) {
+          // Use ref to avoid stale closure
+          if (isSpeakingRef.current) {
             stopSpeaking();
           }
         },
@@ -429,7 +444,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           lastLiveFinalTranscriptRef.current = normalized;
           setTranscriptPreview(normalized);
           stopLiveSpeech(true, false);
-          if (isSpeaking) stopSpeaking();
+          // Use ref to avoid stale closure
+          if (isSpeakingRef.current) stopSpeaking();
           onStopCurrentResponse(true);
           setVoicePhase('thinking');
           setTimeout(() => {
@@ -456,16 +472,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setLiveListening(false);
       setVoicePhase('idle');
     }
-  }, [agentVoiceId, instanceName, isSpeaking, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
+  }, [agentVoiceId, instanceName, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
+
+  // Keep startLiveSpeechInternal ref in sync for callbacks
+  useEffect(() => { startLiveSpeechInternalRef.current = startLiveSpeechInternal; }, [startLiveSpeechInternal]);
 
   // Duplex mode toggle → start/stop live speech
   useEffect(() => {
     if (duplexMode) {
-      // Brief delay so the wake word listener mic can be fully released by
-      // GlobalFloatingBall before we try to acquire it for duplex.
+      // Brief delay to allow mic handoff from wake word listener
       const timer = setTimeout(() => {
         void startLiveSpeechInternal();
-      }, 600);
+      }, 300);
       return () => clearTimeout(timer);
     } else {
       stopLiveSpeech(true, true);
@@ -649,9 +667,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [duplexMode, isSpeaking, onStopCurrentResponse, startLiveSpeechInternal, startVoiceRecording, stopLiveSpeech, stopSpeaking, stopVoiceRecording]);
 
   const resumeLiveSpeech = useCallback(() => {
-    if (!duplexModeRef.current || sendingRef.current || isSpeaking || !voiceModeRef.current) return;
+    if (!duplexModeRef.current || sendingRef.current || isSpeakingRef.current || !voiceModeRef.current) return;
     void startLiveSpeechInternal();
-  }, [isSpeaking, startLiveSpeechInternal]);
+  }, [startLiveSpeechInternal]);
 
   return {
     // State
@@ -660,11 +678,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     duplexMode,
     setDuplexMode,
     voicePhase,
+    setVoicePhase,
     isRecording,
     isSpeaking,
     liveListening,
     liveVoiceVolume,
     transcriptPreview,
+    setTranscriptPreview,
     voiceInteractionMode,
     setVoiceInteractionMode,
     autoSpeak,

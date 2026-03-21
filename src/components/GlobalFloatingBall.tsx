@@ -169,8 +169,20 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
       addVoiceDiagnostic('floating-ball', 'set-active-instance', { instanceId: targetInstance.id });
     }
 
-    // Route through Root -> Main -> Agent -> AgentChat. Navigating directly to
-    // Agent here is a no-op because this component is not inside the tab navigator.
+    // Release wake word listener BEFORE navigation so the mic is fully freed
+    // before the chat screen's duplex mode tries to acquire it.
+    const listener = wakeListenerRef.current;
+    if (listener) {
+      wakeListenerRef.current = null;
+      try {
+        await listener.release();
+        addVoiceDiagnostic('floating-ball', 'listener-released');
+      } catch (releaseErr) {
+        addVoiceDiagnostic('floating-ball', 'listener-release-failed', releaseErr);
+      }
+    }
+
+    // Route through Root -> Main -> Agent -> AgentChat.
     try {
       navigation.navigate('Main', {
         screen: 'Agent',
@@ -192,18 +204,6 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
       addVoiceDiagnostic('floating-ball', 'navigate-failed', navErr);
       console.warn('[FloatingBall] Navigation failed:', navErr);
       setBallState('idle');
-    }
-
-    // Release wake word listener AFTER navigation so mic handoff is async
-    const listener = wakeListenerRef.current;
-    if (listener) {
-      wakeListenerRef.current = null;
-      try {
-        await listener.release();
-        addVoiceDiagnostic('floating-ball', 'listener-released');
-      } catch (releaseErr) {
-        addVoiceDiagnostic('floating-ball', 'listener-release-failed', releaseErr);
-      }
     }
   }, [navigation, onVoiceActivate]);
 

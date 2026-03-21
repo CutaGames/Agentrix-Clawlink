@@ -778,11 +778,13 @@ export function AgentChatScreen() {
     duplexMode,
     setDuplexMode,
     voicePhase,
+    setVoicePhase,
     isRecording,
     isSpeaking,
     liveListening,
     liveVoiceVolume,
     transcriptPreview,
+    setTranscriptPreview,
     voiceInteractionMode,
     setVoiceInteractionMode,
     autoSpeak,
@@ -1227,16 +1229,28 @@ export function AgentChatScreen() {
     try {
       const result = await apiFetch<{ instance: any }>('/openclaw/auto-provision', { method: 'POST' });
       if (result?.instance) {
-        useAuthStore.getState().addInstance({
+        const newInstance = {
           id: result.instance.id,
           name: result.instance.name || 'My Agent',
           instanceUrl: result.instance.instanceUrl || '',
-          status: 'active',
-          deployType: result.instance.deployType || 'cloud',
-        });
+          status: 'active' as const,
+          deployType: (result.instance.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
+        };
+        useAuthStore.getState().addInstance(newInstance);
+        useAuthStore.getState().setActiveInstance(newInstance.id);
         useAuthStore.getState().setOnboardingComplete();
-        // Navigate to skill pack for one-tap core skill installation
-        navigation.navigate('SkillPack');
+        // If triggered by voice activation, go straight to chat with voice mode
+        if (voiceModeRequested) {
+          navigation.replace('AgentChat', {
+            instanceId: newInstance.id,
+            instanceName: newInstance.name,
+            voiceMode: true,
+            duplexMode: true,
+          });
+        } else {
+          // Navigate to skill pack for one-tap core skill installation
+          navigation.navigate('SkillPack');
+        }
       }
     } catch (err: any) {
       // Fallback: navigate to manual deploy
@@ -1244,7 +1258,14 @@ export function AgentChatScreen() {
     } finally {
       setProvisioning(false);
     }
-  }, [provisioning, navigation]);
+  }, [provisioning, navigation, voiceModeRequested]);
+
+  // Auto-trigger provisioning when arriving from floating ball voice activation
+  useEffect(() => {
+    if (!activeInstance && !instanceId && voiceModeRequested && !provisioning) {
+      void handleAutoProvision();
+    }
+  }, [activeInstance, instanceId, voiceModeRequested, provisioning, handleAutoProvision]);
 
   // Sprint 1+2: No-instance welcome screen
   if (!activeInstance && !instanceId) {
