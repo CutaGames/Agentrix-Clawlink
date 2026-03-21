@@ -21,6 +21,7 @@ import {
 import { API_BASE } from '../config/env';
 import type { UploadedChatAttachment } from '../services/api';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
+import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -115,6 +116,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const backgroundVoiceRef = useRef<BackgroundVoiceService | null>(null);
   const pendingTtsSentenceRef = useRef('');
   const streamedTtsStartedRef = useRef(false);
+  const lastLiveSpeechSkipReasonRef = useRef('');
 
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
@@ -350,13 +352,32 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   // ── Live Speech Recognition (duplex) ──
 
   const startLiveSpeechInternal = useCallback(async () => {
-    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailableRef.current || !voiceModeRef.current) {
+    const skipReasons = [
+      !duplexModeRef.current ? 'duplex-off' : '',
+      liveSpeechRef.current ? 'already-listening' : '',
+      !liveVoiceAvailableRef.current ? 'live-voice-unavailable' : '',
+      !voiceModeRef.current ? 'voice-mode-off' : '',
+    ].filter(Boolean);
+
+    if (skipReasons.length > 0) {
+      const nextReason = skipReasons.join(',');
+      if (lastLiveSpeechSkipReasonRef.current !== nextReason) {
+        lastLiveSpeechSkipReasonRef.current = nextReason;
+        addVoiceDiagnostic('voice-session', 'live-speech-skip', {
+          reasons: skipReasons,
+          isSpeaking,
+        });
+      }
       return;
     }
+
+    lastLiveSpeechSkipReasonRef.current = '';
+    addVoiceDiagnostic('voice-session', 'live-speech-start-request', { language: voiceLanguageHint });
 
     try {
     const permission = await requestLiveSpeechPermissions();
     if (!permission?.granted) {
+      addVoiceDiagnostic('voice-session', 'live-speech-permission-denied');
       Alert.alert(
         t({ en: 'Speech Permission', zh: '语音权限' }),
         t({ en: 'Realtime voice needs microphone and speech recognition permissions.', zh: '实时语音需要麦克风和语音识别权限。' }),
@@ -370,11 +391,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       voiceLanguageHint,
       {
         onStart: () => {
+          addVoiceDiagnostic('voice-session', 'live-speech-started');
           setLiveListening(true);
           setVoicePhase('recording');
           setTranscriptPreview('');
         },
         onEnd: () => {
+          addVoiceDiagnostic('voice-session', 'live-speech-ended', {
+            manualStop: liveSpeechManualStopRef.current,
+            duplexMode: duplexModeRef.current,
+          });
           liveSpeechRef.current = null;
           setLiveListening(false);
           setLiveVoiceVolume(-2);
@@ -399,6 +425,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         onFinalResult: (transcript) => {
           const normalized = transcript.trim();
           if (!normalized || normalized === lastLiveFinalTranscriptRef.current) return;
+          addVoiceDiagnostic('voice-session', 'live-speech-final', { transcript: normalized.slice(0, 160) });
           lastLiveFinalTranscriptRef.current = normalized;
           setTranscriptPreview(normalized);
           stopLiveSpeech(true, false);
@@ -411,6 +438,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         },
         onError: (error) => {
           if (error?.error === 'aborted' || error?.error === 'no-speech') return;
+          addVoiceDiagnostic('voice-session', 'live-speech-error', error);
           setLiveListening(false);
           setVoicePhase('idle');
           setTranscriptPreview('');
@@ -422,6 +450,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       [instanceName || '', agentVoiceId || '', 'Agentrix'],
     );
     } catch (err) {
+      addVoiceDiagnostic('voice-session', 'live-speech-start-failed', err);
       console.warn('startLiveSpeechInternal failed:', err);
       liveSpeechRef.current = null;
       setLiveListening(false);

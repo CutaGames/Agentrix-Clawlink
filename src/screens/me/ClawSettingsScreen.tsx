@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import type { UiComplexity } from '../../stores/settingsStore';
 import { useI18n, type Language } from '../../stores/i18nStore';
 import { resolveMobileWakeWordConfig } from '../../config/wakeWord';
+import { clearVoiceDiagnostics, getVoiceDiagnosticsCount, getVoiceDiagnosticsText } from '../../services/voiceDiagnostics';
 
 export function ClawSettingsScreen() {
   const navigation = useNavigation();
@@ -18,6 +19,7 @@ export function ClawSettingsScreen() {
   const resetWakeWordConfig = useSettingsStore((s) => s.resetWakeWordConfig);
   const { language, setLanguage, t } = useI18n();
   const effectiveWakeWordConfig = resolveMobileWakeWordConfig(wakeWordConfig);
+  const diagnosticsCount = getVoiceDiagnosticsCount();
 
   const uiModes: { id: UiComplexity; icon: string; label: string; desc: string }[] = [
     { id: 'beginner', icon: '🌱', label: t({ en: 'Beginner', zh: '入门' }), desc: t({ en: 'Chat, basic skills, simple setup', zh: '聊天、基础技能、简化设置' }) },
@@ -37,7 +39,7 @@ export function ClawSettingsScreen() {
       title: t({ en: 'Developer', zh: '开发者' }),
       items: [
         { id: 'api', icon: '🤖', label: t({ en: 'AI Providers & Subscriptions', zh: 'AI 厂商与订阅' }), value: '' },
-        { id: 'logs', icon: '📋', label: t({ en: 'Debug Logs', zh: '调试日志' }), value: '' },
+        { id: 'logs', icon: '📋', label: t({ en: 'Debug Logs', zh: '调试日志' }), value: diagnosticsCount > 0 ? `${diagnosticsCount}` : '' },
       ],
     },
     {
@@ -221,6 +223,33 @@ export function ClawSettingsScreen() {
                 onPress={() => {
                   if (item.id === 'api') {
                     navigation.navigate('ApiKeys' as never);
+                    return;
+                  }
+                  if (item.id === 'logs') {
+                    const diagnosticsText = getVoiceDiagnosticsText();
+                    Alert.alert(
+                      t({ en: 'Debug Logs', zh: '调试日志' }),
+                      diagnosticsCount > 0
+                        ? t({ en: `${diagnosticsCount} diagnostic entries are stored locally. You can share them or clear them here.`, zh: `当前本地已保存 ${diagnosticsCount} 条诊断日志。你可以直接分享或清空。` })
+                        : t({ en: 'No diagnostic entries captured yet.', zh: '当前还没有采集到诊断日志。' }),
+                      [
+                        {
+                          text: t({ en: 'Share', zh: '分享' }),
+                          onPress: () => {
+                            void Share.share({ message: diagnosticsText });
+                          },
+                        },
+                        {
+                          text: t({ en: 'Clear', zh: '清空' }),
+                          style: 'destructive',
+                          onPress: () => {
+                            clearVoiceDiagnostics();
+                            Alert.alert(t({ en: 'Cleared', zh: '已清空' }), t({ en: 'Diagnostic logs were cleared.', zh: '诊断日志已清空。' }));
+                          },
+                        },
+                        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+                      ],
+                    );
                   }
                 }}
               >

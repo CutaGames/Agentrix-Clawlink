@@ -1,4 +1,5 @@
 import { isLiveSpeechRecognitionAvailable, requestLiveSpeechPermissions, startLiveSpeechRecognition, type LiveSpeechController } from './liveSpeech.service';
+import { addVoiceDiagnostic } from './voiceDiagnostics';
 
 export interface SpeechWakeWordConfig {
   phrases: string[];
@@ -46,6 +47,7 @@ export class SpeechWakeWordService {
       ...config,
       phrases: config.phrases.map((item) => item.trim()).filter(Boolean),
     };
+    addVoiceDiagnostic('speech-wake', 'init', { phrases: this.config.phrases, language: this.config.language });
   }
 
   async start(): Promise<void> {
@@ -53,17 +55,20 @@ export class SpeechWakeWordService {
       return;
     }
     if (!SpeechWakeWordService.isAvailable()) {
+      addVoiceDiagnostic('speech-wake', 'unavailable');
       this.config.onError?.(new Error('Speech wake word recognition unavailable'));
       return;
     }
 
     const permission = await requestLiveSpeechPermissions();
     if (!permission?.granted) {
+      addVoiceDiagnostic('speech-wake', 'permission-denied');
       this.config.onError?.(new Error('Speech wake word permission denied'));
       return;
     }
 
     this.stoppedManually = false;
+    addVoiceDiagnostic('speech-wake', 'start');
     this.startController();
   }
 
@@ -79,6 +84,7 @@ export class SpeechWakeWordService {
       {
         onStart: () => {
           this.running = true;
+          addVoiceDiagnostic('speech-wake', 'recognition-start');
         },
         onEnd: () => {
           this.controller = null;
@@ -100,6 +106,7 @@ export class SpeechWakeWordService {
           this.controller?.abort();
           this.controller = null;
           this.running = false;
+          addVoiceDiagnostic('speech-wake', 'wake-match-interim', { matched });
           onWakeWord(matched);
         },
         onFinalResult: (transcript) => {
@@ -111,12 +118,14 @@ export class SpeechWakeWordService {
           this.controller?.abort();
           this.controller = null;
           this.running = false;
+          addVoiceDiagnostic('speech-wake', 'wake-match-final', { matched });
           onWakeWord(matched);
         },
         onError: (event) => {
           if (event?.error === 'aborted' || event?.error === 'no-speech') {
             return;
           }
+          addVoiceDiagnostic('speech-wake', 'recognition-error', event);
           onError?.(new Error(event?.message || event?.error || 'Speech wake word error'));
         },
       },
@@ -133,11 +142,13 @@ export class SpeechWakeWordService {
     try { this.controller?.abort(); } catch {}
     this.controller = null;
     this.running = false;
+    addVoiceDiagnostic('speech-wake', 'stop');
   }
 
   async release(): Promise<void> {
     await this.stop();
     this.config = null;
+    addVoiceDiagnostic('speech-wake', 'release');
   }
 
   get isRunning(): boolean {
