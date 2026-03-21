@@ -29,6 +29,7 @@ import {
   ReplyStrategy,
 } from '../../entities/social.entity';
 import { TelegramBotService } from '../openclaw-connection/telegram-bot.service';
+import { ChannelRegistry } from '../agent-presence/channel/channel-registry';
 
 @ApiTags('social')
 @Controller('social')
@@ -38,6 +39,7 @@ export class SocialController {
   constructor(
     private readonly socialService: SocialService,
     private readonly telegramBotService: TelegramBotService,
+    private readonly channelRegistry: ChannelRegistry,
   ) {}
 
   // ===== Feed =====
@@ -278,23 +280,30 @@ export class SocialController {
       return updated;
     }
 
-    if (updated.platform === SocialEventPlatform.TELEGRAM) {
-      try {
+    // Send reply via the appropriate platform adapter
+    try {
+      if (updated.platform === SocialEventPlatform.TELEGRAM) {
         await this.telegramBotService.send(Number(updated.senderId), replyText);
-        return this.socialService.updateEventReply(eventId, {
-          replyStatus: SocialReplyStatus.SENT,
-          finalReply: replyText,
-          repliedAt: new Date(),
-        });
-      } catch {
-        return this.socialService.updateEventReply(eventId, {
-          replyStatus: SocialReplyStatus.FAILED,
-          finalReply: replyText,
-        });
+      } else {
+        const adapter = this.channelRegistry.get(updated.platform);
+        if (adapter) {
+          await adapter.sendOutbound(updated.senderId, {
+            content: replyText,
+            replyToMessageId: updated.rawPayload?.id_str ?? updated.rawPayload?.id,
+          });
+        }
       }
+      return this.socialService.updateEventReply(eventId, {
+        replyStatus: SocialReplyStatus.SENT,
+        finalReply: replyText,
+        repliedAt: new Date(),
+      });
+    } catch {
+      return this.socialService.updateEventReply(eventId, {
+        replyStatus: SocialReplyStatus.FAILED,
+        finalReply: replyText,
+      });
     }
-
-    return updated;
   }
 
   @Post('events/:eventId/reject')

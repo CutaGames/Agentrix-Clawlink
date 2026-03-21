@@ -63,3 +63,6 @@ desktop/*.ps1
 desktop/*.png
 desktop/*.tar.gz
 desktop/src-tauri/keys/agentrix.key
+
+# QA credentials (never ship in production)
+**/qa-login.json

@@ -401,6 +401,14 @@ export class SocialService {
     });
   }
 
+  async getRecentEvents(limit = 20) {
+    return this.eventRepo.find({
+      order: { createdAt: 'DESC' },
+      take: Math.min(limit, 100),
+      select: ['id', 'platform', 'eventType', 'senderName', 'text', 'replyStatus', 'createdAt'],
+    });
+  }
+
   async updateEventReply(eventId: string, data: {
     replyStatus?: SocialReplyStatus;
     agentDraftReply?: string;

@@ -46,6 +46,7 @@ import {
 
 const TWITTER_CONSUMER_SECRET = process.env.TWITTER_APIKEY_SECRET ?? process.env.TWITTER_CONSUMER_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? '';
 const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? 'agentrixnetwork_bot';
 const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY ?? process.env.DISCORD_CLIENT_SECRET ?? '';
 const API_BASE_URL = process.env.BACKEND_URL ?? process.env.APP_URL ?? 'https://api.agentrix.top/api';
@@ -93,6 +94,16 @@ export class SocialCallbackController {
     };
   }
 
+  /** GET /social/callback/events — recent social events (public, no auth) */
+  @Get('events')
+  async getRecentEvents(
+    @Query('limit') limit?: string,
+  ) {
+    const take = Math.min(Number(limit) || 20, 100);
+    const events = await this.socialService.getRecentEvents(take);
+    return { ok: true, events };
+  }
+
   /** POST /social/callback/telegram/setup — registers bot webhook with Telegram API */
   @Post('telegram/setup')
   async setupTelegramWebhook() {
@@ -106,7 +117,11 @@ export class SocialCallbackController {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: webhookUrl, allowed_updates: ['message', 'channel_post'] }),
+          body: JSON.stringify({
+            url: webhookUrl,
+            allowed_updates: ['message', 'channel_post'],
+            ...(TELEGRAM_WEBHOOK_SECRET ? { secret_token: TELEGRAM_WEBHOOK_SECRET } : {}),
+          }),
         },
       );
       const json: any = await res.json();
@@ -188,7 +203,16 @@ export class SocialCallbackController {
 
   @Post('telegram')
   @HttpCode(200)
-  async handleTelegramWebhook(@Body() body: any) {
+  async handleTelegramWebhook(
+    @Body() body: any,
+    @Headers('x-telegram-bot-api-secret-token') secretToken: string,
+  ) {
+    // Verify webhook authenticity via secret token header
+    if (TELEGRAM_WEBHOOK_SECRET && secretToken !== TELEGRAM_WEBHOOK_SECRET) {
+      this.logger.warn('Telegram webhook secret token mismatch — rejecting');
+      return { ok: false };
+    }
+
     const update = body;
     const message = update?.message ?? update?.channel_post ?? null;
 
@@ -202,13 +226,7 @@ export class SocialCallbackController {
         message?.from?.username ??
         `${message?.from?.first_name ?? ''} ${message?.from?.last_name ?? ''}`.trim();
 
-      // Dual-write: route through PresenceRouter for unified timeline
-      // This writes to conversation_events if an Agent is bound to this chatId
-      try {
-        await this.presenceRouter.routeInbound('telegram', chatId, update);
-      } catch (err: any) {
-        this.logger.warn(`PresenceRouter telegram dual-write failed: ${err.message}`);
-      }
+      // PresenceRouter dispatch is now handled inside dispatchEvent() for all platforms
 
       const savedEvent = await this.dispatchEvent({
         platform: SocialEventPlatform.TELEGRAM,
@@ -311,6 +329,17 @@ export class SocialCallbackController {
         this.logger.warn(
           `No Agentrix user mapping found for ${params.platform} sender ${params.senderId}`,
         );
+      }
+
+      // 2. Route through PresenceRouter for agent dispatch (all platforms)
+      try {
+        await this.presenceRouter.routeInbound(
+          params.platform,
+          params.senderId,
+          params.rawPayload,
+        );
+      } catch (err: any) {
+        this.logger.warn(`PresenceRouter ${params.platform} dispatch failed: ${err.message}`);
       }
 
       this.logger.verbose(`Event persisted: id=${savedEvent.id} platform=${params.platform}`);

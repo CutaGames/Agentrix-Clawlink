@@ -42,11 +42,20 @@ async function bootstrap() {
   }
   */
   
-  // Security: warn about default JWT secret
+  // Security: enforce strong secrets in production
+  const isProduction = process.env.NODE_ENV === 'production';
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'default-secret') {
+    if (isProduction) {
+      console.error('❌ JWT_SECRET is not set or using default — refusing to start in production');
+      process.exit(1);
+    }
     console.warn('⚠️  JWT_SECRET is not set or using default — THIS IS INSECURE IN PRODUCTION');
   }
   if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'agentrix-secret-key-2025') {
+    if (isProduction) {
+      console.error('❌ SESSION_SECRET is using default value — refusing to start in production');
+      process.exit(1);
+    }
     console.warn('⚠️  SESSION_SECRET is using default value — set a strong random secret in production');
   }
 
@@ -84,16 +93,24 @@ async function bootstrap() {
 
   const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
   const corsOrigins = corsOrigin.split(',').map(origin => origin.trim());
-  
-  // 允许 GPTs Actions 调用（OpenAI 的服务器）
-  // GPTs Actions 可能来自 OpenAI 的服务器，需要允许所有来源或特定来源
-  const allowGPTs = process.env.ALLOW_GPTs === 'true' || process.env.NODE_ENV === 'production';
-  
+
+  // GPTs / ChatGPT Actions: if ALLOW_GPTs is set, add known OpenAI origins
+  // rather than opening to the entire internet.
+  if (process.env.ALLOW_GPTs === 'true') {
+    const gptOrigins = [
+      'https://chat.openai.com',
+      'https://chatgpt.com',
+    ];
+    for (const o of gptOrigins) {
+      if (!corsOrigins.includes(o)) corsOrigins.push(o);
+    }
+  }
+
   app.enableCors({
-    origin: allowGPTs ? true : corsOrigins, // 生产环境允许所有来源（GPTs 需要），开发环境限制
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'], // 添加 X-API-Key 支持
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
   });
 
   app.useGlobalPipes(
