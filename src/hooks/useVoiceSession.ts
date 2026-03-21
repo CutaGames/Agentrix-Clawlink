@@ -89,8 +89,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   // ── State ──
   const [voiceMode, setVoiceMode] = useState(!!voiceModeRequested);
-  const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>('hold');
-  const [duplexMode, setDuplexMode] = useState(false);
+  const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>(duplexModeRequested ? 'tap' : 'hold');
+  const [duplexMode, setDuplexMode] = useState(!!duplexModeRequested);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);
@@ -108,6 +108,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechRef = useRef<LiveSpeechController | null>(null);
   const liveSpeechManualStopRef = useRef(false);
   const lastLiveFinalTranscriptRef = useRef('');
+  const voiceModeRef = useRef(voiceMode);
   const duplexModeRef = useRef(duplexMode);
   const sendingRef = useRef(false);
   const backgroundVoiceRef = useRef<BackgroundVoiceService | null>(null);
@@ -117,6 +118,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
   // Keep refs in sync
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
   useEffect(() => { sendingRef.current = !!isSending; }, [isSending]);
 
@@ -176,11 +178,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setIsSpeaking(false);
       setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
       setSpeakingMessageId(null);
-      // Resume live speech after TTS ends
-      if (duplexModeRef.current) {
-        // Trigger live speech restart via effect
-        startLiveSpeechInternal();
-      }
+      // Live speech restart is handled by the auto-restart effect
+      // that watches isSpeaking → false.
     });
     return () => {
       audioPlayerRef.current?.stopAll();
@@ -342,10 +341,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   // ── Live Speech Recognition (duplex) ──
 
   const startLiveSpeechInternal = useCallback(async () => {
-    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailable || !voiceMode) {
+    if (!duplexModeRef.current || liveSpeechRef.current || !liveVoiceAvailable || !voiceModeRef.current) {
       return;
     }
 
+    try {
     const permission = await requestLiveSpeechPermissions();
     if (!permission?.granted) {
       Alert.alert(
@@ -412,7 +412,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       },
       [instanceName || '', agentVoiceId || '', 'Agentrix'],
     );
-  }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint, voiceMode]);
+    } catch (err) {
+      console.warn('startLiveSpeechInternal failed:', err);
+      liveSpeechRef.current = null;
+      setLiveListening(false);
+      setVoicePhase('idle');
+    }
+  }, [agentVoiceId, instanceName, isSpeaking, liveVoiceAvailable, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
 
   // Duplex mode toggle → start/stop live speech
   useEffect(() => {
@@ -600,9 +606,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [duplexMode, isSpeaking, onStopCurrentResponse, startLiveSpeechInternal, startVoiceRecording, stopLiveSpeech, stopSpeaking, stopVoiceRecording]);
 
   const resumeLiveSpeech = useCallback(() => {
-    if (!duplexModeRef.current || sendingRef.current || isSpeaking || !voiceMode) return;
+    if (!duplexModeRef.current || sendingRef.current || isSpeaking || !voiceModeRef.current) return;
     void startLiveSpeechInternal();
-  }, [isSpeaking, startLiveSpeechInternal, voiceMode]);
+  }, [isSpeaking, startLiveSpeechInternal]);
 
   return {
     // State
