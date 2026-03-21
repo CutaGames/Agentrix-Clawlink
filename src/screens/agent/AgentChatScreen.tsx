@@ -10,7 +10,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
-import { sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
+import { getInstanceStatus, sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
@@ -23,6 +23,7 @@ import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -451,22 +452,63 @@ export function AgentChatScreen() {
   const isOfflineRef = useRef(false);
   const offlineQueueRef = useRef<Array<{ text: string; attachments: UploadedChatAttachment[] }>>([]);
   const flushingOfflineQueueRef = useRef(false);
+  const lastOfflineDiagnosticRef = useRef<string | null>(null);
 
   // Check connectivity periodically
   useEffect(() => {
     let mounted = true;
     const check = async () => {
       try {
-        const res = await fetch(`${API_BASE}/health`, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
-        if (mounted) setIsOffline(!res.ok);
-      } catch {
+        if (instanceId) {
+          const status = await getInstanceStatus(instanceId);
+          const normalizedStatus = String(status?.status || '').toLowerCase();
+          const nextState = normalizedStatus === 'offline' || normalizedStatus === 'disconnected' || normalizedStatus === 'error';
+          const nextDiagnostic = `instance:${instanceId}:${normalizedStatus}`;
+          if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
+            lastOfflineDiagnosticRef.current = nextDiagnostic;
+            addVoiceDiagnostic('agent-chat', 'instance-status-check', {
+              instanceId,
+              status: normalizedStatus,
+              isOffline: nextState,
+            });
+          }
+          if (mounted) {
+            setIsOffline(nextState);
+          }
+          return;
+        }
+
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeout = setTimeout(() => controller?.abort(), 8000);
+        try {
+          const res = await fetch(`${API_BASE}/health`, {
+            method: 'GET',
+            signal: controller?.signal,
+          });
+          const nextDiagnostic = `api-health:${res.status}`;
+          if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
+            lastOfflineDiagnosticRef.current = nextDiagnostic;
+            addVoiceDiagnostic('agent-chat', 'api-health-check', {
+              status: res.status,
+              ok: res.ok,
+            });
+          }
+          if (mounted) setIsOffline(!res.ok);
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (error) {
+        addVoiceDiagnostic('agent-chat', 'connectivity-check-failed', {
+          instanceId: instanceId || null,
+          error,
+        });
         if (mounted) setIsOffline(true);
       }
     };
     check();
     const timer = setInterval(check, 15000);
     return () => { mounted = false; clearInterval(timer); };
-  }, []);
+  }, [instanceId]);
 
   useEffect(() => {
     isOfflineRef.current = isOffline;
@@ -950,6 +992,10 @@ export function AgentChatScreen() {
       if (!streamSucceeded) {
         if (instanceId) {
           const message = proxyFailureMessage || t({ en: 'OpenClaw agent is offline. Reconnect the agent or try again shortly.', zh: 'OpenClaw 智能体当前离线，请重新连接后再试。' });
+          addVoiceDiagnostic('agent-chat', 'proxy-send-failed', {
+            instanceId,
+            message,
+          });
           resetVoicePhaseAfterResponse();
           appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
         } else {

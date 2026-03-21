@@ -15,6 +15,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { resolveMobileWakeWordConfig } from '../config/wakeWord';
 import { WakeWordService } from '../services/wakeWord.service';
 import { SpeechWakeWordService } from '../services/speechWakeWord.service';
+import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 
 const BALL_SIZE = 56;
 const EDGE_MARGIN = 12;
@@ -153,23 +154,42 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     setBallState('listening');
     onVoiceActivate?.();
 
-    // Grab active instance BEFORE any async work
-    const activeInstance = require('../stores/authStore').useAuthStore.getState().activeInstance;
+    // GlobalFloatingBall sits beside MainTabNavigator inside the Root screen,
+    // so it gets the Root navigator. Resolve the target instance up front.
+    const authStore = require('../stores/authStore').useAuthStore.getState();
+    const targetInstance = authStore.activeInstance ?? authStore.user?.openClawInstances?.[0] ?? null;
+    addVoiceDiagnostic('floating-ball', 'activate-start', {
+      currentRouteName,
+      hasActiveInstance: !!authStore.activeInstance,
+      targetInstanceId: targetInstance?.id || null,
+      targetInstanceName: targetInstance?.name || null,
+    });
+    if (!authStore.activeInstance && targetInstance?.id) {
+      authStore.setActiveInstance(targetInstance.id);
+      addVoiceDiagnostic('floating-ball', 'set-active-instance', { instanceId: targetInstance.id });
+    }
 
-    // Navigate FIRST — this must always fire regardless of listener state.
-    // The listener release happens after so a native abort() error can never
-    // block navigation.
+    // Route through Root -> Main -> Agent -> AgentChat. Navigating directly to
+    // Agent here is a no-op because this component is not inside the tab navigator.
     try {
-      navigation.navigate('Agent', {
-        screen: 'AgentChat',
+      navigation.navigate('Main', {
+        screen: 'Agent',
         params: {
-          instanceId: activeInstance?.id,
-          instanceName: activeInstance?.name || 'Agent',
-          voiceMode: true,
-          duplexMode: true,
+          screen: 'AgentChat',
+          params: {
+            instanceId: targetInstance?.id,
+            instanceName: targetInstance?.name || 'Agent',
+            voiceMode: true,
+            duplexMode: true,
+          },
         },
+      } as any);
+      addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
+        instanceId: targetInstance?.id || null,
+        instanceName: targetInstance?.name || 'Agent',
       });
     } catch (navErr) {
+      addVoiceDiagnostic('floating-ball', 'navigate-failed', navErr);
       console.warn('[FloatingBall] Navigation failed:', navErr);
       setBallState('idle');
     }
@@ -178,16 +198,23 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     const listener = wakeListenerRef.current;
     if (listener) {
       wakeListenerRef.current = null;
-      try { await listener.release(); } catch {}
+      try {
+        await listener.release();
+        addVoiceDiagnostic('floating-ball', 'listener-released');
+      } catch (releaseErr) {
+        addVoiceDiagnostic('floating-ball', 'listener-release-failed', releaseErr);
+      }
     }
   }, [navigation, onVoiceActivate]);
 
   const handleTap = useCallback(() => {
+    addVoiceDiagnostic('floating-ball', 'tap');
     Haptics.selectionAsync().catch(() => {});
     void activateVoiceExperience();
   }, [activateVoiceExperience]);
 
   const handleVoiceActivate = useCallback(() => {
+    addVoiceDiagnostic('floating-ball', 'long-press-activate');
     void activateVoiceExperience();
   }, [activateVoiceExperience]);
 
