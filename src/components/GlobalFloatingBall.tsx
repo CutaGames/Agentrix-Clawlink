@@ -153,27 +153,33 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     setBallState('listening');
     onVoiceActivate?.();
 
-    // Stop wake word listener and AWAIT release before navigating,
-    // so AgentChat's duplex mode can acquire the microphone cleanly.
+    // Grab active instance BEFORE any async work
+    const activeInstance = require('../stores/authStore').useAuthStore.getState().activeInstance;
+
+    // Navigate FIRST — this must always fire regardless of listener state.
+    // The listener release happens after so a native abort() error can never
+    // block navigation.
+    try {
+      navigation.navigate('Agent', {
+        screen: 'AgentChat',
+        params: {
+          instanceId: activeInstance?.id,
+          instanceName: activeInstance?.name || 'Agent',
+          voiceMode: true,
+          duplexMode: true,
+        },
+      });
+    } catch (navErr) {
+      console.warn('[FloatingBall] Navigation failed:', navErr);
+      setBallState('idle');
+    }
+
+    // Release wake word listener AFTER navigation so mic handoff is async
     const listener = wakeListenerRef.current;
     if (listener) {
       wakeListenerRef.current = null;
-      await listener.release();
+      try { await listener.release(); } catch {}
     }
-
-    const activeInstance = require('../stores/authStore').useAuthStore.getState().activeInstance;
-
-    // Navigate directly to AgentChat with voice params.
-    // Avoids the VoiceChatScreen redirect that created duplicate AgentChat screens.
-    navigation.navigate('Agent', {
-      screen: 'AgentChat',
-      params: {
-        instanceId: activeInstance?.id,
-        instanceName: activeInstance?.name || 'Agent',
-        voiceMode: true,
-        duplexMode: true,
-      },
-    });
   }, [navigation, onVoiceActivate]);
 
   const handleTap = useCallback(() => {

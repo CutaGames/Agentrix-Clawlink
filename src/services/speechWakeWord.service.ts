@@ -130,7 +130,7 @@ export class SpeechWakeWordService {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
     }
-    this.controller?.abort();
+    try { this.controller?.abort(); } catch {}
     this.controller = null;
     this.running = false;
   }
