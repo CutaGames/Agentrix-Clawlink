@@ -1,4 +1,0 @@
-
-> agentrix-backend@7.0.0 start:prod
-> node dist/main
-

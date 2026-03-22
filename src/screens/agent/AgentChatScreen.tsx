@@ -20,10 +20,13 @@ import * as Haptics from 'expo-haptics';
 import { mmkv } from '../../stores/mmkvStorage';
 import { useI18n } from '../../stores/i18nStore';
 import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
+import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
+import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
+import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -396,7 +399,10 @@ export function AgentChatScreen() {
   const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const speechRate = useSettingsStore((s) => s.speechRate);
+  const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
   const [remoteClipboard, setRemoteClipboard] = useState<MobileDesktopClipboardSnapshot | null>(null);
 
@@ -414,6 +420,18 @@ export function AgentChatScreen() {
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
+
+  // Multi-session state
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
+    const saved = loadSessions(instanceId);
+    if (saved.length > 0) {
+      sessionIdRef.current = saved[0].id;
+      return saved;
+    }
+    const initial: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+    return [initial];
+  });
+  const [activeSessionId, setActiveSessionId] = useState(sessionIdRef.current);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -808,6 +826,7 @@ export function AgentChatScreen() {
     agentVoiceId: agentVoiceId || undefined,
     instanceName,
     isSending: sending,
+    speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
     },
@@ -933,6 +952,20 @@ export function AgentChatScreen() {
     setTranscriptPreview('');
     setSending(true);
     streamAbortRef.current?.abort();
+
+    // Auto-label session from first user message
+    if (text) {
+      setChatSessions((prev) => {
+        const idx = prev.findIndex(s => s.id === activeSessionId);
+        if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], label: text.slice(0, 24) + (text.length > 24 ? '…' : '') };
+          saveSessions(instanceId, updated);
+          return updated;
+        }
+        return prev;
+      });
+    }
 
     try {
       await Haptics.selectionAsync();
@@ -1205,10 +1238,100 @@ export function AgentChatScreen() {
             content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
+          // Update multi-session tracking
+          const newSession: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+          setChatSessions((prev) => {
+            const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
+            saveSessions(instanceId, updated);
+            return updated;
+          });
+          setActiveSessionId(sessionIdRef.current);
         },
       },
     ]);
   };
+
+  // Multi-session: switch to a different session
+  const handleSessionSelect = useCallback((sid: string) => {
+    if (sid === activeSessionId) return;
+    // Save current messages
+    try {
+      const currentKey = `chat_hist_${instanceId}_${activeSessionId}`;
+      mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
+    } catch {}
+    // Switch
+    streamAbortRef.current?.abort();
+    sessionIdRef.current = sid;
+    setActiveSessionId(sid);
+    // Load messages for new session
+    try {
+      const newKey = `chat_hist_${instanceId}_${sid}`;
+      const raw = mmkv.getString(newKey);
+      if (raw) {
+        setMessages(JSON.parse(raw));
+      } else {
+        setMessages([{
+          id: 'welcome',
+          role: 'assistant',
+          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+          createdAt: Date.now(),
+        }]);
+      }
+    } catch {
+      setMessages([]);
+    }
+    setInput('');
+  }, [activeSessionId, instanceId, instanceName, messages, t]);
+
+  // Multi-session: create new session
+  const handleSessionNew = useCallback(() => {
+    if (chatSessions.length >= MAX_SESSIONS) return;
+    // Save current messages first
+    try {
+      const currentKey = `chat_hist_${instanceId}_${activeSessionId}`;
+      mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
+    } catch {}
+    const newId = `session-${Date.now()}`;
+    const newSession: ChatSession = { id: newId, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+    streamAbortRef.current?.abort();
+    sessionIdRef.current = newId;
+    setActiveSessionId(newId);
+    setChatSessions((prev) => {
+      const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
+      saveSessions(instanceId, updated);
+      return updated;
+    });
+    setMessages([{
+      id: 'welcome',
+      role: 'assistant',
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+      createdAt: Date.now(),
+    }]);
+    setInput('');
+  }, [activeSessionId, chatSessions.length, instanceId, instanceName, messages, t]);
+
+  // Multi-session: close a session
+  const handleSessionClose = useCallback((sid: string) => {
+    setChatSessions((prev) => {
+      const updated = prev.filter(s => s.id !== sid);
+      if (updated.length === 0) return prev; // Don't close last session
+      saveSessions(instanceId, updated);
+      // If we closed the active session, switch to the first remaining one
+      if (sid === activeSessionId) {
+        const nextSession = updated[0];
+        sessionIdRef.current = nextSession.id;
+        setActiveSessionId(nextSession.id);
+        try {
+          const key = `chat_hist_${instanceId}_${nextSession.id}`;
+          const raw = mmkv.getString(key);
+          if (raw) setMessages(JSON.parse(raw));
+        } catch {}
+      }
+      return updated;
+    });
+    // Clean up stored messages for closed session
+    try { mmkv.delete(`chat_hist_${instanceId}_${sid}`); } catch {}
+  }, [activeSessionId, instanceId]);
 
   const renderMessage = ({ item }: { item: Message }) => {
     return (
@@ -1317,6 +1440,17 @@ export function AgentChatScreen() {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {/* Multi-session tabs */}
+      <ChatSessionTabs
+        instanceId={instanceId}
+        sessions={chatSessions}
+        activeSessionId={activeSessionId}
+        onSelect={handleSessionSelect}
+        onNew={handleSessionNew}
+        onClose={handleSessionClose}
+        t={t}
+      />
 
       {loadingHistory && (
         <View style={styles.historyLoader}>
@@ -1572,6 +1706,14 @@ export function AgentChatScreen() {
       </View>
       </View>
 
+      {/* Voice onboarding tooltip */}
+      <VoiceOnboardingTooltip
+        visible={voiceMode}
+        voiceInteractionMode={voiceInteractionMode}
+        duplexMode={duplexMode}
+        t={t}
+      />
+
       <Modal visible={showCameraModal} animationType="fade" onRequestClose={() => !capturingPhoto && setShowCameraModal(false)}>
         <View style={styles.cameraModalRoot}>
           {cameraPermission?.granted ? (
@@ -1670,6 +1812,60 @@ export function AgentChatScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Speech rate selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Speech Speed', zh: '语速' })}</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[0.8, 1.0, 1.2, 1.5].map((rate) => (
+                  <TouchableOpacity
+                    key={rate}
+                    onPress={() => setSpeechRate(rate)}
+                    style={[
+                      styles.sheetToggle,
+                      { minWidth: 40, paddingHorizontal: 8 },
+                      speechRate === rate && styles.sheetToggleActive,
+                    ]}
+                  >
+                    <Text style={[styles.sheetToggleText, speechRate === rate && { color: colors.accent }]}>
+                      {rate === 1.0 ? '1×' : `${rate}×`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Voice persona selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice', zh: '声音' })}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {[
+                  { id: 'alloy', label: 'Alloy', emoji: '🗣️' },
+                  { id: 'echo', label: 'Echo', emoji: '🎙️' },
+                  { id: 'fable', label: 'Fable', emoji: '📖' },
+                  { id: 'onyx', label: 'Onyx', emoji: '🪨' },
+                  { id: 'nova', label: 'Nova', emoji: '✨' },
+                  { id: 'shimmer', label: 'Shimmer', emoji: '💫' },
+                ].map((v) => {
+                  const isActive = (agentVoiceId || 'alloy') === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      onPress={() => setAgentVoiceId(v.id)}
+                      style={[
+                        styles.sheetToggle,
+                        { minWidth: 52, paddingHorizontal: 6 },
+                        isActive && styles.sheetToggleActive,
+                      ]}
+                    >
+                      <Text style={[styles.sheetToggleText, isActive && { color: colors.accent }]}>
+                        {v.emoji} {v.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             {/* Model selector */}
             <View style={styles.sheetRow}>
               <Text style={styles.sheetRowLabel}>{t({ en: 'Model', zh: '模型' })}</Text>
@@ -1701,6 +1897,14 @@ export function AgentChatScreen() {
               onPress={() => { setShowSettingsSheet(false); navigation.navigate('AgentConsole'); }}
             >
               <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'⚙️ '}{t({ en: 'Agent Management', zh: '智能体管理' })}</Text>
+            </TouchableOpacity>
+
+            {/* Voice diagnostics */}
+            <TouchableOpacity
+              style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowDiagnostics(true), 300); }}
+            >
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'🔍 '}{t({ en: 'Voice Diagnostics', zh: '语音诊断' })}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1761,6 +1965,25 @@ export function AgentChatScreen() {
                   {t({ en: 'Configure API keys in Settings → API Keys to unlock more models', zh: '前往 设置 → API密钥 配置厂商密钥以解锁更多模型' })}
                 </Text>
               )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Voice diagnostics modal */}
+      <Modal visible={showDiagnostics} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDiagnostics(false)} activeOpacity={1}>
+          <View style={[styles.modelSheet, { maxHeight: '70%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modelSheetTitle}>{t({ en: 'Voice Diagnostics', zh: '语音诊断日志' })}</Text>
+              <TouchableOpacity onPress={() => { clearVoiceDiagnostics(); setShowDiagnostics(false); }}>
+                <Text style={{ color: '#f44', fontSize: 13 }}>{t({ en: 'Clear', zh: '清除' })}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }}>
+              <Text selectable style={{ color: colors.textSecondary, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                {getVoiceDiagnosticsText() || t({ en: 'No voice events recorded yet.', zh: '暂无语音事件记录。' })}
+              </Text>
             </ScrollView>
           </View>
         </TouchableOpacity>

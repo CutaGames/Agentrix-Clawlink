@@ -35,6 +35,7 @@ export class VoiceController {
     @Query('text') text: string,
     @Query('lang') lang: string,
     @Query('voice') requestedVoice: string,
+    @Query('rate') rateParam: string,
     @Res() res: Response,
   ) {
     if (!text) throw new BadRequestException('Text is required');
@@ -43,10 +44,20 @@ export class VoiceController {
     const truncated = text.slice(0, 2000);
     const isChinese = lang === 'zh' || (!lang && /[\u4e00-\u9fff]/.test(truncated));
 
+    // Convert numeric rate (e.g. "1.2") to Edge TTS percentage format ("+20%")
+    let edgeRate: string | undefined;
+    if (rateParam) {
+      const numeric = parseFloat(rateParam);
+      if (!isNaN(numeric) && numeric >= 0.5 && numeric <= 2.0) {
+        const pct = Math.round((numeric - 1.0) * 100);
+        edgeRate = pct >= 0 ? `+${pct}%` : `${pct}%`;
+      }
+    }
+
     for (const provider of this.getTTSProviderOrder()) {
       try {
         if (provider === 'edge') {
-          await this.synthesizeWithEdge(truncated, isChinese, requestedVoice, res);
+          await this.synthesizeWithEdge(truncated, isChinese, requestedVoice, res, edgeRate);
           return;
         }
         if (provider === 'polly' && process.env.AWS_ACCESS_KEY_ID) {
@@ -67,16 +78,17 @@ export class VoiceController {
     isChinese: boolean,
     requestedVoice: string | undefined,
     res: Response,
+    rate?: string,
   ): Promise<void> {
     const voice = resolveEdgeVoice(requestedVoice, isChinese);
-    this.logger.debug(`Edge TTS: voice=${voice}, len=${text.length}`);
+    this.logger.debug(`Edge TTS: voice=${voice}, len=${text.length}, rate=${rate || '+0%'}`);
 
     return new Promise((resolve, reject) => {
       let headersSent = false;
 
       edgeTTSStream(
         text,
-        { voice },
+        { voice, ...(rate ? { rate } : {}) },
         (chunk) => {
           if (!headersSent) {
             res.set({ 'Content-Type': 'audio/mpeg', 'Transfer-Encoding': 'chunked' });

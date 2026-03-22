@@ -51,6 +51,11 @@ interface SettingsState {
 
   wakeWordConfig: WakeWordSettings;
 
+  // Voice / TTS settings
+  /** TTS playback speed multiplier (0.8 - 1.5, default 1.0) */
+  speechRate: number;
+  /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
+  silenceTimeoutMs: number;
   
   // 通知设置
   notificationsEnabled: boolean;
@@ -68,6 +73,8 @@ interface SettingsState {
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
   resetWakeWordConfig: () => void;
+  setSpeechRate: (rate: number) => void;
+  setSilenceTimeoutMs: (ms: number) => void;
   toggleNotifications: (enabled: boolean) => void;
   toggleBiometric: (enabled: boolean) => void;
 }
@@ -103,6 +110,9 @@ export const useSettingsStore = create<SettingsState>()(
 
       uiComplexity: 'beginner' as UiComplexity,
       wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
+
+      speechRate: 1.0,
+      silenceTimeoutMs: 1800,
       
       notificationsEnabled: true,
       airdropNotifications: true,
@@ -130,6 +140,9 @@ export const useSettingsStore = create<SettingsState>()(
       })),
 
       resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
+
+      setSpeechRate: (rate) => set({ speechRate: Math.max(0.8, Math.min(1.5, rate)) }),
+      setSilenceTimeoutMs: (ms) => set({ silenceTimeoutMs: Math.max(800, Math.min(3000, ms)) }),
 
       toggleNotifications: (enabled) => set({ 
         notificationsEnabled: enabled,

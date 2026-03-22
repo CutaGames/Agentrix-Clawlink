@@ -72,8 +72,8 @@ $sourceSha = (git rev-parse HEAD).Trim()
 $sourceBranch = (git rev-parse --abbrev-ref HEAD).Trim()
 $commitMessage = "sync mobile frontend from CutaGames/Agentrix@$sourceSha"
 
-$stageDir = Join-Path $env:TEMP ("agentrix-public-build-stage-" + [guid]::NewGuid().ToString("N"))
-$archivePath = Join-Path $env:TEMP ("agentrix-public-build-" + [guid]::NewGuid().ToString("N") + ".tar.gz")
+$stageDir = Join-Path "D:\tmp_agentrix" ("agentrix-public-build-stage-" + [guid]::NewGuid().ToString("N"))
+$archivePath = Join-Path "D:\tmp_agentrix" ("agentrix-public-build-" + [guid]::NewGuid().ToString("N") + ".tar.gz")
 
 New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $stageDir ".github\workflows") | Out-Null

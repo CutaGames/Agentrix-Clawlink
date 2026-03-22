@@ -18,10 +18,12 @@ import {
   startLiveSpeechRecognition,
   type LiveSpeechController,
 } from '../services/liveSpeech.service';
-import { API_BASE } from '../config/env';
+import { API_BASE, WS_BASE } from '../config/env';
 import type { UploadedChatAttachment } from '../services/api';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
+import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
+import { VADService, createRecordingMeterFn } from '../services/vad.service';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -41,7 +43,12 @@ export interface UseVoiceSessionOptions {
   duplexModeRequested?: boolean;
   agentVoiceId?: string;
   instanceName?: string;
+  instanceId?: string;
   isSending?: boolean;
+  /** Use WebSocket realtime voice channel in duplex mode (lower latency) */
+  useRealtimeChannel?: boolean;
+  /** TTS speech rate multiplier (0.8 - 1.5, default 1.0) */
+  speechRate?: number;
   /** Called to send a transcript (and optional audio attachment) as a message */
   onSendMessage: (text: string, attachments?: UploadedChatAttachment[]) => void;
   /** Called to stop/interrupt the current streaming response */
@@ -67,6 +74,10 @@ export interface UseVoiceSessionReturn {
   autoSpeak: boolean;
   setAutoSpeak: (v: boolean) => void;
   liveVoiceAvailable: boolean;
+  /** Whether the low-latency WebSocket realtime voice channel is connected */
+  realtimeConnected: boolean;
+  /** Send barge-in interrupt via realtime channel */
+  sendRealtimeInterrupt: () => void;
 
   // Actions
   startVoiceRecording: () => Promise<void>;
@@ -88,7 +99,7 @@ export interface UseVoiceSessionReturn {
 // ── Hook ───────────────────────────────────────────────────
 
 export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessionReturn {
-  const { token, language, voiceModeRequested, duplexModeRequested, agentVoiceId, instanceName, isSending, onSendMessage, onStopCurrentResponse, t } = options;
+  const { token, language, voiceModeRequested, duplexModeRequested, agentVoiceId, instanceName, instanceId, isSending, onSendMessage, onStopCurrentResponse, t, useRealtimeChannel, speechRate } = options;
 
   // ── State ──
   const [voiceMode, setVoiceMode] = useState(!!voiceModeRequested);
@@ -122,6 +133,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const startLiveSpeechInternalRef = useRef<(() => Promise<void>) | null>(null);
 
   const isSpeakingRef = useRef(false);
+  const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
+  const vadRef = useRef<VADService | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
   // Keep refs in sync
@@ -160,6 +174,100 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     liveVoiceAvailableRef.current = available;
     setLiveVoiceAvailable(available);
   }, []);
+
+  // ── Realtime WebSocket Voice Channel ──
+  // When useRealtimeChannel is true and duplex mode is active,
+  // use the low-latency WebSocket path instead of HTTP serial.
+  useEffect(() => {
+    if (!useRealtimeChannel || !duplexMode || !token || !instanceId) {
+      // Clean up existing realtime connection
+      if (realtimeVoiceRef.current) {
+        realtimeVoiceRef.current.disconnect();
+        realtimeVoiceRef.current = null;
+        setRealtimeConnected(false);
+      }
+      return;
+    }
+
+    const wsBaseUrl = (typeof WS_BASE === 'string' && WS_BASE)
+      ? WS_BASE
+      : API_BASE.replace(/^http/, 'ws').replace(/\/api$/, '');
+    const wsUrl = `${wsBaseUrl}/voice`;
+
+    const service = new RealtimeVoiceService({
+      onStateChange: (state) => {
+        addVoiceDiagnostic('realtime-voice', 'state-change', { state });
+        setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
+        // Map realtime states to voice phases
+        switch (state) {
+          case 'listening': setVoicePhase('recording'); break;
+          case 'thinking': setVoicePhase('thinking'); break;
+          case 'speaking': setVoicePhase('speaking'); break;
+          case 'connected': setVoicePhase('idle'); break;
+        }
+      },
+      onInterimTranscript: (text) => {
+        setTranscriptPreview(text);
+      },
+      onFinalTranscript: (text) => {
+        setTranscriptPreview(text);
+        // In realtime mode, the server handles sending to LLM automatically
+        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: text.slice(0, 160) });
+      },
+      onAgentTextChunk: (chunk) => {
+        // Display text in chat (delegate to the same onSendMessage flow)
+        // The AgentChatScreen will need to handle realtime text display
+      },
+      onAgentAudioChunk: (audioBase64, format) => {
+        // Play audio chunk directly — skip HTTP TTS round-trip
+        if (audioBase64 && audioPlayerRef.current) {
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+          setVoicePhase('speaking');
+          // For base64 audio, create a data URI and enqueue
+          const mimeType = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
+          const dataUri = `data:${mimeType};base64,${audioBase64}`;
+          audioPlayerRef.current.enqueue(dataUri);
+        }
+      },
+      onAgentSpeechStart: () => {
+        setIsSpeaking(true);
+        isSpeakingRef.current = true;
+        setVoicePhase('speaking');
+      },
+      onAgentResponseEnd: () => {
+        // Agent done — resume listening
+        setVoicePhase('idle');
+      },
+      onToolCall: (tool, status) => {
+        addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
+      },
+      onError: (error) => {
+        addVoiceDiagnostic('realtime-voice', 'error', { error });
+        console.warn('[RealtimeVoice] Error:', error);
+      },
+      onDisconnect: (reason) => {
+        setRealtimeConnected(false);
+        addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
+      },
+    });
+
+    realtimeVoiceRef.current = service;
+    service.connect({
+      wsUrl,
+      token,
+      instanceId,
+      language: voiceLanguageHint,
+      modelId: undefined, // use instance default
+      agentVoiceId,
+    });
+
+    return () => {
+      service.disconnect();
+      realtimeVoiceRef.current = null;
+      setRealtimeConnected(false);
+    };
+  }, [useRealtimeChannel, duplexMode, token, instanceId, agentVoiceId, voiceLanguageHint]);
 
   // ── Live Speech ──
 
@@ -280,14 +388,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     setIsSpeaking(true);
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
     const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
     for (const s of sentences) {
       const trimmed = s.trim();
       if (!trimmed || trimmed.length < 2) continue;
       const encoded = encodeURIComponent(trimmed);
-      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
+      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
       audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
     }
-  }, [agentVoiceId, stopLiveSpeech, voiceLanguageHint]);
+  }, [agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
 
   const stopSpeaking = useCallback(() => {
     audioPlayerRef.current?.stopAll();
@@ -330,12 +439,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       }
     }
 
+    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
+
     if (segmentsToSpeak.length > 0) {
       setIsSpeaking(true);
       setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
       streamedTtsStartedRef.current = true;
       for (const sentence of segmentsToSpeak) {
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
+        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
         audioPlayerRef.current?.enqueue(url, sentence, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
       }
       if (!shouldEarlyFlush) {
@@ -349,12 +460,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setIsSpeaking(true);
         setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
         streamedTtsStartedRef.current = true;
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
+        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
         audioPlayerRef.current?.enqueue(url, remainder, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode, agentVoiceId, stopLiveSpeech, voiceLanguageHint]);
+  }, [autoSpeak, voiceMode, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
 
   const resetVoicePhaseAfterResponse = useCallback(() => {
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
@@ -551,6 +662,24 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         recordingRef.current = recording;
         setIsRecording(true);
         if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+        // Start VAD monitoring on the recording for volume feedback
+        try {
+          if (!vadRef.current) {
+            vadRef.current = new VADService({
+              onSpeechStart: () => {
+                addVoiceDiagnostic('vad', 'speech-detected-recording');
+              },
+              onSpeechEnd: () => {
+                addVoiceDiagnostic('vad', 'silence-detected-recording');
+              },
+              onVolumeChange: (level) => {
+                setLiveVoiceVolume(level * 100 - 2);
+              },
+            });
+          }
+          vadRef.current.start(createRecordingMeterFn(recording));
+        } catch {}
       }
     } catch (e: any) {
       isRecordingRef.current = false;
@@ -563,6 +692,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const stopVoiceRecording = useCallback(async () => {
     if (!Audio || !isRecordingRef.current) return;
     try {
+      // Stop VAD monitoring
+      vadRef.current?.stop();
       isRecordingRef.current = false;
       setIsRecording(false);
       setVoicePhase('transcribing');
@@ -690,6 +821,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     autoSpeak,
     setAutoSpeak,
     liveVoiceAvailable,
+    realtimeConnected,
+    sendRealtimeInterrupt: useCallback(() => {
+      realtimeVoiceRef.current?.sendInterrupt();
+    }, []),
     speakingMessageId,
 
     // Actions

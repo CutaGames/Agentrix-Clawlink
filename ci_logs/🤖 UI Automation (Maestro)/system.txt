@@ -1,3 +1,0 @@
-2026-02-28T02:41:16.3570000Z Evaluating ui-test.if
-2026-02-28T02:41:16.3570000Z Evaluating: success()
-2026-02-28T02:41:16.3570000Z Result: false

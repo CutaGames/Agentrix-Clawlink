@@ -30,6 +30,7 @@ npm-debug.log*
 .idea/
 .vscode/
 .cursor/
+.copilot-debug/
 *.swp
 .DS_Store
 
@@ -49,8 +50,39 @@ frontend/.next/
 scripts/*
 !scripts/public-build/
 !scripts/public-build/**
+!scripts/deploy/
+!scripts/deploy/**
+!scripts/build/
+!scripts/build/**
+!scripts/check/
+!scripts/check/**
+!scripts/test/
+!scripts/test/**
+!scripts/setup/
+!scripts/setup/**
 !backend/build.sh
-!pre-push-validate.sh
+!frontend/start-production.sh
+
+# Build artifacts / temp bundles
+*.bundle
+*.tgz
+*.tar.gz
+*.patch
+*.sql
+
+# CI / debug logs
+ci_logs/
+*.txt
+!README.md
+!frontend/public/robots.txt
+
+# Temp directories
+tmp/
+.tmp-*
+.deploy/
+patch_out/
+backend/backups/
+*.sql.gz
 
 # Gradle
 mobile-app/

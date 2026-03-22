@@ -21,6 +21,9 @@ const BALL_SIZE = 56;
 const EDGE_MARGIN = 12;
 const LONG_PRESS_DURATION = 400;
 
+const PILL_WIDTH = 260;
+const PILL_HEIGHT = 120;
+
 type BallState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const STATE_COLORS: Record<BallState, string> = {
@@ -32,9 +35,15 @@ const STATE_COLORS: Record<BallState, string> = {
 
 interface Props {
   onVoiceActivate?: () => void;
+  /** Transcript text to show in the voice pill */
+  pillTranscript?: string;
+  /** Send the current transcript from the pill */
+  onPillSend?: (text: string) => void;
+  /** Volume level (0-1) for waveform visualization */
+  pillVolume?: number;
 }
 
-export function GlobalFloatingBall({ onVoiceActivate }: Props) {
+export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0 }: Props) {
   const navigation = useNavigation<any>();
   const { language } = useI18n();
   const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
@@ -68,6 +77,13 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
   const isDragging = useRef(false);
   const wakeListenerRef = useRef<WakeWordService | SpeechWakeWordService | null>(null);
 
+  // Voice pill expansion state
+  const [pillExpanded, setPillExpanded] = useState(false);
+  const pillExpandAnim = useRef(new Animated.Value(0)).current;
+  const waveformAnims = useRef(
+    Array.from({ length: 5 }, () => new Animated.Value(0.3))
+  ).current;
+
   // Pulse animation for non-idle states
   useEffect(() => {
     if (ballState !== 'idle') {
@@ -89,6 +105,36 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
       setBallState('idle');
     }
   }, [shouldHide]);
+
+  // Pill expand/collapse animation
+  useEffect(() => {
+    Animated.spring(pillExpandAnim, {
+      toValue: pillExpanded ? 1 : 0,
+      useNativeDriver: false,
+      friction: 8,
+    }).start();
+  }, [pillExpanded, pillExpandAnim]);
+
+  // Waveform animation driven by volume
+  useEffect(() => {
+    if (!pillExpanded || ballState !== 'listening') return;
+    waveformAnims.forEach((anim, i) => {
+      const base = Math.min(1, 0.2 + pillVolume * 0.8);
+      const jitter = Math.random() * 0.3;
+      Animated.timing(anim, {
+        toValue: Math.min(1, base + jitter * (i % 2 === 0 ? 1 : 0.6)),
+        duration: 120,
+        useNativeDriver: false,
+      }).start();
+    });
+  }, [pillExpanded, ballState, pillVolume, waveformAnims]);
+
+  // Collapse pill when leaving listening state
+  useEffect(() => {
+    if (ballState !== 'listening' && pillExpanded) {
+      setPillExpanded(false);
+    }
+  }, [ballState, pillExpanded]);
 
   const snapToEdge = useCallback((x: number, y: number) => {
     const snapX = x < screenW / 2 ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN;
@@ -215,8 +261,15 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
 
   const handleVoiceActivate = useCallback(() => {
     addVoiceDiagnostic('floating-ball', 'long-press-activate');
-    void activateVoiceExperience();
-  }, [activateVoiceExperience]);
+    // Long press → expand voice pill panel (or navigate if no pill handler)
+    if (onPillSend) {
+      setPillExpanded(true);
+      setBallState('listening');
+      onVoiceActivate?.();
+    } else {
+      void activateVoiceExperience();
+    }
+  }, [activateVoiceExperience, onPillSend, onVoiceActivate]);
 
   useEffect(() => {
     if (!wakeWordConfig.enabled || shouldHide) {
@@ -293,6 +346,19 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
     wakeWordConfig.sensitivity,
   ]);
 
+  const handlePillSend = useCallback(() => {
+    if (pillTranscript && onPillSend) {
+      onPillSend(pillTranscript);
+      setPillExpanded(false);
+      setBallState('thinking');
+    }
+  }, [pillTranscript, onPillSend]);
+
+  const handlePillClose = useCallback(() => {
+    setPillExpanded(false);
+    setBallState('idle');
+  }, []);
+
   if (shouldHide) return null;
 
   const ballColor = STATE_COLORS[ballState];
@@ -312,6 +378,66 @@ export function GlobalFloatingBall({ onVoiceActivate }: Props) {
       ]}
       {...panResponder.panHandlers}
     >
+      {/* Voice Pill panel — expands on long press */}
+      {pillExpanded && (
+        <Animated.View
+          style={[
+            styles.pillPanel,
+            {
+              opacity: pillExpandAnim,
+              transform: [{
+                scale: pillExpandAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.7, 1],
+                }),
+              }],
+            },
+          ]}
+        >
+          <View style={styles.pillHeader}>
+            <Text style={styles.pillTitle}>
+              {ballState === 'listening' ? '🎙 Listening...' : ballState === 'thinking' ? '💭 Thinking...' : '🔊 Speaking'}
+            </Text>
+            <TouchableOpacity onPress={handlePillClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.pillCloseBtn}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Waveform bars */}
+          <View style={styles.waveformRow}>
+            {waveformAnims.map((anim, i) => (
+              <Animated.View
+                key={i}
+                style={[
+                  styles.waveformBar,
+                  {
+                    height: anim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [4, 28],
+                    }),
+                    backgroundColor: ballState === 'listening' ? '#10B981' : '#6C5CE7',
+                  },
+                ]}
+              />
+            ))}
+          </View>
+
+          {/* Transcript preview */}
+          {!!pillTranscript && (
+            <Text style={styles.pillTranscript} numberOfLines={2}>
+              {pillTranscript}
+            </Text>
+          )}
+
+          {/* Send button */}
+          {!!pillTranscript && (
+            <TouchableOpacity style={styles.pillSendBtn} onPress={handlePillSend}>
+              <Text style={styles.pillSendText}>⬆ Send</Text>
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+      )}
+
       {/* Glow ring for non-idle state */}
       {ballState !== 'idle' && (
         <View style={[styles.glowRing, { borderColor: ballColor + '60' }]} />
@@ -354,6 +480,68 @@ const styles = StyleSheet.create({
   },
   emoji: {
     fontSize: 28,
+  },
+  // Voice Pill panel styles
+  pillPanel: {
+    position: 'absolute',
+    bottom: BALL_SIZE + 10,
+    right: 0,
+    width: PILL_WIDTH,
+    backgroundColor: 'rgba(17, 24, 39, 0.92)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  pillHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pillTitle: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pillCloseBtn: {
+    color: '#9CA3AF',
+    fontSize: 16,
+  },
+  waveformRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    height: 32,
+    marginBottom: 6,
+  },
+  waveformBar: {
+    width: 4,
+    borderRadius: 2,
+  },
+  pillTranscript: {
+    color: '#D1D5DB',
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  pillSendBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#6C5CE7',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  pillSendText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
