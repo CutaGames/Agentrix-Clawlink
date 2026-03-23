@@ -33,4 +33,16 @@ commands.allow = [
   "desktop_bridge_set_auth_token",
   "desktop_bridge_delete_auth_token",
   "desktop_bridge_log_debug_event",
+  # Screen capture (P3.2)
+  "desktop_bridge_capture_screen",
+  # Git integration (P3.3)
+  "desktop_bridge_git_status",
+  "desktop_bridge_git_diff",
+  "desktop_bridge_git_log",
+  "desktop_bridge_git_commit",
+  "desktop_bridge_git_branch_list",
+  # Secure credential vault (P3.5)
+  "desktop_bridge_keychain_set",
+  "desktop_bridge_keychain_get",
+  "desktop_bridge_keychain_delete",
 ]

@@ -83,13 +83,7 @@ export declare namespace Commission {
 export interface CommissionInterface extends Interface {
   getFunction(
     nameOrSignature:
-      | "BASIS_POINTS"
-      | "EXECUTOR_SHARE"
-      | "PROMOTER_SHARE_OF_PLATFORM"
-      | "REFERRER_SHARE"
       | "authorizedProviders"
-      | "autoPaySplit"
-      | "calculateV5Split"
       | "commissions"
       | "configureSettlementToken"
       | "createSettlement"
@@ -101,9 +95,6 @@ export interface CommissionInterface extends Interface {
       | "getPendingBalance"
       | "getProofStatus"
       | "getSplitConfig"
-      | "initializeV5Rates"
-      | "layerPlatformFees"
-      | "layerPoolRates"
       | "orderSplitConfigs"
       | "orders"
       | "owner"
@@ -118,18 +109,13 @@ export interface CommissionInterface extends Interface {
       | "recordCommissionLegacy"
       | "relayers"
       | "renounceOwnership"
-      | "scannedFeeRates"
-      | "scannedProductSplit"
       | "setAuthorizedProvider"
       | "setDisputeStatus"
-      | "setLayerRates"
       | "setOrderDispute"
       | "setProofRequirement"
       | "setRelayer"
-      | "setScannedFeeRate"
       | "setSplitConfig"
       | "setTrustedAuditor"
-      | "setX402ChannelFeeRate"
       | "settlementToken"
       | "settlements"
       | "submitProof"
@@ -142,7 +128,6 @@ export interface CommissionInterface extends Interface {
       | "updateSystemRebatePool"
       | "verifyProof"
       | "walletSplit"
-      | "x402ChannelFeeRate"
   ): FunctionFragment;
 
   getEvent(
@@ -158,42 +143,16 @@ export interface CommissionInterface extends Interface {
       | "ProofSubmitted"
       | "ProofVerified"
       | "ProviderAuthorized"
-      | "ScannedProductPayment"
       | "SettlementCompleted"
       | "SettlementCreated"
       | "SplitConfigSet"
       | "TrustedAuditorUpdated"
       | "Unpaused"
-      | "X402ChannelFeeRateUpdated"
   ): EventFragment;
 
   encodeFunctionData(
-    functionFragment: "BASIS_POINTS",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "EXECUTOR_SHARE",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "PROMOTER_SHARE_OF_PLATFORM",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "REFERRER_SHARE",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
     functionFragment: "authorizedProviders",
     values: [AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "autoPaySplit",
-    values: [BytesLike, BigNumberish, AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "calculateV5Split",
-    values: [BigNumberish, BigNumberish, boolean, boolean, boolean]
   ): string;
   encodeFunctionData(
     functionFragment: "commissions",
@@ -238,18 +197,6 @@ export interface CommissionInterface extends Interface {
   encodeFunctionData(
     functionFragment: "getSplitConfig",
     values: [BytesLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "initializeV5Rates",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "layerPlatformFees",
-    values: [BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "layerPoolRates",
-    values: [BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "orderSplitConfigs",
@@ -305,24 +252,12 @@ export interface CommissionInterface extends Interface {
     values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "scannedFeeRates",
-    values: [BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "scannedProductSplit",
-    values: [BytesLike, BigNumberish, BigNumberish, AddressLike]
-  ): string;
-  encodeFunctionData(
     functionFragment: "setAuthorizedProvider",
     values: [AddressLike, boolean]
   ): string;
   encodeFunctionData(
     functionFragment: "setDisputeStatus",
     values: [BytesLike, boolean]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setLayerRates",
-    values: [BigNumberish, BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "setOrderDispute",
@@ -337,20 +272,12 @@ export interface CommissionInterface extends Interface {
     values: [AddressLike, boolean]
   ): string;
   encodeFunctionData(
-    functionFragment: "setScannedFeeRate",
-    values: [BigNumberish, BigNumberish]
-  ): string;
-  encodeFunctionData(
     functionFragment: "setSplitConfig",
     values: [BytesLike, Commission.SplitConfigStruct]
   ): string;
   encodeFunctionData(
     functionFragment: "setTrustedAuditor",
     values: [AddressLike, boolean]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "setX402ChannelFeeRate",
-    values: [BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "settlementToken",
@@ -410,37 +337,9 @@ export interface CommissionInterface extends Interface {
     functionFragment: "walletSplit",
     values: [BytesLike, BigNumberish]
   ): string;
-  encodeFunctionData(
-    functionFragment: "x402ChannelFeeRate",
-    values?: undefined
-  ): string;
 
   decodeFunctionResult(
-    functionFragment: "BASIS_POINTS",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "EXECUTOR_SHARE",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "PROMOTER_SHARE_OF_PLATFORM",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "REFERRER_SHARE",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "authorizedProviders",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "autoPaySplit",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "calculateV5Split",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -488,18 +387,6 @@ export interface CommissionInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "initializeV5Rates",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "layerPlatformFees",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "layerPoolRates",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "orderSplitConfigs",
     data: BytesLike
   ): Result;
@@ -541,23 +428,11 @@ export interface CommissionInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "scannedFeeRates",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "scannedProductSplit",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "setAuthorizedProvider",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "setDisputeStatus",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "setLayerRates",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -570,19 +445,11 @@ export interface CommissionInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "setRelayer", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "setScannedFeeRate",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "setSplitConfig",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "setTrustedAuditor",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "setX402ChannelFeeRate",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -625,10 +492,6 @@ export interface CommissionInterface extends Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "walletSplit",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "x402ChannelFeeRate",
     data: BytesLike
   ): Result;
 }
@@ -873,34 +736,6 @@ export namespace ProviderAuthorizedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
-export namespace ScannedProductPaymentEvent {
-  export type InputTuple = [
-    orderId: BytesLike,
-    source: BigNumberish,
-    originalAmount: BigNumberish,
-    userExtraFee: BigNumberish,
-    merchantAmount: BigNumberish
-  ];
-  export type OutputTuple = [
-    orderId: string,
-    source: bigint,
-    originalAmount: bigint,
-    userExtraFee: bigint,
-    merchantAmount: bigint
-  ];
-  export interface OutputObject {
-    orderId: string;
-    source: bigint;
-    originalAmount: bigint;
-    userExtraFee: bigint;
-    merchantAmount: bigint;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
 export namespace SettlementCompletedEvent {
   export type InputTuple = [
     settlementId: BytesLike,
@@ -998,19 +833,6 @@ export namespace UnpausedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
-export namespace X402ChannelFeeRateUpdatedEvent {
-  export type InputTuple = [oldRate: BigNumberish, newRate: BigNumberish];
-  export type OutputTuple = [oldRate: bigint, newRate: bigint];
-  export interface OutputObject {
-    oldRate: bigint;
-    newRate: bigint;
-  }
-  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
-  export type Filter = TypedDeferredTopicFilter<Event>;
-  export type Log = TypedEventLog<Event>;
-  export type LogDescription = TypedLogDescription<Event>;
-}
-
 export interface Commission extends BaseContract {
   connect(runner?: ContractRunner | null): Commission;
   waitForDeployment(): Promise<this>;
@@ -1054,43 +876,9 @@ export interface Commission extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
-  BASIS_POINTS: TypedContractMethod<[], [bigint], "view">;
-
-  EXECUTOR_SHARE: TypedContractMethod<[], [bigint], "view">;
-
-  PROMOTER_SHARE_OF_PLATFORM: TypedContractMethod<[], [bigint], "view">;
-
-  REFERRER_SHARE: TypedContractMethod<[], [bigint], "view">;
-
   authorizedProviders: TypedContractMethod<
     [arg0: AddressLike],
     [boolean],
-    "view"
-  >;
-
-  autoPaySplit: TypedContractMethod<
-    [orderId: BytesLike, amount: BigNumberish, payer: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-
-  calculateV5Split: TypedContractMethod<
-    [
-      amount: BigNumberish,
-      layer: BigNumberish,
-      hasReferrer: boolean,
-      hasExecutor: boolean,
-      executorHasWallet: boolean
-    ],
-    [
-      [bigint, bigint, bigint, bigint, bigint] & {
-        merchantAmount: bigint;
-        platformFee: bigint;
-        referrerFee: bigint;
-        executorFee: bigint;
-        treasuryFee: bigint;
-      }
-    ],
     "view"
   >;
 
@@ -1189,16 +977,6 @@ export interface Commission extends BaseContract {
     [Commission.SplitConfigStructOutput],
     "view"
   >;
-
-  initializeV5Rates: TypedContractMethod<[], [void], "nonpayable">;
-
-  layerPlatformFees: TypedContractMethod<
-    [arg0: BigNumberish],
-    [bigint],
-    "view"
-  >;
-
-  layerPoolRates: TypedContractMethod<[arg0: BigNumberish], [bigint], "view">;
 
   orderSplitConfigs: TypedContractMethod<
     [arg0: BytesLike],
@@ -1338,19 +1116,6 @@ export interface Commission extends BaseContract {
 
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
-  scannedFeeRates: TypedContractMethod<[arg0: BigNumberish], [bigint], "view">;
-
-  scannedProductSplit: TypedContractMethod<
-    [
-      orderId: BytesLike,
-      originalAmount: BigNumberish,
-      source: BigNumberish,
-      referrer: AddressLike
-    ],
-    [void],
-    "nonpayable"
-  >;
-
   setAuthorizedProvider: TypedContractMethod<
     [provider: AddressLike, authorized: boolean],
     [void],
@@ -1359,12 +1124,6 @@ export interface Commission extends BaseContract {
 
   setDisputeStatus: TypedContractMethod<
     [orderId: BytesLike, isDisputed: boolean],
-    [void],
-    "nonpayable"
-  >;
-
-  setLayerRates: TypedContractMethod<
-    [layer: BigNumberish, platformFee: BigNumberish, poolRate: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -1387,12 +1146,6 @@ export interface Commission extends BaseContract {
     "nonpayable"
   >;
 
-  setScannedFeeRate: TypedContractMethod<
-    [source: BigNumberish, rate: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
   setSplitConfig: TypedContractMethod<
     [orderId: BytesLike, config: Commission.SplitConfigStruct],
     [void],
@@ -1401,12 +1154,6 @@ export interface Commission extends BaseContract {
 
   setTrustedAuditor: TypedContractMethod<
     [auditor: AddressLike, trusted: boolean],
-    [void],
-    "nonpayable"
-  >;
-
-  setX402ChannelFeeRate: TypedContractMethod<
-    [newRate: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -1486,55 +1233,13 @@ export interface Commission extends BaseContract {
     "nonpayable"
   >;
 
-  x402ChannelFeeRate: TypedContractMethod<[], [bigint], "view">;
-
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
 
   getFunction(
-    nameOrSignature: "BASIS_POINTS"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "EXECUTOR_SHARE"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "PROMOTER_SHARE_OF_PLATFORM"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "REFERRER_SHARE"
-  ): TypedContractMethod<[], [bigint], "view">;
-  getFunction(
     nameOrSignature: "authorizedProviders"
   ): TypedContractMethod<[arg0: AddressLike], [boolean], "view">;
-  getFunction(
-    nameOrSignature: "autoPaySplit"
-  ): TypedContractMethod<
-    [orderId: BytesLike, amount: BigNumberish, payer: AddressLike],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "calculateV5Split"
-  ): TypedContractMethod<
-    [
-      amount: BigNumberish,
-      layer: BigNumberish,
-      hasReferrer: boolean,
-      hasExecutor: boolean,
-      executorHasWallet: boolean
-    ],
-    [
-      [bigint, bigint, bigint, bigint, bigint] & {
-        merchantAmount: bigint;
-        platformFee: bigint;
-        referrerFee: bigint;
-        executorFee: bigint;
-        treasuryFee: bigint;
-      }
-    ],
-    "view"
-  >;
   getFunction(
     nameOrSignature: "commissions"
   ): TypedContractMethod<
@@ -1634,15 +1339,6 @@ export interface Commission extends BaseContract {
     [Commission.SplitConfigStructOutput],
     "view"
   >;
-  getFunction(
-    nameOrSignature: "initializeV5Rates"
-  ): TypedContractMethod<[], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "layerPlatformFees"
-  ): TypedContractMethod<[arg0: BigNumberish], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "layerPoolRates"
-  ): TypedContractMethod<[arg0: BigNumberish], [bigint], "view">;
   getFunction(
     nameOrSignature: "orderSplitConfigs"
   ): TypedContractMethod<
@@ -1796,21 +1492,6 @@ export interface Commission extends BaseContract {
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
   getFunction(
-    nameOrSignature: "scannedFeeRates"
-  ): TypedContractMethod<[arg0: BigNumberish], [bigint], "view">;
-  getFunction(
-    nameOrSignature: "scannedProductSplit"
-  ): TypedContractMethod<
-    [
-      orderId: BytesLike,
-      originalAmount: BigNumberish,
-      source: BigNumberish,
-      referrer: AddressLike
-    ],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
     nameOrSignature: "setAuthorizedProvider"
   ): TypedContractMethod<
     [provider: AddressLike, authorized: boolean],
@@ -1821,13 +1502,6 @@ export interface Commission extends BaseContract {
     nameOrSignature: "setDisputeStatus"
   ): TypedContractMethod<
     [orderId: BytesLike, isDisputed: boolean],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "setLayerRates"
-  ): TypedContractMethod<
-    [layer: BigNumberish, platformFee: BigNumberish, poolRate: BigNumberish],
     [void],
     "nonpayable"
   >;
@@ -1853,13 +1527,6 @@ export interface Commission extends BaseContract {
     "nonpayable"
   >;
   getFunction(
-    nameOrSignature: "setScannedFeeRate"
-  ): TypedContractMethod<
-    [source: BigNumberish, rate: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-  getFunction(
     nameOrSignature: "setSplitConfig"
   ): TypedContractMethod<
     [orderId: BytesLike, config: Commission.SplitConfigStruct],
@@ -1873,9 +1540,6 @@ export interface Commission extends BaseContract {
     [void],
     "nonpayable"
   >;
-  getFunction(
-    nameOrSignature: "setX402ChannelFeeRate"
-  ): TypedContractMethod<[newRate: BigNumberish], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "settlementToken"
   ): TypedContractMethod<[], [string], "view">;
@@ -1955,9 +1619,6 @@ export interface Commission extends BaseContract {
     [void],
     "nonpayable"
   >;
-  getFunction(
-    nameOrSignature: "x402ChannelFeeRate"
-  ): TypedContractMethod<[], [bigint], "view">;
 
   getEvent(
     key: "CommissionDistributed"
@@ -2037,13 +1698,6 @@ export interface Commission extends BaseContract {
     ProviderAuthorizedEvent.OutputObject
   >;
   getEvent(
-    key: "ScannedProductPayment"
-  ): TypedContractEvent<
-    ScannedProductPaymentEvent.InputTuple,
-    ScannedProductPaymentEvent.OutputTuple,
-    ScannedProductPaymentEvent.OutputObject
-  >;
-  getEvent(
     key: "SettlementCompleted"
   ): TypedContractEvent<
     SettlementCompletedEvent.InputTuple,
@@ -2077,13 +1731,6 @@ export interface Commission extends BaseContract {
     UnpausedEvent.InputTuple,
     UnpausedEvent.OutputTuple,
     UnpausedEvent.OutputObject
-  >;
-  getEvent(
-    key: "X402ChannelFeeRateUpdated"
-  ): TypedContractEvent<
-    X402ChannelFeeRateUpdatedEvent.InputTuple,
-    X402ChannelFeeRateUpdatedEvent.OutputTuple,
-    X402ChannelFeeRateUpdatedEvent.OutputObject
   >;
 
   filters: {
@@ -2208,17 +1855,6 @@ export interface Commission extends BaseContract {
       ProviderAuthorizedEvent.OutputObject
     >;
 
-    "ScannedProductPayment(bytes32,uint8,uint256,uint256,uint256)": TypedContractEvent<
-      ScannedProductPaymentEvent.InputTuple,
-      ScannedProductPaymentEvent.OutputTuple,
-      ScannedProductPaymentEvent.OutputObject
-    >;
-    ScannedProductPayment: TypedContractEvent<
-      ScannedProductPaymentEvent.InputTuple,
-      ScannedProductPaymentEvent.OutputTuple,
-      ScannedProductPaymentEvent.OutputObject
-    >;
-
     "SettlementCompleted(bytes32,address,uint256,address)": TypedContractEvent<
       SettlementCompletedEvent.InputTuple,
       SettlementCompletedEvent.OutputTuple,
@@ -2272,17 +1908,6 @@ export interface Commission extends BaseContract {
       UnpausedEvent.InputTuple,
       UnpausedEvent.OutputTuple,
       UnpausedEvent.OutputObject
-    >;
-
-    "X402ChannelFeeRateUpdated(uint16,uint16)": TypedContractEvent<
-      X402ChannelFeeRateUpdatedEvent.InputTuple,
-      X402ChannelFeeRateUpdatedEvent.OutputTuple,
-      X402ChannelFeeRateUpdatedEvent.OutputObject
-    >;
-    X402ChannelFeeRateUpdated: TypedContractEvent<
-      X402ChannelFeeRateUpdatedEvent.InputTuple,
-      X402ChannelFeeRateUpdatedEvent.OutputTuple,
-      X402ChannelFeeRateUpdatedEvent.OutputObject
     >;
   };
 }

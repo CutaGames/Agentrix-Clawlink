@@ -87,9 +87,12 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'app.clawlink.mobile'
+    namespace 'app.agentrix.claw'
     defaultConfig {
-        applicationId 'app.clawlink.mobile'
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+        applicationId 'app.agentrix.claw'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

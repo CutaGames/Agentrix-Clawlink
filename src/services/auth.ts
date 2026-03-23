@@ -481,20 +481,71 @@ export async function loginWithX(): Promise<AuthUser> {
   return loginWithTwitter();
 }
 
-/** loginWithApple — OAuth via WebBrowser */
+/** loginWithApple — Native iOS Sign in with Apple + WebBrowser fallback (Android) */
 export async function loginWithApple(): Promise<AuthUser> {
-  const redirectUri = getMobileCallbackUrl();
-  const apiBase = getBackendBaseUrl();
-  const result = await WebBrowser.openAuthSessionAsync(
-    `${apiBase}/auth/apple?redirect_uri=${encodeURIComponent(redirectUri)}`,
-    redirectUri,
-  );
-  if (result.type !== 'success') throw new Error('Apple login cancelled');
-  const params = new URL(result.url);
-  const token = params.searchParams.get('token');
-  if (!token) throw new Error('No token from Apple login');
-  const user = await fetchCurrentUserWithToken(token);
-  return { ...user, token } as any;
+  if (Platform.OS === 'ios') {
+    return loginWithAppleNative();
+  }
+  // Android / web fallback: use WebBrowser via mobile Apple OAuth entry
+  return socialLogin('apple', 'Apple');
+}
+
+/** Native iOS Apple Sign In using @invertase/react-native-apple-authentication */
+async function loginWithAppleNative(): Promise<AuthUser> {
+  try {
+    const appleAuth = require('@invertase/react-native-apple-authentication').default;
+    const { AppleAuthRequestOperation, AppleAuthRequestScope } = require('@invertase/react-native-apple-authentication');
+
+    if (!appleAuth.isSupported) {
+      throw new Error('Apple Sign In is not supported on this device');
+    }
+
+    const appleAuthResponse = await appleAuth.performRequest({
+      requestedOperation: AppleAuthRequestOperation.LOGIN,
+      requestedScopes: [AppleAuthRequestScope.EMAIL, AppleAuthRequestScope.FULL_NAME],
+    });
+
+    const credentialState = await appleAuth.getCredentialStateForUser(appleAuthResponse.user);
+    const { AppleAuthCredentialState } = require('@invertase/react-native-apple-authentication');
+    if (credentialState !== AppleAuthCredentialState.AUTHORIZED) {
+      throw new Error('Apple Sign In credential not authorized');
+    }
+
+    const { identityToken, fullName, email } = appleAuthResponse;
+    if (!identityToken) {
+      throw new Error('No identity token received from Apple');
+    }
+
+    // Send native identity token to backend for verification and JWT issuance
+    const apiBase = getBackendBaseUrl();
+    const loginResult = await apiFetch<any>(`/auth/apple/native-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identityToken,
+        fullName: fullName ? { givenName: fullName.givenName, familyName: fullName.familyName } : undefined,
+        email,
+      }),
+    });
+
+    if (!loginResult?.access_token) {
+      throw new Error('No access token from Apple native login');
+    }
+
+    const user = await fetchCurrentUserWithToken(loginResult.access_token);
+    return handleLoginResult(
+      { access_token: loginResult.access_token, user: { ...user, id: loginResult.user?.id || user.id } },
+      'apple' as AuthProvider,
+      loginResult.user?.id,
+    );
+  } catch (err: any) {
+    // If native fails (e.g. library not installed), fall back to WebBrowser
+    if (err?.code === 'ERR_CANCELED' || err?.message?.includes('cancelled')) {
+      throw new Error('User cancelled Apple login');
+    }
+    console.warn('[Auth] Apple native sign-in failed, falling back to WebBrowser:', err?.message);
+    return socialLogin('apple', 'Apple');
+  }
 }
 
 /** handleOAuthCallback — called from AuthCallbackScreen */

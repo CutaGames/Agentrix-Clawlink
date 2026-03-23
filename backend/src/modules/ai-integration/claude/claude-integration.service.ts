@@ -1084,6 +1084,16 @@ export class ClaudeIntegrationService {
     });
   }
 
+  private readonly maxInlineImageBytes = 5 * 1024 * 1024;
+
+  private buildOversizedImageFallback(url: string, mediaType: string, sizeBytes: number) {
+    const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+    return {
+      type: 'text',
+      text: `[Image attachment omitted: ${mediaType}, ${sizeMb} MB after download exceeds inline model limit. URL: ${url}]`,
+    };
+  }
+
   private async fetchImageAsBase64Block(url: string): Promise<any> {
     try {
       const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
@@ -1098,6 +1108,12 @@ export class ClaudeIntegrationService {
 
       const contentType = resp.headers['content-type'] || 'image/png';
       const mediaType = contentType.split(';')[0].trim();
+      if (buffer.length > this.maxInlineImageBytes) {
+        this.logger.warn(
+          `Image too large for Claude inline upload (${buffer.length} bytes raw, url: ${url}). Falling back to text metadata.`,
+        );
+        return this.buildOversizedImageFallback(url, mediaType, buffer.length);
+      }
       return {
         type: 'image',
         source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') },

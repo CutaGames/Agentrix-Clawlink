@@ -16,6 +16,7 @@ import { AgentSession, SessionStatus } from '../../entities/agent-session.entity
 import { OpenClawInstance, OpenClawInstanceStatus } from '../../entities/openclaw-instance.entity';
 import { OpenClawConnectionService } from '../openclaw-connection/openclaw-connection.service';
 import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
+import { OpenAIIntegrationService } from '../ai-integration/openai/openai-integration.service';
 import { TokenQuotaService, estimateTokens } from '../token-quota/token-quota.service';
 import { SkillExecutorService, ExecutionContext } from '../skill/skill-executor.service';
 import { AGENT_PRESET_SKILLS, getDefaultEnabledSkills, PresetSkill } from '../skill/agent-preset-skills.config';
@@ -49,6 +50,8 @@ export class OpenClawProxyService {
     private readonly tokenQuotaService: TokenQuotaService,
     @Inject(forwardRef(() => ClaudeIntegrationService))
     private readonly claudeIntegrationService: ClaudeIntegrationService,
+    @Inject(forwardRef(() => OpenAIIntegrationService))
+    private readonly openAIIntegrationService: OpenAIIntegrationService,
     @Inject(forwardRef(() => SkillExecutorService))
     private readonly skillExecutorService: SkillExecutorService,
     @Inject(forwardRef(() => SkillService))
@@ -455,6 +458,48 @@ export class OpenClawProxyService {
     }
 
     return provider.models[0]?.id || modelId;
+  }
+
+  private resolveExecutionModelId(modelId: string): string {
+    return this.aiProviderService.resolveExecutionModelId(modelId) || modelId;
+  }
+
+  private isOpenAICompatibleProvider(providerId?: string): boolean {
+    return [
+      'openai',
+      'chatgpt-subscription',
+      'copilot-subscription',
+      'deepseek',
+      'xai',
+      'meta',
+      'moonshot',
+      'alibaba',
+      'bytedance',
+      'minimax',
+      'iflytek',
+      'zhipu',
+    ].includes(String(providerId || ''));
+  }
+
+  private toOpenAITools(tools: any[]): any[] {
+    return tools.map((tool) => {
+      if (tool?.type === 'function' && tool?.function?.name) {
+        return tool;
+      }
+
+      if (tool?.name && tool?.input_schema) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.input_schema,
+          },
+        };
+      }
+
+      return tool;
+    });
   }
 
   private formatDirectMarketplaceSearch(
@@ -959,13 +1004,25 @@ export class OpenClawProxyService {
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
-    const result = await this.claudeIntegrationService.chatWithFunctions(messages, {
-      model: resolvedModel,
-      context: { userId, sessionId },
-      additionalTools,
-      onToolCall,
-      userCredentials,
-    });
+    const executionModel = this.resolveExecutionModelId(resolvedModel);
+    const result = this.isOpenAICompatibleProvider(resolvedProvider)
+      ? await this.openAIIntegrationService.chatWithFunctions(messages, {
+          model: executionModel,
+          context: { userId, sessionId },
+          additionalTools: this.toOpenAITools(additionalTools),
+          onToolCall,
+          userApiKey: userCredentials?.apiKey,
+          userBaseURL: userCredentials?.baseUrl,
+        })
+      : await this.claudeIntegrationService.chatWithFunctions(messages, {
+          model: executionModel,
+          context: { userId, sessionId },
+          additionalTools,
+          onToolCall,
+          userCredentials: userCredentials
+            ? { ...userCredentials, model: executionModel }
+            : undefined,
+        });
 
     const text = result?.text || '';
     const inputTokens = estimateTokens(messageText);
@@ -977,18 +1034,18 @@ export class OpenClawProxyService {
     await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
       source: 'platform-hosted-chat',
       instanceId: instance.id,
-      model: resolvedModel,
+      model: executionModel,
     });
     await this.savePlatformHostedMessage(session, userId, MessageRole.ASSISTANT, text, {
       source: 'platform-hosted-chat',
       instanceId: instance.id,
-      model: resolvedModel,
+      model: executionModel,
       toolCalls: result?.toolCalls || null,
     });
 
     return {
       sessionId,
-      resolvedModel,
+      resolvedModel: executionModel,
       resolvedModelLabel,
       reply: {
         id: `assistant-${Date.now()}`,

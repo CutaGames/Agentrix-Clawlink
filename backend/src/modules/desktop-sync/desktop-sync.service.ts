@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../../entities/notification.entity';
 import {
+  DesktopDevicePresence,
   DesktopSession,
   DesktopTask,
   DesktopApproval,
@@ -30,22 +31,17 @@ import {
 } from './dto/desktop-sync.dto';
 import { emitDesktopSyncEvent } from './desktop-sync.events';
 
-interface DesktopDeviceRecord {
-  deviceId: string;
-  platform: string;
-  appVersion?: string;
-  context?: DesktopHeartbeatDto['context'];
-  lastSeenAt: string;
-}
+// Threshold for considering a device "online" (no heartbeat within this window = offline)
+const DEVICE_ONLINE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 @Injectable()
 export class DesktopSyncService {
   private readonly logger = new Logger(DesktopSyncService.name);
-  // Devices are transient presence data — keep in memory
-  private readonly devices = new Map<string, Map<string, DesktopDeviceRecord>>();
 
   constructor(
     private readonly notificationService: NotificationService,
+    @InjectRepository(DesktopDevicePresence)
+    private readonly devicePresenceRepo: Repository<DesktopDevicePresence>,
     @InjectRepository(DesktopSession)
     private readonly sessionRepo: Repository<DesktopSession>,
     @InjectRepository(DesktopTask)
@@ -57,21 +53,34 @@ export class DesktopSyncService {
   ) {}
 
   async heartbeat(userId: string, dto: DesktopHeartbeatDto) {
-    const next: DesktopDeviceRecord = {
-      deviceId: dto.deviceId,
-      platform: dto.platform,
-      appVersion: dto.appVersion,
-      context: dto.context,
-      lastSeenAt: new Date().toISOString(),
-    };
+    const now = new Date();
 
-    this.userMap(this.devices, userId).set(dto.deviceId, next);
-    emitDesktopSyncEvent(userId, 'desktop-sync:presence', next);
+    // Upsert device presence row
+    let entity = await this.devicePresenceRepo.findOne({
+      where: { userId, deviceId: dto.deviceId },
+    });
+
+    if (!entity) {
+      entity = this.devicePresenceRepo.create({
+        userId,
+        deviceId: dto.deviceId,
+      });
+    }
+
+    entity.platform = dto.platform;
+    entity.appVersion = dto.appVersion;
+    entity.context = dto.context as Record<string, unknown> | undefined;
+    entity.lastSeenAt = now;
+
+    entity = await this.devicePresenceRepo.save(entity);
+
+    const record = this.devicePresenceToRecord(entity);
+    emitDesktopSyncEvent(userId, 'desktop-sync:presence', record);
 
     return {
       ok: true,
-      device: next,
-      serverTime: new Date().toISOString(),
+      device: record,
+      serverTime: now.toISOString(),
     };
   }
 
@@ -177,9 +186,11 @@ export class DesktopSyncService {
   }
 
   async getState(userId: string) {
-    const devices = Array.from(this.userMap(this.devices, userId).values()).sort((a, b) =>
-      b.lastSeenAt.localeCompare(a.lastSeenAt),
-    );
+    const deviceEntities = await this.devicePresenceRepo.find({
+      where: { userId },
+      order: { lastSeenAt: 'DESC' },
+    });
+    const devices = deviceEntities.map((e) => this.devicePresenceToRecord(e));
 
     const taskEntities = await this.taskRepo.find({ where: { userId }, order: { updatedAt: 'DESC' }, take: 100 });
     const tasks = taskEntities.map((e) => this.taskEntityToRecord(e));
@@ -346,11 +357,27 @@ export class DesktopSyncService {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  private userMap<T>(root: Map<string, Map<string, T>>, userId: string) {
-    if (!root.has(userId)) {
-      root.set(userId, new Map<string, T>());
-    }
-    return root.get(userId)!;
+  async listOnlineDevices(userId: string) {
+    const entities = await this.devicePresenceRepo.find({
+      where: { userId },
+      order: { lastSeenAt: 'DESC' },
+    });
+    return entities
+      .map((e) => this.devicePresenceToRecord(e))
+      .filter((d) => d.isOnline);
+  }
+
+  private devicePresenceToRecord(e: DesktopDevicePresence) {
+    const lastSeenAt = e.lastSeenAt instanceof Date ? e.lastSeenAt.toISOString() : String(e.lastSeenAt);
+    const isOnline = (Date.now() - new Date(lastSeenAt).getTime()) < DEVICE_ONLINE_THRESHOLD_MS;
+    return {
+      deviceId: e.deviceId,
+      platform: e.platform,
+      appVersion: e.appVersion,
+      context: e.context,
+      lastSeenAt,
+      isOnline,
+    };
   }
 
   private normalizeTimeline(entries: DesktopTimelineEntryDto[]) {

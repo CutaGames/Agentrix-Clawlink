@@ -1,15 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
 import FloatingBall from "./components/FloatingBall";
 import ChatPanel from "./components/ChatPanel";
 import LoginPanel from "./components/LoginPanel";
 import OnboardingPanel from "./components/OnboardingPanel";
+import SpotlightPanel from "./components/SpotlightPanel";
 import agentrixLogo from "./assets/agentrix-logo.png";
 import { useAuthStore } from "./services/store";
 import { initSessionSync, destroySessionSync } from "./services/sessionSync";
+import { initPresenceSocket, destroyPresenceSocket } from "./services/agentPresence";
 import { startDesktopAgentSync, stopDesktopAgentSync } from "./services/desktopAgentSync";
 import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
 import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
+import { DesktopWakeWordService } from "./services/wakeWord";
+import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/wakeWordConfig";
+import "./services/suspend"; // Register __agentrix_suspend / __agentrix_resume on window
 
 // Determine view from Tauri window label without importing @tauri-apps/api/window
 // (static import can crash if Tauri internals aren't ready)
@@ -28,6 +34,8 @@ export default function App() {
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
+  const [wakeWordRevision, setWakeWordRevision] = useState(0);
+  const desktopWakeWordConfig = readDesktopWakeWordConfig();
 
   useEffect(() => {
     loadToken();
@@ -37,6 +45,12 @@ export default function App() {
       document.documentElement.setAttribute("data-theme", saved);
     }
   }, [loadToken]);
+
+  useEffect(() => {
+    const handleWakeWordConfigChange = () => setWakeWordRevision((prev) => prev + 1);
+    window.addEventListener(DESKTOP_WAKE_WORD_EVENT, handleWakeWordConfigChange);
+    return () => window.removeEventListener(DESKTOP_WAKE_WORD_EVENT, handleWakeWordConfigChange);
+  }, []);
 
   const loggedIn = !!token || isGuest;
 
@@ -71,6 +85,24 @@ export default function App() {
         },
       });
 
+      // Agent Presence realtime (cross-device sync via /presence namespace)
+      initPresenceSocket(token, {
+        onHandoffInitiated: (event) => {
+          localStorage.setItem("agentrix_pending_handoff", JSON.stringify(event));
+          window.dispatchEvent(new CustomEvent("agentrix:handoff-incoming", { detail: event }));
+          void import("@tauri-apps/api/core").then(({ invoke }) => invoke("desktop_bridge_open_chat_panel")).catch(() => {});
+        },
+        onTimelineEvent: (event) => {
+          window.dispatchEvent(new CustomEvent("agentrix:timeline-event", { detail: event }));
+        },
+        onApprovalNew: (event) => {
+          window.dispatchEvent(new CustomEvent("agentrix:approval-new", { detail: event }));
+        },
+        onConnectionChange: (connected) => {
+          window.dispatchEvent(new CustomEvent("agentrix:presence-status", { detail: { connected } }));
+        },
+      });
+
       if (windowLabel !== "floating-ball") {
         startDesktopAgentSync(token);
       }
@@ -84,6 +116,7 @@ export default function App() {
       stopClipboardWatch();
       destroyAnalytics();
       destroySessionSync();
+      destroyPresenceSocket();
       stopDesktopAgentSync();
     };
   }, [loggedIn, token, windowLabel]);
@@ -133,6 +166,19 @@ export default function App() {
             setPanelOpen((prev) => !prev);
           }
         });
+        // Register Ctrl/Cmd+K for Spotlight mode
+        await register("CmdOrCtrl+K", (event) => {
+          if (event.state === "Pressed") {
+            (async () => {
+              try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                await invoke("desktop_bridge_open_spotlight");
+              } catch (err) {
+                console.error("open_spotlight failed:", err);
+              }
+            })();
+          }
+        });
         cleanup = () => {
           unregisterAll();
         };
@@ -142,6 +188,61 @@ export default function App() {
     })();
     return () => cleanup?.();
   }, []);
+
+  useEffect(() => {
+    if (
+      windowLabel === "floating-ball" ||
+      !loggedIn ||
+      !desktopWakeWordConfig.enabled ||
+      !desktopWakeWordConfig.accessKey ||
+      !DesktopWakeWordService.isAvailable()
+    ) {
+      return;
+    }
+
+    const wakeWord = new DesktopWakeWordService();
+    let disposed = false;
+
+    const triggerVoiceFlow = async () => {
+      if (disposed) return;
+
+      if (windowLabel === "chat-panel") {
+        window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+        return;
+      }
+
+      setPanelOpen(true);
+      setTimeout(() => {
+        if (!disposed) {
+          window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+        }
+      }, 250);
+    };
+
+    void wakeWord.init({
+      accessKey: desktopWakeWordConfig.accessKey,
+      builtInKeyword: desktopWakeWordConfig.customKeywordPath ? undefined : desktopWakeWordConfig.builtInKeyword,
+      customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
+      sensitivity: desktopWakeWordConfig.sensitivity,
+      onWakeWord: () => {
+        void triggerVoiceFlow();
+      },
+    }).then(() => wakeWord.start());
+
+    return () => {
+      disposed = true;
+      void wakeWord.release();
+    };
+  }, [
+    desktopWakeWordConfig.accessKey,
+    desktopWakeWordConfig.builtInKeyword,
+    desktopWakeWordConfig.customKeywordPath,
+    desktopWakeWordConfig.enabled,
+    desktopWakeWordConfig.sensitivity,
+    loggedIn,
+    wakeWordRevision,
+    windowLabel,
+  ]);
 
   // Determine which view based on Tauri window label
   // DEBUG: set document.title to show which branch
@@ -239,6 +340,11 @@ export default function App() {
     );
   }
 
+  // Spotlight window — minimal search/chat overlay
+  if (windowLabel === "spotlight") {
+    return <SpotlightPanel />;
+  }
+
   // Chat panel window (opened by Tauri command)
   if (windowLabel === "chat-panel") {
     if (!loggedIn) {
@@ -286,22 +392,26 @@ export default function App() {
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}>
-      {panelOpen ? (
-        <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
-      ) : (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <FloatingBall onTap={() => setPanelOpen(true)} />
-        </div>
-      )}
-    </div>
+    <ErrorBoundary>
+      <div
+        style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}
+      >
+        {panelOpen ? (
+          <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <FloatingBall onTap={() => setPanelOpen(true)} />
+          </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, type CSSProperties } from "react";
-import { useAuthStore } from "../services/store";
+import { API_BASE, apiFetch, useAuthStore } from "../services/store";
 
 interface Props {
   onComplete: () => void;
@@ -21,7 +21,7 @@ const INSTANCE_OPTIONS: InstanceOption[] = [
 ];
 
 export default function OnboardingPanel({ onComplete }: Props) {
-  const { token, instances } = useAuthStore();
+  const { token, agents } = useAuthStore();
   const [step, setStep] = useState<Step>("welcome");
   const [selectedType, setSelectedType] = useState<string>("");
   const [manualUrl, setManualUrl] = useState("");
@@ -37,34 +37,80 @@ export default function OnboardingPanel({ onComplete }: Props) {
       setConnecting(true);
 
       if (type === "cloud") {
-        // Auto-provision cloud instance
+        // Create a desktop-ready cloud agent profile
         try {
-          const res = await fetch("https://api.agentrix.top/api/openclaw/provision-cloud", {
+          const res = await apiFetch(`${API_BASE}/agent-presence/agents`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
+            body: JSON.stringify({
+              name: "Desktop Agent",
+              description: "Primary desktop agent provisioned from onboarding",
+              status: "active",
+              metadata: {
+                desktopProfile: {
+                  source: "desktop-onboarding",
+                  connectionType: "cloud",
+                },
+              },
+            }),
           });
           if (res.ok) {
-            // Reload instances
+            // Reload agents
             await useAuthStore.getState().loadToken();
           }
         } catch {}
       } else if (type === "local") {
-        // Check local OpenClaw
+        // Register a desktop agent that prefers local execution context
         try {
-          const res = await fetch("http://localhost:7474/health", { signal: AbortSignal.timeout(3000) });
-          if (res.ok) {
-            // Register local instance with backend
-            await fetch("https://api.agentrix.top/api/openclaw/instances", {
+          const health = await fetch("http://localhost:7474/health", { signal: AbortSignal.timeout(3000) });
+          if (health.ok) {
+            await apiFetch(`${API_BASE}/agent-presence/agents`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
               },
-              body: JSON.stringify({ url: "http://localhost:7474", type: "LOCAL" }),
+              body: JSON.stringify({
+                name: "Local Desktop Agent",
+                description: "Desktop agent linked to a local runtime",
+                status: "active",
+                metadata: {
+                  desktopProfile: {
+                    source: "desktop-onboarding",
+                    connectionType: "local",
+                    runtimeUrl: "http://localhost:7474",
+                  },
+                },
+              }),
             });
+            await useAuthStore.getState().loadToken();
+          }
+        } catch {}
+      } else if (type === "manual") {
+        try {
+          const res = await apiFetch(`${API_BASE}/agent-presence/agents`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              name: "Manual Desktop Agent",
+              description: manualUrl ? `Desktop agent linked to ${manualUrl}` : "Desktop agent with a manual runtime endpoint",
+              status: "active",
+              metadata: {
+                desktopProfile: {
+                  source: "desktop-onboarding",
+                  connectionType: "manual",
+                  runtimeUrl: manualUrl || undefined,
+                },
+              },
+            }),
+          });
+          if (res.ok) {
             await useAuthStore.getState().loadToken();
           }
         } catch {}
@@ -107,8 +153,8 @@ export default function OnboardingPanel({ onComplete }: Props) {
 
           <button
             onClick={() => {
-              if (instances.length > 0) {
-                setStep("hotkey"); // Skip connect if already has instances
+              if (agents.length > 0) {
+                setStep("hotkey"); // Skip connect if already has agents
               } else {
                 setStep("connect");
               }

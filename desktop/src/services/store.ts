@@ -105,27 +105,51 @@ export async function uploadChatAttachment(file: File, token: string): Promise<C
   };
 }
 
+export interface DesktopAgent {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  status: "draft" | "active" | "paused" | "archived";
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+async function fetchDesktopAgents(token: string): Promise<DesktopAgent[]> {
+  const response = await apiFetch(`${API_BASE}/agent-presence/agents`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return [];
+  const text = await response.text();
+  if (!text) return [];
+  const data = JSON.parse(text);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
+
 // ─── Auth Store ────────────────────────────────────────
 interface AuthState {
   token: string | null;
   user: any | null;
   isGuest: boolean;
-  instances: any[];
-  activeInstanceId: string | null;
+  agents: DesktopAgent[];
+  activeAgentId: string | null;
   loadToken: () => Promise<void>;
   login: (email: string, code: string) => Promise<boolean>;
   sendCode: (email: string) => Promise<boolean>;
   enterGuest: () => void;
   logout: () => Promise<void>;
-  setActiveInstance: (id: string) => void;
+  setActiveAgent: (id: string) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   user: null,
   isGuest: false,
-  instances: [],
-  activeInstanceId: null,
+  agents: [],
+  activeAgentId: null,
 
   loadToken: async () => {
     try {
@@ -157,11 +181,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const text = await res.text();
       if (!text) return;
       const data = JSON.parse(text);
+      const agents = await fetchDesktopAgents(stored).catch(() => []);
+      const currentActiveAgentId = get().activeAgentId;
+      const nextActiveAgentId =
+        (currentActiveAgentId && agents.some((agent) => agent.id === currentActiveAgentId)
+          ? currentActiveAgentId
+          : null) || agents[0]?.id || null;
       set({
         user: data.user || data,
-        instances: data.openClawInstances || data.instances || [],
-        activeInstanceId:
-          data.openClawInstances?.[0]?.id || data.instances?.[0]?.id || null,
+        agents,
+        activeAgentId: nextActiveAgentId,
       });
     } catch (e) {
       // Offline / parse error — keep token, don't clear
@@ -192,19 +221,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!token) return false;
     await secureSetToken(token);
     set({ token });
-    // Fetch full user + instances
+    // Fetch full user + agents
     await get().loadToken();
     return true;
   },
 
   logout: async () => {
     await secureClearToken();
-    set({ token: null, user: null, isGuest: false, instances: [], activeInstanceId: null });
+    set({ token: null, user: null, isGuest: false, agents: [], activeAgentId: null });
   },
 
   enterGuest: () => set({ isGuest: true }),
 
-  setActiveInstance: (id: string) => set({ activeInstanceId: id }),
+  setActiveAgent: (id: string) => set({ activeAgentId: id }),
 }));
 
 // ─── Chat API ──────────────────────────────────────────

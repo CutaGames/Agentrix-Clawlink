@@ -33,12 +33,13 @@ import {
   QueryTicketsDto,
 } from './dto/support-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { FundPathType } from '../../entities/fund-path.entity';
 
 @ApiTags('admin')
 @Controller('admin')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AdminGuard)
 @ApiBearerAuth()
 export class AdminController {
   constructor(

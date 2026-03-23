@@ -24,6 +24,9 @@ import {
   SocialReplyConfig,
   ReplyStrategy,
 } from '../../entities/social.entity';
+import { User } from '../../entities/user.entity';
+import { Skill } from '../../entities/skill.entity';
+import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -61,6 +64,9 @@ describe('SocialService — P0/P1/P2 Refactoring', () => {
   let followRepo: ReturnType<typeof mockRepo>;
   let eventRepo: ReturnType<typeof mockRepo>;
   let replyConfigRepo: ReturnType<typeof mockRepo>;
+  let userRepo: ReturnType<typeof mockRepo>;
+  let skillRepo: ReturnType<typeof mockRepo>;
+  let claudeIntegrationService: { chatWithFunctions: jest.Mock };
 
   beforeEach(async () => {
     postRepo = mockRepo();
@@ -69,6 +75,11 @@ describe('SocialService — P0/P1/P2 Refactoring', () => {
     followRepo = mockRepo();
     eventRepo = mockRepo();
     replyConfigRepo = mockRepo();
+    userRepo = mockRepo();
+    skillRepo = mockRepo();
+    claudeIntegrationService = {
+      chatWithFunctions: jest.fn().mockResolvedValue({ text: 'Mock social reply' }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -79,6 +90,9 @@ describe('SocialService — P0/P1/P2 Refactoring', () => {
         { provide: getRepositoryToken(SocialFollow), useValue: followRepo },
         { provide: getRepositoryToken(SocialEvent), useValue: eventRepo },
         { provide: getRepositoryToken(SocialReplyConfig), useValue: replyConfigRepo },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        { provide: getRepositoryToken(Skill), useValue: skillRepo },
+        { provide: ClaudeIntegrationService, useValue: claudeIntegrationService },
       ],
     }).compile();
 

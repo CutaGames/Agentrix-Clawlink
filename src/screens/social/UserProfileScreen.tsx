@@ -76,33 +76,8 @@ type Skill = {
   price: number;
   priceUnit: string;
   downloads?: number;
+  rating?: number;
 };
-
-// ── Placeholders ──────────────────────────────────────────────────────────────
-
-const PLACEHOLDER_REP: ReputationData = {
-  userId: 'u1', postCount: 42, followerCount: 1240, followingCount: 87,
-  showcasePosts: 42, skillsPublished: 5, workflowResults: 12,
-  tasksCompleted: 340, agentDeploys: 3, totalLikesReceived: 528,
-  reputationScore: 4.8,
-};
-
-const PLACEHOLDER_PROFILE: UserProfile = {
-  id: 'u1', nickname: 'openclaw_fan', avatar: '🦀',
-  bio: 'AI builder & agent enthusiast. Building automation workflows with OpenClaw.',
-  badges: ['Top Creator', 'Genesis Node'], isFollowing: false,
-};
-
-const PLACEHOLDER_POSTS: ShowcasePost[] = [
-  { id: 'p1', content: 'Deployed a 24/7 research agent via Agentrix-Claw 🚀', type: 'agent_deploy', tags: ['showcase'], likeCount: 42, commentCount: 7, createdAt: '2h ago' },
-  { id: 'p2', content: 'New workflow: GitHub PR auto-review + Slack notify', type: 'workflow_result', tags: ['dev'], likeCount: 58, commentCount: 11, createdAt: '1d ago' },
-];
-
-const PLACEHOLDER_SKILLS: Skill[] = [
-  { id: 's1', name: 'Web Search Pro', description: 'Enhanced search with source citations', price: 0, priceUnit: 'free', downloads: 3200 },
-  { id: 's2', name: 'GitHub Auto-Review', description: 'Automatically reviews PRs', price: 2, priceUnit: 'USDT', downloads: 890 },
-  { id: 's3', name: 'Email Summarizer', description: 'Reads and summarizes email threads daily', price: 1, priceUnit: 'USDT', downloads: 1500 },
-];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -114,6 +89,19 @@ const BADGE_CONFIG: Record<string, { icon: string; color: string }> = {
 };
 
 function fmtK(n: number) { return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); }
+
+function formatRelativeTime(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d`;
+}
 
 function ScoreRing({ score }: { score: number }) {
   const pct = (score / 5.0) * 100;
@@ -152,28 +140,24 @@ export function UserProfileScreen() {
     queryKey: ['user-profile', userId],
     queryFn: () => apiFetch<UserProfile>(`/social/users/${userId}`).catch(() => null),
     retry: false,
-    select: (d) => d ?? PLACEHOLDER_PROFILE,
   });
 
   const { data: rep, isLoading } = useQuery({
     queryKey: ['user-reputation', userId],
     queryFn: () => apiFetch<{ ok: boolean; data: ReputationData }>(`/social/users/${userId}/reputation`).then((r) => r.data).catch(() => null),
     retry: false,
-    select: (d) => d ?? PLACEHOLDER_REP,
   });
 
   const { data: posts } = useQuery({
     queryKey: ['user-posts', userId],
     queryFn: () => apiFetch<ShowcasePost[]>(`/social/users/${userId}/posts`).catch(() => []),
     retry: false,
-    select: (d) => (Array.isArray(d) && d.length > 0 ? d : PLACEHOLDER_POSTS),
   });
 
   const { data: skills } = useQuery({
     queryKey: ['user-skills', userId],
     queryFn: () => apiFetch<Skill[]>(`/social/users/${userId}/skills`).catch(() => []),
     retry: false,
-    select: (d) => (Array.isArray(d) && d.length > 0 ? d : PLACEHOLDER_SKILLS),
   });
 
   const followMut = useMutation({
@@ -195,7 +179,13 @@ export function UserProfileScreen() {
   if (isLoading) {
     return <View style={styles.loading}><ActivityIndicator color={colors.accent} size="large" /></View>;
   }
-  if (!profile || !rep) return null;
+  if (!profile || !rep) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.emptyText}>{t({ en: 'User profile not found', zh: '未找到用户资料' })}</Text>
+      </View>
+    );
+  }
 
   // ── Header ──
 
@@ -281,20 +271,19 @@ export function UserProfileScreen() {
 
   const AgentsTab = () => (
     <View style={styles.agentsList}>
-      {/* Placeholder agent cards — will be populated from real data */}
       {rep.agentDeploys > 0 ? (
-        Array.from({ length: Math.min(rep.agentDeploys, 3) }).map((_, i) => (
-          <View key={i} style={styles.agentCard}>
-            <Text style={styles.agentIcon}>🤖</Text>
+        [
+          { key: 'agents', icon: '🤖', name: t({ en: 'Deployed Agents', zh: '已部署智能体' }), value: rep.agentDeploys },
+          { key: 'tasks', icon: '📊', name: t({ en: 'Completed Tasks', zh: '已完成任务' }), value: rep.tasksCompleted },
+          { key: 'workflows', icon: '⚡', name: t({ en: 'Workflow Results', zh: '工作流成果' }), value: rep.workflowResults },
+        ].filter((item) => item.value > 0).map((item) => (
+          <View key={item.key} style={styles.agentCard}>
+            <Text style={styles.agentIcon}>{item.icon}</Text>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.agentName}>{i === 0 ? 'Research Bot' : i === 1 ? 'Code Reviewer' : 'Email Assistant'}</Text>
-              <Text style={styles.agentMeta}>
-                {t({ en: `${Math.floor(Math.random() * 300 + 50)} tasks · ⭐ ${(4.2 + Math.random() * 0.8).toFixed(1)}`, zh: `${Math.floor(Math.random() * 300 + 50)} 个任务 · ⭐ ${(4.2 + Math.random() * 0.8).toFixed(1)}` })}
-              </Text>
+              <Text style={styles.agentName}>{item.name}</Text>
+              <Text style={styles.agentMeta}>{item.value}</Text>
             </View>
-            <TouchableOpacity style={styles.tryBtn}>
-              <Text style={styles.tryBtnText}>{t({ en: 'Try', zh: '试用' })}</Text>
-            </TouchableOpacity>
+            <View style={styles.metricPill}><Text style={styles.metricPillText}>{fmtK(item.value)}</Text></View>
           </View>
         ))
       ) : (
@@ -313,6 +302,9 @@ export function UserProfileScreen() {
         <Text style={styles.skillDesc} numberOfLines={2}>{item.description}</Text>
         {item.downloads != null && (
           <Text style={styles.skillDl}>⬇ {fmtK(item.downloads)} {t({ en: 'installs', zh: '安装' })}</Text>
+        )}
+        {typeof item.rating === 'number' && item.rating > 0 && (
+          <Text style={styles.skillDl}>⭐ {item.rating.toFixed(1)}</Text>
         )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -341,7 +333,7 @@ export function UserProfileScreen() {
         <View style={styles.postTypeBadge}>
           <Text style={styles.postTypeText}>{POST_TYPE_BADGE[item.type] ?? '📝 Post'}</Text>
         </View>
-        <Text style={styles.postTime}>{item.createdAt}</Text>
+        <Text style={styles.postTime}>{formatRelativeTime(item.createdAt)}</Text>
       </View>
       <Text style={styles.postContent} numberOfLines={3}>{item.content}</Text>
       <View style={styles.postMeta}>
@@ -352,8 +344,6 @@ export function UserProfileScreen() {
   );
 
   // Use FlatList with header for all tabs
-  const listData = activeTab === 'skills' ? skills : activeTab === 'showcase' ? posts : [];
-
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       {activeTab === 'agents' ? (
@@ -473,6 +463,8 @@ const styles = StyleSheet.create({
   agentMeta: { fontSize: 12, color: colors.textMuted },
   tryBtn: { backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 7 },
   tryBtnText: { color: '#000', fontSize: 13, fontWeight: '700' },
+  metricPill: { backgroundColor: colors.bgSecondary, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: colors.border },
+  metricPillText: { color: colors.textPrimary, fontSize: 12, fontWeight: '700' },
 
   // Skills tab
   skillCard: {

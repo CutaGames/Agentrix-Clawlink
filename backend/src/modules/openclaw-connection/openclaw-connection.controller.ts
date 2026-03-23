@@ -84,6 +84,18 @@ export class OpenClawConnectionController {
     return this.service.provisionCloudInstance(req.user.id, dto);
   }
 
+  // ===== Auto-Provision (one-tap / voice activation) =====
+
+  @Post('auto-provision')
+  @ApiOperation({ summary: 'Auto-provision a cloud instance with sensible defaults' })
+  @ApiResponse({ status: 201, description: 'Instance provisioned' })
+  async autoProvision(@Request() req: any) {
+    const instance = await this.service.provisionCloudInstance(req.user.id, {
+      name: 'My Agent',
+    });
+    return { instance };
+  }
+
   // ===== Primary =====
 
   @Put('instances/:id/primary')

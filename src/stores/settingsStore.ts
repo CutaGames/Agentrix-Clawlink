@@ -1,7 +1,7 @@
 // 设置 Store
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mmkvStorage } from './mmkvStorage';
 
 type Environment = 'sandbox' | 'production';
 
@@ -10,6 +10,16 @@ export type UiComplexity = 'beginner' | 'advanced' | 'professional';
 
 /** Model ID — now a plain string to support dynamic models from backend providers */
 export type ModelId = string;
+
+export interface WakeWordSettings {
+  enabled: boolean;
+  accessKey: string;
+  builtInKeywords: string[];
+  customKeywordPaths: string[];
+  fallbackPhrases: string[];
+  displayName: string;
+  sensitivity: number;
+}
 
 export interface ModelOption {
   id: string;
@@ -39,10 +49,13 @@ interface SettingsState {
   // Progressive UI complexity
   uiComplexity: UiComplexity;
 
-  // Onboarding checklist flags
-  onboardingDeployedAgent: boolean;
-  onboardingInstalledSkill: boolean;
-  onboardingCreatedWorkflow: boolean;
+  wakeWordConfig: WakeWordSettings;
+
+  // Voice / TTS settings
+  /** TTS playback speed multiplier (0.8 - 1.5, default 1.0) */
+  speechRate: number;
+  /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
+  silenceTimeoutMs: number;
   
   // 通知设置
   notificationsEnabled: boolean;
@@ -58,7 +71,10 @@ interface SettingsState {
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
   setUiComplexity: (level: UiComplexity) => void;
-  markOnboardingStep: (step: 'deployedAgent' | 'installedSkill' | 'createdWorkflow') => void;
+  setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
+  resetWakeWordConfig: () => void;
+  setSpeechRate: (rate: number) => void;
+  setSilenceTimeoutMs: (ms: number) => void;
   toggleNotifications: (enabled: boolean) => void;
   toggleBiometric: (enabled: boolean) => void;
 }
@@ -67,6 +83,16 @@ const API_URLS = {
   sandbox: 'https://sandbox-api.agentrix.io',
   production: 'https://api.agentrix.io',
   local: 'http://localhost:3001/api',
+};
+
+const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
+  enabled: true,
+  accessKey: '',
+  builtInKeywords: [],
+  customKeywordPaths: [],
+  fallbackPhrases: ['Hey Agentrix', 'Hi Agentrix', 'Agentrix', '嘿 Agentrix', '你好 Agentrix'],
+  displayName: 'Hey Agentrix',
+  sensitivity: 0.65,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -83,9 +109,10 @@ export const useSettingsStore = create<SettingsState>()(
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 
       uiComplexity: 'beginner' as UiComplexity,
-      onboardingDeployedAgent: false,
-      onboardingInstalledSkill: false,
-      onboardingCreatedWorkflow: false,
+      wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
+
+      speechRate: 1.0,
+      silenceTimeoutMs: 1800,
       
       notificationsEnabled: true,
       airdropNotifications: true,
@@ -105,15 +132,18 @@ export const useSettingsStore = create<SettingsState>()(
 
       setUiComplexity: (level) => set({ uiComplexity: level }),
 
-      markOnboardingStep: (step) => {
-        const field = {
-          deployedAgent: 'onboardingDeployedAgent',
-          installedSkill: 'onboardingInstalledSkill',
-          createdWorkflow: 'onboardingCreatedWorkflow',
-        }[step] as keyof SettingsState;
-        set({ [field]: true } as any);
-      },
-      
+      setWakeWordConfig: (patch) => set((state) => ({
+        wakeWordConfig: {
+          ...state.wakeWordConfig,
+          ...patch,
+        },
+      })),
+
+      resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
+
+      setSpeechRate: (rate) => set({ speechRate: Math.max(0.8, Math.min(1.5, rate)) }),
+      setSilenceTimeoutMs: (ms) => set({ silenceTimeoutMs: Math.max(800, Math.min(3000, ms)) }),
+
       toggleNotifications: (enabled) => set({ 
         notificationsEnabled: enabled,
         airdropNotifications: enabled,
@@ -125,7 +155,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'agentrix-settings-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
     }
   )
 );

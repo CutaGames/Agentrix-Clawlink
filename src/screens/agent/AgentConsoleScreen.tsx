@@ -34,71 +34,6 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'UNKNOWN',
 };
 
-// ── Onboarding Checklist Card ─────────────────────────────────────
-function OnboardingChecklist({ navigation }: { navigation: Nav }) {
-  const { t, language } = useI18n();
-  const { onboardingDeployedAgent, onboardingInstalledSkill, onboardingCreatedWorkflow, markOnboardingStep, setUiComplexity } =
-    useSettingsStore();
-  const steps = [
-    { key: 'deployedAgent' as const, done: onboardingDeployedAgent, label: t({ en: 'Deploy your first Agent', zh: '部署你的第一个智能体' }), action: undefined, actionLabel: '' },
-    { key: 'installedSkill' as const, done: onboardingInstalledSkill, label: t({ en: 'Install your first Skill', zh: '安装第一个技能' }), action: () => (navigation as any).navigate('Explore', { screen: 'Marketplace' }), actionLabel: t({ en: 'Browse Market →', zh: '浏览市场 →' }) },
-    { key: 'createdWorkflow' as const, done: onboardingCreatedWorkflow, label: t({ en: 'Create your first Workflow', zh: '创建第一个工作流' }), action: () => navigation.navigate('WorkflowList'), actionLabel: t({ en: 'Create →', zh: '创建 →' }) },
-  ];
-  const completedCount = steps.filter((s) => s.done).length;
-  if (completedCount === 3) return null; // all done, hide card
-
-  const handleComplete = (key: 'deployedAgent' | 'installedSkill' | 'createdWorkflow') => {
-    markOnboardingStep(key);
-    const newCount = completedCount + 1;
-    if (newCount >= 2) setUiComplexity('advanced');
-  };
-
-  return (
-    <View style={onboard.card}>
-      <Text style={onboard.title}>{t({ en: '🎯 Complete these steps to unlock Agent full power', zh: '🎯 完成以下步骤解锁智能体全部功能' })}</Text>
-      {steps.map((step, i) => (
-        <View key={step.key} style={onboard.row}>
-          <TouchableOpacity
-            onPress={() => !step.done && handleComplete(step.key)}
-            style={onboard.checkbox}
-          >
-            <Text style={{ fontSize: 16 }}>{step.done ? '✅' : '⬜'}</Text>
-          </TouchableOpacity>
-          <Text style={[onboard.stepLabel, step.done && onboard.stepDone]}>
-            {i + 1}. {step.label}
-          </Text>
-          {!step.done && step.action && (
-            <TouchableOpacity onPress={step.action} style={onboard.actionBtn}>
-              <Text style={onboard.actionBtnText}>{step.actionLabel}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ))}
-      <View style={onboard.progress}>
-        {[0, 1, 2].map((i) => (
-          <View key={i} style={[onboard.dot, i < completedCount && onboard.dotFilled]} />
-        ))}
-        <Text style={onboard.progressLabel}>{completedCount}/3 · {completedCount < 2 ? t({ en: `${2 - completedCount} more to unlock Advanced mode`, zh: `还差${2 - completedCount}步解锁高级模式` }) : t({ en: 'Advanced mode unlocked! 🎉', zh: '高级模式已解锁！🎉' })}</Text>
-      </View>
-    </View>
-  );
-}
-
-const onboard = StyleSheet.create({
-  card: { backgroundColor: colors.bgCard, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.accent + '44', gap: 10 },
-  title: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkbox: { paddingVertical: 2 },
-  stepLabel: { flex: 1, fontSize: 14, color: colors.textPrimary },
-  stepDone: { textDecorationLine: 'line-through', color: colors.textMuted },
-  actionBtn: { backgroundColor: colors.primary + '22', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  actionBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
-  progress: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.bgSecondary },
-  dotFilled: { backgroundColor: colors.accent },
-  progressLabel: { fontSize: 12, color: colors.textMuted, flex: 1 },
-});
-
 export function AgentConsoleScreen() {
   const navigation = useNavigation<Nav>();
   const { t } = useI18n();
@@ -131,25 +66,11 @@ export function AgentConsoleScreen() {
     ?? SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label
     ?? selectedModelId;
 
-  // Auto-mark onboarding step 1 when user has an active instance
-  useEffect(() => {
-    if (activeInstance) {
-      useSettingsStore.getState().markOnboardingStep('deployedAgent');
-    }
-  }, [activeInstance?.id]);
-
   const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
     queryFn: () => getInstanceSkills(activeInstance!.id),
     enabled: !!activeInstance,
   });
-
-  // Auto-mark onboarding step 2 when user has at least one skill
-  useEffect(() => {
-    if (instanceSkillsRaw && instanceSkillsRaw.length > 0) {
-      useSettingsStore.getState().markOnboardingStep('installedSkill');
-    }
-  }, [instanceSkillsRaw?.length]);
 
   // Also fetch marketplace-installed skills from Agentrix DB
   const { data: marketInstalledRaw } = useQuery({
@@ -317,9 +238,6 @@ export function AgentConsoleScreen() {
       {/* Big Chat CTA */}
       {tab === 'overview' && (
         <>
-          {/* Onboarding Checklist */}
-          <OnboardingChecklist navigation={navigation} />
-
           <TouchableOpacity
             style={styles.chatCta}
             onPress={() => navigation.navigate('AgentChat', { instanceId: activeInstance.id, instanceName: activeInstance.name })}
@@ -429,6 +347,8 @@ export function AgentConsoleScreen() {
             {([
               { icon: '📷', label: t({ en: 'Scan QR', zh: '扫一扫' }), route: 'Scan' as const },
               { icon: '📋', label: t({ en: 'Activity Logs', zh: '活动日志' }), route: 'AgentLogs' as const },
+              { icon: '💻', label: t({ en: 'Desktop Control', zh: '桌面控制' }), route: 'DesktopControl' as const },
+              { icon: '⌚', label: t({ en: 'Wearables', zh: '可穿戴设备' }), route: 'WearableHub' as const },
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
               { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },

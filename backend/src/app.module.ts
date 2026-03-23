@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
@@ -78,6 +79,7 @@ import { ExpertProfileModule } from './modules/expert-profile/expert-profile.mod
 import { DatasetModule } from './modules/dataset/dataset.module';
 // 通用模块（守卫、装饰器等）
 import { CommonModule } from './modules/common/common.module';
+import { RateLimitGuard } from './common/guards/throttle.guard';
 // Commerce Skill 模块
 import { CommerceModule } from './modules/commerce/commerce.module';
 // A2A (Agent-to-Agent) 模块
@@ -101,6 +103,10 @@ import { AccountAbstractionModule } from './modules/account-abstraction/account-
 // AI Provider custom API key management
 import { AiProviderModule } from './modules/ai-provider/ai-provider.module';
 import { DesktopSyncModule } from './modules/desktop-sync/desktop-sync.module';
+// Agent Presence: unified agent identity, timeline, memory, channel binding
+import { AgentPresenceModule } from './modules/agent-presence/agent-presence.module';
+// Wearable Phase 2-3: continuous telemetry + automation triggers
+import { WearableTelemetryModule } from './modules/wearable-telemetry/wearable-telemetry.module';
 
 @Module({
   imports: [
@@ -210,8 +216,16 @@ import { DesktopSyncModule } from './modules/desktop-sync/desktop-sync.module';
     AccountAbstractionModule,
     // AI Provider custom API key management
     AiProviderModule,
+    // Agent Presence: unified agent identity, timeline, memory, channel binding
+    AgentPresenceModule,
+    // Wearable Phase 2-3: continuous telemetry + automation triggers
+    WearableTelemetryModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Global rate limiter: 100 req / 60s per IP (configurable via RATE_LIMIT_TTL / RATE_LIMIT_MAX)
+    { provide: APP_GUARD, useClass: RateLimitGuard },
+  ],
 })
 export class AppModule {}

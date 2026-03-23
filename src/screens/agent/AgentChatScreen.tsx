@@ -4,22 +4,29 @@ import {
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, Linking,
   Dimensions,
 } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
-import { sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
+import { getInstanceStatus, sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
+import { useVoiceSession } from '../../hooks/useVoiceSession';
 import type { AgentStackParamList } from '../../navigation/types';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AudioQueuePlayer } from '../../services/AudioQueuePlayer';
+import { mmkv } from '../../stores/mmkvStorage';
 import { useI18n } from '../../stores/i18nStore';
+import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
+import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
+import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
+import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
+import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -200,7 +207,7 @@ const MessageBubble = ({
   const { t } = useI18n();
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
-  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(true);
+  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
   const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
   const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
@@ -234,18 +241,21 @@ const MessageBubble = ({
         {!isUser && hasThoughts && (
           <View style={styles.thoughtContainer}>
             <TouchableOpacity 
-              style={styles.thoughtHeader} 
+              style={styles.thoughtCapsule} 
               onPress={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
               activeOpacity={0.7}
             >
               {item.streaming ? (
-                <ActivityIndicator size="small" color={colors.textMuted} style={{ transform: [{ scale: 0.7 }] }} />
+                <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.6 }] }} />
               ) : (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{isThoughtsExpanded ? '▼' : '▶'}</Text>
+                <Text style={{ color: colors.accent, fontSize: 10 }}>{'⚡'}</Text>
               )}
-              <Text style={styles.thoughtHeaderText}>
-                {item.streaming ? t({ en: 'Agent is executing workflow...', zh: '智能体正在执行工作流…' }) : t({ en: `Execution Log (${item.thoughts?.length} steps)`, zh: `执行日志（${item.thoughts?.length} 步）` })}
+              <Text style={styles.thoughtCapsuleText} numberOfLines={1}>
+                {item.streaming
+                  ? (item.thoughts?.[item.thoughts.length - 1]?.replace('[Tool Call]', '').trim().slice(0, 40) || t({ en: 'Processing...', zh: '处理中…' }))
+                  : t({ en: `${item.thoughts?.length} steps completed`, zh: `已完成 ${item.thoughts?.length} 步` })}
               </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 10 }}>{isThoughtsExpanded ? '▼' : '›'}</Text>
             </TouchableOpacity>
             
             {isThoughtsExpanded && (
@@ -379,14 +389,22 @@ const MessageBubble = ({
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
+  const navigation = useNavigation<any>();
   const { t, language } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
   const voiceModeRequested = !!route.params?.voiceMode;
+  const duplexModeRequested = !!route.params?.duplexMode;
   const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const speechRate = useSettingsStore((s) => s.speechRate);
+  const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
+  const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [remoteClipboard, setRemoteClipboard] = useState<MobileDesktopClipboardSnapshot | null>(null);
 
   // Dynamic model list from backend (platform default + user's configured providers)
   const [availableModels, setAvailableModels] = useState<ModelOption[]>(SUPPORTED_MODELS);
@@ -402,8 +420,18 @@ export function AgentChatScreen() {
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
-  const recordingRef = useRef<any>(null);
-  const isRecordingRef = useRef(false);  // stable ref for press hold logic
+
+  // Multi-session state
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
+    const saved = loadSessions(instanceId);
+    if (saved.length > 0) {
+      sessionIdRef.current = saved[0].id;
+      return saved;
+    }
+    const initial: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+    return [initial];
+  });
+  const [activeSessionId, setActiveSessionId] = useState(sessionIdRef.current);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -416,176 +444,156 @@ export function AgentChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(voiceModeRequested);   // WeChat-style toggle
-  const [voiceInteractionMode, setVoiceInteractionMode] = useState<'hold' | 'tap'>('hold');
-  const [duplexMode, setDuplexMode] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<UploadedChatAttachment[]>([]);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [showAttachToolbar, setShowAttachToolbar] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(false);  // Auto TTS for agent replies
-  const [voicePhase, setVoicePhase] = useState<'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking'>('idle');
-  const [transcriptPreview, setTranscriptPreview] = useState('');
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturingPhoto, setCapturingPhoto] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const cameraRef = useRef<any>(null);
-  const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const isNearBottomRef = useRef(true);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const responseInterruptedRef = useRef(false);
-  const pendingTtsSentenceRef = useRef('');
-  const streamedTtsStartedRef = useRef(false);
+  const handleSendRef = useRef<(overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => Promise<void>>(async () => {});
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-
-  const voiceRecordingOptions = Audio ? {
-    android: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
-      audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-    },
-    ios: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
-      audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
-      sampleRate: 16000,
-      numberOfChannels: 1,
-      bitRate: 32000,
-      linearPCMBitDepth: 16,
-      linearPCMIsBigEndian: false,
-      linearPCMIsFloat: false,
-    },
-    web: {},
-  } : null;
-
-  const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
-
-  // Init TTS audio queue player
-  useEffect(() => {
-    audioPlayerRef.current = new AudioQueuePlayer(() => {
-      setIsSpeaking(false);
-      setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
-      activeAssistantMessageIdRef.current = null;
-    });
-    return () => { audioPlayerRef.current?.stopAll(); };
-  }, []);
-
-  useEffect(() => {
-    if (voiceModeRequested) {
-      setVoiceMode(true);
-    }
-  }, [voiceModeRequested]);
-
-  useEffect(() => {
-    if (!voiceMode) {
-      setVoicePhase('idle');
-      setIsRecording(false);
-      isRecordingRef.current = false;
-    }
-  }, [voiceMode]);
-
-  useEffect(() => {
-    if (duplexMode) {
-      setVoiceMode(true);
-      setAutoSpeak(true);
-      setVoiceInteractionMode('tap');
-    } else if (voiceInteractionMode === 'tap') {
-      setVoiceInteractionMode('hold');
-    }
-  }, [duplexMode, voiceInteractionMode]);
-
-  // TTS helper — speaks text via backend /voice/tts endpoint
-  const speakText = useCallback((text: string) => {
-    if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
-    setIsSpeaking(true);
-    setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-    // Split sentences for streaming playback
-    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
-    for (const s of sentences) {
-      const trimmed = s.trim();
-      if (!trimmed || trimmed.length < 2) continue;
-      const encoded = encodeURIComponent(trimmed);
-      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-      audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
-    }
-  }, [agentVoiceId, voiceLanguageHint]);
-
-  const stopSpeaking = useCallback(() => {
-    audioPlayerRef.current?.stopAll();
-    setIsSpeaking(false);
-    setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
-    activeAssistantMessageIdRef.current = null;
-  }, []);
-
-  const handleSpeakMessage = useCallback((message: Message) => {
-    const text = buildDisplayMessageText(message.content);
-    if (!text) return;
-    activeAssistantMessageIdRef.current = message.id;
-    speakText(text);
-  }, [speakText]);
-
-  const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
-    if (!(voiceMode || autoSpeak)) return;
-
-    if (chunk) {
-      pendingTtsSentenceRef.current += chunk;
-    }
-
-    const sentenceRegex = /[^。！？.!?\n]+[。！？.!?\n]+/g;
-    const matches = pendingTtsSentenceRef.current.match(sentenceRegex) || [];
-    const shouldEarlyFlush =
-      !matches.length &&
-      pendingTtsSentenceRef.current.trim().length >= 36 &&
-      /[，,、:;； ]/.test(pendingTtsSentenceRef.current);
-
-    let segmentsToSpeak = matches.map((sentence) => sentence.trim()).filter(Boolean);
-
-    if (shouldEarlyFlush) {
-      const earlySegment = pendingTtsSentenceRef.current.trim();
-      if (earlySegment) {
-        segmentsToSpeak = [earlySegment];
-        pendingTtsSentenceRef.current = '';
-      }
-    }
-
-    if (segmentsToSpeak.length > 0) {
-      setIsSpeaking(true);
-      setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-      streamedTtsStartedRef.current = true;
-      for (const sentence of segmentsToSpeak) {
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-          audioPlayerRef.current?.enqueue(url, sentence, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
-      }
-      if (!shouldEarlyFlush) {
-        pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
-      }
-    }
-
-    if (flush) {
-      const remainder = pendingTtsSentenceRef.current.trim();
-      if (remainder) {
-        setIsSpeaking(true);
-        setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-        streamedTtsStartedRef.current = true;
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}`;
-        audioPlayerRef.current?.enqueue(url, remainder, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
-      }
-      pendingTtsSentenceRef.current = '';
-    }
-  }, [autoSpeak, voiceMode, agentVoiceId, voiceLanguageHint]);
-
   // Token quota for energy bar
   const { data: quota } = useTokenQuota();
   const used = quota?.usedTokens ?? 0;
   const total = quota?.totalQuota ?? 100000;
   const tokenPct = quota?.energyLevel ?? (total > 0 ? Math.min(100, (used / total) * 100) : 0);
   const tokenBarColor = tokenPct > 80 ? '#ef4444' : tokenPct > 50 ? '#f59e0b' : '#22c55e';
+
+  // Offline detection + message queue
+  const [isOffline, setIsOffline] = useState(false);
+  const isOfflineRef = useRef(false);
+  const offlineQueueRef = useRef<Array<{ text: string; attachments: UploadedChatAttachment[] }>>([]);
+  const flushingOfflineQueueRef = useRef(false);
+  const lastOfflineDiagnosticRef = useRef<string | null>(null);
+
+  // Check connectivity periodically
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      try {
+        if (instanceId) {
+          const status = await getInstanceStatus(instanceId);
+          const normalizedStatus = String(status?.status || '').toLowerCase();
+          const nextState = normalizedStatus === 'offline' || normalizedStatus === 'disconnected' || normalizedStatus === 'error';
+          const nextDiagnostic = `instance:${instanceId}:${normalizedStatus}`;
+          if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
+            lastOfflineDiagnosticRef.current = nextDiagnostic;
+            addVoiceDiagnostic('agent-chat', 'instance-status-check', {
+              instanceId,
+              status: normalizedStatus,
+              isOffline: nextState,
+            });
+          }
+          if (mounted) {
+            setIsOffline(nextState);
+          }
+          return;
+        }
+
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeout = setTimeout(() => controller?.abort(), 8000);
+        try {
+          const res = await fetch(`${API_BASE}/health`, {
+            method: 'GET',
+            signal: controller?.signal,
+          });
+          const nextDiagnostic = `api-health:${res.status}`;
+          if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
+            lastOfflineDiagnosticRef.current = nextDiagnostic;
+            addVoiceDiagnostic('agent-chat', 'api-health-check', {
+              status: res.status,
+              ok: res.ok,
+            });
+          }
+          if (mounted) setIsOffline(!res.ok);
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (error) {
+        addVoiceDiagnostic('agent-chat', 'connectivity-check-failed', {
+          instanceId: instanceId || null,
+          error,
+        });
+        if (mounted) setIsOffline(true);
+      }
+    };
+    check();
+    const timer = setInterval(check, 15000);
+    return () => { mounted = false; clearInterval(timer); };
+  }, [instanceId]);
+
+  useEffect(() => {
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
+
+  useEffect(() => {
+    if (!token) {
+      setRemoteClipboard(null);
+      return;
+    }
+
+    let cancelled = false;
+    const pollDesktopClipboard = async () => {
+      try {
+        const latest = await fetchLatestDesktopClipboard();
+        if (!cancelled) {
+          setRemoteClipboard((previous) => {
+            if (!latest) return null;
+            if (
+              previous &&
+              previous.deviceId === latest.deviceId &&
+              previous.lastSeenAt === latest.lastSeenAt &&
+              previous.text === latest.text
+            ) {
+              return previous;
+            }
+            return latest;
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setRemoteClipboard(null);
+        }
+      }
+    };
+
+    void pollDesktopClipboard();
+    const timer = setInterval(pollDesktopClipboard, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [token]);
+
+  // Auto-send queued messages when back online
+  useEffect(() => {
+    if (isOffline || flushingOfflineQueueRef.current || offlineQueueRef.current.length === 0) return;
+
+    let cancelled = false;
+    const flushQueuedMessages = async () => {
+      flushingOfflineQueueRef.current = true;
+      try {
+        while (!cancelled && !isOfflineRef.current && offlineQueueRef.current.length > 0) {
+          const item = offlineQueueRef.current.shift();
+          if (!item) break;
+          await handleSendRef.current(item.text, item.attachments);
+        }
+      } finally {
+        flushingOfflineQueueRef.current = false;
+      }
+    };
+
+    void flushQueuedMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOffline]);
 
   // Fetch dynamic model list from backend and per-agent model
   useEffect(() => {
@@ -607,34 +615,50 @@ export function AgentChatScreen() {
       try {
         const agentAccountId = activeInstance?.metadata?.agentAccountId;
         if (agentAccountId) {
-          const res = await apiFetch<{ success: boolean; data: { preferredModel?: string; metadata?: any } }>(`/agent-accounts/${agentAccountId}`);
-          if (res.data?.preferredModel) {
-            setAgentPreferredModel(res.data.preferredModel);
+          const { getAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
+          const agent = await getAgentPresenceAccount(agentAccountId);
+          if (agent.preferredModel) {
+            setAgentPreferredModel(agent.preferredModel);
           }
-          if (res.data?.metadata?.voice_id) {
-            setAgentVoiceId(res.data.metadata.voice_id);
+          if (agent.metadata?.voice_id) {
+            setAgentVoiceId(agent.metadata.voice_id);
           }
         }
       } catch {}
     })();
   }, [instanceId, activeInstance?.metadata?.agentAccountId]);
 
-  // Load chat history on mount — first from local storage (instant), then try API
+  // All messages (persisted) and visible slice for lazy rendering
+  const allMessagesRef = useRef<Message[]>([]);
+  const PAGE_SIZE = 20;
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
+  const loadOlderMessages = useCallback(() => {
+    const all = allMessagesRef.current;
+    if (all.length <= messages.length || loadingOlder) return;
+    setLoadingOlder(true);
+    const currentLen = messages.length;
+    const nextSlice = all.slice(Math.max(0, all.length - currentLen - PAGE_SIZE), all.length - currentLen);
+    setMessages((prev) => [...nextSlice, ...prev]);
+    setLoadingOlder(false);
+  }, [messages.length, loadingOlder]);
+
+  // Load chat history on mount — MMKV is synchronous, then try API
   useEffect(() => {
     if (!instanceId) return;
-    AsyncStorage.getItem(storageKey).then((raw) => {
-      if (raw) {
-        try {
-          const saved: Message[] = JSON.parse(raw);
-          if (Array.isArray(saved) && saved.length > 0) setMessages(saved);
-        } catch {}
-      }
-    });
-    AsyncStorage.getItem(draftStorageKey).then((rawDraft) => {
-      if (typeof rawDraft === 'string') {
-        setInput(rawDraft);
-      }
-    });
+    const raw = mmkv.getString(storageKey);
+    if (raw) {
+      try {
+        const saved: Message[] = JSON.parse(raw);
+        if (Array.isArray(saved) && saved.length > 0) {
+          allMessagesRef.current = saved;
+          // Show only last PAGE_SIZE messages initially
+          setMessages(saved.slice(-PAGE_SIZE));
+        }
+      } catch {}
+    }
+    const draft = mmkv.getString(draftStorageKey);
+    if (draft) setInput(draft);
     loadHistory();
     return () => {
       // Cancel any in-flight stream on unmount
@@ -645,13 +669,32 @@ export function AgentChatScreen() {
   // Persist messages to local storage whenever they change
   useEffect(() => {
     if (messages.length > 1) {
-      const toSave = messages.filter((m) => !m.streaming).slice(-80);
-      AsyncStorage.setItem(storageKey, JSON.stringify(toSave)).catch(() => {});
+      const visibleMessages = messages.filter((m) => !m.streaming);
+      const previousAll = allMessagesRef.current.filter((m) => !m.streaming);
+      const visibleById = new Map(visibleMessages.map((message) => [message.id, message]));
+      const seenIds = new Set<string>();
+
+      const mergedMessages: Message[] = [];
+      for (const message of previousAll) {
+        const nextMessage = visibleById.get(message.id) ?? message;
+        mergedMessages.push(nextMessage);
+        seenIds.add(nextMessage.id);
+      }
+
+      for (const message of visibleMessages) {
+        if (!seenIds.has(message.id)) {
+          mergedMessages.push(message);
+          seenIds.add(message.id);
+        }
+      }
+
+      allMessagesRef.current = mergedMessages;
+      try { mmkv.set(storageKey, JSON.stringify(mergedMessages.slice(-80))); } catch {}
     }
   }, [messages]);
 
   useEffect(() => {
-    AsyncStorage.setItem(draftStorageKey, input).catch(() => {});
+    try { mmkv.set(draftStorageKey, input); } catch {}
   }, [draftStorageKey, input]);
 
   const loadHistory = async () => {
@@ -680,7 +723,8 @@ export function AgentChatScreen() {
           attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
           createdAt: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
         }));
-        setMessages(historyMessages);
+        allMessagesRef.current = historyMessages;
+        setMessages(historyMessages.slice(-PAGE_SIZE));
       }
     } catch {
       // Silently ignore — instance may not support history endpoint
@@ -688,6 +732,27 @@ export function AgentChatScreen() {
       setLoadingHistory(false);
     }
   };
+
+  const handleInsertDesktopClipboard = useCallback(() => {
+    if (!remoteClipboard?.text) return;
+    setInput((previous) => {
+      const next = previous.trim().length > 0
+        ? `${previous.trim()}\n\n${remoteClipboard.text}`
+        : remoteClipboard.text;
+      return next.slice(0, 2000);
+    });
+    Haptics.selectionAsync().catch(() => {});
+  }, [remoteClipboard]);
+
+  const handleCopyDesktopClipboard = useCallback(async () => {
+    if (!remoteClipboard?.text) return;
+    await DeviceBridgingService.writeClipboard(remoteClipboard.text);
+    Haptics.selectionAsync().catch(() => {});
+    Alert.alert(
+      t({ en: 'Desktop Clipboard Copied', zh: '桌面剪贴板已复制' }),
+      t({ en: 'The latest desktop clipboard text is now on your phone.', zh: '最新桌面剪贴板内容已复制到手机剪贴板。' }),
+    );
+  }, [remoteClipboard, t]);
 
   const scrollToBottom = useCallback((force = false) => {
     if (!force && !isNearBottomRef.current) return;
@@ -700,27 +765,10 @@ export function AgentChatScreen() {
     scrollToBottom(lastMessage.role === 'user');
   }, [messages.length, scrollToBottom]);
 
-  const resetVoicePhaseAfterResponse = useCallback(() => {
-    setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
-  }, []);
-
-  const resetAudioModeAfterRecording = useCallback(async () => {
-    if (!Audio) return;
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-      });
-    } catch {}
-  }, [Audio]);
-
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
-    pendingTtsSentenceRef.current = '';
-    streamedTtsStartedRef.current = false;
     setSending(false);
     const activeMessageId = activeAssistantMessageIdRef.current;
     if (!activeMessageId) return;
@@ -741,6 +789,64 @@ export function AgentChatScreen() {
 
     activeAssistantMessageIdRef.current = null;
   }, [t]);
+
+  const {
+    voiceMode,
+    setVoiceMode,
+    duplexMode,
+    setDuplexMode,
+    voicePhase,
+    setVoicePhase,
+    isRecording,
+    isSpeaking,
+    liveListening,
+    liveVoiceVolume,
+    transcriptPreview,
+    setTranscriptPreview,
+    voiceInteractionMode,
+    setVoiceInteractionMode,
+    autoSpeak,
+    setAutoSpeak,
+    liveVoiceAvailable,
+    speakingMessageId,
+    handleVoicePressIn,
+    handleVoicePressOut,
+    handleVoiceTapToggle,
+    speakText,
+    stopSpeaking,
+    handleSpeakMessage: speakMessageText,
+    enqueueStreamedSpeech,
+    resetVoicePhaseAfterResponse,
+    resumeLiveSpeech,
+  } = useVoiceSession({
+    token,
+    language,
+    voiceModeRequested,
+    duplexModeRequested,
+    agentVoiceId: agentVoiceId || undefined,
+    instanceName,
+    isSending: sending,
+    speechRate,
+    onSendMessage: (text, attachments) => {
+      void handleSendRef.current(text, attachments);
+    },
+    onStopCurrentResponse: stopCurrentResponse,
+    t,
+  });
+
+  // Clear stale voiceMode/duplexMode route params when voice mode is turned off,
+  // so returning to this screen later doesn't re-activate voice.
+  useEffect(() => {
+    if (!voiceMode && (voiceModeRequested || duplexModeRequested)) {
+      navigation.setParams({ voiceMode: undefined, duplexMode: undefined });
+    }
+  }, [voiceMode, voiceModeRequested, duplexModeRequested, navigation]);
+
+  const handleSpeakMessage = useCallback((message: Message) => {
+    const text = buildDisplayMessageText(message.content);
+    if (!text) return;
+    speakMessageText(text, message.id);
+  }, [speakMessageText]);
 
   const appendToStreamingMessage = (msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -802,6 +908,16 @@ export function AgentChatScreen() {
     const attachments = overrideAttachments ?? pendingAttachments;
     if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
 
+    // Offline: queue the message instead of streaming
+    if (isOffline) {
+      offlineQueueRef.current.push({ text, attachments });
+      const queueMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, attachments, createdAt: Date.now() };
+      setMessages((prev) => [...prev, queueMsg]);
+      setInput('');
+      setPendingAttachments([]);
+      return;
+    }
+
     const outgoingText = buildOutgoingMessageContent(text, attachments);
 
     if (voiceMode || voicePhase !== 'idle') {
@@ -828,21 +944,34 @@ export function AgentChatScreen() {
     // Capture current messages before state update for history
     const currentMsgs = messages;
     responseInterruptedRef.current = false;
-    pendingTtsSentenceRef.current = '';
-    streamedTtsStartedRef.current = false;
     activeAssistantMessageIdRef.current = assistantMsgId;
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput('');
     setPendingAttachments([]);
-    AsyncStorage.removeItem(draftStorageKey).catch(() => {});
+    try { mmkv.delete(draftStorageKey); } catch {}
     setTranscriptPreview('');
     setSending(true);
     streamAbortRef.current?.abort();
+
+    // Auto-label session from first user message
+    if (text) {
+      setChatSessions((prev) => {
+        const idx = prev.findIndex(s => s.id === activeSessionId);
+        if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], label: text.slice(0, 24) + (text.length > 24 ? '…' : '') };
+          saveSessions(instanceId, updated);
+          return updated;
+        }
+        return prev;
+      });
+    }
 
     try {
       await Haptics.selectionAsync();
 
       let streamSucceeded = false;
+      let proxyFailureMessage: string | null = null;
 
       // Try OpenClaw proxy first (requires active instance)
       if (instanceId) {
@@ -864,7 +993,10 @@ export function AgentChatScreen() {
               enqueueStreamedSpeech(chunk);
             },
             onDone: () => resolve(),
-            onError: (_err) => resolve(), // silently fall through to direct Claude
+            onError: (err) => {
+              proxyFailureMessage = err || t({ en: 'OpenClaw agent connection failed.', zh: 'OpenClaw 智能体连接失败。' });
+              resolve();
+            },
           });
           streamAbortRef.current = ac;
         });
@@ -886,36 +1018,45 @@ export function AgentChatScreen() {
               appendToStreamingMessage(assistantMsgId, proxyReply);
               enqueueStreamedSpeech(proxyReply, true);
             }
-          } catch {
-            // Keep the final fallback below, but avoid silently losing agent capabilities when proxy chat works.
+          } catch (error: any) {
+            proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
           }
         }
       }
 
       if (!streamSucceeded) {
-        // Fallback: direct Claude via backend Bedrock key (always available)
-        const history = buildHistory(currentMsgs, outgoingText);
-        await new Promise<void>((resolve) => {
-          const ac = streamDirectClaude({
-            messages: history,
-            token,
-            model: effectiveModelId,
-            sessionId: sessionIdRef.current,
-            onChunk: (chunk) => {
-              streamSucceeded = true;
-              resetVoicePhaseAfterResponse();
-              appendToStreamingMessage(assistantMsgId, chunk);
-              enqueueStreamedSpeech(chunk);
-            },
-            onDone: () => resolve(),
-            onError: (err) => {
-              resetVoicePhaseAfterResponse();
-              appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
-              resolve();
-            },
+        if (instanceId) {
+          const message = proxyFailureMessage || t({ en: 'OpenClaw agent is offline. Reconnect the agent or try again shortly.', zh: 'OpenClaw 智能体当前离线，请重新连接后再试。' });
+          addVoiceDiagnostic('agent-chat', 'proxy-send-failed', {
+            instanceId,
+            message,
           });
-          streamAbortRef.current = ac;
-        });
+          resetVoicePhaseAfterResponse();
+          appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
+        } else {
+          const history = buildHistory(currentMsgs, outgoingText);
+          await new Promise<void>((resolve) => {
+            const ac = streamDirectClaude({
+              messages: history,
+              token,
+              model: effectiveModelId,
+              sessionId: sessionIdRef.current,
+              onChunk: (chunk) => {
+                streamSucceeded = true;
+                resetVoicePhaseAfterResponse();
+                appendToStreamingMessage(assistantMsgId, chunk);
+                enqueueStreamedSpeech(chunk);
+              },
+              onDone: () => resolve(),
+              onError: (err) => {
+                resetVoicePhaseAfterResponse();
+                appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
+                resolve();
+              },
+            });
+            streamAbortRef.current = ac;
+          });
+        }
       }
 
       if (responseInterruptedRef.current) return;
@@ -938,10 +1079,6 @@ export function AgentChatScreen() {
         if (finalContent && !finalContent.startsWith('⚠️')) {
           enqueueStreamedSpeech('', true);
         }
-        // Auto-speak agent reply only when the stream did not already start sentence playback.
-        if (finalContent && (voiceMode || autoSpeak) && !finalContent.startsWith('⚠️') && !streamedTtsStartedRef.current) {
-          setTimeout(() => speakText(finalContent), 200);
-        }
         return updated;
       });
     } catch (err: any) {
@@ -963,157 +1100,11 @@ export function AgentChatScreen() {
       resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
+      resumeLiveSpeech();
     }
   };
 
-  const startVoiceRecording = useCallback(async () => {
-    if (!Audio) {
-      Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available. Please type your message instead.', zh: '当前音频模块不可用，请改用文字输入。' }));
-      return;
-    }
-    if (voicePhase === 'transcribing') {
-      Alert.alert(
-        t({ en: 'Voice Busy', zh: '语音处理中' }),
-        t({ en: 'The previous recording is still being transcribed. Please wait a moment.', zh: '上一段录音还在转写中，请稍等一下。' }),
-      );
-      return;
-    }
-    try {
-      if (!isRecordingRef.current) {
-        // START recording
-        isRecordingRef.current = true;
-        if (isSpeaking) {
-          await audioPlayerRef.current?.stopAll();
-          setIsSpeaking(false);
-        }
-        stopCurrentResponse(true);
-        setVoicePhase('recording');
-        setTranscriptPreview('');
-        const permResult = await Audio.requestPermissionsAsync();
-        if (!permResult.granted) {
-          isRecordingRef.current = false;
-          setVoicePhase('idle');
-          Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in your device settings to use voice input.', zh: '请在设备设置中开启麦克风权限后再使用语音输入。' }));
-          return;
-        }
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-        });
-        if (recordingRef.current) {
-          try { await recordingRef.current.stopAndUnloadAsync(); } catch (_) {}
-          recordingRef.current = null;
-        }
-        const { recording } = await Audio.Recording.createAsync(
-          voiceRecordingOptions || Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        recordingRef.current = recording;
-        setIsRecording(true);
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setVoicePhase('idle');
-      const msg = e?.message || 'Unknown error';
-      if (msg.includes('permission') || msg.includes('Permission')) {
-        Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access in Settings to use voice input.', zh: '请在设置中开启麦克风权限后再使用语音输入。' }));
-      } else {
-        Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), t({ en: `Could not start recording: ${msg}\n\nTry typing your message instead.`, zh: `无法开始录音：${msg}\n\n请改用文字输入。` }));
-      }
-    }
-  }, [Audio, isSpeaking, stopCurrentResponse, t, voicePhase, voiceRecordingOptions]);
-
-  const stopVoiceRecording = useCallback(async () => {
-    if (!Audio || !isRecordingRef.current) return;
-    try {
-      // STOP and transcribe
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setVoicePhase('transcribing');
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
-        recordingRef.current = null;
-        if (uri) {
-          let transcript = '';
-          const formData = new FormData();
-          formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
-          const ac = new AbortController();
-          const timeout = setTimeout(() => ac.abort(), 35_000);
-          try {
-            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-              signal: ac.signal,
-            });
-            if (resp.ok) {
-              const data = await resp.json();
-              transcript = data?.text || data?.transcript || '';
-            }
-          } catch (err) {
-             console.warn("Transcription failed", err);
-          } finally {
-            clearTimeout(timeout);
-          }
-
-          let uploadedAudio = null;
-          if (!transcript) {
-            try {
-              uploadedAudio = await uploadChatAttachment({
-                uri,
-                name: `voice-${Date.now()}.m4a`,
-                type: 'audio/m4a'
-              });
-            } catch (upErr) {
-              console.warn("Audio upload failed", upErr);
-            }
-          }
-
-          if (transcript || uploadedAudio) {
-            setTranscriptPreview(transcript || '[Voice Message]');
-            setVoicePhase('thinking');
-            const attachList = uploadedAudio ? [uploadedAudio as UploadedChatAttachment] : undefined;
-            setTimeout(() => handleSend(transcript, attachList), 80);
-          } else {
-            setVoicePhase('idle');
-            Alert.alert(t({ en: 'No Speech Detected', zh: '未检测到有效语音' }), t({ en: 'Could not detect any speech or upload audio.', zh: '无法识别语音且上传失败。' }));
-          }
-        } else {
-          setVoicePhase('idle');
-        }
-      }
-    } catch (e: any) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setVoicePhase('idle');
-      Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || t({ en: 'Unknown error stopping recording', zh: '停止录音时发生未知错误' }));
-    } finally {
-      await resetAudioModeAfterRecording();
-    }
-  }, [Audio, handleSend, resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
-
-  // Voice recording — hold mode wrappers
-  const handleVoicePressIn = async () => {
-    if (voiceInteractionMode !== 'hold') return;
-    await startVoiceRecording();
-  };
-
-  const handleVoicePressOut = async () => {
-    if (voiceInteractionMode !== 'hold') return;
-    await stopVoiceRecording();
-  };
-
-  const handleVoiceTapToggle = useCallback(async () => {
-    if (isRecordingRef.current) {
-      await stopVoiceRecording();
-      return;
-    }
-    await startVoiceRecording();
-  }, [startVoiceRecording, stopVoiceRecording]);
+  handleSendRef.current = handleSend;
 
   const openModelPicker = () => setShowModelPicker(true);
 
@@ -1124,17 +1115,6 @@ export function AgentChatScreen() {
       handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
     } catch (e: any) {
       Alert.alert(t({ en: 'Location Error', zh: '定位错误' }), e.message);
-    }
-  };
-
-  const handleDeviceClipboard = async () => {
-    setShowAttachToolbar(false);
-    try {
-      const text = await DeviceBridgingService.readClipboard();
-      if (!text) return Alert.alert(t({ en: 'Clipboard Empty', zh: '剪贴板为空' }), t({ en: 'Nothing to paste.', zh: '没有可粘贴的内容。' }));
-      setInput((prev) => prev ? `${prev}\n${text}` : text);
-    } catch (e: any) {
-      Alert.alert(t({ en: 'Clipboard Error', zh: '剪贴板错误' }), e.message);
     }
   };
 
@@ -1249,8 +1229,8 @@ export function AgentChatScreen() {
         onPress: () => {
           streamAbortRef.current?.abort();
           sessionIdRef.current = `session-${Date.now()}`;
-          AsyncStorage.removeItem(storageKey).catch(() => {});
-          AsyncStorage.removeItem(draftStorageKey).catch(() => {});
+          try { mmkv.delete(storageKey); } catch {}
+          try { mmkv.delete(draftStorageKey); } catch {}
           setInput('');
           setMessages([{
             id: 'welcome',
@@ -1258,10 +1238,100 @@ export function AgentChatScreen() {
             content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
+          // Update multi-session tracking
+          const newSession: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+          setChatSessions((prev) => {
+            const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
+            saveSessions(instanceId, updated);
+            return updated;
+          });
+          setActiveSessionId(sessionIdRef.current);
         },
       },
     ]);
   };
+
+  // Multi-session: switch to a different session
+  const handleSessionSelect = useCallback((sid: string) => {
+    if (sid === activeSessionId) return;
+    // Save current messages
+    try {
+      const currentKey = `chat_hist_${instanceId}_${activeSessionId}`;
+      mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
+    } catch {}
+    // Switch
+    streamAbortRef.current?.abort();
+    sessionIdRef.current = sid;
+    setActiveSessionId(sid);
+    // Load messages for new session
+    try {
+      const newKey = `chat_hist_${instanceId}_${sid}`;
+      const raw = mmkv.getString(newKey);
+      if (raw) {
+        setMessages(JSON.parse(raw));
+      } else {
+        setMessages([{
+          id: 'welcome',
+          role: 'assistant',
+          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+          createdAt: Date.now(),
+        }]);
+      }
+    } catch {
+      setMessages([]);
+    }
+    setInput('');
+  }, [activeSessionId, instanceId, instanceName, messages, t]);
+
+  // Multi-session: create new session
+  const handleSessionNew = useCallback(() => {
+    if (chatSessions.length >= MAX_SESSIONS) return;
+    // Save current messages first
+    try {
+      const currentKey = `chat_hist_${instanceId}_${activeSessionId}`;
+      mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
+    } catch {}
+    const newId = `session-${Date.now()}`;
+    const newSession: ChatSession = { id: newId, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+    streamAbortRef.current?.abort();
+    sessionIdRef.current = newId;
+    setActiveSessionId(newId);
+    setChatSessions((prev) => {
+      const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
+      saveSessions(instanceId, updated);
+      return updated;
+    });
+    setMessages([{
+      id: 'welcome',
+      role: 'assistant',
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+      createdAt: Date.now(),
+    }]);
+    setInput('');
+  }, [activeSessionId, chatSessions.length, instanceId, instanceName, messages, t]);
+
+  // Multi-session: close a session
+  const handleSessionClose = useCallback((sid: string) => {
+    setChatSessions((prev) => {
+      const updated = prev.filter(s => s.id !== sid);
+      if (updated.length === 0) return prev; // Don't close last session
+      saveSessions(instanceId, updated);
+      // If we closed the active session, switch to the first remaining one
+      if (sid === activeSessionId) {
+        const nextSession = updated[0];
+        sessionIdRef.current = nextSession.id;
+        setActiveSessionId(nextSession.id);
+        try {
+          const key = `chat_hist_${instanceId}_${nextSession.id}`;
+          const raw = mmkv.getString(key);
+          if (raw) setMessages(JSON.parse(raw));
+        } catch {}
+      }
+      return updated;
+    });
+    // Clean up stored messages for closed session
+    try { mmkv.delete(`chat_hist_${instanceId}_${sid}`); } catch {}
+  }, [activeSessionId, instanceId]);
 
   const renderMessage = ({ item }: { item: Message }) => {
     return (
@@ -1269,11 +1339,88 @@ export function AgentChatScreen() {
         item={item}
         onSpeak={handleSpeakMessage}
         onStopSpeaking={stopSpeaking}
-        speakingMessageId={activeAssistantMessageIdRef.current}
+        speakingMessageId={speakingMessageId}
         onPreviewImage={(uri) => setPreviewImageUri(uri)}
       />
     );
   };
+
+  // Sprint 2: Auto-provision — when no agent instance exists, show friendly welcome
+  const handleAutoProvision = useCallback(async () => {
+    if (provisioning) return;
+    setProvisioning(true);
+    try {
+      const result = await apiFetch<{ instance: any }>('/openclaw/auto-provision', { method: 'POST' });
+      if (result?.instance) {
+        const newInstance = {
+          id: result.instance.id,
+          name: result.instance.name || 'My Agent',
+          instanceUrl: result.instance.instanceUrl || '',
+          status: 'active' as const,
+          deployType: (result.instance.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
+        };
+        useAuthStore.getState().addInstance(newInstance);
+        useAuthStore.getState().setActiveInstance(newInstance.id);
+        useAuthStore.getState().setOnboardingComplete();
+        // If triggered by voice activation, go straight to chat with voice mode
+        if (voiceModeRequested) {
+          navigation.replace('AgentChat', {
+            instanceId: newInstance.id,
+            instanceName: newInstance.name,
+            voiceMode: true,
+            duplexMode: true,
+          });
+        } else {
+          // Navigate to skill pack for one-tap core skill installation
+          navigation.navigate('SkillPack');
+        }
+      }
+    } catch (err: any) {
+      // Fallback: navigate to manual deploy
+      navigation.navigate('DeploySelect');
+    } finally {
+      setProvisioning(false);
+    }
+  }, [provisioning, navigation, voiceModeRequested]);
+
+  // Auto-trigger provisioning when arriving from floating ball voice activation
+  useEffect(() => {
+    if (!activeInstance && !instanceId && voiceModeRequested && !provisioning) {
+      void handleAutoProvision();
+    }
+  }, [activeInstance, instanceId, voiceModeRequested, provisioning, handleAutoProvision]);
+
+  // Sprint 1+2: No-instance welcome screen
+  if (!activeInstance && !instanceId) {
+    return (
+      <SafeAreaView style={styles.welcomeContainer}>
+        <View style={styles.welcomeContent}>
+          <Text style={styles.welcomeEmoji}>{'🤖'}</Text>
+          <Text style={styles.welcomeTitle}>{t({ en: 'Hi, I\'m your AI Agent!', zh: '你好，我是你的 AI 智能体！' })}</Text>
+          <Text style={styles.welcomeSubtitle}>
+            {t({ en: 'Let me set up everything for you. One tap and we can start chatting.', zh: '让我帮你准备好一切，一键即可开始对话。' })}
+          </Text>
+          <TouchableOpacity
+            style={styles.welcomeBtn}
+            onPress={handleAutoProvision}
+            disabled={provisioning}
+          >
+            {provisioning ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.welcomeBtnText}>{t({ en: 'Get Started', zh: '立即开始' })}</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.welcomeSecondaryBtn}
+            onPress={() => navigation.navigate('DeploySelect')}
+          >
+            <Text style={styles.welcomeSecondaryText}>{t({ en: 'Advanced Setup', zh: '高级配置' })}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -1281,48 +1428,70 @@ export function AgentChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={88}
     >
-      {/* Chat toolbar */}
-      <View style={styles.chatBar}>
-        <Text style={styles.chatBarTitle}>🤖 {instanceName}</Text>
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <TouchableOpacity
-            onPress={() => setDuplexMode((prev) => !prev)}
-            style={[styles.chatBarBtn, duplexMode && { backgroundColor: colors.accent + '30' }]}
-          >
-            <Text style={[styles.chatBarBtnText, duplexMode && { color: colors.accent }]}>
-              {duplexMode ? t({ en: 'Duplex', zh: '双工' }) : t({ en: 'Simple', zh: '基础' })}
-            </Text>
+      {/* Simplified Chat toolbar */}
+      <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bgCard }}>
+        <View style={styles.chatBar}>
+          <TouchableOpacity onPress={() => navigation.navigate('AgentConsole')} style={styles.chatBarBackBtn}>
+            <Text style={styles.chatBarBackIcon}>{'‹'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              setAutoSpeak(!autoSpeak);
-              if (isSpeaking) { stopSpeaking(); }
-            }}
-            style={[styles.chatBarBtn, autoSpeak && { backgroundColor: colors.primary + '30' }]}
-          >
-            <Text style={styles.chatBarBtnText}>{isSpeaking ? '🔊' : autoSpeak ? '🔈' : '🔇'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={openModelPicker} style={styles.modelBtn}>
-            <Text style={styles.modelBtnText} numberOfLines={1}>
-              {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleClearChat} style={styles.chatBarBtn}>
-            <Text style={styles.chatBarBtnText}>{t({ en: 'New', zh: '新建' })}</Text>
+          <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
+          <TouchableOpacity onPress={() => setShowSettingsSheet(true)} style={styles.chatBarGearBtn}>
+            <Text style={styles.chatBarGearIcon}>⚙️</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
 
-      {/* Compact token energy bar */}
-      <View style={styles.tokenBar}>
-        <View style={[styles.tokenBarFill, { width: `${tokenPct}%` as any, backgroundColor: tokenBarColor }]} />
-        <Text style={styles.tokenBarLabel}>{used.toLocaleString()} / {total.toLocaleString()} tokens</Text>
-      </View>
+      {/* Multi-session tabs */}
+      <ChatSessionTabs
+        instanceId={instanceId}
+        sessions={chatSessions}
+        activeSessionId={activeSessionId}
+        onSelect={handleSessionSelect}
+        onNew={handleSessionNew}
+        onClose={handleSessionClose}
+        t={t}
+      />
 
       {loadingHistory && (
         <View style={styles.historyLoader}>
           <ActivityIndicator size="small" color={colors.accent} />
           <Text style={styles.historyLoaderText}>{t({ en: 'Loading history…', zh: '正在加载历史记录…' })}</Text>
+        </View>
+      )}
+
+      <DesktopDiscoveryBanner
+        sessionId={sessionIdRef.current}
+        agentId={activeInstance?.metadata?.agentAccountId || instanceId}
+        instanceName={instanceName}
+        messages={allMessagesRef.current.length > 0 ? allMessagesRef.current.slice(-10) : messages.slice(-10)}
+      />
+
+      {isOffline && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f59e0b', paddingVertical: 6 }}>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
+            {t({ en: 'Offline — messages will be sent when reconnected', zh: '离线模式 — 恢复连接后自动发送' })}
+          </Text>
+        </View>
+      )}
+
+      {!!remoteClipboard?.text && (
+        <View style={styles.remoteClipboardBanner}>
+          <View style={styles.remoteClipboardTextWrap}>
+            <Text style={styles.remoteClipboardTitle}>
+              {t({ en: 'Desktop clipboard available', zh: '检测到桌面剪贴板' })}
+            </Text>
+            <Text style={styles.remoteClipboardSubtitle} numberOfLines={2}>
+              {remoteClipboard.text}
+            </Text>
+          </View>
+          <View style={styles.remoteClipboardActions}>
+            <TouchableOpacity style={styles.remoteClipboardActionBtn} onPress={handleInsertDesktopClipboard}>
+              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Insert', zh: '插入' })}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.remoteClipboardActionBtn} onPress={handleCopyDesktopClipboard}>
+              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Copy', zh: '复制' })}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -1340,15 +1509,34 @@ export function AgentChatScreen() {
           isNearBottomRef.current = distanceFromBottom < 120;
         }}
         scrollEventThrottle={16}
+        initialNumToRender={PAGE_SIZE}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        onStartReached={loadOlderMessages}
+        onStartReachedThreshold={0.3}
+        ListHeaderComponent={
+          allMessagesRef.current.length > messages.length ? (
+            <TouchableOpacity onPress={loadOlderMessages} style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Text style={{ color: colors.accent, fontSize: 13 }}>
+                {t({ en: 'Load older messages', zh: '加载更早消息' })}
+              </Text>
+            </TouchableOpacity>
+          ) : null
+        }
       />
 
-      {voiceMode && voicePhase !== 'idle' && (
+      {voiceMode && (
         <View style={styles.voiceStatusBar}>
           <Text style={styles.voiceStatusDots}>...</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.voiceStatusText}>
+                {voicePhase === 'idle' && (duplexMode
+                  ? t({ en: 'Voice ready. Listening will start automatically. Say your wake phrase or tap stop to pause.', zh: '语音会话已就绪。将自动进入实时聆听；你可以直接说唤醒词，或点停止暂停。' })
+                  : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                 {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
-                  ? t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
+                  ? duplexMode
+                    ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                    : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
                   : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
               {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
               {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
@@ -1359,6 +1547,11 @@ export function AgentChatScreen() {
             {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
               <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
                 {transcriptPreview}
+              </Text>
+            )}
+            {duplexMode && liveListening && (
+              <Text style={styles.voiceTranscriptPreview} numberOfLines={1}>
+                {t({ en: `Input level ${Math.max(0, liveVoiceVolume).toFixed(1)}`, zh: `输入音量 ${Math.max(0, liveVoiceVolume).toFixed(1)}` })}
               </Text>
             )}
           </View>
@@ -1406,10 +1599,6 @@ export function AgentChatScreen() {
             <Text style={styles.attachToolbarIcon}>📍</Text>
             <Text style={styles.attachToolbarLabel}>{t({ en: 'GPS', zh: '位置' })}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.attachToolbarItem} onPress={handleDeviceClipboard}>
-            <Text style={styles.attachToolbarIcon}>📋</Text>
-            <Text style={styles.attachToolbarLabel}>{t({ en: 'Clipboard', zh: '剪贴板' })}</Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -1417,7 +1606,7 @@ export function AgentChatScreen() {
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
           style={styles.modeToggleBtn}
-          onPress={() => { setVoiceMode(!voiceMode); setIsRecording(false); setShowAttachToolbar(false); }}
+          onPress={() => { setVoiceMode(!voiceMode); setShowAttachToolbar(false); }}
         >
           <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
         </TouchableOpacity>
@@ -1430,11 +1619,13 @@ export function AgentChatScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
-                {isRecording
+                {duplexMode
+                  ? liveListening
+                    ? t({ en: '🛑  Stop Live Voice', zh: '🛑  停止实时语音' })
+                    : t({ en: '🎙  Start Live Voice', zh: '🎙  开始实时语音' })
+                  : isRecording
                   ? t({ en: '🔴  Tap to Send', zh: '🔴  点击发送' })
-                  : duplexMode
-                    ? t({ en: '🎙  Tap to Talk (Duplex)', zh: '🎙  点击说话（双工）' })
-                    : t({ en: '🎙  Tap to Talk', zh: '🎙  点击说话' })}
+                  : t({ en: '🎙  Tap to Talk', zh: '🎙  点击说话' })}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -1515,6 +1706,14 @@ export function AgentChatScreen() {
       </View>
       </View>
 
+      {/* Voice onboarding tooltip */}
+      <VoiceOnboardingTooltip
+        visible={voiceMode}
+        voiceInteractionMode={voiceInteractionMode}
+        duplexMode={duplexMode}
+        t={t}
+      />
+
       <Modal visible={showCameraModal} animationType="fade" onRequestClose={() => !capturingPhoto && setShowCameraModal(false)}>
         <View style={styles.cameraModalRoot}>
           {cameraPermission?.granted ? (
@@ -1571,6 +1770,146 @@ export function AgentChatScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Settings Bottom Sheet — replaces cluttered chatBar controls */}
+      <Modal visible={showSettingsSheet} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowSettingsSheet(false)} activeOpacity={1}>
+          <View style={styles.settingsSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{t({ en: 'Chat Settings', zh: '对话设置' })}</Text>
+
+            {/* Voice mode toggle */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice Mode', zh: '语音模式' })}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!liveVoiceAvailable && !duplexMode) {
+                    Alert.alert(
+                      t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                      t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
+                    );
+                    return;
+                  }
+                  setDuplexMode((prev) => !prev);
+                }}
+                style={[styles.sheetToggle, duplexMode && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, duplexMode && { color: colors.accent }]}>
+                  {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Auto-speak toggle */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Auto Read Aloud', zh: '自动朗读' })}</Text>
+              <TouchableOpacity
+                onPress={() => { setAutoSpeak(!autoSpeak); if (isSpeaking) stopSpeaking(); }}
+                style={[styles.sheetToggle, autoSpeak && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, autoSpeak && { color: colors.accent }]}>
+                  {autoSpeak ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Speech rate selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Speech Speed', zh: '语速' })}</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[0.8, 1.0, 1.2, 1.5].map((rate) => (
+                  <TouchableOpacity
+                    key={rate}
+                    onPress={() => setSpeechRate(rate)}
+                    style={[
+                      styles.sheetToggle,
+                      { minWidth: 40, paddingHorizontal: 8 },
+                      speechRate === rate && styles.sheetToggleActive,
+                    ]}
+                  >
+                    <Text style={[styles.sheetToggleText, speechRate === rate && { color: colors.accent }]}>
+                      {rate === 1.0 ? '1×' : `${rate}×`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Voice persona selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice', zh: '声音' })}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {[
+                  { id: 'alloy', label: 'Alloy', emoji: '🗣️' },
+                  { id: 'echo', label: 'Echo', emoji: '🎙️' },
+                  { id: 'fable', label: 'Fable', emoji: '📖' },
+                  { id: 'onyx', label: 'Onyx', emoji: '🪨' },
+                  { id: 'nova', label: 'Nova', emoji: '✨' },
+                  { id: 'shimmer', label: 'Shimmer', emoji: '💫' },
+                ].map((v) => {
+                  const isActive = (agentVoiceId || 'alloy') === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      onPress={() => setAgentVoiceId(v.id)}
+                      style={[
+                        styles.sheetToggle,
+                        { minWidth: 52, paddingHorizontal: 6 },
+                        isActive && styles.sheetToggleActive,
+                      ]}
+                    >
+                      <Text style={[styles.sheetToggleText, isActive && { color: colors.accent }]}>
+                        {v.emoji} {v.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Model selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Model', zh: '模型' })}</Text>
+              <TouchableOpacity
+                onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowModelPicker(true), 300); }}
+                style={styles.sheetModelBtn}
+              >
+                <Text style={styles.sheetModelText} numberOfLines={1}>
+                  {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>›</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Token usage */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Tokens Used', zh: '已用额度' })}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{used.toLocaleString()} / {total.toLocaleString()}</Text>
+            </View>
+
+            {/* New chat */}
+            <TouchableOpacity style={styles.sheetActionBtn} onPress={() => { setShowSettingsSheet(false); handleClearChat(); }}>
+              <Text style={styles.sheetActionText}>{'✨ '}{t({ en: 'New Conversation', zh: '新建对话' })}</Text>
+            </TouchableOpacity>
+
+            {/* Agent management */}
+            <TouchableOpacity
+              style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => { setShowSettingsSheet(false); navigation.navigate('AgentConsole'); }}
+            >
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'⚙️ '}{t({ en: 'Agent Management', zh: '智能体管理' })}</Text>
+            </TouchableOpacity>
+
+            {/* Voice diagnostics */}
+            <TouchableOpacity
+              style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowDiagnostics(true), 300); }}
+            >
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'🔍 '}{t({ en: 'Voice Diagnostics', zh: '语音诊断' })}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Model picker modal — dynamic models from user's configured providers */}
       <Modal visible={showModelPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
@@ -1591,17 +1930,13 @@ export function AgentChatScreen() {
                       setAgentPreferredModel(m.id);
                       setResolvedModelLabel(m.label);
                       setShowModelPicker(false);
-                      // Save per-agent model to backend
                       const agentAccountId = activeInstance?.metadata?.agentAccountId;
                       if (agentAccountId) {
                         try {
-                          await apiFetch(`/agent-accounts/${agentAccountId}`, {
-                            method: 'PUT',
-                            body: JSON.stringify({ preferredModel: m.id }),
-                          });
+                          const { updateAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
+                          await updateAgentPresenceAccount(agentAccountId, { preferredModel: m.id });
                         } catch {}
                       }
-                      // Also sync to instance
                       if (instanceId) {
                         try { await switchInstanceModel(instanceId, m.id); } catch {}
                       }
@@ -1634,6 +1969,25 @@ export function AgentChatScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Voice diagnostics modal */}
+      <Modal visible={showDiagnostics} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDiagnostics(false)} activeOpacity={1}>
+          <View style={[styles.modelSheet, { maxHeight: '70%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modelSheetTitle}>{t({ en: 'Voice Diagnostics', zh: '语音诊断日志' })}</Text>
+              <TouchableOpacity onPress={() => { clearVoiceDiagnostics(); setShowDiagnostics(false); }}>
+                <Text style={{ color: '#f44', fontSize: 13 }}>{t({ en: 'Clear', zh: '清除' })}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }}>
+              <Text selectable style={{ color: colors.textSecondary, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                {getVoiceDiagnosticsText() || t({ en: 'No voice events recorded yet.', zh: '暂无语音事件记录。' })}
+              </Text>
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1642,19 +1996,95 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   chatBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    gap: 12,
   },
-  chatBarTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 15 },
+  chatBarTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 16, flex: 1, textAlign: 'center' },
+  chatBarBackBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  chatBarBackIcon: { color: colors.textPrimary, fontSize: 28, fontWeight: '300', marginTop: -2 },
+  chatBarGearBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  chatBarGearIcon: { fontSize: 18 },
   chatBarBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.bgSecondary },
   chatBarBtnText: { color: colors.textMuted, fontSize: 12 },
+  // Welcome screen (no instance)
+  welcomeContainer: { flex: 1, backgroundColor: colors.bgPrimary },
+  welcomeContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  welcomeEmoji: { fontSize: 72, marginBottom: 20 },
+  welcomeTitle: { color: colors.textPrimary, fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
+  welcomeSubtitle: { color: colors.textSecondary, fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  welcomeBtn: {
+    width: '100%', height: 52, borderRadius: 26,
+    backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+  },
+  welcomeBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  welcomeSecondaryBtn: { paddingVertical: 10, paddingHorizontal: 20 },
+  welcomeSecondaryText: { color: colors.textMuted, fontSize: 14 },
+  // Settings Bottom Sheet
+  settingsSheet: {
+    backgroundColor: colors.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingTop: 12, paddingBottom: 40, paddingHorizontal: 20,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border,
+    alignSelf: 'center', marginBottom: 16,
+  },
+  sheetTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 17, marginBottom: 20, textAlign: 'center' },
+  sheetRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  sheetRowLabel: { color: colors.textPrimary, fontSize: 15 },
+  sheetToggle: {
+    paddingVertical: 5, paddingHorizontal: 14, borderRadius: 16,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  sheetToggleActive: { backgroundColor: colors.accent + '20', borderColor: colors.accent + '40' },
+  sheetToggleText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  sheetModelBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border, maxWidth: 200,
+  },
+  sheetModelText: { color: colors.accent, fontSize: 13, fontWeight: '600', flex: 1 },
+  sheetActionBtn: {
+    marginTop: 14, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: colors.primary, alignItems: 'center',
+  },
+  sheetActionText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   historyLoader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, justifyContent: 'center' },
   historyLoaderText: { color: colors.textMuted, fontSize: 13 },
+  remoteClipboardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  remoteClipboardTextWrap: { flex: 1, minWidth: 0 },
+  remoteClipboardTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  remoteClipboardSubtitle: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  remoteClipboardActions: { flexDirection: 'row', gap: 8 },
+  remoteClipboardActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  remoteClipboardActionText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
   messageList: { padding: 16, paddingBottom: 8, gap: 12 },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '85%' },
   msgRowUser: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
@@ -1867,7 +2297,14 @@ const styles = StyleSheet.create({
   modelOptionCheck: { color: colors.accent, fontSize: 16, fontWeight: '700' },
   modelBadge: { backgroundColor: colors.accent + '20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   modelBadgeText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
-  thoughtContainer: { backgroundColor: colors.bg, borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: colors.border },
+  thoughtContainer: { marginBottom: 6 },
+  thoughtCapsule: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.accent + '12', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  thoughtCapsuleText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary, flex: 1 },
   thoughtHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   thoughtHeaderText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   thoughtList: { marginTop: 6, gap: 4 },

@@ -10,11 +10,11 @@ import {
 } from "react";
 import {
   useAuthStore,
-  streamChat,
   streamDirectChat,
   fetchModels,
   type ChatMessage,
   type ChatAttachment,
+  type DesktopAgent,
   uploadChatAttachment,
 } from "../services/store";
 import MessageBubble from "./MessageBubble";
@@ -22,12 +22,17 @@ import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
 import FileTreePanel from "./FileTreePanel";
+import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList } from "../services/git";
+import { captureScreen } from "../services/screenshot";
+import NotificationCenter, { NotificationBadge } from "./NotificationCenter";
+import { subscribe as subscribeNotifications, getUnreadCount } from "../services/notifications";
 import { type VoiceState } from "../services/voice";
 import {
   AudioQueuePlayer,
   SentenceAccumulator,
   detectLang,
 } from "../services/AudioQueuePlayer";
+import { acceptHandoffWs } from "../services/agentPresence";
 import {
   getWorkspaceDir,
   listWorkspaceDir,
@@ -36,6 +41,19 @@ import {
 } from "../services/workspace";
 import { pushSessionSync, isSessionSyncConnected } from "../services/sessionSync";
 import { trackEvent } from "../services/analytics";
+import {
+  listSessionEntries,
+  loadSessionMessages,
+  persistSession,
+  removeSession,
+  loadTabs,
+  saveTabs,
+  loadActiveTabId,
+  saveActiveTabId,
+  type SessionEntry,
+  type PersistedTab,
+} from "../services/chatSessionStore";
+import TabBar, { type ChatTab } from "./TabBar";
 import type { NetworkStatus } from "../services/network";
 
 // Send desktop notification when app is in background
@@ -61,8 +79,25 @@ interface Props {
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
 
+type IncomingHandoffSnapshot = {
+  title?: string;
+  messages?: Array<{
+    role?: "user" | "assistant";
+    content?: string;
+    createdAt?: number;
+  }>;
+};
+
+type IncomingHandoffEvent = {
+  handoffId?: string;
+  sessionId?: string;
+  sourceDeviceId?: string;
+  agentId?: string;
+  contextSnapshot?: IncomingHandoffSnapshot;
+};
+
 export default function ChatPanel({ onClose, networkStatus = "online" }: Props) {
-  const { token, activeInstanceId, instances, setActiveInstance } =
+  const { token, activeAgentId, agents, setActiveAgent } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -80,7 +115,22 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
   const [fileTreeOpen, setFileTreeOpen] = useState(false);
   const [syncConnected, setSyncConnected] = useState(isSessionSyncConnected());
-  const sessionIdRef = useRef(`session-${Date.now()}`);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
+  const activeAgent = useMemo<DesktopAgent | null>(
+    () => agents.find((agent) => agent.id === activeAgentId) || null,
+    [agents, activeAgentId],
+  );
+
+  // ── Multi-tab state ─────────────────────────────────────
+  const defaultTabId = `tab-${Date.now()}`;
+  const defaultSessionId = `session-${Date.now()}`;
+  const [tabs, setTabs] = useState<ChatTab[]>([{ id: defaultTabId, sessionId: defaultSessionId, title: "New Chat", unread: false }]);
+  const [activeTabId, setActiveTabId] = useState(defaultTabId);
+  const tabMessagesCache = useRef<Record<string, ChatMessage[]>>({});
+
+  const sessionIdRef = useRef(defaultSessionId);
   const abortRef = useRef<AbortController | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -88,6 +138,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
   // Track whether the current send was voice-initiated for auto-TTS
   const voiceInitiatedRef = useRef(false);
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryEntries(await listSessionEntries());
+  }, []);
 
   // Load workspace directory
   useEffect(() => {
@@ -112,31 +166,187 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // ── Tab initialization from persistence ──────────────
+  useEffect(() => {
+    (async () => {
+      const savedTabs = await loadTabs();
+      const savedActiveId = await loadActiveTabId();
+      if (savedTabs.length > 0) {
+        const chatTabs: ChatTab[] = savedTabs.map(t => ({ ...t, unread: false }));
+        setTabs(chatTabs);
+        const activeId = savedActiveId && chatTabs.find(t => t.id === savedActiveId) ? savedActiveId : chatTabs[0].id;
+        setActiveTabId(activeId);
+        const activeTab = chatTabs.find(t => t.id === activeId)!;
+        sessionIdRef.current = activeTab.sessionId;
+        const msgs = await loadSessionMessages(activeTab.sessionId);
+        setMessages(msgs);
+        tabMessagesCache.current[activeTab.sessionId] = msgs;
+      } else {
+        const msgs = await loadSessionMessages(sessionIdRef.current);
+        setMessages(msgs);
+      }
+    })();
+  }, []);
+
+  // ── Tab management helpers ────────────────────────────
+  const createNewTab = useCallback(() => {
+    const id = `tab-${Date.now()}`;
+    const sid = `session-${Date.now()}`;
+    const newTab: ChatTab = { id, sessionId: sid, title: "New Chat", unread: false };
+    // Cache current messages before switching
+    tabMessagesCache.current[sessionIdRef.current] = messages;
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(id);
+    sessionIdRef.current = sid;
+    setMessages([]);
+    setPendingAttachments([]);
+    setBallState("idle");
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+    trackEvent("tab_new");
+  }, [messages]);
+
+  const switchTab = useCallback(async (tabId: string) => {
+    if (tabId === activeTabId) return;
+    // Save current tab's messages to cache
+    tabMessagesCache.current[sessionIdRef.current] = messages;
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+    // Find target tab
+    const target = tabs.find(t => t.id === tabId);
+    if (!target) return;
+    setActiveTabId(tabId);
+    sessionIdRef.current = target.sessionId;
+    // Mark as read
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, unread: false } : t));
+    // Load messages from cache or store
+    const cached = tabMessagesCache.current[target.sessionId];
+    if (cached) {
+      setMessages(cached);
+    } else {
+      const stored = await loadSessionMessages(target.sessionId);
+      setMessages(stored);
+      tabMessagesCache.current[target.sessionId] = stored;
+    }
+    setPendingAttachments([]);
+    setBallState("idle");
+  }, [activeTabId, tabs, messages]);
+
+  const closeTab = useCallback(async (tabId: string) => {
+    if (tabs.length <= 1) return; // keep at least one tab
+    const idx = tabs.findIndex(t => t.id === tabId);
+    const newTabs = tabs.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+    // If closing active tab, switch to adjacent
+    if (tabId === activeTabId) {
+      const nextIdx = Math.min(idx, newTabs.length - 1);
+      const nextTab = newTabs[nextIdx];
+      setActiveTabId(nextTab.id);
+      sessionIdRef.current = nextTab.sessionId;
+      const cached = tabMessagesCache.current[nextTab.sessionId];
+      if (cached) {
+        setMessages(cached);
+      } else {
+        const stored = await loadSessionMessages(nextTab.sessionId);
+        setMessages(stored);
+      }
+      setPendingAttachments([]);
+      setBallState("idle");
+    }
+  }, [tabs, activeTabId]);
+
+  // Persist tabs whenever they change
+  useEffect(() => {
+    const persisted: PersistedTab[] = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
+    void saveTabs(persisted);
+    void saveActiveTabId(activeTabId);
+  }, [tabs, activeTabId]);
+
   // Persist current session to localStorage + push to cross-device sync
   useEffect(() => {
     if (messages.length > 0) {
-      localStorage.setItem(
-        `chat_session_${sessionIdRef.current}`,
-        JSON.stringify(messages.slice(-80)),
-      );
-      // Update session index
-      saveSessionToIndex(sessionIdRef.current, messages);
-      // Push to cross-device sync (debounced by nature of React batching)
+      void persistSession(sessionIdRef.current, messages).then(() => refreshHistory());
+      // Update current tab title
       const firstUser = messages.find(m => m.role === "user");
       const title = firstUser?.content?.slice(0, 50) || "New Chat";
+      setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, title } : t));
+      // Update cache
+      tabMessagesCache.current[sessionIdRef.current] = messages;
+      // Push to cross-device sync
       pushSessionSync(sessionIdRef.current, messages, title);
     }
-  }, [messages]);
+  }, [messages, refreshHistory, activeTabId]);
 
-  // Load persisted messages for current session
   useEffect(() => {
-    const stored = localStorage.getItem(`chat_session_${sessionIdRef.current}`);
-    if (stored) {
-      try {
-        setMessages(JSON.parse(stored));
-      } catch {}
+    if (historyOpen) {
+      void refreshHistory();
     }
   }, []);
+
+  const applyIncomingHandoff = useCallback((payload: IncomingHandoffEvent | null | undefined) => {
+    if (!payload) return;
+
+    const snapshot = payload.contextSnapshot;
+    const restoredMessages: ChatMessage[] = Array.isArray(snapshot?.messages)
+      ? snapshot.messages
+          .filter((message) => message?.role === "user" || message?.role === "assistant")
+          .map((message, index) => ({
+            id: `handoff-${Date.now()}-${index}`,
+            role: (message.role || "assistant") as "user" | "assistant",
+            content: message.content || "",
+            createdAt: message.createdAt || Date.now(),
+          }))
+      : [];
+
+    const nextTabId = `tab-${Date.now()}`;
+    const nextSessionId = payload.sessionId || `handoff-${Date.now()}`;
+    const nextTitle = snapshot?.title || `Handoff from ${payload.sourceDeviceId || "mobile"}`;
+
+    tabMessagesCache.current[sessionIdRef.current] = messages;
+    abortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+
+    setTabs((prev) => [...prev, { id: nextTabId, sessionId: nextSessionId, title: nextTitle, unread: false }]);
+    setActiveTabId(nextTabId);
+    sessionIdRef.current = nextSessionId;
+    setPendingAttachments([]);
+    setBallState("idle");
+    setMessages(
+      restoredMessages.length > 0
+        ? restoredMessages
+        : [{ id: `sys-${Date.now()}`, role: "assistant", content: `Incoming handoff from ${payload.sourceDeviceId || "mobile"}.`, createdAt: Date.now() }],
+    );
+
+    if (payload.handoffId) {
+      acceptHandoffWs(payload.handoffId);
+    }
+
+    localStorage.removeItem("agentrix_pending_handoff");
+    trackEvent("handoff_received", { sourceDeviceId: payload.sourceDeviceId || "mobile" });
+  }, [messages]);
+
+  useEffect(() => {
+    const consumePendingHandoff = () => {
+      try {
+        const raw = localStorage.getItem("agentrix_pending_handoff");
+        if (!raw) return;
+        applyIncomingHandoff(JSON.parse(raw) as IncomingHandoffEvent);
+      } catch {
+        localStorage.removeItem("agentrix_pending_handoff");
+      }
+    };
+
+    const onIncomingHandoff = (event: Event) => {
+      applyIncomingHandoff((event as CustomEvent<IncomingHandoffEvent>).detail);
+    };
+
+    consumePendingHandoff();
+    window.addEventListener("agentrix:handoff-incoming", onIncomingHandoff as EventListener);
+    return () => window.removeEventListener("agentrix:handoff-incoming", onIncomingHandoff as EventListener);
+  }, [applyIncomingHandoff]);
 
   const serializeMessageForModel = useCallback(
     (content: string, attachments: ChatAttachment[] = []) => {
@@ -323,6 +533,78 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       return true;
     }
 
+    // /git status — show git status
+    if (trimmed === "/git status" || trimmed === "/gs") {
+      try {
+        const st = await gitStatus();
+        const lines = [`🔀 Branch: **${st.branch}**`];
+        if (st.ahead > 0 || st.behind > 0) lines.push(`↑${st.ahead} ↓${st.behind}`);
+        if (st.isClean) {
+          lines.push("✅ Working tree clean");
+        } else {
+          lines.push(`📝 ${st.changes.length} change(s):`);
+          st.changes.slice(0, 20).forEach(c => lines.push(`  ${c.status} ${c.file}`));
+          if (st.changes.length > 20) lines.push(`  ... and ${st.changes.length - 20} more`);
+        }
+        addSystemMessage(lines.join("\n"));
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git diff [--staged] [file] — show diff
+    if (trimmed.startsWith("/git diff") || trimmed === "/gd") {
+      try {
+        const args = trimmed.replace("/gd", "/git diff").slice(10).trim();
+        const staged = args.includes("--staged") || args.includes("--cached");
+        const filePath = args.replace("--staged", "").replace("--cached", "").trim() || undefined;
+        const diff = await gitDiff(staged, filePath);
+        addSystemMessage(diff ? `\`\`\`diff\n${diff.slice(0, 3000)}\n\`\`\`` : "No changes to diff.");
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git log [n] — show recent commits
+    if (trimmed.startsWith("/git log") || trimmed === "/gl") {
+      try {
+        const countArg = trimmed.replace("/gl", "/git log").slice(9).trim();
+        const count = parseInt(countArg) || 10;
+        const entries = await gitLog(count);
+        const lines = entries.map(e => `\`${e.shortHash}\` ${e.message} — *${e.author}* (${e.date.slice(0, 10)})`);
+        addSystemMessage(lines.length ? lines.join("\n") : "No commits found.");
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git commit <message> — add all and commit
+    if (trimmed.startsWith("/git commit ") || trimmed.startsWith("/gc ")) {
+      try {
+        const msg = trimmed.startsWith("/gc ") ? trimmed.slice(4).trim() : trimmed.slice(12).trim();
+        if (!msg) { addSystemMessage("Usage: /git commit <message>"); return true; }
+        const result = await gitCommit(msg, true);
+        addSystemMessage(`✅ Committed \`${result.hash.slice(0, 8)}\`: ${result.message} (${result.filesChanged} file(s))`);
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /git branch — list branches
+    if (trimmed === "/git branch" || trimmed === "/gb") {
+      try {
+        const branches = await gitBranchList();
+        addSystemMessage(branches.length ? branches.join("\n") : "No branches found.");
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
+    // /screenshot — capture screen
+    if (trimmed === "/screenshot" || trimmed === "/ss") {
+      try {
+        addSystemMessage("📸 Capturing screen...");
+        const result = await captureScreen(true);
+        addSystemMessage(`✅ Screenshot captured (${result.width}×${result.height})${result.filePath ? `\nSaved: ${result.filePath}` : ""}`);
+      } catch (err: any) { addSystemMessage(`❌ ${err?.message || err}`); }
+      return true;
+    }
+
     // /help — show available commands
     if (trimmed === "/help") {
       addSystemMessage(
@@ -334,6 +616,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         "• `/model <name>` — Switch AI model\n" +
         "• `/search <query>` — Web search\n" +
         "• `/skill [name]` — List or activate skills\n" +
+        "• `/git status` `/gs` — Git status\n" +
+        "• `/git diff` `/gd` — Git diff\n" +
+        "• `/git log [n]` `/gl` — Recent commits\n" +
+        "• `/git commit <msg>` `/gc` — Commit all\n" +
+        "• `/git branch` `/gb` — List branches\n" +
+        "• `/screenshot` `/ss` — Capture screen\n" +
         "• `/history` — Show session info\n" +
         "• `/help` — Show this help"
       );
@@ -342,12 +630,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
 
     // /history — show session info
     if (trimmed === "/history") {
-      addSystemMessage(`Session: ${sessionIdRef.current}\nMessages: ${messages.length}\nInstance: ${activeInstanceId || "none"}`);
+      addSystemMessage(`Session: ${sessionIdRef.current}\nMessages: ${messages.length}\nAgent: ${activeAgent?.name || activeAgentId || "none"}`);
       return true;
     }
 
     return false;
-  }, [models, messages, activeInstanceId]);
+  }, [models, messages, activeAgent, activeAgentId]);
 
   const addSystemMessage = useCallback((content: string) => {
     setMessages(prev => [...prev, {
@@ -412,41 +700,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         sentenceAccRef.current = sentenceAcc;
       }
 
-      let succeeded = false;
-
-      if (activeInstanceId && token) {
-        try {
-          await new Promise<void>((resolve) => {
-            const ac = streamChat({
-              instanceId: activeInstanceId,
-              message: outboundText,
-              sessionId: sessionIdRef.current,
-              token,
-              model: selectedModel,
-              onChunk: (chunk) => {
-                succeeded = true;
-                if (!audioPlayer?.playing) setBallState("speaking");
-                appendChunk(assistantId, chunk);
-                sentenceAcc?.push(chunk);
-              },
-              onDone: () => {
-                finalizeMessage(assistantId);
-                sentenceAcc?.flush();
-                resolve();
-              },
-              onError: () => resolve(),
-            });
-            abortRef.current = ac;
-          });
-        } catch {}
-      }
-
-      // Fallback to direct Claude
-      if (!succeeded && token) {
+      if (token) {
         const history = messages.slice(-10).map((m) => ({
           role: m.role,
           content: serializeMessageForModel(m.content, m.attachments || []),
         }));
+        if (activeAgent) {
+          history.unshift({
+            role: "system",
+            content: `You are responding as the desktop agent \"${activeAgent.name}\". Keep replies aligned with this agent identity while preserving the user's intent.`,
+          });
+        }
         history.push({ role: "user", content: outboundText });
 
         await new Promise<void>((resolve) => {
@@ -489,7 +753,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     [
       input,
       sending,
-      activeInstanceId,
+      activeAgent,
       token,
       selectedModel,
       messages,
@@ -590,42 +854,44 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     if (e.key === "Escape") {
       onClose();
     }
+    // Ctrl+T → new tab
+    if (e.ctrlKey && e.key === "t") {
+      e.preventDefault();
+      createNewTab();
+    }
+    // Ctrl+W → close current tab
+    if (e.ctrlKey && e.key === "w") {
+      e.preventDefault();
+      closeTab(activeTabId);
+    }
   };
 
   const handleNewChat = () => {
+    createNewTab();
+    setHistoryOpen(false);
+    setFileTreeOpen(false);
+  };
+
+  const loadSession = useCallback(async (sid: string) => {
+    const stored = await loadSessionMessages(sid);
+    if (stored.length === 0) return;
     abortRef.current?.abort();
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
-    sessionIdRef.current = `session-${Date.now()}`;
-    setMessages([]);
+    sessionIdRef.current = sid;
+    setMessages(stored);
     setPendingAttachments([]);
     setBallState("idle");
     setHistoryOpen(false);
-  };
+  }, []);
 
-  const loadSession = useCallback((sid: string) => {
-    const stored = localStorage.getItem(`chat_session_${sid}`);
-    if (stored) {
-      try {
-        abortRef.current?.abort();
-        audioPlayerRef.current?.stopAll();
-        sentenceAccRef.current?.reset();
-        sessionIdRef.current = sid;
-        setMessages(JSON.parse(stored));
-        setPendingAttachments([]);
-        setBallState("idle");
-        setHistoryOpen(false);
-      } catch {}
+  const deleteSession = useCallback(async (sid: string) => {
+    await removeSession(sid);
+    await refreshHistory();
+    if (sid === sessionIdRef.current) {
+      handleNewChat();
     }
-  }, []);
-
-  const deleteSession = useCallback((sid: string) => {
-    localStorage.removeItem(`chat_session_${sid}`);
-    removeSessionFromIndex(sid);
-    // Force re-render by closing and reopening history
-    setHistoryOpen(false);
-    setTimeout(() => setHistoryOpen(true), 0);
-  }, []);
+  }, [refreshHistory]);
 
   // Listen for custom events from tray / floating ball context menu
   useEffect(() => {
@@ -647,6 +913,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     };
     window.addEventListener("agentrix:sync-status", handler);
     return () => window.removeEventListener("agentrix:sync-status", handler);
+  }, []);
+
+  // Subscribe to notification count changes
+  useEffect(() => {
+    return subscribeNotifications(() => setUnreadNotifCount(getUnreadCount()));
   }, []);
 
   // Listen for clipboard quick-action sends from FloatingBall
@@ -741,6 +1012,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         </div>
       )}
 
+      {/* Tab bar */}
+      {tabs.length > 1 && (
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelect={switchTab}
+          onClose={closeTab}
+          onNew={createNewTab}
+        />
+      )}
+
       {/* Title bar */}
       <div
         style={{
@@ -754,10 +1036,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       >
         <FloatingBall onTap={onClose} state={ballState} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Instance selector */}
+          {/* Agent selector */}
           <select
-            value={activeInstanceId || ""}
-            onChange={(e) => setActiveInstance(e.target.value)}
+            value={activeAgentId || ""}
+            onChange={(e) => setActiveAgent(e.target.value)}
             style={{
               background: "transparent",
               color: "var(--text)",
@@ -769,9 +1051,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               WebkitAppRegion: "no-drag",
             }}
           >
-            {instances.map((inst: any) => (
-              <option key={inst.id} value={inst.id}>
-                {inst.name || inst.id.slice(0, 8)}
+            {agents.length === 0 && <option value="">No agent selected</option>}
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name || agent.id.slice(0, 8)}
               </option>
             ))}
           </select>
@@ -807,6 +1090,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
           📋
         </button>
+        <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
@@ -881,6 +1165,9 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         />
       )}
 
+      {/* Notification center */}
+      <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} />
+
       {/* History sidebar */}
       {historyOpen && (
         <div style={{
@@ -900,12 +1187,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             <button onClick={() => setHistoryOpen(false)} style={iconBtnStyle}>✕</button>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
-            {getSessionIndex().length === 0 ? (
+            {historyEntries.length === 0 ? (
               <div style={{ textAlign: "center", color: "var(--text-dim)", padding: 40, fontSize: 13 }}>
                 No saved conversations yet
               </div>
             ) : (
-              getSessionIndex()
+              historyEntries
                 .sort((a, b) => b.updatedAt - a.updatedAt)
                 .map((s) => (
                 <div
@@ -922,7 +1209,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                     gap: 8,
                     transition: "background 0.15s",
                   }}
-                  onClick={() => loadSession(s.id)}
+                  onClick={() => void loadSession(s.id)}
                   onMouseEnter={(e) => { if (s.id !== sessionIdRef.current) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
                   onMouseLeave={(e) => { if (s.id !== sessionIdRef.current) e.currentTarget.style.background = "transparent"; }}
                 >
@@ -935,7 +1222,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                     </div>
                   </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                    onClick={(e) => { e.stopPropagation(); void deleteSession(s.id); }}
                     style={{ ...iconBtnStyle, width: 20, height: 20, fontSize: 10, opacity: 0.5 }}
                     title="Delete"
                   >
@@ -1118,53 +1405,6 @@ function formatBytes(size: number) {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-// ─── Session history index (localStorage) ───────────────
-interface SessionEntry {
-  id: string;
-  title: string;
-  updatedAt: number;
-  messageCount: number;
-}
-
-const SESSION_INDEX_KEY = "agentrix_sessions";
-
-function getSessionIndex(): SessionEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_INDEX_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveSessionToIndex(sessionId: string, messages: ChatMessage[]) {
-  const index = getSessionIndex();
-  const firstUserMsg = messages.find((m) => m.role === "user");
-  const title = firstUserMsg
-    ? firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? "..." : "")
-    : "New Chat";
-  const existing = index.findIndex((s) => s.id === sessionId);
-  const entry: SessionEntry = {
-    id: sessionId,
-    title,
-    updatedAt: Date.now(),
-    messageCount: messages.length,
-  };
-  if (existing >= 0) {
-    index[existing] = entry;
-  } else {
-    index.unshift(entry);
-  }
-  // Keep at most 50 sessions
-  const trimmed = index.slice(0, 50);
-  localStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(trimmed));
-}
-
-function removeSessionFromIndex(sessionId: string) {
-  const index = getSessionIndex().filter((s) => s.id !== sessionId);
-  localStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(index));
-}
-// ──────────────────────────────────────────────────────
 
 const iconBtnStyle: CSSProperties = {
   width: 28,

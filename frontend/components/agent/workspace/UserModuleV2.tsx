@@ -20,6 +20,8 @@ import { WalletConnectModal } from '../../payment/WalletConnectModal';
 import { MPCWalletCard } from '../../wallet/MPCWalletCard';
 import { SkillCard } from '../../a2h/SkillCard';
 import { MyAgentsPanel } from '../MyAgentsPanel';
+import { AgentPresenceDashboard } from '../AgentPresenceDashboard';
+import { CrossDevicePanel } from '../CrossDevicePanel';
 // SkillManagementPanel 已移至开发者工作台，普通用户不再需要
 import { AutoEarnPanel } from '../AutoEarnPanel';
 import { AirdropDiscovery } from '../AirdropDiscovery';
@@ -383,6 +385,8 @@ export function UserModuleV2({ onCommand, forcedMainTab, forcedSubTab, hideNavig
     ],
     agents: [
       { id: 'my-agents', label: { zh: '我的Agents', en: 'My Agents' } },
+      { id: 'presence', label: { zh: 'Presence', en: 'Presence' } },
+      { id: 'devices', label: { zh: '设备管理', en: 'Devices' } },
       { id: 'authorizations', label: { zh: '授权管理', en: 'Authorizations' } },
     ],
     skills: [
@@ -862,6 +866,18 @@ export function UserModuleV2({ onCommand, forcedMainTab, forcedSubTab, hideNavig
             </div>
           </div>
         );
+
+      case 'agents-presence':
+        return <AgentPresenceDashboard onNavigate={(section, data) => {
+          if (data?.l1) setActiveMainTab(data.l1);
+          if (data?.l2) setActiveSubTab(data.l2);
+        }} />;
+
+      case 'agents-devices':
+        return <CrossDevicePanel onNavigate={(section, data) => {
+          if (data?.l1) setActiveMainTab(data.l1);
+          if (data?.l2) setActiveSubTab(data.l2);
+        }} />;
 
       case 'agents-authorizations':
         return (

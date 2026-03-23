@@ -178,6 +178,8 @@ function WorkbenchContent() {
         'dashboard:recent': { main: 'dashboard', sub: 'overview' },
         'dashboard:recommendations': { main: 'dashboard', sub: 'overview' },
         'agents:my-agents': { main: 'agents', sub: 'my-agents' },
+        'agents:presence': { main: 'agents', sub: 'presence' },
+        'agents:devices': { main: 'agents', sub: 'devices' },
         'agents:authorizations': { main: 'agents', sub: 'authorizations' },
         'earn:auto-tasks': { main: 'autoEarn', sub: 'tasks' },
         'earn:airdrops': { main: 'autoEarn', sub: 'airdrops' },

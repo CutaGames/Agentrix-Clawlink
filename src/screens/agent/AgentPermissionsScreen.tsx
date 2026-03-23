@@ -14,28 +14,17 @@ import type { AgentStackParamList } from '../../navigation/types';
 import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import { bindAgentAccountToInstance } from '../../services/openclaw.service';
+import {
+  fetchAgentPresenceAccounts,
+  getAgentPresenceAccount,
+  setAgentPresenceAccountStatus,
+  updateAgentPresenceAccount,
+  type MobileAgentAccount as AgentAccount,
+} from '../../services/agentPresenceAccount';
 
 type Route = RouteProp<AgentStackParamList, 'AgentPermissions'>;
 
 // ── Types ──────────────────────────────────────────────────────────
-
-interface AgentAccount {
-  id: string;
-  name: string;
-  agentUniqueId: string;
-  status: string;
-  walletAddress?: string;
-  preferredModel?: string;
-  preferredProvider?: string;
-  metadata?: any;
-  permissions?: Partial<PermissionState>;
-  spendingLimits?: {
-    singleTxLimit: number;
-    dailyLimit: number;
-    monthlyLimit: number;
-    currency: string;
-  };
-}
 
 interface CatalogModel {
   id: string;
@@ -75,7 +64,6 @@ interface PermissionState {
   fileReadEnabled: boolean;
   fileReadScope: string;
   programLaunchEnabled: boolean;
-  clipboardEnabled: boolean;
   screenshotEnabled: boolean;
   gpsEnabled: boolean;
   gpsAccuracy: 'city' | 'district' | 'exact';
@@ -117,7 +105,6 @@ const DEFAULT_PERMISSIONS: PermissionState = {
   fileReadEnabled: true,
   fileReadScope: '~/Documents',
   programLaunchEnabled: true,
-  clipboardEnabled: true,
   screenshotEnabled: true,
   gpsEnabled: true,
   gpsAccuracy: 'city',
@@ -219,10 +206,7 @@ export function AgentPermissionsScreen() {
 
   const { data: agents = [] } = useQuery<AgentAccount[]>({
     queryKey: ['agent-accounts'],
-    queryFn: async () => {
-      const res = await apiFetch<{ success: boolean; data: AgentAccount[] }>('/agent-accounts');
-      return res.data ?? [];
-    },
+    queryFn: fetchAgentPresenceAccounts,
     retry: false,
   });
 
@@ -320,27 +304,24 @@ export function AgentPermissionsScreen() {
     try {
       setIsSaving(true);
       // Persist spending limits and permissions to backend.
-      await apiFetch(`/agent-accounts/${activeAgent.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          spendingLimits: {
-            singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,
-            dailyLimit: activeAgent.spendingLimits?.dailyLimit ?? 500,
-            monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
-            currency: 'USD',
-          },
-          permissions: perms,
-          preferredModel: preferredModel || undefined,
-          preferredProvider: preferredProvider || undefined,
-          metadata: {
-            ...activeAgent.metadata,
-            voice_id: agentVoice || undefined,
-          }
-        }),
+      await updateAgentPresenceAccount(activeAgent.id, {
+        spendingLimits: {
+          singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,
+          dailyLimit: activeAgent.spendingLimits?.dailyLimit ?? 500,
+          monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
+          currency: 'USD',
+        },
+        permissions: perms,
+        preferredModel: preferredModel || undefined,
+        preferredProvider: preferredProvider || undefined,
+        metadata: {
+          ...activeAgent.metadata,
+          voice_id: agentVoice || undefined,
+        },
       });
 
-      const verified = await apiFetch<{ success: boolean; data: AgentAccount }>(`/agent-accounts/${activeAgent.id}`);
-      const verifiedPermissions = normalizePermissions(verified.data?.permissions);
+      const verified = await getAgentPresenceAccount(activeAgent.id);
+      const verifiedPermissions = normalizePermissions(verified.permissions);
       if (JSON.stringify(verifiedPermissions) !== expectedPermissionsJson) {
         throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
       }
@@ -376,7 +357,7 @@ export function AgentPermissionsScreen() {
         {
           text: t({ en: 'Suspend', zh: '暂停' }), style: 'destructive', onPress: async () => {
             try {
-              await apiFetch(`/agent-accounts/${activeAgent.id}/suspend`, { method: 'PATCH' });
+              await setAgentPresenceAccountStatus(activeAgent.id, 'suspended');
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
               Alert.alert(t({ en: 'Agent Suspended', zh: '智能体已暂停' }), t({ en: `${activeAgent.name} is now suspended.`, zh: `${activeAgent.name} 已被暂停。` }));
             } catch { Alert.alert(t({ en: 'Error', zh: '错误' }), t({ en: 'Failed to suspend agent.', zh: '暂停智能体失败。' })); }
@@ -692,12 +673,6 @@ export function AgentPermissionsScreen() {
           label={t({ en: '🖥 Launch Programs', zh: '🖥 启动程序' })}
           value={perms.programLaunchEnabled}
           onChange={(v) => updatePerm('programLaunchEnabled', v)}
-        />
-        <View style={styles.divider} />
-        <PermRow
-          label={t({ en: '📋 Clipboard Read/Write', zh: '📋 剪贴板读写' })}
-          value={perms.clipboardEnabled}
-          onChange={(v) => updatePerm('clipboardEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow

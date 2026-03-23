@@ -7,7 +7,7 @@
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mmkvStorage } from './mmkvStorage';
 import { NativeModules, Platform } from 'react-native';
 import { useCallback, useMemo } from 'react';
 import { initI18n } from '../i18n';
@@ -61,7 +61,7 @@ const useI18nStore = create<I18nStoreState>()(
     }),
     {
       name: 'agentrix-i18n',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
       partialize: (state) => ({ language: state.language }),
       onRehydrateStorage: () => (state) => {
         // After hydration, sync module-level i18n with persisted language

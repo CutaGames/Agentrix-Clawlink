@@ -107,7 +107,7 @@ export async function getInstanceStatus(instanceId: string): Promise<{
   uptimeSeconds: number;
   version: string;
 }> {
-  return apiFetch(`/openclaw/instances/${instanceId}/status`);
+  return apiFetch(`/openclaw/proxy/${instanceId}/status`);
 }
 
 // Send a chat message to an agent via the instance

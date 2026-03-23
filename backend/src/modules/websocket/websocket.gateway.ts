@@ -18,6 +18,8 @@ import { DesktopSessionDeviceType } from '../desktop-sync/dto/desktop-sync.dto';
 interface AuthenticatedSocket extends Socket {
   userId?: string;
   desktopDeviceId?: string;
+  deviceType?: string;
+  devicePlatform?: string;
 }
 
 @NestWebSocketGateway({
@@ -155,7 +157,7 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('device:announce')
   handleDeviceAnnounce(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { deviceId?: string },
+    @MessageBody() data: { deviceId?: string; deviceType?: string; platform?: string },
   ) {
     if (!client.userId) {
       return { error: '未认证' };
@@ -163,10 +165,38 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     if (data?.deviceId) {
       client.desktopDeviceId = data.deviceId;
+      client.deviceType = data.deviceType;
+      client.devicePlatform = data.platform;
       client.join(`user:${client.userId}:device:${data.deviceId}`);
     }
 
     return { ok: true };
+  }
+
+  @SubscribeMessage('device:list')
+  handleDeviceList(@ConnectedSocket() client: AuthenticatedSocket) {
+    if (!client.userId) {
+      return { error: '未认证' };
+    }
+    const userRoom = `user:${client.userId}`;
+    const sockets = this.server.of('/ws').adapter;
+    const devices: Array<{ deviceId: string; deviceType: string; platform: string }> = [];
+
+    // Iterate all connected sockets for this user
+    const userSocketIds = this.connectedClients.get(client.userId);
+    if (userSocketIds) {
+      for (const sid of userSocketIds) {
+        const s = this.server.of('/ws').sockets.get(sid) as AuthenticatedSocket | undefined;
+        if (s && s.desktopDeviceId && s.id !== client.id) {
+          devices.push({
+            deviceId: s.desktopDeviceId,
+            deviceType: s.deviceType || 'desktop',
+            platform: s.devicePlatform || 'unknown',
+          });
+        }
+      }
+    }
+    return { devices };
   }
 
   @SubscribeMessage('session:sync')

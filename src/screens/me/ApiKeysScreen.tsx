@@ -32,6 +32,7 @@ interface ProviderDef {
   requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
+  credentialLabel?: string;
   baseUrl?: string;
   models: ModelDef[];
 }
@@ -150,8 +151,9 @@ export function ApiKeysScreen() {
 
   const handleTest = async (provider: ProviderDef) => {
     const form = forms[provider.id];
+    const credentialLabel = provider.credentialLabel || 'API Key';
     if (!form?.apiKey && !getSaved(provider.id)) {
-      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: 'Please enter an API key first', zh: '请先输入 API Key' }));
+      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: `Please enter a ${credentialLabel} first`, zh: `请先输入${credentialLabel}` }));
       return;
     }
     setTesting(provider.id);
@@ -184,8 +186,9 @@ export function ApiKeysScreen() {
 
   const handleSave = async (provider: ProviderDef) => {
     const form = forms[provider.id];
+    const credentialLabel = provider.credentialLabel || 'API Key';
     if (!form.apiKey && !getSaved(provider.id)) {
-      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: 'Please enter an API key', zh: '请先输入 API Key' }));
+      Alert.alert(t({ en: 'Missing', zh: '缺少信息' }), t({ en: `Please enter a ${credentialLabel}`, zh: `请先输入${credentialLabel}` }));
       return;
     }
     for (const field of provider.requiredFields) {
@@ -299,7 +302,7 @@ export function ApiKeysScreen() {
         {isExpanded && form && (
           <View style={styles.cardBody}>
             {/* API Key */}
-            <Text style={styles.fieldLabel}>API Key *</Text>
+            <Text style={styles.fieldLabel}>{provider.credentialLabel || 'API Key'} *</Text>
             <TextInput
               style={styles.input}
               placeholder={saved ? `${saved.apiKeyPrefix || '••••'}  (leave blank to keep)` : provider.placeholder.apiKey || 'Enter API key'}
@@ -447,8 +450,8 @@ export function ApiKeysScreen() {
         <Text style={styles.title}>{t({ en: 'AI Provider Management', zh: 'AI 厂商管理' })}</Text>
         <Text style={styles.desc}>
           {t({
-            en: 'Configure your own API keys. The default provider applies to all agents; override per-agent in Agent Permissions.',
-            zh: '配置您的 API 密钥。默认厂商适用于所有 Agent；可在 Agent 权限中为不同 Agent 指定不同厂商。',
+            en: 'Configure API providers and subscription relays here. The default provider applies to all agents; override per-agent in Agent Permissions.',
+            zh: '在这里统一配置 AI 厂商与订阅中继。默认厂商适用于所有 Agent；可在 Agent 权限中为不同 Agent 单独覆盖。',
           })}
         </Text>
 
@@ -456,6 +459,9 @@ export function ApiKeysScreen() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLine}>
             📊 {t({ en: `${configuredCount} provider(s) configured`, zh: `已配置 ${configuredCount} 个厂商` })}
+          </Text>
+          <Text style={[styles.summaryLine, { color: colors.textMuted }]}> 
+            {t({ en: 'ChatGPT / Copilot subscriptions also use this page. They can use a subscription token alone, or a token + relay Base URL when needed.', zh: 'ChatGPT / Copilot 订阅也走这个入口。可只填订阅 token，也可按需要填写 token + 中继 Base URL。' })}
           </Text>
           {defaultProvider ? (
             <Text style={styles.summaryLine}>

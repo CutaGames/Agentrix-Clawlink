@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger } from '@nestjs/common';
+import { AuthRateLimitGuard } from '../../common/guards/auth-rate-limit.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -26,6 +27,7 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @UseGuards(AuthRateLimitGuard)
   @ApiOperation({ summary: '用户注册' })
   @ApiResponse({ status: 201, description: '注册成功' })
   @ApiResponse({ status: 400, description: '用户已存在' })
@@ -33,7 +35,7 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
-  @UseGuards(LocalAuthGuard)
+  @UseGuards(AuthRateLimitGuard, LocalAuthGuard)
   @Post('login')
   @ApiOperation({ summary: '用户登录' })
   @ApiResponse({ status: 200, description: '登录成功' })
@@ -479,6 +481,77 @@ export class AuthController {
     }
   }
 
+  @Get('mobile/apple')
+  @ApiOperation({ summary: 'Mobile Apple OAuth 入口' })
+  async mobileAppleAuth(@Request() req, @Res() res: Response) {
+    const clientId = this.configService.get<string>('APPLE_CLIENT_ID');
+    const mobileRedirect = req.query?.redirect_uri || this.getDefaultMobileRedirect();
+    if (!clientId || clientId === 'placeholder-client-id') {
+      return this.redirectMobileWithParams(res, mobileRedirect, { error: 'Apple Sign In not configured' });
+    }
+    const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
+    const callbackUrl = `${apiBase}/auth/mobile/apple/callback`;
+    const stateKey = this.encodeMobileState(mobileRedirect);
+    this.logger.log(`[Apple Entry] redirect_uri=${mobileRedirect}, state=${stateKey.substring(0, 30)}...`);
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: callbackUrl,
+      response_type: 'code id_token',
+      response_mode: 'form_post',
+      scope: 'email name',
+      state: stateKey,
+    });
+    return res.redirect(`https://appleid.apple.com/auth/authorize?${params.toString()}`);
+  }
+
+  @Post('mobile/apple/callback')
+  @ApiOperation({ summary: 'Mobile Apple OAuth 回调 (form_post)' })
+  async mobileAppleCallback(@Request() req, @Res() res: Response) {
+    const { code, id_token, error: oauthError, state } = req.body || {};
+    const { redirectUri: mobileRedirect } = this.resolveMobileRedirect(state);
+    this.logger.log(`[Apple Callback] resolved redirect=${mobileRedirect}`);
+
+    if (oauthError || !id_token) {
+      return this.redirectMobileWithParams(res, mobileRedirect, { error: oauthError || 'Apple login failed' });
+    }
+
+    try {
+      const loginResult = await this.authService.socialTokenLogin({
+        provider: 'apple',
+        accessToken: id_token,
+      });
+
+      return this.redirectMobileWithParams(res, mobileRedirect, {
+        token: loginResult.access_token,
+        userId: loginResult.user.id,
+        email: loginResult.user.email || '',
+        agentrixId: loginResult.user.agentrixId,
+      });
+    } catch (err) {
+      this.logger.error(`Mobile Apple callback error: ${err.message}`);
+      return this.redirectMobileWithParams(res, mobileRedirect, { error: err.message || 'Apple login failed' });
+    }
+  }
+
+  @Post('apple/native-login')
+  @UseGuards(AuthRateLimitGuard)
+  @ApiOperation({ summary: 'Native iOS Apple Sign In — 接收 identityToken 直接登录' })
+  @ApiResponse({ status: 200, description: '登录成功，返回 JWT' })
+  async appleNativeLogin(@Body() body: { identityToken: string; fullName?: { givenName?: string; familyName?: string }; email?: string }) {
+    const { identityToken, fullName, email } = body;
+    if (!identityToken) {
+      throw new BadRequestException('identityToken is required');
+    }
+    return this.authService.socialTokenLogin({
+      provider: 'apple',
+      accessToken: identityToken,
+      email,
+      displayName: fullName?.givenName && fullName?.familyName
+        ? `${fullName.givenName} ${fullName.familyName}`
+        : fullName?.givenName || undefined,
+    });
+  }
+
   @Get('mobile/twitter')
   @ApiOperation({ summary: 'Mobile Twitter OAuth 2.0 PKCE 登录入口（共享 /auth/twitter/callback）' })
   async mobileTwitterAuth(@Request() req, @Res() res: Response) {
@@ -757,6 +830,7 @@ export class AuthController {
   }
 
   @Post('email/send-code')
+  @UseGuards(AuthRateLimitGuard)
   @ApiOperation({ summary: '发送邮箱验证码' })
   @ApiResponse({ status: 200, description: '验证码已发送' })
   async sendEmailCode(@Body() body: { email: string }) {
@@ -766,6 +840,7 @@ export class AuthController {
   }
 
   @Post('email/verify-code')
+  @UseGuards(AuthRateLimitGuard)
   @ApiOperation({ summary: '验证邮箱验证码并登录（未注册自动注册）' })
   @ApiResponse({ status: 200, description: '登录成功，返回 JWT' })
   async verifyEmailCode(@Body() body: { email: string; code: string }) {
@@ -785,6 +860,7 @@ export class AuthController {
   }
 
   @Post('social/token-login')
+  @UseGuards(AuthRateLimitGuard)
   @ApiOperation({ summary: '社交账号 Token 登录（Mobile 端）' })
   @ApiResponse({ status: 200, description: '登录成功，返回 JWT' })
   @ApiResponse({ status: 401, description: 'Token 验证失败' })

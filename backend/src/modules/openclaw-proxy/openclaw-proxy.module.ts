@@ -12,6 +12,7 @@ import { OpenClawConnectionModule } from '../openclaw-connection/openclaw-connec
 import { TokenQuotaModule } from '../token-quota/token-quota.module';
 import { SkillModule } from '../skill/skill.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
+import { OpenAIIntegrationModule } from '../ai-integration/openai/openai-integration.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
     TokenQuotaModule,
     forwardRef(() => SkillModule),
     forwardRef(() => ClaudeIntegrationModule),
+    forwardRef(() => OpenAIIntegrationModule),
     AiProviderModule,
   ],
   providers: [OpenClawProxyService],

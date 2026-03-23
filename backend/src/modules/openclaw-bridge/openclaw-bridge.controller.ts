@@ -98,8 +98,8 @@ export class OpenClawBridgeController {
       category,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
-      sortBy: sortBy ?? 'name',
-      sortOrder: sortOrder ?? 'ASC',
+      sortBy: sortBy ?? 'callCount',
+      sortOrder: sortOrder ?? 'DESC',
     });
   }
 

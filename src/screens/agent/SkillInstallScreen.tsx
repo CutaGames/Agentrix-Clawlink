@@ -108,7 +108,7 @@ export function SkillInstallScreen() {
   const doInstall = async () => {
     if (!skillId) {
       // No specific skill selected — navigate to marketplace to browse
-      (navigation as any).navigate('Explore', { screen: 'Marketplace' });
+      (navigation as any).navigate('Discover', { screen: 'Marketplace' });
       return;
     }
     setInstalling(true);

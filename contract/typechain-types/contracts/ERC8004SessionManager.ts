@@ -60,7 +60,6 @@ export interface ERC8004SessionManagerInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "createSession"
-      | "emergencyWithdraw"
       | "executeBatchWithSession"
       | "executeWithSession"
       | "getSession"
@@ -94,10 +93,6 @@ export interface ERC8004SessionManagerInterface extends Interface {
   encodeFunctionData(
     functionFragment: "createSession",
     values: [AddressLike, BigNumberish, BigNumberish, BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "emergencyWithdraw",
-    values: [AddressLike, AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "executeBatchWithSession",
@@ -155,10 +150,6 @@ export interface ERC8004SessionManagerInterface extends Interface {
 
   decodeFunctionResult(
     functionFragment: "createSession",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "emergencyWithdraw",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -377,12 +368,6 @@ export interface ERC8004SessionManager extends BaseContract {
     "nonpayable"
   >;
 
-  emergencyWithdraw: TypedContractMethod<
-    [token: AddressLike, to: AddressLike, amount: BigNumberish],
-    [void],
-    "nonpayable"
-  >;
-
   executeBatchWithSession: TypedContractMethod<
     [
       sessionIds: BytesLike[],
@@ -496,13 +481,6 @@ export interface ERC8004SessionManager extends BaseContract {
       expiry: BigNumberish
     ],
     [string],
-    "nonpayable"
-  >;
-  getFunction(
-    nameOrSignature: "emergencyWithdraw"
-  ): TypedContractMethod<
-    [token: AddressLike, to: AddressLike, amount: BigNumberish],
-    [void],
     "nonpayable"
   >;
   getFunction(

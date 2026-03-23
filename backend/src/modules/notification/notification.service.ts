@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Notification, NotificationType } from '../../entities/notification.entity';
+import { Notification, NotificationType, DevicePushToken } from '../../entities/notification.entity';
 import { CreateNotificationDto } from './dto/notification.dto';
 // import { WebSocketGateway } from '../websocket/websocket.gateway'; // 暂时禁用WebSocket
 
@@ -13,15 +13,11 @@ const EXPO_ACCESS_TOKEN = process.env.EXPO_ACCESS_TOKEN ?? '';
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
-  /** In-memory push token registry.
-   * Key: userId, Value: { token, platform, deviceId, registeredAt }
-   * TODO: persist in a `device_tokens` table for durability across restarts.
-   */
-  private readonly pushTokens = new Map<string, { token: string; platform: string; deviceId?: string; registeredAt: Date }>();
-
   constructor(
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
+    @InjectRepository(DevicePushToken)
+    private pushTokenRepo: Repository<DevicePushToken>,
     // @Inject(forwardRef(() => WebSocketGateway))
     // private wsGateway: WebSocketGateway, // 暂时禁用WebSocket
   ) {}
@@ -146,7 +142,7 @@ export class NotificationService {
 
   /**
    * Register / update a device push token for the user.
-   * Persists in-memory; extend with DB in next iteration.
+   * Persists to DB for durability across restarts.
    */
   async registerPushToken(
     userId: string,
@@ -154,15 +150,30 @@ export class NotificationService {
     platform: string,
     deviceId?: string,
   ): Promise<void> {
-    this.pushTokens.set(userId, { token, platform, deviceId, registeredAt: new Date() });
+    // Upsert: if the user already has a token row, update it
+    let entity = await this.pushTokenRepo.findOne({ where: { userId } });
+    if (!entity) {
+      entity = this.pushTokenRepo.create({ userId });
+    }
+    entity.token = token;
+    entity.platform = platform;
+    entity.deviceId = deviceId;
+    await this.pushTokenRepo.save(entity);
     this.logger.log(`Push token registered for user ${userId} (${platform})`);
   }
 
   /**
    * Retrieve the registered push token for a user (for sending notifications).
    */
-  getPushToken(userId: string) {
-    return this.pushTokens.get(userId) ?? null;
+  async getPushToken(userId: string) {
+    const entity = await this.pushTokenRepo.findOne({ where: { userId } });
+    if (!entity) return null;
+    return {
+      token: entity.token,
+      platform: entity.platform,
+      deviceId: entity.deviceId,
+      registeredAt: entity.registeredAt,
+    };
   }
 
   /**
@@ -173,7 +184,7 @@ export class NotificationService {
     userId: string,
     params: { title: string; body: string; data?: Record<string, any>; channelId?: string },
   ): Promise<boolean> {
-    const device = this.pushTokens.get(userId);
+    const device = await this.getPushToken(userId);
     if (!device) {
       this.logger.warn(`No push token for user ${userId}, skipping push`);
       return false;

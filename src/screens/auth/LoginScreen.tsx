@@ -24,10 +24,12 @@ const WALLET_PROVIDERS = [
   { id: 'tp', label: 'TokenPocket', emoji: '🔵', scheme: 'tpoutside://' },
 ];
 
-const SOCIAL_PROVIDERS = [
+const SOCIAL_PROVIDERS_BASE = [
   { id: 'google', label: 'Google', emoji: '🌐', color: '#4285f4' },
+  ...(Platform.OS === 'ios' ? [{ id: 'apple', label: 'Apple', emoji: '🍎', color: '#000000' }] : []),
   { id: 'discord', label: 'Discord', emoji: '🎮', color: '#5865f2' },
 ];
+const SOCIAL_PROVIDERS = SOCIAL_PROVIDERS_BASE;
 
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();

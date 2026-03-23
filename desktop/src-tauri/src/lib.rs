@@ -203,6 +203,57 @@ fn desktop_bridge_log_debug_event(message: String) -> Result<(), String> {
     Ok(())
 }
 
+// ── Screen Capture (P3.2) ──────────────────────────────────────────
+
+#[tauri::command]
+async fn desktop_bridge_capture_screen(app: AppHandle, save_to_file: bool) -> Result<commands::ScreenCaptureResult, String> {
+    commands::capture_screen(&app, save_to_file)
+}
+
+// ── Git Integration (P3.3) ────────────────────────────────────────
+
+#[tauri::command]
+fn desktop_bridge_git_status() -> Result<commands::GitStatusResult, String> {
+    commands::git_status()
+}
+
+#[tauri::command]
+fn desktop_bridge_git_diff(staged: bool, file_path: Option<String>) -> Result<String, String> {
+    commands::git_diff(staged, file_path)
+}
+
+#[tauri::command]
+fn desktop_bridge_git_log(count: u32) -> Result<Vec<commands::GitLogEntry>, String> {
+    commands::git_log(count)
+}
+
+#[tauri::command]
+fn desktop_bridge_git_commit(message: String, add_all: bool) -> Result<commands::GitCommitResult, String> {
+    commands::git_commit(message, add_all)
+}
+
+#[tauri::command]
+fn desktop_bridge_git_branch_list() -> Result<Vec<String>, String> {
+    commands::git_branch_list()
+}
+
+// ── Secure Credential Vault (P3.5) ───────────────────────────────
+
+#[tauri::command]
+async fn desktop_bridge_keychain_set(app: AppHandle, service: String, key: String, value: String) -> Result<(), String> {
+    commands::keychain_set(&app, &service, &key, &value)
+}
+
+#[tauri::command]
+async fn desktop_bridge_keychain_get(app: AppHandle, service: String, key: String) -> Result<Option<String>, String> {
+    commands::keychain_get(&app, &service, &key)
+}
+
+#[tauri::command]
+async fn desktop_bridge_keychain_delete(app: AppHandle, service: String, key: String) -> Result<(), String> {
+    commands::keychain_delete(&app, &service, &key)
+}
+
 /// Auto-grant microphone/camera/notification permissions in WebView2.
 #[cfg(target_os = "windows")]
 pub(crate) fn grant_webview2_permissions(webview: &tauri::WebviewWindow) {
@@ -304,8 +355,46 @@ fn ensure_webview2_runtime() {
     std::fs::write(tmp.join("tauri_wv2.txt"), &log).ok();
 }
 
+fn setup_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info.payload().downcast_ref::<&str>().map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_string());
+        let location = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        let report = format!(
+            "{{\"type\":\"rust_panic\",\"message\":\"{}\",\"location\":\"{}\",\"timestamp\":\"{}\"}}",
+            payload.replace('\"', "\\\"").replace('\n', " "),
+            location,
+            chrono_iso_now(),
+        );
+        eprintln!("[CRASH] {}", report);
+        // Write to crash log file
+        if let Some(dir) = std::env::var_os("APPDATA").map(std::path::PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(std::path::PathBuf::from))
+        {
+            let log_dir = dir.join("Agentrix Desktop").join("crash-logs");
+            let _ = std::fs::create_dir_all(&log_dir);
+            let filename = format!("crash_{}.json", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
+            let _ = std::fs::write(log_dir.join(filename), &report);
+        }
+        default_hook(info);
+    }));
+}
+
+fn chrono_iso_now() -> String {
+    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let secs = d.as_secs();
+    // Simple ISO-like timestamp without chrono crate
+    format!("{}s-since-epoch", secs)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    setup_panic_hook();
+
     #[cfg(target_os = "windows")]
     ensure_webview2_runtime();
 
@@ -352,6 +441,18 @@ pub fn run() {
             desktop_bridge_set_auth_token,
             desktop_bridge_delete_auth_token,
             desktop_bridge_log_debug_event,
+            // Screen capture (P3.2)
+            desktop_bridge_capture_screen,
+            // Git integration (P3.3)
+            desktop_bridge_git_status,
+            desktop_bridge_git_diff,
+            desktop_bridge_git_log,
+            desktop_bridge_git_commit,
+            desktop_bridge_git_branch_list,
+            // Secure credential vault (P3.5)
+            desktop_bridge_keychain_set,
+            desktop_bridge_keychain_get,
+            desktop_bridge_keychain_delete,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window
@@ -361,15 +462,17 @@ pub fn run() {
             }
 
             // ── System Tray ──────────────────────────────────────
-            let show_hide = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
-            let new_chat  = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
-            let settings  = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
-            let quit      = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
+            let show_hide  = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
+            let new_chat   = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
+            let voice_chat = MenuItemBuilder::with_id("voice_chat", "?? Voice Chat (Ctrl+Shift+V)").build(app)?;
+            let settings   = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            let quit       = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show_hide)
                 .separator()
                 .item(&new_chat)
+                .item(&voice_chat)
                 .item(&settings)
                 .separator()
                 .item(&quit)
@@ -410,6 +513,15 @@ pub fn run() {
                                 let _ = commands::open_chat_panel(app_handle.clone());
                             }
                         }
+                        "voice_chat" => {
+                            // Open chat panel and trigger voice mode
+                            let _ = commands::open_chat_panel(app_handle.clone());
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:voice-activate'))");
+                            }
+                        }
                         "settings" => {
                             if let Some(win) = app_handle.get_webview_window("chat-panel") {
                                 let _ = win.show();
@@ -425,9 +537,27 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // ── Global Shortcut: Ctrl+Shift+V → Voice Wake ─────────
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let app_handle = app.handle().clone();
+                let _ = app.global_shortcut().on_shortcut("ctrl+shift+v", move |_app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        let _ = commands::open_chat_panel(app_handle.clone());
+                        if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                            let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:voice-activate'))");
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Agentrix Desktop");
 }
+
+
 

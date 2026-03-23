@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, In } from 'typeorm';
 import {
   SocialPost,
   SocialPostType,
@@ -15,6 +15,9 @@ import {
   SocialReplyConfig,
   ReplyStrategy,
 } from '../../entities/social.entity';
+import { User } from '../../entities/user.entity';
+import { Skill, SkillStatus } from '../../entities/skill.entity';
+import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
 
 export interface CreatePostDto {
   content: string;
@@ -49,6 +52,9 @@ export class SocialService {
     @InjectRepository(SocialFollow) private followRepo: Repository<SocialFollow>,
     @InjectRepository(SocialEvent) private eventRepo: Repository<SocialEvent>,
     @InjectRepository(SocialReplyConfig) private replyConfigRepo: Repository<SocialReplyConfig>,
+    @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Skill) private skillRepo: Repository<Skill>,
+    private readonly claudeIntegrationService: ClaudeIntegrationService,
   ) {}
 
   // ===== Feed =====
@@ -110,12 +116,15 @@ export class SocialService {
     return this.postRepo.save(post);
   }
 
-  async getPostById(postId: string) {
+  async getPostById(postId: string, viewerId?: string) {
     const post = await this.postRepo.findOneBy({ id: postId });
     if (!post || post.status === SocialPostStatus.REMOVED) {
       throw new NotFoundException('Post not found');
     }
-    return post;
+    const likedByMe = viewerId
+      ? !!(await this.likeRepo.findOneBy({ userId: viewerId, targetId: postId, targetType: 'post' }))
+      : false;
+    return { ...post, likedByMe };
   }
 
   async deletePost(userId: string, postId: string) {
@@ -125,28 +134,102 @@ export class SocialService {
     await this.postRepo.update(postId, { status: SocialPostStatus.REMOVED });
   }
 
-  async getUserPosts(profileUserId: string, page = 1, limit = 20) {
+  async getUserPosts(profileUserId: string, page = 1, limit = 20, viewerId?: string) {
     const take = Math.min(limit, 50);
     const skip = (page - 1) * take;
-    return this.postRepo.find({
+    const posts = await this.postRepo.find({
       where: { authorId: profileUserId, status: SocialPostStatus.ACTIVE },
       order: { createdAt: 'DESC' },
       take,
       skip,
     });
+    if (!viewerId || posts.length === 0) {
+      return posts.map((post) => ({ ...post, likedByMe: false }));
+    }
+
+    const likedIds = await this.likeRepo.find({
+      where: { userId: viewerId, targetType: 'post', targetId: In(posts.map((post) => post.id)) },
+    }).then((likes) => new Set(likes.map((like) => like.targetId)));
+
+    return posts.map((post) => ({ ...post, likedByMe: likedIds.has(post.id) }));
+  }
+
+  async getUserProfile(profileUserId: string, viewerId?: string) {
+    const user = await this.userRepo.findOne({
+      where: { id: profileUserId },
+      select: ['id', 'nickname', 'avatarUrl', 'bio', 'roles'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const [followerCount, showcasePosts, skillsPublished, isFollowing] = await Promise.all([
+      this.followRepo.count({ where: { followeeId: profileUserId } }),
+      this.postRepo.count({ where: { authorId: profileUserId, status: SocialPostStatus.ACTIVE } }),
+      this.skillRepo.count({ where: { authorId: profileUserId, status: In([SkillStatus.PUBLISHED, SkillStatus.ACTIVE]) } }),
+      viewerId && viewerId !== profileUserId ? this.isFollowing(viewerId, profileUserId) : Promise.resolve(false),
+    ]);
+
+    const badges: string[] = [];
+    if (followerCount >= 100 || showcasePosts >= 10) badges.push('Top Creator');
+    if (skillsPublished >= 3) badges.push('Skill Wizard');
+    if (user.roles?.includes('agent' as any)) badges.push('Genesis Node');
+
+    return {
+      id: user.id,
+      nickname: user.nickname || user.agentrixId || 'Agentrix User',
+      avatar: user.avatarUrl,
+      bio: user.bio,
+      badges,
+      isFollowing,
+    };
+  }
+
+  async getUserSkills(userId: string, page = 1, limit = 20) {
+    const take = Math.min(limit, 50);
+    const skip = (page - 1) * take;
+    const skills = await this.skillRepo.find({
+      where: {
+        authorId: userId,
+        status: In([SkillStatus.PUBLISHED, SkillStatus.ACTIVE]),
+      },
+      order: { createdAt: 'DESC' },
+      take,
+      skip,
+    });
+
+    return skills.map((skill) => ({
+      id: skill.id,
+      name: skill.displayName || skill.name,
+      description: skill.description,
+      price: skill.pricing?.pricePerCall ?? 0,
+      priceUnit: skill.pricing?.currency || 'USD',
+      downloads: typeof skill.metadata?.downloads === 'number' ? skill.metadata.downloads : skill.callCount,
+      rating: skill.rating,
+    }));
   }
 
   // ===== Comments =====
 
-  async getComments(postId: string, page = 1, limit = 30) {
+  async getComments(postId: string, page = 1, limit = 30, viewerId?: string) {
     const take = Math.min(limit, 50);
     const skip = (page - 1) * take;
-    return this.commentRepo.find({
+    const comments = await this.commentRepo.find({
       where: { postId, parentCommentId: IsNull() },
       order: { createdAt: 'ASC' },
       take,
       skip,
     });
+    if (!viewerId || comments.length === 0) {
+      return comments.map((comment) => ({ ...comment, likedByMe: false }));
+    }
+
+    const likedIds = await this.likeRepo.find({
+      where: { userId: viewerId, targetType: 'comment', targetId: In(comments.map((comment) => comment.id)) },
+    }).then((likes) => new Set(likes.map((like) => like.targetId)));
+
+    return comments.map((comment) => ({ ...comment, likedByMe: likedIds.has(comment.id) }));
   }
 
   async addComment(userId: string, authorName: string, postId: string, dto: CreateCommentDto) {
@@ -178,6 +261,15 @@ export class SocialService {
       else await this.commentRepo.increment({ id: targetId }, 'likeCount', 1);
       return { liked: true };
     }
+  }
+
+  async incrementPostShare(postId: string) {
+    const post = await this.getPostById(postId);
+    await this.postRepo.increment({ id: postId }, 'shareCount', 1);
+    return {
+      shared: true,
+      shareCount: (post.shareCount ?? 0) + 1,
+    };
   }
 
   // ===== Follows =====
@@ -309,6 +401,14 @@ export class SocialService {
     });
   }
 
+  async getRecentEvents(limit = 20) {
+    return this.eventRepo.find({
+      order: { createdAt: 'DESC' },
+      take: Math.min(limit, 100),
+      select: ['id', 'platform', 'eventType', 'senderName', 'text', 'replyStatus', 'createdAt'],
+    });
+  }
+
   async updateEventReply(eventId: string, data: {
     replyStatus?: SocialReplyStatus;
     agentDraftReply?: string;
@@ -332,6 +432,20 @@ export class SocialService {
     return this.replyConfigRepo.find({ where: { userId } });
   }
 
+  async getReplyConfig(userId: string, platform: SocialEventPlatform) {
+    const existing = await this.replyConfigRepo.findOneBy({ userId, platform });
+    if (existing) {
+      return existing;
+    }
+    return this.replyConfigRepo.create({
+      userId,
+      platform,
+      strategy: ReplyStrategy.APPROVAL,
+      replyLanguage: 'en',
+      enabled: true,
+    });
+  }
+
   async saveReplyConfig(userId: string, platform: SocialEventPlatform, data: {
     strategy?: ReplyStrategy;
     replyPrompt?: string;
@@ -345,6 +459,68 @@ export class SocialService {
       config = this.replyConfigRepo.create({ userId, platform, ...data });
     }
     return this.replyConfigRepo.save(config);
+  }
+
+  async getEventById(eventId: string) {
+    return this.eventRepo.findOneBy({ id: eventId });
+  }
+
+  async generateDraftReply(params: {
+    userId: string;
+    platform: SocialEventPlatform;
+    senderName?: string;
+    text: string;
+    replyPrompt?: string;
+    replyLanguage?: string;
+  }) {
+    const replyLanguage = params.replyLanguage || 'en';
+    const languageInstruction = replyLanguage.startsWith('zh')
+      ? 'Reply in Simplified Chinese unless the user clearly wrote in another language.'
+      : 'Reply in concise natural English unless the user clearly wrote in another language.';
+
+    const systemPrompt = [
+      `You are an Agentrix social operator replying on ${params.platform}.`,
+      languageInstruction,
+      'Keep the reply concise, helpful, and safe for direct customer messaging.',
+      'Do not mention internal tools, policy engines, or backend systems.',
+      params.replyPrompt ? `Custom instruction: ${params.replyPrompt}` : '',
+    ].filter(Boolean).join(' ');
+
+    try {
+      const result = await this.claudeIntegrationService.chatWithFunctions(
+        [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: `Sender: ${params.senderName || 'Unknown'}\nIncoming message: ${params.text}`,
+          },
+        ],
+        {
+          enableModelRouting: true,
+          context: {
+            userId: params.userId,
+            sessionId: `social-${params.platform}-${params.userId}`,
+          },
+        },
+      );
+
+      const text = result?.text?.trim();
+      if (text) {
+        return text;
+      }
+    } catch (error: any) {
+      this.logger.warn(`Failed to generate social draft reply: ${error.message}`);
+    }
+
+    return this.buildFallbackDraft(params.text, params.senderName, replyLanguage);
+  }
+
+  private buildFallbackDraft(text: string, senderName?: string, replyLanguage: string = 'en') {
+    const preview = text.length > 120 ? `${text.slice(0, 117)}...` : text;
+    if (replyLanguage.startsWith('zh')) {
+      return `${senderName ? `${senderName}，` : ''}你好，已收到你的消息："${preview}"。我们会尽快继续跟进。`;
+    }
+    return `${senderName ? `Hi ${senderName}, ` : ''}we received your message: "${preview}". We will follow up shortly.`;
   }
 
   // ===== Agent Reputation =====

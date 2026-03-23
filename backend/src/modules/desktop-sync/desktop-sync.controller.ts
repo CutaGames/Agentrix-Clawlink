@@ -59,6 +59,15 @@ export class DesktopSyncController {
     };
   }
 
+  @Get('devices/online')
+  @ApiOperation({ summary: 'List online desktop devices for the current user' })
+  @ApiResponse({ status: 200, description: 'Online devices returned' })
+  async listOnlineDevices(@Request() req): Promise<any> {
+    return {
+      devices: await this.desktopSyncService.listOnlineDevices(req.user.id),
+    };
+  }
+
   @Get('sessions/:sessionId')
   @ApiOperation({ summary: 'Fetch a synchronized desktop/mobile session snapshot' })
   @ApiResponse({ status: 200, description: 'Desktop session snapshot returned' })
