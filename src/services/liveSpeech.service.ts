@@ -95,7 +95,6 @@ export function startLiveSpeechRecognition(
       EXTRA_LANGUAGE_MODEL: 'web_search',
       EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
       EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1000,
-      EXTRA_MASK_OFFENSIVE_WORDS: false,
     },
     iosCategory: {
       category: 'playAndRecord',

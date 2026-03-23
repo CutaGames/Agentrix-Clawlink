@@ -131,6 +131,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const streamedTtsStartedRef = useRef(false);
   const lastLiveSpeechSkipReasonRef = useRef('');
   const startLiveSpeechInternalRef = useRef<(() => Promise<void>) | null>(null);
+  const liveSpeechConsecutiveErrorsRef = useRef(0);
+  const liveSpeechLastErrorTimeRef = useRef(0);
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
@@ -517,6 +519,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       {
         onStart: () => {
           addVoiceDiagnostic('voice-session', 'live-speech-started');
+          liveSpeechConsecutiveErrorsRef.current = 0;
           setLiveListening(true);
           setVoicePhase('recording');
           setTranscriptPreview('');
@@ -533,10 +536,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             setVoicePhase((prev) => (prev === 'recording' ? 'idle' : prev));
             return;
           }
-          // Auto-restart
+          // Don't auto-restart if errors exceeded threshold
+          if (liveSpeechConsecutiveErrorsRef.current >= 3) {
+            addVoiceDiagnostic('voice-session', 'live-speech-auto-restart-blocked', {
+              errors: liveSpeechConsecutiveErrorsRef.current,
+            });
+            setVoicePhase('idle');
+            return;
+          }
+          // Auto-restart with backoff
+          const delay = 300 + liveSpeechConsecutiveErrorsRef.current * 500;
           setTimeout(() => {
             startLiveSpeechInternalRef.current?.();
-          }, 300);
+          }, delay);
         },
         onSpeechStart: () => {
           // Use ref to avoid stale closure
@@ -551,6 +563,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         onFinalResult: (transcript) => {
           const normalized = transcript.trim();
           if (!normalized || normalized === lastLiveFinalTranscriptRef.current) return;
+          liveSpeechConsecutiveErrorsRef.current = 0;
           addVoiceDiagnostic('voice-session', 'live-speech-final', { transcript: normalized.slice(0, 160) });
           lastLiveFinalTranscriptRef.current = normalized;
           setTranscriptPreview(normalized);
@@ -565,7 +578,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         },
         onError: (error) => {
           if (error?.error === 'aborted' || error?.error === 'no-speech') return;
-          addVoiceDiagnostic('voice-session', 'live-speech-error', error);
+          liveSpeechConsecutiveErrorsRef.current++;
+          addVoiceDiagnostic('voice-session', 'live-speech-error', {
+            ...error,
+            consecutiveErrors: liveSpeechConsecutiveErrorsRef.current,
+          });
           setLiveListening(false);
           setVoicePhase('idle');
           setTranscriptPreview('');

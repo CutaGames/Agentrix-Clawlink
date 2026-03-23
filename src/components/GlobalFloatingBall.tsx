@@ -296,6 +296,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     let cancelled = false;
 
     void (async () => {
+      try {
       if (listener instanceof WakeWordService) {
         await listener.init({
           accessKey: wakeWordConfig.accessKey,
@@ -319,11 +320,18 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
               activateVoiceExperience();
             }
           },
+          onError: (err) => {
+            addVoiceDiagnostic('floating-ball', 'wake-word-error', { message: err?.message });
+          },
         });
       }
 
       if (!cancelled) {
         await listener.start();
+      }
+      } catch (err) {
+        addVoiceDiagnostic('floating-ball', 'wake-word-init-failed', err);
+        console.warn('[FloatingBall] Wake word init failed:', err);
       }
     })();
 
