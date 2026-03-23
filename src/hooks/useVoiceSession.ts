@@ -542,6 +542,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               errors: liveSpeechConsecutiveErrorsRef.current,
             });
             setVoicePhase('idle');
+            // Auto-recovery: retry after 10s cooldown
+            setTimeout(() => {
+              if (duplexModeRef.current && voiceModeRef.current && !liveSpeechManualStopRef.current) {
+                liveSpeechConsecutiveErrorsRef.current = 0;
+                liveSpeechLastErrorTimeRef.current = 0;
+                addVoiceDiagnostic('voice-session', 'live-speech-auto-recovery');
+                startLiveSpeechInternalRef.current?.();
+              }
+            }, 10000);
             return;
           }
           // Auto-restart with backoff
@@ -578,7 +587,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         },
         onError: (error) => {
           if (error?.error === 'aborted' || error?.error === 'no-speech') return;
+          // Reset counter if last error was >5s ago (time-windowed backoff)
+          const now = Date.now();
+          if (now - liveSpeechLastErrorTimeRef.current > 5000) {
+            liveSpeechConsecutiveErrorsRef.current = 0;
+          }
           liveSpeechConsecutiveErrorsRef.current++;
+          liveSpeechLastErrorTimeRef.current = now;
           addVoiceDiagnostic('voice-session', 'live-speech-error', {
             ...error,
             consecutiveErrors: liveSpeechConsecutiveErrorsRef.current,

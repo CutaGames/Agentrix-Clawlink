@@ -144,6 +144,16 @@ export class SpeechWakeWordService {
             try { this.controller?.abort(); } catch {}
             this.controller = null;
             this.running = false;
+            // Auto-recovery: retry after 15s cooldown
+            this.restartTimer = setTimeout(() => {
+              if (this.config && !this.running) {
+                this.consecutiveErrors = 0;
+                this.lastErrorTime = 0;
+                this.stoppedManually = false;
+                addVoiceDiagnostic('speech-wake', 'auto-recovery-attempt');
+                this.start().catch(() => {});
+              }
+            }, 15000) as unknown as ReturnType<typeof setTimeout>;
             return;
           }
           onError?.(new Error(event?.message || event?.error || 'Speech wake word error'));
