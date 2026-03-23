@@ -76,6 +76,8 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useRef(false);
   const wakeListenerRef = useRef<WakeWordService | SpeechWakeWordService | null>(null);
+  const navigatingToChatRef = useRef(false);
+  const activateVoiceExperienceRef = useRef<() => void>(() => {});
 
   // Voice pill expansion state
   const [pillExpanded, setPillExpanded] = useState(false);
@@ -103,6 +105,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   useEffect(() => {
     if (!shouldHide) {
       setBallState('idle');
+      navigatingToChatRef.current = false;
     }
   }, [shouldHide]);
 
@@ -197,6 +200,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   ).current;
 
   const activateVoiceExperience = useCallback(async () => {
+    navigatingToChatRef.current = true;
     setBallState('listening');
     onVoiceActivate?.();
 
@@ -253,6 +257,9 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     }
   }, [navigation, onVoiceActivate]);
 
+  // Keep ref in sync so wake word callbacks don't need activateVoiceExperience in deps
+  activateVoiceExperienceRef.current = activateVoiceExperience;
+
   const handleTap = useCallback(() => {
     addVoiceDiagnostic('floating-ball', 'tap');
     Haptics.selectionAsync().catch(() => {});
@@ -272,7 +279,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   }, [activateVoiceExperience, onPillSend, onVoiceActivate]);
 
   useEffect(() => {
-    if (!wakeWordConfig.enabled || shouldHide) {
+    if (!wakeWordConfig.enabled || shouldHide || navigatingToChatRef.current) {
       const listener = wakeListenerRef.current;
       if (listener) {
         void listener.release();
@@ -306,7 +313,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
           onWakeWord: () => {
             if (!cancelled) {
               void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-              activateVoiceExperience();
+              activateVoiceExperienceRef.current();
             }
           },
         });
@@ -317,7 +324,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
           onWakeWord: () => {
             if (!cancelled) {
               void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-              activateVoiceExperience();
+              activateVoiceExperienceRef.current();
             }
           },
           onError: (err) => {
@@ -343,7 +350,6 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       }
     };
   }, [
-    activateVoiceExperience,
     language,
     shouldHide,
     wakeWordConfig.accessKey,

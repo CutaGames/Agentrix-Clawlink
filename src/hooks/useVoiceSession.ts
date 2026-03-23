@@ -142,6 +142,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const startLiveSpeechInternalRef = useRef<(() => Promise<void>) | null>(null);
   const liveSpeechConsecutiveErrorsRef = useRef(0);
   const liveSpeechLastErrorTimeRef = useRef(0);
+  const liveSpeechStartingRef = useRef(false);
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
@@ -494,6 +495,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     const skipReasons = [
       !duplexModeRef.current ? 'duplex-off' : '',
       liveSpeechRef.current ? 'already-listening' : '',
+      liveSpeechStartingRef.current ? 'already-starting' : '',
       !liveVoiceAvailableRef.current ? 'live-voice-unavailable' : '',
       !voiceModeRef.current ? 'voice-mode-off' : '',
     ].filter(Boolean);
@@ -510,6 +512,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       return;
     }
 
+    liveSpeechStartingRef.current = true;
     lastLiveSpeechSkipReasonRef.current = '';
     addVoiceDiagnostic('voice-session', 'live-speech-start-request', { language: voiceLanguageHint });
 
@@ -632,6 +635,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       liveSpeechRef.current = null;
       setLiveListening(false);
       setVoicePhase('idle');
+    } finally {
+      liveSpeechStartingRef.current = false;
     }
   }, [agentVoiceId, instanceName, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
 
@@ -651,10 +656,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
   }, [duplexMode, startLiveSpeechInternal, stopLiveSpeech]);
 
-  // Auto-restart live speech when not sending and not speaking
+  // Auto-restart live speech when TTS finishes (isSpeaking: true → false)
+  const wasSpeakingRef = useRef(false);
   useEffect(() => {
-    if (duplexMode && voiceMode && !isSpeaking) {
-      void startLiveSpeechInternal();
+    if (isSpeaking) {
+      wasSpeakingRef.current = true;
+      return;
+    }
+    // Only restart if transitioning from speaking → not speaking
+    if (wasSpeakingRef.current && duplexMode && voiceMode) {
+      wasSpeakingRef.current = false;
+      const timer = setTimeout(() => { void startLiveSpeechInternal(); }, 200);
+      return () => clearTimeout(timer);
     }
   }, [duplexMode, isSpeaking, startLiveSpeechInternal, voiceMode]);
 
