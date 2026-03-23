@@ -124,6 +124,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const lastLiveFinalTranscriptRef = useRef('');
   const voiceModeRef = useRef(voiceMode);
   const duplexModeRef = useRef(duplexMode);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const liveVoiceAvailableRef = useRef(false);
   const sendingRef = useRef(false);
   const backgroundVoiceRef = useRef<BackgroundVoiceService | null>(null);
@@ -277,8 +286,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     liveSpeechManualStopRef.current = manual;
     const ctrl = liveSpeechRef.current;
     liveSpeechRef.current = null;
-    setLiveListening(false);
-    setLiveVoiceVolume(-2);
+    if (isMountedRef.current) {
+      setLiveListening(false);
+      setLiveVoiceVolume(-2);
+    }
     if (!ctrl) return;
     try {
       if (abort) ctrl.abort(); else ctrl.stop();
@@ -479,6 +490,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   // ── Live Speech Recognition (duplex) ──
 
   const startLiveSpeechInternal = useCallback(async () => {
+    if (!isMountedRef.current) return;
     const skipReasons = [
       !duplexModeRef.current ? 'duplex-off' : '',
       liveSpeechRef.current ? 'already-listening' : '',
@@ -518,6 +530,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       voiceLanguageHint,
       {
         onStart: () => {
+          if (!isMountedRef.current) return;
           addVoiceDiagnostic('voice-session', 'live-speech-started');
           liveSpeechConsecutiveErrorsRef.current = 0;
           setLiveListening(true);
@@ -525,6 +538,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setTranscriptPreview('');
         },
         onEnd: () => {
+          if (!isMountedRef.current) return;
           addVoiceDiagnostic('voice-session', 'live-speech-ended', {
             manualStop: liveSpeechManualStopRef.current,
             duplexMode: duplexModeRef.current,
@@ -560,6 +574,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           }, delay);
         },
         onSpeechStart: () => {
+          if (!isMountedRef.current) return;
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) {
             stopSpeaking();
@@ -570,6 +585,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setVoicePhase('recording');
         },
         onFinalResult: (transcript) => {
+          if (!isMountedRef.current) return;
           const normalized = transcript.trim();
           if (!normalized || normalized === lastLiveFinalTranscriptRef.current) return;
           liveSpeechConsecutiveErrorsRef.current = 0;
@@ -586,6 +602,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           }, 60);
         },
         onError: (error) => {
+          if (!isMountedRef.current) return;
           if (error?.error === 'aborted' || error?.error === 'no-speech') return;
           // Reset counter if last error was >5s ago (time-windowed backoff)
           const now = Date.now();
@@ -603,6 +620,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setTranscriptPreview('');
         },
         onVolumeChange: (value) => {
+          if (!isMountedRef.current) return;
           setLiveVoiceVolume(value);
         },
       },

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -48,7 +48,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const { language } = useI18n();
   const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
   const { width: screenW, height: screenH } = Dimensions.get('window');
-  const wakeWordConfig = resolveMobileWakeWordConfig(wakeWordSettings);
+  const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
   // Hide on chat screen (chat has its own voice controls)
   const currentRouteName = useNavigationState((state) => {
