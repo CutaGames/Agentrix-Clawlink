@@ -12,6 +12,10 @@
   "extends": "expo/tsconfig.base",
   "exclude": [
     "node_modules",
+    "backend",
+    "desktop",
+    "src_deprecated",
+    "tmp",
     "desktop/src-tauri/target",
     "desktop/dist",
     "frontend/.next",

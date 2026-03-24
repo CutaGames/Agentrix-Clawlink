@@ -20,10 +20,13 @@ import * as Haptics from 'expo-haptics';
 import { mmkv } from '../../stores/mmkvStorage';
 import { useI18n } from '../../stores/i18nStore';
 import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
+import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
+import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
+import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -396,7 +399,10 @@ export function AgentChatScreen() {
   const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const speechRate = useSettingsStore((s) => s.speechRate);
+  const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
   const [remoteClipboard, setRemoteClipboard] = useState<MobileDesktopClipboardSnapshot | null>(null);
 
@@ -414,6 +420,18 @@ export function AgentChatScreen() {
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
+
+  // Multi-session state
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
+    const saved = loadSessions(instanceId);
+    if (saved.length > 0) {
+      sessionIdRef.current = saved[0].id;
+      return saved;
+    }
+    const initial: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+    return [initial];
+  });
+  const [activeSessionId, setActiveSessionId] = useState(sessionIdRef.current);
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -459,16 +477,32 @@ export function AgentChatScreen() {
     let mounted = true;
     const check = async () => {
       try {
-        // Always ping /health to check actual app connectivity first
+        if (instanceId) {
+          const status = await getInstanceStatus(instanceId);
+          const normalizedStatus = String(status?.status || '').toLowerCase();
+          const nextState = normalizedStatus === 'offline' || normalizedStatus === 'disconnected' || normalizedStatus === 'error';
+          const nextDiagnostic = `instance:${instanceId}:${normalizedStatus}`;
+          if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
+            lastOfflineDiagnosticRef.current = nextDiagnostic;
+            addVoiceDiagnostic('agent-chat', 'instance-status-check', {
+              instanceId,
+              status: normalizedStatus,
+              isOffline: nextState,
+            });
+          }
+          if (mounted) {
+            setIsOffline(nextState);
+          }
+          return;
+        }
+
         const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const timeout = setTimeout(() => controller?.abort(), 8000);
-        let networkOk = false;
         try {
           const res = await fetch(`${API_BASE}/health`, {
             method: 'GET',
             signal: controller?.signal,
           });
-          networkOk = res.ok;
           const nextDiagnostic = `api-health:${res.status}`;
           if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
             lastOfflineDiagnosticRef.current = nextDiagnostic;
@@ -477,38 +511,17 @@ export function AgentChatScreen() {
               ok: res.ok,
             });
           }
-        } catch (error) {
-          networkOk = false;
-          addVoiceDiagnostic('agent-chat', 'connectivity-check-failed', { error });
+          if (mounted) setIsOffline(!res.ok);
         } finally {
           clearTimeout(timeout);
         }
-
-        if (mounted) {
-          setIsOffline(!networkOk);
-        }
-
-        // If network is OK and we have an instanceId, try to check instance status
-        // but DO NOT set isOffline=true if it fails, as that traps the user.
-        // The auto-provision endpoint or chat proxy will handle waking it up.
-        if (networkOk && instanceId) {
-          try {
-            const status = await getInstanceStatus(instanceId);
-            const normalizedStatus = String(status?.status || '').toLowerCase();
-            const nextDiagnostic = `instance:${instanceId}:${normalizedStatus}`;
-            if (lastOfflineDiagnosticRef.current !== nextDiagnostic) {
-              lastOfflineDiagnosticRef.current = nextDiagnostic;
-              addVoiceDiagnostic('agent-chat', 'instance-status-check', {
-                instanceId,
-                status: normalizedStatus,
-              });
-            }
-            // If the instance returns "offline", we don't block the UI with isOffline=true anymore.
-            // We let them send the message, which hits the proxy, which auto-starts the instance!
-          } catch (error) {
-            addVoiceDiagnostic('agent-chat', 'instance-check-failed', { instanceId, error });
-          }
-        }
+      } catch (error) {
+        addVoiceDiagnostic('agent-chat', 'connectivity-check-failed', {
+          instanceId: instanceId || null,
+          error,
+        });
+        if (mounted) setIsOffline(true);
+      }
     };
     check();
     const timer = setInterval(check, 15000);
@@ -777,6 +790,87 @@ export function AgentChatScreen() {
     activeAssistantMessageIdRef.current = null;
   }, [t]);
 
+  const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+
+        let newContent = m.content + chunk;
+        let newThoughts = m.thoughts || [];
+
+        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
+          newThoughts = [...newThoughts, chunk.trim()];
+          return { ...m, thoughts: newThoughts };
+        }
+
+        return { ...m, content: newContent };
+      })
+    );
+  }, []);
+
+  const completeStreamingAssistantMessage = useCallback((errorMessage?: string) => {
+    const activeMessageId = activeAssistantMessageIdRef.current;
+    activeAssistantMessageIdRef.current = null;
+    setSending(false);
+
+    if (!activeMessageId) {
+      return;
+    }
+
+    setMessages((prev) => prev.map((message) => {
+      if (message.id !== activeMessageId) {
+        return message;
+      }
+      return {
+        ...message,
+        content: errorMessage || message.content,
+        streaming: false,
+        error: !!errorMessage,
+      };
+    }));
+  }, []);
+
+  const beginRealtimeVoiceTurn = useCallback((text: string) => {
+    const normalized = text.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: normalized,
+      createdAt: Date.now(),
+    };
+    const assistantMsgId = `assistant-${Date.now()}`;
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      streaming: true,
+      createdAt: Date.now(),
+    };
+
+    responseInterruptedRef.current = false;
+    activeAssistantMessageIdRef.current = assistantMsgId;
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setSending(true);
+
+    setChatSessions((prev) => {
+      const idx = prev.findIndex((session) => session.id === activeSessionId);
+      if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          label: normalized.slice(0, 24) + (normalized.length > 24 ? '…' : ''),
+        };
+        saveSessions(instanceId, updated);
+        return updated;
+      }
+      return prev;
+    });
+  }, [activeSessionId, instanceId, t]);
+
   const {
     voiceMode,
     setVoiceMode,
@@ -795,6 +889,8 @@ export function AgentChatScreen() {
     autoSpeak,
     setAutoSpeak,
     liveVoiceAvailable,
+    realtimeConnected,
+    sendRealtimeInterrupt,
     speakingMessageId,
     handleVoicePressIn,
     handleVoicePressOut,
@@ -812,9 +908,27 @@ export function AgentChatScreen() {
     duplexModeRequested,
     agentVoiceId: agentVoiceId || undefined,
     instanceName,
+    instanceId,
     isSending: sending,
+    useRealtimeChannel: true,
+    realtimeModelId: effectiveModelId,
+    speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
+    },
+    onRealtimeUserMessage: beginRealtimeVoiceTurn,
+    onRealtimeAssistantChunk: (chunk) => {
+      const activeMessageId = activeAssistantMessageIdRef.current;
+      if (!activeMessageId) {
+        return;
+      }
+      appendToStreamingMessage(activeMessageId, chunk);
+    },
+    onRealtimeAssistantResponseEnd: () => {
+      completeStreamingAssistantMessage();
+    },
+    onRealtimeError: (message) => {
+      completeStreamingAssistantMessage(message || t({ en: 'Realtime voice reply failed.', zh: '实时语音回复失败。' }));
     },
     onStopCurrentResponse: stopCurrentResponse,
     t,
@@ -833,26 +947,6 @@ export function AgentChatScreen() {
     if (!text) return;
     speakMessageText(text, message.id);
   }, [speakMessageText]);
-
-  const appendToStreamingMessage = (msgId: string, chunk: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msgId) return m;
-        
-        // Simple heuristic to detect "thought" blocks (e.g., <thought>...</thought> or [Tool Call])
-        // In a real app, this would be parsed from structured SSE events
-        let newContent = m.content + chunk;
-        let newThoughts = m.thoughts || [];
-        
-        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
-           newThoughts = [...newThoughts, chunk.trim()];
-           return { ...m, thoughts: newThoughts };
-        }
-        
-        return { ...m, content: newContent };
-      })
-    );
-  };
 
   // Build conversation history for Claude direct fallback
   const buildHistory = (msgs: Message[], newText: string) =>
@@ -938,6 +1032,20 @@ export function AgentChatScreen() {
     setTranscriptPreview('');
     setSending(true);
     streamAbortRef.current?.abort();
+
+    // Auto-label session from first user message
+    if (text) {
+      setChatSessions((prev) => {
+        const idx = prev.findIndex(s => s.id === activeSessionId);
+        if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], label: text.slice(0, 24) + (text.length > 24 ? '…' : '') };
+          saveSessions(instanceId, updated);
+          return updated;
+        }
+        return prev;
+      });
+    }
 
     try {
       await Haptics.selectionAsync();
@@ -1210,10 +1318,100 @@ export function AgentChatScreen() {
             content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
+          // Update multi-session tracking
+          const newSession: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+          setChatSessions((prev) => {
+            const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
+            saveSessions(instanceId, updated);
+            return updated;
+          });
+          setActiveSessionId(sessionIdRef.current);
         },
       },
     ]);
   };
+
+  // Multi-session: switch to a different session
+  const handleSessionSelect = useCallback((sid: string) => {
+    if (sid === activeSessionId) return;
+    // Save current messages
+    try {
+      const currentKey = `chat_hist_${instanceId}_${activeSessionId}`;
+      mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
+    } catch {}
+    // Switch
+    streamAbortRef.current?.abort();
+    sessionIdRef.current = sid;
+    setActiveSessionId(sid);
+    // Load messages for new session
+    try {
+      const newKey = `chat_hist_${instanceId}_${sid}`;
+      const raw = mmkv.getString(newKey);
+      if (raw) {
+        setMessages(JSON.parse(raw));
+      } else {
+        setMessages([{
+          id: 'welcome',
+          role: 'assistant',
+          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+          createdAt: Date.now(),
+        }]);
+      }
+    } catch {
+      setMessages([]);
+    }
+    setInput('');
+  }, [activeSessionId, instanceId, instanceName, messages, t]);
+
+  // Multi-session: create new session
+  const handleSessionNew = useCallback(() => {
+    if (chatSessions.length >= MAX_SESSIONS) return;
+    // Save current messages first
+    try {
+      const currentKey = `chat_hist_${instanceId}_${activeSessionId}`;
+      mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
+    } catch {}
+    const newId = `session-${Date.now()}`;
+    const newSession: ChatSession = { id: newId, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
+    streamAbortRef.current?.abort();
+    sessionIdRef.current = newId;
+    setActiveSessionId(newId);
+    setChatSessions((prev) => {
+      const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
+      saveSessions(instanceId, updated);
+      return updated;
+    });
+    setMessages([{
+      id: 'welcome',
+      role: 'assistant',
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+      createdAt: Date.now(),
+    }]);
+    setInput('');
+  }, [activeSessionId, chatSessions.length, instanceId, instanceName, messages, t]);
+
+  // Multi-session: close a session
+  const handleSessionClose = useCallback((sid: string) => {
+    setChatSessions((prev) => {
+      const updated = prev.filter(s => s.id !== sid);
+      if (updated.length === 0) return prev; // Don't close last session
+      saveSessions(instanceId, updated);
+      // If we closed the active session, switch to the first remaining one
+      if (sid === activeSessionId) {
+        const nextSession = updated[0];
+        sessionIdRef.current = nextSession.id;
+        setActiveSessionId(nextSession.id);
+        try {
+          const key = `chat_hist_${instanceId}_${nextSession.id}`;
+          const raw = mmkv.getString(key);
+          if (raw) setMessages(JSON.parse(raw));
+        } catch {}
+      }
+      return updated;
+    });
+    // Clean up stored messages for closed session
+    try { mmkv.delete(`chat_hist_${instanceId}_${sid}`); } catch {}
+  }, [activeSessionId, instanceId]);
 
   const renderMessage = ({ item }: { item: Message }) => {
     return (
@@ -1323,6 +1521,17 @@ export function AgentChatScreen() {
         </View>
       </SafeAreaView>
 
+      {/* Multi-session tabs */}
+      <ChatSessionTabs
+        instanceId={instanceId}
+        sessions={chatSessions}
+        activeSessionId={activeSessionId}
+        onSelect={handleSessionSelect}
+        onNew={handleSessionNew}
+        onClose={handleSessionClose}
+        t={t}
+      />
+
       {loadingHistory && (
         <View style={styles.historyLoader}>
           <ActivityIndicator size="small" color={colors.accent} />
@@ -1402,7 +1611,9 @@ export function AgentChatScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.voiceStatusText}>
                 {voicePhase === 'idle' && (duplexMode
-                  ? t({ en: 'Voice ready. Listening will start automatically. Say your wake phrase or tap stop to pause.', zh: '语音会话已就绪。将自动进入实时聆听；你可以直接说唤醒词，或点停止暂停。' })
+                  ? (realtimeConnected
+                    ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
+                    : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
                   : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                 {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                   ? duplexMode
@@ -1412,7 +1623,7 @@ export function AgentChatScreen() {
               {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
               {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
                 {voicePhase === 'speaking' && (voiceInteractionMode === 'tap'
-                  ? t({ en: 'Agent is speaking… tap mic anytime to interrupt', zh: '智能体正在播报… 随时点麦克风即可打断' })
+                  ? t({ en: 'Agent is speaking… just speak to interrupt immediately', zh: '智能体正在说话… 你直接开口即可立刻打断' })
                   : t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' }))}
             </Text>
             {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
@@ -1486,7 +1697,12 @@ export function AgentChatScreen() {
           voiceInteractionMode === 'tap' ? (
             <TouchableOpacity
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-              onPress={handleVoiceTapToggle}
+              onPress={() => {
+                if (duplexMode && realtimeConnected && liveListening) {
+                  sendRealtimeInterrupt();
+                }
+                void handleVoiceTapToggle();
+              }}
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
@@ -1576,6 +1792,14 @@ export function AgentChatScreen() {
         )}
       </View>
       </View>
+
+      {/* Voice onboarding tooltip */}
+      <VoiceOnboardingTooltip
+        visible={voiceMode}
+        voiceInteractionMode={voiceInteractionMode}
+        duplexMode={duplexMode}
+        t={t}
+      />
 
       <Modal visible={showCameraModal} animationType="fade" onRequestClose={() => !capturingPhoto && setShowCameraModal(false)}>
         <View style={styles.cameraModalRoot}>
@@ -1675,6 +1899,60 @@ export function AgentChatScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Speech rate selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Speech Speed', zh: '语速' })}</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[0.8, 1.0, 1.2, 1.5].map((rate) => (
+                  <TouchableOpacity
+                    key={rate}
+                    onPress={() => setSpeechRate(rate)}
+                    style={[
+                      styles.sheetToggle,
+                      { minWidth: 40, paddingHorizontal: 8 },
+                      speechRate === rate && styles.sheetToggleActive,
+                    ]}
+                  >
+                    <Text style={[styles.sheetToggleText, speechRate === rate && { color: colors.accent }]}>
+                      {rate === 1.0 ? '1×' : `${rate}×`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Voice persona selector */}
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice', zh: '声音' })}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {[
+                  { id: 'alloy', label: 'Alloy', emoji: '🗣️' },
+                  { id: 'echo', label: 'Echo', emoji: '🎙️' },
+                  { id: 'fable', label: 'Fable', emoji: '📖' },
+                  { id: 'onyx', label: 'Onyx', emoji: '🪨' },
+                  { id: 'nova', label: 'Nova', emoji: '✨' },
+                  { id: 'shimmer', label: 'Shimmer', emoji: '💫' },
+                ].map((v) => {
+                  const isActive = (agentVoiceId || 'alloy') === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      onPress={() => setAgentVoiceId(v.id)}
+                      style={[
+                        styles.sheetToggle,
+                        { minWidth: 52, paddingHorizontal: 6 },
+                        isActive && styles.sheetToggleActive,
+                      ]}
+                    >
+                      <Text style={[styles.sheetToggleText, isActive && { color: colors.accent }]}>
+                        {v.emoji} {v.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             {/* Model selector */}
             <View style={styles.sheetRow}>
               <Text style={styles.sheetRowLabel}>{t({ en: 'Model', zh: '模型' })}</Text>
@@ -1706,6 +1984,14 @@ export function AgentChatScreen() {
               onPress={() => { setShowSettingsSheet(false); navigation.navigate('AgentConsole'); }}
             >
               <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'⚙️ '}{t({ en: 'Agent Management', zh: '智能体管理' })}</Text>
+            </TouchableOpacity>
+
+            {/* Voice diagnostics */}
+            <TouchableOpacity
+              style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowDiagnostics(true), 300); }}
+            >
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'🔍 '}{t({ en: 'Voice Diagnostics', zh: '语音诊断' })}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1766,6 +2052,25 @@ export function AgentChatScreen() {
                   {t({ en: 'Configure API keys in Settings → API Keys to unlock more models', zh: '前往 设置 → API密钥 配置厂商密钥以解锁更多模型' })}
                 </Text>
               )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Voice diagnostics modal */}
+      <Modal visible={showDiagnostics} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDiagnostics(false)} activeOpacity={1}>
+          <View style={[styles.modelSheet, { maxHeight: '70%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.modelSheetTitle}>{t({ en: 'Voice Diagnostics', zh: '语音诊断日志' })}</Text>
+              <TouchableOpacity onPress={() => { clearVoiceDiagnostics(); setShowDiagnostics(false); }}>
+                <Text style={{ color: '#f44', fontSize: 13 }}>{t({ en: 'Clear', zh: '清除' })}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }}>
+              <Text selectable style={{ color: colors.textSecondary, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                {getVoiceDiagnosticsText() || t({ en: 'No voice events recorded yet.', zh: '暂无语音事件记录。' })}
+              </Text>
             </ScrollView>
           </View>
         </TouchableOpacity>

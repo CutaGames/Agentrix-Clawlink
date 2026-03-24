@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
+import { API_BASE, APP_ENV } from '../config/env';
 
 type Environment = 'sandbox' | 'production';
 
@@ -51,6 +52,11 @@ interface SettingsState {
 
   wakeWordConfig: WakeWordSettings;
 
+  // Voice / TTS settings
+  /** TTS playback speed multiplier (0.8 - 1.5, default 1.0) */
+  speechRate: number;
+  /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
+  silenceTimeoutMs: number;
   
   // 通知设置
   notificationsEnabled: boolean;
@@ -68,15 +74,19 @@ interface SettingsState {
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
   resetWakeWordConfig: () => void;
+  setSpeechRate: (rate: number) => void;
+  setSilenceTimeoutMs: (ms: number) => void;
   toggleNotifications: (enabled: boolean) => void;
   toggleBiometric: (enabled: boolean) => void;
 }
 
 const API_URLS = {
-  sandbox: 'https://sandbox-api.agentrix.io',
-  production: 'https://api.agentrix.io',
+  sandbox: 'https://staging-api.agentrix.top/api',
+  production: 'https://api.agentrix.top/api',
   local: 'http://localhost:3001/api',
 };
+
+const DEFAULT_ENVIRONMENT: Environment = APP_ENV === 'production' ? 'production' : 'sandbox';
 
 const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   enabled: true,
@@ -91,8 +101,8 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      environment: 'sandbox',
-      apiBaseUrl: API_URLS.local, // 开发时使用本地
+      environment: DEFAULT_ENVIRONMENT,
+      apiBaseUrl: API_BASE,
 
       customApiKeys: {} as Record<string, string>,
       setCustomApiKey: (provider: string, key: string) => set((state) => ({
@@ -103,6 +113,9 @@ export const useSettingsStore = create<SettingsState>()(
 
       uiComplexity: 'beginner' as UiComplexity,
       wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
+
+      speechRate: 1.0,
+      silenceTimeoutMs: 1800,
       
       notificationsEnabled: true,
       airdropNotifications: true,
@@ -113,7 +126,7 @@ export const useSettingsStore = create<SettingsState>()(
       
       setEnvironment: (env) => set({ 
         environment: env,
-        apiBaseUrl: API_URLS[env],
+        apiBaseUrl: API_URLS[env] || API_BASE,
       }),
       
       setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
@@ -130,6 +143,9 @@ export const useSettingsStore = create<SettingsState>()(
       })),
 
       resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
+
+      setSpeechRate: (rate) => set({ speechRate: Math.max(0.8, Math.min(1.5, rate)) }),
+      setSilenceTimeoutMs: (ms) => set({ silenceTimeoutMs: Math.max(800, Math.min(3000, ms)) }),
 
       toggleNotifications: (enabled) => set({ 
         notificationsEnabled: enabled,

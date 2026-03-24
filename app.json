@@ -88,7 +88,7 @@
     "web": {
       "favicon": "./Agentrix Logo/favicon_64.png"
     },
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "runtimeVersion": "1.1.0",
     "updates": {
       "enabled": true,
@@ -101,7 +101,7 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": false,
+            "newArchEnabled": true,
             "ndkVersion": "27.0.12077973"
           }
         }
@@ -154,7 +154,7 @@
           "Hey Agentrix",
           "Hi Agentrix",
           "Agentrix",
-          "�?Agentrix",
+          "嘿 Agentrix",
           "你好 Agentrix"
         ],
         "displayName": "Hey Agentrix",

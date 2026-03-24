@@ -37,6 +37,10 @@ export class SpeechWakeWordService {
   private running = false;
   private stoppedManually = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private consecutiveErrors = 0;
+  private lastErrorTime = 0;
+  private static readonly MAX_CONSECUTIVE_ERRORS = 3;
+  private static readonly ERROR_WINDOW_MS = 5000;
 
   static isAvailable(): boolean {
     return isLiveSpeechRecognitionAvailable();
@@ -54,6 +58,8 @@ export class SpeechWakeWordService {
     if (this.running || !this.config) {
       return;
     }
+    this.consecutiveErrors = 0;
+    this.lastErrorTime = 0;
     if (!SpeechWakeWordService.isAvailable()) {
       addVoiceDiagnostic('speech-wake', 'unavailable');
       this.config.onError?.(new Error('Speech wake word recognition unavailable'));
@@ -125,7 +131,31 @@ export class SpeechWakeWordService {
           if (event?.error === 'aborted' || event?.error === 'no-speech') {
             return;
           }
+          const now = Date.now();
+          if (now - this.lastErrorTime > SpeechWakeWordService.ERROR_WINDOW_MS) {
+            this.consecutiveErrors = 0;
+          }
+          this.consecutiveErrors++;
+          this.lastErrorTime = now;
           addVoiceDiagnostic('speech-wake', 'recognition-error', event);
+          if (this.consecutiveErrors >= SpeechWakeWordService.MAX_CONSECUTIVE_ERRORS) {
+            addVoiceDiagnostic('speech-wake', 'too-many-errors-stopping', { count: this.consecutiveErrors });
+            this.stoppedManually = true;
+            try { this.controller?.abort(); } catch {}
+            this.controller = null;
+            this.running = false;
+            // Auto-recovery: retry after 15s cooldown
+            this.restartTimer = setTimeout(() => {
+              if (this.config && !this.running) {
+                this.consecutiveErrors = 0;
+                this.lastErrorTime = 0;
+                this.stoppedManually = false;
+                addVoiceDiagnostic('speech-wake', 'auto-recovery-attempt');
+                this.start().catch(() => {});
+              }
+            }, 15000) as unknown as ReturnType<typeof setTimeout>;
+            return;
+          }
           onError?.(new Error(event?.message || event?.error || 'Speech wake word error'));
         },
       },

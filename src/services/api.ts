@@ -36,8 +36,28 @@ let config: ApiConfig = {
   baseUrl: API_BASE,
 };
 
+const LOOPBACK_BASE_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
+
+function normalizeBaseUrl(baseUrl?: string): string {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) {
+    return API_BASE;
+  }
+
+  if (!__DEV__ && LOOPBACK_BASE_URL_RE.test(trimmed)) {
+    console.warn(`[api] Ignoring loopback base URL in release build: ${trimmed}`);
+    return API_BASE;
+  }
+
+  return trimmed.replace(/\/+$/, '');
+}
+
 export const setApiConfig = (next: ApiConfig) => {
-  config = { ...config, ...next };
+  config = {
+    ...config,
+    ...next,
+    baseUrl: normalizeBaseUrl(next.baseUrl ?? config.baseUrl),
+  };
 };
 
 export const getApiConfig = () => config;
