@@ -8,6 +8,7 @@ import { setApiConfig, getApiConfig, apiFetch } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useI18n, Language } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { API_BASE } from '../config/env';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 // ─── App Version Check ──────────────────────────────────────────
@@ -54,7 +55,7 @@ const deleteApiKey = (id: string) =>
 
 export const SettingsScreen: React.FC = () => {
   const currentConfig = getApiConfig();
-  const [baseUrl, setBaseUrl] = useState(currentConfig.baseUrl || 'http://localhost:3001/api');
+  const [baseUrl, setBaseUrl] = useState(currentConfig.baseUrl || API_BASE);
   const [token, setToken] = useState('');
   const [newKeyName, setNewKeyName] = useState('');
   const user = useAuthStore((s) => s.user);
@@ -134,7 +135,7 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const save = () => {
-    setApiConfig({ baseUrl, token: token || undefined });
+    setApiConfig({ baseUrl: baseUrl.trim() || API_BASE, token: token || undefined });
     Alert.alert(t({ en: 'Saved', zh: '已保存' }), t({ en: 'API configuration updated', zh: 'API 配置已更新' }));
   };
 

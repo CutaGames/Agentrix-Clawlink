@@ -8,13 +8,14 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { VoiceService } from './voice.service';
 import { edgeTTS, resolveEdgeVoice } from './adapters/edge-tts.adapter';
 import { DeepgramSTTAdapter } from './adapters/deepgram-stt.adapter';
 import type { StreamingSTTSession } from './adapters/voice-provider.interface';
+import { OpenClawProxyService } from '../openclaw-proxy/openclaw-proxy.service';
 
 /**
  * RealtimeVoiceGateway — WebSocket gateway for bidirectional voice streaming.
@@ -46,11 +47,17 @@ interface VoiceSession {
   userId: string;
   socketId: string;
   sessionId: string;
+  instanceId: string;
   lang: string;
   voiceId?: string;
+  model?: string;
   duplexMode: boolean;
   audioChunks: Buffer[];
   streamingSession: StreamingSTTSession | null;
+  currentResponseAbort: AbortController | null;
+  responseGeneration: number;
+  ttsSentenceBuffer: string;
+  ttsQueue: Promise<void>;
   createdAt: number;
 }
 
@@ -74,6 +81,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly voiceService: VoiceService,
+    @Inject(forwardRef(() => OpenClawProxyService))
+    private readonly openClawProxyService: OpenClawProxyService,
   ) {}
 
   // ── Connection Lifecycle ─────────────────────────────────
@@ -109,6 +118,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     for (const [sessionId, session] of this.sessions.entries()) {
       if (session.socketId === client.id) {
         session.streamingSession?.abort();
+        session.currentResponseAbort?.abort();
         this.sessions.delete(sessionId);
         this.logger.debug(`Cleaned up voice session ${sessionId} on disconnect`);
       }
@@ -121,10 +131,15 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('voice:session:start')
   async handleSessionStart(
     @ConnectedSocket() client: AuthenticatedVoiceSocket,
-    @MessageBody() data: { sessionId: string; lang?: string; voiceId?: string; duplexMode?: boolean },
+    @MessageBody() data: { sessionId?: string; instanceId?: string; lang?: string; voiceId?: string; duplexMode?: boolean; model?: string },
   ) {
     if (!client.userId) {
       client.emit('voice:error', { error: 'Not authenticated' });
+      return;
+    }
+
+    if (!data.instanceId) {
+      client.emit('voice:error', { error: 'Missing instanceId' });
       return;
     }
 
@@ -134,11 +149,17 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       userId: client.userId,
       socketId: client.id,
       sessionId,
+      instanceId: data.instanceId,
       lang: data.lang || 'en',
       voiceId: data.voiceId,
+      model: data.model,
       duplexMode: data.duplexMode ?? false,
       audioChunks: [],
       streamingSession: null,
+      currentResponseAbort: null,
+      responseGeneration: 0,
+      ttsSentenceBuffer: '',
+      ttsQueue: Promise.resolve(),
       createdAt: Date.now(),
     };
 
@@ -149,7 +170,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
 
     this.logger.debug(`Voice session started: ${sessionId} (user: ${client.userId}, lang: ${session.lang}, duplex: ${session.duplexMode})`);
 
-    client.emit('voice:session:ready', { sessionId });
+    client.emit('voice:session:ready', { sessionId, instanceId: session.instanceId });
   }
 
   @SubscribeMessage('voice:session:end')
@@ -161,10 +182,46 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     if (!session) return;
 
     session.streamingSession?.abort();
+    session.currentResponseAbort?.abort();
     this.sessions.delete(data.sessionId);
     client.leave(`voice:${data.sessionId}`);
     client.emit('voice:session:ended', { sessionId: data.sessionId });
     this.logger.debug(`Voice session ended: ${data.sessionId}`);
+  }
+
+  @SubscribeMessage('voice:text')
+  async handleVoiceText(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string; text: string; model?: string },
+  ) {
+    const session = this.getSession(data.sessionId, client);
+    if (!session) {
+      return;
+    }
+
+    const text = String(data.text || '').trim();
+    if (!text) {
+      client.emit('voice:error', { sessionId: data.sessionId, error: 'Empty text' });
+      return;
+    }
+
+    this.logger.debug(`voice:text received for session ${data.sessionId} (instance: ${session.instanceId})`);
+
+    session.model = data.model || session.model;
+    await this.startAgentResponse(client, session, text);
+  }
+
+  @SubscribeMessage('voice:interrupt')
+  handleVoiceInterrupt(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string },
+  ) {
+    const session = this.getSession(data.sessionId, client);
+    if (!session) {
+      return;
+    }
+
+    this.interruptSessionResponse(client, session);
   }
 
   // ── Audio Streaming (Client → Server) ────────────────────
@@ -230,6 +287,11 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
         client.emit('voice:stt:final', {
           sessionId: data.sessionId,
           transcript,
+          lang: session.lang,
+        });
+        client.emit('voice:transcript:final', {
+          sessionId: data.sessionId,
+          text: transcript,
           lang: session.lang,
         });
       } else {
@@ -340,11 +402,22 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
               transcript,
               lang: session.lang,
             });
+            client.emit('voice:transcript:interim', {
+              sessionId: session.sessionId,
+              text: transcript,
+              lang: session.lang,
+            });
           },
           onFinal: (result) => {
             client.emit('voice:stt:final', {
               sessionId: session.sessionId,
               transcript: result.text,
+              lang: result.lang || session.lang,
+              provider: result.provider,
+            });
+            client.emit('voice:transcript:final', {
+              sessionId: session.sessionId,
+              text: result.text,
               lang: result.lang || session.lang,
               provider: result.provider,
             });
@@ -364,5 +437,164 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       session.streamingSession = null;
       this.logger.warn(`Failed to initialize streaming STT for session ${session.sessionId}: ${error.message}`);
     }
+  }
+
+  private interruptSessionResponse(client: AuthenticatedVoiceSocket, session: VoiceSession) {
+    const hadActiveResponse = !!session.currentResponseAbort;
+    session.currentResponseAbort?.abort();
+    session.currentResponseAbort = null;
+    session.responseGeneration += 1;
+    session.ttsSentenceBuffer = '';
+    if (hadActiveResponse) {
+      client.emit('voice:agent:end', {
+        sessionId: session.sessionId,
+        interrupted: true,
+      });
+    }
+  }
+
+  private async startAgentResponse(
+    client: AuthenticatedVoiceSocket,
+    session: VoiceSession,
+    text: string,
+  ): Promise<void> {
+    this.interruptSessionResponse(client, session);
+
+    const generation = session.responseGeneration;
+    const abortController = new AbortController();
+    session.currentResponseAbort = abortController;
+    session.ttsSentenceBuffer = '';
+
+    this.logger.debug(`Starting realtime agent response for session ${session.sessionId} (instance: ${session.instanceId})`);
+
+    try {
+      await this.openClawProxyService.streamChatToCallbacks(
+        session.userId,
+        session.instanceId,
+        {
+          message: text,
+          sessionId: session.sessionId,
+          model: session.model,
+          voiceId: session.voiceId,
+        },
+        {
+          signal: abortController.signal,
+          onMeta: async (meta) => {
+            this.logger.debug(`voice:meta for session ${session.sessionId}: ${JSON.stringify(meta)}`);
+            client.emit('voice:meta', {
+              sessionId: session.sessionId,
+              ...meta,
+            });
+          },
+          onChunk: async (chunk) => {
+            if (abortController.signal.aborted || generation !== session.responseGeneration) {
+              return;
+            }
+            this.logger.debug(`voice:agent:text chunk for session ${session.sessionId}: ${chunk.slice(0, 80)}`);
+            client.emit('voice:agent:text', {
+              sessionId: session.sessionId,
+              chunk,
+            });
+            this.queueSentenceTts(client, session, chunk, false, generation);
+          },
+          onDone: async () => {
+            if (abortController.signal.aborted || generation !== session.responseGeneration) {
+              return;
+            }
+            this.logger.debug(`voice:agent:end for session ${session.sessionId}`);
+            this.queueSentenceTts(client, session, '', true, generation);
+            await session.ttsQueue.catch(() => undefined);
+            if (generation === session.responseGeneration) {
+              client.emit('voice:agent:end', { sessionId: session.sessionId });
+            }
+          },
+        },
+      );
+    } catch (error: any) {
+      if (abortController.signal.aborted) {
+        return;
+      }
+      this.logger.error(`Realtime agent response failed for session ${session.sessionId}: ${error.message}`);
+      client.emit('voice:error', {
+        sessionId: session.sessionId,
+        error: error.message || 'Realtime agent response failed',
+        code: 'VOICE_AGENT_RESPONSE_ERROR',
+      });
+    } finally {
+      if (session.currentResponseAbort === abortController) {
+        session.currentResponseAbort = null;
+      }
+    }
+  }
+
+  private queueSentenceTts(
+    client: AuthenticatedVoiceSocket,
+    session: VoiceSession,
+    incomingText: string,
+    flush: boolean,
+    generation: number,
+  ) {
+    if (generation !== session.responseGeneration) {
+      return;
+    }
+
+    if (incomingText) {
+      session.ttsSentenceBuffer += incomingText;
+    }
+
+    const sentenceRegex = /[^。！？.!?\n]+[。！？.!?\n]+/g;
+    const segments = (session.ttsSentenceBuffer.match(sentenceRegex) || [])
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (segments.length > 0) {
+      session.ttsSentenceBuffer = session.ttsSentenceBuffer.slice((session.ttsSentenceBuffer.match(sentenceRegex) || []).join('').length);
+    }
+
+    if (flush) {
+      const remainder = session.ttsSentenceBuffer.trim();
+      if (remainder) {
+        segments.push(remainder);
+      }
+      session.ttsSentenceBuffer = '';
+    }
+
+    for (const sentence of segments) {
+      session.ttsQueue = session.ttsQueue
+        .then(() => this.emitSentenceAudio(client, session, sentence, generation))
+        .catch((error) => {
+          this.logger.warn(`Realtime TTS queue error for session ${session.sessionId}: ${error.message}`);
+        });
+    }
+  }
+
+  private async emitSentenceAudio(
+    client: AuthenticatedVoiceSocket,
+    session: VoiceSession,
+    sentence: string,
+    generation: number,
+  ): Promise<void> {
+    if (!sentence || generation !== session.responseGeneration) {
+      return;
+    }
+
+    const isChinese = session.lang === 'zh' || /[\u4e00-\u9fff]/.test(sentence);
+    const voice = resolveEdgeVoice(session.voiceId, isChinese);
+    const audioBuffer = await edgeTTS(sentence, { voice });
+
+    if (generation !== session.responseGeneration) {
+      return;
+    }
+
+    client.emit('voice:agent:speech:start', {
+      sessionId: session.sessionId,
+      text: sentence,
+    });
+    client.emit('voice:agent:audio', {
+      sessionId: session.sessionId,
+      audio: audioBuffer.toString('base64'),
+      format: 'mp3',
+      text: sentence,
+    });
   }
 }

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
+import { BedrockIntegrationService } from '../ai-integration/bedrock/bedrock-integration.service';
 
 // ─── Provider & Model Catalog (2026-03-12 latest) ───────────────
 
@@ -135,7 +136,8 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
   {
     id: 'bedrock', name: 'AWS Bedrock (国际区)', icon: '☁️', region: 'international', currency: 'USD',
     requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
-    placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'us-east-1' },
+    credentialLabel: 'AWS Access Key ID',
+    placeholder: { apiKey: 'AKIA... / ASIA...', secretKey: 'wJal...', region: 'us-east-1' },
     models: [
       // ── Anthropic Claude ──
       { id: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
@@ -146,7 +148,8 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
   {
     id: 'bedrock-cn', name: 'AWS Bedrock (中国区)', icon: '☁️', region: 'china', currency: 'CNY',
     requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
-    placeholder: { apiKey: 'AKIA...', secretKey: 'wJal...', region: 'cn-northwest-1' },
+    credentialLabel: 'AWS Access Key ID',
+    placeholder: { apiKey: 'AKIA... / ASIA...', secretKey: 'wJal...', region: 'cn-northwest-1' },
     models: [
       { id: 'anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4.6 (中国区)', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥21.0', outputPrice: '¥105.0', positioning: '均衡/默认/中国区可用' },
       { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', label: 'Claude Haiku 4.5 (中国区)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥35.0', positioning: '轻量/快速/中国区可用' },
@@ -240,6 +243,7 @@ export class AiProviderService {
     @InjectRepository(UserProviderConfig)
     private readonly repo: Repository<UserProviderConfig>,
     private readonly configService: ConfigService,
+    private readonly bedrockIntegrationService: BedrockIntegrationService,
   ) {
     const secret = this.configService.get<string>('PROVIDER_ENCRYPTION_KEY') || 'agentrix-default-provider-key-2026';
     this.encKey = scryptSync(secret, 'agentrix-salt', 32);
@@ -598,7 +602,20 @@ export class AiProviderService {
         }
         if (dto.apiKey.length < 16) throw new Error('Invalid AWS Access Key format');
         if (dto.secretKey.length < 16) throw new Error('Invalid AWS Secret Key format');
-        this.logger.log(`Bedrock credentials format validated for region ${dto.region}`);
+        const result = await this.bedrockIntegrationService.chatWithFunctions(
+          [{ role: 'user', content: 'Say hello in one word.' }],
+          {
+            model: dto.model,
+            userCredentials: {
+              accessKeyId: dto.apiKey,
+              secretAccessKey: dto.secretKey,
+              region: dto.region,
+            },
+          },
+        );
+        if (!result?.text?.trim()) {
+          throw new Error('Bedrock returned an empty response');
+        }
         break;
       }
       case 'baidu': {

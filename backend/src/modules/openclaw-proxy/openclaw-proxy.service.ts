@@ -16,6 +16,7 @@ import { AgentSession, SessionStatus } from '../../entities/agent-session.entity
 import { OpenClawInstance, OpenClawInstanceStatus } from '../../entities/openclaw-instance.entity';
 import { OpenClawConnectionService } from '../openclaw-connection/openclaw-connection.service';
 import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
+import { GeminiIntegrationService } from '../ai-integration/gemini/gemini-integration.service';
 import { OpenAIIntegrationService } from '../ai-integration/openai/openai-integration.service';
 import { TokenQuotaService, estimateTokens } from '../token-quota/token-quota.service';
 import { SkillExecutorService, ExecutionContext } from '../skill/skill-executor.service';
@@ -31,6 +32,13 @@ export interface ChatMessageDto {
   context?: Record<string, any>;
   model?: string;
   voiceId?: string;
+}
+
+export interface ChatStreamCallbacks {
+  signal?: AbortSignal;
+  onMeta?: (meta: Record<string, any>) => Promise<void> | void;
+  onChunk: (chunk: string) => Promise<void> | void;
+  onDone?: () => Promise<void> | void;
 }
 
 interface RuntimePermissionProfile {
@@ -50,6 +58,8 @@ export class OpenClawProxyService {
     private readonly tokenQuotaService: TokenQuotaService,
     @Inject(forwardRef(() => ClaudeIntegrationService))
     private readonly claudeIntegrationService: ClaudeIntegrationService,
+    @Inject(forwardRef(() => GeminiIntegrationService))
+    private readonly geminiIntegrationService: GeminiIntegrationService,
     @Inject(forwardRef(() => OpenAIIntegrationService))
     private readonly openAIIntegrationService: OpenAIIntegrationService,
     @Inject(forwardRef(() => SkillExecutorService))
@@ -427,6 +437,26 @@ export class OpenClawProxyService {
       return 'platform';
     }
 
+    if (modelId === 'claude-opus-4-6') {
+      return 'platform';
+    }
+
+    if (modelId === 'deepseek-v3') {
+      return 'deepseek';
+    }
+
+    if (modelId === 'gemini-2.0-flash') {
+      return 'gemini';
+    }
+
+    if (modelId === 'llama-3.3-70b') {
+      return 'meta';
+    }
+
+    if (modelId === 'gpt-4o') {
+      return 'openai';
+    }
+
     return undefined;
   }
 
@@ -462,6 +492,42 @@ export class OpenClawProxyService {
 
   private resolveExecutionModelId(modelId: string): string {
     return this.aiProviderService.resolveExecutionModelId(modelId) || modelId;
+  }
+
+  private getPlatformOpenAICompatibleCredentials(providerId?: string): {
+    apiKey: string;
+    baseUrl?: string;
+    providerId: string;
+  } | undefined {
+    if (!providerId || providerId === 'platform') {
+      return undefined;
+    }
+
+    const provider = this.aiProviderService.getCatalog().find((item: any) => item.id === providerId);
+    const providerBaseUrl = typeof provider?.baseUrl === 'string' ? provider.baseUrl : undefined;
+
+    switch (providerId) {
+      case 'deepseek': {
+        const apiKey = process.env.DEEPSEEK_API_KEY || process.env.deepseek_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.DEEPSEEK_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
+      case 'meta': {
+        const apiKey = process.env.GROQ_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.GROQ_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
+      case 'openai': {
+        const apiKey = process.env.OPENAI_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.OPENAI_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
+      default:
+        return undefined;
+    }
   }
 
   private isOpenAICompatibleProvider(providerId?: string): boolean {
@@ -925,6 +991,11 @@ export class OpenClawProxyService {
       const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
       if (providerConfig) {
         userCredentials = { ...providerConfig, providerId: resolvedProvider };
+      } else {
+        const platformCredentials = this.getPlatformOpenAICompatibleCredentials(resolvedProvider);
+        if (platformCredentials) {
+          userCredentials = platformCredentials;
+        }
       }
     }
 
@@ -1005,24 +1076,35 @@ export class OpenClawProxyService {
     ];
 
     const executionModel = this.resolveExecutionModelId(resolvedModel);
-    const result = this.isOpenAICompatibleProvider(resolvedProvider)
-      ? await this.openAIIntegrationService.chatWithFunctions(messages, {
-          model: executionModel,
-          context: { userId, sessionId },
-          additionalTools: this.toOpenAITools(additionalTools),
-          onToolCall,
-          userApiKey: userCredentials?.apiKey,
-          userBaseURL: userCredentials?.baseUrl,
-        })
-      : await this.claudeIntegrationService.chatWithFunctions(messages, {
-          model: executionModel,
-          context: { userId, sessionId },
-          additionalTools,
-          onToolCall,
-          userCredentials: userCredentials
-            ? { ...userCredentials, model: executionModel }
-            : undefined,
-        });
+    let result: any;
+    if (resolvedProvider === 'gemini') {
+      result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
+        model: executionModel,
+        context: { userId, sessionId },
+        additionalTools,
+        onToolCall,
+        userApiKey: userCredentials?.apiKey,
+      });
+    } else if (this.isOpenAICompatibleProvider(resolvedProvider)) {
+      result = await this.openAIIntegrationService.chatWithFunctions(messages, {
+        model: executionModel,
+        context: { userId, sessionId },
+        additionalTools: this.toOpenAITools(additionalTools),
+        onToolCall,
+        userApiKey: userCredentials?.apiKey,
+        userBaseURL: userCredentials?.baseUrl,
+      });
+    } else {
+      result = await this.claudeIntegrationService.chatWithFunctions(messages, {
+        model: executionModel,
+        context: { userId, sessionId },
+        additionalTools,
+        onToolCall,
+        userCredentials: userCredentials
+          ? { ...userCredentials, model: executionModel }
+          : undefined,
+      });
+    }
 
     const text = result?.text || '';
     const inputTokens = estimateTokens(messageText);
@@ -1097,6 +1179,150 @@ export class OpenClawProxyService {
       }
     } finally {
       if (!res.writableEnded) res.end();
+    }
+  }
+
+  private async streamPlatformHostedChatToCallbacks(
+    userId: string,
+    instance: OpenClawInstance,
+    dto: ChatMessageDto,
+    callbacks: ChatStreamCallbacks,
+  ): Promise<void> {
+    this.logger.debug(`streamPlatformHostedChatToCallbacks start: instance=${instance.id} session=${dto.sessionId || ''}`);
+    const result = await this.runPlatformHostedChat(userId, instance, dto);
+    const resultAny = result as any;
+
+    if (resultAny.resolvedModel && callbacks.onMeta) {
+      await callbacks.onMeta({
+        resolvedModel: resultAny.resolvedModel,
+        resolvedModelLabel: resultAny.resolvedModelLabel,
+      });
+    }
+
+    const text = result.reply?.content || 'Sorry, I could not generate a response.';
+    const chunks = text.match(/.{1,12}/gs) || [text];
+    for (const chunk of chunks) {
+      if (callbacks.signal?.aborted) {
+        return;
+      }
+      this.logger.debug(`streamPlatformHostedChatToCallbacks chunk: instance=${instance.id} chunk=${chunk.slice(0, 80)}`);
+      await callbacks.onChunk(chunk);
+    }
+
+    if (!callbacks.signal?.aborted) {
+      this.logger.debug(`streamPlatformHostedChatToCallbacks done: instance=${instance.id}`);
+      await callbacks.onDone?.();
+    }
+  }
+
+  private async consumeUpstreamSseChunk(
+    payload: string,
+    callbacks: ChatStreamCallbacks,
+  ): Promise<boolean> {
+    const trimmed = payload.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    if (trimmed === '[DONE]') {
+      await callbacks.onDone?.();
+      return true;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed?.meta && callbacks.onMeta) {
+        await callbacks.onMeta(parsed.meta);
+      }
+      if (typeof parsed?.chunk === 'string' && parsed.chunk.length > 0) {
+        await callbacks.onChunk(parsed.chunk);
+      }
+      if (parsed?.error) {
+        throw new BadGatewayException(parsed.error);
+      }
+      return false;
+    } catch (error) {
+      if (error instanceof BadGatewayException) {
+        throw error;
+      }
+
+      await callbacks.onChunk(trimmed);
+      return false;
+    }
+  }
+
+  async streamChatToCallbacks(
+    userId: string,
+    instanceId: string,
+    dto: ChatMessageDto,
+    callbacks: ChatStreamCallbacks,
+  ): Promise<void> {
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
+    this.logger.debug(`streamChatToCallbacks resolved instance ${instance.id} platformHosted=${this.isPlatformHosted(instance)}`);
+    if (this.isPlatformHosted(instance)) {
+      return this.streamPlatformHostedChatToCallbacks(userId, instance, dto, callbacks);
+    }
+
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
+    const url = `${resolvedInstance.instanceUrl}/api/chat/stream`;
+    const upstreamResp = await fetch(url, {
+      method: 'POST',
+      headers: { ...this.buildHeaders(resolvedInstance), Accept: 'text/event-stream' },
+      body: JSON.stringify({
+        message: dto.message,
+        sessionId: dto.sessionId,
+        model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+      }),
+      signal: callbacks.signal || AbortSignal.timeout(60_000),
+    });
+
+    if (!upstreamResp.ok || !upstreamResp.body) {
+      const text = await upstreamResp.text().catch(() => 'Instance stream unavailable');
+      throw new BadGatewayException(text || 'Instance stream unavailable');
+    }
+
+    const reader = upstreamResp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let streamDone = false;
+
+    while (!streamDone) {
+      if (callbacks.signal?.aborted) {
+        try { await reader.cancel(); } catch {}
+        return;
+      }
+
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary >= 0) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart());
+
+        if (dataLines.length > 0) {
+          streamDone = await this.consumeUpstreamSseChunk(dataLines.join('\n'), callbacks);
+        }
+
+        if (streamDone || callbacks.signal?.aborted) {
+          try { await reader.cancel(); } catch {}
+          return;
+        }
+
+        boundary = buffer.indexOf('\n\n');
+      }
+    }
+
+    if (!callbacks.signal?.aborted) {
+      await callbacks.onDone?.();
     }
   }
 

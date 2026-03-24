@@ -67,16 +67,16 @@ export function VoiceOnboardingTooltip({ visible, voiceInteractionMode, duplexMo
   const stepContent = [
     null, // 0 index unused
     {
-      title: t({ en: 'Hold to Talk', zh: '按住说话' }),
-      body: t({ en: 'Press and hold the mic button, then release to send your voice message.', zh: '按住麦克风按钮说话，松开即发送语音消息。' }),
+      title: t({ en: 'Wake or Tap to Enter', zh: '唤醒或点按进入' }),
+      body: t({ en: 'From a cold start, say your wake phrase or tap the floating ball once to jump straight into voice chat.', zh: '冷启动后，你可以直接说唤醒词，或点一次悬浮球，立即进入语音对话。' }),
     },
     {
-      title: t({ en: 'Tap Mode', zh: '点触模式' }),
-      body: t({ en: 'Switch to Tap mode: tap once to start recording, tap again to stop and send.', zh: '切换到点触模式：点一下开始录音，再点一下停止并发送。' }),
+      title: t({ en: 'Hands-Free Live Call', zh: '免按住实时通话' }),
+      body: t({ en: 'In live mode the mic starts automatically. You do not need to hold the button again to keep talking.', zh: '进入实时模式后会自动开始聆听，不需要再按住按钮才能继续对话。' }),
     },
     {
-      title: t({ en: 'Live Conversation', zh: '实时对话' }),
-      body: t({ en: 'Enable Live mode in settings for hands-free, duplex voice chat — the agent listens and responds automatically.', zh: '在设置中开启实时模式，享受免手动操作的双向语音对话——智能体自动聆听与回复。' }),
+      title: t({ en: 'Interrupt Anytime', zh: '随时打断' }),
+      body: t({ en: 'While the agent is speaking, just start talking naturally and the reply will be interrupted immediately.', zh: '当智能体正在说话时，你直接开口即可立即打断，并继续下一轮对话。' }),
     },
   ];
 

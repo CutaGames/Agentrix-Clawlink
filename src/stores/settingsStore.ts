@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
+import { API_BASE, APP_ENV } from '../config/env';
 
 type Environment = 'sandbox' | 'production';
 
@@ -80,10 +81,12 @@ interface SettingsState {
 }
 
 const API_URLS = {
-  sandbox: 'https://sandbox-api.agentrix.io',
-  production: 'https://api.agentrix.io',
+  sandbox: 'https://staging-api.agentrix.top/api',
+  production: 'https://api.agentrix.top/api',
   local: 'http://localhost:3001/api',
 };
+
+const DEFAULT_ENVIRONMENT: Environment = APP_ENV === 'production' ? 'production' : 'sandbox';
 
 const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   enabled: true,
@@ -98,8 +101,8 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      environment: 'sandbox',
-      apiBaseUrl: API_URLS.local, // 开发时使用本地
+      environment: DEFAULT_ENVIRONMENT,
+      apiBaseUrl: API_BASE,
 
       customApiKeys: {} as Record<string, string>,
       setCustomApiKey: (provider: string, key: string) => set((state) => ({
@@ -123,7 +126,7 @@ export const useSettingsStore = create<SettingsState>()(
       
       setEnvironment: (env) => set({ 
         environment: env,
-        apiBaseUrl: API_URLS[env],
+        apiBaseUrl: API_URLS[env] || API_BASE,
       }),
       
       setApiBaseUrl: (url) => set({ apiBaseUrl: url }),

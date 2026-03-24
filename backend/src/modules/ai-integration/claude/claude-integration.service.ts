@@ -18,6 +18,7 @@ import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
 import { ModelRouterService, ModelType } from '../model-router/model-router.service';
 import { BedrockIntegrationService, BedrockUserCredentials } from '../bedrock/bedrock-integration.service';
+import { OpenAIIntegrationService } from '../openai/openai-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
 
 /** Credentials resolved from the user's provider config */
@@ -56,6 +57,7 @@ export class ClaudeIntegrationService {
   private readonly logger = new Logger(ClaudeIntegrationService.name);
   private readonly anthropic: any;
   private readonly defaultModel: string; // 向后兼容的默认模型
+  private openAIIntegrationService: OpenAIIntegrationService | null | undefined;
 
   constructor(
     private readonly configService: ConfigService,
@@ -1163,6 +1165,7 @@ export class ClaudeIntegrationService {
     // ── Provider-aware routing ──
     const creds = options?.userCredentials;
     const isBedrockProvider = creds?.providerId?.startsWith('bedrock');
+    const canUsePlatformFallback = !creds;
 
     // Route 1: User has Bedrock credentials → SigV4 path
     if (isBedrockProvider && creds?.secretKey) {
@@ -1180,6 +1183,16 @@ export class ClaudeIntegrationService {
         return await this.handleBedrockChat(messages, mergedTools, options || {});
       } catch (bedrockErr: any) {
         this.logger.error(`Bedrock fallback failed: ${bedrockErr.message}`);
+        if (canUsePlatformFallback) {
+          const openAIFallback = await this.tryOpenAIPlatformFallback(
+            messages,
+            options,
+            `bedrock fallback failed: ${bedrockErr.message}`,
+          );
+          if (openAIFallback) {
+            return openAIFallback;
+          }
+        }
         throw new Error(
           `AI service error: ${bedrockErr.message}`,
         );
@@ -1366,7 +1379,115 @@ export class ClaudeIntegrationService {
       };
     } catch (error: any) {
       this.logger.error(`Claude API调用失败: ${error.message}`, error.stack);
+      if (canUsePlatformFallback && !userDirectKey) {
+        const openAIFallback = await this.tryOpenAIPlatformFallback(
+          messages,
+          options,
+          `claude api failed: ${error.message}`,
+        );
+        if (openAIFallback) {
+          return openAIFallback;
+        }
+      }
       throw error;
+    }
+  }
+
+  private getOpenAIIntegrationService(): OpenAIIntegrationService | null {
+    if (this.openAIIntegrationService !== undefined) {
+      return this.openAIIntegrationService;
+    }
+
+    try {
+      this.openAIIntegrationService = this.moduleRef.get(OpenAIIntegrationService, {
+        strict: false,
+      });
+    } catch (error: any) {
+      this.logger.warn(`OpenAI fallback unavailable: ${error.message}`);
+      this.openAIIntegrationService = null;
+    }
+
+    return this.openAIIntegrationService;
+  }
+
+  private normalizeToolsForOpenAI(tools?: any[]): any[] | undefined {
+    if (!tools?.length) {
+      return undefined;
+    }
+
+    return tools.map((tool) => {
+      if (tool.type === 'function' && tool.function) {
+        return tool;
+      }
+
+      if (tool.input_schema) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.input_schema,
+          },
+        };
+      }
+
+      return {
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters || tool.inputSchema || { type: 'object', properties: {} },
+        },
+      };
+    });
+  }
+
+  private async tryOpenAIPlatformFallback(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
+    options:
+      | {
+          model?: string;
+          temperature?: number;
+          maxTokens?: number;
+          context?: { userId?: string; sessionId?: string };
+          userApiKey?: string;
+          userCredentials?: UserProviderCredentials;
+          enableModelRouting?: boolean;
+          additionalTools?: any[];
+          onToolCall?: (name: string, args: any) => Promise<any>;
+        }
+      | undefined,
+    reason: string,
+  ): Promise<any | null> {
+    const openAIService = this.getOpenAIIntegrationService();
+    if (!openAIService) {
+      return null;
+    }
+
+    const fallbackModel =
+      this.configService.get<string>('OPENAI_FALLBACK_MODEL') ||
+      this.configService.get<string>('OPENAI_MODEL') ||
+      'gpt-4o';
+
+    this.logger.warn(
+      `Falling back to OpenAI model ${fallbackModel} because ${reason}`,
+    );
+
+    try {
+      return await openAIService.chatWithFunctions(messages, {
+        model: fallbackModel,
+        temperature: options?.temperature,
+        maxTokens: options?.maxTokens,
+        context: options?.context,
+        additionalTools: this.normalizeToolsForOpenAI(options?.additionalTools),
+        onToolCall: options?.onToolCall,
+      });
+    } catch (fallbackError: any) {
+      this.logger.error(
+        `OpenAI platform fallback failed: ${fallbackError.message}`,
+        fallbackError.stack,
+      );
+      return null;
     }
   }
 

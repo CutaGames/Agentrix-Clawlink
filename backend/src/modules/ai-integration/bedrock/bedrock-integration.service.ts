@@ -25,6 +25,22 @@ export class BedrockIntegrationService {
     }
   }
 
+  private normalizeRegion(region?: string): string {
+    const trimmed = String(region || '').trim();
+    if (!trimmed) {
+      return 'us-east-1';
+    }
+
+    const parentRegionMatch = trimmed.match(/^([a-z]{2}(?:-[a-z]+)+-\d)-[a-z0-9-]+$/i);
+    if (parentRegionMatch) {
+      const normalized = parentRegionMatch[1].toLowerCase();
+      this.logger.warn(`Normalizing Bedrock region ${trimmed} to parent region ${normalized}`);
+      return normalized;
+    }
+
+    return trimmed.toLowerCase();
+  }
+
   /**
    * Check if a model ID is already a full Bedrock model ARN/ID (e.g. 'us.anthropic.claude-sonnet-4-6-v1:0')
    * vs a short friendly name like 'claude-haiku-4-5'.
@@ -70,8 +86,9 @@ export class BedrockIntegrationService {
    * Invoke Bedrock model using user's own AWS credentials (SigV4 signing).
    */
   private async invokeWithUserCredentials(modelId: string, body: any, credentials: BedrockUserCredentials): Promise<any> {
+    const region = this.normalizeRegion(credentials.region);
     const client = new BedrockRuntimeClient({
-      region: credentials.region,
+      region,
       credentials: {
         accessKeyId: credentials.accessKeyId,
         secretAccessKey: credentials.secretAccessKey,
@@ -187,7 +204,7 @@ export class BedrockIntegrationService {
     tools?: any[],
     credentials?: BedrockUserCredentials,
   ): Promise<{ text: string; toolCalls: any[] }> {
-    const region = credentials?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const region = this.normalizeRegion(credentials?.region || this.configService.get<string>('AWS_REGION'));
     const client = new BedrockRuntimeClient({
       region,
       ...(credentials ? {
@@ -249,7 +266,7 @@ export class BedrockIntegrationService {
    */
   async invokeModel(prompt: string, modelId: string = 'us.anthropic.claude-haiku-4-5-20251001-v1:0', userCredentials?: BedrockUserCredentials): Promise<string> {
     const finalModelId = this.resolveModelId(modelId);
-    const region = userCredentials?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const region = this.normalizeRegion(userCredentials?.region || this.configService.get<string>('AWS_REGION'));
     this.logger.log(`Calling Bedrock: ${finalModelId} (Region: ${region}, UserCreds: ${!!userCredentials})`);
 
     const body = {
@@ -293,7 +310,7 @@ export class BedrockIntegrationService {
 
     const rawModel = options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
     const modelId = this.resolveModelId(rawModel);
-    const region = userCreds?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const region = this.normalizeRegion(userCreds?.region || this.configService.get<string>('AWS_REGION'));
     
     this.logger.log(`Bedrock chatWithFunctions: ${rawModel} → ${modelId} (Region: ${region}, UserCreds: ${!!userCreds})`);
 

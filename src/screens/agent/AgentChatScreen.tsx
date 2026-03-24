@@ -790,6 +790,87 @@ export function AgentChatScreen() {
     activeAssistantMessageIdRef.current = null;
   }, [t]);
 
+  const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+
+        let newContent = m.content + chunk;
+        let newThoughts = m.thoughts || [];
+
+        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
+          newThoughts = [...newThoughts, chunk.trim()];
+          return { ...m, thoughts: newThoughts };
+        }
+
+        return { ...m, content: newContent };
+      })
+    );
+  }, []);
+
+  const completeStreamingAssistantMessage = useCallback((errorMessage?: string) => {
+    const activeMessageId = activeAssistantMessageIdRef.current;
+    activeAssistantMessageIdRef.current = null;
+    setSending(false);
+
+    if (!activeMessageId) {
+      return;
+    }
+
+    setMessages((prev) => prev.map((message) => {
+      if (message.id !== activeMessageId) {
+        return message;
+      }
+      return {
+        ...message,
+        content: errorMessage || message.content,
+        streaming: false,
+        error: !!errorMessage,
+      };
+    }));
+  }, []);
+
+  const beginRealtimeVoiceTurn = useCallback((text: string) => {
+    const normalized = text.trim();
+    if (!normalized) {
+      return;
+    }
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: normalized,
+      createdAt: Date.now(),
+    };
+    const assistantMsgId = `assistant-${Date.now()}`;
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      streaming: true,
+      createdAt: Date.now(),
+    };
+
+    responseInterruptedRef.current = false;
+    activeAssistantMessageIdRef.current = assistantMsgId;
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setSending(true);
+
+    setChatSessions((prev) => {
+      const idx = prev.findIndex((session) => session.id === activeSessionId);
+      if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          label: normalized.slice(0, 24) + (normalized.length > 24 ? '…' : ''),
+        };
+        saveSessions(instanceId, updated);
+        return updated;
+      }
+      return prev;
+    });
+  }, [activeSessionId, instanceId, t]);
+
   const {
     voiceMode,
     setVoiceMode,
@@ -808,6 +889,8 @@ export function AgentChatScreen() {
     autoSpeak,
     setAutoSpeak,
     liveVoiceAvailable,
+    realtimeConnected,
+    sendRealtimeInterrupt,
     speakingMessageId,
     handleVoicePressIn,
     handleVoicePressOut,
@@ -825,10 +908,27 @@ export function AgentChatScreen() {
     duplexModeRequested,
     agentVoiceId: agentVoiceId || undefined,
     instanceName,
+    instanceId,
     isSending: sending,
+    useRealtimeChannel: true,
+    realtimeModelId: effectiveModelId,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
+    },
+    onRealtimeUserMessage: beginRealtimeVoiceTurn,
+    onRealtimeAssistantChunk: (chunk) => {
+      const activeMessageId = activeAssistantMessageIdRef.current;
+      if (!activeMessageId) {
+        return;
+      }
+      appendToStreamingMessage(activeMessageId, chunk);
+    },
+    onRealtimeAssistantResponseEnd: () => {
+      completeStreamingAssistantMessage();
+    },
+    onRealtimeError: (message) => {
+      completeStreamingAssistantMessage(message || t({ en: 'Realtime voice reply failed.', zh: '实时语音回复失败。' }));
     },
     onStopCurrentResponse: stopCurrentResponse,
     t,
@@ -847,26 +947,6 @@ export function AgentChatScreen() {
     if (!text) return;
     speakMessageText(text, message.id);
   }, [speakMessageText]);
-
-  const appendToStreamingMessage = (msgId: string, chunk: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msgId) return m;
-        
-        // Simple heuristic to detect "thought" blocks (e.g., <thought>...</thought> or [Tool Call])
-        // In a real app, this would be parsed from structured SSE events
-        let newContent = m.content + chunk;
-        let newThoughts = m.thoughts || [];
-        
-        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
-           newThoughts = [...newThoughts, chunk.trim()];
-           return { ...m, thoughts: newThoughts };
-        }
-        
-        return { ...m, content: newContent };
-      })
-    );
-  };
 
   // Build conversation history for Claude direct fallback
   const buildHistory = (msgs: Message[], newText: string) =>
@@ -1531,7 +1611,9 @@ export function AgentChatScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.voiceStatusText}>
                 {voicePhase === 'idle' && (duplexMode
-                  ? t({ en: 'Voice ready. Listening will start automatically. Say your wake phrase or tap stop to pause.', zh: '语音会话已就绪。将自动进入实时聆听；你可以直接说唤醒词，或点停止暂停。' })
+                  ? (realtimeConnected
+                    ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
+                    : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
                   : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                 {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                   ? duplexMode
@@ -1541,7 +1623,7 @@ export function AgentChatScreen() {
               {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
               {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
                 {voicePhase === 'speaking' && (voiceInteractionMode === 'tap'
-                  ? t({ en: 'Agent is speaking… tap mic anytime to interrupt', zh: '智能体正在播报… 随时点麦克风即可打断' })
+                  ? t({ en: 'Agent is speaking… just speak to interrupt immediately', zh: '智能体正在说话… 你直接开口即可立刻打断' })
                   : t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' }))}
             </Text>
             {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
@@ -1615,7 +1697,12 @@ export function AgentChatScreen() {
           voiceInteractionMode === 'tap' ? (
             <TouchableOpacity
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-              onPress={handleVoiceTapToggle}
+              onPress={() => {
+                if (duplexMode && realtimeConnected && liveListening) {
+                  sendRealtimeInterrupt();
+                }
+                void handleVoiceTapToggle();
+              }}
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>

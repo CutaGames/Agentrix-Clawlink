@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgentAccount } from '../../entities/agent-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
@@ -10,7 +10,11 @@ import { VoiceModule } from '../voice/voice.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OpenClawInstance, AgentAccount]), VoiceModule, ClaudeIntegrationModule],
+  imports: [
+    TypeOrmModule.forFeature([OpenClawInstance, AgentAccount]),
+    forwardRef(() => VoiceModule),
+    ClaudeIntegrationModule,
+  ],
   providers: [OpenClawConnectionService, TelegramBotService, LocalRelayGateway],
   controllers: [OpenClawConnectionController],
   exports: [OpenClawConnectionService, TelegramBotService],

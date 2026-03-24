@@ -11,6 +11,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {
   isLiveSpeechRecognitionAvailable,
@@ -47,10 +48,15 @@ export interface UseVoiceSessionOptions {
   isSending?: boolean;
   /** Use WebSocket realtime voice channel in duplex mode (lower latency) */
   useRealtimeChannel?: boolean;
+  realtimeModelId?: string;
   /** TTS speech rate multiplier (0.8 - 1.5, default 1.0) */
   speechRate?: number;
   /** Called to send a transcript (and optional audio attachment) as a message */
   onSendMessage: (text: string, attachments?: UploadedChatAttachment[]) => void;
+  onRealtimeUserMessage?: (text: string) => void;
+  onRealtimeAssistantChunk?: (chunk: string) => void;
+  onRealtimeAssistantResponseEnd?: () => void;
+  onRealtimeError?: (message: string) => void;
   /** Called to stop/interrupt the current streaming response */
   onStopCurrentResponse: (showHint?: boolean) => void;
   /** i18n translation function */
@@ -99,7 +105,26 @@ export interface UseVoiceSessionReturn {
 // ── Hook ───────────────────────────────────────────────────
 
 export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessionReturn {
-  const { token, language, voiceModeRequested, duplexModeRequested, agentVoiceId, instanceName, instanceId, isSending, onSendMessage, onStopCurrentResponse, t, useRealtimeChannel, speechRate } = options;
+  const {
+    token,
+    language,
+    voiceModeRequested,
+    duplexModeRequested,
+    agentVoiceId,
+    instanceName,
+    instanceId,
+    isSending,
+    onSendMessage,
+    onRealtimeUserMessage,
+    onRealtimeAssistantChunk,
+    onRealtimeAssistantResponseEnd,
+    onRealtimeError,
+    onStopCurrentResponse,
+    t,
+    useRealtimeChannel,
+    realtimeModelId,
+    speechRate,
+  } = options;
 
   // ── State ──
   const [voiceMode, setVoiceMode] = useState(!!voiceModeRequested);
@@ -143,10 +168,26 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechConsecutiveErrorsRef = useRef(0);
   const liveSpeechLastErrorTimeRef = useRef(0);
   const liveSpeechStartingRef = useRef(false);
+  const realtimeAudioSequenceRef = useRef(0);
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
   const vadRef = useRef<VADService | null>(null);
+    const persistRealtimeAudioChunk = useCallback(async (audioBase64: string, format: string) => {
+      const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+      if (!directory) {
+        throw new Error('No writable directory available for realtime audio');
+      }
+
+      realtimeAudioSequenceRef.current += 1;
+      const extension = format === 'pcm' ? 'wav' : 'mp3';
+      const fileUri = `${directory}realtime-voice-${Date.now()}-${realtimeAudioSequenceRef.current}.${extension}`;
+      await FileSystem.writeAsStringAsync(fileUri, audioBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return fileUri;
+    }, []);
+
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
@@ -222,13 +263,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setTranscriptPreview(text);
       },
       onFinalTranscript: (text) => {
-        setTranscriptPreview(text);
-        // In realtime mode, the server handles sending to LLM automatically
-        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: text.slice(0, 160) });
+        if (text) {
+          setTranscriptPreview(text);
+          addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: text.slice(0, 160) });
+        }
       },
       onAgentTextChunk: (chunk) => {
-        // Display text in chat (delegate to the same onSendMessage flow)
-        // The AgentChatScreen will need to handle realtime text display
+        if (!chunk) return;
+        onRealtimeAssistantChunk?.(chunk);
       },
       onAgentAudioChunk: (audioBase64, format) => {
         // Play audio chunk directly — skip HTTP TTS round-trip
@@ -236,10 +278,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setIsSpeaking(true);
           isSpeakingRef.current = true;
           setVoicePhase('speaking');
-          // For base64 audio, create a data URI and enqueue
-          const mimeType = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
-          const dataUri = `data:${mimeType};base64,${audioBase64}`;
-          audioPlayerRef.current.enqueue(dataUri);
+          void persistRealtimeAudioChunk(audioBase64, format)
+            .then((fileUri) => {
+              audioPlayerRef.current?.enqueue(fileUri);
+            })
+            .catch((error) => {
+              addVoiceDiagnostic('realtime-voice', 'audio-persist-failed', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+              console.warn('[RealtimeVoice] Failed to persist audio chunk:', error);
+            });
         }
       },
       onAgentSpeechStart: () => {
@@ -248,8 +296,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setVoicePhase('speaking');
       },
       onAgentResponseEnd: () => {
-        // Agent done — resume listening
         setVoicePhase('idle');
+        onRealtimeAssistantResponseEnd?.();
       },
       onToolCall: (tool, status) => {
         addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
@@ -257,6 +305,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       onError: (error) => {
         addVoiceDiagnostic('realtime-voice', 'error', { error });
         console.warn('[RealtimeVoice] Error:', error);
+        onRealtimeError?.(error);
       },
       onDisconnect: (reason) => {
         setRealtimeConnected(false);
@@ -270,7 +319,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       token,
       instanceId,
       language: voiceLanguageHint,
-      modelId: undefined, // use instance default
+      modelId: realtimeModelId,
       agentVoiceId,
     });
 
@@ -279,7 +328,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       realtimeVoiceRef.current = null;
       setRealtimeConnected(false);
     };
-  }, [useRealtimeChannel, duplexMode, token, instanceId, agentVoiceId, voiceLanguageHint]);
+  }, [
+    agentVoiceId,
+    duplexMode,
+    instanceId,
+    onRealtimeAssistantChunk,
+    onRealtimeAssistantResponseEnd,
+    onRealtimeError,
+    persistRealtimeAudioChunk,
+    realtimeModelId,
+    token,
+    useRealtimeChannel,
+    voiceLanguageHint,
+  ]);
 
   // ── Live Speech ──
 
@@ -581,6 +642,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) {
             stopSpeaking();
+            realtimeVoiceRef.current?.sendInterrupt();
           }
         },
         onInterimResult: (transcript) => {
@@ -598,9 +660,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           stopLiveSpeech(true, false);
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) stopSpeaking();
+          realtimeVoiceRef.current?.sendInterrupt();
           onStopCurrentResponse(true);
           setVoicePhase('thinking');
           setTimeout(() => {
+            if (useRealtimeChannel && realtimeVoiceRef.current?.isConnected) {
+              onRealtimeUserMessage?.(normalized);
+              realtimeVoiceRef.current.sendText(normalized);
+              return;
+            }
             onSendMessage(normalized);
           }, 60);
         },
@@ -638,7 +706,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } finally {
       liveSpeechStartingRef.current = false;
     }
-  }, [agentVoiceId, instanceName, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
+  }, [
+    agentVoiceId,
+    instanceName,
+    onRealtimeUserMessage,
+    onSendMessage,
+    onStopCurrentResponse,
+    stopLiveSpeech,
+    stopSpeaking,
+    t,
+    useRealtimeChannel,
+    voiceLanguageHint,
+  ]);
 
   // Keep startLiveSpeechInternal ref in sync for callbacks
   useEffect(() => { startLiveSpeechInternalRef.current = startLiveSpeechInternal; }, [startLiveSpeechInternal]);
