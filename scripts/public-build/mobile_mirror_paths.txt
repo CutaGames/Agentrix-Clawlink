@@ -17,6 +17,7 @@ android/gradlew
 android/gradlew.bat
 android/settings.gradle
 android/app/build.gradle
+android/app/debug.keystore
 android/app/proguard-rules.pro
 android/app/src
 src
