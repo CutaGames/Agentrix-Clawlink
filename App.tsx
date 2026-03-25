@@ -74,11 +74,11 @@ function AppNavigator() {
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
+  const hasLocalModel = hasLocalWakeWordModel(wakeWordConfig.localModel);
   const backgroundWakeWordEnabled = Platform.OS === 'android'
     && isAndroidBackgroundWakeWordAvailable()
     && isAuthenticated
-    && wakeWordConfig.enabled
-    && hasLocalWakeWordModel(wakeWordConfig.localModel);
+    && wakeWordConfig.enabled;
   const backgroundWakeWordConfigRef = useRef({
     enabled: false,
     displayName: '',
@@ -127,7 +127,7 @@ function AppNavigator() {
 
       if (state === 'background' || state === 'inactive') {
         const payload = backgroundWakeWordConfigRef.current;
-        if (!payload.enabled || !payload.model) {
+        if (!payload.enabled) {
           void stopAndroidBackgroundWakeWordService().catch(() => {});
           return;
         }

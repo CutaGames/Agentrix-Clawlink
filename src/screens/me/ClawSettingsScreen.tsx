@@ -61,7 +61,7 @@ export function ClawSettingsScreen() {
       return;
     }
     void syncAndroidBackgroundWakeWordConfig({
-      enabled: wakeWordConfig.enabled && hasLocalWakeWordModel(wakeWordConfig.localModel),
+      enabled: wakeWordConfig.enabled,
       displayName: wakeWordConfig.displayName,
       threshold: thresholdFromSensitivity(wakeWordConfig.sensitivity),
       activeInstanceId: null,
