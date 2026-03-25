@@ -92,6 +92,25 @@ export function ClawSettingsScreen() {
     return wakeWordEngineOptions.find((option) => option.id === wakeWordConfig.engine)?.desc ?? wakeWordEngineOptions[0].desc;
   }, [wakeWordConfig.engine, wakeWordEngineOptions]);
 
+  const handleToggleWakeWord = () => {
+    const nextEnabled = !wakeWordConfig.enabled;
+    setWakeWordConfig({ enabled: nextEnabled });
+    if (
+      nextEnabled
+      && Platform.OS === 'android'
+      && isAndroidBackgroundWakeWordAvailable()
+      && !hasLocalModel
+    ) {
+      Alert.alert(
+        t({ en: 'Local sample required for Android background wake word', zh: 'Android 后台唤醒需要先录制本地样本' }),
+        t({
+          en: 'The floating ball can stay on screen after exit, but background wake-word listening only starts after you record at least one local sample.',
+          zh: '退出 App 后悬浮球可以保留，但后台热词监听只有在你至少录制一条本地样本后才会开始。未录样时仍可点击悬浮球进入语音页。',
+        }),
+      );
+    }
+  };
+
   const handleRecordLocalSample = async () => {
     setLocalWakeWordBusy(true);
     setLocalWakeWordStatus(t({ en: 'Listening for one wake-word sample...', zh: '正在录制一条本地唤醒词样本，请对着手机说出唤醒词...' }));
@@ -279,7 +298,7 @@ export function ClawSettingsScreen() {
 
           <TouchableOpacity
             style={[styles.toggleRow, wakeWordConfig.enabled && styles.toggleRowActive]}
-            onPress={() => setWakeWordConfig({ enabled: !wakeWordConfig.enabled })}
+            onPress={handleToggleWakeWord}
           >
             <Text style={styles.toggleLabel}>{t({ en: 'Enable wake word', zh: '开启唤醒词' })}</Text>
             <Text style={[styles.toggleValue, wakeWordConfig.enabled && styles.toggleValueActive]}>
@@ -349,9 +368,14 @@ export function ClawSettingsScreen() {
               <Text style={styles.subsectionTitle}>{t({ en: 'Android background wake word', zh: 'Android 后台唤醒' })}</Text>
               <Text style={styles.modeCurrentDesc}>
                 {t({
-                  en: 'When the app goes to background, Android can keep a floating ball and continue local wake-word listening through a foreground service.',
-                  zh: '当 App 退到后台后，Android 会通过前台服务保留系统悬浮球，并继续监听本地唤醒词。',
+                  en: 'When the app goes to background, Android can keep a floating ball through a foreground service. Background wake-word listening starts only after at least one local sample has been recorded.',
+                  zh: '当 App 退到后台后，Android 会通过前台服务保留系统悬浮球。后台热词监听只有在至少录制一条本地样本后才会开始。',
                 })}
+              </Text>
+              <Text style={styles.modeCurrentDesc}>
+                {hasLocalModel
+                  ? t({ en: 'Background wake word is eligible on this device once overlay permission is granted.', zh: '当前设备在授权悬浮窗后，已经具备后台热词唤醒条件。' })
+                  : t({ en: 'Without a recorded local sample, Android background mode only keeps the floating ball visible. Tap it to enter voice.', zh: '如果还没录制本地样本，Android 后台模式只会保留悬浮球显示，点击后进入语音页，但不会自动热词唤醒。' })}
               </Text>
               <Text style={styles.modeCurrentDesc}>
                 {overlayPermissionGranted
@@ -424,7 +448,7 @@ export function ClawSettingsScreen() {
           <Text style={styles.modeCurrentDesc}>
             {hasLocalModel
               ? t({ en: 'The app can use your on-device local wake-word model in the foreground.', zh: '当前前台可以直接使用端侧本地唤醒词模型。' })
-              : t({ en: 'No local model yet. After permissions are granted, the app will fall back to system wake-phrase listening.', zh: '当前还没有本地模型。授予权限后，App 会先退回到系统唤醒短语监听。' })}
+              : t({ en: 'No local model yet. Foreground mode can still fall back to system wake-phrase listening, but Android background wake word will not start until you record a sample.', zh: '当前还没有本地模型。前台仍可退回到系统唤醒短语监听，但 Android 后台热词唤醒要等录制样本后才会开始。' })}
           </Text>
 
           <TouchableOpacity
