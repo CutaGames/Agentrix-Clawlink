@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
 import { API_BASE, APP_ENV } from '../config/env';
+import type { LocalWakeWordModel, WakeWordEngine } from '../services/localWakeWord.service';
 
 type Environment = 'sandbox' | 'production';
 
@@ -14,12 +15,11 @@ export type ModelId = string;
 
 export interface WakeWordSettings {
   enabled: boolean;
-  accessKey: string;
-  builtInKeywords: string[];
-  customKeywordPaths: string[];
+  engine: WakeWordEngine;
   fallbackPhrases: string[];
   displayName: string;
   sensitivity: number;
+  localModel: LocalWakeWordModel | null;
 }
 
 export interface ModelOption {
@@ -90,9 +90,7 @@ const DEFAULT_ENVIRONMENT: Environment = APP_ENV === 'production' ? 'production'
 
 const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   enabled: true,
-  accessKey: '',
-  builtInKeywords: [],
-  customKeywordPaths: [],
+  engine: 'auto',
   fallbackPhrases: [
     'Hey Agentrix',
     'Hi Agentrix',
@@ -107,6 +105,7 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   ],
   displayName: 'Hey Agentrix',
   sensitivity: 0.65,
+  localModel: null,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -170,9 +169,9 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 2) {
+        if (!persistedState || version >= 3) {
           return persistedState;
         }
 
@@ -182,6 +181,10 @@ export const useSettingsStore = create<SettingsState>()(
           airdropNotifications: false,
           earningsNotifications: false,
           paymentNotifications: false,
+          wakeWordConfig: {
+            ...DEFAULT_WAKE_WORD_CONFIG,
+            ...(persistedState.wakeWordConfig || {}),
+          },
         };
       },
     }

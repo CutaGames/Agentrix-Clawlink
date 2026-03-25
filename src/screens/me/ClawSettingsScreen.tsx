@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -8,6 +8,21 @@ import type { UiComplexity } from '../../stores/settingsStore';
 import { useI18n, type Language } from '../../stores/i18nStore';
 import { resolveMobileWakeWordConfig } from '../../config/wakeWord';
 import { clearVoiceDiagnostics, getVoiceDiagnosticsCount, getVoiceDiagnosticsText } from '../../services/voiceDiagnostics';
+import {
+  getAndroidOverlayPermissionStatus,
+  requestAndroidOverlayPermission,
+  syncAndroidBackgroundWakeWordConfig,
+  isAndroidBackgroundWakeWordAvailable,
+} from '../../services/androidBackgroundWakeWord.service';
+import {
+  appendLocalWakeWordSample,
+  captureLocalWakeWordSample,
+  getLocalWakeWordSampleCount,
+  hasLocalWakeWordModel,
+  runLocalWakeWordSelfCheck,
+  thresholdFromSensitivity,
+  type WakeWordEngine,
+} from '../../services/localWakeWord.service';
 
 export function ClawSettingsScreen() {
   const navigation = useNavigation();
@@ -22,6 +37,149 @@ export function ClawSettingsScreen() {
   const { language, setLanguage, t } = useI18n();
   const effectiveWakeWordConfig = resolveMobileWakeWordConfig(wakeWordConfig);
   const diagnosticsCount = getVoiceDiagnosticsCount();
+  const [localWakeWordBusy, setLocalWakeWordBusy] = useState(false);
+  const [localWakeWordStatus, setLocalWakeWordStatus] = useState('');
+  const [overlayPermissionGranted, setOverlayPermissionGranted] = useState<boolean | null>(null);
+
+  const localWakeWordSampleCount = useMemo(
+    () => getLocalWakeWordSampleCount(wakeWordConfig.localModel),
+    [wakeWordConfig.localModel],
+  );
+  const hasLocalModel = hasLocalWakeWordModel(wakeWordConfig.localModel);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isAndroidBackgroundWakeWordAvailable()) {
+      return;
+    }
+    void getAndroidOverlayPermissionStatus()
+      .then(setOverlayPermissionGranted)
+      .catch(() => setOverlayPermissionGranted(false));
+  }, [wakeWordConfig.enabled, wakeWordConfig.localModel]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isAndroidBackgroundWakeWordAvailable()) {
+      return;
+    }
+    void syncAndroidBackgroundWakeWordConfig({
+      enabled: wakeWordConfig.enabled && hasLocalWakeWordModel(wakeWordConfig.localModel),
+      displayName: wakeWordConfig.displayName,
+      threshold: thresholdFromSensitivity(wakeWordConfig.sensitivity),
+      activeInstanceId: null,
+      activeInstanceName: null,
+      model: wakeWordConfig.localModel,
+    }).catch(() => {});
+  }, [hasLocalModel, wakeWordConfig.displayName, wakeWordConfig.enabled, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
+
+  const wakeWordEngineOptions: { id: WakeWordEngine; label: string; desc: string }[] = [
+    {
+      id: 'auto',
+      label: t({ en: 'Auto', zh: '自动' }),
+      desc: t({ en: 'Prefer the device-local model, then system fallback', zh: '优先端侧本地模型，失败后回退到系统识别' }),
+    },
+    {
+      id: 'local-template',
+      label: t({ en: 'Local', zh: '本地模型' }),
+      desc: t({ en: 'Template model trained on this device only', zh: '当前设备本地训练的模板模型' }),
+    },
+    {
+      id: 'system-speech',
+      label: t({ en: 'System', zh: '系统识别' }),
+      desc: t({ en: 'Use built-in speech fallback', zh: '使用系统语音识别兜底' }),
+    },
+  ];
+
+  const currentWakeEngineDescription = useMemo(() => {
+    return wakeWordEngineOptions.find((option) => option.id === wakeWordConfig.engine)?.desc ?? wakeWordEngineOptions[0].desc;
+  }, [wakeWordConfig.engine, wakeWordEngineOptions]);
+
+  const handleRecordLocalSample = async () => {
+    setLocalWakeWordBusy(true);
+    setLocalWakeWordStatus(t({ en: 'Listening for one wake-word sample...', zh: '正在录制一条本地唤醒词样本，请对着手机说出唤醒词...' }));
+    try {
+      const sample = await captureLocalWakeWordSample();
+      const nextModel = appendLocalWakeWordSample(
+        wakeWordConfig.localModel,
+        sample,
+        wakeWordConfig.displayName,
+      );
+      setWakeWordConfig({
+        localModel: nextModel,
+        engine: 'local-template',
+      });
+      setLocalWakeWordStatus(
+        t({
+          en: `Saved sample ${nextModel.samples.length}. Local wake word is ready.`,
+          zh: `已保存第 ${nextModel.samples.length} 条样本，本地唤醒词已可用。`,
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLocalWakeWordStatus(
+        t({
+          en: `Sample capture failed: ${message}`,
+          zh: `样本录制失败：${message}`,
+        }),
+      );
+      Alert.alert(t({ en: 'Local wake-word sample failed', zh: '本地唤醒词录制失败' }), message);
+    } finally {
+      setLocalWakeWordBusy(false);
+    }
+  };
+
+  const handleRunLocalSelfCheck = async () => {
+    if (!wakeWordConfig.localModel) {
+      Alert.alert(
+        t({ en: 'Model required', zh: '需要先训练模型' }),
+        t({ en: 'Record at least one local wake-word sample first.', zh: '请先录制至少一条本地唤醒词样本。' }),
+      );
+      return;
+    }
+
+    setLocalWakeWordBusy(true);
+    setLocalWakeWordStatus(t({ en: 'Self-check is listening...', zh: '本地模型自检中，请再说一次唤醒词...' }));
+    try {
+      const result = await runLocalWakeWordSelfCheck(
+        wakeWordConfig.localModel,
+        thresholdFromSensitivity(wakeWordConfig.sensitivity),
+      );
+      setLocalWakeWordStatus(
+        t({
+          en: `Self-check score ${result.similarity.toFixed(3)} / threshold ${result.threshold.toFixed(3)}`,
+          zh: `自检分数 ${result.similarity.toFixed(3)} / 阈值 ${result.threshold.toFixed(3)}`,
+        }),
+      );
+      Alert.alert(
+        t({ en: 'Local wake-word self-check', zh: '本地唤醒词自检' }),
+        result.matched
+          ? t({ en: `Matched successfully. Score ${result.similarity.toFixed(3)}.`, zh: `匹配成功，分数 ${result.similarity.toFixed(3)}。` })
+          : t({ en: `Not matched. Score ${result.similarity.toFixed(3)}. Try recording more samples or lowering sensitivity.`, zh: `未匹配成功，分数 ${result.similarity.toFixed(3)}。建议补录更多样本，或适当降低灵敏度门槛。` }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLocalWakeWordStatus(t({ en: `Self-check failed: ${message}`, zh: `自检失败：${message}` }));
+      Alert.alert(t({ en: 'Local self-check failed', zh: '本地自检失败' }), message);
+    } finally {
+      setLocalWakeWordBusy(false);
+    }
+  };
+
+  const handleClearLocalModel = () => {
+    Alert.alert(
+      t({ en: 'Clear local model', zh: '清空本地模型' }),
+      t({ en: 'This removes all recorded wake-word samples on this device.', zh: '这会删除当前设备上的所有本地唤醒词样本。' }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Clear', zh: '清空' }),
+          style: 'destructive',
+          onPress: () => {
+            setWakeWordConfig({ localModel: null, engine: wakeWordConfig.engine === 'local-template' ? 'auto' : wakeWordConfig.engine });
+            setLocalWakeWordStatus(t({ en: 'Local wake-word samples were cleared.', zh: '本地唤醒词样本已清空。' }));
+          },
+        },
+      ],
+    );
+  };
 
   const uiModes: { id: UiComplexity; icon: string; label: string; desc: string }[] = [
     { id: 'beginner', icon: '🌱', label: t({ en: 'Beginner', zh: '入门' }), desc: t({ en: 'Chat, basic skills, simple setup', zh: '聊天、基础技能、简化设置' }) },
@@ -116,7 +274,7 @@ export function ClawSettingsScreen() {
         <Text style={styles.groupTitle}>{t({ en: 'Wake Word', zh: '唤醒词' })}</Text>
         <View style={styles.modeCard}>
           <Text style={styles.modeDesc}>
-            {t({ en: 'Out of the box the app uses system speech recognition to listen for your wake phrase. If you add a Picovoice access key later, the runtime can switch to Picovoice offline detection.', zh: '默认开箱即用时，App 会使用系统语音识别监听唤醒短语；如果后续补充 Picovoice AccessKey，则可切换为 Picovoice 离线检测。' })}
+            {t({ en: 'The mobile app now uses a device-local wake-word model first, with system speech recognition as fallback.', zh: '移动端现在默认优先使用端侧本地唤醒词模型，系统语音识别仅作为兜底。' })}
           </Text>
 
           <TouchableOpacity
@@ -129,14 +287,97 @@ export function ClawSettingsScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TextInput
-            value={wakeWordConfig.accessKey}
-            onChangeText={(text) => setWakeWordConfig({ accessKey: text })}
-            placeholder={t({ en: 'Optional Picovoice access key', zh: '可选的 Picovoice AccessKey' })}
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            style={styles.textInput}
-          />
+          <Text style={styles.subsectionTitle}>{t({ en: 'Wake-word engine', zh: '唤醒词引擎' })}</Text>
+          <View style={styles.modeRow}>
+            {wakeWordEngineOptions.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                style={[styles.modeBtn, styles.engineBtn, wakeWordConfig.engine === option.id && styles.modeBtnActive]}
+                onPress={() => setWakeWordConfig({ engine: option.id })}
+              >
+                <Text style={[styles.modeLabel, wakeWordConfig.engine === option.id && styles.modeLabelActive]}>{option.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.modeCurrentDesc}>{currentWakeEngineDescription}</Text>
+
+          <Text style={styles.subsectionTitle}>{t({ en: 'Local wake-word model', zh: '本地唤醒词模型' })}</Text>
+          <Text style={styles.modeCurrentDesc}>
+            {t({
+              en: `Saved samples: ${localWakeWordSampleCount}. Recommended: 3.`,
+              zh: `已保存样本：${localWakeWordSampleCount} 条，建议至少录制 3 条。`,
+            })}
+          </Text>
+          <Text style={styles.modeCurrentDesc}>
+            {hasLocalModel
+              ? t({ en: 'A trained local model is available on this device.', zh: '当前设备已存在可用的本地模型。' })
+              : t({ en: 'No local model yet. Record one sample to enable device-local wake word.', zh: '当前还没有本地模型，录制一条样本后即可启用端侧唤醒。' })}
+          </Text>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.actionBtn, localWakeWordBusy && styles.actionBtnDisabled]}
+              onPress={() => void handleRecordLocalSample()}
+              disabled={localWakeWordBusy}
+            >
+              <Text style={styles.actionBtnText}>
+                {localWakeWordBusy
+                  ? t({ en: 'Listening...', zh: '录制中...' })
+                  : t({ en: 'Record sample', zh: '录制样本' })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, (!hasLocalModel || localWakeWordBusy) && styles.actionBtnDisabled]}
+              onPress={() => void handleRunLocalSelfCheck()}
+              disabled={!hasLocalModel || localWakeWordBusy}
+            >
+              <Text style={styles.actionBtnText}>{t({ en: 'Self-check', zh: '自检' })}</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, !hasLocalModel && styles.actionBtnDisabled]}
+            onPress={handleClearLocalModel}
+            disabled={!hasLocalModel}
+          >
+            <Text style={styles.secondaryBtnText}>{t({ en: 'Clear local model', zh: '清空本地模型' })}</Text>
+          </TouchableOpacity>
+          {!!localWakeWordStatus && (
+            <Text style={styles.localStatusText}>{localWakeWordStatus}</Text>
+          )}
+
+          {Platform.OS === 'android' && (
+            <>
+              <Text style={styles.subsectionTitle}>{t({ en: 'Android background wake word', zh: 'Android 后台唤醒' })}</Text>
+              <Text style={styles.modeCurrentDesc}>
+                {t({
+                  en: 'When the app goes to background, Android can keep a floating ball and continue local wake-word listening through a foreground service.',
+                  zh: '当 App 退到后台后，Android 会通过前台服务保留系统悬浮球，并继续监听本地唤醒词。',
+                })}
+              </Text>
+              <Text style={styles.modeCurrentDesc}>
+                {overlayPermissionGranted
+                  ? t({ en: 'Overlay permission: granted', zh: '悬浮窗权限：已授权' })
+                  : t({ en: 'Overlay permission: required for the floating ball after exit', zh: '悬浮窗权限：退出后继续显示悬浮球必须授权' })}
+              </Text>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => {
+                  void requestAndroidOverlayPermission()
+                    .then(() => getAndroidOverlayPermissionStatus())
+                    .then(setOverlayPermissionGranted)
+                    .catch((error) => {
+                      const message = error instanceof Error ? error.message : String(error);
+                      Alert.alert(t({ en: 'Permission request failed', zh: '权限申请失败' }), message);
+                    });
+                }}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  {overlayPermissionGranted
+                    ? t({ en: 'Re-open overlay permission page', zh: '重新打开悬浮窗权限页' })
+                    : t({ en: 'Grant overlay permission', zh: '授权悬浮窗权限' })}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           <TextInput
             value={wakeWordConfig.displayName}
@@ -150,24 +391,6 @@ export function ClawSettingsScreen() {
             value={wakeWordConfig.fallbackPhrases.join(', ')}
             onChangeText={(text) => setWakeWordConfig({ fallbackPhrases: text.split(',').map((item) => item.trim()).filter(Boolean) })}
             placeholder={t({ en: 'System wake phrases, comma separated', zh: '系统唤醒短语，逗号分隔' })}
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            style={styles.textInput}
-          />
-
-          <TextInput
-            value={wakeWordConfig.builtInKeywords.join(', ')}
-            onChangeText={(text) => setWakeWordConfig({ builtInKeywords: text.split(',').map((item) => item.trim()).filter(Boolean) })}
-            placeholder={t({ en: 'Picovoice built-in keywords, comma separated', zh: 'Picovoice 内置唤醒词，逗号分隔' })}
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            style={styles.textInput}
-          />
-
-          <TextInput
-            value={wakeWordConfig.customKeywordPaths.join(', ')}
-            onChangeText={(text) => setWakeWordConfig({ customKeywordPaths: text.split(',').map((item) => item.trim()).filter(Boolean) })}
-            placeholder={t({ en: 'Custom .ppn path(s), comma separated', zh: '自定义 .ppn 路径，可填多个' })}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             style={styles.textInput}
@@ -193,13 +416,15 @@ export function ClawSettingsScreen() {
           <Text style={styles.modeCurrentDesc}>
             {t({ en: 'Current runtime:', zh: '当前运行配置：' })}{' '}
             {effectiveWakeWordConfig.enabled
-              ? `${effectiveWakeWordConfig.displayName} · ${effectiveWakeWordConfig.accessKey ? (effectiveWakeWordConfig.customKeywordPaths.length > 0 ? t({ en: 'Picovoice custom model', zh: 'Picovoice 自定义模型' }) : effectiveWakeWordConfig.builtInKeywords.join(', ')) : effectiveWakeWordConfig.fallbackPhrases.join(', ')}`
+              ? `${effectiveWakeWordConfig.displayName} · ${effectiveWakeWordConfig.engine === 'local-template'
+                ? t({ en: `Local model (${localWakeWordSampleCount} samples)`, zh: `本地模型（${localWakeWordSampleCount} 条样本）` })
+                : effectiveWakeWordConfig.fallbackPhrases.join(', ')}`
               : t({ en: 'disabled', zh: '已关闭' })}
           </Text>
           <Text style={styles.modeCurrentDesc}>
-            {effectiveWakeWordConfig.accessKey
-              ? t({ en: 'Picovoice key detected. Empty fields still fall back to app.json or EXPO_PUBLIC_* env vars.', zh: '已检测到 Picovoice key。空字段仍会回退到 app.json 或 EXPO_PUBLIC_* 环境变量。' })
-              : t({ en: 'No Picovoice key required. The packaged build will fall back to system wake-phrase listening after permissions are granted.', zh: '无需 Picovoice key。授予权限后，打包版本会自动回退到系统唤醒短语监听。' })}
+            {hasLocalModel
+              ? t({ en: 'The app can use your on-device local wake-word model in the foreground.', zh: '当前前台可以直接使用端侧本地唤醒词模型。' })
+              : t({ en: 'No local model yet. After permissions are granted, the app will fall back to system wake-phrase listening.', zh: '当前还没有本地模型。授予权限后，App 会先退回到系统唤醒短语监听。' })}
           </Text>
 
           <TouchableOpacity
@@ -312,6 +537,22 @@ const styles = StyleSheet.create({
   modeLabel: { fontSize: 11, fontWeight: '600', color: colors.textMuted },
   modeLabelActive: { color: colors.accent },
   modeCurrentDesc: { fontSize: 12, color: colors.textSecondary, paddingTop: 2 },
+  subsectionTitle: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginTop: 2 },
+  engineBtn: { flexBasis: 0 },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  actionBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent + '18',
+  },
+  actionBtnDisabled: { opacity: 0.45 },
+  actionBtnText: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  localStatusText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
   textInput: {
     backgroundColor: colors.bgSecondary,
     borderWidth: 1,

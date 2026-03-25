@@ -17,8 +17,8 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { resolveMobileWakeWordConfig } from '../config/wakeWord';
-import { WakeWordService } from '../services/wakeWord.service';
 import { SpeechWakeWordService } from '../services/speechWakeWord.service';
+import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity } from '../services/localWakeWord.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
@@ -72,7 +72,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     return route.name;
   });
 
-  const hideOnScreens = ['AgentChat', 'VoiceChat'];
+  const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
   const shouldHide = hideOnScreens.includes(currentRouteName);
   const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
@@ -81,7 +81,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useRef(false);
-  const wakeListenerRef = useRef<WakeWordService | SpeechWakeWordService | null>(null);
+  const wakeListenerRef = useRef<SpeechWakeWordService | LocalWakeWordService | null>(null);
   const navigatingToChatRef = useRef(false);
   const activateVoiceExperienceRef = useRef<() => void>(() => {});
   const lastWakeWordAlertRef = useRef<{ message: string; shownAt: number }>({ message: '', shownAt: 0 });
@@ -350,9 +350,17 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       activateVoiceExperienceRef.current();
     };
 
+    const handleE2ELocalWakeWord = () => {
+      addVoiceDiagnostic('floating-ball', 'e2e-local-wake-word-triggered');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      activateVoiceExperienceRef.current();
+    };
+
     window.addEventListener('agentrix:e2e-wake-word', handleE2EWakeWord);
+    window.addEventListener('agentrix:e2e-local-wake-word', handleE2ELocalWakeWord);
     return () => {
       window.removeEventListener('agentrix:e2e-wake-word', handleE2EWakeWord);
+      window.removeEventListener('agentrix:e2e-local-wake-word', handleE2ELocalWakeWord);
     };
   }, []);
 
@@ -366,9 +374,15 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       return;
     }
 
-    const shouldUsePicovoice = Boolean(wakeWordConfig.accessKey) && WakeWordService.isAvailable();
-    const listener = shouldUsePicovoice
-      ? new WakeWordService()
+    const preferredEngine = wakeWordConfig.engine ?? 'auto';
+    const localModelAvailable = hasLocalWakeWordModel(wakeWordConfig.localModel);
+    const shouldUseLocalTemplate =
+      (preferredEngine === 'local-template' || preferredEngine === 'auto')
+      && localModelAvailable
+      && LocalWakeWordService.isAvailable();
+
+    const listener = shouldUseLocalTemplate
+      ? new LocalWakeWordService()
       : SpeechWakeWordService.isAvailable()
         ? new SpeechWakeWordService()
         : null;
@@ -382,16 +396,23 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
     void (async () => {
       try {
-      if (listener instanceof WakeWordService) {
+      if (listener instanceof LocalWakeWordService) {
         await listener.init({
-          accessKey: wakeWordConfig.accessKey,
-          builtInKeywords: wakeWordConfig.customKeywordPaths.length > 0 ? undefined : wakeWordConfig.builtInKeywords,
-          keywordPaths: wakeWordConfig.customKeywordPaths.length > 0 ? wakeWordConfig.customKeywordPaths : undefined,
-          sensitivity: wakeWordConfig.sensitivity,
+          model: wakeWordConfig.localModel!,
+          threshold: thresholdFromSensitivity(wakeWordConfig.sensitivity),
           onWakeWord: () => {
             if (!cancelled) {
               void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
               activateVoiceExperienceRef.current();
+            }
+          },
+          onError: (err) => {
+            addVoiceDiagnostic('floating-ball', 'local-wake-word-error', { message: err?.message });
+            const rawMessage = err?.message || '';
+            if (/permission denied|permission/i.test(rawMessage)) {
+              showWakeWordGuidance(language === 'zh'
+                ? '本地唤醒词需要麦克风权限。请先到系统设置里授权。'
+                : 'Local wake word needs microphone permission. Enable it in system settings first.');
             }
           },
         });
@@ -442,11 +463,10 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   }, [
     language,
     shouldHide,
-    wakeWordConfig.accessKey,
-    wakeWordConfig.builtInKeywords,
-    wakeWordConfig.customKeywordPaths,
     wakeWordConfig.enabled,
+    wakeWordConfig.engine,
     wakeWordConfig.fallbackPhrases,
+    wakeWordConfig.localModel,
     wakeWordConfig.sensitivity,
     showWakeWordGuidance,
   ]);

@@ -142,14 +142,8 @@
       ]
     ],
     "extra": {
-      "picovoiceAccessKey": "",
       "wakeWord": {
         "enabled": true,
-        "accessKey": "",
-        "builtInKeywords": [
-          "picovoice"
-        ],
-        "customKeywordPaths": [],
         "fallbackPhrases": [
           "Hey Agentrix",
           "Hi Agentrix",
