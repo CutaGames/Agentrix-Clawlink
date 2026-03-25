@@ -9,5 +9,14 @@ tsconfig.json
 .gitignore
 Agentrix Logo
 assets
-android
+android/.gitignore
+android/build.gradle
+android/gradle
+android/gradle.properties
+android/gradlew
+android/gradlew.bat
+android/settings.gradle
+android/app/build.gradle
+android/app/proguard-rules.pro
+android/app/src
 src
