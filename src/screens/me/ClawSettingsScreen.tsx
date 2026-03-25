@@ -14,6 +14,8 @@ export function ClawSettingsScreen() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const setUiComplexity = useSettingsStore((s) => s.setUiComplexity);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const toggleNotifications = useSettingsStore((s) => s.toggleNotifications);
   const wakeWordConfig = useSettingsStore((s) => s.wakeWordConfig);
   const setWakeWordConfig = useSettingsStore((s) => s.setWakeWordConfig);
   const resetWakeWordConfig = useSettingsStore((s) => s.resetWakeWordConfig);
@@ -31,7 +33,7 @@ export function ClawSettingsScreen() {
     {
       title: t({ en: 'Agent', zh: '智能体' }),
       items: [
-        { id: 'notify', icon: '🔔', label: t({ en: 'Notifications', zh: '通知' }), value: t({ en: 'On', zh: '开启' }) },
+        { id: 'notify', icon: '🔔', label: t({ en: 'Notifications', zh: '通知' }), value: notificationsEnabled ? t({ en: 'On', zh: '开启' }) : t({ en: 'Off', zh: '关闭' }) },
         { id: 'theme', icon: '🎨', label: t({ en: 'Theme', zh: '主题' }), value: t({ en: 'Dark', zh: '深色' }) },
       ],
     },
@@ -221,6 +223,10 @@ export function ClawSettingsScreen() {
                 key={item.id}
                 style={[styles.item, i < group.items.length - 1 && styles.itemBorder]}
                 onPress={() => {
+                  if (item.id === 'notify') {
+                    toggleNotifications(!notificationsEnabled);
+                    return;
+                  }
                   if (item.id === 'api') {
                     navigation.navigate('ApiKeys' as never);
                     return;

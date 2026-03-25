@@ -8,6 +8,7 @@ import { MeStackNavigator } from './MeStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useI18n } from '../stores/i18nStore';
+import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -37,9 +38,11 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 export function MainTabNavigator() {
   const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const initialRouteName = isVoiceUiE2EEnabled() ? 'Agent' : 'Discover';
+
   return (
     <Tab.Navigator id={undefined}
-      initialRouteName="Discover"
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {

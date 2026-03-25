@@ -9,25 +9,14 @@ import { useAuthStore } from './src/stores/authStore';
 import { setApiConfig, loadTokenFromStorage } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
-import { RootNavigator } from './src/navigation/RootNavigator';
 import { colors } from './src/theme/colors';
+import { useSettingsStore } from './src/stores/settingsStore';
 import { useNotificationStore } from './src/stores/notificationStore';
 import { startNotificationPolling, stopNotificationPolling } from './src/services/realtime.service';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { checkAndPromptUpdate, silentBackgroundUpdate } from './src/services/appUpdate.service';
 import { migrateFromAsyncStorage } from './src/stores/mmkvStorage';
-
-// Configure how incoming notifications are handled while app is foregrounded
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
-
+import { applyVoiceUiE2EBootstrap, isVoiceUiE2EEnabled } from './src/testing/e2e';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,20 +57,18 @@ async function registerForPushNotifications(): Promise<string | null> {
 
 function AppNavigator() {
   const isInitialized = useAuthStore((s) => s.isInitialized);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const token = useAuthStore((s) => s.token);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
   const { setAuth, setInitialized, clearAuth } = useAuthStore.getState();
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
+  const isVoiceUiE2E = isVoiceUiE2EEnabled();
 
   useEffect(() => {
-    // Foreground notification listener �?adds to in-app notification store
-    notifSubRef.current = Notifications.addNotificationReceivedListener((notification) => {
-      const { addNotification } = useNotificationStore.getState();
-      addNotification({
-        type: (notification.request.content.data?.type ?? 'system') as any,
-        title: notification.request.content.title ?? 'Notification',
-        body: notification.request.content.body ?? '',
-        data: (notification.request.content.data as Record<string, any>) ?? {},
-      });
-    });
+    if (isVoiceUiE2E && applyVoiceUiE2EBootstrap()) {
+      setInitialized(true);
+      return;
+    }
 
     const restoreSession = async () => {
       try {
@@ -138,15 +125,10 @@ function AppNavigator() {
               console.warn('Failed to restore instances during session restore:', instanceErr);
             }
 
-            // Start notification polling and register push token after successful auth
-            startNotificationPolling(token);
-            const pushToken = await registerForPushNotifications();
-            if (pushToken) {
-              useNotificationStore.getState().setPushToken(pushToken);
-            }
           } else {
             await clearAuth();
             stopNotificationPolling();
+            useNotificationStore.getState().setPushToken(null);
           }
         } catch (e: any) {
           const msg = e?.message || '';
@@ -154,12 +136,10 @@ function AppNavigator() {
             // Token expired or revoked �?force re-login
             await clearAuth();
             stopNotificationPolling();
+            useNotificationStore.getState().setPushToken(null);
           } else {
             // Network error or 5xx �?keep user logged in with last cached session
             console.warn('Session validation network error (using cached session):', msg);
-            if (cachedState.isAuthenticated && cachedState.user) {
-              startNotificationPolling(token);
-            }
           }
         }
       } catch (e) {
@@ -182,13 +162,85 @@ function AppNavigator() {
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
-      notifSubRef.current?.remove();
       stopNotificationPolling();
       appStateSub.remove();
     };
-  }, []);
+  }, [clearAuth, isVoiceUiE2E, setAuth, setInitialized]);
+
+  useEffect(() => {
+    if (isVoiceUiE2E) {
+      return;
+    }
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: notificationsEnabled,
+        shouldShowBanner: notificationsEnabled,
+        shouldShowList: notificationsEnabled,
+        shouldPlaySound: notificationsEnabled,
+        shouldSetBadge: notificationsEnabled,
+      }),
+    });
+  }, [isVoiceUiE2E, notificationsEnabled]);
+
+  useEffect(() => {
+    if (isVoiceUiE2E) {
+      return;
+    }
+
+    notifSubRef.current?.remove();
+    notifSubRef.current = null;
+
+    if (!notificationsEnabled) {
+      return;
+    }
+
+    notifSubRef.current = Notifications.addNotificationReceivedListener((notification) => {
+      const { addNotification } = useNotificationStore.getState();
+      addNotification({
+        type: (notification.request.content.data?.type ?? 'system') as any,
+        title: notification.request.content.title ?? 'Notification',
+        body: notification.request.content.body ?? '',
+        data: (notification.request.content.data as Record<string, any>) ?? {},
+      });
+    });
+
+    return () => {
+      notifSubRef.current?.remove();
+      notifSubRef.current = null;
+    };
+  }, [isVoiceUiE2E, notificationsEnabled]);
+
+  useEffect(() => {
+    if (isVoiceUiE2E || !isInitialized || !isAuthenticated || !token || !notificationsEnabled) {
+      stopNotificationPolling();
+      useNotificationStore.getState().setPushToken(null);
+      return;
+    }
+
+    startNotificationPolling(token, 30_000, { immediate: false });
+
+    let cancelled = false;
+    void registerForPushNotifications().then((pushToken) => {
+      if (!cancelled) {
+        useNotificationStore.getState().setPushToken(pushToken);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      stopNotificationPolling();
+    };
+  }, [isAuthenticated, isInitialized, isVoiceUiE2E, notificationsEnabled, token]);
 
   if (!isInitialized) return <SplashScreen />;
+
+  if (isVoiceUiE2E) {
+    const { VoiceUiE2EApp } = require('./src/testing/VoiceUiE2EApp');
+    return <VoiceUiE2EApp />;
+  }
+
+  const { RootNavigator } = require('./src/navigation/RootNavigator');
   return <RootNavigator />;
 }
 

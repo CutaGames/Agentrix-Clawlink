@@ -93,7 +93,18 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   accessKey: '',
   builtInKeywords: [],
   customKeywordPaths: [],
-  fallbackPhrases: ['Hey Agentrix', 'Hi Agentrix', 'Agentrix', '嘿 Agentrix', '你好 Agentrix'],
+  fallbackPhrases: [
+    'Hey Agentrix',
+    'Hi Agentrix',
+    'Agentrix',
+    'Hey Agent Tricks',
+    'Hi Agent Tricks',
+    'Agent Tricks',
+    'Hey Agent Rix',
+    'Agent Rix',
+    '嘿 Agentrix',
+    '你好 Agentrix',
+  ],
   displayName: 'Hey Agentrix',
   sensitivity: 0.65,
 };
@@ -117,10 +128,10 @@ export const useSettingsStore = create<SettingsState>()(
       speechRate: 1.0,
       silenceTimeoutMs: 1800,
       
-      notificationsEnabled: true,
-      airdropNotifications: true,
-      earningsNotifications: true,
-      paymentNotifications: true,
+      notificationsEnabled: false,
+      airdropNotifications: false,
+      earningsNotifications: false,
+      paymentNotifications: false,
       
       biometricEnabled: false,
       
@@ -159,6 +170,20 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
+      version: 2,
+      migrate: (persistedState: any, version) => {
+        if (!persistedState || version >= 2) {
+          return persistedState;
+        }
+
+        return {
+          ...persistedState,
+          notificationsEnabled: false,
+          airdropNotifications: false,
+          earningsNotifications: false,
+          paymentNotifications: false,
+        };
+      },
     }
   )
 );

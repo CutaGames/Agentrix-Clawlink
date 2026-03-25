@@ -6,8 +6,12 @@ import {
   PanResponder,
   Dimensions,
   Text,
+  TouchableOpacity,
+  Platform,
+  Alert,
+  Linking,
 } from 'react-native';
-import { useNavigation, useNavigationState } from '@react-navigation/native';
+import { CommonActions, useNavigation, useNavigationState } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '../stores/i18nStore';
@@ -16,6 +20,7 @@ import { resolveMobileWakeWordConfig } from '../config/wakeWord';
 import { WakeWordService } from '../services/wakeWord.service';
 import { SpeechWakeWordService } from '../services/speechWakeWord.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
+import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
 const BALL_SIZE = 56;
 const EDGE_MARGIN = 12;
@@ -69,6 +74,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
   const hideOnScreens = ['AgentChat', 'VoiceChat'];
   const shouldHide = hideOnScreens.includes(currentRouteName);
+  const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
   const [ballState, setBallState] = useState<BallState>('idle');
   const pan = useRef(new Animated.ValueXY({ x: screenW - BALL_SIZE - EDGE_MARGIN, y: screenH - 200 })).current;
@@ -78,6 +84,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const wakeListenerRef = useRef<WakeWordService | SpeechWakeWordService | null>(null);
   const navigatingToChatRef = useRef(false);
   const activateVoiceExperienceRef = useRef<() => void>(() => {});
+  const lastWakeWordAlertRef = useRef<{ message: string; shownAt: number }>({ message: '', shownAt: 0 });
 
   // Voice pill expansion state
   const [pillExpanded, setPillExpanded] = useState(false);
@@ -149,6 +156,32 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     }).start();
   }, [pan, screenW, screenH]);
 
+  const showWakeWordGuidance = useCallback((message: string) => {
+    const now = Date.now();
+    if (
+      lastWakeWordAlertRef.current.message === message
+      && now - lastWakeWordAlertRef.current.shownAt < 15000
+    ) {
+      return;
+    }
+    lastWakeWordAlertRef.current = { message, shownAt: now };
+    addVoiceDiagnostic('floating-ball', 'wake-word-guidance-shown', { message });
+
+    const title = language === 'zh' ? '语音唤醒需要设置' : 'Wake word needs setup';
+    const openSettingsLabel = language === 'zh' ? '打开系统设置' : 'Open Settings';
+    const laterLabel = language === 'zh' ? '稍后' : 'Later';
+
+    Alert.alert(title, message, [
+      {
+        text: openSettingsLabel,
+        onPress: () => {
+          Linking.openSettings().catch(() => {});
+        },
+      },
+      { text: laterLabel, style: 'cancel' },
+    ]);
+  }, [language]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -204,6 +237,10 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     setBallState('listening');
     onVoiceActivate?.();
 
+    if (isVoiceUiE2EEnabled() && onVoiceActivate) {
+      return;
+    }
+
     // GlobalFloatingBall sits beside MainTabNavigator inside the Root screen,
     // so it gets the Root navigator. Resolve the target instance up front.
     const authStore = require('../stores/authStore').useAuthStore.getState();
@@ -233,29 +270,53 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     }
 
     // Route through Root -> Main -> Agent -> AgentChat.
+    const chatParams = {
+      instanceId: targetInstance?.id,
+      instanceName: targetInstance?.name || 'Agent',
+      voiceMode: true,
+      duplexMode: true,
+    };
+
     try {
-      navigation.navigate('Main', {
-        screen: 'Agent',
-        params: {
-          screen: 'AgentChat',
-          params: {
-            instanceId: targetInstance?.id,
-            instanceName: targetInstance?.name || 'Agent',
-            voiceMode: true,
-            duplexMode: true,
-          },
-        },
-      } as any);
+      if (isVoiceUiE2EEnabled()) {
+        navigation.navigate('AgentChat', chatParams);
+      } else {
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [
+              {
+                name: 'Main',
+                state: {
+                  index: 0,
+                  routes: [
+                    {
+                      name: 'Agent',
+                      state: {
+                        index: 1,
+                        routes: [
+                          { name: 'AgentConsole' },
+                          { name: 'AgentChat', params: chatParams },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          })
+        );
+      }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
-        instanceId: targetInstance?.id || null,
-        instanceName: targetInstance?.name || 'Agent',
+        instanceId: chatParams.instanceId || null,
+        instanceName: chatParams.instanceName,
       });
     } catch (navErr) {
       addVoiceDiagnostic('floating-ball', 'navigate-failed', navErr);
       console.warn('[FloatingBall] Navigation failed:', navErr);
       setBallState('idle');
     }
-  }, [navigation, onVoiceActivate]);
+  }, [navigation, onVoiceActivate, currentRouteName]);
 
   // Keep ref in sync so wake word callbacks don't need activateVoiceExperience in deps
   activateVoiceExperienceRef.current = activateVoiceExperience;
@@ -277,6 +338,23 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       void activateVoiceExperience();
     }
   }, [activateVoiceExperience, onPillSend, onVoiceActivate]);
+
+  useEffect(() => {
+    if (!isVoiceUiE2EEnabled() || Platform.OS !== 'web') {
+      return;
+    }
+
+    const handleE2EWakeWord = () => {
+      addVoiceDiagnostic('floating-ball', 'e2e-wake-word-triggered');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      activateVoiceExperienceRef.current();
+    };
+
+    window.addEventListener('agentrix:e2e-wake-word', handleE2EWakeWord);
+    return () => {
+      window.removeEventListener('agentrix:e2e-wake-word', handleE2EWakeWord);
+    };
+  }, []);
 
   useEffect(() => {
     if (!wakeWordConfig.enabled || shouldHide || navigatingToChatRef.current) {
@@ -329,6 +407,18 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
           },
           onError: (err) => {
             addVoiceDiagnostic('floating-ball', 'wake-word-error', { message: err?.message });
+            const rawMessage = err?.message || '';
+            if (/permission denied|permission/i.test(rawMessage)) {
+              showWakeWordGuidance(language === 'zh'
+                ? '唤醒词需要麦克风和语音识别权限。请到系统设置里开启权限，然后再试一次。'
+                : 'Wake word needs microphone and speech permissions. Enable them in system settings, then try again.');
+              return;
+            }
+            if (/unavailable/i.test(rawMessage)) {
+              showWakeWordGuidance(language === 'zh'
+                ? '当前设备没有可用的系统语音唤醒能力。你仍然可以直接点悬浮球进入实时语音。'
+                : 'This device does not expose wake-word speech recognition. You can still tap the floating ball to jump straight into live voice.');
+            }
           },
         });
       }
@@ -358,6 +448,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     wakeWordConfig.enabled,
     wakeWordConfig.fallbackPhrases,
     wakeWordConfig.sensitivity,
+    showWakeWordGuidance,
   ]);
 
   const handlePillSend = useCallback(() => {
@@ -380,6 +471,8 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
   return (
     <Animated.View
+      testID="voice-floating-ball"
+      accessibilityLabel="voice-floating-ball"
       style={[
         styles.container,
         {
@@ -390,7 +483,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
           ],
         },
       ]}
-      {...panResponder.panHandlers}
+      {...(useDirectPressHandlers ? {} : panResponder.panHandlers)}
     >
       {/* Voice Pill panel — expands on long press */}
       {pillExpanded && (
@@ -456,9 +549,18 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       {ballState !== 'idle' && (
         <View style={[styles.glowRing, { borderColor: ballColor + '60' }]} />
       )}
-      <View style={[styles.ball, { backgroundColor: ballColor }]}>
+      <TouchableOpacity
+        testID="voice-floating-ball-core"
+        accessibilityLabel={`voice-floating-ball-core:${ballState}`}
+        activeOpacity={0.9}
+        disabled={!useDirectPressHandlers}
+        onPress={useDirectPressHandlers ? handleTap : undefined}
+        onLongPress={useDirectPressHandlers ? handleVoiceActivate : undefined}
+        delayLongPress={LONG_PRESS_DURATION}
+        style={[styles.ball, { backgroundColor: ballColor }]}
+      >
         <Text style={styles.emoji}>{emoji}</Text>
-      </View>
+      </TouchableOpacity>
     </Animated.View>
   );
 }

@@ -144,6 +144,8 @@ export function AgentConsoleScreen() {
 
   return (
     <ScrollView
+      testID="agent-console-screen"
+      accessibilityLabel="agent-console-screen"
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.accent} />}
@@ -239,6 +241,8 @@ export function AgentConsoleScreen() {
       {tab === 'overview' && (
         <>
           <TouchableOpacity
+            testID="agent-console-chat-cta"
+            accessibilityLabel="agent-console-chat-cta"
             style={styles.chatCta}
             onPress={() => navigation.navigate('AgentChat', { instanceId: activeInstance.id, instanceName: activeInstance.name })}
           >

@@ -889,6 +889,7 @@ export function AgentChatScreen() {
     autoSpeak,
     setAutoSpeak,
     liveVoiceAvailable,
+    liveSpeechPermissionState,
     realtimeConnected,
     sendRealtimeInterrupt,
     speakingMessageId,
@@ -933,6 +934,7 @@ export function AgentChatScreen() {
     onStopCurrentResponse: stopCurrentResponse,
     t,
   });
+  const shouldShowVoiceQuickGuide = voiceMode && (voiceModeRequested || duplexModeRequested || liveSpeechPermissionState === 'denied' || messages.length <= 1);
 
   // Clear stale voiceMode/duplexMode route params when voice mode is turned off,
   // so returning to this screen later doesn't re-activate voice.
@@ -1504,6 +1506,8 @@ export function AgentChatScreen() {
 
   return (
     <KeyboardAvoidingView
+      testID="agent-chat-screen"
+      accessibilityLabel="agent-chat-screen"
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={88}
@@ -1511,11 +1515,27 @@ export function AgentChatScreen() {
       {/* Simplified Chat toolbar */}
       <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bgCard }}>
         <View style={styles.chatBar}>
-          <TouchableOpacity onPress={() => navigation.navigate('AgentConsole')} style={styles.chatBarBackBtn}>
+          <TouchableOpacity
+            testID="agent-chat-back-button"
+            accessibilityLabel="agent-chat-back-button"
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+                return;
+              }
+              navigation.navigate('AgentConsole');
+            }}
+            style={styles.chatBarBackBtn}
+          >
             <Text style={styles.chatBarBackIcon}>{'‹'}</Text>
           </TouchableOpacity>
           <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
-          <TouchableOpacity onPress={() => setShowSettingsSheet(true)} style={styles.chatBarGearBtn}>
+          <TouchableOpacity
+            testID="agent-chat-settings-button"
+            accessibilityLabel="agent-chat-settings-button"
+            onPress={() => setShowSettingsSheet(true)}
+            style={styles.chatBarGearBtn}
+          >
             <Text style={styles.chatBarGearIcon}>⚙️</Text>
           </TouchableOpacity>
         </View>
@@ -1606,38 +1626,87 @@ export function AgentChatScreen() {
       />
 
       {voiceMode && (
-        <View style={styles.voiceStatusBar}>
-          <Text style={styles.voiceStatusDots}>...</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.voiceStatusText}>
-                {voicePhase === 'idle' && (duplexMode
-                  ? (realtimeConnected
-                    ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
-                    : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
-                  : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
-                {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
-                  ? duplexMode
-                    ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
-                    : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
-                  : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
-              {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
-              {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
-                {voicePhase === 'speaking' && (voiceInteractionMode === 'tap'
-                  ? t({ en: 'Agent is speaking… just speak to interrupt immediately', zh: '智能体正在说话… 你直接开口即可立刻打断' })
-                  : t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' }))}
-            </Text>
-            {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
-              <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
-                {transcriptPreview}
+        <>
+          <View testID="voice-status-bar" accessibilityLabel="voice-status-bar" style={styles.voiceStatusBar}>
+            <View
+              testID="voice-session-state"
+              accessibilityLabel={`voice-session-state:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}:${voicePhase}:${realtimeConnected ? 'connected' : 'disconnected'}`}
+              style={styles.e2eHiddenMarker}
+            />
+            <View
+              testID="voice-permission-state"
+              accessibilityLabel={`voice-permission-state:${liveSpeechPermissionState}`}
+              style={styles.e2eHiddenMarker}
+            />
+            <View
+              testID="chat-selected-voice"
+              accessibilityLabel={`chat-selected-voice:${agentVoiceId || 'alloy'}`}
+              style={styles.e2eHiddenMarker}
+            />
+            <Text style={styles.voiceStatusDots}>...</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.voiceStatusText}>
+                  {voicePhase === 'idle' && (duplexMode
+                    ? (realtimeConnected
+                      ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
+                      : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
+                    : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
+                  {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
+                    ? duplexMode
+                      ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                      : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
+                    : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
+                {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
+                {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
+                  {voicePhase === 'speaking' && (voiceInteractionMode === 'tap'
+                    ? t({ en: 'Agent is speaking… just speak to interrupt immediately', zh: '智能体正在说话… 你直接开口即可立刻打断' })
+                    : t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' }))}
               </Text>
-            )}
-            {duplexMode && liveListening && (
-              <Text style={styles.voiceTranscriptPreview} numberOfLines={1}>
-                {t({ en: `Input level ${Math.max(0, liveVoiceVolume).toFixed(1)}`, zh: `输入音量 ${Math.max(0, liveVoiceVolume).toFixed(1)}` })}
-              </Text>
-            )}
+              {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
+                <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
+                  {transcriptPreview}
+                </Text>
+              )}
+              {liveSpeechPermissionState === 'denied' && (
+                <Text style={styles.voiceTranscriptPreview}>
+                  {t({ en: 'Microphone permission is blocked. Re-enable it to resume live voice.', zh: '麦克风权限被拒绝，恢复权限后才能继续实时语音。' })}
+                </Text>
+              )}
+              {duplexMode && liveListening && (
+                <Text style={styles.voiceTranscriptPreview} numberOfLines={1}>
+                  {t({ en: `Input level ${Math.max(0, liveVoiceVolume).toFixed(1)}`, zh: `输入音量 ${Math.max(0, liveVoiceVolume).toFixed(1)}` })}
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+
+          {shouldShowVoiceQuickGuide && (
+            <View style={styles.voiceQuickGuideCard}>
+              <Text style={styles.voiceQuickGuideTitle}>
+                {t({ en: 'Voice Quick Start', zh: '语音快速开始' })}
+              </Text>
+              <Text style={styles.voiceQuickGuideText}>
+                {t({ en: '1. From the home screen, say your wake phrase or tap the floating ball once.', zh: '1. 在首页直接说唤醒词，或点一次悬浮球进入语音。' })}
+              </Text>
+              <Text style={styles.voiceQuickGuideText}>
+                {t({ en: '2. In live mode, speak naturally. If the mic is blocked, re-enable microphone and speech permissions.', zh: '2. 进入实时模式后直接自然说话。如果麦克风被拦截，请恢复麦克风和语音识别权限。' })}
+              </Text>
+              <Text style={styles.voiceQuickGuideText}>
+                {t({ en: '3. Use the gear in the top-right corner to change wake phrase, voice persona, and playback behavior.', zh: '3. 右上角齿轮可以修改唤醒词、智能体音色和播报行为。' })}
+              </Text>
+              <View style={styles.voiceQuickGuideActions}>
+                {liveSpeechPermissionState === 'denied' && (
+                  <TouchableOpacity style={styles.voiceQuickGuideActionBtn} onPress={() => Linking.openSettings().catch(() => {})}>
+                    <Text style={styles.voiceQuickGuideActionText}>{t({ en: 'Open System Settings', zh: '打开系统设置' })}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.voiceQuickGuideActionBtn} onPress={() => setShowSettingsSheet(true)}>
+                  <Text style={styles.voiceQuickGuideActionText}>{t({ en: 'Open Voice Settings', zh: '打开语音设置' })}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </>
       )}
 
       {/* Input bar — WeChat / Doubao style */}
@@ -1687,6 +1756,8 @@ export function AgentChatScreen() {
       <View style={styles.inputRow}>
         {/* Left: voice/keyboard toggle */}
         <TouchableOpacity
+          testID="chat-voice-mode-toggle"
+          accessibilityLabel={`chat-voice-mode-toggle:${voiceMode ? 'voice' : 'text'}`}
           style={styles.modeToggleBtn}
           onPress={() => { setVoiceMode(!voiceMode); setShowAttachToolbar(false); }}
         >
@@ -1696,6 +1767,8 @@ export function AgentChatScreen() {
         {voiceMode ? (
           voiceInteractionMode === 'tap' ? (
             <TouchableOpacity
+              testID="chat-voice-action-button"
+              accessibilityLabel={`chat-voice-action-button:${voiceInteractionMode}:duplex:${voicePhase}:${liveListening ? 'live' : 'idle'}`}
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
               onPress={() => {
                 if (duplexMode && realtimeConnected && liveListening) {
@@ -1717,6 +1790,8 @@ export function AgentChatScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
+              testID="chat-voice-action-button"
+              accessibilityLabel={`chat-voice-action-button:${voiceInteractionMode}:basic:${voicePhase}:${isRecording ? 'recording' : 'idle'}`}
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
               onPressIn={handleVoicePressIn}
               onPressOut={handleVoicePressOut}
@@ -1730,6 +1805,8 @@ export function AgentChatScreen() {
         ) : (
           /* Text mode */
           <TextInput
+            testID="chat-text-input"
+            accessibilityLabel="chat-text-input"
             style={styles.input}
             placeholder={t({ en: `Message ${instanceName}...`, zh: `给 ${instanceName} 发消息…` })}
             placeholderTextColor={colors.textMuted}
@@ -1781,6 +1858,8 @@ export function AgentChatScreen() {
         ) : (
           voiceMode ? (
             <TouchableOpacity
+              testID="chat-voice-interaction-toggle"
+              accessibilityLabel={`chat-voice-interaction-toggle:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}`}
               style={[styles.deviceBtn, duplexMode && { borderColor: colors.accent }]}
               onPress={() => setVoiceInteractionMode((prev) => prev === 'hold' ? 'tap' : 'hold')}
             >
@@ -1860,7 +1939,7 @@ export function AgentChatScreen() {
       {/* Settings Bottom Sheet — replaces cluttered chatBar controls */}
       <Modal visible={showSettingsSheet} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowSettingsSheet(false)} activeOpacity={1}>
-          <View style={styles.settingsSheet}>
+          <View testID="chat-settings-sheet" accessibilityLabel="chat-settings-sheet" style={styles.settingsSheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>{t({ en: 'Chat Settings', zh: '对话设置' })}</Text>
 
@@ -1937,6 +2016,8 @@ export function AgentChatScreen() {
                   return (
                     <TouchableOpacity
                       key={v.id}
+                      testID={`chat-voice-persona-${v.id}`}
+                      accessibilityLabel={`chat-voice-persona-${v.id}:${isActive ? 'active' : 'inactive'}`}
                       onPress={() => setAgentVoiceId(v.id)}
                       style={[
                         styles.sheetToggle,
@@ -2173,6 +2254,7 @@ const styles = StyleSheet.create({
   },
   remoteClipboardActionText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
   messageList: { padding: 16, paddingBottom: 8, gap: 12 },
+  e2eHiddenMarker: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '85%' },
   msgRowUser: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
   avatarBot: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bgCard, alignItems: 'center', justifyContent: 'center' },

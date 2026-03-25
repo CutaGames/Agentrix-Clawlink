@@ -31,15 +31,17 @@ import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScre
 import { LocalDeployScreen } from '../screens/onboarding/LocalDeployScreen';
 import { SocialBindScreen } from '../screens/onboarding/SocialBindScreen';
 import { useI18n } from '../stores/i18nStore';
+import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
 const Stack = createNativeStackNavigator<AgentStackParamList>();
 
 export function AgentStackNavigator() {
   const { t } = useI18n();
+  const initialRouteName = 'AgentConsole';
 
   return (
     <Stack.Navigator id={undefined}
-      initialRouteName="AgentChat"
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerStyle: { backgroundColor: colors.bgSecondary },
         headerTintColor: colors.textPrimary,
