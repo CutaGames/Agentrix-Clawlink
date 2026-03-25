@@ -230,6 +230,26 @@ export class RealtimeVoiceService {
     this.socket.emit('voice:interrupt', { sessionId: this.sessionId });
   }
 
+  sendAudioChunk(audio: ArrayBuffer | Uint8Array): void {
+    if (!this.socket || !this.sessionId) {
+      return;
+    }
+
+    const payload = audio instanceof Uint8Array ? audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) : audio;
+    this.socket.emit('voice:audio:chunk', {
+      sessionId: this.sessionId,
+      audio: payload,
+    });
+  }
+
+  endAudioInput(): void {
+    if (!this.socket || !this.sessionId) {
+      return;
+    }
+
+    this.socket.emit('voice:audio:end', { sessionId: this.sessionId });
+  }
+
   startListening(): void {
     this.setState('listening');
   }

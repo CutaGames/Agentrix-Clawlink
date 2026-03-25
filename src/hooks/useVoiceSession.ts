@@ -24,6 +24,7 @@ import type { UploadedChatAttachment } from '../services/api';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
+import { RealtimeMicrophoneService } from '../services/realtimeMicrophone.service';
 import { VADService, createRecordingMeterFn } from '../services/vad.service';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
@@ -173,6 +174,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechLastErrorTimeRef = useRef(0);
   const liveSpeechStartingRef = useRef(false);
   const realtimeAudioSequenceRef = useRef(0);
+  const realtimeMicrophoneRef = useRef<RealtimeMicrophoneService | null>(null);
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
@@ -227,10 +229,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   // ── Check live speech availability ──
   useEffect(() => {
-    const available = isVoiceUiE2E ? true : isLiveSpeechRecognitionAvailable();
+    const available = isVoiceUiE2E
+      ? true
+      : (useRealtimeChannel ? RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable() : isLiveSpeechRecognitionAvailable());
     liveVoiceAvailableRef.current = available;
     setLiveVoiceAvailable(available);
-  }, [isVoiceUiE2E]);
+  }, [isVoiceUiE2E, useRealtimeChannel]);
 
   // ── Realtime WebSocket Voice Channel ──
   // When useRealtimeChannel is true and duplex mode is active,
@@ -264,6 +268,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       onStateChange: (state) => {
         addVoiceDiagnostic('realtime-voice', 'state-change', { state });
         setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
+        if (state === 'connected' && duplexModeRef.current && voiceModeRef.current) {
+          void startLiveSpeechInternalRef.current?.();
+        }
         // Map realtime states to voice phases
         switch (state) {
           case 'listening': setVoicePhase('recording'); break;
@@ -304,6 +311,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         }
       },
       onAgentSpeechStart: () => {
+        stopLiveSpeech(true, false);
         setIsSpeaking(true);
         isSpeakingRef.current = true;
         setVoicePhase('speaking');
@@ -360,11 +368,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const stopLiveSpeech = useCallback((abort = false, manual = false) => {
     liveSpeechManualStopRef.current = manual;
+    const realtimeMicrophone = realtimeMicrophoneRef.current;
+    realtimeMicrophoneRef.current = null;
     const ctrl = liveSpeechRef.current;
     liveSpeechRef.current = null;
     if (isMountedRef.current) {
       setLiveListening(false);
       setLiveVoiceVolume(-2);
+    }
+    if (realtimeMicrophone) {
+      void realtimeMicrophone.stop();
     }
     if (!ctrl) return;
     try {
@@ -567,6 +580,72 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const startLiveSpeechInternal = useCallback(async () => {
     if (!isMountedRef.current) return;
+
+    if (
+      !isVoiceUiE2E
+      && useRealtimeChannel
+      && duplexModeRef.current
+      && voiceModeRef.current
+      && realtimeVoiceRef.current?.isConnected
+      && RealtimeMicrophoneService.isAvailable()
+    ) {
+      if (realtimeMicrophoneRef.current || liveSpeechStartingRef.current) {
+        return;
+      }
+
+      liveSpeechStartingRef.current = true;
+      addVoiceDiagnostic('voice-session', 'realtime-mic-start-request');
+
+      try {
+        const realtimeMicrophone = new RealtimeMicrophoneService({
+          onFrame: (audioChunk) => {
+            realtimeVoiceRef.current?.sendAudioChunk(audioChunk);
+          },
+          onVolumeChange: (value) => {
+            if (!isMountedRef.current) return;
+            setLiveVoiceVolume(value * 100 - 2);
+          },
+          onSpeechStart: () => {
+            if (!isMountedRef.current) return;
+            setVoicePhase('recording');
+          },
+          onSpeechEnd: () => {
+            if (!isMountedRef.current) return;
+            setVoicePhase((prev) => (prev === 'recording' ? 'thinking' : prev));
+          },
+          onError: (error) => {
+            if (!isMountedRef.current) return;
+            const message = error?.message || 'Realtime microphone error';
+            if (/permission denied/i.test(message)) {
+              setLiveSpeechPermissionState('denied');
+            }
+            addVoiceDiagnostic('voice-session', 'realtime-mic-error', { message });
+            setLiveListening(false);
+            setVoicePhase('idle');
+            setTranscriptPreview('');
+          },
+        });
+
+        await realtimeMicrophone.start();
+        realtimeMicrophoneRef.current = realtimeMicrophone;
+        liveSpeechManualStopRef.current = false;
+        setLiveSpeechPermissionState('granted');
+        setLiveListening(true);
+        setVoicePhase('recording');
+        setTranscriptPreview('');
+        addVoiceDiagnostic('voice-session', 'realtime-mic-started');
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/permission denied/i.test(message)) {
+          setLiveSpeechPermissionState('denied');
+        }
+        addVoiceDiagnostic('voice-session', 'realtime-mic-start-failed', { message });
+        console.warn('Realtime microphone start failed:', error);
+      } finally {
+        liveSpeechStartingRef.current = false;
+      }
+    }
 
     if (isVoiceUiE2E) {
       if (!duplexModeRef.current || liveSpeechRef.current || liveSpeechStartingRef.current || !voiceModeRef.current) {
@@ -823,6 +902,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       stopLiveSpeech(true, true);
     }
   }, [duplexMode, startLiveSpeechInternal, stopLiveSpeech]);
+
+  useEffect(() => {
+    if (useRealtimeChannel && !realtimeConnected && realtimeMicrophoneRef.current) {
+      stopLiveSpeech(true, true);
+    }
+  }, [realtimeConnected, stopLiveSpeech, useRealtimeChannel]);
 
   // Auto-restart live speech when TTS finishes (isSpeaking: true → false)
   const wasSpeakingRef = useRef(false);

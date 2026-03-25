@@ -58,6 +58,8 @@ interface VoiceSession {
   responseGeneration: number;
   ttsSentenceBuffer: string;
   ttsQueue: Promise<void>;
+  lastFinalTranscript: string;
+  lastFinalAt: number;
   createdAt: number;
 }
 
@@ -160,6 +162,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       responseGeneration: 0,
       ttsSentenceBuffer: '',
       ttsQueue: Promise.resolve(),
+      lastFinalTranscript: '',
+      lastFinalAt: 0,
       createdAt: Date.now(),
     };
 
@@ -394,7 +398,11 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     try {
       session.streamingSession?.abort();
       session.streamingSession = await this.streamingAdapter.createStreamingSession(
-        { lang: session.lang },
+        {
+          lang: session.lang,
+          encoding: 'linear16',
+          sampleRate: 16000,
+        },
         {
           onInterim: (transcript) => {
             client.emit('voice:stt:interim', {
@@ -409,18 +417,36 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
             });
           },
           onFinal: (result) => {
+            const normalizedTranscript = (result.text || '').trim();
             client.emit('voice:stt:final', {
               sessionId: session.sessionId,
-              transcript: result.text,
+              transcript: normalizedTranscript,
               lang: result.lang || session.lang,
               provider: result.provider,
             });
             client.emit('voice:transcript:final', {
               sessionId: session.sessionId,
-              text: result.text,
+              text: normalizedTranscript,
               lang: result.lang || session.lang,
               provider: result.provider,
             });
+
+            if (!session.duplexMode || !normalizedTranscript) {
+              return;
+            }
+
+            const now = Date.now();
+            if (
+              normalizedTranscript === session.lastFinalTranscript
+              && now - session.lastFinalAt < 2000
+            ) {
+              this.logger.debug(`Skipping duplicate duplex final transcript for session ${session.sessionId}`);
+              return;
+            }
+
+            session.lastFinalTranscript = normalizedTranscript;
+            session.lastFinalAt = now;
+            void this.startAgentResponse(client, session, normalizedTranscript);
           },
           onError: (error) => {
             this.logger.warn(`Streaming STT error for session ${session.sessionId}: ${error.message}`);

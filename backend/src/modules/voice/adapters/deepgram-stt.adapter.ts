@@ -113,6 +113,12 @@ export class DeepgramSTTAdapter implements StreamingSTTAdapter {
     if (options?.prompt) {
       url.searchParams.set('keywords', options.prompt);
     }
+    if (options?.encoding) {
+      url.searchParams.set('encoding', options.encoding);
+    }
+    if (options?.sampleRate) {
+      url.searchParams.set('sample_rate', String(options.sampleRate));
+    }
 
     const ws = new WebSocket(url.toString(), {
       headers: {
