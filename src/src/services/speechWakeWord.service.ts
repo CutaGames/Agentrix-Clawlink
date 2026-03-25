@@ -16,8 +16,18 @@ const AGENTRIX_ALIAS_GROUP = [
   'agent tricks',
   'agent tricks',
   'agent rix',
+  'agent ricks',
   'agent rigs',
   'agent rigs',
+  'agent race',
+  'agent trace',
+  'agent x',
+  'agent ex',
+  'a gentrix',
+  'a gent tricks',
+  'hey agent x',
+  'hey agent tricks',
+  'hi agent x',
   'agents tricks',
 ];
 

@@ -611,6 +611,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           },
           onSpeechEnd: () => {
             if (!isMountedRef.current) return;
+              realtimeVoiceRef.current?.endAudioInput();
             setVoicePhase((prev) => (prev === 'recording' ? 'thinking' : prev));
           },
           onError: (error) => {
