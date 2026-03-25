@@ -90,7 +90,7 @@ jobs:
           PYEOF
 
       - name: Expo prebuild
-        run: npx expo prebuild --platform android --clean --no-install
+        run: npx expo prebuild --platform android --no-install
         env:
           CI: '1'
 
