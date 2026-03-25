@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { View, ActivityIndicator, Text, AppState, AppStateStatus } from 'react-native';
+import { View, ActivityIndicator, Text, AppState, AppStateStatus, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
@@ -17,6 +17,14 @@ import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { checkAndPromptUpdate, silentBackgroundUpdate } from './src/services/appUpdate.service';
 import { migrateFromAsyncStorage } from './src/stores/mmkvStorage';
 import { applyVoiceUiE2EBootstrap, isVoiceUiE2EEnabled } from './src/testing/e2e';
+import { resolveMobileWakeWordConfig } from './src/config/wakeWord';
+import { hasLocalWakeWordModel, thresholdFromSensitivity } from './src/services/localWakeWord.service';
+import {
+  isAndroidBackgroundWakeWordAvailable,
+  startAndroidBackgroundWakeWordService,
+  stopAndroidBackgroundWakeWordService,
+  syncAndroidBackgroundWakeWordConfig,
+} from './src/services/androidBackgroundWakeWord.service';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,10 +67,84 @@ function AppNavigator() {
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const token = useAuthStore((s) => s.token);
+  const activeInstance = useAuthStore((s) => s.activeInstance);
   const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const wakeWordSettings = useSettingsStore((s) => s.wakeWordConfig);
   const { setAuth, setInitialized, clearAuth } = useAuthStore.getState();
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
+  const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
+  const backgroundWakeWordEnabled = Platform.OS === 'android'
+    && isAndroidBackgroundWakeWordAvailable()
+    && isAuthenticated
+    && wakeWordConfig.enabled
+    && hasLocalWakeWordModel(wakeWordConfig.localModel);
+  const backgroundWakeWordConfigRef = useRef({
+    enabled: false,
+    displayName: '',
+    threshold: 0.81,
+    activeInstanceId: null as string | null,
+    activeInstanceName: null as string | null,
+    model: null as typeof wakeWordConfig.localModel,
+  });
+
+  useEffect(() => {
+    backgroundWakeWordConfigRef.current = {
+      enabled: backgroundWakeWordEnabled,
+      displayName: wakeWordConfig.displayName,
+      threshold: thresholdFromSensitivity(wakeWordConfig.sensitivity),
+      activeInstanceId: activeInstance?.id ?? null,
+      activeInstanceName: activeInstance?.name ?? null,
+      model: wakeWordConfig.localModel,
+    };
+  }, [activeInstance?.id, activeInstance?.name, backgroundWakeWordEnabled, wakeWordConfig.displayName, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
+
+  useEffect(() => {
+    if (!isAndroidBackgroundWakeWordAvailable()) {
+      return;
+    }
+
+    const payload = backgroundWakeWordConfigRef.current;
+    void syncAndroidBackgroundWakeWordConfig(payload).catch((error) => {
+      console.warn('Failed to sync Android background wake-word config:', error);
+    });
+
+    if (!backgroundWakeWordEnabled || AppState.currentState === 'active') {
+      void stopAndroidBackgroundWakeWordService().catch(() => {});
+    }
+  }, [backgroundWakeWordEnabled, activeInstance?.id, activeInstance?.name, wakeWordConfig.displayName, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
+
+  useEffect(() => {
+    if (!isAndroidBackgroundWakeWordAvailable()) {
+      return;
+    }
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void stopAndroidBackgroundWakeWordService().catch(() => {});
+        return;
+      }
+
+      if (state === 'background' || state === 'inactive') {
+        const payload = backgroundWakeWordConfigRef.current;
+        if (!payload.enabled || !payload.model) {
+          void stopAndroidBackgroundWakeWordService().catch(() => {});
+          return;
+        }
+
+        void (async () => {
+          try {
+            await syncAndroidBackgroundWakeWordConfig(payload);
+            await startAndroidBackgroundWakeWordService();
+          } catch (error) {
+            console.warn('Failed to start Android background wake-word service:', error);
+          }
+        })();
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (isVoiceUiE2E && applyVoiceUiE2EBootstrap()) {
@@ -271,6 +353,7 @@ const linking = {
             screens: {
               AgentConsole: 'agent',
               AgentChat: 'agent/chat',
+              VoiceChat: 'voice-chat',
               OpenClawBind: 'agent/bind',
               // Desktop installer QR code deep link:
               // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
