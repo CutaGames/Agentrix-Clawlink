@@ -509,11 +509,11 @@ class AndroidBackgroundWakeWordService : Service() {
   }
 
   private fun stopSelfSafely() {
-    stopForeground(STOP_FOREGROUND_REMOVE)
+      stopForegroundCompat(removeNotification = true)
     stopSelf()
   }
 
-  override fun stopForeground(removeNotification: Boolean) {
+    private fun stopForegroundCompat(removeNotification: Boolean) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
       super.stopForeground(if (removeNotification) STOP_FOREGROUND_REMOVE else STOP_FOREGROUND_DETACH)
     } else {
