@@ -120,7 +120,7 @@ function cosineSimilarity(left: number[], right: number[]): number {
 
 function thresholdFromSensitivity(sensitivity: number): number {
   const normalized = Math.max(0.05, Math.min(0.95, sensitivity));
-  return 0.93 - normalized * 0.18;
+  return 0.87 - normalized * 0.2;
 }
 
 function meanAbsoluteDifference(samples: Float32Array): number {

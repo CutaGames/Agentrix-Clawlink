@@ -114,7 +114,7 @@ object BackgroundWakeWordPreferences {
       BackgroundWakeWordConfig(
         enabled = json.optBoolean("enabled", false),
         displayName = json.optString("displayName", "Hey Agentrix"),
-        threshold = json.optDouble("threshold", 0.81),
+        threshold = json.optDouble("threshold", 0.74),
         activeInstanceId = json.optString("activeInstanceId").ifBlank { null },
         activeInstanceName = json.optString("activeInstanceName").ifBlank { null },
         model = model,

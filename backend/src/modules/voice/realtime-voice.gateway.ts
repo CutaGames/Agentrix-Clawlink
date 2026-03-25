@@ -63,6 +63,10 @@ interface VoiceSession {
   createdAt: number;
 }
 
+const PCM_SAMPLE_RATE = 16000;
+const PCM_CHANNEL_COUNT = 1;
+const PCM_BITS_PER_SAMPLE = 16;
+
 @WebSocketGateway({
   cors: {
     origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
@@ -233,14 +237,20 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('voice:audio:chunk')
   handleAudioChunk(
     @ConnectedSocket() client: AuthenticatedVoiceSocket,
-    @MessageBody() data: { sessionId: string; audio: Buffer | ArrayBuffer },
+    @MessageBody() data: { sessionId: string; audio: unknown },
   ) {
     const session = this.getSession(data.sessionId, client);
     if (!session) return;
 
-    const chunk = Buffer.isBuffer(data.audio)
-      ? data.audio
-      : Buffer.from(data.audio);
+    const chunk = this.normalizeAudioChunk(data.audio);
+    if (!chunk || chunk.length === 0) {
+      client.emit('voice:error', {
+        sessionId: data.sessionId,
+        error: 'Invalid audio payload received',
+        code: 'INVALID_AUDIO_PAYLOAD',
+      });
+      return;
+    }
 
     if (session.streamingSession) {
       session.streamingSession.write(chunk);
@@ -277,11 +287,13 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     session.audioChunks = []; // Clear for next turn
 
     try {
+      const wavBuffer = this.wrapPcm16AsWav(audioBuffer);
+
       // Transcribe using the voice service (respects STT provider order)
       const result = await this.voiceService.transcribe(
-        audioBuffer,
-        'audio/webm',
-        'voice.webm',
+        wavBuffer,
+        'audio/wav',
+        'voice.wav',
         session.lang,
       );
 
@@ -298,6 +310,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
           text: transcript,
           lang: session.lang,
         });
+
+        await this.startAgentResponse(client, session, transcript);
       } else {
         client.emit('voice:stt:final', {
           sessionId: data.sessionId,
@@ -392,6 +406,9 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     client: AuthenticatedVoiceSocket,
   ): Promise<void> {
     if (!this.streamingAdapter.isAvailable) {
+      this.logger.warn(
+        `Streaming STT unavailable for session ${session.sessionId}; falling back to turn-based PCM transcription`,
+      );
       return;
     }
 
@@ -463,6 +480,65 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       session.streamingSession = null;
       this.logger.warn(`Failed to initialize streaming STT for session ${session.sessionId}: ${error.message}`);
     }
+  }
+
+  private normalizeAudioChunk(audio: unknown): Buffer | null {
+    if (!audio) {
+      return null;
+    }
+
+    if (Buffer.isBuffer(audio)) {
+      return audio;
+    }
+
+    if (audio instanceof Uint8Array) {
+      return Buffer.from(audio);
+    }
+
+    if (audio instanceof ArrayBuffer) {
+      return Buffer.from(audio);
+    }
+
+    if (ArrayBuffer.isView(audio)) {
+      return Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength);
+    }
+
+    if (Array.isArray(audio)) {
+      return Buffer.from(audio);
+    }
+
+    if (
+      typeof audio === 'object'
+      && audio !== null
+      && (audio as { type?: string }).type === 'Buffer'
+      && Array.isArray((audio as { data?: unknown }).data)
+    ) {
+      return Buffer.from((audio as { data: number[] }).data);
+    }
+
+    return null;
+  }
+
+  private wrapPcm16AsWav(pcmBuffer: Buffer): Buffer {
+    const header = Buffer.alloc(44);
+    const byteRate = PCM_SAMPLE_RATE * PCM_CHANNEL_COUNT * (PCM_BITS_PER_SAMPLE / 8);
+    const blockAlign = PCM_CHANNEL_COUNT * (PCM_BITS_PER_SAMPLE / 8);
+
+    header.write('RIFF', 0, 'ascii');
+    header.writeUInt32LE(36 + pcmBuffer.length, 4);
+    header.write('WAVE', 8, 'ascii');
+    header.write('fmt ', 12, 'ascii');
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(PCM_CHANNEL_COUNT, 22);
+    header.writeUInt32LE(PCM_SAMPLE_RATE, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(PCM_BITS_PER_SAMPLE, 34);
+    header.write('data', 36, 'ascii');
+    header.writeUInt32LE(pcmBuffer.length, 40);
+
+    return Buffer.concat([header, pcmBuffer]);
   }
 
   private interruptSessionResponse(client: AuthenticatedVoiceSocket, session: VoiceSession) {
