@@ -41,6 +41,22 @@ export interface RealtimeVoiceConfig {
   agentVoiceId?: string;
 }
 
+type SocketBufferLike = {
+  type: 'Buffer';
+  data: number[];
+};
+
+function toSocketBufferLike(audio: ArrayBuffer | Uint8Array): SocketBufferLike {
+  const bytes = audio instanceof Uint8Array
+    ? audio
+    : new Uint8Array(audio);
+
+  return {
+    type: 'Buffer',
+    data: Array.from(bytes),
+  };
+}
+
 export class RealtimeVoiceService {
   private socket: Socket | null = null;
   private config: RealtimeVoiceConfig | null = null;
@@ -235,10 +251,9 @@ export class RealtimeVoiceService {
       return;
     }
 
-    const payload = audio instanceof Uint8Array ? audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) : audio;
     this.socket.emit('voice:audio:chunk', {
       sessionId: this.sessionId,
-      audio: payload,
+      audio: toSocketBufferLike(audio),
     });
   }
 
