@@ -69,12 +69,15 @@ interface VoiceSession {
     resolve: (receivedFinal: boolean) => void;
     timeout: NodeJS.Timeout;
   } | null;
+  /** Stores the last streaming final transcript (for non-duplex race recovery) */
+  streamingFinalText: string;
+  streamingFinalToken: symbol | null;
 }
 
 const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
-const STREAMING_FINALIZATION_TIMEOUT_MS = 1200;
+const STREAMING_FINALIZATION_TIMEOUT_MS = 2500;
 
 @WebSocketGateway({
   cors: {
@@ -181,6 +184,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       activeStreamingToken: null,
       ignoredStreamingTokens: new Set<symbol>(),
       pendingStreamingEnd: null,
+      streamingFinalText: '',
+      streamingFinalToken: null,
     };
 
     this.sessions.set(sessionId, session);
@@ -294,7 +299,24 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
         ? await this.awaitStreamingTurnFinalization(session, endingToken, () => endingStreamingSession.end())
         : false;
 
-      if (!finalReceived && session.audioChunks.length > 0) {
+      // Non-duplex: check if streaming already delivered a final (race recovery)
+      const storedFinal = session.streamingFinalText;
+      const storedToken = session.streamingFinalToken;
+      session.streamingFinalText = '';
+      session.streamingFinalToken = null;
+
+      if (finalReceived || (storedToken === endingToken && storedFinal)) {
+        // Streaming gave us a valid transcript — use it directly
+        const transcript = storedFinal;
+        session.audioChunks = [];
+        await this.initializeStreamingSession(session, client);
+        if (!session.duplexMode && transcript) {
+          await this.startAgentResponse(client, session, transcript);
+        }
+        return;
+      }
+
+      if (session.audioChunks.length > 0) {
         this.logger.warn(
           `Streaming final transcript timed out for session ${session.sessionId}; falling back to buffered PCM transcription`,
         );
@@ -446,6 +468,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
 
             this.resolvePendingStreamingTurn(session, streamingToken, Boolean(normalizedTranscript));
             session.audioChunks = [];
+
+            // Store streaming final for non-duplex handleAudioEnd recovery
+            if (normalizedTranscript) {
+              session.streamingFinalText = normalizedTranscript;
+              session.streamingFinalToken = streamingToken;
+            }
 
             if (!session.duplexMode || !normalizedTranscript) {
               return;

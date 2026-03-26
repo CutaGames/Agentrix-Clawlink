@@ -52,7 +52,7 @@ const START_THRESHOLD = 0.12;
 const END_THRESHOLD = 0.035;
 const END_FRAME_COUNT = 14;
 const PREBUFFER_SAMPLES = Math.floor(SAMPLE_RATE * 0.2);
-const MIN_DURATION_MS = 280;
+const MIN_DURATION_MS = 200;
 const MAX_DURATION_MS = 2200;
 const DEFAULT_TIMEOUT_MS = 4500;
 const COOLDOWN_MS = 1500;
@@ -128,7 +128,7 @@ function cosineSimilarity(left: number[], right: number[]): number {
 
 function thresholdFromSensitivity(sensitivity: number): number {
   const normalized = Math.max(0.05, Math.min(0.95, sensitivity));
-  return 0.87 - normalized * 0.2;
+  return 0.72 - normalized * 0.28;
 }
 
 function meanAbsoluteDifference(samples: Float32Array): number {
@@ -271,7 +271,7 @@ function scoreWakeWordMatch(model: LocalWakeWordModel, vector: number[]): number
   const sampleScores = model.samples.map((sample) => cosineSimilarity(vector, sample.vector));
   const bestSampleScore = Math.max(...sampleScores, 0);
   const centroidScore = cosineSimilarity(vector, model.centroid);
-  return bestSampleScore * 0.65 + centroidScore * 0.35;
+  return bestSampleScore * 0.75 + centroidScore * 0.25;
 }
 
 async function stopProcessor(processor: VoiceProcessorType) {
