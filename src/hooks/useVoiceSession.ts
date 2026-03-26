@@ -192,7 +192,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     const persistRealtimeAudioChunk = useCallback(async (audioBase64: string, format: string) => {
       const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
       if (!directory) {
-        throw new Error('No writable directory available for realtime audio');
+        // Fallback: return a data URI so expo-av can play directly without file I/O
+        const mime = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
+        return `data:${mime};base64,${audioBase64}`;
       }
 
       realtimeAudioSequenceRef.current += 1;
@@ -358,6 +360,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       onDisconnect: (reason) => {
         setRealtimeConnected(false);
         addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
+        // Complete any in-flight assistant message so it gets persisted
+        onRealtimeAssistantResponseEndRef.current?.();
       },
     });
 
