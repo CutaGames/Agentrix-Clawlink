@@ -61,11 +61,20 @@ interface VoiceSession {
   lastFinalTranscript: string;
   lastFinalAt: number;
   createdAt: number;
+  activeStreamingToken: symbol | null;
+  ignoredStreamingTokens: Set<symbol>;
+  pendingStreamingEnd: {
+    token: symbol;
+    settled: boolean;
+    resolve: (receivedFinal: boolean) => void;
+    timeout: NodeJS.Timeout;
+  } | null;
 }
 
 const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
+const STREAMING_FINALIZATION_TIMEOUT_MS = 1200;
 
 @WebSocketGateway({
   cors: {
@@ -169,6 +178,9 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       lastFinalTranscript: '',
       lastFinalAt: 0,
       createdAt: Date.now(),
+      activeStreamingToken: null,
+      ignoredStreamingTokens: new Set<symbol>(),
+      pendingStreamingEnd: null,
     };
 
     this.sessions.set(sessionId, session);
@@ -254,6 +266,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
 
     if (session.streamingSession) {
       session.streamingSession.write(chunk);
+      session.audioChunks.push(chunk);
       return;
     }
 
@@ -271,8 +284,26 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     }
 
     if (session.streamingSession) {
-      session.streamingSession.end();
+      const endingStreamingSession = session.streamingSession;
+      const endingToken = session.activeStreamingToken;
+
       session.streamingSession = null;
+      session.activeStreamingToken = null;
+
+      const finalReceived = endingToken
+        ? await this.awaitStreamingTurnFinalization(session, endingToken, () => endingStreamingSession.end())
+        : false;
+
+      if (!finalReceived && session.audioChunks.length > 0) {
+        this.logger.warn(
+          `Streaming final transcript timed out for session ${session.sessionId}; falling back to buffered PCM transcription`,
+        );
+        if (endingToken) {
+          session.ignoredStreamingTokens.add(endingToken);
+        }
+        await this.processBufferedAudioTurn(client, session, data.sessionId);
+      }
+
       session.audioChunks = [];
       await this.initializeStreamingSession(session, client);
       return;
@@ -283,50 +314,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return;
     }
 
-    const audioBuffer = Buffer.concat(session.audioChunks);
-    session.audioChunks = []; // Clear for next turn
-
-    try {
-      const wavBuffer = this.wrapPcm16AsWav(audioBuffer);
-
-      // Transcribe using the voice service (respects STT provider order)
-      const result = await this.voiceService.transcribe(
-        wavBuffer,
-        'audio/wav',
-        'voice.wav',
-        session.lang,
-      );
-
-      const transcript = result?.transcript || '';
-
-      if (transcript) {
-        client.emit('voice:stt:final', {
-          sessionId: data.sessionId,
-          transcript,
-          lang: session.lang,
-        });
-        client.emit('voice:transcript:final', {
-          sessionId: data.sessionId,
-          text: transcript,
-          lang: session.lang,
-        });
-
-        await this.startAgentResponse(client, session, transcript);
-      } else {
-        client.emit('voice:stt:final', {
-          sessionId: data.sessionId,
-          transcript: '',
-          lang: session.lang,
-        });
-      }
-    } catch (error: any) {
-      this.logger.error(`STT error for session ${data.sessionId}: ${error.message}`);
-      client.emit('voice:error', {
-        sessionId: data.sessionId,
-        error: 'Transcription failed',
-        code: 'STT_ERROR',
-      });
-    }
+    await this.processBufferedAudioTurn(client, session, data.sessionId);
   }
 
   // ── TTS Streaming (Server → Client) ──────────────────────
@@ -413,7 +401,9 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     }
 
     try {
+      const streamingToken = Symbol(`stream-${session.sessionId}-${Date.now()}`);
       session.streamingSession?.abort();
+      session.activeStreamingToken = streamingToken;
       session.streamingSession = await this.streamingAdapter.createStreamingSession(
         {
           lang: session.lang,
@@ -434,6 +424,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
             });
           },
           onFinal: (result) => {
+            if (session.ignoredStreamingTokens.has(streamingToken)) {
+              session.ignoredStreamingTokens.delete(streamingToken);
+              this.resolvePendingStreamingTurn(session, streamingToken, false);
+              return;
+            }
+
             const normalizedTranscript = (result.text || '').trim();
             client.emit('voice:stt:final', {
               sessionId: session.sessionId,
@@ -447,6 +443,9 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
               lang: result.lang || session.lang,
               provider: result.provider,
             });
+
+            this.resolvePendingStreamingTurn(session, streamingToken, Boolean(normalizedTranscript));
+            session.audioChunks = [];
 
             if (!session.duplexMode || !normalizedTranscript) {
               return;
@@ -468,6 +467,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
           onError: (error) => {
             this.logger.warn(`Streaming STT error for session ${session.sessionId}: ${error.message}`);
             session.streamingSession = null;
+            this.resolvePendingStreamingTurn(session, streamingToken, false);
             client.emit('voice:error', {
               sessionId: session.sessionId,
               error: 'Streaming transcription failed',
@@ -478,7 +478,98 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       );
     } catch (error: any) {
       session.streamingSession = null;
+      session.activeStreamingToken = null;
       this.logger.warn(`Failed to initialize streaming STT for session ${session.sessionId}: ${error.message}`);
+    }
+  }
+
+  private async awaitStreamingTurnFinalization(
+    session: VoiceSession,
+    token: symbol,
+    closeStream: () => void,
+  ): Promise<boolean> {
+    if (session.pendingStreamingEnd?.token === token && !session.pendingStreamingEnd.settled) {
+      return new Promise<boolean>((resolve) => resolve(false));
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        this.resolvePendingStreamingTurn(session, token, false);
+      }, STREAMING_FINALIZATION_TIMEOUT_MS);
+
+      session.pendingStreamingEnd = {
+        token,
+        settled: false,
+        resolve,
+        timeout,
+      };
+
+      closeStream();
+    });
+  }
+
+  private resolvePendingStreamingTurn(
+    session: VoiceSession,
+    token: symbol,
+    receivedFinal: boolean,
+  ) {
+    const pending = session.pendingStreamingEnd;
+    if (!pending || pending.token !== token || pending.settled) {
+      return;
+    }
+
+    pending.settled = true;
+    clearTimeout(pending.timeout);
+    session.pendingStreamingEnd = null;
+    pending.resolve(receivedFinal);
+  }
+
+  private async processBufferedAudioTurn(
+    client: AuthenticatedVoiceSocket,
+    session: VoiceSession,
+    sessionId: string,
+  ): Promise<void> {
+    const audioBuffer = Buffer.concat(session.audioChunks);
+    session.audioChunks = [];
+
+    try {
+      const wavBuffer = this.wrapPcm16AsWav(audioBuffer);
+      const result = await this.voiceService.transcribe(
+        wavBuffer,
+        'audio/wav',
+        'voice.wav',
+        session.lang,
+      );
+
+      const transcript = result?.transcript || '';
+
+      if (transcript) {
+        client.emit('voice:stt:final', {
+          sessionId,
+          transcript,
+          lang: session.lang,
+        });
+        client.emit('voice:transcript:final', {
+          sessionId,
+          text: transcript,
+          lang: session.lang,
+        });
+
+        await this.startAgentResponse(client, session, transcript);
+      } else {
+        client.emit('voice:stt:final', {
+          sessionId,
+          transcript: '',
+          lang: session.lang,
+        });
+      }
+    } catch (error: any) {
+      this.logger.error(`STT error for session ${sessionId}: ${error.message}`);
+      client.emit('voice:error', {
+        sessionId,
+        error: 'Transcription failed',
+        code: 'STT_ERROR',
+      });
     }
   }
 

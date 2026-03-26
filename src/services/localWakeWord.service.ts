@@ -49,14 +49,22 @@ export interface LocalWakeWordServiceConfig {
 const FRAME_LENGTH = 512;
 const SAMPLE_RATE = 16000;
 const START_THRESHOLD = 0.12;
-const END_THRESHOLD = 0.045;
-const END_FRAME_COUNT = 8;
+const END_THRESHOLD = 0.035;
+const END_FRAME_COUNT = 14;
 const PREBUFFER_SAMPLES = Math.floor(SAMPLE_RATE * 0.2);
 const MIN_DURATION_MS = 280;
-const MAX_DURATION_MS = 1800;
+const MAX_DURATION_MS = 2200;
 const DEFAULT_TIMEOUT_MS = 4500;
 const COOLDOWN_MS = 1500;
 const MAX_SAVED_SAMPLES = 5;
+export const LOCAL_WAKE_WORD_MIN_READY_SAMPLES = 3;
+
+export interface LocalWakeWordModelReadiness {
+  ready: boolean;
+  sampleCount: number;
+  minReadySamples: number;
+  remainingSamples: number;
+}
 
 function getVoiceProcessor(): VoiceProcessorType | null {
   try {
@@ -366,8 +374,23 @@ async function captureUtterance(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Int16Ar
   });
 }
 
+export function getLocalWakeWordModelReadiness(
+  model?: LocalWakeWordModel | null,
+): LocalWakeWordModelReadiness {
+  const sampleCount = model?.samples?.length ?? 0;
+  const hasCentroid = Boolean(model?.centroid?.length);
+  const ready = hasCentroid && sampleCount >= LOCAL_WAKE_WORD_MIN_READY_SAMPLES;
+
+  return {
+    ready,
+    sampleCount,
+    minReadySamples: LOCAL_WAKE_WORD_MIN_READY_SAMPLES,
+    remainingSamples: Math.max(0, LOCAL_WAKE_WORD_MIN_READY_SAMPLES - sampleCount),
+  };
+}
+
 export function hasLocalWakeWordModel(model?: LocalWakeWordModel | null): boolean {
-  return Boolean(model?.samples?.length && model?.centroid?.length);
+  return getLocalWakeWordModelReadiness(model).ready;
 }
 
 export function getLocalWakeWordSampleCount(model?: LocalWakeWordModel | null): number {
@@ -460,7 +483,7 @@ export class LocalWakeWordService {
       throw new Error('Local wake-word processor unavailable');
     }
     if (!this.config || !hasLocalWakeWordModel(this.config.model)) {
-      throw new Error('Local wake-word model not trained');
+      throw new Error(`Local wake-word model needs at least ${LOCAL_WAKE_WORD_MIN_READY_SAMPLES} samples`);
     }
 
     const granted = await processor.hasRecordAudioPermission();

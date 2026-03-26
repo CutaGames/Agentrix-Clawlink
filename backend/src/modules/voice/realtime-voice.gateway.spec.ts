@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { RealtimeVoiceGateway } from './realtime-voice.gateway';
 
 describe('RealtimeVoiceGateway', () => {
+  beforeEach(() => {
+    jest.useRealTimers();
+  });
+
   function createGateway() {
     const voiceService = {
       transcribe: jest.fn().mockResolvedValue({ transcript: 'test transcript' }),
@@ -39,6 +43,9 @@ describe('RealtimeVoiceGateway', () => {
       lastFinalTranscript: '',
       lastFinalAt: 0,
       createdAt: Date.now(),
+      activeStreamingToken: null,
+      ignoredStreamingTokens: new Set<symbol>(),
+      pendingStreamingEnd: null,
       ...overrides,
     };
   }
@@ -91,5 +98,48 @@ describe('RealtimeVoiceGateway', () => {
     expect(session.audioChunks).toHaveLength(1);
     expect(Buffer.isBuffer(session.audioChunks[0])).toBe(true);
     expect(Array.from(session.audioChunks[0].values())).toEqual([1, 2, 3, 4]);
+  });
+
+  it('falls back to buffered PCM transcription when streaming final does not arrive in time', async () => {
+    jest.useFakeTimers();
+
+    const { gateway, voiceService } = createGateway();
+    const client = { userId: 'user-1', emit: jest.fn() } as any;
+    const streamingSession = {
+      write: jest.fn(),
+      end: jest.fn(),
+      abort: jest.fn(),
+    };
+
+    const initializeStreamingSessionSpy = jest
+      .spyOn(gateway as any, 'initializeStreamingSession')
+      .mockResolvedValue(undefined);
+    const startAgentResponseSpy = jest
+      .spyOn(gateway as any, 'startAgentResponse')
+      .mockResolvedValue(undefined);
+
+    (gateway as any).sessions.set('session-1', createSession({
+      streamingSession,
+      activeStreamingToken: Symbol('stream-1'),
+      audioChunks: [Buffer.from([1, 2, 3, 4])],
+    }));
+
+    const handleAudioEndPromise = gateway.handleAudioEnd(client, { sessionId: 'session-1' });
+    await jest.advanceTimersByTimeAsync(1500);
+    await handleAudioEndPromise;
+
+    expect(streamingSession.end).toHaveBeenCalledTimes(1);
+    expect(voiceService.transcribe).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'audio/wav',
+      'voice.wav',
+      'en',
+    );
+    expect(startAgentResponseSpy).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ sessionId: 'session-1' }),
+      'test transcript',
+    );
+    expect(initializeStreamingSessionSpy).toHaveBeenCalledTimes(1);
   });
 });

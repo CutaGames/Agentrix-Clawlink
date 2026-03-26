@@ -126,11 +126,54 @@ export class DeepgramSTTAdapter implements StreamingSTTAdapter {
       },
     });
 
+    const pendingChunks: Buffer[] = [];
     let ended = false;
     let aborted = false;
+    let opened = false;
+    let pendingEnd = false;
+    let connectError: Error | null = null;
 
-    ws.on('open', () => {
-      this.logger.debug('Deepgram streaming session opened');
+    const openPromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (opened || aborted) {
+          return;
+        }
+        const error = new Error('Deepgram streaming session open timed out');
+        connectError = error;
+        try { ws.close(); } catch {}
+        reject(error);
+      }, 8000);
+
+      ws.once('open', () => {
+        clearTimeout(timeout);
+        opened = true;
+        this.logger.debug('Deepgram streaming session opened');
+
+        while (pendingChunks.length > 0 && ws.readyState === WebSocket.OPEN) {
+          const chunk = pendingChunks.shift();
+          if (chunk) {
+            ws.send(chunk);
+          }
+        }
+
+        if (pendingEnd && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'CloseStream' }));
+          setTimeout(() => {
+            try { ws.close(); } catch {}
+          }, 1000);
+        }
+
+        resolve();
+      });
+
+      ws.once('error', (err) => {
+        clearTimeout(timeout);
+        if (opened || aborted) {
+          return;
+        }
+        connectError = err as Error;
+        reject(err as Error);
+      });
     });
 
     ws.on('message', (rawData: Buffer) => {
@@ -167,7 +210,7 @@ export class DeepgramSTTAdapter implements StreamingSTTAdapter {
     });
 
     ws.on('error', (err) => {
-      if (!aborted) {
+      if (!aborted && opened) {
         callbacks.onError?.(err as Error);
       }
     });
@@ -178,10 +221,23 @@ export class DeepgramSTTAdapter implements StreamingSTTAdapter {
       }
     });
 
+    await openPromise.catch((error) => {
+      throw connectError || error;
+    });
+
     return {
       write: (chunk: Buffer) => {
-        if (!aborted && ws.readyState === WebSocket.OPEN) {
+        if (aborted) {
+          return;
+        }
+
+        if (ws.readyState === WebSocket.OPEN) {
           ws.send(chunk);
+          return;
+        }
+
+        if (!opened) {
+          pendingChunks.push(Buffer.from(chunk));
         }
       },
       end: () => {
@@ -192,10 +248,14 @@ export class DeepgramSTTAdapter implements StreamingSTTAdapter {
           setTimeout(() => {
             try { ws.close(); } catch {}
           }, 1000);
+          return;
         }
+
+        pendingEnd = true;
       },
       abort: () => {
         aborted = true;
+        pendingChunks.length = 0;
         try { ws.close(); } catch {}
       },
     };

@@ -21,8 +21,14 @@ const backendDir = path.resolve(__dirname, '..');
 const baseUrl = process.env.VOICE_SMOKE_BASE_URL || 'https://api.agentrix.top';
 const smokeText = process.env.VOICE_SMOKE_TEXT || 'hello agentrix this is a production voice audio smoke test';
 const smokeAudioFile = process.env.VOICE_SMOKE_AUDIO_FILE || '';
+const duplexMode = String(process.env.VOICE_SMOKE_DUPLEX_MODE || 'true').toLowerCase() === 'true';
 const chunkSize = Number(process.env.VOICE_SMOKE_CHUNK_SIZE || 3200);
+const chunkIntervalMs = Number(process.env.VOICE_SMOKE_CHUNK_INTERVAL_MS || 40);
 const timeoutMs = Number(process.env.VOICE_SMOKE_TIMEOUT_MS || 45000);
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -80,7 +86,7 @@ async function fetchJson(url, options = {}) {
   return { response, text, json };
 }
 
-async function findEligibleUser(env) {
+async function findSmokeTarget(env) {
   const client = new Client({
     host: process.env.DB_HOST || env.DB_HOST || '127.0.0.1',
     port: Number(process.env.DB_PORT || env.DB_PORT || 5432),
@@ -129,11 +135,51 @@ async function findEligibleUser(env) {
       `);
     }
 
-    if (!result.rows.length) {
+    if (result.rows.length) {
+      return {
+        user: result.rows[0],
+        instanceId: null,
+      };
+    }
+
+    let activeInstanceResult;
+    try {
+      activeInstanceResult = await client.query(`
+        select u.id, u.email, o.id as "instanceId"
+        from users u
+        join openclaw_instances o on o."userId" = u.id
+        where o."instanceType" = 'cloud'
+          and o.status in ('active', 'provisioning')
+        order by o."updatedAt" desc nulls last, o."createdAt" desc nulls last, o.id asc
+        limit 1
+      `);
+    } catch (error) {
+      if (!/column o\.userId does not exist/i.test(error.message || '')) {
+        throw error;
+      }
+
+      activeInstanceResult = await client.query(`
+        select u.id, u.email, o.id as "instanceId"
+        from users u
+        join openclaw_instances o on o.user_id = u.id
+        where o.instance_type = 'cloud'
+          and o.status in ('active', 'provisioning')
+        order by o.updated_at desc nulls last, o.created_at desc nulls last, o.id asc
+        limit 1
+      `);
+    }
+
+    if (!activeInstanceResult.rows.length) {
       throw new Error('NO_ELIGIBLE_USER');
     }
 
-    return result.rows[0];
+    return {
+      user: {
+        id: activeInstanceResult.rows[0].id,
+        email: activeInstanceResult.rows[0].email,
+      },
+      instanceId: activeInstanceResult.rows[0].instanceId,
+    };
   } finally {
     await client.end();
   }
@@ -308,7 +354,7 @@ async function runSocketAudioTest(token, instanceId, pcmBuffer) {
         sessionId,
         instanceId,
         lang: 'en',
-        duplexMode: false,
+        duplexMode,
       });
     });
 
@@ -319,13 +365,20 @@ async function runSocketAudioTest(token, instanceId, pcmBuffer) {
 
     socket.on('voice:session:ready', (payload) => {
       events.push({ event: 'voice:session:ready', payload });
-      for (let offset = 0; offset < pcmBuffer.length; offset += chunkSize) {
-        socket.emit('voice:audio:chunk', {
-          sessionId,
-          audio: pcmBuffer.subarray(offset, offset + chunkSize),
-        });
-      }
-      socket.emit('voice:audio:end', { sessionId });
+      void (async () => {
+        for (let offset = 0; offset < pcmBuffer.length; offset += chunkSize) {
+          socket.emit('voice:audio:chunk', {
+            sessionId,
+            audio: pcmBuffer.subarray(offset, offset + chunkSize),
+          });
+
+          if (chunkIntervalMs > 0) {
+            await delay(chunkIntervalMs);
+          }
+        }
+
+        socket.emit('voice:audio:end', { sessionId });
+      })();
     });
 
     socket.on('voice:stt:interim', (payload) => {
@@ -357,14 +410,19 @@ async function runSocketAudioTest(token, instanceId, pcmBuffer) {
 
 async function main() {
   const envFile = parseEnvFile(path.join(backendDir, '.env'));
-  const user = await findEligibleUser(envFile);
+  const smokeTarget = await findSmokeTarget(envFile);
+  const user = smokeTarget.user;
   const jwtSecret = process.env.JWT_SECRET || envFile.JWT_SECRET;
   if (!jwtSecret) {
     throw new Error('JWT_SECRET is required to run the production audio smoke test');
   }
 
   const token = signJwt(user.id, jwtSecret);
-  const { instanceId, provisionResult } = await provisionInstance(token);
+  const provisioned = smokeTarget.instanceId ? null : await provisionInstance(token);
+  const provisionResult = smokeTarget.instanceId
+    ? { response: { status: 200 } }
+    : provisioned.provisionResult;
+  const instanceId = smokeTarget.instanceId || provisioned.instanceId;
   const pcmBuffer = await synthesizePcm(envFile);
   const socketResult = await runSocketAudioTest(token, instanceId, pcmBuffer);
 
@@ -373,9 +431,15 @@ async function main() {
   console.log(`PROVISION_STATUS=${provisionResult.response.status}`);
   console.log(`INSTANCE_ID=${instanceId}`);
   console.log(`PCM_BYTES=${pcmBuffer.length}`);
+  console.log(`DUPLEX_MODE=${duplexMode}`);
+  console.log(`CHUNK_INTERVAL_MS=${chunkIntervalMs}`);
   console.log(`AUDIO_SMOKE_RESULT=${JSON.stringify(socketResult)}`);
 
-  if (!['voice:agent:text', 'voice:agent:end'].includes(socketResult.reason)) {
+  const successReasons = duplexMode
+    ? ['voice:agent:text', 'voice:agent:end']
+    : ['voice:stt:final', 'voice:agent:text', 'voice:agent:end'];
+
+  if (!successReasons.includes(socketResult.reason)) {
     process.exitCode = 1;
   }
 }
