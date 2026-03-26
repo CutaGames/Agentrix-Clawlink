@@ -9,6 +9,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 import { io, type Socket } from 'socket.io-client';
 import { addVoiceDiagnostic } from './voiceDiagnostics';
+import { isVoiceUiE2EEnabled, setVoiceUiE2ERealtimeBridge } from '../testing/e2e';
 
 export type RealtimeVoiceState =
   | 'disconnected'
@@ -41,6 +42,22 @@ export interface RealtimeVoiceConfig {
   agentVoiceId?: string;
 }
 
+type SocketBufferLike = {
+  type: 'Buffer';
+  data: number[];
+};
+
+function toSocketBufferLike(audio: ArrayBuffer | Uint8Array): SocketBufferLike {
+  const bytes = audio instanceof Uint8Array
+    ? audio
+    : new Uint8Array(audio);
+
+  return {
+    type: 'Buffer',
+    data: Array.from(bytes),
+  };
+}
+
 export class RealtimeVoiceService {
   private socket: Socket | null = null;
   private config: RealtimeVoiceConfig | null = null;
@@ -50,6 +67,7 @@ export class RealtimeVoiceService {
   private intentionallyClosed = false;
   private appStateSubscription: { remove: () => void } | null = null;
   private pendingTexts: string[] = [];
+  private e2eCleanup: (() => void) | null = null;
 
   constructor(callbacks: RealtimeVoiceCallbacks) {
     this.callbacks = callbacks;
@@ -73,6 +91,11 @@ export class RealtimeVoiceService {
 
   private createSocket(): void {
     if (!this.config) {
+      return;
+    }
+
+    if (isVoiceUiE2EEnabled() && typeof window !== 'undefined') {
+      this.setupE2ERealtimeChannel();
       return;
     }
 
@@ -188,6 +211,48 @@ export class RealtimeVoiceService {
     });
   }
 
+  private setupE2ERealtimeChannel(): void {
+    this.e2eCleanup?.();
+    this.socket = null;
+    this.sessionId = 'e2e-realtime-session';
+    this.setState('connecting');
+
+    const handleFinalTranscript = (text: string) => {
+      this.setState('thinking');
+      this.callbacks.onFinalTranscript(text);
+    };
+
+    const handleAssistantChunk = (chunk: string) => {
+      this.setState('thinking');
+      this.callbacks.onAgentTextChunk(chunk);
+    };
+
+    const handleAssistantEnd = () => {
+      this.setState('connected');
+      this.callbacks.onAgentResponseEnd();
+    };
+
+    const handleError = (error: string) => {
+      this.setState('error');
+      this.callbacks.onError(error || 'Realtime voice error');
+    };
+
+    setVoiceUiE2ERealtimeBridge({
+      onFinalTranscript: handleFinalTranscript,
+      onAssistantChunk: handleAssistantChunk,
+      onAssistantEnd: handleAssistantEnd,
+      onError: handleError,
+    });
+
+    this.e2eCleanup = () => {
+      setVoiceUiE2ERealtimeBridge(null);
+    };
+
+    addVoiceDiagnostic('realtime-voice', 'session-ready', { sessionId: this.sessionId, mode: 'e2e' });
+    this.setState('connected');
+    this.flushPendingTexts();
+  }
+
   private startSession(): void {
     if (!this.socket || !this.config) {
       return;
@@ -235,10 +300,9 @@ export class RealtimeVoiceService {
       return;
     }
 
-    const payload = audio instanceof Uint8Array ? audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) : audio;
     this.socket.emit('voice:audio:chunk', {
       sessionId: this.sessionId,
-      audio: payload,
+      audio: toSocketBufferLike(audio),
     });
   }
 
@@ -263,6 +327,8 @@ export class RealtimeVoiceService {
   disconnect(): void {
     this.intentionallyClosed = true;
     this.removeAppStateListener();
+    this.e2eCleanup?.();
+    this.e2eCleanup = null;
 
     if (this.socket) {
       if (this.sessionId) {
@@ -311,6 +377,7 @@ export class RealtimeVoiceService {
   };
 
   private setState(state: RealtimeVoiceState): void {
+    if (this._state === state) return;
     this._state = state;
     this.callbacks.onStateChange(state);
   }

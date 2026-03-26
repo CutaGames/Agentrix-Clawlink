@@ -284,6 +284,8 @@ const MessageBubble = ({
         {/* Main Message Bubble */}
         {(bubbleText || item.streaming) && (
           <View
+            testID={`chat-message-${item.role}`}
+            accessibilityLabel={`chat-message-${item.role}`}
             style={[
               styles.bubble,
               isUser ? styles.bubbleUser : styles.bubbleBot,
@@ -291,6 +293,8 @@ const MessageBubble = ({
             ]}
           >
             <Text
+              testID={`chat-message-text-${item.role}`}
+              accessibilityLabel={`chat-message-text-${item.role}`}
               style={[
                 styles.bubbleText,
                 isUser && styles.bubbleTextUser,
@@ -392,11 +396,11 @@ export function AgentChatScreen() {
   const navigation = useNavigation<any>();
   const { t, language } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
+  const token = useAuthStore((s) => s.token) || '';
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
   const voiceModeRequested = !!route.params?.voiceMode;
   const duplexModeRequested = !!route.params?.duplexMode;
-  const token = useAuthStore.getState().token || '';
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const speechRate = useSettingsStore((s) => s.speechRate);

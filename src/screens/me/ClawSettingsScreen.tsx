@@ -17,6 +17,7 @@ import {
 import {
   appendLocalWakeWordSample,
   captureLocalWakeWordSample,
+  getLocalWakeWordModelReadiness,
   getLocalWakeWordSampleCount,
   hasLocalWakeWordModel,
   runLocalWakeWordSelfCheck,
@@ -45,7 +46,17 @@ export function ClawSettingsScreen() {
     () => getLocalWakeWordSampleCount(wakeWordConfig.localModel),
     [wakeWordConfig.localModel],
   );
+  const localWakeWordReadiness = useMemo(
+    () => getLocalWakeWordModelReadiness(wakeWordConfig.localModel),
+    [wakeWordConfig.localModel],
+  );
   const hasLocalModel = hasLocalWakeWordModel(wakeWordConfig.localModel);
+  const effectiveWakeEngine = useMemo<WakeWordEngine>(() => {
+    if ((wakeWordConfig.engine === 'local-template' || wakeWordConfig.engine === 'auto') && hasLocalModel) {
+      return 'local-template';
+    }
+    return 'system-speech';
+  }, [hasLocalModel, wakeWordConfig.engine]);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || !isAndroidBackgroundWakeWordAvailable()) {
@@ -66,7 +77,7 @@ export function ClawSettingsScreen() {
       threshold: thresholdFromSensitivity(wakeWordConfig.sensitivity),
       activeInstanceId: null,
       activeInstanceName: null,
-      model: wakeWordConfig.localModel,
+      model: hasLocalModel ? wakeWordConfig.localModel : null,
     }).catch(() => {});
   }, [hasLocalModel, wakeWordConfig.displayName, wakeWordConfig.enabled, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
 
@@ -104,8 +115,8 @@ export function ClawSettingsScreen() {
       Alert.alert(
         t({ en: 'Local sample required for Android background wake word', zh: 'Android 后台唤醒需要先录制本地样本' }),
         t({
-          en: 'The floating ball can stay on screen after exit, but background wake-word listening only starts after you record at least one local sample.',
-          zh: '退出 App 后悬浮球可以保留，但后台热词监听只有在你至少录制一条本地样本后才会开始。未录样时仍可点击悬浮球进入语音页。',
+          en: `The floating ball can stay on screen after exit, but background wake-word listening only starts after you record at least ${localWakeWordReadiness.minReadySamples} clean local samples.`,
+          zh: `退出 App 后悬浮球可以保留，但后台热词监听只有在你至少录制 ${localWakeWordReadiness.minReadySamples} 条清晰本地样本后才会开始。未录样时仍可点击悬浮球进入语音页。`,
         }),
       );
     }
@@ -125,11 +136,17 @@ export function ClawSettingsScreen() {
         localModel: nextModel,
         engine: 'local-template',
       });
+      const nextReadiness = getLocalWakeWordModelReadiness(nextModel);
       setLocalWakeWordStatus(
-        t({
-          en: `Saved sample ${nextModel.samples.length}. Local wake word is ready.`,
-          zh: `已保存第 ${nextModel.samples.length} 条样本，本地唤醒词已可用。`,
-        }),
+        nextReadiness.ready
+          ? t({
+              en: `Saved sample ${nextReadiness.sampleCount}. Local wake word is ready. Run self-check once to confirm it matches your voice consistently.`,
+              zh: `已保存第 ${nextReadiness.sampleCount} 条样本，本地唤醒词已就绪。建议再做一次自检，确认它能稳定匹配你的声音。`,
+            })
+          : t({
+              en: `Saved sample ${nextReadiness.sampleCount}. Record ${nextReadiness.remainingSamples} more clean samples before local wake word takes over. Until then, Auto still uses system speech fallback.`,
+              zh: `已保存第 ${nextReadiness.sampleCount} 条样本。还需要补录 ${nextReadiness.remainingSamples} 条清晰样本，本地唤醒词才会真正接管。此之前，自动模式仍会使用系统语音兜底。`,
+            }),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -146,10 +163,13 @@ export function ClawSettingsScreen() {
   };
 
   const handleRunLocalSelfCheck = async () => {
-    if (!wakeWordConfig.localModel) {
+    if (!wakeWordConfig.localModel || !hasLocalModel) {
       Alert.alert(
         t({ en: 'Model required', zh: '需要先训练模型' }),
-        t({ en: 'Record at least one local wake-word sample first.', zh: '请先录制至少一条本地唤醒词样本。' }),
+        t({
+          en: `Record at least ${localWakeWordReadiness.minReadySamples} local wake-word samples first.`,
+          zh: `请先录制至少 ${localWakeWordReadiness.minReadySamples} 条本地唤醒词样本。`,
+        }),
       );
       return;
     }
@@ -323,14 +343,22 @@ export function ClawSettingsScreen() {
           <Text style={styles.subsectionTitle}>{t({ en: 'Local wake-word model', zh: '本地唤醒词模型' })}</Text>
           <Text style={styles.modeCurrentDesc}>
             {t({
-              en: `Saved samples: ${localWakeWordSampleCount}. Recommended: 3.`,
-              zh: `已保存样本：${localWakeWordSampleCount} 条，建议至少录制 3 条。`,
+              en: `Saved samples: ${localWakeWordSampleCount}. Local mode becomes available at ${localWakeWordReadiness.minReadySamples} samples.`,
+              zh: `已保存样本：${localWakeWordSampleCount} 条。本地模式要到 ${localWakeWordReadiness.minReadySamples} 条样本后才会启用。`,
             })}
           </Text>
           <Text style={styles.modeCurrentDesc}>
             {hasLocalModel
               ? t({ en: 'A trained local model is available on this device.', zh: '当前设备已存在可用的本地模型。' })
-              : t({ en: 'No local model yet. Record one sample to enable device-local wake word.', zh: '当前还没有本地模型，录制一条样本后即可启用端侧唤醒。' })}
+              : t({
+                  en: `Local training is still incomplete. Record ${localWakeWordReadiness.remainingSamples || localWakeWordReadiness.minReadySamples} more clean samples, or keep using system speech fallback.`,
+                  zh: `本地训练还没完成。请继续补录 ${localWakeWordReadiness.remainingSamples || localWakeWordReadiness.minReadySamples} 条清晰样本，或者继续使用系统语音兜底。`,
+                })}
+          </Text>
+          <Text style={styles.modeCurrentDesc}>
+            {effectiveWakeEngine === 'local-template'
+              ? t({ en: 'Current active engine: local wake-word model.', zh: '当前实际生效引擎：本地唤醒词模型。' })
+              : t({ en: 'Current active engine: system speech fallback. This path does not need local training.', zh: '当前实际生效引擎：系统语音兜底。这条路径不需要本地训练。' })}
           </Text>
           <View style={styles.actionRow}>
             <TouchableOpacity
@@ -368,14 +396,14 @@ export function ClawSettingsScreen() {
               <Text style={styles.subsectionTitle}>{t({ en: 'Android background wake word', zh: 'Android 后台唤醒' })}</Text>
               <Text style={styles.modeCurrentDesc}>
                 {t({
-                  en: 'When the app goes to background, Android can keep a floating ball through a foreground service. Background wake-word listening starts only after at least one local sample has been recorded.',
-                  zh: '当 App 退到后台后，Android 会通过前台服务保留系统悬浮球。后台热词监听只有在至少录制一条本地样本后才会开始。',
+                  en: `When the app goes to background, Android can keep a floating ball through a foreground service. Background wake-word listening starts only after at least ${localWakeWordReadiness.minReadySamples} local samples have been recorded.`,
+                  zh: `当 App 退到后台后，Android 会通过前台服务保留系统悬浮球。后台热词监听只有在至少录制 ${localWakeWordReadiness.minReadySamples} 条本地样本后才会开始。`,
                 })}
               </Text>
               <Text style={styles.modeCurrentDesc}>
                 {hasLocalModel
                   ? t({ en: 'Background wake word is eligible on this device once overlay permission is granted.', zh: '当前设备在授权悬浮窗后，已经具备后台热词唤醒条件。' })
-                  : t({ en: 'Without a recorded local sample, Android background mode only keeps the floating ball visible. Tap it to enter voice.', zh: '如果还没录制本地样本，Android 后台模式只会保留悬浮球显示，点击后进入语音页，但不会自动热词唤醒。' })}
+                  : t({ en: 'Until local training is ready, Android background mode only keeps the floating ball visible. Tap it to enter voice.', zh: '在本地训练完成之前，Android 后台模式只会保留悬浮球显示，点击后进入语音页，但不会自动热词唤醒。' })}
               </Text>
               <Text style={styles.modeCurrentDesc}>
                 {overlayPermissionGranted
@@ -440,15 +468,15 @@ export function ClawSettingsScreen() {
           <Text style={styles.modeCurrentDesc}>
             {t({ en: 'Current runtime:', zh: '当前运行配置：' })}{' '}
             {effectiveWakeWordConfig.enabled
-              ? `${effectiveWakeWordConfig.displayName} · ${effectiveWakeWordConfig.engine === 'local-template'
+              ? `${effectiveWakeWordConfig.displayName} · ${effectiveWakeEngine === 'local-template'
                 ? t({ en: `Local model (${localWakeWordSampleCount} samples)`, zh: `本地模型（${localWakeWordSampleCount} 条样本）` })
-                : effectiveWakeWordConfig.fallbackPhrases.join(', ')}`
+                : t({ en: `System speech fallback (${effectiveWakeWordConfig.fallbackPhrases.join(', ')})`, zh: `系统语音兜底（${effectiveWakeWordConfig.fallbackPhrases.join(', ')}）` })}`
               : t({ en: 'disabled', zh: '已关闭' })}
           </Text>
           <Text style={styles.modeCurrentDesc}>
             {hasLocalModel
               ? t({ en: 'The app can use your on-device local wake-word model in the foreground.', zh: '当前前台可以直接使用端侧本地唤醒词模型。' })
-              : t({ en: 'No local model yet. Foreground mode can still fall back to system wake-phrase listening, but Android background wake word will not start until you record a sample.', zh: '当前还没有本地模型。前台仍可退回到系统唤醒短语监听，但 Android 后台热词唤醒要等录制样本后才会开始。' })}
+              : t({ en: `Foreground mode can still fall back to system wake-phrase listening, but local wake word and Android background wake word stay disabled until you record ${localWakeWordReadiness.minReadySamples} usable samples.`, zh: `前台仍可退回到系统唤醒短语监听，但本地唤醒词和 Android 后台热词唤醒会保持关闭，直到你录到 ${localWakeWordReadiness.minReadySamples} 条可用样本。` })}
           </Text>
 
           <TouchableOpacity

@@ -9,10 +9,21 @@ const VOICE_ONBOARDING_KEYS = ['voice_onboarding_completed', 'voice_onboarding_c
 
 export type VoiceUiE2ELiveSpeechPermission = 'granted' | 'denied';
 
+export interface VoiceUiE2ERealtimeBridge {
+  onFinalTranscript: (text: string) => void;
+  onAssistantChunk: (chunk: string) => void;
+  onAssistantEnd: () => void;
+  onError: (message: string) => void;
+}
+
 export interface VoiceUiE2ERuntime {
   liveSpeechPermission: VoiceUiE2ELiveSpeechPermission;
   setLiveSpeechPermission: (state: VoiceUiE2ELiveSpeechPermission) => void;
   triggerWakeWord: () => void;
+  emitRealtimeFinalTranscript: (text: string) => void;
+  emitRealtimeAssistantChunk: (chunk: string) => void;
+  completeRealtimeAssistantResponse: () => void;
+  emitRealtimeError: (message: string) => void;
 }
 
 declare global {
@@ -21,6 +32,7 @@ declare global {
     __AGENTRIX_VOICE_UI_E2E_FETCH_MOCKED__?: boolean;
     __AGENTRIX_VOICE_UI_E2E_RUNTIME__?: VoiceUiE2ERuntime;
     __AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_PERMISSION__?: VoiceUiE2ELiveSpeechPermission;
+    __AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?: VoiceUiE2ERealtimeBridge | null;
   }
 }
 
@@ -37,9 +49,29 @@ function createVoiceUiE2ERuntime(): VoiceUiE2ERuntime {
     triggerWakeWord() {
       window.dispatchEvent(new CustomEvent('agentrix:e2e-wake-word'));
     },
+    emitRealtimeFinalTranscript(text) {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onFinalTranscript(text);
+    },
+    emitRealtimeAssistantChunk(chunk) {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onAssistantChunk(chunk);
+    },
+    completeRealtimeAssistantResponse() {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onAssistantEnd();
+    },
+    emitRealtimeError(message) {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onError(message);
+    },
   };
 
   return runtime;
+}
+
+export function setVoiceUiE2ERealtimeBridge(bridge: VoiceUiE2ERealtimeBridge | null): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__ = bridge;
 }
 
 function createJsonResponse(body: unknown, status = 200): Response {

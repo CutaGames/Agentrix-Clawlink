@@ -22,8 +22,10 @@ export interface RealtimeMicrophoneCallbacks {
 const FRAME_LENGTH = 512;
 const SAMPLE_RATE = 16000;
 const SPEECH_START_THRESHOLD = 0.12;
-const SPEECH_END_THRESHOLD = 0.05;
-const SPEECH_END_FRAME_COUNT = 10;
+const SPEECH_END_THRESHOLD = 0.035;
+const SPEECH_END_FRAME_COUNT = 18;
+const MIN_SPEECH_FRAME_COUNT = 8;
+const SPEECH_RESTART_COOLDOWN_FRAMES = 20;
 
 function getVoiceProcessor(): VoiceProcessorType | null {
   try {
@@ -70,6 +72,9 @@ export class RealtimeMicrophoneService {
   private running = false;
   private speechActive = false;
   private silentFrameCount = 0;
+  private speechFrameCount = 0;
+  private restartCooldownFrameCount = 0;
+  private pausedUntil = 0;
 
   constructor(callbacks: RealtimeMicrophoneCallbacks) {
     this.callbacks = callbacks;
@@ -97,31 +102,55 @@ export class RealtimeMicrophoneService {
     this.voiceProcessor = voiceProcessor;
     this.speechActive = false;
     this.silentFrameCount = 0;
+    this.speechFrameCount = 0;
+    this.restartCooldownFrameCount = 0;
 
     this.frameListener = (frame: number[]) => {
       const normalizedVolume = calculateNormalizedVolume(frame);
       this.callbacks.onVolumeChange?.(normalizedVolume);
 
-      if (normalizedVolume >= SPEECH_START_THRESHOLD) {
-        this.silentFrameCount = 0;
-        if (!this.speechActive) {
-          this.speechActive = true;
-          addVoiceDiagnostic('realtime-mic', 'speech-start', { normalizedVolume });
-          this.callbacks.onSpeechStart?.();
-        }
-      } else if (this.speechActive) {
+      if (Date.now() < this.pausedUntil) {
+        return;
+      }
+
+      if (!this.speechActive && this.restartCooldownFrameCount > 0) {
+        this.restartCooldownFrameCount -= 1;
+      }
+
+      if (this.speechActive) {
+        this.speechFrameCount += 1;
         if (normalizedVolume <= SPEECH_END_THRESHOLD) {
           this.silentFrameCount += 1;
           if (this.silentFrameCount >= SPEECH_END_FRAME_COUNT) {
+            const speechFrameCount = this.speechFrameCount;
             this.speechActive = false;
             this.silentFrameCount = 0;
-            addVoiceDiagnostic('realtime-mic', 'speech-end');
-            this.callbacks.onSpeechEnd?.();
+            this.speechFrameCount = 0;
+            this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
+
+            if (speechFrameCount >= MIN_SPEECH_FRAME_COUNT) {
+              addVoiceDiagnostic('realtime-mic', 'speech-end', { speechFrameCount });
+              this.callbacks.onSpeechEnd?.();
+            } else {
+              addVoiceDiagnostic('realtime-mic', 'speech-end-ignored', { speechFrameCount });
+            }
           }
         } else {
           this.silentFrameCount = 0;
         }
-      }
+      } else if (
+        normalizedVolume >= SPEECH_START_THRESHOLD
+        && this.restartCooldownFrameCount === 0
+      ) {
+        this.silentFrameCount = 0;
+        this.speechActive = true;
+        this.speechFrameCount = 1;
+        addVoiceDiagnostic('realtime-mic', 'speech-start', { normalizedVolume });
+        this.callbacks.onSpeechStart?.();
+      } else if (!this.speechActive) {
+        this.silentFrameCount = 0;
+        this.speechFrameCount = 0;
+        }
 
       this.callbacks.onFrame(toPcmBuffer(frame));
     };
@@ -158,6 +187,9 @@ export class RealtimeMicrophoneService {
     this.running = false;
     this.speechActive = false;
     this.silentFrameCount = 0;
+    this.speechFrameCount = 0;
+    this.restartCooldownFrameCount = 0;
+    this.pausedUntil = 0;
 
     try {
       if (await processor.isRecording()) {
@@ -172,6 +204,14 @@ export class RealtimeMicrophoneService {
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  pauseInput(durationMs: number): void {
+    this.pausedUntil = Math.max(this.pausedUntil, Date.now() + Math.max(0, durationMs));
+    this.speechActive = false;
+    this.silentFrameCount = 0;
+    this.speechFrameCount = 0;
+    this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
   }
 
   private detachListeners() {
