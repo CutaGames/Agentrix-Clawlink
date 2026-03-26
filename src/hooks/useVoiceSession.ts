@@ -105,6 +105,8 @@ export interface UseVoiceSessionReturn {
   setTranscriptPreview: (text: string) => void;
 }
 
+const REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS = 750;
+
 // ── Hook ───────────────────────────────────────────────────
 
 export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessionReturn {
@@ -152,6 +154,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechRef = useRef<LiveSpeechController | null>(null);
   const liveSpeechManualStopRef = useRef(false);
   const lastLiveFinalTranscriptRef = useRef('');
+  const lastRealtimeFinalTranscriptRef = useRef('');
+  const lastRealtimeFinalAtRef = useRef(0);
   const voiceModeRef = useRef(voiceMode);
   const duplexModeRef = useRef(duplexMode);
   const isMountedRef = useRef(true);
@@ -188,7 +192,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     const persistRealtimeAudioChunk = useCallback(async (audioBase64: string, format: string) => {
       const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
       if (!directory) {
-        throw new Error('No writable directory available for realtime audio');
+        // Fallback: return a data URI so expo-av can play directly without file I/O
+        const mime = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
+        return `data:${mime};base64,${audioBase64}`;
       }
 
       realtimeAudioSequenceRef.current += 1;
@@ -252,15 +258,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   // When useRealtimeChannel is true and duplex mode is active,
   // use the low-latency WebSocket path instead of HTTP serial.
   useEffect(() => {
-    if (isVoiceUiE2E) {
-      if (realtimeVoiceRef.current) {
-        realtimeVoiceRef.current.disconnect();
-        realtimeVoiceRef.current = null;
-      }
-      setRealtimeConnected(false);
-      return;
-    }
-
     if (!useRealtimeChannel || !duplexMode || !token || !instanceId) {
       // Clean up existing realtime connection
       if (realtimeVoiceRef.current) {
@@ -295,10 +292,30 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setTranscriptPreview(text);
       },
       onFinalTranscript: (text) => {
-        if (text) {
-          setTranscriptPreview(text);
-          addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: text.slice(0, 160) });
+        const normalized = text.trim();
+        if (!normalized) {
+          setTranscriptPreview('');
+          return;
         }
+
+        setTranscriptPreview(normalized);
+        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: normalized.slice(0, 160) });
+
+        const now = Date.now();
+        const isDuplicateFinal = normalized === lastRealtimeFinalTranscriptRef.current
+          && now - lastRealtimeFinalAtRef.current < REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS;
+
+        if (isDuplicateFinal) {
+          addVoiceDiagnostic('realtime-voice', 'final-transcript-duplicate-skipped', {
+            text: normalized.slice(0, 160),
+          });
+          return;
+        }
+
+        lastRealtimeFinalTranscriptRef.current = normalized;
+        lastRealtimeFinalAtRef.current = now;
+
+        onRealtimeUserMessageRef.current?.(normalized);
       },
       onAgentTextChunk: (chunk) => {
         if (!chunk) return;
@@ -343,6 +360,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       onDisconnect: (reason) => {
         setRealtimeConnected(false);
         addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
+        // Complete any in-flight assistant message so it gets persisted
+        onRealtimeAssistantResponseEndRef.current?.();
       },
     });
 
