@@ -21,6 +21,7 @@ export class AudioQueuePlayer {
   private isPlaying: boolean = false;
   private currentSound: Audio.Sound | null = null;
   private onFinishedAll: (() => void) | null = null;
+  private _destroyed: boolean = false;
 
   // Interruption tracking
   private playedCount: number = 0;
@@ -32,7 +33,18 @@ export class AudioQueuePlayer {
     this.onFinishedAll = onFinishedAll || null;
   }
 
+  /** Permanently destroy this player — stops all audio and rejects future enqueues. */
+  destroy() {
+    this._destroyed = true;
+    this.stopAll();
+  }
+
+  get destroyed(): boolean {
+    return this._destroyed;
+  }
+
   enqueue(uri: string, fallbackText?: string, language?: string) {
+    if (this._destroyed) return;
     this.queue.push({ uri, fallbackText, language });
     this.totalEnqueued++;
     if (!this.isPlaying) {
@@ -41,7 +53,7 @@ export class AudioQueuePlayer {
   }
 
   private async playNext() {
-    if (this.queue.length === 0) {
+    if (this._destroyed || this.queue.length === 0) {
       this.isPlaying = false;
       this.currentItem = null;
       // Reset counters on natural completion
