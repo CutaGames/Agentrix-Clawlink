@@ -448,7 +448,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       console.warn('[useVoiceSession] AudioQueuePlayer init failed:', err);
     }
     return () => {
-      try { audioPlayerRef.current?.stopAll(); } catch {}
+      try { audioPlayerRef.current?.destroy(); } catch {}
       stopLiveSpeech(true, true);
     };
   }, [stopLiveSpeech]);

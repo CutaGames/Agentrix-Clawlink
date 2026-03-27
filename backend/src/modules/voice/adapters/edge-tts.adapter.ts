@@ -4,7 +4,8 @@ import * as crypto from 'crypto';
 
 /**
  * Edge TTS Adapter — uses Microsoft Edge's free online TTS service,
- * with AWS Polly as automatic fallback when Edge TTS is blocked (403).
+ * with AWS Polly Neural as automatic fallback when Edge TTS is blocked (403),
+ * then Google Translate TTS as last resort.
  *
  * Protocol: WebSocket → speech.platform.bing.com
  * Output: audio/mpeg (24kHz 48kbps mono MP3)
@@ -114,6 +115,71 @@ let edgeTTSBlockedAt = 0;
 const EDGE_TTS_BLOCK_RECHECK_MS = 5 * 60 * 1000; // retry Edge TTS every 5 min
 
 /**
+ * AWS Polly Neural TTS fallback — high quality, natural-sounding voices.
+ * Returns MP3 audio. Requires AWS credentials in env.
+ */
+async function pollyTTS(text: string, lang: string): Promise<Buffer> {
+  const { PollyClient, SynthesizeSpeechCommand } = await import('@aws-sdk/client-polly');
+
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    throw new Error('AWS credentials not configured for Polly');
+  }
+
+  const polly = new PollyClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+
+  const isChinese = lang.startsWith('zh');
+  const voiceId = isChinese ? 'Zhiyu' : 'Matthew';
+  const languageCode = isChinese ? 'cmn-CN' : 'en-US';
+
+  try {
+    const command = new SynthesizeSpeechCommand({
+      Engine: 'neural',
+      VoiceId: voiceId as any,
+      LanguageCode: languageCode,
+      OutputFormat: 'mp3',
+      Text: text,
+    });
+    const response = await polly.send(command);
+    if (!response.AudioStream) {
+      throw new Error('Polly returned no audio stream');
+    }
+    // Convert readable stream to Buffer
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.AudioStream as any) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  } catch (err: any) {
+    // If neural engine isn't available for this voice, try standard
+    if (err.name === 'ValidationException') {
+      const fallbackCmd = new SynthesizeSpeechCommand({
+        Engine: 'standard',
+        VoiceId: voiceId as any,
+        LanguageCode: languageCode,
+        OutputFormat: 'mp3',
+        Text: text,
+      });
+      const response = await polly.send(fallbackCmd);
+      if (!response.AudioStream) {
+        throw new Error('Polly standard fallback returned no audio');
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of response.AudioStream as any) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      return Buffer.concat(chunks);
+    }
+    throw err;
+  }
+}
+
+/**
  * Google Translate TTS fallback — works worldwide from any server IP.
  * Returns MP3 audio. Supports text up to ~200 chars per request.
  */
@@ -160,35 +226,43 @@ async function googleTranslateTTS(text: string, lang: string): Promise<Buffer> {
 
 /**
  * Synthesize text to audio buffer.
- * Tries Edge TTS first, falls back to Google Translate TTS if Edge is blocked.
+ * Priority: Edge TTS → AWS Polly Neural → Google Translate TTS.
  */
 export async function edgeTTS(text: string, options: EdgeTTSOptions = {}): Promise<Buffer> {
   const voice = options.voice || 'en-US-JennyNeural';
   const isChinese = voice.startsWith('zh-');
   const lang = isChinese ? 'zh-CN' : 'en';
 
-  // If Edge TTS was recently blocked, go straight to fallback
+  // If Edge TTS was recently blocked, go straight to Polly/Google fallback
   const shouldSkipEdge = edgeTTSBlocked && (Date.now() - edgeTTSBlockedAt < EDGE_TTS_BLOCK_RECHECK_MS);
-  if (shouldSkipEdge) {
-    return googleTranslateTTS(text, lang);
-  }
-
-  try {
-    const result = await edgeTTSOnce(text, options);
-    edgeTTSBlocked = false;
-    return result;
-  } catch (err: any) {
-    const is403 = err?.message?.includes('403');
-    if (is403) {
-      logger.warn('Edge TTS blocked (403), switching to Google Translate TTS fallback');
-      edgeTTSBlocked = true;
-      edgeTTSBlockedAt = Date.now();
-    } else {
-      logger.warn(`Edge TTS failed: ${err.message}, trying Google Translate TTS fallback`);
+  if (!shouldSkipEdge) {
+    try {
+      const result = await edgeTTSOnce(text, options);
+      edgeTTSBlocked = false;
+      return result;
+    } catch (err: any) {
+      const is403 = err?.message?.includes('403');
+      if (is403) {
+        logger.warn('Edge TTS blocked (403), trying Polly fallback');
+        edgeTTSBlocked = true;
+        edgeTTSBlockedAt = Date.now();
+      } else {
+        logger.warn(`Edge TTS failed: ${err.message}, trying Polly fallback`);
+      }
     }
-
-    return googleTranslateTTS(text, lang);
   }
+
+  // Fallback 1: AWS Polly Neural (natural voice quality)
+  try {
+    const pollyResult = await pollyTTS(text, lang);
+    logger.debug(`Polly TTS succeeded for ${text.length} chars`);
+    return pollyResult;
+  } catch (pollyErr: any) {
+    logger.warn(`Polly TTS failed: ${pollyErr.message}, falling back to Google Translate TTS`);
+  }
+
+  // Fallback 2: Google Translate TTS (robotic but always available)
+  return googleTranslateTTS(text, lang);
 }
 
 function edgeTTSOnce(text: string, options: EdgeTTSOptions = {}): Promise<Buffer> {

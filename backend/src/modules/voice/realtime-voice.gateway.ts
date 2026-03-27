@@ -77,7 +77,7 @@ interface VoiceSession {
 const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
-const STREAMING_FINALIZATION_TIMEOUT_MS = 2500;
+const STREAMING_FINALIZATION_TIMEOUT_MS = 4000;
 
 @WebSocketGateway({
   cors: {
@@ -593,10 +593,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       }
     } catch (error: any) {
       this.logger.error(`STT error for session ${sessionId}: ${error.message}`);
-      client.emit('voice:error', {
+      // Emit a non-fatal error so the client stays connected and can retry
+      client.emit('voice:stt:final', {
         sessionId,
-        error: 'Transcription failed',
-        code: 'STT_ERROR',
+        transcript: '',
+        lang: session.lang,
+        error: 'transcription_failed',
       });
     }
   }
