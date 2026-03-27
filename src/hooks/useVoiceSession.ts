@@ -209,11 +209,20 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
 
+  // Refs for values used inside the realtime connection but that should NOT
+  // tear down the socket when they change (e.g., voice ID settling from undefined).
+  const agentVoiceIdRef = useRef(agentVoiceId);
+  const realtimeModelIdRef = useRef(realtimeModelId);
+  const voiceLanguageHintRef = useRef(voiceLanguageHint);
+
   // Keep refs in sync
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
   useEffect(() => { sendingRef.current = !!isSending; }, [isSending]);
   useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { agentVoiceIdRef.current = agentVoiceId; }, [agentVoiceId]);
+  useEffect(() => { realtimeModelIdRef.current = realtimeModelId; }, [realtimeModelId]);
+  useEffect(() => { voiceLanguageHintRef.current = voiceLanguageHint; }, [voiceLanguageHint]);
   useEffect(() => { onSendMessageRef.current = onSendMessage; }, [onSendMessage]);
   useEffect(() => { onRealtimeUserMessageRef.current = onRealtimeUserMessage; }, [onRealtimeUserMessage]);
   useEffect(() => { onRealtimeAssistantChunkRef.current = onRealtimeAssistantChunk; }, [onRealtimeAssistantChunk]);
@@ -370,9 +379,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       wsUrl,
       token,
       instanceId,
-      language: voiceLanguageHint,
-      modelId: realtimeModelId,
-      agentVoiceId,
+      language: voiceLanguageHintRef.current,
+      modelId: realtimeModelIdRef.current,
+      agentVoiceId: agentVoiceIdRef.current,
     });
 
     return () => {
@@ -381,15 +390,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setRealtimeConnected(false);
     };
   }, [
-    agentVoiceId,
     duplexMode,
     instanceId,
     persistRealtimeAudioChunk,
-    realtimeModelId,
     token,
     isVoiceUiE2E,
     useRealtimeChannel,
-    voiceLanguageHint,
+    stopLiveSpeech,
   ]);
 
   // ── Live Speech ──
