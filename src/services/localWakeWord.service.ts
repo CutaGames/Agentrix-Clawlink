@@ -57,7 +57,7 @@ const MAX_DURATION_MS = 2500;
 const DEFAULT_TIMEOUT_MS = 4500;
 const COOLDOWN_MS = 1500;
 /** Global cooldown after a wake word fires — survives across listener re-creation. */
-const GLOBAL_WAKE_COOLDOWN_MS = 8000;
+const GLOBAL_WAKE_COOLDOWN_MS = 4000;
 let lastGlobalWakeTriggerAt = 0;
 const MAX_SAVED_SAMPLES = 5;
 export const LOCAL_WAKE_WORD_MIN_READY_SAMPLES = 3;
@@ -131,7 +131,8 @@ function cosineSimilarity(left: number[], right: number[]): number {
 
 function thresholdFromSensitivity(sensitivity: number): number {
   const normalized = Math.max(0.05, Math.min(0.95, sensitivity));
-  return 0.82 - normalized * 0.25;
+  // Lower base from 0.82 to 0.65 so wake word triggers more easily
+  return 0.65 - normalized * 0.25;
 }
 
 function meanAbsoluteDifference(samples: Float32Array): number {
@@ -571,7 +572,7 @@ export class LocalWakeWordService {
       return;
     }
 
-    const threshold = this.config.threshold ?? thresholdFromSensitivity(0.65);
+    const threshold = this.config.threshold ?? thresholdFromSensitivity(0.85);
     const similarity = scoreWakeWordMatch(this.config.model, vector);
     addVoiceDiagnostic('local-wake', 'utterance-scored', {
       durationMs,

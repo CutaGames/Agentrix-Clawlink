@@ -801,9 +801,23 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return;
     }
 
-    const isChinese = session.lang === 'zh' || /[\u4e00-\u9fff]/.test(sentence);
+    // Strip markdown formatting before TTS — **bold**, *italic*, `code`, #headers, []() links
+    const cleanSentence = sentence
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_~`#>|]/g, '')
+      .trim();
+
+    if (!cleanSentence) {
+      return;
+    }
+
+    const isChinese = session.lang === 'zh' || /[\u4e00-\u9fff]/.test(cleanSentence);
     const voice = resolveEdgeVoice(session.voiceId, isChinese);
-    const audioBuffer = await edgeTTS(sentence, { voice });
+    const audioBuffer = await edgeTTS(cleanSentence, { voice });
 
     if (generation !== session.responseGeneration) {
       return;
