@@ -1769,40 +1769,40 @@ export function AgentChatScreen() {
         </TouchableOpacity>
 
         {voiceMode ? (
-          voiceInteractionMode === 'tap' ? (
+          duplexMode && realtimeConnected ? (
+            /* Active realtime voice call — status display */
             <TouchableOpacity
               testID="chat-voice-action-button"
-              accessibilityLabel={`chat-voice-action-button:${voiceInteractionMode}:duplex:${voicePhase}:${liveListening ? 'live' : 'idle'}`}
-              style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
+              accessibilityLabel={`chat-voice-action-button:call:${voicePhase}:${liveListening ? 'live' : 'idle'}`}
+              style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
               onPress={() => {
-                if (duplexMode && realtimeConnected && liveListening) {
-                  sendRealtimeInterrupt();
-                }
-                void handleVoiceTapToggle();
+                if (liveListening) sendRealtimeInterrupt();
+                setDuplexMode(false);
               }}
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
-                {duplexMode
-                  ? liveListening
-                    ? t({ en: '🛑  Stop Live Voice', zh: '🛑  停止实时语音' })
-                    : t({ en: '🎙  Start Live Voice', zh: '🎙  开始实时语音' })
-                  : isRecording
-                  ? t({ en: '🔴  Tap to Send', zh: '🔴  点击发送' })
-                  : t({ en: '🎙  Tap to Talk', zh: '🎙  点击说话' })}
+                {liveListening
+                  ? t({ en: '🎙  Listening…', zh: '🎙  聆听中…' })
+                  : voicePhase === 'thinking'
+                  ? t({ en: '💭  Thinking…', zh: '💭  思考中…' })
+                  : voicePhase === 'speaking'
+                  ? t({ en: '🔊  Speaking…', zh: '🔊  回复中…' })
+                  : t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })}
               </Text>
             </TouchableOpacity>
           ) : (
+            /* Push-to-talk (hold to record) */
             <TouchableOpacity
               testID="chat-voice-action-button"
-              accessibilityLabel={`chat-voice-action-button:${voiceInteractionMode}:basic:${voicePhase}:${isRecording ? 'recording' : 'idle'}`}
+              accessibilityLabel={`chat-voice-action-button:ptt:${voicePhase}:${isRecording ? 'recording' : 'idle'}`}
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
               onPressIn={handleVoicePressIn}
               onPressOut={handleVoicePressOut}
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
-                {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  按住说话', zh: '🎙  按住说话' })}
+                {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' })}
               </Text>
             </TouchableOpacity>
           )
@@ -1846,7 +1846,7 @@ export function AgentChatScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Right: Send or voice mode toggle */}
+        {/* Right: Send or voice call button */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
             style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
@@ -1859,20 +1859,34 @@ export function AgentChatScreen() {
               <Text style={styles.sendIcon}>⬆</Text>
             )}
           </TouchableOpacity>
-        ) : (
-          voiceMode ? (
-            <TouchableOpacity
-              testID="chat-voice-interaction-toggle"
-              accessibilityLabel={`chat-voice-interaction-toggle:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}`}
-              style={[styles.deviceBtn, duplexMode && { borderColor: colors.accent }]}
-              onPress={() => setVoiceInteractionMode((prev) => prev === 'hold' ? 'tap' : 'hold')}
-            >
-              <Text style={[styles.deviceIcon, duplexMode && { color: colors.accent }]}>
-                {voiceInteractionMode === 'tap' ? '◉' : '◎'}
-              </Text>
-            </TouchableOpacity>
-          ) : null
-        )}
+        ) : null}
+
+        {/* Realtime voice call button — visible in voice mode */}
+        {voiceMode ? (
+          <TouchableOpacity
+            testID="chat-voice-call-button"
+            accessibilityLabel={`chat-voice-call-button:${duplexMode && realtimeConnected ? 'active' : 'idle'}`}
+            style={[
+              styles.voiceCallBtn,
+              duplexMode && realtimeConnected && styles.voiceCallBtnActive,
+            ]}
+            onPress={() => {
+              if (duplexMode && realtimeConnected) {
+                if (liveListening) sendRealtimeInterrupt();
+                setDuplexMode(false);
+              } else {
+                setDuplexMode(true);
+              }
+            }}
+          >
+            <Text style={[
+              styles.voiceCallIcon,
+              duplexMode && realtimeConnected && styles.voiceCallIconActive,
+            ]}>
+              {duplexMode && realtimeConnected ? '📵' : '📞'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
       </View>
 
@@ -2436,7 +2450,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     borderColor: '#ef4444',
   },
+  holdTalkBtnCall: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
   holdTalkText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  voiceCallBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  voiceCallBtnActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  voiceCallIcon: { fontSize: 20 },
+  voiceCallIconActive: { fontSize: 20 },
   tokenBar: {
     height: 18, backgroundColor: colors.bgSecondary,
     flexDirection: 'row', alignItems: 'center', overflow: 'hidden', position: 'relative',

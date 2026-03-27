@@ -56,6 +56,9 @@ const MIN_DURATION_MS = 200;
 const MAX_DURATION_MS = 2500;
 const DEFAULT_TIMEOUT_MS = 4500;
 const COOLDOWN_MS = 1500;
+/** Global cooldown after a wake word fires — survives across listener re-creation. */
+const GLOBAL_WAKE_COOLDOWN_MS = 8000;
+let lastGlobalWakeTriggerAt = 0;
 const MAX_SAVED_SAMPLES = 5;
 export const LOCAL_WAKE_WORD_MIN_READY_SAMPLES = 3;
 
@@ -128,7 +131,7 @@ function cosineSimilarity(left: number[], right: number[]): number {
 
 function thresholdFromSensitivity(sensitivity: number): number {
   const normalized = Math.max(0.05, Math.min(0.95, sensitivity));
-  return 0.72 - normalized * 0.28;
+  return 0.82 - normalized * 0.25;
 }
 
 function meanAbsoluteDifference(samples: Float32Array): number {
@@ -459,6 +462,7 @@ export class LocalWakeWordService {
   private silentFrames = 0;
   private running = false;
   private lastTriggerAt = 0;
+  private pausedUntil = 0;
 
   static isAvailable(): boolean {
     return getVoiceProcessor() !== null;
@@ -541,11 +545,20 @@ export class LocalWakeWordService {
     addVoiceDiagnostic('local-wake', 'start');
   }
 
+  pause(durationMs: number): void {
+    this.pausedUntil = Math.max(this.pausedUntil, Date.now() + Math.max(0, durationMs));
+    addVoiceDiagnostic('local-wake', 'pause', { durationMs });
+  }
+
   private flushCurrentUtterance() {
     const utterance = new Int16Array(this.utterance);
     this.utterance = [];
     this.speechActive = false;
     this.silentFrames = 0;
+
+    if (Date.now() < this.pausedUntil) {
+      return;
+    }
 
     const durationMs = (utterance.length / SAMPLE_RATE) * 1000;
     if (durationMs < MIN_DURATION_MS || durationMs > MAX_DURATION_MS) {
@@ -571,11 +584,12 @@ export class LocalWakeWordService {
     }
 
     const now = Date.now();
-    if (now - this.lastTriggerAt < COOLDOWN_MS) {
+    if (now - this.lastTriggerAt < COOLDOWN_MS || now - lastGlobalWakeTriggerAt < GLOBAL_WAKE_COOLDOWN_MS) {
       return;
     }
 
     this.lastTriggerAt = now;
+    lastGlobalWakeTriggerAt = now;
     addVoiceDiagnostic('local-wake', 'wake-match', { similarity, threshold });
     this.config.onWakeWord();
   }
