@@ -21,11 +21,20 @@ export interface RealtimeMicrophoneCallbacks {
 
 const FRAME_LENGTH = 512;
 const SAMPLE_RATE = 16000;
-const SPEECH_START_THRESHOLD = 0.12;
-const SPEECH_END_THRESHOLD = 0.035;
+const SPEECH_START_THRESHOLD = 0.15;
+const SPEECH_END_THRESHOLD = 0.05;
 const SPEECH_END_FRAME_COUNT = 18;
 const MIN_SPEECH_FRAME_COUNT = 8;
 const SPEECH_RESTART_COOLDOWN_FRAMES = 20;
+/**
+ * Number of frames to send as pre-roll when speech starts.
+ * This avoids cutting off the beginning of a word.
+ */
+const SPEECH_PRE_ROLL_FRAMES = 6;
+/**
+ * Extra frames to send after speech ends (post-roll) so tail isn't clipped.
+ */
+const SPEECH_POST_ROLL_FRAMES = 8;
 
 function getVoiceProcessor(): VoiceProcessorType | null {
   try {
@@ -75,6 +84,10 @@ export class RealtimeMicrophoneService {
   private speechFrameCount = 0;
   private restartCooldownFrameCount = 0;
   private pausedUntil = 0;
+  /** Ring buffer for pre-roll frames so we don't clip the start of speech */
+  private preRollBuffer: ArrayBuffer[] = [];
+  /** Post-roll counter: after speech ends, continue sending this many frames */
+  private postRollRemaining = 0;
 
   constructor(callbacks: RealtimeMicrophoneCallbacks) {
     this.callbacks = callbacks;
@@ -104,6 +117,8 @@ export class RealtimeMicrophoneService {
     this.silentFrameCount = 0;
     this.speechFrameCount = 0;
     this.restartCooldownFrameCount = 0;
+    this.preRollBuffer = [];
+    this.postRollRemaining = 0;
 
     this.frameListener = (frame: number[]) => {
       const normalizedVolume = calculateNormalizedVolume(frame);
@@ -117,6 +132,8 @@ export class RealtimeMicrophoneService {
         this.restartCooldownFrameCount -= 1;
       }
 
+      const pcmChunk = toPcmBuffer(frame);
+
       if (this.speechActive) {
         this.speechFrameCount += 1;
         if (normalizedVolume <= SPEECH_END_THRESHOLD) {
@@ -127,6 +144,7 @@ export class RealtimeMicrophoneService {
             this.silentFrameCount = 0;
             this.speechFrameCount = 0;
             this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
+            this.postRollRemaining = SPEECH_POST_ROLL_FRAMES;
 
             if (speechFrameCount >= MIN_SPEECH_FRAME_COUNT) {
               addVoiceDiagnostic('realtime-mic', 'speech-end', { speechFrameCount });
@@ -138,6 +156,8 @@ export class RealtimeMicrophoneService {
         } else {
           this.silentFrameCount = 0;
         }
+        // During speech: always send audio
+        this.callbacks.onFrame(pcmChunk);
       } else if (
         normalizedVolume >= SPEECH_START_THRESHOLD
         && this.restartCooldownFrameCount === 0
@@ -145,14 +165,27 @@ export class RealtimeMicrophoneService {
         this.silentFrameCount = 0;
         this.speechActive = true;
         this.speechFrameCount = 1;
+        this.postRollRemaining = 0;
         addVoiceDiagnostic('realtime-mic', 'speech-start', { normalizedVolume });
         this.callbacks.onSpeechStart?.();
-      } else if (!this.speechActive) {
-        this.silentFrameCount = 0;
-        this.speechFrameCount = 0;
+        // Flush pre-roll buffer so onset of speech isn't clipped
+        for (const preRollChunk of this.preRollBuffer) {
+          this.callbacks.onFrame(preRollChunk);
         }
-
-      this.callbacks.onFrame(toPcmBuffer(frame));
+        this.preRollBuffer = [];
+        this.callbacks.onFrame(pcmChunk);
+      } else {
+        // No speech — buffer for pre-roll only, don't send to server
+        this.preRollBuffer.push(pcmChunk);
+        if (this.preRollBuffer.length > SPEECH_PRE_ROLL_FRAMES) {
+          this.preRollBuffer.shift();
+        }
+        // Send post-roll frames after speech end so tail isn't clipped
+        if (this.postRollRemaining > 0) {
+          this.postRollRemaining -= 1;
+          this.callbacks.onFrame(pcmChunk);
+        }
+      }
     };
 
     this.errorListener = (error: unknown) => {
@@ -190,6 +223,8 @@ export class RealtimeMicrophoneService {
     this.speechFrameCount = 0;
     this.restartCooldownFrameCount = 0;
     this.pausedUntil = 0;
+    this.preRollBuffer = [];
+    this.postRollRemaining = 0;
 
     try {
       if (await processor.isRecording()) {
