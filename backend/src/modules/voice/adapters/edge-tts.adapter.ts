@@ -14,7 +14,7 @@ import * as crypto from 'crypto';
 const BASE_URL = 'speech.platform.bing.com/consumer/speech/synthesize/readaloud';
 const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
 const VOICE_LIST_URL = `https://${BASE_URL}/voices/list?trustedclienttoken=${TOKEN}`;
-const SEC_MS_GEC_VERSION = '1-130.0.2849.68';
+const SEC_MS_GEC_VERSION = '1-131.0.2903.112';
 const WIN_EPOCH_OFFSET = 621355968000000000n;
 const ROUND_TICKS = 3000000000n;
 
@@ -114,6 +114,11 @@ let edgeTTSBlocked = false;
 let edgeTTSBlockedAt = 0;
 const EDGE_TTS_BLOCK_RECHECK_MS = 5 * 60 * 1000; // retry Edge TTS every 5 min
 
+// Track whether Polly is unavailable (e.g. IAM permission denied)
+let pollyBlocked = false;
+let pollyBlockedAt = 0;
+const POLLY_BLOCK_RECHECK_MS = 30 * 60 * 1000; // retry Polly every 30 min
+
 /**
  * AWS Polly Neural TTS fallback — high quality, natural-sounding voices.
  * Returns MP3 audio. Requires AWS credentials in env.
@@ -177,6 +182,39 @@ async function pollyTTS(text: string, lang: string): Promise<Buffer> {
     }
     throw err;
   }
+}
+
+/**
+ * Deepgram Aura TTS — high quality English voices, reasonable Chinese via English models.
+ * Returns MP3 audio. Requires DEEPGRAM_API_KEY env.
+ */
+async function deepgramTTS(text: string, lang: string): Promise<Buffer> {
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) {
+    throw new Error('Deepgram API key not configured for TTS');
+  }
+
+  // Deepgram Aura only has English models; pick a natural-sounding one
+  const model = 'aura-asteria-en';
+
+  const resp = await fetch(
+    `https://api.deepgram.com/v1/speak?model=${model}&encoding=mp3`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': 'text/plain',
+      },
+      body: text,
+    },
+  );
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Deepgram TTS returned ${resp.status}: ${body}`);
+  }
+
+  return Buffer.from(await resp.arrayBuffer());
 }
 
 /**
@@ -253,15 +291,35 @@ export async function edgeTTS(text: string, options: EdgeTTSOptions = {}): Promi
   }
 
   // Fallback 1: AWS Polly Neural (natural voice quality)
-  try {
-    const pollyResult = await pollyTTS(text, lang);
-    logger.debug(`Polly TTS succeeded for ${text.length} chars`);
-    return pollyResult;
-  } catch (pollyErr: any) {
-    logger.warn(`Polly TTS failed: ${pollyErr.message}, falling back to Google Translate TTS`);
+  const shouldSkipPolly = pollyBlocked && (Date.now() - pollyBlockedAt < POLLY_BLOCK_RECHECK_MS);
+  if (!shouldSkipPolly) {
+    try {
+      const pollyResult = await pollyTTS(text, lang);
+      logger.debug(`Polly TTS succeeded for ${text.length} chars`);
+      pollyBlocked = false;
+      return pollyResult;
+    } catch (pollyErr: any) {
+      const isIamDenied = pollyErr.message?.includes('not authorized');
+      if (isIamDenied) {
+        pollyBlocked = true;
+        pollyBlockedAt = Date.now();
+        logger.warn(`Polly TTS blocked (IAM denied), will retry in 30 min`);
+      } else {
+        logger.warn(`Polly TTS failed: ${pollyErr.message}`);
+      }
+    }
   }
 
-  // Fallback 2: Google Translate TTS (robotic but always available)
+  // Fallback 2: Deepgram Aura TTS (good English quality)
+  try {
+    const dgResult = await deepgramTTS(text, lang);
+    logger.debug(`Deepgram TTS succeeded for ${text.length} chars`);
+    return dgResult;
+  } catch (dgErr: any) {
+    logger.warn(`Deepgram TTS failed: ${dgErr.message}, falling back to Google Translate TTS`);
+  }
+
+  // Fallback 3: Google Translate TTS (robotic but always available)
   return googleTranslateTTS(text, lang);
 }
 
@@ -283,7 +341,7 @@ function edgeTTSOnce(text: string, options: EdgeTTSOptions = {}): Promise<Buffer
       origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.2903.112',
       },
     });
 
@@ -405,7 +463,7 @@ export function edgeTTSStream(
     origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.2903.112',
     },
   });
 
