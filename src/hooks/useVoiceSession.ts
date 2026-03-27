@@ -349,7 +349,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         }
       },
       onAgentSpeechStart: () => {
-        stopLiveSpeech(true, false);
+        // Mute mic to prevent echo but keep speech detection for barge-in
+        realtimeMicrophoneRef.current?.muteForEchoCancel();
         setIsSpeaking(true);
         isSpeakingRef.current = true;
         setVoicePhase('speaking');
@@ -437,9 +438,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setSpeakingMessageId(null);
         // Resume duplex listening after TTS finishes
         if (duplexModeRef.current && voiceModeRef.current && !sendingRef.current) {
+          // Unmute mic (it was muted for echo cancellation)
+          realtimeMicrophoneRef.current?.unmuteInput();
           setTimeout(() => {
             if (duplexModeRef.current && voiceModeRef.current && !isSpeakingRef.current) {
-              startLiveSpeechInternalRef.current?.();
+              // Only restart mic if it's not already running
+              if (!realtimeMicrophoneRef.current) {
+                startLiveSpeechInternalRef.current?.();
+              }
             }
           }, 200);
         }
@@ -500,9 +506,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     if (duplexModeRef.current) {
       stopLiveSpeech(true, false);
     }
+    // Strip markdown formatting before TTS
+    const cleanText = text
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_~`#>|]/g, '')
+      .trim();
+    if (!cleanText) return;
     setIsSpeaking(true);
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+    const sentences = cleanText.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [cleanText];
     const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
     for (const s of sentences) {
       const trimmed = s.trim();
@@ -549,7 +565,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [speakText]);
 
   const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
-    if (!(voiceMode || autoSpeak)) return;
+    // Only auto-speak in duplex/realtime mode or when user explicitly enabled autoSpeak.
+    // PTT (hold-to-talk) mode should NOT auto-read agent responses.
+    if (!(duplexModeRef.current || autoSpeak)) return;
 
     if (duplexModeRef.current) {
       stopLiveSpeech(true, false);
@@ -602,7 +620,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
+  }, [autoSpeak, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
 
   const resetVoicePhaseAfterResponse = useCallback(() => {
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
@@ -642,6 +660,17 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           },
           onSpeechStart: () => {
             if (!isMountedRef.current) return;
+            setVoicePhase('recording');
+          },
+          onBargeIn: () => {
+            if (!isMountedRef.current) return;
+            // User spoke over agent — interrupt playback and resume mic
+            addVoiceDiagnostic('voice-session', 'barge-in');
+            audioPlayerRef.current?.stopAll();
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            realtimeVoiceRef.current?.sendInterrupt();
+            realtimeMicrophoneRef.current?.unmuteInput();
             setVoicePhase('recording');
           },
           onSpeechEnd: () => {

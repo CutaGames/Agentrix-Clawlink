@@ -1535,6 +1535,30 @@ export function AgentChatScreen() {
           </TouchableOpacity>
           <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
           <TouchableOpacity
+            testID="chat-voice-call-button"
+            accessibilityLabel={`chat-voice-call-button:${duplexMode && realtimeConnected ? 'active' : 'idle'}`}
+            style={[
+              styles.chatBarCallBtn,
+              duplexMode && realtimeConnected && styles.chatBarCallBtnActive,
+            ]}
+            onPress={() => {
+              if (duplexMode && realtimeConnected) {
+                if (liveListening) sendRealtimeInterrupt();
+                setDuplexMode(false);
+              } else {
+                if (!voiceMode) setVoiceMode(true);
+                setDuplexMode(true);
+              }
+            }}
+          >
+            <Text style={[
+              styles.chatBarCallIcon,
+              duplexMode && realtimeConnected && styles.chatBarCallIconActive,
+            ]}>
+              {duplexMode && realtimeConnected ? '📵' : '📞'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             testID="agent-chat-settings-button"
             accessibilityLabel="agent-chat-settings-button"
             onPress={() => setShowSettingsSheet(true)}
@@ -1861,32 +1885,6 @@ export function AgentChatScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Realtime voice call button — visible in voice mode */}
-        {voiceMode ? (
-          <TouchableOpacity
-            testID="chat-voice-call-button"
-            accessibilityLabel={`chat-voice-call-button:${duplexMode && realtimeConnected ? 'active' : 'idle'}`}
-            style={[
-              styles.voiceCallBtn,
-              duplexMode && realtimeConnected && styles.voiceCallBtnActive,
-            ]}
-            onPress={() => {
-              if (duplexMode && realtimeConnected) {
-                if (liveListening) sendRealtimeInterrupt();
-                setDuplexMode(false);
-              } else {
-                setDuplexMode(true);
-              }
-            }}
-          >
-            <Text style={[
-              styles.voiceCallIcon,
-              duplexMode && realtimeConnected && styles.voiceCallIconActive,
-            ]}>
-              {duplexMode && realtimeConnected ? '📵' : '📞'}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
       </View>
 
@@ -2195,6 +2193,22 @@ const styles = StyleSheet.create({
   chatBarBackIcon: { color: colors.textPrimary, fontSize: 28, fontWeight: '300', marginTop: -2 },
   chatBarGearBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   chatBarGearIcon: { fontSize: 18 },
+  chatBarCallBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatBarCallBtnActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  chatBarCallIcon: { fontSize: 16 },
+  chatBarCallIconActive: { fontSize: 16 },
   chatBarBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.bgSecondary },
   chatBarBtnText: { color: colors.textMuted, fontSize: 12 },
   // Welcome screen (no instance)

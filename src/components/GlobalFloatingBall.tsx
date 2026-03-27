@@ -22,7 +22,7 @@ import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity }
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
-const BALL_SIZE = 56;
+const BALL_SIZE = 48;
 const EDGE_MARGIN = 12;
 const LONG_PRESS_DURATION = 400;
 
@@ -32,6 +32,13 @@ const PILL_HEIGHT = 120;
 type BallState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const STATE_COLORS: Record<BallState, string> = {
+  idle: '#1a1a2e',
+  listening: '#10B981',
+  thinking: '#F59E0B',
+  speaking: '#3b82f6',
+};
+
+const STATE_BORDER_COLORS: Record<BallState, string> = {
   idle: '#6C5CE7',
   listening: '#10B981',
   thinking: '#F59E0B',
@@ -487,7 +494,8 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   if (shouldHide) return null;
 
   const ballColor = STATE_COLORS[ballState];
-  const emoji = ballState === 'idle' ? '🤖' : ballState === 'listening' ? '🎙' : ballState === 'thinking' ? '💭' : '🔊';
+  const borderColor = STATE_BORDER_COLORS[ballState];
+  const stateIndicator = ballState === 'listening' ? '🎙' : ballState === 'thinking' ? '·​·​·' : ballState === 'speaking' ? '🔊' : null;
 
   return (
     <Animated.View
@@ -567,7 +575,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
       {/* Glow ring for non-idle state */}
       {ballState !== 'idle' && (
-        <View style={[styles.glowRing, { borderColor: ballColor + '60' }]} />
+        <View style={[styles.glowRing, { borderColor: borderColor + '60' }]} />
       )}
       <TouchableOpacity
         testID="voice-floating-ball-core"
@@ -577,9 +585,14 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
         onPress={useDirectPressHandlers ? handleTap : undefined}
         onLongPress={useDirectPressHandlers ? handleVoiceActivate : undefined}
         delayLongPress={LONG_PRESS_DURATION}
-        style={[styles.ball, { backgroundColor: ballColor }]}
+        style={[styles.ball, { backgroundColor: ballColor, borderColor: borderColor + '80' }]}
       >
-        <Text style={styles.emoji}>{emoji}</Text>
+        <Text style={styles.brandMark}>AX</Text>
+        {stateIndicator && (
+          <View style={[styles.stateIndicatorDot, { backgroundColor: borderColor }]}>
+            <Text style={styles.stateIndicatorText}>{stateIndicator}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -599,10 +612,11 @@ const styles = StyleSheet.create({
     borderRadius: BALL_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
     shadowColor: '#6C5CE7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
     elevation: 8,
   },
   glowRing: {
@@ -610,12 +624,31 @@ const styles = StyleSheet.create({
     width: BALL_SIZE + 12,
     height: BALL_SIZE + 12,
     borderRadius: (BALL_SIZE + 12) / 2,
-    borderWidth: 3,
+    borderWidth: 2.5,
     top: -6,
     left: -6,
   },
-  emoji: {
-    fontSize: 28,
+  brandMark: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  stateIndicatorDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#1a1a2e',
+  },
+  stateIndicatorText: {
+    fontSize: 9,
+    color: '#fff',
   },
   // Voice Pill panel styles
   pillPanel: {
