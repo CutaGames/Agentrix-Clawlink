@@ -1160,11 +1160,14 @@ export class OpenClawProxyService {
     }
 
     try {
-      let chunksStreamed = false;
+      let textBytesStreamed = 0;
       const result = await this.runPlatformHostedChat(userId, instance, dto, {
         onChunk: (chunk) => {
           if (res.writableEnded) return;
-          chunksStreamed = true;
+          // Track how much actual text (not markers) was streamed
+          if (!chunk.startsWith('[Tool Call]') && !chunk.startsWith('[Tool Done]')) {
+            textBytesStreamed += chunk.length;
+          }
           res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
           if ((res as any).flush) (res as any).flush();
         },
@@ -1177,16 +1180,16 @@ export class OpenClawProxyService {
         if ((res as any).flush) (res as any).flush();
       }
 
-      // For non-streaming providers (Gemini, OpenAI, Bedrock fallback), emit the full text
-      if (!chunksStreamed) {
-        const text = result.reply?.content || '';
-        if (text && !res.writableEnded) {
-          const fallbackChunks = text.match(/.{1,12}/gs) || [text];
-          for (const c of fallbackChunks) {
-            if (res.writableEnded) break;
-            res.write(`data: ${JSON.stringify({ chunk: c })}\n\n`);
-            if ((res as any).flush) (res as any).flush();
-          }
+      // If LLM text wasn't fully streamed (streaming failed or non-streaming provider),
+      // emit the full text now. This covers: Gemini, OpenAI, Bedrock streaming fallback,
+      // and tool-call paths where [Tool Call] markers were sent but the 2nd LLM response wasn't.
+      const fullText = result.reply?.content || '';
+      if (fullText && textBytesStreamed < fullText.length * 0.5 && !res.writableEnded) {
+        const fallbackChunks = fullText.match(/.{1,80}/gs) || [fullText];
+        for (const c of fallbackChunks) {
+          if (res.writableEnded) break;
+          res.write(`data: ${JSON.stringify({ chunk: c })}\n\n`);
+          if ((res as any).flush) (res as any).flush();
         }
       }
 

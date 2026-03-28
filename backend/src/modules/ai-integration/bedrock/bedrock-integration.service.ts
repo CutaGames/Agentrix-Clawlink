@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { EventStreamCodec } from '@smithy/eventstream-codec';
+import { toUtf8, fromUtf8 } from '@smithy/util-utf8';
+import { Readable } from 'stream';
 
 export interface BedrockUserCredentials {
   accessKeyId: string;
@@ -326,8 +329,9 @@ export class BedrockIntegrationService {
   }
 
   /**
-   * Invoke Bedrock model with streaming using platform Bearer token (via Axios SSE).
-   * Falls back to non-streaming if streaming fails.
+   * Invoke Bedrock model with streaming using platform Bearer token.
+   * Manually frames AWS EventStream binary messages from raw HTTP stream,
+   * since TCP chunks don't align with message boundaries.
    */
   private async invokeStreamingWithPlatformToken(
     modelId: string,
@@ -352,45 +356,83 @@ export class BedrockIntegrationService {
       },
     );
 
-    // Parse the event stream
     const fullContent: any[] = [];
     let stopReason = '';
+    let currentToolUse: any = null;
+    let toolInputJson = '';
+    const codec = new EventStreamCodec(toUtf8, fromUtf8);
 
-    return new Promise((resolve, reject) => {
-      let buffer = '';
-      response.data.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString('utf8');
-        // Bedrock event stream: each event is a JSON line within the stream
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const event = JSON.parse(trimmed);
-            if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-              onChunk(event.delta.text);
-              fullContent.push({ type: 'text', text: event.delta.text });
-            } else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
-              fullContent.push(event.content_block);
-            } else if (event.type === 'message_delta') {
-              stopReason = event.delta?.stop_reason || stopReason;
-            }
-          } catch { /* skip non-JSON lines */ }
+    // Parse AWS EventStream binary frames from the raw HTTP stream.
+    // TCP chunks may contain multiple messages or partial messages,
+    // so we accumulate into a buffer and split by the 4-byte length prefix.
+    for await (const decoded of this.parseEventStreamFrames(response.data, codec)) {
+      // decoded.body is the raw payload; for Bedrock it's JSON: {"bytes":"base64..."}
+      const payloadStr = new TextDecoder().decode(decoded.body);
+      if (!payloadStr) continue;
+      try {
+        const outer = JSON.parse(payloadStr);
+        const eventBytes = outer.bytes;
+        if (!eventBytes) continue;
+        const event = JSON.parse(Buffer.from(eventBytes, 'base64').toString('utf8'));
+
+        if (event.type === 'content_block_delta') {
+          if (event.delta?.type === 'text_delta') {
+            onChunk(event.delta.text);
+            fullContent.push({ type: 'text', text: event.delta.text });
+          } else if (event.delta?.type === 'input_json_delta') {
+            toolInputJson += event.delta.partial_json || '';
+          }
+        } else if (event.type === 'content_block_start') {
+          if (event.content_block?.type === 'tool_use') {
+            currentToolUse = event.content_block;
+            toolInputJson = '';
+          }
+        } else if (event.type === 'content_block_stop') {
+          if (currentToolUse) {
+            try { currentToolUse.input = JSON.parse(toolInputJson || '{}'); } catch { currentToolUse.input = {}; }
+            fullContent.push(currentToolUse);
+            currentToolUse = null;
+            toolInputJson = '';
+          }
+        } else if (event.type === 'message_delta') {
+          stopReason = event.delta?.stop_reason || stopReason;
         }
-      });
-      response.data.on('end', () => {
-        // Reconstruct content array similar to non-streaming response
-        let text = '';
-        const toolUses: any[] = [];
-        for (const item of fullContent) {
-          if (item.type === 'text') text += item.text;
-          else if (item.type === 'tool_use') toolUses.push(item);
-        }
-        resolve({ content: [{ type: 'text', text }, ...toolUses], stop_reason: stopReason });
-      });
-      response.data.on('error', reject);
-    });
+      } catch { /* skip unparseable events */ }
+    }
+
+    let text = '';
+    const toolUses: any[] = [];
+    for (const item of fullContent) {
+      if (item.type === 'text') text += item.text;
+      else if (item.type === 'tool_use') toolUses.push(item);
+    }
+    return { content: [{ type: 'text', text }, ...toolUses], stop_reason: stopReason };
+  }
+
+  /**
+   * Parse AWS EventStream binary frames from a raw Node.js stream.
+   * Each frame has a 4-byte big-endian total-length prefix.
+   * TCP chunks may contain multiple frames or partial frames.
+   */
+  private async *parseEventStreamFrames(
+    stream: Readable,
+    codec: EventStreamCodec,
+  ): AsyncGenerator<{ headers: Record<string, any>; body: Uint8Array }> {
+    let buffer = Buffer.alloc(0);
+    for await (const chunk of stream) {
+      buffer = Buffer.concat([buffer, chunk instanceof Uint8Array ? Buffer.from(chunk) : Buffer.from(chunk)]);
+      // Each EventStream message starts with 4-byte total length (big-endian)
+      while (buffer.length >= 4) {
+        const messageLength = buffer.readUInt32BE(0);
+        if (messageLength < 16 || messageLength > 16 * 1024 * 1024) break; // sanity check
+        if (buffer.length < messageLength) break; // need more data
+        const messageBytes = buffer.subarray(0, messageLength);
+        buffer = buffer.subarray(messageLength);
+        try {
+          yield codec.decode(messageBytes);
+        } catch { /* skip malformed frame */ }
+      }
+    }
   }
 
   /**
@@ -492,7 +534,7 @@ export class BedrockIntegrationService {
       // 准备 Body
       const body: any = {
         anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 4000,
+        max_tokens: options.maxTokens || 4000,
         messages: claudeMessages,
       };
 
@@ -519,16 +561,16 @@ export class BedrockIntegrationService {
 
       const _invokeStart = Date.now();
       const _streaming = !!options.onChunk;
-      // Platform bearer token streaming uses AWS EventStream binary format
-      // which our HTTP-based parser can't handle. Use non-streaming invoke
-      // and emit the full text via onChunk after — the SSE layer in
-      // streamPlatformHostedChat already has a chunksStreamed fallback
-      // that breaks the full text into small SSE events.
       const data = userCreds
         ? (options.onChunk
           ? await this.invokeStreamingWithUserCredentials(modelId, body, userCreds, options.onChunk)
           : await this.invokeWithUserCredentials(modelId, body, userCreds))
-        : await this.invokeWithPlatformToken(modelId, body, region);
+        : (options.onChunk
+          ? await this.invokeStreamingWithPlatformToken(modelId, body, region, options.onChunk).catch(async (streamErr: any) => {
+              this.logger.warn(`Bedrock platform streaming failed, falling back to non-streaming: ${streamErr.message}`);
+              return this.invokeWithPlatformToken(modelId, body, region);
+            })
+          : await this.invokeWithPlatformToken(modelId, body, region));
       this.logger.log(`⏱ Bedrock invoke (streaming=${_streaming}): ${Date.now() - _invokeStart}ms, tools=${body.tools?.length || 0}, msgs=${body.messages?.length || 0}`);
 
       const content = data.content;

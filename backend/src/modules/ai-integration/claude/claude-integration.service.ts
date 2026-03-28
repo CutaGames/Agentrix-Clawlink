@@ -917,6 +917,11 @@ export class ClaudeIntegrationService {
     // If Bedrock returned tool calls, execute them and do a second LLM call
     if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
       this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s): ${bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ')}`);
+      // Emit progress events for tool calls so the frontend can show thinking/thought chain
+      if (options?.onChunk) {
+        const toolNames = bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ');
+        options.onChunk(`[Tool Call] ${toolNames}`);
+      }
       const toolResults: any[] = [];
       for (const tc of bedrockResult.functionCalls) {
         const fnName = tc.function?.name || tc.name;
@@ -954,16 +959,21 @@ export class ClaudeIntegrationService {
       const toolFallbackText = this.buildToolFallbackText(toolResults);
       _lap('tool execution done');
 
+      // Truncate tool results to reduce 2nd LLM input tokens (major latency driver)
+      const truncatedResults = toolResults.map(r => {
+        const s = r.content;
+        return s.length > 2000 ? s.slice(0, 2000) + '...[truncated]' : s;
+      });
       const followUpMessages = [
         ...messages,
         { role: 'assistant' as const, content: bedrockResult.text || 'I used the available tools and received the results.' },
         {
           role: 'user' as const,
           content:
-            `Answer the original request using the tool results below. ` +
+            `Answer the original request using the tool results below. Be concise and direct. ` +
             `Do not say you lack web access or tool access when tool results are present.\n\n` +
             `Original request:\n${lastUserMessage}\n\n` +
-            `Tool results:\n${toolResults.map(r => r.content).join('\n')}`,
+            `Tool results:\n${truncatedResults.join('\n')}`,
         },
       ];
       try {
@@ -971,6 +981,7 @@ export class ClaudeIntegrationService {
           model: modelId,
           userCredentials,
           onChunk: options?.onChunk,
+          maxTokens: 1500, // Limit 2nd LLM response length for faster completion
         });
         _lap('2nd LLM call done');
         const finalText = finalResult.text?.trim();
