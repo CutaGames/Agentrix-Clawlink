@@ -77,7 +77,7 @@ interface VoiceSession {
 const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
-const STREAMING_FINALIZATION_TIMEOUT_MS = 4000;
+const STREAMING_FINALIZATION_TIMEOUT_MS = 2000;
 
 @WebSocketGateway({
   cors: {

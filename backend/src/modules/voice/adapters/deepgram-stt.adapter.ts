@@ -103,7 +103,7 @@ export class DeepgramSTTAdapter implements StreamingSTTAdapter {
     url.searchParams.set('smart_format', 'true');
     url.searchParams.set('punctuate', 'true');
     url.searchParams.set('interim_results', 'true');
-    url.searchParams.set('endpointing', '800'); // 800ms silence = endpoint (prevents Chinese speech splitting)
+    url.searchParams.set('endpointing', '1200'); // 1200ms silence = endpoint (prevents mid-sentence splits)
     url.searchParams.set('vad_events', 'true');
     if (lang !== 'auto') {
       url.searchParams.set('language', lang);
