@@ -519,17 +519,16 @@ export class BedrockIntegrationService {
 
       const _invokeStart = Date.now();
       const _streaming = !!options.onChunk;
-      const data = options.onChunk
-        ? (userCreds
+      // Platform bearer token streaming uses AWS EventStream binary format
+      // which our HTTP-based parser can't handle. Use non-streaming invoke
+      // and emit the full text via onChunk after — the SSE layer in
+      // streamPlatformHostedChat already has a chunksStreamed fallback
+      // that breaks the full text into small SSE events.
+      const data = userCreds
+        ? (options.onChunk
           ? await this.invokeStreamingWithUserCredentials(modelId, body, userCreds, options.onChunk)
-          : await this.invokeStreamingWithPlatformToken(modelId, body, region, options.onChunk).catch(async (streamErr: any) => {
-              // Streaming via bearer token may not be supported; fall back to non-streaming
-              this.logger.warn(`Bedrock streaming fallback: ${streamErr.message}`);
-              return this.invokeWithPlatformToken(modelId, body, region);
-            }))
-        : (userCreds
-          ? await this.invokeWithUserCredentials(modelId, body, userCreds)
-          : await this.invokeWithPlatformToken(modelId, body, region));
+          : await this.invokeWithUserCredentials(modelId, body, userCreds))
+        : await this.invokeWithPlatformToken(modelId, body, region);
       this.logger.log(`⏱ Bedrock invoke (streaming=${_streaming}): ${Date.now() - _invokeStart}ms, tools=${body.tools?.length || 0}, msgs=${body.messages?.length || 0}`);
 
       const content = data.content;
