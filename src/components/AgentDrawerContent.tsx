@@ -29,8 +29,12 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
   const navigateAndClose = useCallback(
     (screen: string, params?: any) => {
       navigation.closeDrawer();
-      // Navigate into Agent stack
-      (navigation as any).navigate('Agent', { screen, params });
+      // Use fully-qualified nested path: Drawer → MainTabs → Agent tab → target screen
+      // Direct 'Agent' resolution can fail on native when the screen is >1 level deep.
+      (navigation as any).navigate('MainTabs', {
+        screen: 'Agent',
+        params: { screen, params },
+      });
     },
     [navigation],
   );
@@ -45,7 +49,10 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
 
   const handleAddAgent = useCallback(() => {
     navigation.closeDrawer();
-    (navigation as any).navigate('Agent', { screen: 'DeploySelect' });
+    (navigation as any).navigate('MainTabs', {
+      screen: 'Agent',
+      params: { screen: 'DeploySelect' },
+    });
   }, [navigation]);
 
   // Token/storage display from activeInstance metadata or placeholder
