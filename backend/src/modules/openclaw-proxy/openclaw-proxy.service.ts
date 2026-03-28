@@ -934,6 +934,7 @@ export class OpenClawProxyService {
     userId: string,
     instance: OpenClawInstance,
     dto: ChatMessageDto,
+    streamingCallbacks?: { onChunk: (text: string) => void },
   ) {
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messageText = Array.isArray(dto.message)
@@ -1103,6 +1104,7 @@ export class OpenClawProxyService {
         userCredentials: userCredentials
           ? { ...userCredentials, model: executionModel }
           : undefined,
+        onChunk: streamingCallbacks?.onChunk,
       });
     }
 
@@ -1155,20 +1157,36 @@ export class OpenClawProxyService {
     }
 
     try {
-      const result = await this.runPlatformHostedChat(userId, instance, dto);
-      const text = result.reply?.content || 'Sorry, I could not generate a response.';
-      // Send resolved model info as first event so the client can update its UI
+      let chunksStreamed = false;
+      const result = await this.runPlatformHostedChat(userId, instance, dto, {
+        onChunk: (chunk) => {
+          if (res.writableEnded) return;
+          chunksStreamed = true;
+          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          if ((res as any).flush) (res as any).flush();
+        },
+      });
+
+      // Send model meta after call completes
       const resultAny = result as any;
-      if (resultAny.resolvedModel && !res.writableEnded) {
+      if (resultAny?.resolvedModel && !res.writableEnded) {
         res.write(`data: ${JSON.stringify({ meta: { resolvedModel: resultAny.resolvedModel, resolvedModelLabel: resultAny.resolvedModelLabel } })}\n\n`);
         if ((res as any).flush) (res as any).flush();
       }
-      const chunks = text.match(/.{1,12}/gs) || [text];
-      for (const chunk of chunks) {
-        if (res.writableEnded) break;
-        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-        if ((res as any).flush) (res as any).flush();
+
+      // For non-streaming providers (Gemini, OpenAI, Bedrock fallback), emit the full text
+      if (!chunksStreamed) {
+        const text = result.reply?.content || '';
+        if (text && !res.writableEnded) {
+          const fallbackChunks = text.match(/.{1,12}/gs) || [text];
+          for (const c of fallbackChunks) {
+            if (res.writableEnded) break;
+            res.write(`data: ${JSON.stringify({ chunk: c })}\n\n`);
+            if ((res as any).flush) (res as any).flush();
+          }
+        }
       }
+
       if (!res.writableEnded) {
         res.write('data: [DONE]\n\n');
       }
@@ -1189,7 +1207,13 @@ export class OpenClawProxyService {
     callbacks: ChatStreamCallbacks,
   ): Promise<void> {
     this.logger.debug(`streamPlatformHostedChatToCallbacks start: instance=${instance.id} session=${dto.sessionId || ''}`);
-    const result = await this.runPlatformHostedChat(userId, instance, dto);
+    const result = await this.runPlatformHostedChat(userId, instance, dto, {
+      onChunk: (chunk) => {
+        if (callbacks.signal?.aborted) return;
+        this.logger.debug(`streamPlatformHostedChatToCallbacks chunk: instance=${instance.id} chunk=${chunk.slice(0, 80)}`);
+        callbacks.onChunk(chunk);
+      },
+    });
     const resultAny = result as any;
 
     if (resultAny.resolvedModel && callbacks.onMeta) {
@@ -1197,16 +1221,6 @@ export class OpenClawProxyService {
         resolvedModel: resultAny.resolvedModel,
         resolvedModelLabel: resultAny.resolvedModelLabel,
       });
-    }
-
-    const text = result.reply?.content || 'Sorry, I could not generate a response.';
-    const chunks = text.match(/.{1,12}/gs) || [text];
-    for (const chunk of chunks) {
-      if (callbacks.signal?.aborted) {
-        return;
-      }
-      this.logger.debug(`streamPlatformHostedChatToCallbacks chunk: instance=${instance.id} chunk=${chunk.slice(0, 80)}`);
-      await callbacks.onChunk(chunk);
     }
 
     if (!callbacks.signal?.aborted) {

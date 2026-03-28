@@ -1138,6 +1138,8 @@ export class ClaudeIntegrationService {
       enableModelRouting?: boolean; // 是否启用模型路由（默认启用）
       additionalTools?: any[]; //HQ 专属工具箱支持
       onToolCall?: (name: string, args: any) => Promise<any>;
+      /** When provided, use streaming mode and emit text deltas through this callback */
+      onChunk?: (text: string) => void;
     },
   ): Promise<any> {
     // Always fetch standard tools first — needed for both Anthropic SDK and Bedrock fallback
@@ -1274,15 +1276,26 @@ export class ClaudeIntegrationService {
           content: await this.sanitizeContentForAnthropic(msg.content),
         })));
 
-      // 调用 Claude API
-      const response = await anthropicClient.messages.create({
+      // 调用 Claude API — streaming mode when onChunk provided
+      const apiParams = {
         model: selectedModel,
         max_tokens: options?.maxTokens || 2048,
         temperature: options?.temperature || 0.7,
         system: systemPrompt || undefined,
         messages: conversationMessages,
         tools: hasFunctionCalling ? tools : undefined,
-      });
+      };
+
+      let response: any;
+      if (options?.onChunk) {
+        const stream = anthropicClient.messages.stream(apiParams as any);
+        stream.on('text', (text: string) => {
+          options.onChunk!(text);
+        });
+        response = await stream.finalMessage();
+      } else {
+        response = await anthropicClient.messages.create(apiParams);
+      }
 
       // 处理响应
       const textContent = response.content.find(
@@ -1339,7 +1352,7 @@ export class ClaudeIntegrationService {
         );
 
         // 发送 Tool 结果并获取最终响应
-        const finalResponse = await anthropicClient.messages.create({
+        const followUpParams = {
           model: selectedModel,
           max_tokens: options?.maxTokens || 2048,
           temperature: options?.temperature || 0.7,
@@ -1347,15 +1360,26 @@ export class ClaudeIntegrationService {
           messages: [
             ...conversationMessages,
             {
-              role: 'assistant',
+              role: 'assistant' as const,
               content: response.content,
             },
             {
-              role: 'user',
+              role: 'user' as const,
               content: toolResults,
             },
           ],
-        });
+        };
+
+        let finalResponse: any;
+        if (options?.onChunk) {
+          const followUpStream = anthropicClient.messages.stream(followUpParams as any);
+          followUpStream.on('text', (text: string) => {
+            options.onChunk!(text);
+          });
+          finalResponse = await followUpStream.finalMessage();
+        } else {
+          finalResponse = await anthropicClient.messages.create(followUpParams);
+        }
 
         const finalTextContent = finalResponse.content.find(
           (item: any) => item.type === 'text',
