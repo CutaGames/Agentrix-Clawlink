@@ -1775,6 +1775,15 @@ export function AgentChatScreen() {
                   : t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })}
               </Text>
             </TouchableOpacity>
+          ) : duplexMode && !realtimeConnected ? (
+            /* Connecting to realtime voice — show connecting state */
+            <View
+              style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
+            >
+              <Text style={styles.holdTalkText}>
+                {t({ en: '📞  Connecting…', zh: '📞  正在连接…' })}
+              </Text>
+            </View>
           ) : (
             /* Push-to-talk (hold to record) */
             <TouchableOpacity

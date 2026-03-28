@@ -498,6 +498,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setAutoSpeak(true);
       setVoiceInteractionMode('tap');
     } else {
+      setAutoSpeak(false);
       setVoiceInteractionMode('hold');
     }
   }, [duplexMode]);
