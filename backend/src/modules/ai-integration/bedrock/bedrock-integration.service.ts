@@ -475,12 +475,17 @@ export class BedrockIntegrationService {
 
       // Claude models → native Anthropic format via InvokeModel
       // Sanitize content: download image URLs → base64 (Bedrock rejects URL sources)
+      const _sanitizeStart = Date.now();
       const claudeMessages = await Promise.all(
         messages.filter(m => m.role !== 'system').map(async (m) => ({
           role: m.role,
           content: await this.sanitizeContentForBedrock(m.content),
         })),
       );
+      const _sanitizeMs = Date.now() - _sanitizeStart;
+      if (_sanitizeMs > 100) {
+        this.logger.warn(`⏱ sanitizeContentForBedrock took ${_sanitizeMs}ms for ${claudeMessages.length} messages`);
+      }
 
       const systemMessage = messages.find(m => m.role === 'system');
 
@@ -512,6 +517,8 @@ export class BedrockIntegrationService {
           }));
       }
 
+      const _invokeStart = Date.now();
+      const _streaming = !!options.onChunk;
       const data = options.onChunk
         ? (userCreds
           ? await this.invokeStreamingWithUserCredentials(modelId, body, userCreds, options.onChunk)
@@ -523,6 +530,7 @@ export class BedrockIntegrationService {
         : (userCreds
           ? await this.invokeWithUserCredentials(modelId, body, userCreds)
           : await this.invokeWithPlatformToken(modelId, body, region));
+      this.logger.log(`⏱ Bedrock invoke (streaming=${_streaming}): ${Date.now() - _invokeStart}ms, tools=${body.tools?.length || 0}, msgs=${body.messages?.length || 0}`);
 
       const content = data.content;
       let text = '';

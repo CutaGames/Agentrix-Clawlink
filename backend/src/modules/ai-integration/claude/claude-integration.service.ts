@@ -895,6 +895,8 @@ export class ClaudeIntegrationService {
     options: any,
     userCredentials?: BedrockUserCredentials,
   ): Promise<any> {
+    const _t0 = Date.now();
+    const _lap = (label: string) => this.logger.log(`⏱ BR ${label}: ${Date.now() - _t0}ms`);
     const modelId = options.model || 'claude-haiku-4-5';
     this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}`);
 
@@ -910,10 +912,11 @@ export class ClaudeIntegrationService {
       userCredentials,
       onChunk: options?.onChunk,
     });
+    _lap(`1st LLM call (toolCalls=${bedrockResult.functionCalls?.length || 0})`);
 
     // If Bedrock returned tool calls, execute them and do a second LLM call
     if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
-      this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s)`);
+      this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s): ${bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ')}`);
       const toolResults: any[] = [];
       for (const tc of bedrockResult.functionCalls) {
         const fnName = tc.function?.name || tc.name;
@@ -949,6 +952,7 @@ export class ClaudeIntegrationService {
           ? lastUserContent.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
           : String(lastUserContent);
       const toolFallbackText = this.buildToolFallbackText(toolResults);
+      _lap('tool execution done');
 
       const followUpMessages = [
         ...messages,
@@ -968,6 +972,7 @@ export class ClaudeIntegrationService {
           userCredentials,
           onChunk: options?.onChunk,
         });
+        _lap('2nd LLM call done');
         const finalText = finalResult.text?.trim();
         return {
           text: !finalText || this.looksLikeToolAccessRefusal(finalText)
@@ -1144,28 +1149,20 @@ export class ClaudeIntegrationService {
       onChunk?: (text: string) => void;
     },
   ): Promise<any> {
-    // Always fetch standard tools first — needed for both Anthropic SDK and Bedrock fallback
-    const standardTools = await this.getFunctionSchemas();
-    // When the caller provides dedicated tools (e.g. agent chat with skill_search),
-    // strip out standard e-commerce tools so the LLM doesn’t pick the wrong one
-    // (e.g. search_agentrix_products instead of skill_search).
-    const ECOMMERCE_STANDARD_TOOLS = new Set([
-      'search_agentrix_products', 'add_to_agentrix_cart', 'view_agentrix_cart',
-      'checkout_agentrix_cart', 'buy_agentrix_product', 'get_agentrix_order', 'pay_agentrix_order',
-    ]);
-    const effectiveStandard = (options?.additionalTools?.length)
-      ? standardTools.filter(t => !ECOMMERCE_STANDARD_TOOLS.has(t.name))
-      : standardTools;
-      
-    // Deduplicate merged tools by name to prevent "Tool names must be unique" error from LLMs
-    const rawMerged = [...effectiveStandard, ...(options?.additionalTools || [])];
-    const seenNames = new Set<string>();
-    const mergedTools = rawMerged.filter(t => {
-      if (seenNames.has(t.name)) return false;
-      seenNames.add(t.name);
-      return true;
-    });
-
+    // When caller provides additionalTools (even empty []), use ONLY those.
+    // Empty [] means "no tools" for simple messages (4x faster Bedrock response).
+    // Undefined/missing means use standard tools from getFunctionSchemas().
+    let mergedTools: any[];
+    if (options?.additionalTools !== undefined) {
+      const seenNames = new Set<string>();
+      mergedTools = (options.additionalTools || []).filter((t: any) => {
+        if (seenNames.has(t.name)) return false;
+        seenNames.add(t.name);
+        return true;
+      });
+    } else {
+      mergedTools = await this.getFunctionSchemas();
+    }
     // ── Provider-aware routing ──
     const creds = options?.userCredentials;
     const isBedrockProvider = creds?.providerId?.startsWith('bedrock');
@@ -1209,22 +1206,11 @@ export class ClaudeIntegrationService {
       : this.anthropic;
 
     try {
-      // Reuse tools already fetched above (standardTools + additionalTools)
-      let tools = [...standardTools];
-      
-      // 合并 HQ 专属工具箱
-      if (options?.additionalTools) {
-        // Claude 需要 input_schema 格式，HQ tools 可能是 OpenAI 格式
-        const hqTools = options.additionalTools.map(t => {
-          if (t.input_schema) return t;
-          return {
-            name: t.name,
-            description: t.description,
-            input_schema: t.parameters
-          };
-        });
-        tools = [...tools, ...hqTools];
-      }
+      // Reuse mergedTools from above, ensuring Anthropic SDK input_schema format
+      const tools = mergedTools.map(t => {
+        if (t.input_schema) return t;
+        return { name: t.name, description: t.description, input_schema: t.parameters };
+      });
 
       const hasFunctionCalling = tools.length > 0;
 

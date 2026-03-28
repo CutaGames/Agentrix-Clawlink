@@ -96,6 +96,20 @@ export class OpenClawProxyService {
     return !instance.instanceUrl || !!(instance.capabilities as any)?.platformHosted;
   }
 
+  /**
+   * Determine whether a message likely needs tool access.
+   * Simple greetings and conversational messages skip tools for ~4x faster response.
+   */
+  private messageNeedsTools(text: string): boolean {
+    const lower = text.toLowerCase().trim();
+    // Very short messages (<15 chars) without action keywords are conversational
+    if (lower.length < 15) {
+      const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|agent|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务/;
+      if (!actionWords.test(lower)) return false;
+    }
+    return true;
+  }
+
   private async getOrCreatePlatformHostedSession(
     userId: string,
     instance: OpenClawInstance,
@@ -936,12 +950,16 @@ export class OpenClawProxyService {
     dto: ChatMessageDto,
     streamingCallbacks?: { onChunk: (text: string) => void },
   ) {
+    const _t0 = Date.now();
+    const _lap = (label: string) => this.logger.log(`⏱ ${label}: ${Date.now() - _t0}ms`);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messageText = Array.isArray(dto.message)
       ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
       : dto.message;
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
+    _lap('getOrCreateSession');
     const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
+    _lap('tryHandleDirectSkillIntent');
     if (directSkillIntent) {
       await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
         source: 'platform-hosted-chat',
@@ -967,6 +985,16 @@ export class OpenClawProxyService {
       this.aiProviderService.getDefaultConfig(userId),
       this.getPlatformConversationHistory(userId, instance.id),
     ]);
+    _lap(`parallelQueries (tools=${additionalTools.length}, history=${persistedHistory.length})`);
+
+    // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
+    // Tools will still be available for messages that likely need them.
+    const needsTools = this.messageNeedsTools(messageText);
+    const effectiveTools = needsTools ? additionalTools : [];
+    const effectiveOnToolCall = needsTools ? onToolCall : undefined;
+    if (!needsTools) {
+      this.logger.log(`⚡ Simple message detected, skipping ${additionalTools.length} tools for faster response`);
+    }
 
     // Resolve model & provider FIRST so we can inject identity into system prompt
     const agentAccount = permissionProfile?.agentAccountId
@@ -1013,11 +1041,17 @@ export class OpenClawProxyService {
       .flatMap((p: any) => p.models)
       .find((m: any) => m.id === resolvedModel)?.label || resolvedModel;
 
+    // For simple messages without tools, use minimal history to reduce input tokens
+    // (12 history msgs with tool results can add 5000+ tokens → 4s extra latency)
+    const effectiveHistory = needsTools
+      ? persistedHistory
+      : persistedHistory.slice(-4);
+
     const messages = [
       {
         role: 'system' as const,
-        content:
-          `You are "${instance.name || 'Agent'}", the user's personal AI agent with marketplace abilities.\n\n` +
+        content: needsTools
+          ? (`You are "${instance.name || 'Agent'}", the user's personal AI agent with marketplace abilities.\n\n` +
           `## Available Tools\n` +
           `- skill_search/skill_install/skill_execute/skill_recommend/skill_publish: Marketplace skill lifecycle\n` +
           `- resource_publish: Publish APIs/datasets/workflows\n` +
@@ -1036,28 +1070,30 @@ export class OpenClawProxyService {
             ? `7. Bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}.`
             : '7. No Agent Account bound.'}\n` +
           `8. Model: ${resolvedModelLabel}. Identify truthfully when asked.\n` +
-          `9. Use prior conversation context when relevant.`,
+          `9. Use prior conversation context when relevant.`)
+          : (`You are "${instance.name || 'Agent'}", the user's personal AI agent. Reply concisely in the user's language. Model: ${resolvedModelLabel}.`),
       },
-      ...this.buildPlatformHistoryMessages(persistedHistory),
+      ...this.buildPlatformHistoryMessages(effectiveHistory),
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
     const executionModel = this.resolveExecutionModelId(resolvedModel);
+    _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
     let result: any;
     if (resolvedProvider === 'gemini') {
       result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools,
-        onToolCall,
+        additionalTools: effectiveTools,
+        onToolCall: effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
       });
     } else if (this.isOpenAICompatibleProvider(resolvedProvider)) {
       result = await this.openAIIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: this.toOpenAITools(additionalTools),
-        onToolCall,
+        additionalTools: this.toOpenAITools(effectiveTools),
+        onToolCall: effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
         userBaseURL: userCredentials?.baseUrl,
       });
@@ -1065,8 +1101,8 @@ export class OpenClawProxyService {
       result = await this.claudeIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools,
-        onToolCall,
+        additionalTools: effectiveTools,
+        onToolCall: effectiveOnToolCall,
         userCredentials: userCredentials
           ? { ...userCredentials, model: executionModel }
           : undefined,
@@ -1074,6 +1110,7 @@ export class OpenClawProxyService {
       });
     }
 
+    _lap(`LLM done (toolCalls=${result?.toolCalls?.length || 0})`);
     const text = result?.text || '';
     const inputTokens = estimateTokens(messageText);
     const outputTokens = estimateTokens(text);
