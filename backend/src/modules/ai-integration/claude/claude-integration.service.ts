@@ -908,6 +908,7 @@ export class ClaudeIntegrationService {
       model: modelId,
       tools: bedrockTools,
       userCredentials,
+      onChunk: options?.onChunk,
     });
 
     // If Bedrock returned tool calls, execute them and do a second LLM call
@@ -965,6 +966,7 @@ export class ClaudeIntegrationService {
         const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
           model: modelId,
           userCredentials,
+          onChunk: options?.onChunk,
         });
         const finalText = finalResult.text?.trim();
         return {

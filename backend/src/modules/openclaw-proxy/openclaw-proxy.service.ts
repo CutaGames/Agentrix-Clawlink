@@ -168,7 +168,7 @@ export class OpenClawProxyService {
   private async getPlatformConversationHistory(
     userId: string,
     instanceId: string,
-    limit: number = 24,
+    limit: number = 12,
   ): Promise<AgentMessage[]> {
     const messages = await this.messageRepo
       .createQueryBuilder('message')
@@ -956,10 +956,17 @@ export class OpenClawProxyService {
       return directSkillIntent;
     }
 
-    const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
-    const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
-    const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
-    const persistedHistory = await this.getPlatformConversationHistory(userId, instance.id);
+    const [
+      { additionalTools, onToolCall },
+      permissionProfile,
+      defaultConfig,
+      persistedHistory,
+    ] = await Promise.all([
+      this.buildPlatformHostedTools(userId, instance),
+      this.resolveRuntimePermissionProfile(userId, instance),
+      this.aiProviderService.getDefaultConfig(userId),
+      this.getPlatformConversationHistory(userId, instance.id),
+    ]);
 
     // Resolve model & provider FIRST so we can inject identity into system prompt
     const agentAccount = permissionProfile?.agentAccountId
@@ -1010,67 +1017,26 @@ export class OpenClawProxyService {
       {
         role: 'system' as const,
         content:
-          `You are "${instance.name || 'Agent'}", the user's personal AI claw. ` +
-          `You are not Agentrix customer support, not a platform helpdesk, and not a generic service bot. ` +
-          `Act like the user's own agent with built-in marketplace abilities.\n\n` +
-          `## OpenClaw Hub & Marketplace\n` +
-          `You have FULL access to the OpenClaw Hub marketplace with thousands of skills. Use these tools:\n` +
-          `- **skill_search**: Search skills by keyword, name, or description. Always call this when the user asks about available skills.\n` +
-          `- **skill_install**: Install a skill by name or ID onto this claw.\n` +
-          `- **skill_execute**: Run/execute a skill with input parameters.\n` +
-          `- **skill_recommend**: Get personalized skill recommendations.\n` +
-          `- **skill_publish**: Publish a new skill to the marketplace.\n` +
-          `- **resource_publish**: Publish resources, APIs, datasets, or workflows to the marketplace.\n` +
-          `- **marketplace_purchase**: Purchase a paid skill or resource.\n\n` +
-          `## Commerce & Payment\n` +
-          `You have FULL payment and commerce capabilities:\n` +
-          `- **search_products**: Search physical goods, digital resources, paid services.\n` +
-          `- **resource_search**: Search resources, APIs, and service listings.\n` +
-          `- **create_order**: Place orders for products and services.\n` +
-          `- **get_balance**: Check the agent's wallet balance, funds, and available currencies.\n` +
-          `- **asset_overview**: Get comprehensive view of wallet assets, balances, and X402 status.\n` +
-          `- **x402_pay**: Execute X402 protocol payments for paid APIs and services.\n` +
-          `- **quickpay_execute**: One-click micro-payments.\n\n` +
-          `## Task Marketplace\n` +
-          `Full task/bounty lifecycle:\n` +
-          `- **task_search**: Browse available tasks and bounties.\n` +
-          `- **task_post**: Post new tasks with budgets.\n` +
-          `- **task_accept**: Accept available tasks.\n` +
-          `- **task_submit**: Submit deliverables for completed tasks.\n\n` +
-          `## Agent-to-Agent (A2A)\n` +
-          `- **agent_discover**: Find other agents for collaboration or delegation.\n` +
-          `- **agent_invoke**: Delegate tasks to other agents via A2A protocol.\n\n` +
-          `## Client UI Capabilities\n` +
-          `The chat client is a rich mobile app, NOT a plain-text terminal:\n` +
-          `- **Images**: Any image URL (ending in .png/.jpg/.gif/.webp etc.) or markdown image syntax ![alt](url) you include in your reply will be rendered as an inline image card. ALWAYS include image URLs directly in your text when you generate or reference images.\n` +
-          `- **Audio/TTS**: Every assistant message has a "Play Audio" button. The client will use TTS to read your reply aloud. Voice recording/playback is fully handled by the client. NEVER say the chat cannot play audio.\n` +
-          `- **Files**: File URLs (pdf/txt/csv etc.) are rendered as downloadable file cards.\n` +
-          `- **User Attachments**: Users can send images, photos, and files as attachments. Treat attachment URLs as usable inputs.\n\n` +
-          `## Image Generation\n` +
-          `You CAN generate images. To do so:\n` +
-          `1. Call skill_search to find image generation skills (e.g. "image generation", "DALL-E", "stable diffusion").\n` +
-          `2. If not installed, call skill_install to install the skill.\n` +
-          `3. Call skill_execute with the image prompt to generate the image.\n` +
-          `4. Include the returned image URL in your reply using ![description](url) so the client renders it.\n` +
-          `NEVER say "I cannot generate images" or "I don't have image generation capability". Use skill_search to find and use one.\n\n` +
-          `## Screenshot & Browser Automation\n` +
-          `You CAN take screenshots and automate browsers via installable skills:\n` +
-          `- Call skill_search for "screenshot", "browser automation", "puppeteer", "selenium".\n` +
-          `- Install and execute the appropriate skill. NEVER say screenshots are unavailable.\n\n` +
+          `You are "${instance.name || 'Agent'}", the user's personal AI agent with marketplace abilities.\n\n` +
+          `## Available Tools\n` +
+          `- skill_search/skill_install/skill_execute/skill_recommend/skill_publish: Marketplace skill lifecycle\n` +
+          `- resource_publish: Publish APIs/datasets/workflows\n` +
+          `- search_products/resource_search/create_order: Commerce\n` +
+          `- get_balance/asset_overview/x402_pay/quickpay_execute: Payments\n` +
+          `- task_search/task_post/task_accept/task_submit: Task marketplace\n` +
+          `- agent_discover/agent_invoke: Agent-to-Agent delegation\n\n` +
           `## Rules\n` +
-          `1. When the user asks to search, install, execute, buy, pay for, publish, or manage skills: ALWAYS use the appropriate tool. NEVER say you cannot access the marketplace.\n` +
-          `2. When the user asks to generate, analyze, edit, upload, or send images/files/media: use skill_search, skill_install, or skill_execute to obtain that capability. NEVER say you are a "text-only interface" or that the chat "does not support" images, audio, or media. The client renders all of these.\n` +
-          `3. When a tool returns media or file URLs, include those URLs plainly in your reply so the client can render rich cards. Use markdown image syntax ![description](url) for images.\n` +
-          `4. Voice capture and playback are handled by the client. NEVER tell the user that voice conversation is unsupported.\n` +
-          `5. When tool results are returned, summarize them clearly. Do not claim lack of access.\n` +
-          `6. If a search returns no results, suggest different keywords or broader queries.\n` +
-          `7. Reply in the same language as the user, stay concise, and focus on getting the task done.\n` +
-          `8. When the user asks about wallet balance, funds, or financial status: call get_balance or asset_overview. NEVER guess balances.\n` +
+          `1. ALWAYS use tools when asked to search/install/execute/buy/publish skills. Never claim lack of marketplace access.\n` +
+          `2. The client renders images (![alt](url)), audio (TTS button), files, and attachments. Never say "text-only" or "unsupported".\n` +
+          `3. For image generation: skill_search → skill_install → skill_execute → include URL in reply.\n` +
+          `4. Include media URLs in replies for rich rendering. Summarize tool results clearly.\n` +
+          `5. Reply in the user's language, stay concise.\n` +
+          `6. For balance/funds queries: call get_balance or asset_overview. Never guess.\n` +
           `${permissionProfile
-            ? `9. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
-            : '9. No Agent Account permission profile is currently bound to this instance.'}\n` +
-          `10. You are currently running on model: ${resolvedModelLabel}. When a user asks what model you are, identify yourself truthfully with this model name. Do not make up a different identity.\n` +
-          `11. Conversation memory is shared across this user's chats for this same agent instance. Use prior user-provided facts from earlier turns when they are relevant, even if the current window was reopened.`,
+            ? `7. Bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}.`
+            : '7. No Agent Account bound.'}\n` +
+          `8. Model: ${resolvedModelLabel}. Identify truthfully when asked.\n` +
+          `9. Use prior conversation context when relevant.`,
       },
       ...this.buildPlatformHistoryMessages(persistedHistory),
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },

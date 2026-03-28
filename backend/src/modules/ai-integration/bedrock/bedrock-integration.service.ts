@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 
 export interface BedrockUserCredentials {
   accessKeyId: string;
@@ -299,6 +299,144 @@ export class BedrockIntegrationService {
   }
 
   /**
+   * Invoke Bedrock model with streaming using user's own AWS credentials.
+   */
+  private async invokeStreamingWithUserCredentials(
+    modelId: string,
+    body: any,
+    credentials: BedrockUserCredentials,
+    onChunk: (text: string) => void,
+  ): Promise<any> {
+    const region = this.normalizeRegion(credentials.region);
+    const client = new BedrockRuntimeClient({
+      region,
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+      },
+    });
+    const command = new InvokeModelWithResponseStreamCommand({
+      modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(body),
+    });
+    const response = await client.send(command);
+    return this.consumeBedrockStream(response, onChunk);
+  }
+
+  /**
+   * Invoke Bedrock model with streaming using platform Bearer token (via Axios SSE).
+   * Falls back to non-streaming if streaming fails.
+   */
+  private async invokeStreamingWithPlatformToken(
+    modelId: string,
+    body: any,
+    region: string,
+    onChunk: (text: string) => void,
+  ): Promise<any> {
+    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
+    const response = await axios.post(
+      `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke-with-response-stream`,
+      body,
+      {
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/vnd.amazon.eventstream',
+        },
+        httpsAgent,
+        proxy: false,
+        timeout: 60000,
+        responseType: 'stream',
+      },
+    );
+
+    // Parse the event stream
+    const fullContent: any[] = [];
+    let stopReason = '';
+
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+      response.data.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString('utf8');
+        // Bedrock event stream: each event is a JSON line within the stream
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const event = JSON.parse(trimmed);
+            if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+              onChunk(event.delta.text);
+              fullContent.push({ type: 'text', text: event.delta.text });
+            } else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+              fullContent.push(event.content_block);
+            } else if (event.type === 'message_delta') {
+              stopReason = event.delta?.stop_reason || stopReason;
+            }
+          } catch { /* skip non-JSON lines */ }
+        }
+      });
+      response.data.on('end', () => {
+        // Reconstruct content array similar to non-streaming response
+        let text = '';
+        const toolUses: any[] = [];
+        for (const item of fullContent) {
+          if (item.type === 'text') text += item.text;
+          else if (item.type === 'tool_use') toolUses.push(item);
+        }
+        resolve({ content: [{ type: 'text', text }, ...toolUses], stop_reason: stopReason });
+      });
+      response.data.on('error', reject);
+    });
+  }
+
+  /**
+   * Consume a Bedrock InvokeModelWithResponseStream response.
+   */
+  private async consumeBedrockStream(
+    response: any,
+    onChunk: (text: string) => void,
+  ): Promise<any> {
+    let text = '';
+    const toolUses: any[] = [];
+    let currentToolUse: any = null;
+    let toolInputJson = '';
+
+    for await (const event of response.body) {
+      if (event.chunk?.bytes) {
+        const parsed = JSON.parse(new TextDecoder().decode(event.chunk.bytes));
+        if (parsed.type === 'content_block_delta') {
+          if (parsed.delta?.type === 'text_delta') {
+            onChunk(parsed.delta.text);
+            text += parsed.delta.text;
+          } else if (parsed.delta?.type === 'input_json_delta') {
+            toolInputJson += parsed.delta.partial_json || '';
+          }
+        } else if (parsed.type === 'content_block_start') {
+          if (parsed.content_block?.type === 'tool_use') {
+            currentToolUse = parsed.content_block;
+            toolInputJson = '';
+          }
+        } else if (parsed.type === 'content_block_stop') {
+          if (currentToolUse) {
+            try {
+              currentToolUse.input = JSON.parse(toolInputJson || '{}');
+            } catch { currentToolUse.input = {}; }
+            toolUses.push(currentToolUse);
+            currentToolUse = null;
+            toolInputJson = '';
+          }
+        }
+      }
+    }
+
+    return { content: [{ type: 'text', text }, ...toolUses] };
+  }
+
+  /**
    * 支持 Function Calling 的对话接口
    */
   async chatWithFunctions(messages: any[], options: any = {}): Promise<any> {
@@ -374,9 +512,17 @@ export class BedrockIntegrationService {
           }));
       }
 
-      const data = userCreds
-        ? await this.invokeWithUserCredentials(modelId, body, userCreds)
-        : await this.invokeWithPlatformToken(modelId, body, region);
+      const data = options.onChunk
+        ? (userCreds
+          ? await this.invokeStreamingWithUserCredentials(modelId, body, userCreds, options.onChunk)
+          : await this.invokeStreamingWithPlatformToken(modelId, body, region, options.onChunk).catch(async (streamErr: any) => {
+              // Streaming via bearer token may not be supported; fall back to non-streaming
+              this.logger.warn(`Bedrock streaming fallback: ${streamErr.message}`);
+              return this.invokeWithPlatformToken(modelId, body, region);
+            }))
+        : (userCreds
+          ? await this.invokeWithUserCredentials(modelId, body, userCreds)
+          : await this.invokeWithPlatformToken(modelId, body, region));
 
       const content = data.content;
       let text = '';
