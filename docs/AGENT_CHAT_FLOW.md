@@ -179,6 +179,16 @@ POST /api/openclaw/proxy/:instanceId/stream
 
 ## 5. 已知瓶颈与优化机会
 
+### 已修复的瓶颈
+
+| 瓶颈 | 状态 | 修复方案 |
+|------|------|----------|
+| **Nginx SSE 缓冲** | ✅ 已修复 (2026-03-28) | `/api/` location 添加 `proxy_buffering off; proxy_cache off;` |
+| **EventStream 帧解析** | ✅ 已修复 (2026-03-28) | 自定义 `parseEventStreamFrames()` 替换 `MessageDecoderStream` |
+| **SSE Fallback 误触发** | ✅ 已修复 (2026-03-28) | `textBytesStreamed` 追踪实际文本，非 `[Tool Call]` 标记 |
+
+> **Nginx 缓冲是前端"一口气回复"的根本原因**: `/api/` location 块缺少 `proxy_buffering off;`，Nginx 默认缓冲 proxy 响应，导致后端实时发送的 SSE chunks 被 Nginx 收集后整体返回。后端 `X-Accel-Buffering: no` header 不起作用因为不在该 location 块中。
+
 ### 当前瓶颈
 
 | 瓶颈 | 影响 | 原因 | 优先级 |
@@ -194,7 +204,9 @@ POST /api/openclaw/proxy/:instanceId/stream
 ```
 当前: 新加坡 (ap-southeast-1) → us-east-1, RTT ~200ms
 目标: 新加坡 → ap-southeast-1 (同区域), RTT ~5ms
-需要: 在 ap-southeast-1 开通 Claude Haiku 4.5 访问权限
+障碍: Bearer Token (API Key) 在 ap-southeast-1 不可用 — 模型返回 "model identifier invalid"
+      或 "Retry with inference profile" 错误。需要在 ap-southeast-1 开通 Cross-region inference
+      并更新 Bearer Token，或改用 IAM 凭证 (AccessKeyId/SecretAccessKey)。
 效果: 简单消息 2.5s → 1.0s, 工具消息 10s → 7s
 ```
 
@@ -274,14 +286,33 @@ Bedrock 的 `invoke-with-response-stream` 返回 `application/vnd.amazon.eventst
 
 ## 8. 实测数据 (2026-03-28 修复后)
 
-### 简单消息 "hello"
+### Nginx SSE 缓冲修复 — 端到端验证 (via HTTPS)
+
+#### 简单消息 "hello" (通过 Nginx HTTPS)
+```
+TTFB (首字节到客户端):     1908ms
+流式完成:                   2349ms
+流式方式:                   真实逐词 (每 20-40ms 一个 token)
+```
+
+#### 问题 "你有哪些能力技能和能哪些工具？" (通过 Nginx HTTPS)
+```
+TTFB (首字节到客户端):     2238ms
+流式 chunks 数:            434 个
+流式完成:                   12619ms
+流式方式:                   真实 token-by-token (20-30ms/chunk)
+```
+
+### 后端内部测试 (直连 localhost:3000)
+
+#### 简单消息 "hello"
 ```
 TTFB (首字节到客户端):     1676ms
 流式完成:                   2710ms
 流式方式:                   真实逐词 (每 20-40ms 一个 token)
 ```
 
-### 工具消息 "help me find skills for blog writing"
+#### 工具消息 "help me find skills for blog writing"
 ```
 1st LLM TTFB:              2437ms (用户看到 "正在搜索...")
 1st LLM 流式完成:          2618ms
@@ -295,8 +326,13 @@ Tool 执行:                 3694ms (3× skill_search)
 
 | 场景 | 修复前 | 修复后 | 改进 |
 |------|--------|--------|------|
-| 简单消息 TTFB | 2925ms (假流式) | 1676ms (真流式) | **42% ↓** |
-| 简单消息体验 | 等3s → 文字一次出现 | 等1.7s → 逐字流出 | ✅ 真流式 |
-| 工具消息 TTFB | 10-20s (无反馈) | 2437ms (立刻有反馈) | **70-88% ↓** |
-| 工具消息总时间 | 10-20s | ~10s (全程流式) | **0-50% ↓** |
-| 流式方式 | 12字符假 chunk | 真实 token-by-token | ✅ |
+| 简单消息 TTFB | 2925ms (假流式) | 1908ms (真流式) | **35% ↓** |
+| 简单消息体验 | 等3s → 文字一次出现 | 等1.9s → 逐字流出 | ✅ 真流式 |
+| 工具消息 TTFB | 10-20s (无反馈) | 2238ms (立刻有反馈) | **78-89% ↓** |
+| 工具消息总时间 | 10-20s | ~12.6s (全程流式) | ✅ 体感大幅提升 |
+| 流式方式 | Nginx缓冲→一口气 | 真实 token-by-token | ✅ |
+
+### 根因汇总
+1. **EventStream 帧解析 (后端)** — `MessageDecoderStream` 不能处理 TCP 多帧合并 → 0 chunks → 假流式
+2. **Nginx proxy_buffering (网络层)** — `/api/` location 缺少 `proxy_buffering off` → SSE 被缓冲一次性发送
+3. **SSE Fallback 误判 (后端)** — `[Tool Call]` 标记设置 `chunksStreamed=true` → 跳过文本回退
