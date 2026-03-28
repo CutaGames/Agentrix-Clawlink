@@ -11,7 +11,7 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import { CommonActions, useNavigation, useNavigationState } from '@react-navigation/native';
+import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '../stores/i18nStore';
@@ -65,18 +65,15 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   // Hide on chat screen (chat has its own voice controls)
   const currentRouteName = useNavigationState((state) => {
     if (!state) return '';
-    const route = state.routes[state.index];
-    // Check nested navigators
-    if (route.state) {
+    // Traverse up to 4 levels deep: Root → Drawer → Tab → Stack → Screen
+    let route = state.routes[state.index];
+    for (let depth = 0; depth < 4; depth++) {
+      if (!route.state) break;
       const nested = route.state as any;
-      const nestedRoute = nested.routes?.[nested.index];
-      if (nestedRoute?.state) {
-        const deep = nestedRoute.state as any;
-        return deep.routes?.[deep.index]?.name || nestedRoute.name;
-      }
-      return nestedRoute?.name || route.name;
+      if (!nested.routes || nested.index == null) break;
+      route = nested.routes[nested.index];
     }
-    return route.name;
+    return route.name || '';
   });
 
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
@@ -276,7 +273,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       }
     }
 
-    // Route through Root -> Main -> Agent -> AgentChat.
+    // Navigate to Agent tab → AgentChat, preserving navigation stacks.
     const chatParams = {
       instanceId: targetInstance?.id,
       instanceName: targetInstance?.name || 'Agent',
@@ -288,31 +285,11 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       if (isVoiceUiE2EEnabled()) {
         navigation.navigate('AgentChat', chatParams);
       } else {
-        navigation.dispatch(
-          CommonActions.reset({
-            index: 0,
-            routes: [
-              {
-                name: 'Main',
-                state: {
-                  index: 0,
-                  routes: [
-                    {
-                      name: 'Agent',
-                      state: {
-                        index: 1,
-                        routes: [
-                          { name: 'AgentConsole' },
-                          { name: 'AgentChat', params: chatParams },
-                        ],
-                      },
-                    },
-                  ],
-                },
-              },
-            ],
-          })
-        );
+        // Use navigate instead of reset to preserve Discover/Me stacks
+        (navigation as any).navigate('Agent', {
+          screen: 'AgentChat',
+          params: chatParams,
+        });
       }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
         instanceId: chatParams.instanceId || null,

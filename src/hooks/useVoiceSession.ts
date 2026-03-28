@@ -26,7 +26,19 @@ import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
 import { RealtimeMicrophoneService } from '../services/realtimeMicrophone.service';
 import { VADService, createRecordingMeterFn } from '../services/vad.service';
-import { isVoiceUiE2EEnabled } from '../testing/e2e';
+
+// Lazy import to avoid circular dependency TDZ during module initialization.
+// testing/e2e.ts imports Zustand stores at top-level, which can cause
+// "Cannot access before initialization" when AgentChatScreen is the initial route.
+// Also checks the bootstrap flag since React Navigation rewrites the URL.
+function isVoiceUiE2EEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location?.search || '');
+    if (params.get('e2e') === 'voice-ui') return true;
+  } catch {}
+  return !!(window as any).__AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__;
+}
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -254,6 +266,27 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     web: {},
   } : null;
 
+  // ── Live Speech stop (declared early so realtime useEffect can reference it) ──
+
+  const stopLiveSpeech = useCallback((abort = false, manual = false) => {
+    liveSpeechManualStopRef.current = manual;
+    const realtimeMicrophone = realtimeMicrophoneRef.current;
+    realtimeMicrophoneRef.current = null;
+    const ctrl = liveSpeechRef.current;
+    liveSpeechRef.current = null;
+    if (isMountedRef.current) {
+      setLiveListening(false);
+      setLiveVoiceVolume(-2);
+    }
+    if (realtimeMicrophone) {
+      void realtimeMicrophone.stop();
+    }
+    if (!ctrl) return;
+    try {
+      if (abort) ctrl.abort(); else ctrl.stop();
+    } catch {}
+  }, []);
+
   // ── Check live speech availability ──
   useEffect(() => {
     const available = isVoiceUiE2E
@@ -399,27 +432,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     useRealtimeChannel,
     stopLiveSpeech,
   ]);
-
-  // ── Live Speech ──
-
-  const stopLiveSpeech = useCallback((abort = false, manual = false) => {
-    liveSpeechManualStopRef.current = manual;
-    const realtimeMicrophone = realtimeMicrophoneRef.current;
-    realtimeMicrophoneRef.current = null;
-    const ctrl = liveSpeechRef.current;
-    liveSpeechRef.current = null;
-    if (isMountedRef.current) {
-      setLiveListening(false);
-      setLiveVoiceVolume(-2);
-    }
-    if (realtimeMicrophone) {
-      void realtimeMicrophone.stop();
-    }
-    if (!ctrl) return;
-    try {
-      if (abort) ctrl.abort(); else ctrl.stop();
-    } catch {}
-  }, []);
 
   // ── TTS ──
 

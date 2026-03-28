@@ -22,23 +22,41 @@ async function triggerWakeWord(page: Page) {
   });
 }
 
+async function emitRealtimeFinalTranscript(page: Page, text: string) {
+  await page.evaluate((nextText) => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    runtime?.emitRealtimeFinalTranscript(nextText);
+  }, text);
+}
+
+async function emitRealtimeAssistantChunk(page: Page, chunk: string) {
+  await page.evaluate((nextChunk) => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    runtime?.emitRealtimeAssistantChunk(nextChunk);
+  }, chunk);
+}
+
+async function completeRealtimeAssistantResponse(page: Page) {
+  await page.evaluate(() => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    runtime?.completeRealtimeAssistantResponse();
+  });
+}
+
 async function openVoiceChat(page: Page) {
   await page.goto('/?e2e=voice-ui');
-  await expect(activeByTestId(page, 'agent-console-screen')).toBeAttached();
-  await expect(activeByTestId(page, 'voice-floating-ball-core')).toBeVisible();
-  await activeByTestId(page, 'voice-floating-ball-core').click();
-  await expect(page).toHaveURL(/AgentChat/);
   await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
+  /* v4.0: Chat is the home screen — enter voice mode via toggle button */
+  await activeByTestId(page, 'chat-voice-mode-toggle').click();
   await expect(activeByTestId(page, 'voice-status-bar')).toBeVisible();
 }
 
 test.describe('voice ui regression', () => {
-  test('floating ball opens voice chat, onboarding persists, and back avoids white screen', async ({ page }) => {
+  test('voice mode shows onboarding, drawer works, and onboarding does not re-appear', async ({ page }) => {
     await openVoiceChat(page);
 
     await expect(activeByTestId(page, 'voice-onboarding-tooltip')).toBeVisible();
     await expect(activeByTestId(page, 'voice-onboarding-step-indicator')).toHaveText('1/3');
-    await expect(byTestId(page, 'voice-floating-ball')).toHaveCount(0);
 
     await activeByTestId(page, 'voice-onboarding-next').click();
     await expect(activeByTestId(page, 'voice-onboarding-step-indicator')).toHaveText('2/3');
@@ -49,18 +67,16 @@ test.describe('voice ui regression', () => {
     await activeByTestId(page, 'voice-onboarding-next').click();
     await expect(byTestId(page, 'voice-onboarding-tooltip')).toHaveCount(0);
 
-    await activeByTestId(page, 'agent-chat-back-button').click();
-    await expect(page).not.toHaveURL(/AgentChat/);
-    await expect(activeByTestId(page, 'agent-console-screen')).toBeAttached();
-    await expect(activeByTestId(page, 'voice-floating-ball-core')).toBeVisible();
+    /* Toggle voice off and back on — onboarding should not re-appear */
+    await activeByTestId(page, 'chat-voice-mode-toggle').click();
+    await expect(byTestId(page, 'voice-status-bar')).toHaveCount(0);
 
-    await activeByTestId(page, 'voice-floating-ball-core').click();
-    await expect(page).toHaveURL(/AgentChat/);
-    await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
+    await activeByTestId(page, 'chat-voice-mode-toggle').click();
+    await expect(activeByTestId(page, 'voice-status-bar')).toBeVisible();
     await expect(byTestId(page, 'voice-onboarding-tooltip')).toHaveCount(0);
   });
 
-  test('voice chat exposes duplex controls and interaction mode toggles', async ({ page }) => {
+  test('voice chat exposes controls and settings toggles', async ({ page }) => {
     await openVoiceChat(page);
 
     if (await byTestId(page, 'voice-onboarding-tooltip').count()) {
@@ -69,34 +85,39 @@ test.describe('voice ui regression', () => {
     }
 
     const sessionState = activeByTestId(page, 'voice-session-state');
-    const interactionToggle = activeByTestId(page, 'chat-voice-interaction-toggle');
     const actionButton = activeByTestId(page, 'chat-voice-action-button');
     const voiceToggle = activeByTestId(page, 'chat-voice-mode-toggle');
 
-    await expect(sessionState).toHaveAttribute('aria-label', /voice-session-state:(tap|hold):duplex:/);
-    await expect(actionButton).toHaveAttribute('aria-label', /chat-voice-action-button:(tap|hold):duplex:/);
+    /* v4.0: voice toggle enters basic (PTT) mode */
+    await expect(sessionState).toHaveAttribute('aria-label', /voice-session-state:/);
+    await expect(actionButton).toHaveAttribute('aria-label', /chat-voice-action-button:ptt:/);
 
-    const before = await interactionToggle.getAttribute('aria-label');
-    await interactionToggle.click();
-    await expect(interactionToggle).not.toHaveAttribute('aria-label', before ?? '');
-    await expect(sessionState).toHaveAttribute('aria-label', /voice-session-state:(tap|hold):duplex:/);
+    /* Open settings sheet and toggle duplex mode */
+    await activeByTestId(page, 'agent-chat-settings-button').click();
+    await expect(activeByTestId(page, 'chat-settings-sheet')).toBeVisible();
+    await activeByTestId(page, 'chat-duplex-toggle').click();
+    /* Close settings sheet via keyboard Escape */
+    await page.keyboard.press('Escape');
+    await expect(byTestId(page, 'chat-settings-sheet')).toHaveCount(0, { timeout: 3000 });
 
+    /* After enabling duplex, session state should reflect duplex mode */
+    await expect(sessionState).toHaveAttribute('aria-label', /duplex/, { timeout: 8000 });
+
+    /* Toggle voice off → text mode restored */
     await voiceToggle.click();
     await expect(byTestId(page, 'voice-status-bar')).toHaveCount(0);
     await expect(activeByTestId(page, 'chat-text-input')).toBeVisible();
 
+    /* Toggle voice back on → voice mode restored */
     await voiceToggle.click();
     await expect(activeByTestId(page, 'voice-status-bar')).toBeVisible();
     await expect(byTestId(page, 'chat-text-input')).toHaveCount(0);
   });
 
-  test('chat CTA can enter text mode, then upgrade into voice mode and keep back path clean', async ({ page }) => {
+  test('chat opens in text mode by default, voice toggle upgrades to voice mode', async ({ page }) => {
     await page.goto('/?e2e=voice-ui');
 
-    await expect(activeByTestId(page, 'agent-console-screen')).toBeAttached();
-    await activeByTestId(page, 'agent-console-chat-cta').click();
-
-    await expect(page).toHaveURL(/AgentChat/);
+    /* v4.0: Chat is the default first tab, no console CTA needed */
     await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
     await expect(activeByTestId(page, 'chat-text-input')).toBeVisible();
     await expect(byTestId(page, 'voice-status-bar')).toHaveCount(0);
@@ -108,10 +129,10 @@ test.describe('voice ui regression', () => {
     await activeByTestId(page, 'voice-onboarding-skip').click();
     await expect(byTestId(page, 'voice-onboarding-tooltip')).toHaveCount(0);
 
-    await activeByTestId(page, 'agent-chat-back-button').click();
-    await expect(page).not.toHaveURL(/AgentChat/);
-    await expect(activeByTestId(page, 'agent-console-screen')).toBeAttached();
-    await expect(activeByTestId(page, 'voice-floating-ball-core')).toBeVisible();
+    /* Toggle off voice and confirm text mode restored */
+    await activeByTestId(page, 'chat-voice-mode-toggle').click();
+    await expect(byTestId(page, 'voice-status-bar')).toHaveCount(0);
+    await expect(activeByTestId(page, 'chat-text-input')).toBeVisible();
   });
 
   test('microphone permission denial can recover back into live voice', async ({ page }) => {
@@ -143,14 +164,13 @@ test.describe('voice ui regression', () => {
     await expect(sessionState).toHaveAttribute('aria-label', /voice-session-state:tap:duplex:recording:/);
   });
 
-  test('wake-word trigger can open voice chat and the agent voice persona is switchable', async ({ page }) => {
+  test('voice mode activation and agent voice persona is switchable', async ({ page }) => {
     await page.goto('/?e2e=voice-ui');
-    await expect(activeByTestId(page, 'agent-console-screen')).toBeAttached();
-    await expect(activeByTestId(page, 'voice-floating-ball-core')).toBeVisible();
-
-    await triggerWakeWord(page);
-    await expect(page).toHaveURL(/AgentChat/);
     await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
+
+    /* Activate voice mode via toggle */
+    await activeByTestId(page, 'chat-voice-mode-toggle').click();
+    await expect(activeByTestId(page, 'voice-status-bar')).toBeVisible({ timeout: 5000 });
 
     if (await byTestId(page, 'voice-onboarding-tooltip').count()) {
       await activeByTestId(page, 'voice-onboarding-skip').click();
@@ -162,5 +182,50 @@ test.describe('voice ui regression', () => {
 
     await activeByTestId(page, 'chat-voice-persona-nova').click();
     await expect(activeByTestId(page, 'chat-selected-voice')).toHaveAttribute('aria-label', 'chat-selected-voice:nova');
+  });
+
+  test('realtime final transcript creates one user turn and receives assistant chunks', async ({ page }) => {
+    await openVoiceChat(page);
+
+    if (await byTestId(page, 'voice-onboarding-tooltip').count()) {
+      await activeByTestId(page, 'voice-onboarding-skip').click();
+      await expect(byTestId(page, 'voice-onboarding-tooltip')).toHaveCount(0);
+    }
+
+    /* Enable duplex mode via settings sheet for realtime channel */
+    await activeByTestId(page, 'agent-chat-settings-button').click();
+    await expect(activeByTestId(page, 'chat-settings-sheet')).toBeVisible();
+    await activeByTestId(page, 'chat-duplex-toggle').click();
+    /* Close settings sheet via keyboard Escape */
+    await page.keyboard.press('Escape');
+    await expect(byTestId(page, 'chat-settings-sheet')).toHaveCount(0, { timeout: 3000 });
+
+    /* Wait for duplex + realtime connected session */
+    await expect(activeByTestId(page, 'voice-session-state')).toHaveAttribute(
+      'aria-label',
+      /voice-session-state:.*:duplex:.*:connected/,
+      { timeout: 10000 },
+    );
+
+    /* Verify the E2E realtime bridge is set up */
+    await expect.poll(async () =>
+      page.evaluate(() => !!(window as any).__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__),
+      { timeout: 5000 },
+    ).toBeTruthy();
+
+    const transcript = '能听到我说话吗';
+    const assistantReply = '已收到，你的实时语音链路现在已经接通。';
+
+    await emitRealtimeFinalTranscript(page, transcript);
+    await emitRealtimeFinalTranscript(page, transcript);
+
+    await expect
+      .poll(async () => byTestId(page, 'chat-message-text-user').filter({ hasText: transcript }).count())
+      .toBe(1);
+
+    await emitRealtimeAssistantChunk(page, assistantReply);
+    await completeRealtimeAssistantResponse(page);
+
+    await expect(byTestId(page, 'chat-message-text-assistant').filter({ hasText: assistantReply })).toHaveCount(1);
   });
 });
