@@ -249,6 +249,12 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     setBallState('listening');
     onVoiceActivate?.();
 
+    // Safety: auto-reset guard after 3s in case navigation silently fails
+    // (shouldHide effect normally resets this, but navigation might not trigger it)
+    setTimeout(() => {
+      navigatingToChatRef.current = false;
+    }, 3000);
+
     if (isVoiceUiE2EEnabled() && onVoiceActivate) {
       return;
     }

@@ -940,10 +940,21 @@ export function AgentChatScreen() {
   });
   const shouldShowVoiceQuickGuide = voiceMode && (voiceModeRequested || duplexModeRequested || liveSpeechPermissionState === 'denied' || messages.length <= 1);
 
-  // Clear stale voiceMode/duplexMode route params when voice mode is turned off,
+  // Sync voiceMode/duplexMode when route params change on an already-mounted screen
+  // (e.g. floating ball navigates here while this screen is still mounted in the tab).
+  useEffect(() => {
+    if (voiceModeRequested && !voiceMode) {
+      setVoiceMode(true);
+    }
+    if (duplexModeRequested && !duplexMode) {
+      setDuplexMode(true);
+    }
+  }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, setVoiceMode, setDuplexMode]);
+
+  // Clear stale voiceMode/duplexMode route params after they've been consumed,
   // so returning to this screen later doesn't re-activate voice.
   useEffect(() => {
-    if (!voiceMode && (voiceModeRequested || duplexModeRequested)) {
+    if (voiceMode && (voiceModeRequested || duplexModeRequested)) {
       navigation.setParams({ voiceMode: undefined, duplexMode: undefined });
     }
   }, [voiceMode, voiceModeRequested, duplexModeRequested, navigation]);

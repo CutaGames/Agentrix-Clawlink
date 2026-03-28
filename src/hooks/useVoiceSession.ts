@@ -864,7 +864,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) stopSpeaking();
           realtimeVoiceRef.current?.sendInterrupt();
-          onStopCurrentResponseRef.current(true);
+          onStopCurrentResponseRef.current?.(true);
           setVoicePhase('thinking');
           setTimeout(() => {
             if (useRealtimeChannel && realtimeVoiceRef.current?.isConnected) {
@@ -1029,7 +1029,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           await audioPlayerRef.current?.stopAll();
           setIsSpeaking(false);
         }
-        onStopCurrentResponseRef.current(true);
+        onStopCurrentResponseRef.current?.(true);
         setVoicePhase('recording');
         setTranscriptPreview('');
         const permResult = await Audio.requestPermissionsAsync();
@@ -1180,7 +1180,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         return;
       }
       if (isSpeaking) stopSpeaking();
-      onStopCurrentResponseRef.current(true);
+      onStopCurrentResponseRef.current?.(true);
       await startLiveSpeechInternal();
       return;
     }
