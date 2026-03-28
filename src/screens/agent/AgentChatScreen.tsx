@@ -1835,14 +1835,35 @@ export function AgentChatScreen() {
             )}
           </TouchableOpacity>
         ) : !voiceMode ? (
-          <TouchableOpacity
-            testID="chat-voice-mode-toggle"
-            accessibilityLabel={`chat-voice-mode-toggle:text`}
-            style={styles.modeToggleBtn}
-            onPress={() => { setVoiceMode(true); setShowAttachToolbar(false); }}
-          >
-            <Text style={styles.modeToggleIcon}>🎤</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              testID="chat-realtime-voice-btn"
+              accessibilityLabel="chat-realtime-voice-btn"
+              style={styles.modeToggleBtn}
+              onPress={() => {
+                if (!liveVoiceAvailable) {
+                  Alert.alert(
+                    t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                    t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
+                  );
+                  return;
+                }
+                setVoiceMode(true);
+                setDuplexMode(true);
+                setShowAttachToolbar(false);
+              }}
+            >
+              <Text style={styles.modeToggleIcon}>📞</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="chat-voice-mode-toggle"
+              accessibilityLabel={`chat-voice-mode-toggle:text`}
+              style={styles.modeToggleBtn}
+              onPress={() => { setVoiceMode(true); setShowAttachToolbar(false); }}
+            >
+              <Text style={styles.modeToggleIcon}>🎤</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <TouchableOpacity
             testID="chat-voice-mode-toggle"

@@ -26,7 +26,7 @@ const FRAME_LENGTH = 512;
 const SAMPLE_RATE = 16000;
 const SPEECH_START_THRESHOLD = 0.15;
 const SPEECH_END_THRESHOLD = 0.05;
-const SPEECH_END_FRAME_COUNT = 18;
+const SPEECH_END_FRAME_COUNT = 30;
 const MIN_SPEECH_FRAME_COUNT = 8;
 const SPEECH_RESTART_COOLDOWN_FRAMES = 20;
 /**
@@ -42,12 +42,12 @@ const SPEECH_POST_ROLL_FRAMES = 8;
  * Volume threshold for barge-in detection while mic is muted (agent speaking).
  * Higher than SPEECH_START_THRESHOLD to avoid triggering on speaker echo.
  */
-const BARGE_IN_THRESHOLD = 0.25;
+const BARGE_IN_THRESHOLD = 0.35;
 /**
  * Number of consecutive loud frames required to confirm barge-in.
- * At 16kHz/512 frame size (~32ms/frame), 5 frames ≈ 160ms.
+ * At 16kHz/512 frame size (~32ms/frame), 8 frames ≈ 256ms.
  */
-const BARGE_IN_FRAME_COUNT = 5;
+const BARGE_IN_FRAME_COUNT = 8;
 
 function getVoiceProcessor(): VoiceProcessorType | null {
   try {
