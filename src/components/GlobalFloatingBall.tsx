@@ -62,7 +62,9 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const { width: screenW, height: screenH } = Dimensions.get('window');
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
-  // Hide on chat screen (chat has its own voice controls)
+  // Hide on chat screen (chat has its own voice controls).
+  // On native, initial route state may not be populated (route.state === undefined)
+  // until the first navigation event, so we also check for shallow container names.
   const currentRouteName = useNavigationState((state) => {
     if (!state) return '';
     // Traverse up to 4 levels deep: Root → Drawer → Tab → Stack → Screen
@@ -70,14 +72,18 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     for (let depth = 0; depth < 4; depth++) {
       if (!route.state) break;
       const nested = route.state as any;
-      if (!nested.routes || nested.index == null) break;
+      if (!nested?.routes || nested.index == null) break;
       route = nested.routes[nested.index];
     }
     return route.name || '';
   });
 
+  // The deepest resolved route name may be 'Main' or 'MainTabs' when
+  // the nested navigator hasn't fired any navigation event yet.
+  // In that case, the active screen IS the initial route: AgentChat.
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
-  const shouldHide = hideOnScreens.includes(currentRouteName);
+  const resolvedToShallow = ['Main', 'MainTabs', 'Agent'].includes(currentRouteName);
+  const shouldHide = hideOnScreens.includes(currentRouteName) || resolvedToShallow;
   const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
   const [ballState, setBallState] = useState<BallState>('idle');
@@ -237,6 +243,8 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   ).current;
 
   const activateVoiceExperience = useCallback(async () => {
+    // Guard against double-tap while already navigating
+    if (navigatingToChatRef.current) return;
     navigatingToChatRef.current = true;
     setBallState('listening');
     onVoiceActivate?.();
@@ -285,10 +293,14 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       if (isVoiceUiE2EEnabled()) {
         navigation.navigate('AgentChat', chatParams);
       } else {
-        // Use navigate instead of reset to preserve Discover/Me stacks
-        (navigation as any).navigate('Agent', {
-          screen: 'AgentChat',
-          params: chatParams,
+        // Use fully-qualified nested path from Root to ensure reliable resolution
+        // on native: Root(Main) → Drawer(MainTabs) → Tab(Agent) → Stack(AgentChat)
+        (navigation as any).navigate('MainTabs', {
+          screen: 'Agent',
+          params: {
+            screen: 'AgentChat',
+            params: chatParams,
+          },
         });
       }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
@@ -298,6 +310,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     } catch (navErr) {
       addVoiceDiagnostic('floating-ball', 'navigate-failed', navErr);
       console.warn('[FloatingBall] Navigation failed:', navErr);
+      navigatingToChatRef.current = false;
       setBallState('idle');
     }
   }, [navigation, onVoiceActivate, currentRouteName]);
