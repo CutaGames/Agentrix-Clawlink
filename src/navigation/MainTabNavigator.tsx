@@ -38,7 +38,7 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 export function MainTabNavigator() {
   const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
-  const initialRouteName = isVoiceUiE2EEnabled() ? 'Agent' : 'Discover';
+  const initialRouteName = 'Agent';
 
   return (
     <Tab.Navigator id={undefined}
@@ -62,13 +62,13 @@ export function MainTabNavigator() {
         },
       }}
     >
-      {/* Agent tab — hidden from tab bar, accessible via floating ball */}
+      {/* Agent tab — now visible as Chat tab (first position) */}
       <Tab.Screen
         name="Agent"
         component={AgentStackNavigator}
         options={{
-          tabBarButton: () => null,
-          tabBarItemStyle: { display: 'none' },
+          title: t({ en: 'Chat', zh: '对话' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
         }}
       />
       <Tab.Screen

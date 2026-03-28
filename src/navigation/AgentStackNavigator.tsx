@@ -37,7 +37,7 @@ const Stack = createNativeStackNavigator<AgentStackParamList>();
 
 export function AgentStackNavigator() {
   const { t } = useI18n();
-  const initialRouteName = 'AgentConsole';
+  const initialRouteName = 'AgentChat';
 
   return (
     <Stack.Navigator id={undefined}

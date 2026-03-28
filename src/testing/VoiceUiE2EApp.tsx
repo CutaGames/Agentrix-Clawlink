@@ -1,8 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AgentConsoleScreen } from '../screens/agent/AgentConsoleScreen';
-import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
 import { GlobalFloatingBall } from '../components/GlobalFloatingBall';
 import type { AgentStackParamList } from '../navigation/types';
 import { useAuthStore } from '../stores/authStore';
@@ -10,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 const Stack = createNativeStackNavigator<AgentStackParamList>();
 
 function AgentConsoleE2EScreen(props: any) {
+  const { AgentConsoleScreen } = require('../screens/agent/AgentConsoleScreen');
   const activeInstance = useAuthStore((state) => state.activeInstance);
 
   return (
@@ -28,6 +27,7 @@ function AgentConsoleE2EScreen(props: any) {
 }
 
 function AgentChatE2EScreen(props: any) {
+  const { AgentChatScreen } = require('../screens/agent/AgentChatScreen');
   return (
     <View style={styles.wrapper}>
       <AgentChatScreen {...props} />
@@ -38,9 +38,9 @@ function AgentChatE2EScreen(props: any) {
 
 export function VoiceUiE2EApp() {
   return (
-    <Stack.Navigator id={undefined} initialRouteName="AgentConsole" screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="AgentConsole" component={AgentConsoleE2EScreen} />
+    <Stack.Navigator id={undefined} initialRouteName="AgentChat" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="AgentChat" component={AgentChatE2EScreen} />
+      <Stack.Screen name="AgentConsole" component={AgentConsoleE2EScreen} />
     </Stack.Navigator>
   );
 }

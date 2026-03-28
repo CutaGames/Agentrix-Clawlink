@@ -349,20 +349,25 @@ const linking = {
       },
       Main: {
         screens: {
-          Agent: {
+          MainTabs: {
             screens: {
-              AgentConsole: 'agent',
-              AgentChat: 'agent/chat',
-              VoiceChat: 'voice-chat',
-              OpenClawBind: 'agent/bind',
-              // Desktop installer QR code deep link:
-              // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
-              LocalConnect: 'connect',
+              Agent: {
+                initialRouteName: 'AgentChat',
+                screens: {
+                  AgentChat: '',
+                  AgentConsole: 'agent/console',
+                  VoiceChat: 'voice-chat',
+                  OpenClawBind: 'agent/bind',
+                  // Desktop installer QR code deep link:
+                  // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
+                  LocalConnect: 'connect',
+                },
+              },
+              Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
+              Social: { screens: { Feed: 'social' } },
+              Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
             },
           },
-          Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
-          Social: { screens: { Feed: 'social' } },
-          Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
         },
       },
     },

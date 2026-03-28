@@ -1520,44 +1520,14 @@ export function AgentChatScreen() {
       <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bgCard }}>
         <View style={styles.chatBar}>
           <TouchableOpacity
-            testID="agent-chat-back-button"
-            accessibilityLabel="agent-chat-back-button"
-            onPress={() => {
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-                return;
-              }
-              navigation.navigate('AgentConsole');
-            }}
+            testID="agent-chat-drawer-button"
+            accessibilityLabel="agent-chat-drawer-button"
+            onPress={() => { try { (navigation as any).openDrawer(); } catch {} }}
             style={styles.chatBarBackBtn}
           >
-            <Text style={styles.chatBarBackIcon}>{'‹'}</Text>
+            <Text style={styles.chatBarBackIcon}>{'☰'}</Text>
           </TouchableOpacity>
           <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
-          <TouchableOpacity
-            testID="chat-voice-call-button"
-            accessibilityLabel={`chat-voice-call-button:${duplexMode && realtimeConnected ? 'active' : 'idle'}`}
-            style={[
-              styles.chatBarCallBtn,
-              duplexMode && realtimeConnected && styles.chatBarCallBtnActive,
-            ]}
-            onPress={() => {
-              if (duplexMode && realtimeConnected) {
-                if (liveListening) sendRealtimeInterrupt();
-                setDuplexMode(false);
-              } else {
-                if (!voiceMode) setVoiceMode(true);
-                setDuplexMode(true);
-              }
-            }}
-          >
-            <Text style={[
-              styles.chatBarCallIcon,
-              duplexMode && realtimeConnected && styles.chatBarCallIconActive,
-            ]}>
-              {duplexMode && realtimeConnected ? '📵' : '📞'}
-            </Text>
-          </TouchableOpacity>
           <TouchableOpacity
             testID="agent-chat-settings-button"
             accessibilityLabel="agent-chat-settings-button"
@@ -1782,16 +1752,6 @@ export function AgentChatScreen() {
       )}
 
       <View style={styles.inputRow}>
-        {/* Left: voice/keyboard toggle */}
-        <TouchableOpacity
-          testID="chat-voice-mode-toggle"
-          accessibilityLabel={`chat-voice-mode-toggle:${voiceMode ? 'voice' : 'text'}`}
-          style={styles.modeToggleBtn}
-          onPress={() => { setVoiceMode(!voiceMode); setShowAttachToolbar(false); }}
-        >
-          <Text style={styles.modeToggleIcon}>{voiceMode ? '⌨️' : '🎤'}</Text>
-        </TouchableOpacity>
-
         {voiceMode ? (
           duplexMode && realtimeConnected ? (
             /* Active realtime voice call — status display */
@@ -1861,16 +1821,7 @@ export function AgentChatScreen() {
           )}
         </TouchableOpacity>
 
-        {!voiceMode && !!input.length && (
-          <TouchableOpacity
-            style={styles.utilityBtn}
-            onPress={handleCopyDraft}
-          >
-            <Text style={styles.utilityBtnText}>{t({ en: 'Copy', zh: '复制' })}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Right: Send or voice call button */}
+        {/* Right: Send (when has text) or Mic toggle (when empty) */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
             style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
@@ -1883,7 +1834,25 @@ export function AgentChatScreen() {
               <Text style={styles.sendIcon}>⬆</Text>
             )}
           </TouchableOpacity>
-        ) : null}
+        ) : !voiceMode ? (
+          <TouchableOpacity
+            testID="chat-voice-mode-toggle"
+            accessibilityLabel={`chat-voice-mode-toggle:text`}
+            style={styles.modeToggleBtn}
+            onPress={() => { setVoiceMode(true); setShowAttachToolbar(false); }}
+          >
+            <Text style={styles.modeToggleIcon}>🎤</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            testID="chat-voice-mode-toggle"
+            accessibilityLabel={`chat-voice-mode-toggle:voice`}
+            style={styles.modeToggleBtn}
+            onPress={() => { setVoiceMode(false); setShowAttachToolbar(false); }}
+          >
+            <Text style={styles.modeToggleIcon}>⌨️</Text>
+          </TouchableOpacity>
+        )}
 
       </View>
       </View>
@@ -1953,7 +1922,7 @@ export function AgentChatScreen() {
       </Modal>
 
       {/* Settings Bottom Sheet — replaces cluttered chatBar controls */}
-      <Modal visible={showSettingsSheet} transparent animationType="slide">
+      <Modal visible={showSettingsSheet} transparent animationType="slide" onRequestClose={() => setShowSettingsSheet(false)}>
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowSettingsSheet(false)} activeOpacity={1}>
           <View testID="chat-settings-sheet" accessibilityLabel="chat-settings-sheet" style={styles.settingsSheet}>
             <View style={styles.sheetHandle} />
@@ -1974,6 +1943,7 @@ export function AgentChatScreen() {
                   setDuplexMode((prev) => !prev);
                 }}
                 style={[styles.sheetToggle, duplexMode && styles.sheetToggleActive]}
+                testID="chat-duplex-toggle"
               >
                 <Text style={[styles.sheetToggleText, duplexMode && { color: colors.accent }]}>
                   {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
