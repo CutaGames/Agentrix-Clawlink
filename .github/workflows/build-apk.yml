@@ -99,10 +99,10 @@ jobs:
           if grep -q '^newArchEnabled=true' android/gradle.properties 2>/dev/null; then
             echo '[ci] newArchEnabled=true confirmed in gradle.properties'
           elif grep -q 'newArchEnabled' android/gradle.properties 2>/dev/null; then
-            echo '[ci] newArchEnabled found but not true  forcing it'
+            echo '[ci] newArchEnabled found but not true — forcing it'
             sed -i 's/^newArchEnabled=.*/newArchEnabled=true/' android/gradle.properties
           else
-            echo '[ci] newArchEnabled not in gradle.properties  adding it (Expo SDK 53+ uses app.json)'
+            echo '[ci] newArchEnabled not in gradle.properties — adding it (Expo SDK 53+ uses app.json)'
             echo 'newArchEnabled=true' >> android/gradle.properties
           fi
 
@@ -184,7 +184,9 @@ jobs:
           PYEOF
 
       - name: Grant Gradle execute permission
-        run: chmod +x android/gradlew
+        run: |
+          sed -i 's/\r$//' android/gradlew
+          chmod +x android/gradlew
 
       # Free disk space — GitHub runners only have ~14 GB free.
       # Remove large pre-installed SDKs we don't need to ensure Gradle has room.
