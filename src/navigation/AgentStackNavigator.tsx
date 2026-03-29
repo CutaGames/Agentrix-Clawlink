@@ -1,9 +1,53 @@
 import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet as RNStyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AgentStackParamList } from './types';
 import { colors } from '../theme/colors';
 import { AgentConsoleScreen } from '../screens/agent/AgentConsoleScreen';
 import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
+
+/** Lightweight error boundary for the chat screen so voice-init crashes don't white-screen the app. */
+class ChatScreenErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  state = { hasError: false, error: undefined as Error | undefined };
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[ChatScreenErrorBoundary]', error.message, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={ebStyles.container}>
+          <Text style={ebStyles.icon}>⚠️</Text>
+          <Text style={ebStyles.title}>Chat failed to load</Text>
+          <Text style={ebStyles.msg}>{this.state.error?.message ?? 'Unknown error'}</Text>
+          <TouchableOpacity style={ebStyles.btn} onPress={() => this.setState({ hasError: false, error: undefined })}>
+            <Text style={ebStyles.btnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+const ebStyles = RNStyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  icon: { fontSize: 48, marginBottom: 12 },
+  title: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8 },
+  msg: { fontSize: 13, color: '#999', textAlign: 'center', marginBottom: 16 },
+  btn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 12 },
+  btnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+});
+
+function AgentChatScreenWithBoundary() {
+  return (
+    <ChatScreenErrorBoundary>
+      <AgentChatScreen />
+    </ChatScreenErrorBoundary>
+  );
+}
 import { OpenClawBindScreen } from '../screens/agent/OpenClawBindScreen';
 import { LocalConnectScreen } from '../screens/agent/LocalConnectScreen';
 import { SkillInstallScreen } from '../screens/agent/SkillInstallScreen';
@@ -31,15 +75,17 @@ import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScre
 import { LocalDeployScreen } from '../screens/onboarding/LocalDeployScreen';
 import { SocialBindScreen } from '../screens/onboarding/SocialBindScreen';
 import { useI18n } from '../stores/i18nStore';
+import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
 const Stack = createNativeStackNavigator<AgentStackParamList>();
 
 export function AgentStackNavigator() {
   const { t } = useI18n();
+  const initialRouteName = 'AgentChat';
 
   return (
     <Stack.Navigator id={undefined}
-      initialRouteName="AgentChat"
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerStyle: { backgroundColor: colors.bgSecondary },
         headerTintColor: colors.textPrimary,
@@ -47,7 +93,7 @@ export function AgentStackNavigator() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: t({ en: 'Chat', zh: '对话' }), headerShown: false }} />
+      <Stack.Screen name="AgentChat" component={AgentChatScreenWithBoundary} options={{ title: t({ en: 'Chat', zh: '对话' }), headerShown: false }} />
       <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'Agent Settings', zh: '智能体管理' }) }} />
       <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
       <Stack.Screen name="WearableMonitor" component={WearableMonitorScreen} options={{ title: t({ en: 'Wearable Monitor', zh: '穿戴设备监控' }) }} />

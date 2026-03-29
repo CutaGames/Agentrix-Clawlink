@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { EventStreamCodec } from '@smithy/eventstream-codec';
+import { toUtf8, fromUtf8 } from '@smithy/util-utf8';
+import { Readable } from 'stream';
 
 export interface BedrockUserCredentials {
   accessKeyId: string;
@@ -23,6 +26,22 @@ export class BedrockIntegrationService {
     if (!this.token) {
       this.logger.warn('AWS_BEARER_TOKEN_BEDROCK is not set. Bedrock fallback is limited.');
     }
+  }
+
+  private normalizeRegion(region?: string): string {
+    const trimmed = String(region || '').trim();
+    if (!trimmed) {
+      return 'us-east-1';
+    }
+
+    const parentRegionMatch = trimmed.match(/^([a-z]{2}(?:-[a-z]+)+-\d)-[a-z0-9-]+$/i);
+    if (parentRegionMatch) {
+      const normalized = parentRegionMatch[1].toLowerCase();
+      this.logger.warn(`Normalizing Bedrock region ${trimmed} to parent region ${normalized}`);
+      return normalized;
+    }
+
+    return trimmed.toLowerCase();
   }
 
   /**
@@ -70,8 +89,9 @@ export class BedrockIntegrationService {
    * Invoke Bedrock model using user's own AWS credentials (SigV4 signing).
    */
   private async invokeWithUserCredentials(modelId: string, body: any, credentials: BedrockUserCredentials): Promise<any> {
+    const region = this.normalizeRegion(credentials.region);
     const client = new BedrockRuntimeClient({
-      region: credentials.region,
+      region,
       credentials: {
         accessKeyId: credentials.accessKeyId,
         secretAccessKey: credentials.secretAccessKey,
@@ -187,7 +207,7 @@ export class BedrockIntegrationService {
     tools?: any[],
     credentials?: BedrockUserCredentials,
   ): Promise<{ text: string; toolCalls: any[] }> {
-    const region = credentials?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const region = this.normalizeRegion(credentials?.region || this.configService.get<string>('AWS_REGION'));
     const client = new BedrockRuntimeClient({
       region,
       ...(credentials ? {
@@ -249,7 +269,7 @@ export class BedrockIntegrationService {
    */
   async invokeModel(prompt: string, modelId: string = 'us.anthropic.claude-haiku-4-5-20251001-v1:0', userCredentials?: BedrockUserCredentials): Promise<string> {
     const finalModelId = this.resolveModelId(modelId);
-    const region = userCredentials?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const region = this.normalizeRegion(userCredentials?.region || this.configService.get<string>('AWS_REGION'));
     this.logger.log(`Calling Bedrock: ${finalModelId} (Region: ${region}, UserCreds: ${!!userCredentials})`);
 
     const body = {
@@ -282,6 +302,183 @@ export class BedrockIntegrationService {
   }
 
   /**
+   * Invoke Bedrock model with streaming using user's own AWS credentials.
+   */
+  private async invokeStreamingWithUserCredentials(
+    modelId: string,
+    body: any,
+    credentials: BedrockUserCredentials,
+    onChunk: (text: string) => void,
+  ): Promise<any> {
+    const region = this.normalizeRegion(credentials.region);
+    const client = new BedrockRuntimeClient({
+      region,
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+      },
+    });
+    const command = new InvokeModelWithResponseStreamCommand({
+      modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(body),
+    });
+    const response = await client.send(command);
+    return this.consumeBedrockStream(response, onChunk);
+  }
+
+  /**
+   * Invoke Bedrock model with streaming using platform Bearer token.
+   * Manually frames AWS EventStream binary messages from raw HTTP stream,
+   * since TCP chunks don't align with message boundaries.
+   */
+  private async invokeStreamingWithPlatformToken(
+    modelId: string,
+    body: any,
+    region: string,
+    onChunk: (text: string) => void,
+  ): Promise<any> {
+    const httpsAgent = this.proxy ? new HttpsProxyAgent(this.proxy) : undefined;
+    const response = await axios.post(
+      `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke-with-response-stream`,
+      body,
+      {
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/vnd.amazon.eventstream',
+        },
+        httpsAgent,
+        proxy: false,
+        timeout: 60000,
+        responseType: 'stream',
+      },
+    );
+
+    const fullContent: any[] = [];
+    let stopReason = '';
+    let currentToolUse: any = null;
+    let toolInputJson = '';
+    const codec = new EventStreamCodec(toUtf8, fromUtf8);
+
+    // Parse AWS EventStream binary frames from the raw HTTP stream.
+    // TCP chunks may contain multiple messages or partial messages,
+    // so we accumulate into a buffer and split by the 4-byte length prefix.
+    for await (const decoded of this.parseEventStreamFrames(response.data, codec)) {
+      // decoded.body is the raw payload; for Bedrock it's JSON: {"bytes":"base64..."}
+      const payloadStr = new TextDecoder().decode(decoded.body);
+      if (!payloadStr) continue;
+      try {
+        const outer = JSON.parse(payloadStr);
+        const eventBytes = outer.bytes;
+        if (!eventBytes) continue;
+        const event = JSON.parse(Buffer.from(eventBytes, 'base64').toString('utf8'));
+
+        if (event.type === 'content_block_delta') {
+          if (event.delta?.type === 'text_delta') {
+            onChunk(event.delta.text);
+            fullContent.push({ type: 'text', text: event.delta.text });
+          } else if (event.delta?.type === 'input_json_delta') {
+            toolInputJson += event.delta.partial_json || '';
+          }
+        } else if (event.type === 'content_block_start') {
+          if (event.content_block?.type === 'tool_use') {
+            currentToolUse = event.content_block;
+            toolInputJson = '';
+          }
+        } else if (event.type === 'content_block_stop') {
+          if (currentToolUse) {
+            try { currentToolUse.input = JSON.parse(toolInputJson || '{}'); } catch { currentToolUse.input = {}; }
+            fullContent.push(currentToolUse);
+            currentToolUse = null;
+            toolInputJson = '';
+          }
+        } else if (event.type === 'message_delta') {
+          stopReason = event.delta?.stop_reason || stopReason;
+        }
+      } catch { /* skip unparseable events */ }
+    }
+
+    let text = '';
+    const toolUses: any[] = [];
+    for (const item of fullContent) {
+      if (item.type === 'text') text += item.text;
+      else if (item.type === 'tool_use') toolUses.push(item);
+    }
+    return { content: [{ type: 'text', text }, ...toolUses], stop_reason: stopReason };
+  }
+
+  /**
+   * Parse AWS EventStream binary frames from a raw Node.js stream.
+   * Each frame has a 4-byte big-endian total-length prefix.
+   * TCP chunks may contain multiple frames or partial frames.
+   */
+  private async *parseEventStreamFrames(
+    stream: Readable,
+    codec: EventStreamCodec,
+  ): AsyncGenerator<{ headers: Record<string, any>; body: Uint8Array }> {
+    let buffer = Buffer.alloc(0);
+    for await (const chunk of stream) {
+      buffer = Buffer.concat([buffer, chunk instanceof Uint8Array ? Buffer.from(chunk) : Buffer.from(chunk)]);
+      // Each EventStream message starts with 4-byte total length (big-endian)
+      while (buffer.length >= 4) {
+        const messageLength = buffer.readUInt32BE(0);
+        if (messageLength < 16 || messageLength > 16 * 1024 * 1024) break; // sanity check
+        if (buffer.length < messageLength) break; // need more data
+        const messageBytes = buffer.subarray(0, messageLength);
+        buffer = buffer.subarray(messageLength);
+        try {
+          yield codec.decode(messageBytes);
+        } catch { /* skip malformed frame */ }
+      }
+    }
+  }
+
+  /**
+   * Consume a Bedrock InvokeModelWithResponseStream response.
+   */
+  private async consumeBedrockStream(
+    response: any,
+    onChunk: (text: string) => void,
+  ): Promise<any> {
+    let text = '';
+    const toolUses: any[] = [];
+    let currentToolUse: any = null;
+    let toolInputJson = '';
+
+    for await (const event of response.body) {
+      if (event.chunk?.bytes) {
+        const parsed = JSON.parse(new TextDecoder().decode(event.chunk.bytes));
+        if (parsed.type === 'content_block_delta') {
+          if (parsed.delta?.type === 'text_delta') {
+            onChunk(parsed.delta.text);
+            text += parsed.delta.text;
+          } else if (parsed.delta?.type === 'input_json_delta') {
+            toolInputJson += parsed.delta.partial_json || '';
+          }
+        } else if (parsed.type === 'content_block_start') {
+          if (parsed.content_block?.type === 'tool_use') {
+            currentToolUse = parsed.content_block;
+            toolInputJson = '';
+          }
+        } else if (parsed.type === 'content_block_stop') {
+          if (currentToolUse) {
+            try {
+              currentToolUse.input = JSON.parse(toolInputJson || '{}');
+            } catch { currentToolUse.input = {}; }
+            toolUses.push(currentToolUse);
+            currentToolUse = null;
+            toolInputJson = '';
+          }
+        }
+      }
+    }
+
+    return { content: [{ type: 'text', text }, ...toolUses] };
+  }
+
+  /**
    * 支持 Function Calling 的对话接口
    */
   async chatWithFunctions(messages: any[], options: any = {}): Promise<any> {
@@ -293,7 +490,7 @@ export class BedrockIntegrationService {
 
     const rawModel = options.model || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
     const modelId = this.resolveModelId(rawModel);
-    const region = userCreds?.region || this.configService.get<string>('AWS_REGION') || 'us-east-1';
+    const region = this.normalizeRegion(userCreds?.region || this.configService.get<string>('AWS_REGION'));
     
     this.logger.log(`Bedrock chatWithFunctions: ${rawModel} → ${modelId} (Region: ${region}, UserCreds: ${!!userCreds})`);
 
@@ -320,19 +517,24 @@ export class BedrockIntegrationService {
 
       // Claude models → native Anthropic format via InvokeModel
       // Sanitize content: download image URLs → base64 (Bedrock rejects URL sources)
+      const _sanitizeStart = Date.now();
       const claudeMessages = await Promise.all(
         messages.filter(m => m.role !== 'system').map(async (m) => ({
           role: m.role,
           content: await this.sanitizeContentForBedrock(m.content),
         })),
       );
+      const _sanitizeMs = Date.now() - _sanitizeStart;
+      if (_sanitizeMs > 100) {
+        this.logger.warn(`⏱ sanitizeContentForBedrock took ${_sanitizeMs}ms for ${claudeMessages.length} messages`);
+      }
 
       const systemMessage = messages.find(m => m.role === 'system');
 
       // 准备 Body
       const body: any = {
         anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 4000,
+        max_tokens: options.maxTokens || 4000,
         messages: claudeMessages,
       };
 
@@ -357,9 +559,19 @@ export class BedrockIntegrationService {
           }));
       }
 
+      const _invokeStart = Date.now();
+      const _streaming = !!options.onChunk;
       const data = userCreds
-        ? await this.invokeWithUserCredentials(modelId, body, userCreds)
-        : await this.invokeWithPlatformToken(modelId, body, region);
+        ? (options.onChunk
+          ? await this.invokeStreamingWithUserCredentials(modelId, body, userCreds, options.onChunk)
+          : await this.invokeWithUserCredentials(modelId, body, userCreds))
+        : (options.onChunk
+          ? await this.invokeStreamingWithPlatformToken(modelId, body, region, options.onChunk).catch(async (streamErr: any) => {
+              this.logger.warn(`Bedrock platform streaming failed, falling back to non-streaming: ${streamErr.message}`);
+              return this.invokeWithPlatformToken(modelId, body, region);
+            })
+          : await this.invokeWithPlatformToken(modelId, body, region));
+      this.logger.log(`⏱ Bedrock invoke (streaming=${_streaming}): ${Date.now() - _invokeStart}ms, tools=${body.tools?.length || 0}, msgs=${body.messages?.length || 0}`);
 
       const content = data.content;
       let text = '';

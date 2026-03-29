@@ -6,6 +6,10 @@ import {
   PanResponder,
   Dimensions,
   Text,
+  TouchableOpacity,
+  Platform,
+  Alert,
+  Linking,
 } from 'react-native';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { colors } from '../theme/colors';
@@ -13,11 +17,12 @@ import * as Haptics from 'expo-haptics';
 import { useI18n } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { resolveMobileWakeWordConfig } from '../config/wakeWord';
-import { WakeWordService } from '../services/wakeWord.service';
 import { SpeechWakeWordService } from '../services/speechWakeWord.service';
+import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity } from '../services/localWakeWord.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
+import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
-const BALL_SIZE = 56;
+const BALL_SIZE = 48;
 const EDGE_MARGIN = 12;
 const LONG_PRESS_DURATION = 400;
 
@@ -27,6 +32,13 @@ const PILL_HEIGHT = 120;
 type BallState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const STATE_COLORS: Record<BallState, string> = {
+  idle: '#1a1a2e',
+  listening: '#10B981',
+  thinking: '#F59E0B',
+  speaking: '#3b82f6',
+};
+
+const STATE_BORDER_COLORS: Record<BallState, string> = {
   idle: '#6C5CE7',
   listening: '#10B981',
   thinking: '#F59E0B',
@@ -50,34 +62,39 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const { width: screenW, height: screenH } = Dimensions.get('window');
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
-  // Hide on chat screen (chat has its own voice controls)
+  // Hide on chat screen (chat has its own voice controls).
+  // On native, initial route state may not be populated (route.state === undefined)
+  // until the first navigation event, so we also check for shallow container names.
   const currentRouteName = useNavigationState((state) => {
     if (!state) return '';
-    const route = state.routes[state.index];
-    // Check nested navigators
-    if (route.state) {
+    // Traverse up to 4 levels deep: Root → Drawer → Tab → Stack → Screen
+    let route = state.routes[state.index];
+    for (let depth = 0; depth < 4; depth++) {
+      if (!route.state) break;
       const nested = route.state as any;
-      const nestedRoute = nested.routes?.[nested.index];
-      if (nestedRoute?.state) {
-        const deep = nestedRoute.state as any;
-        return deep.routes?.[deep.index]?.name || nestedRoute.name;
-      }
-      return nestedRoute?.name || route.name;
+      if (!nested?.routes || nested.index == null) break;
+      route = nested.routes[nested.index];
     }
-    return route.name;
+    return route.name || '';
   });
 
-  const hideOnScreens = ['AgentChat', 'VoiceChat'];
-  const shouldHide = hideOnScreens.includes(currentRouteName);
+  // The deepest resolved route name may be 'Main' or 'MainTabs' when
+  // the nested navigator hasn't fired any navigation event yet.
+  // In that case, the active screen IS the initial route: AgentChat.
+  const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
+  const resolvedToShallow = ['Main', 'MainTabs', 'Agent'].includes(currentRouteName);
+  const shouldHide = hideOnScreens.includes(currentRouteName) || resolvedToShallow;
+  const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
   const [ballState, setBallState] = useState<BallState>('idle');
   const pan = useRef(new Animated.ValueXY({ x: screenW - BALL_SIZE - EDGE_MARGIN, y: screenH - 200 })).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useRef(false);
-  const wakeListenerRef = useRef<WakeWordService | SpeechWakeWordService | null>(null);
+  const wakeListenerRef = useRef<SpeechWakeWordService | LocalWakeWordService | null>(null);
   const navigatingToChatRef = useRef(false);
   const activateVoiceExperienceRef = useRef<() => void>(() => {});
+  const lastWakeWordAlertRef = useRef<{ message: string; shownAt: number }>({ message: '', shownAt: 0 });
 
   // Voice pill expansion state
   const [pillExpanded, setPillExpanded] = useState(false);
@@ -105,6 +122,9 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   useEffect(() => {
     if (!shouldHide) {
       setBallState('idle');
+      navigatingToChatRef.current = false;
+    } else if (navigatingToChatRef.current) {
+      // Screen transitioned to AgentChat/VoiceChat — reset guard immediately
       navigatingToChatRef.current = false;
     }
   }, [shouldHide]);
@@ -148,6 +168,32 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       friction: 7,
     }).start();
   }, [pan, screenW, screenH]);
+
+  const showWakeWordGuidance = useCallback((message: string) => {
+    const now = Date.now();
+    if (
+      lastWakeWordAlertRef.current.message === message
+      && now - lastWakeWordAlertRef.current.shownAt < 15000
+    ) {
+      return;
+    }
+    lastWakeWordAlertRef.current = { message, shownAt: now };
+    addVoiceDiagnostic('floating-ball', 'wake-word-guidance-shown', { message });
+
+    const title = language === 'zh' ? '语音唤醒需要设置' : 'Wake word needs setup';
+    const openSettingsLabel = language === 'zh' ? '打开系统设置' : 'Open Settings';
+    const laterLabel = language === 'zh' ? '稍后' : 'Later';
+
+    Alert.alert(title, message, [
+      {
+        text: openSettingsLabel,
+        onPress: () => {
+          Linking.openSettings().catch(() => {});
+        },
+      },
+      { text: laterLabel, style: 'cancel' },
+    ]);
+  }, [language]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -200,9 +246,28 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   ).current;
 
   const activateVoiceExperience = useCallback(async () => {
+    // Guard against double-tap while already navigating
+    if (navigatingToChatRef.current) {
+      addVoiceDiagnostic('floating-ball', 'activate-blocked-navigating');
+      return;
+    }
     navigatingToChatRef.current = true;
     setBallState('listening');
     onVoiceActivate?.();
+
+    // Safety: auto-reset guard after 2s in case navigation silently fails
+    // (shouldHide effect normally resets this, but navigation might not trigger it)
+    setTimeout(() => {
+      if (navigatingToChatRef.current) {
+        addVoiceDiagnostic('floating-ball', 'guard-timeout-reset');
+        navigatingToChatRef.current = false;
+        setBallState('idle');
+      }
+    }, 2000);
+
+    if (isVoiceUiE2EEnabled() && onVoiceActivate) {
+      return;
+    }
 
     // GlobalFloatingBall sits beside MainTabNavigator inside the Root screen,
     // so it gets the Root navigator. Resolve the target instance up front.
@@ -232,30 +297,39 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       }
     }
 
-    // Route through Root -> Main -> Agent -> AgentChat.
+    // Navigate to Agent tab → AgentChat, preserving navigation stacks.
+    const chatParams = {
+      instanceId: targetInstance?.id,
+      instanceName: targetInstance?.name || 'Agent',
+      voiceMode: true,
+      duplexMode: true,
+    };
+
     try {
-      navigation.navigate('Main', {
-        screen: 'Agent',
-        params: {
-          screen: 'AgentChat',
+      if (isVoiceUiE2EEnabled()) {
+        navigation.navigate('AgentChat', chatParams);
+      } else {
+        // Use fully-qualified nested path from Root to ensure reliable resolution
+        // on native: Root(Main) → Drawer(MainTabs) → Tab(Agent) → Stack(AgentChat)
+        (navigation as any).navigate('MainTabs', {
+          screen: 'Agent',
           params: {
-            instanceId: targetInstance?.id,
-            instanceName: targetInstance?.name || 'Agent',
-            voiceMode: true,
-            duplexMode: true,
+            screen: 'AgentChat',
+            params: chatParams,
           },
-        },
-      } as any);
+        });
+      }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
-        instanceId: targetInstance?.id || null,
-        instanceName: targetInstance?.name || 'Agent',
+        instanceId: chatParams.instanceId || null,
+        instanceName: chatParams.instanceName,
       });
     } catch (navErr) {
       addVoiceDiagnostic('floating-ball', 'navigate-failed', navErr);
       console.warn('[FloatingBall] Navigation failed:', navErr);
+      navigatingToChatRef.current = false;
       setBallState('idle');
     }
-  }, [navigation, onVoiceActivate]);
+  }, [navigation, onVoiceActivate, currentRouteName]);
 
   // Keep ref in sync so wake word callbacks don't need activateVoiceExperience in deps
   activateVoiceExperienceRef.current = activateVoiceExperience;
@@ -279,6 +353,31 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   }, [activateVoiceExperience, onPillSend, onVoiceActivate]);
 
   useEffect(() => {
+    if (!isVoiceUiE2EEnabled() || Platform.OS !== 'web') {
+      return;
+    }
+
+    const handleE2EWakeWord = () => {
+      addVoiceDiagnostic('floating-ball', 'e2e-wake-word-triggered');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      activateVoiceExperienceRef.current();
+    };
+
+    const handleE2ELocalWakeWord = () => {
+      addVoiceDiagnostic('floating-ball', 'e2e-local-wake-word-triggered');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      activateVoiceExperienceRef.current();
+    };
+
+    window.addEventListener('agentrix:e2e-wake-word', handleE2EWakeWord);
+    window.addEventListener('agentrix:e2e-local-wake-word', handleE2ELocalWakeWord);
+    return () => {
+      window.removeEventListener('agentrix:e2e-wake-word', handleE2EWakeWord);
+      window.removeEventListener('agentrix:e2e-local-wake-word', handleE2ELocalWakeWord);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!wakeWordConfig.enabled || shouldHide || navigatingToChatRef.current) {
       const listener = wakeListenerRef.current;
       if (listener) {
@@ -288,9 +387,15 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       return;
     }
 
-    const shouldUsePicovoice = Boolean(wakeWordConfig.accessKey) && WakeWordService.isAvailable();
-    const listener = shouldUsePicovoice
-      ? new WakeWordService()
+    const preferredEngine = wakeWordConfig.engine ?? 'auto';
+    const localModelAvailable = hasLocalWakeWordModel(wakeWordConfig.localModel);
+    const shouldUseLocalTemplate =
+      (preferredEngine === 'local-template' || preferredEngine === 'auto')
+      && localModelAvailable
+      && LocalWakeWordService.isAvailable();
+
+    const listener = shouldUseLocalTemplate
+      ? new LocalWakeWordService()
       : SpeechWakeWordService.isAvailable()
         ? new SpeechWakeWordService()
         : null;
@@ -304,16 +409,23 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
     void (async () => {
       try {
-      if (listener instanceof WakeWordService) {
+      if (listener instanceof LocalWakeWordService) {
         await listener.init({
-          accessKey: wakeWordConfig.accessKey,
-          builtInKeywords: wakeWordConfig.customKeywordPaths.length > 0 ? undefined : wakeWordConfig.builtInKeywords,
-          keywordPaths: wakeWordConfig.customKeywordPaths.length > 0 ? wakeWordConfig.customKeywordPaths : undefined,
-          sensitivity: wakeWordConfig.sensitivity,
+          model: wakeWordConfig.localModel!,
+          threshold: thresholdFromSensitivity(wakeWordConfig.sensitivity),
           onWakeWord: () => {
             if (!cancelled) {
               void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
               activateVoiceExperienceRef.current();
+            }
+          },
+          onError: (err) => {
+            addVoiceDiagnostic('floating-ball', 'local-wake-word-error', { message: err?.message });
+            const rawMessage = err?.message || '';
+            if (/permission denied|permission/i.test(rawMessage)) {
+              showWakeWordGuidance(language === 'zh'
+                ? '本地唤醒词需要麦克风权限。请先到系统设置里授权。'
+                : 'Local wake word needs microphone permission. Enable it in system settings first.');
             }
           },
         });
@@ -329,6 +441,18 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
           },
           onError: (err) => {
             addVoiceDiagnostic('floating-ball', 'wake-word-error', { message: err?.message });
+            const rawMessage = err?.message || '';
+            if (/permission denied|permission/i.test(rawMessage)) {
+              showWakeWordGuidance(language === 'zh'
+                ? '唤醒词需要麦克风和语音识别权限。请到系统设置里开启权限，然后再试一次。'
+                : 'Wake word needs microphone and speech permissions. Enable them in system settings, then try again.');
+              return;
+            }
+            if (/unavailable/i.test(rawMessage)) {
+              showWakeWordGuidance(language === 'zh'
+                ? '当前设备没有可用的系统语音唤醒能力。你仍然可以直接点悬浮球进入实时语音。'
+                : 'This device does not expose wake-word speech recognition. You can still tap the floating ball to jump straight into live voice.');
+            }
           },
         });
       }
@@ -352,12 +476,12 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   }, [
     language,
     shouldHide,
-    wakeWordConfig.accessKey,
-    wakeWordConfig.builtInKeywords,
-    wakeWordConfig.customKeywordPaths,
     wakeWordConfig.enabled,
+    wakeWordConfig.engine,
     wakeWordConfig.fallbackPhrases,
+    wakeWordConfig.localModel,
     wakeWordConfig.sensitivity,
+    showWakeWordGuidance,
   ]);
 
   const handlePillSend = useCallback(() => {
@@ -376,10 +500,13 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   if (shouldHide) return null;
 
   const ballColor = STATE_COLORS[ballState];
-  const emoji = ballState === 'idle' ? '🤖' : ballState === 'listening' ? '🎙' : ballState === 'thinking' ? '💭' : '🔊';
+  const borderColor = STATE_BORDER_COLORS[ballState];
+  const stateIndicator = ballState === 'listening' ? '🎙' : ballState === 'thinking' ? '·​·​·' : ballState === 'speaking' ? '🔊' : null;
 
   return (
     <Animated.View
+      testID="voice-floating-ball"
+      accessibilityLabel="voice-floating-ball"
       style={[
         styles.container,
         {
@@ -390,7 +517,7 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
           ],
         },
       ]}
-      {...panResponder.panHandlers}
+      {...(useDirectPressHandlers ? {} : panResponder.panHandlers)}
     >
       {/* Voice Pill panel — expands on long press */}
       {pillExpanded && (
@@ -454,11 +581,25 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
       {/* Glow ring for non-idle state */}
       {ballState !== 'idle' && (
-        <View style={[styles.glowRing, { borderColor: ballColor + '60' }]} />
+        <View style={[styles.glowRing, { borderColor: borderColor + '60' }]} />
       )}
-      <View style={[styles.ball, { backgroundColor: ballColor }]}>
-        <Text style={styles.emoji}>{emoji}</Text>
-      </View>
+      <TouchableOpacity
+        testID="voice-floating-ball-core"
+        accessibilityLabel={`voice-floating-ball-core:${ballState}`}
+        activeOpacity={0.9}
+        disabled={!useDirectPressHandlers}
+        onPress={useDirectPressHandlers ? handleTap : undefined}
+        onLongPress={useDirectPressHandlers ? handleVoiceActivate : undefined}
+        delayLongPress={LONG_PRESS_DURATION}
+        style={[styles.ball, { backgroundColor: ballColor, borderColor: borderColor + '80' }]}
+      >
+        <Text style={styles.brandMark}>AX</Text>
+        {stateIndicator && (
+          <View style={[styles.stateIndicatorDot, { backgroundColor: borderColor }]}>
+            <Text style={styles.stateIndicatorText}>{stateIndicator}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -477,10 +618,11 @@ const styles = StyleSheet.create({
     borderRadius: BALL_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
     shadowColor: '#6C5CE7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
     elevation: 8,
   },
   glowRing: {
@@ -488,12 +630,31 @@ const styles = StyleSheet.create({
     width: BALL_SIZE + 12,
     height: BALL_SIZE + 12,
     borderRadius: (BALL_SIZE + 12) / 2,
-    borderWidth: 3,
+    borderWidth: 2.5,
     top: -6,
     left: -6,
   },
-  emoji: {
-    fontSize: 28,
+  brandMark: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  stateIndicatorDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#1a1a2e',
+  },
+  stateIndicatorText: {
+    fontSize: 9,
+    color: '#fff',
   },
   // Voice Pill panel styles
   pillPanel: {

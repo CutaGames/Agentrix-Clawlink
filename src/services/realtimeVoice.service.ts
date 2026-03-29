@@ -1,18 +1,15 @@
 /**
- * RealtimeVoiceService — WebSocket-based full-duplex voice channel
+ * RealtimeVoiceService — Socket.IO-based duplex voice control channel.
  *
- * Connects to the backend realtime-voice gateway (`/voice` namespace)
- * for bidirectional audio streaming:
- *   Client → PCM audio chunks → Server → Deepgram STT (stream) → LLM → TTS audio → Client
- *
- * This replaces the serial HTTP path (record→upload→transcribe→SSE→TTS GET)
- * with a persistent WebSocket channel for sub-second round-trip latency.
+ * The mobile client keeps local STT for low-friction microphone capture,
+ * then pushes final transcripts to the backend voice gateway for streaming
+ * agent text + sentence-level TTS responses.
  */
 
-import { Platform, AppState, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
+import { io, type Socket } from 'socket.io-client';
 import { addVoiceDiagnostic } from './voiceDiagnostics';
-
-// ── Types ──────────────────────────────────────────────────
+import { isVoiceUiE2EEnabled, setVoiceUiE2ERealtimeBridge } from '../testing/e2e';
 
 export type RealtimeVoiceState =
   | 'disconnected'
@@ -25,23 +22,14 @@ export type RealtimeVoiceState =
 
 export interface RealtimeVoiceCallbacks {
   onStateChange: (state: RealtimeVoiceState) => void;
-  /** Partial/interim transcript from STT */
   onInterimTranscript: (text: string) => void;
-  /** Final transcript ready to be sent to LLM */
   onFinalTranscript: (text: string) => void;
-  /** Agent text response chunk (for display) */
   onAgentTextChunk: (chunk: string) => void;
-  /** Agent TTS audio chunk (base64-encoded audio data) */
   onAgentAudioChunk: (audioBase64: string, format: string) => void;
-  /** Agent finished responding */
   onAgentResponseEnd: () => void;
-  /** Agent started speaking (TTS audio begins) */
   onAgentSpeechStart: () => void;
-  /** Tool call notification */
   onToolCall: (toolName: string, status: 'start' | 'end') => void;
-  /** Error occurred */
   onError: (error: string) => void;
-  /** Connection closed */
   onDisconnect: (reason: string) => void;
 }
 
@@ -54,20 +42,32 @@ export interface RealtimeVoiceConfig {
   agentVoiceId?: string;
 }
 
-// ── Service ────────────────────────────────────────────────
+type SocketBufferLike = {
+  type: 'Buffer';
+  data: number[];
+};
+
+function toSocketBufferLike(audio: ArrayBuffer | Uint8Array): SocketBufferLike {
+  const bytes = audio instanceof Uint8Array
+    ? audio
+    : new Uint8Array(audio);
+
+  return {
+    type: 'Buffer',
+    data: Array.from(bytes),
+  };
+}
 
 export class RealtimeVoiceService {
-  private ws: WebSocket | null = null;
+  private socket: Socket | null = null;
   private config: RealtimeVoiceConfig | null = null;
   private callbacks: RealtimeVoiceCallbacks;
   private _state: RealtimeVoiceState = 'disconnected';
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private sessionId: string | null = null;
   private intentionallyClosed = false;
-  private appStateSubscription: any = null;
+  private appStateSubscription: { remove: () => void } | null = null;
+  private pendingTexts: string[] = [];
+  private e2eCleanup: (() => void) | null = null;
 
   constructor(callbacks: RealtimeVoiceCallbacks) {
     this.callbacks = callbacks;
@@ -78,264 +78,283 @@ export class RealtimeVoiceService {
   }
 
   get isConnected(): boolean {
-    return this._state !== 'disconnected' && this._state !== 'connecting' && this._state !== 'error';
+    return !!this.socket?.connected && !!this.sessionId && this._state !== 'error';
   }
-
-  // ── Connect ──
 
   connect(config: RealtimeVoiceConfig): void {
     this.config = config;
     this.intentionallyClosed = false;
-    this.reconnectAttempts = 0;
-    this.setState('connecting');
-
+    this.pendingTexts = [];
     this.setupAppStateListener();
-    this.createWebSocket();
+    this.createSocket();
   }
 
-  private createWebSocket(): void {
-    if (!this.config) return;
-    const { wsUrl, token, instanceId, language, modelId, agentVoiceId } = this.config;
-
-    const params = new URLSearchParams({
-      token,
-      instanceId,
-      lang: language,
-    });
-    if (modelId) params.set('model', modelId);
-    if (agentVoiceId) params.set('voice', agentVoiceId);
-
-    const url = `${wsUrl}?${params.toString()}`;
-
-    try {
-      this.ws = new WebSocket(url);
-      this.ws.binaryType = 'arraybuffer';
-
-      this.ws.onopen = () => {
-        addVoiceDiagnostic('realtime-voice', 'ws-connected');
-        this.reconnectAttempts = 0;
-        this.setState('connected');
-        this.startPing();
-
-        // Start a voice session
-        this.sendJSON({
-          event: 'voice:session:start',
-          data: {
-            instanceId: this.config!.instanceId,
-            language: this.config!.language,
-            model: this.config!.modelId,
-            voice: this.config!.agentVoiceId,
-          },
-        });
-      };
-
-      this.ws.onmessage = (event) => {
-        if (typeof event.data === 'string') {
-          this.handleTextMessage(event.data);
-        } else if (event.data instanceof ArrayBuffer) {
-          this.handleBinaryMessage(event.data);
-        }
-      };
-
-      this.ws.onerror = (event: any) => {
-        addVoiceDiagnostic('realtime-voice', 'ws-error', event?.message || 'unknown');
-        this.callbacks.onError(event?.message || 'WebSocket error');
-      };
-
-      this.ws.onclose = (event) => {
-        addVoiceDiagnostic('realtime-voice', 'ws-closed', {
-          code: event.code,
-          reason: event.reason,
-          intentional: this.intentionallyClosed,
-        });
-        this.stopPing();
-
-        if (this.intentionallyClosed) {
-          this.setState('disconnected');
-          this.callbacks.onDisconnect('intentional');
-        } else {
-          this.attemptReconnect();
-        }
-      };
-    } catch (err: any) {
-      addVoiceDiagnostic('realtime-voice', 'ws-create-failed', err?.message);
-      this.setState('error');
-      this.callbacks.onError(err?.message || 'Failed to create WebSocket');
-    }
-  }
-
-  // ── Message Handling ──
-
-  private handleTextMessage(raw: string): void {
-    try {
-      const msg = JSON.parse(raw);
-      const event = msg.event || msg.type;
-
-      switch (event) {
-        case 'voice:session:ready':
-          this.sessionId = msg.data?.sessionId || null;
-          addVoiceDiagnostic('realtime-voice', 'session-ready', { sessionId: this.sessionId });
-          break;
-
-        case 'voice:transcript:interim':
-          this.setState('listening');
-          this.callbacks.onInterimTranscript(msg.data?.text || '');
-          break;
-
-        case 'voice:transcript:final':
-          this.setState('thinking');
-          this.callbacks.onFinalTranscript(msg.data?.text || '');
-          break;
-
-        case 'voice:agent:text':
-          this.callbacks.onAgentTextChunk(msg.data?.chunk || msg.data?.text || '');
-          break;
-
-        case 'voice:agent:speech:start':
-          this.setState('speaking');
-          this.callbacks.onAgentSpeechStart();
-          break;
-
-        case 'voice:agent:audio':
-          this.callbacks.onAgentAudioChunk(msg.data?.audio || '', msg.data?.format || 'mp3');
-          break;
-
-        case 'voice:agent:end':
-          this.callbacks.onAgentResponseEnd();
-          // Back to listening in duplex mode
-          this.setState('listening');
-          break;
-
-        case 'voice:tool:start':
-          this.callbacks.onToolCall(msg.data?.tool || '', 'start');
-          break;
-
-        case 'voice:tool:end':
-          this.callbacks.onToolCall(msg.data?.tool || '', 'end');
-          break;
-
-        case 'voice:error':
-          this.callbacks.onError(msg.data?.message || 'Server voice error');
-          break;
-
-        case 'pong':
-          // Keep-alive acknowledged
-          break;
-      }
-    } catch {
-      // Non-JSON message — ignore
-    }
-  }
-
-  private handleBinaryMessage(data: ArrayBuffer): void {
-    // Binary audio data from server (TTS audio chunks)
-    const base64 = arrayBufferToBase64(data);
-    this.callbacks.onAgentAudioChunk(base64, 'pcm');
-  }
-
-  // ── Send Audio ──
-
-  /** Send raw PCM audio chunk from microphone to server for streaming STT */
-  sendAudio(pcmData: ArrayBuffer | Uint8Array): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    try {
-      this.ws.send(pcmData);
-    } catch {
-      // Socket may have closed between check and send
-    }
-  }
-
-  /** Send text message (typed input or corrected transcript) */
-  sendText(text: string): void {
-    this.sendJSON({
-      event: 'voice:text',
-      data: { text, sessionId: this.sessionId },
-    });
-    this.setState('thinking');
-  }
-
-  /** Notify server that user interrupted (barge-in) */
-  sendInterrupt(): void {
-    this.sendJSON({ event: 'voice:interrupt' });
-  }
-
-  /** Start listening — tells server to begin STT stream processing */
-  startListening(): void {
-    this.sendJSON({ event: 'voice:listen:start', data: { language: this.config?.language } });
-    this.setState('listening');
-  }
-
-  /** Stop listening — tells server to finalize current STT */
-  stopListening(): void {
-    this.sendJSON({ event: 'voice:listen:stop' });
-  }
-
-  // ── Disconnect ──
-
-  disconnect(): void {
-    this.intentionallyClosed = true;
-    this.cleanupReconnect();
-    this.stopPing();
-    this.removeAppStateListener();
-
-    if (this.ws) {
-      try {
-        this.ws.close(1000, 'user disconnect');
-      } catch {}
-      this.ws = null;
-    }
-    this.sessionId = null;
-    this.setState('disconnected');
-  }
-
-  // ── Reconnect ──
-
-  private attemptReconnect(): void {
-    if (this.intentionallyClosed || this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.setState('disconnected');
-      this.callbacks.onDisconnect(
-        this.reconnectAttempts >= this.maxReconnectAttempts ? 'max_attempts' : 'closed',
-      );
+  private createSocket(): void {
+    if (!this.config) {
       return;
     }
 
-    this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 15000);
-    addVoiceDiagnostic('realtime-voice', 'reconnect-attempt', {
-      attempt: this.reconnectAttempts,
-      delay,
-    });
+    if (isVoiceUiE2EEnabled() && typeof window !== 'undefined') {
+      this.setupE2ERealtimeChannel();
+      return;
+    }
+
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
 
     this.setState('connecting');
-    this.reconnectTimer = setTimeout(() => {
-      this.createWebSocket();
-    }, delay);
+
+    const socket = io(this.config.wsUrl, {
+      transports: ['websocket'],
+      auth: { token: this.config.token },
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 8000,
+      timeout: 10000,
+      forceNew: true,
+    });
+
+    this.socket = socket;
+
+    socket.on('connect', () => {
+      addVoiceDiagnostic('realtime-voice', 'socket-connected', { id: socket.id });
+      this.setState('connecting');
+      this.startSession();
+    });
+
+    socket.on('disconnect', (reason) => {
+      addVoiceDiagnostic('realtime-voice', 'socket-disconnected', { reason, intentional: this.intentionallyClosed });
+      this.sessionId = null;
+      this.pendingTexts = [];
+      if (this.intentionallyClosed) {
+        this.setState('disconnected');
+        this.callbacks.onDisconnect('intentional');
+        return;
+      }
+      this.setState('disconnected');
+      this.callbacks.onDisconnect(reason);
+    });
+
+    socket.on('connect_error', (error) => {
+      addVoiceDiagnostic('realtime-voice', 'socket-connect-error', { error: error.message });
+      this.setState('error');
+      this.callbacks.onError(error.message || 'Realtime voice connect failed');
+    });
+
+    socket.on('voice:session:ready', (payload: { sessionId?: string }) => {
+      this.sessionId = payload?.sessionId || null;
+      addVoiceDiagnostic('realtime-voice', 'session-ready', { sessionId: this.sessionId });
+      this.setState('connected');
+      this.flushPendingTexts();
+    });
+
+    socket.on('voice:transcript:interim', (payload: { text?: string }) => {
+      this.setState('listening');
+      this.callbacks.onInterimTranscript(payload?.text || '');
+    });
+
+    socket.on('voice:stt:interim', (payload: { transcript?: string }) => {
+      this.setState('listening');
+      this.callbacks.onInterimTranscript(payload?.transcript || '');
+    });
+
+    socket.on('voice:transcript:final', (payload: { text?: string }) => {
+      this.setState('thinking');
+      this.callbacks.onFinalTranscript(payload?.text || '');
+    });
+
+    socket.on('voice:stt:final', (payload: { transcript?: string }) => {
+      this.setState('thinking');
+      this.callbacks.onFinalTranscript(payload?.transcript || '');
+    });
+
+    socket.on('voice:meta', (payload: any) => {
+      addVoiceDiagnostic('realtime-voice', 'meta', payload || {});
+    });
+
+    socket.on('voice:agent:text', (payload: { chunk?: string; text?: string }) => {
+      this.setState('thinking');
+      this.callbacks.onAgentTextChunk(payload?.chunk || payload?.text || '');
+    });
+
+    socket.on('voice:agent:speech:start', () => {
+      this.setState('speaking');
+      this.callbacks.onAgentSpeechStart();
+    });
+
+    socket.on('voice:agent:audio', (payload: { audio?: string; format?: string }) => {
+      this.setState('speaking');
+      this.callbacks.onAgentAudioChunk(payload?.audio || '', payload?.format || 'mp3');
+    });
+
+    socket.on('voice:agent:end', () => {
+      this.setState('connected');
+      this.callbacks.onAgentResponseEnd();
+    });
+
+    socket.on('voice:tool:start', (payload: { tool?: string }) => {
+      this.callbacks.onToolCall(payload?.tool || '', 'start');
+    });
+
+    socket.on('voice:tool:end', (payload: { tool?: string }) => {
+      this.callbacks.onToolCall(payload?.tool || '', 'end');
+    });
+
+    socket.on('voice:error', (payload: { error?: string }) => {
+      const error = payload?.error || 'Realtime voice error';
+      addVoiceDiagnostic('realtime-voice', 'socket-error-event', { error });
+      this.callbacks.onError(error);
+    });
   }
 
-  private cleanupReconnect(): void {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+  private setupE2ERealtimeChannel(): void {
+    this.e2eCleanup?.();
+    this.socket = null;
+    this.sessionId = 'e2e-realtime-session';
+    this.setState('connecting');
+
+    const handleFinalTranscript = (text: string) => {
+      this.setState('thinking');
+      this.callbacks.onFinalTranscript(text);
+    };
+
+    const handleAssistantChunk = (chunk: string) => {
+      this.setState('thinking');
+      this.callbacks.onAgentTextChunk(chunk);
+    };
+
+    const handleAssistantEnd = () => {
+      this.setState('connected');
+      this.callbacks.onAgentResponseEnd();
+    };
+
+    const handleError = (error: string) => {
+      this.setState('error');
+      this.callbacks.onError(error || 'Realtime voice error');
+    };
+
+    setVoiceUiE2ERealtimeBridge({
+      onFinalTranscript: handleFinalTranscript,
+      onAssistantChunk: handleAssistantChunk,
+      onAssistantEnd: handleAssistantEnd,
+      onError: handleError,
+    });
+
+    this.e2eCleanup = () => {
+      setVoiceUiE2ERealtimeBridge(null);
+    };
+
+    addVoiceDiagnostic('realtime-voice', 'session-ready', { sessionId: this.sessionId, mode: 'e2e' });
+    this.setState('connected');
+    this.flushPendingTexts();
+  }
+
+  private startSession(): void {
+    if (!this.socket || !this.config) {
+      return;
+    }
+
+    this.socket.emit('voice:session:start', {
+      sessionId: this.sessionId || undefined,
+      instanceId: this.config.instanceId,
+      lang: this.config.language,
+      voiceId: this.config.agentVoiceId,
+      duplexMode: true,
+      model: this.config.modelId,
+    });
+  }
+
+  sendText(text: string): void {
+    if (!this.socket || !this.sessionId) {
+      if (text.trim()) {
+        this.pendingTexts.push(text);
+        addVoiceDiagnostic('realtime-voice', 'queue-text-until-ready', {
+          queuedCount: this.pendingTexts.length,
+        });
+      }
+      return;
+    }
+
+    this.setState('thinking');
+    this.socket.emit('voice:text', {
+      sessionId: this.sessionId,
+      text,
+      model: this.config?.modelId,
+    });
+  }
+
+  sendInterrupt(): void {
+    if (!this.socket || !this.sessionId) {
+      return;
+    }
+
+    this.socket.emit('voice:interrupt', { sessionId: this.sessionId });
+  }
+
+  sendAudioChunk(audio: ArrayBuffer | Uint8Array): void {
+    if (!this.socket || !this.sessionId) {
+      return;
+    }
+
+    this.socket.emit('voice:audio:chunk', {
+      sessionId: this.sessionId,
+      audio: toSocketBufferLike(audio),
+    });
+  }
+
+  endAudioInput(): void {
+    if (!this.socket || !this.sessionId) {
+      return;
+    }
+
+    this.socket.emit('voice:audio:end', { sessionId: this.sessionId });
+  }
+
+  startListening(): void {
+    this.setState('listening');
+  }
+
+  stopListening(): void {
+    if (this._state === 'listening') {
+      this.setState('connected');
     }
   }
 
-  // ── Keep-alive ──
+  disconnect(): void {
+    this.intentionallyClosed = true;
+    this.removeAppStateListener();
+    this.e2eCleanup?.();
+    this.e2eCleanup = null;
 
-  private startPing(): void {
-    this.stopPing();
-    this.pingTimer = setInterval(() => {
-      this.sendJSON({ event: 'ping' });
-    }, 25000);
+    if (this.socket) {
+      if (this.sessionId) {
+        this.socket.emit('voice:session:end', { sessionId: this.sessionId });
+      }
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
+    this.sessionId = null;
+    this.pendingTexts = [];
+    this.setState('disconnected');
   }
 
-  private stopPing(): void {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
+  private flushPendingTexts(): void {
+    if (!this.sessionId || !this.pendingTexts.length) {
+      return;
+    }
+
+    const queued = [...this.pendingTexts];
+    this.pendingTexts = [];
+    for (const text of queued) {
+      this.sendText(text);
     }
   }
-
-  // ── App State ──
 
   private setupAppStateListener(): void {
     this.removeAppStateListener();
@@ -343,43 +362,23 @@ export class RealtimeVoiceService {
   }
 
   private removeAppStateListener(): void {
-    if (this.appStateSubscription) {
-      this.appStateSubscription.remove();
-      this.appStateSubscription = null;
-    }
+    this.appStateSubscription?.remove();
+    this.appStateSubscription = null;
   }
 
   private handleAppStateChange = (nextState: AppStateStatus): void => {
-    if (nextState === 'active' && this._state === 'disconnected' && !this.intentionallyClosed) {
-      // App came back to foreground — try reconnecting
-      this.reconnectAttempts = 0;
-      this.createWebSocket();
+    if (nextState !== 'active' || this.intentionallyClosed || !this.config) {
+      return;
+    }
+
+    if (!this.socket || this.socket.disconnected) {
+      this.createSocket();
     }
   };
 
-  // ── Helpers ──
-
   private setState(state: RealtimeVoiceState): void {
-    if (state === this._state) return;
+    if (this._state === state) return;
     this._state = state;
     this.callbacks.onStateChange(state);
   }
-
-  private sendJSON(obj: any): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    try {
-      this.ws.send(JSON.stringify(obj));
-    } catch {}
-  }
-}
-
-// ── Utility ──
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const uint8 = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < uint8.byteLength; i++) {
-    binary += String.fromCharCode(uint8[i]);
-  }
-  return btoa(binary);
 }

@@ -1,10 +1,8 @@
 /**
- * VoiceOnboardingTooltip — 3-step progressive voice guide
+ * VoiceOnboardingTooltip — progressive voice quick-start guide
  *
- * Shows a tooltip sequence on first voice interaction:
- *   Step 1: "Hold to record, release to send" (hold mode)
- *   Step 2: "Tap the mic to start/stop" (tap mode)
- *   Step 3: "Enable Live mode for hands-free duplex conversation"
+ * Shows a tooltip sequence on first voice interaction with the current
+ * wake-word and live voice workflow.
  *
  * Persisted via MMKV so it only shows once per device.
  */
@@ -13,7 +11,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native
 import { colors } from '../theme/colors';
 import { mmkv } from '../stores/mmkvStorage';
 
-const MMKV_KEY = 'voice_onboarding_completed';
+const MMKV_KEY = 'voice_onboarding_completed_v2';
 const TOTAL_STEPS = 3;
 
 interface Props {
@@ -67,16 +65,18 @@ export function VoiceOnboardingTooltip({ visible, voiceInteractionMode, duplexMo
   const stepContent = [
     null, // 0 index unused
     {
-      title: t({ en: 'Hold to Talk', zh: '按住说话' }),
-      body: t({ en: 'Press and hold the mic button, then release to send your voice message.', zh: '按住麦克风按钮说话，松开即发送语音消息。' }),
+      title: t({ en: 'Wake or Tap to Enter', zh: '唤醒或点按进入' }),
+      body: t({ en: 'From a cold start, say your wake phrase or tap the floating ball once to jump straight into voice chat.', zh: '冷启动后，你可以直接说唤醒词，或点一次悬浮球，立即进入语音对话。' }),
     },
     {
-      title: t({ en: 'Tap Mode', zh: '点触模式' }),
-      body: t({ en: 'Switch to Tap mode: tap once to start recording, tap again to stop and send.', zh: '切换到点触模式：点一下开始录音，再点一下停止并发送。' }),
+      title: t({ en: 'Grant Mic Access Once', zh: '先完成麦克风授权' }),
+      body: t({ en: 'If wake word or live voice does not start, allow microphone and speech recognition in system settings first.', zh: '如果唤醒词或实时语音没有启动，先到系统设置里允许麦克风和语音识别权限。' }),
     },
     {
-      title: t({ en: 'Live Conversation', zh: '实时对话' }),
-      body: t({ en: 'Enable Live mode in settings for hands-free, duplex voice chat — the agent listens and responds automatically.', zh: '在设置中开启实时模式，享受免手动操作的双向语音对话——智能体自动聆听与回复。' }),
+      title: t({ en: 'Tune Voice and Wake Phrase', zh: '调节音色和唤醒词' }),
+      body: duplexMode
+        ? t({ en: 'In live mode you can speak naturally, interrupt anytime, and use the top-right gear to change the agent voice or wake phrase.', zh: '实时模式下你可以自然说话、随时打断，并通过右上角齿轮修改智能体音色和唤醒词。' })
+        : t({ en: 'Use the top-right gear to change the agent voice, wake phrase, and other voice behavior any time.', zh: '右上角齿轮里可以随时修改智能体音色、唤醒词和其他语音行为。' }),
     },
   ];
 
@@ -84,17 +84,31 @@ export function VoiceOnboardingTooltip({ visible, voiceInteractionMode, duplexMo
   if (!content) return null;
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+    <Animated.View
+      testID="voice-onboarding-tooltip"
+      accessibilityLabel="voice-onboarding-tooltip"
+      style={[styles.container, { opacity: fadeAnim }]}
+    >
       <View style={styles.bubble}>
         <View style={styles.header}>
-          <Text style={styles.stepIndicator}>{step}/{TOTAL_STEPS}</Text>
-          <TouchableOpacity onPress={dismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text testID="voice-onboarding-step-indicator" style={styles.stepIndicator}>{step}/{TOTAL_STEPS}</Text>
+          <TouchableOpacity
+            testID="voice-onboarding-skip"
+            accessibilityLabel="voice-onboarding-skip"
+            onPress={dismiss}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.dismissText}>{t({ en: 'Skip', zh: '跳过' })}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.title}>{content.title}</Text>
-        <Text style={styles.body}>{content.body}</Text>
-        <TouchableOpacity style={styles.nextBtn} onPress={advance}>
+        <Text testID="voice-onboarding-title" style={styles.title}>{content.title}</Text>
+        <Text testID="voice-onboarding-body" style={styles.body}>{content.body}</Text>
+        <TouchableOpacity
+          testID="voice-onboarding-next"
+          accessibilityLabel="voice-onboarding-next"
+          style={styles.nextBtn}
+          onPress={advance}
+        >
           <Text style={styles.nextBtnText}>
             {step >= TOTAL_STEPS
               ? t({ en: 'Got it!', zh: '知道了！' })

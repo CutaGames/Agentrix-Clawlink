@@ -16,6 +16,7 @@ import { AgentSession, SessionStatus } from '../../entities/agent-session.entity
 import { OpenClawInstance, OpenClawInstanceStatus } from '../../entities/openclaw-instance.entity';
 import { OpenClawConnectionService } from '../openclaw-connection/openclaw-connection.service';
 import { ClaudeIntegrationService } from '../ai-integration/claude/claude-integration.service';
+import { GeminiIntegrationService } from '../ai-integration/gemini/gemini-integration.service';
 import { OpenAIIntegrationService } from '../ai-integration/openai/openai-integration.service';
 import { TokenQuotaService, estimateTokens } from '../token-quota/token-quota.service';
 import { SkillExecutorService, ExecutionContext } from '../skill/skill-executor.service';
@@ -31,6 +32,13 @@ export interface ChatMessageDto {
   context?: Record<string, any>;
   model?: string;
   voiceId?: string;
+}
+
+export interface ChatStreamCallbacks {
+  signal?: AbortSignal;
+  onMeta?: (meta: Record<string, any>) => Promise<void> | void;
+  onChunk: (chunk: string) => Promise<void> | void;
+  onDone?: () => Promise<void> | void;
 }
 
 interface RuntimePermissionProfile {
@@ -50,6 +58,8 @@ export class OpenClawProxyService {
     private readonly tokenQuotaService: TokenQuotaService,
     @Inject(forwardRef(() => ClaudeIntegrationService))
     private readonly claudeIntegrationService: ClaudeIntegrationService,
+    @Inject(forwardRef(() => GeminiIntegrationService))
+    private readonly geminiIntegrationService: GeminiIntegrationService,
     @Inject(forwardRef(() => OpenAIIntegrationService))
     private readonly openAIIntegrationService: OpenAIIntegrationService,
     @Inject(forwardRef(() => SkillExecutorService))
@@ -84,6 +94,20 @@ export class OpenClawProxyService {
 
   private isPlatformHosted(instance: OpenClawInstance): boolean {
     return !instance.instanceUrl || !!(instance.capabilities as any)?.platformHosted;
+  }
+
+  /**
+   * Determine whether a message likely needs tool access.
+   * Simple greetings and conversational messages skip tools for ~4x faster response.
+   */
+  private messageNeedsTools(text: string): boolean {
+    const lower = text.toLowerCase().trim();
+    // Very short messages (<15 chars) without action keywords are conversational
+    if (lower.length < 15) {
+      const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|agent|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务/;
+      if (!actionWords.test(lower)) return false;
+    }
+    return true;
   }
 
   private async getOrCreatePlatformHostedSession(
@@ -158,7 +182,7 @@ export class OpenClawProxyService {
   private async getPlatformConversationHistory(
     userId: string,
     instanceId: string,
-    limit: number = 24,
+    limit: number = 12,
   ): Promise<AgentMessage[]> {
     const messages = await this.messageRepo
       .createQueryBuilder('message')
@@ -427,6 +451,26 @@ export class OpenClawProxyService {
       return 'platform';
     }
 
+    if (modelId === 'claude-opus-4-6') {
+      return 'platform';
+    }
+
+    if (modelId === 'deepseek-v3') {
+      return 'deepseek';
+    }
+
+    if (modelId === 'gemini-2.0-flash') {
+      return 'gemini';
+    }
+
+    if (modelId === 'llama-3.3-70b') {
+      return 'meta';
+    }
+
+    if (modelId === 'gpt-4o') {
+      return 'openai';
+    }
+
     return undefined;
   }
 
@@ -462,6 +506,42 @@ export class OpenClawProxyService {
 
   private resolveExecutionModelId(modelId: string): string {
     return this.aiProviderService.resolveExecutionModelId(modelId) || modelId;
+  }
+
+  private getPlatformOpenAICompatibleCredentials(providerId?: string): {
+    apiKey: string;
+    baseUrl?: string;
+    providerId: string;
+  } | undefined {
+    if (!providerId || providerId === 'platform') {
+      return undefined;
+    }
+
+    const provider = this.aiProviderService.getCatalog().find((item: any) => item.id === providerId);
+    const providerBaseUrl = typeof provider?.baseUrl === 'string' ? provider.baseUrl : undefined;
+
+    switch (providerId) {
+      case 'deepseek': {
+        const apiKey = process.env.DEEPSEEK_API_KEY || process.env.deepseek_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.DEEPSEEK_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
+      case 'meta': {
+        const apiKey = process.env.GROQ_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.GROQ_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
+      case 'openai': {
+        const apiKey = process.env.OPENAI_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.OPENAI_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
+      default:
+        return undefined;
+    }
   }
 
   private isOpenAICompatibleProvider(providerId?: string): boolean {
@@ -868,13 +948,18 @@ export class OpenClawProxyService {
     userId: string,
     instance: OpenClawInstance,
     dto: ChatMessageDto,
+    streamingCallbacks?: { onChunk: (text: string) => void },
   ) {
+    const _t0 = Date.now();
+    const _lap = (label: string) => this.logger.log(`⏱ ${label}: ${Date.now() - _t0}ms`);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messageText = Array.isArray(dto.message)
       ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
       : dto.message;
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
+    _lap('getOrCreateSession');
     const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
+    _lap('tryHandleDirectSkillIntent');
     if (directSkillIntent) {
       await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
         source: 'platform-hosted-chat',
@@ -889,10 +974,27 @@ export class OpenClawProxyService {
       return directSkillIntent;
     }
 
-    const { additionalTools, onToolCall } = await this.buildPlatformHostedTools(userId, instance);
-    const permissionProfile = await this.resolveRuntimePermissionProfile(userId, instance);
-    const defaultConfig = await this.aiProviderService.getDefaultConfig(userId);
-    const persistedHistory = await this.getPlatformConversationHistory(userId, instance.id);
+    const [
+      { additionalTools, onToolCall },
+      permissionProfile,
+      defaultConfig,
+      persistedHistory,
+    ] = await Promise.all([
+      this.buildPlatformHostedTools(userId, instance),
+      this.resolveRuntimePermissionProfile(userId, instance),
+      this.aiProviderService.getDefaultConfig(userId),
+      this.getPlatformConversationHistory(userId, instance.id),
+    ]);
+    _lap(`parallelQueries (tools=${additionalTools.length}, history=${persistedHistory.length})`);
+
+    // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
+    // Tools will still be available for messages that likely need them.
+    const needsTools = this.messageNeedsTools(messageText);
+    const effectiveTools = needsTools ? additionalTools : [];
+    const effectiveOnToolCall = needsTools ? onToolCall : undefined;
+    if (!needsTools) {
+      this.logger.log(`⚡ Simple message detected, skipping ${additionalTools.length} tools for faster response`);
+    }
 
     // Resolve model & provider FIRST so we can inject identity into system prompt
     const agentAccount = permissionProfile?.agentAccountId
@@ -925,6 +1027,11 @@ export class OpenClawProxyService {
       const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
       if (providerConfig) {
         userCredentials = { ...providerConfig, providerId: resolvedProvider };
+      } else {
+        const platformCredentials = this.getPlatformOpenAICompatibleCredentials(resolvedProvider);
+        if (platformCredentials) {
+          userCredentials = platformCredentials;
+        }
       }
     }
 
@@ -934,96 +1041,76 @@ export class OpenClawProxyService {
       .flatMap((p: any) => p.models)
       .find((m: any) => m.id === resolvedModel)?.label || resolvedModel;
 
+    // For simple messages without tools, use minimal history to reduce input tokens
+    // (12 history msgs with tool results can add 5000+ tokens → 4s extra latency)
+    const effectiveHistory = needsTools
+      ? persistedHistory
+      : persistedHistory.slice(-4);
+
     const messages = [
       {
         role: 'system' as const,
-        content:
-          `You are "${instance.name || 'Agent'}", the user's personal AI claw. ` +
-          `You are not Agentrix customer support, not a platform helpdesk, and not a generic service bot. ` +
-          `Act like the user's own agent with built-in marketplace abilities.\n\n` +
-          `## OpenClaw Hub & Marketplace\n` +
-          `You have FULL access to the OpenClaw Hub marketplace with thousands of skills. Use these tools:\n` +
-          `- **skill_search**: Search skills by keyword, name, or description. Always call this when the user asks about available skills.\n` +
-          `- **skill_install**: Install a skill by name or ID onto this claw.\n` +
-          `- **skill_execute**: Run/execute a skill with input parameters.\n` +
-          `- **skill_recommend**: Get personalized skill recommendations.\n` +
-          `- **skill_publish**: Publish a new skill to the marketplace.\n` +
-          `- **resource_publish**: Publish resources, APIs, datasets, or workflows to the marketplace.\n` +
-          `- **marketplace_purchase**: Purchase a paid skill or resource.\n\n` +
-          `## Commerce & Payment\n` +
-          `You have FULL payment and commerce capabilities:\n` +
-          `- **search_products**: Search physical goods, digital resources, paid services.\n` +
-          `- **resource_search**: Search resources, APIs, and service listings.\n` +
-          `- **create_order**: Place orders for products and services.\n` +
-          `- **get_balance**: Check the agent's wallet balance, funds, and available currencies.\n` +
-          `- **asset_overview**: Get comprehensive view of wallet assets, balances, and X402 status.\n` +
-          `- **x402_pay**: Execute X402 protocol payments for paid APIs and services.\n` +
-          `- **quickpay_execute**: One-click micro-payments.\n\n` +
-          `## Task Marketplace\n` +
-          `Full task/bounty lifecycle:\n` +
-          `- **task_search**: Browse available tasks and bounties.\n` +
-          `- **task_post**: Post new tasks with budgets.\n` +
-          `- **task_accept**: Accept available tasks.\n` +
-          `- **task_submit**: Submit deliverables for completed tasks.\n\n` +
-          `## Agent-to-Agent (A2A)\n` +
-          `- **agent_discover**: Find other agents for collaboration or delegation.\n` +
-          `- **agent_invoke**: Delegate tasks to other agents via A2A protocol.\n\n` +
-          `## Client UI Capabilities\n` +
-          `The chat client is a rich mobile app, NOT a plain-text terminal:\n` +
-          `- **Images**: Any image URL (ending in .png/.jpg/.gif/.webp etc.) or markdown image syntax ![alt](url) you include in your reply will be rendered as an inline image card. ALWAYS include image URLs directly in your text when you generate or reference images.\n` +
-          `- **Audio/TTS**: Every assistant message has a "Play Audio" button. The client will use TTS to read your reply aloud. Voice recording/playback is fully handled by the client. NEVER say the chat cannot play audio.\n` +
-          `- **Files**: File URLs (pdf/txt/csv etc.) are rendered as downloadable file cards.\n` +
-          `- **User Attachments**: Users can send images, photos, and files as attachments. Treat attachment URLs as usable inputs.\n\n` +
-          `## Image Generation\n` +
-          `You CAN generate images. To do so:\n` +
-          `1. Call skill_search to find image generation skills (e.g. "image generation", "DALL-E", "stable diffusion").\n` +
-          `2. If not installed, call skill_install to install the skill.\n` +
-          `3. Call skill_execute with the image prompt to generate the image.\n` +
-          `4. Include the returned image URL in your reply using ![description](url) so the client renders it.\n` +
-          `NEVER say "I cannot generate images" or "I don't have image generation capability". Use skill_search to find and use one.\n\n` +
-          `## Screenshot & Browser Automation\n` +
-          `You CAN take screenshots and automate browsers via installable skills:\n` +
-          `- Call skill_search for "screenshot", "browser automation", "puppeteer", "selenium".\n` +
-          `- Install and execute the appropriate skill. NEVER say screenshots are unavailable.\n\n` +
+        content: needsTools
+          ? (`You are "${instance.name || 'Agent'}", the user's personal AI agent with marketplace abilities.\n\n` +
+          `## Available Tools\n` +
+          `- skill_search/skill_install/skill_execute/skill_recommend/skill_publish: Marketplace skill lifecycle\n` +
+          `- resource_publish: Publish APIs/datasets/workflows\n` +
+          `- search_products/resource_search/create_order: Commerce\n` +
+          `- get_balance/asset_overview/x402_pay/quickpay_execute: Payments\n` +
+          `- task_search/task_post/task_accept/task_submit: Task marketplace\n` +
+          `- agent_discover/agent_invoke: Agent-to-Agent delegation\n\n` +
           `## Rules\n` +
-          `1. When the user asks to search, install, execute, buy, pay for, publish, or manage skills: ALWAYS use the appropriate tool. NEVER say you cannot access the marketplace.\n` +
-          `2. When the user asks to generate, analyze, edit, upload, or send images/files/media: use skill_search, skill_install, or skill_execute to obtain that capability. NEVER say you are a "text-only interface" or that the chat "does not support" images, audio, or media. The client renders all of these.\n` +
-          `3. When a tool returns media or file URLs, include those URLs plainly in your reply so the client can render rich cards. Use markdown image syntax ![description](url) for images.\n` +
-          `4. Voice capture and playback are handled by the client. NEVER tell the user that voice conversation is unsupported.\n` +
-          `5. When tool results are returned, summarize them clearly. Do not claim lack of access.\n` +
-          `6. If a search returns no results, suggest different keywords or broader queries.\n` +
-          `7. Reply in the same language as the user, stay concise, and focus on getting the task done.\n` +
-          `8. When the user asks about wallet balance, funds, or financial status: call get_balance or asset_overview. NEVER guess balances.\n` +
+          `1. ALWAYS use tools when asked to search/install/execute/buy/publish skills. Never claim lack of marketplace access.\n` +
+          `2. The client renders images (![alt](url)), audio (TTS button), files, and attachments. Never say "text-only" or "unsupported".\n` +
+          `3. For image generation: skill_search → skill_install → skill_execute → include URL in reply.\n` +
+          `4. Include media URLs in replies for rich rendering. Summarize tool results clearly.\n` +
+          `5. Reply in the user's language, stay concise.\n` +
+          `6. For balance/funds queries: call get_balance or asset_overview. Never guess.\n` +
           `${permissionProfile
-            ? `9. This instance is bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled tools: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}. Never claim a disabled action succeeded; explain that the bound permission profile blocked it.`
-            : '9. No Agent Account permission profile is currently bound to this instance.'}\n` +
-          `10. You are currently running on model: ${resolvedModelLabel}. When a user asks what model you are, identify yourself truthfully with this model name. Do not make up a different identity.\n` +
-          `11. Conversation memory is shared across this user's chats for this same agent instance. Use prior user-provided facts from earlier turns when they are relevant, even if the current window was reopened.`,
+            ? `7. Bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}.`
+            : '7. No Agent Account bound.'}\n` +
+          `8. Model: ${resolvedModelLabel}. Identify truthfully when asked.\n` +
+          `9. Use prior conversation context when relevant.`)
+          : (`You are "${instance.name || 'Agent'}", the user's personal AI agent. Reply concisely in the user's language. Model: ${resolvedModelLabel}.`),
       },
-      ...this.buildPlatformHistoryMessages(persistedHistory),
+      ...this.buildPlatformHistoryMessages(effectiveHistory),
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
     const executionModel = this.resolveExecutionModelId(resolvedModel);
-    const result = this.isOpenAICompatibleProvider(resolvedProvider)
-      ? await this.openAIIntegrationService.chatWithFunctions(messages, {
-          model: executionModel,
-          context: { userId, sessionId },
-          additionalTools: this.toOpenAITools(additionalTools),
-          onToolCall,
-          userApiKey: userCredentials?.apiKey,
-          userBaseURL: userCredentials?.baseUrl,
-        })
-      : await this.claudeIntegrationService.chatWithFunctions(messages, {
-          model: executionModel,
-          context: { userId, sessionId },
-          additionalTools,
-          onToolCall,
-          userCredentials: userCredentials
-            ? { ...userCredentials, model: executionModel }
-            : undefined,
-        });
+    _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
+    let result: any;
+    if (resolvedProvider === 'gemini') {
+      result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
+        model: executionModel,
+        context: { userId, sessionId },
+        additionalTools: effectiveTools,
+        onToolCall: effectiveOnToolCall,
+        userApiKey: userCredentials?.apiKey,
+      });
+    } else if (this.isOpenAICompatibleProvider(resolvedProvider)) {
+      result = await this.openAIIntegrationService.chatWithFunctions(messages, {
+        model: executionModel,
+        context: { userId, sessionId },
+        additionalTools: this.toOpenAITools(effectiveTools),
+        onToolCall: effectiveOnToolCall,
+        userApiKey: userCredentials?.apiKey,
+        userBaseURL: userCredentials?.baseUrl,
+      });
+    } else {
+      result = await this.claudeIntegrationService.chatWithFunctions(messages, {
+        model: executionModel,
+        context: { userId, sessionId },
+        additionalTools: effectiveTools,
+        onToolCall: effectiveOnToolCall,
+        userCredentials: userCredentials
+          ? { ...userCredentials, model: executionModel }
+          : undefined,
+        onChunk: streamingCallbacks?.onChunk,
+      });
+    }
 
+    _lap(`LLM done (toolCalls=${result?.toolCalls?.length || 0})`);
     const text = result?.text || '';
     const inputTokens = estimateTokens(messageText);
     const outputTokens = estimateTokens(text);
@@ -1073,20 +1160,39 @@ export class OpenClawProxyService {
     }
 
     try {
-      const result = await this.runPlatformHostedChat(userId, instance, dto);
-      const text = result.reply?.content || 'Sorry, I could not generate a response.';
-      // Send resolved model info as first event so the client can update its UI
+      let textBytesStreamed = 0;
+      const result = await this.runPlatformHostedChat(userId, instance, dto, {
+        onChunk: (chunk) => {
+          if (res.writableEnded) return;
+          // Track how much actual text (not markers) was streamed
+          if (!chunk.startsWith('[Tool Call]') && !chunk.startsWith('[Tool Done]')) {
+            textBytesStreamed += chunk.length;
+          }
+          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          if ((res as any).flush) (res as any).flush();
+        },
+      });
+
+      // Send model meta after call completes
       const resultAny = result as any;
-      if (resultAny.resolvedModel && !res.writableEnded) {
+      if (resultAny?.resolvedModel && !res.writableEnded) {
         res.write(`data: ${JSON.stringify({ meta: { resolvedModel: resultAny.resolvedModel, resolvedModelLabel: resultAny.resolvedModelLabel } })}\n\n`);
         if ((res as any).flush) (res as any).flush();
       }
-      const chunks = text.match(/.{1,12}/gs) || [text];
-      for (const chunk of chunks) {
-        if (res.writableEnded) break;
-        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-        if ((res as any).flush) (res as any).flush();
+
+      // If LLM text wasn't fully streamed (streaming failed or non-streaming provider),
+      // emit the full text now. This covers: Gemini, OpenAI, Bedrock streaming fallback,
+      // and tool-call paths where [Tool Call] markers were sent but the 2nd LLM response wasn't.
+      const fullText = result.reply?.content || '';
+      if (fullText && textBytesStreamed < fullText.length * 0.5 && !res.writableEnded) {
+        const fallbackChunks = fullText.match(/.{1,80}/gs) || [fullText];
+        for (const c of fallbackChunks) {
+          if (res.writableEnded) break;
+          res.write(`data: ${JSON.stringify({ chunk: c })}\n\n`);
+          if ((res as any).flush) (res as any).flush();
+        }
       }
+
       if (!res.writableEnded) {
         res.write('data: [DONE]\n\n');
       }
@@ -1097,6 +1203,146 @@ export class OpenClawProxyService {
       }
     } finally {
       if (!res.writableEnded) res.end();
+    }
+  }
+
+  private async streamPlatformHostedChatToCallbacks(
+    userId: string,
+    instance: OpenClawInstance,
+    dto: ChatMessageDto,
+    callbacks: ChatStreamCallbacks,
+  ): Promise<void> {
+    this.logger.debug(`streamPlatformHostedChatToCallbacks start: instance=${instance.id} session=${dto.sessionId || ''}`);
+    const result = await this.runPlatformHostedChat(userId, instance, dto, {
+      onChunk: (chunk) => {
+        if (callbacks.signal?.aborted) return;
+        this.logger.debug(`streamPlatformHostedChatToCallbacks chunk: instance=${instance.id} chunk=${chunk.slice(0, 80)}`);
+        callbacks.onChunk(chunk);
+      },
+    });
+    const resultAny = result as any;
+
+    if (resultAny.resolvedModel && callbacks.onMeta) {
+      await callbacks.onMeta({
+        resolvedModel: resultAny.resolvedModel,
+        resolvedModelLabel: resultAny.resolvedModelLabel,
+      });
+    }
+
+    if (!callbacks.signal?.aborted) {
+      this.logger.debug(`streamPlatformHostedChatToCallbacks done: instance=${instance.id}`);
+      await callbacks.onDone?.();
+    }
+  }
+
+  private async consumeUpstreamSseChunk(
+    payload: string,
+    callbacks: ChatStreamCallbacks,
+  ): Promise<boolean> {
+    const trimmed = payload.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    if (trimmed === '[DONE]') {
+      await callbacks.onDone?.();
+      return true;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed?.meta && callbacks.onMeta) {
+        await callbacks.onMeta(parsed.meta);
+      }
+      if (typeof parsed?.chunk === 'string' && parsed.chunk.length > 0) {
+        await callbacks.onChunk(parsed.chunk);
+      }
+      if (parsed?.error) {
+        throw new BadGatewayException(parsed.error);
+      }
+      return false;
+    } catch (error) {
+      if (error instanceof BadGatewayException) {
+        throw error;
+      }
+
+      await callbacks.onChunk(trimmed);
+      return false;
+    }
+  }
+
+  async streamChatToCallbacks(
+    userId: string,
+    instanceId: string,
+    dto: ChatMessageDto,
+    callbacks: ChatStreamCallbacks,
+  ): Promise<void> {
+    const instance = await this.ensureOwnedInstance(userId, instanceId);
+    this.logger.debug(`streamChatToCallbacks resolved instance ${instance.id} platformHosted=${this.isPlatformHosted(instance)}`);
+    if (this.isPlatformHosted(instance)) {
+      return this.streamPlatformHostedChatToCallbacks(userId, instance, dto, callbacks);
+    }
+
+    const resolvedInstance = await this.resolveInstance(userId, instanceId);
+    const url = `${resolvedInstance.instanceUrl}/api/chat/stream`;
+    const upstreamResp = await fetch(url, {
+      method: 'POST',
+      headers: { ...this.buildHeaders(resolvedInstance), Accept: 'text/event-stream' },
+      body: JSON.stringify({
+        message: dto.message,
+        sessionId: dto.sessionId,
+        model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
+      }),
+      signal: callbacks.signal || AbortSignal.timeout(60_000),
+    });
+
+    if (!upstreamResp.ok || !upstreamResp.body) {
+      const text = await upstreamResp.text().catch(() => 'Instance stream unavailable');
+      throw new BadGatewayException(text || 'Instance stream unavailable');
+    }
+
+    const reader = upstreamResp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let streamDone = false;
+
+    while (!streamDone) {
+      if (callbacks.signal?.aborted) {
+        try { await reader.cancel(); } catch {}
+        return;
+      }
+
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary >= 0) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart());
+
+        if (dataLines.length > 0) {
+          streamDone = await this.consumeUpstreamSseChunk(dataLines.join('\n'), callbacks);
+        }
+
+        if (streamDone || callbacks.signal?.aborted) {
+          try { await reader.cancel(); } catch {}
+          return;
+        }
+
+        boundary = buffer.indexOf('\n\n');
+      }
+    }
+
+    if (!callbacks.signal?.aborted) {
+      await callbacks.onDone?.();
     }
   }
 

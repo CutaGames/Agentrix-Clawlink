@@ -18,9 +18,8 @@ export class VoiceService {
   private readonly groqBaseUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
 
   private getTranscriptionOrder(): Array<'openai' | 'groq' | 'aws'> {
-    // Default: Groq first (free tier, fast, whisper-large-v3-turbo quality),
-    // then OpenAI Whisper, then AWS Transcribe Streaming as fallback.
-    const defaultOrder: Array<'openai' | 'groq' | 'aws'> = ['groq', 'openai', 'aws'];
+    // Default: AWS Transcribe first (always works), then Groq (fast whisper), then OpenAI.
+    const defaultOrder: Array<'openai' | 'groq' | 'aws'> = ['aws', 'groq', 'openai'];
     const configured = (process.env.VOICE_STT_ORDER || '')
       .split(',')
       .map((value) => value.trim().toLowerCase())

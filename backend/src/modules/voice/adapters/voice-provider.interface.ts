@@ -21,6 +21,8 @@ export interface STTOptions {
   model?: string;        // Provider-specific model name
   prompt?: string;       // Context prompt for better accuracy
   temperature?: number;
+  sampleRate?: number;
+  encoding?: string;
 }
 
 export interface STTAdapter {

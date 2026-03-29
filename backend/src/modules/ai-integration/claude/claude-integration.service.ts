@@ -18,6 +18,7 @@ import { PayIntentType } from '../../../entities/pay-intent.entity';
 import { OrderStatus } from '../../../entities/order.entity';
 import { ModelRouterService, ModelType } from '../model-router/model-router.service';
 import { BedrockIntegrationService, BedrockUserCredentials } from '../bedrock/bedrock-integration.service';
+import { OpenAIIntegrationService } from '../openai/openai-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
 
 /** Credentials resolved from the user's provider config */
@@ -56,6 +57,7 @@ export class ClaudeIntegrationService {
   private readonly logger = new Logger(ClaudeIntegrationService.name);
   private readonly anthropic: any;
   private readonly defaultModel: string; // 向后兼容的默认模型
+  private openAIIntegrationService: OpenAIIntegrationService | null | undefined;
 
   constructor(
     private readonly configService: ConfigService,
@@ -718,6 +720,16 @@ export class ClaudeIntegrationService {
     return /(?:don't|do not|can't|cannot|unable to|lack)\b.{0,50}\b(?:web|internet|browse|search|real-time|current information|access)|(?:tool|web search|search tool).{0,20}(?:not available|unavailable)/i.test(text);
   }
 
+  /** Strip raw XML tool_use tags that leak into text when tools are absent from the API call */
+  private stripToolUseXml(text: string): string {
+    return text
+      .replace(/<\/?tool_use>/g, '')
+      .replace(/<tool_name>[\s\S]*?<\/tool_name>/g, '')
+      .replace(/<tool_parameters>[\s\S]*?<\/tool_parameters>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   async executeFunctionCall(
     functionName: string,
     parameters: Record<string, any>,
@@ -893,6 +905,8 @@ export class ClaudeIntegrationService {
     options: any,
     userCredentials?: BedrockUserCredentials,
   ): Promise<any> {
+    const _t0 = Date.now();
+    const _lap = (label: string) => this.logger.log(`⏱ BR ${label}: ${Date.now() - _t0}ms`);
     const modelId = options.model || 'claude-haiku-4-5';
     this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}`);
 
@@ -906,11 +920,18 @@ export class ClaudeIntegrationService {
       model: modelId,
       tools: bedrockTools,
       userCredentials,
+      onChunk: options?.onChunk,
     });
+    _lap(`1st LLM call (toolCalls=${bedrockResult.functionCalls?.length || 0})`);
 
     // If Bedrock returned tool calls, execute them and do a second LLM call
     if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
-      this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s)`);
+      this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s): ${bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ')}`);
+      // Emit progress events for tool calls so the frontend can show thinking/thought chain
+      if (options?.onChunk) {
+        const toolNames = bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ');
+        options.onChunk(`[Tool Call] ${toolNames}`);
+      }
       const toolResults: any[] = [];
       for (const tc of bedrockResult.functionCalls) {
         const fnName = tc.function?.name || tc.name;
@@ -946,25 +967,36 @@ export class ClaudeIntegrationService {
           ? lastUserContent.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
           : String(lastUserContent);
       const toolFallbackText = this.buildToolFallbackText(toolResults);
+      _lap('tool execution done');
 
+      // Truncate tool results to reduce 2nd LLM input tokens (major latency driver)
+      const truncatedResults = toolResults.map(r => {
+        const s = r.content;
+        return s.length > 2000 ? s.slice(0, 2000) + '...[truncated]' : s;
+      });
       const followUpMessages = [
         ...messages,
         { role: 'assistant' as const, content: bedrockResult.text || 'I used the available tools and received the results.' },
         {
           role: 'user' as const,
           content:
-            `Answer the original request using the tool results below. ` +
-            `Do not say you lack web access or tool access when tool results are present.\n\n` +
+            `Answer the original request using the tool results below. Be concise and direct. ` +
+            `Do not say you lack web access or tool access when tool results are present. ` +
+            `Do NOT output <tool_use> XML tags — if you need to call another tool, use the provided tool API.\n\n` +
             `Original request:\n${lastUserMessage}\n\n` +
-            `Tool results:\n${toolResults.map(r => r.content).join('\n')}`,
+            `Tool results:\n${truncatedResults.join('\n')}`,
         },
       ];
       try {
         const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
           model: modelId,
+          tools: bedrockTools,
           userCredentials,
+          onChunk: options?.onChunk,
+          maxTokens: 1500, // Limit 2nd LLM response length for faster completion
         });
-        const finalText = finalResult.text?.trim();
+        _lap('2nd LLM call done');
+        const finalText = this.stripToolUseXml(finalResult.text?.trim() || '');
         return {
           text: !finalText || this.looksLikeToolAccessRefusal(finalText)
             ? (toolFallbackText || finalText || bedrockResult.text)
@@ -979,7 +1011,7 @@ export class ClaudeIntegrationService {
       }
     }
 
-    return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
+    return { text: this.stripToolUseXml(bedrockResult.text || ''), toolCalls: bedrockResult.functionCalls ?? null };
   }
 
   /**
@@ -1136,33 +1168,28 @@ export class ClaudeIntegrationService {
       enableModelRouting?: boolean; // 是否启用模型路由（默认启用）
       additionalTools?: any[]; //HQ 专属工具箱支持
       onToolCall?: (name: string, args: any) => Promise<any>;
+      /** When provided, use streaming mode and emit text deltas through this callback */
+      onChunk?: (text: string) => void;
     },
   ): Promise<any> {
-    // Always fetch standard tools first — needed for both Anthropic SDK and Bedrock fallback
-    const standardTools = await this.getFunctionSchemas();
-    // When the caller provides dedicated tools (e.g. agent chat with skill_search),
-    // strip out standard e-commerce tools so the LLM doesn’t pick the wrong one
-    // (e.g. search_agentrix_products instead of skill_search).
-    const ECOMMERCE_STANDARD_TOOLS = new Set([
-      'search_agentrix_products', 'add_to_agentrix_cart', 'view_agentrix_cart',
-      'checkout_agentrix_cart', 'buy_agentrix_product', 'get_agentrix_order', 'pay_agentrix_order',
-    ]);
-    const effectiveStandard = (options?.additionalTools?.length)
-      ? standardTools.filter(t => !ECOMMERCE_STANDARD_TOOLS.has(t.name))
-      : standardTools;
-      
-    // Deduplicate merged tools by name to prevent "Tool names must be unique" error from LLMs
-    const rawMerged = [...effectiveStandard, ...(options?.additionalTools || [])];
-    const seenNames = new Set<string>();
-    const mergedTools = rawMerged.filter(t => {
-      if (seenNames.has(t.name)) return false;
-      seenNames.add(t.name);
-      return true;
-    });
-
+    // When caller provides additionalTools (even empty []), use ONLY those.
+    // Empty [] means "no tools" for simple messages (4x faster Bedrock response).
+    // Undefined/missing means use standard tools from getFunctionSchemas().
+    let mergedTools: any[];
+    if (options?.additionalTools !== undefined) {
+      const seenNames = new Set<string>();
+      mergedTools = (options.additionalTools || []).filter((t: any) => {
+        if (seenNames.has(t.name)) return false;
+        seenNames.add(t.name);
+        return true;
+      });
+    } else {
+      mergedTools = await this.getFunctionSchemas();
+    }
     // ── Provider-aware routing ──
     const creds = options?.userCredentials;
     const isBedrockProvider = creds?.providerId?.startsWith('bedrock');
+    const canUsePlatformFallback = !creds;
 
     // Route 1: User has Bedrock credentials → SigV4 path
     if (isBedrockProvider && creds?.secretKey) {
@@ -1180,6 +1207,16 @@ export class ClaudeIntegrationService {
         return await this.handleBedrockChat(messages, mergedTools, options || {});
       } catch (bedrockErr: any) {
         this.logger.error(`Bedrock fallback failed: ${bedrockErr.message}`);
+        if (canUsePlatformFallback) {
+          const openAIFallback = await this.tryOpenAIPlatformFallback(
+            messages,
+            options,
+            `bedrock fallback failed: ${bedrockErr.message}`,
+          );
+          if (openAIFallback) {
+            return openAIFallback;
+          }
+        }
         throw new Error(
           `AI service error: ${bedrockErr.message}`,
         );
@@ -1192,22 +1229,11 @@ export class ClaudeIntegrationService {
       : this.anthropic;
 
     try {
-      // Reuse tools already fetched above (standardTools + additionalTools)
-      let tools = [...standardTools];
-      
-      // 合并 HQ 专属工具箱
-      if (options?.additionalTools) {
-        // Claude 需要 input_schema 格式，HQ tools 可能是 OpenAI 格式
-        const hqTools = options.additionalTools.map(t => {
-          if (t.input_schema) return t;
-          return {
-            name: t.name,
-            description: t.description,
-            input_schema: t.parameters
-          };
-        });
-        tools = [...tools, ...hqTools];
-      }
+      // Reuse mergedTools from above, ensuring Anthropic SDK input_schema format
+      const tools = mergedTools.map(t => {
+        if (t.input_schema) return t;
+        return { name: t.name, description: t.description, input_schema: t.parameters };
+      });
 
       const hasFunctionCalling = tools.length > 0;
 
@@ -1261,15 +1287,26 @@ export class ClaudeIntegrationService {
           content: await this.sanitizeContentForAnthropic(msg.content),
         })));
 
-      // 调用 Claude API
-      const response = await anthropicClient.messages.create({
+      // 调用 Claude API — streaming mode when onChunk provided
+      const apiParams = {
         model: selectedModel,
         max_tokens: options?.maxTokens || 2048,
         temperature: options?.temperature || 0.7,
         system: systemPrompt || undefined,
         messages: conversationMessages,
         tools: hasFunctionCalling ? tools : undefined,
-      });
+      };
+
+      let response: any;
+      if (options?.onChunk) {
+        const stream = anthropicClient.messages.stream(apiParams as any);
+        stream.on('text', (text: string) => {
+          options.onChunk!(text);
+        });
+        response = await stream.finalMessage();
+      } else {
+        response = await anthropicClient.messages.create(apiParams);
+      }
 
       // 处理响应
       const textContent = response.content.find(
@@ -1326,23 +1363,35 @@ export class ClaudeIntegrationService {
         );
 
         // 发送 Tool 结果并获取最终响应
-        const finalResponse = await anthropicClient.messages.create({
+        const followUpParams = {
           model: selectedModel,
           max_tokens: options?.maxTokens || 2048,
           temperature: options?.temperature || 0.7,
           system: systemPrompt || undefined,
+          tools: hasFunctionCalling ? apiParams.tools : undefined,
           messages: [
             ...conversationMessages,
             {
-              role: 'assistant',
+              role: 'assistant' as const,
               content: response.content,
             },
             {
-              role: 'user',
+              role: 'user' as const,
               content: toolResults,
             },
           ],
-        });
+        };
+
+        let finalResponse: any;
+        if (options?.onChunk) {
+          const followUpStream = anthropicClient.messages.stream(followUpParams as any);
+          followUpStream.on('text', (text: string) => {
+            options.onChunk!(text);
+          });
+          finalResponse = await followUpStream.finalMessage();
+        } else {
+          finalResponse = await anthropicClient.messages.create(followUpParams);
+        }
 
         const finalTextContent = finalResponse.content.find(
           (item: any) => item.type === 'text',
@@ -1366,7 +1415,115 @@ export class ClaudeIntegrationService {
       };
     } catch (error: any) {
       this.logger.error(`Claude API调用失败: ${error.message}`, error.stack);
+      if (canUsePlatformFallback && !userDirectKey) {
+        const openAIFallback = await this.tryOpenAIPlatformFallback(
+          messages,
+          options,
+          `claude api failed: ${error.message}`,
+        );
+        if (openAIFallback) {
+          return openAIFallback;
+        }
+      }
       throw error;
+    }
+  }
+
+  private getOpenAIIntegrationService(): OpenAIIntegrationService | null {
+    if (this.openAIIntegrationService !== undefined) {
+      return this.openAIIntegrationService;
+    }
+
+    try {
+      this.openAIIntegrationService = this.moduleRef.get(OpenAIIntegrationService, {
+        strict: false,
+      });
+    } catch (error: any) {
+      this.logger.warn(`OpenAI fallback unavailable: ${error.message}`);
+      this.openAIIntegrationService = null;
+    }
+
+    return this.openAIIntegrationService;
+  }
+
+  private normalizeToolsForOpenAI(tools?: any[]): any[] | undefined {
+    if (!tools?.length) {
+      return undefined;
+    }
+
+    return tools.map((tool) => {
+      if (tool.type === 'function' && tool.function) {
+        return tool;
+      }
+
+      if (tool.input_schema) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.input_schema,
+          },
+        };
+      }
+
+      return {
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters || tool.inputSchema || { type: 'object', properties: {} },
+        },
+      };
+    });
+  }
+
+  private async tryOpenAIPlatformFallback(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: any }>,
+    options:
+      | {
+          model?: string;
+          temperature?: number;
+          maxTokens?: number;
+          context?: { userId?: string; sessionId?: string };
+          userApiKey?: string;
+          userCredentials?: UserProviderCredentials;
+          enableModelRouting?: boolean;
+          additionalTools?: any[];
+          onToolCall?: (name: string, args: any) => Promise<any>;
+        }
+      | undefined,
+    reason: string,
+  ): Promise<any | null> {
+    const openAIService = this.getOpenAIIntegrationService();
+    if (!openAIService) {
+      return null;
+    }
+
+    const fallbackModel =
+      this.configService.get<string>('OPENAI_FALLBACK_MODEL') ||
+      this.configService.get<string>('OPENAI_MODEL') ||
+      'gpt-4o';
+
+    this.logger.warn(
+      `Falling back to OpenAI model ${fallbackModel} because ${reason}`,
+    );
+
+    try {
+      return await openAIService.chatWithFunctions(messages, {
+        model: fallbackModel,
+        temperature: options?.temperature,
+        maxTokens: options?.maxTokens,
+        context: options?.context,
+        additionalTools: this.normalizeToolsForOpenAI(options?.additionalTools),
+        onToolCall: options?.onToolCall,
+      });
+    } catch (fallbackError: any) {
+      this.logger.error(
+        `OpenAI platform fallback failed: ${fallbackError.message}`,
+        fallbackError.stack,
+      );
+      return null;
     }
   }
 

@@ -12,16 +12,18 @@ import { OpenClawConnectionModule } from '../openclaw-connection/openclaw-connec
 import { TokenQuotaModule } from '../token-quota/token-quota.module';
 import { SkillModule } from '../skill/skill.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
+import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integration.module';
 import { OpenAIIntegrationModule } from '../ai-integration/openai/openai-integration.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([OpenClawInstance, UserInstalledSkill, Skill, AgentAccount, AgentSession, AgentMessage]),
-    OpenClawConnectionModule,
+    forwardRef(() => OpenClawConnectionModule),
     TokenQuotaModule,
     forwardRef(() => SkillModule),
     forwardRef(() => ClaudeIntegrationModule),
+    forwardRef(() => GeminiIntegrationModule),
     forwardRef(() => OpenAIIntegrationModule),
     AiProviderModule,
   ],

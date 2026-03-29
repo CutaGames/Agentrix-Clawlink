@@ -3,8 +3,9 @@ import * as WebSocket from 'ws';
 import * as crypto from 'crypto';
 
 /**
- * Edge TTS Adapter — uses Microsoft Edge's free online TTS service.
- * No API key required. Supports 400+ voices across 100+ languages.
+ * Edge TTS Adapter — uses Microsoft Edge's free online TTS service,
+ * with AWS Polly Neural as automatic fallback when Edge TTS is blocked (403),
+ * then Google Translate TTS as last resort.
  *
  * Protocol: WebSocket → speech.platform.bing.com
  * Output: audio/mpeg (24kHz 48kbps mono MP3)
@@ -12,8 +13,25 @@ import * as crypto from 'crypto';
 
 const BASE_URL = 'speech.platform.bing.com/consumer/speech/synthesize/readaloud';
 const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-const WS_URL = `wss://${BASE_URL}/edge/v1?TrustedClientToken=${TOKEN}`;
 const VOICE_LIST_URL = `https://${BASE_URL}/voices/list?trustedclienttoken=${TOKEN}`;
+const SEC_MS_GEC_VERSION = '1-131.0.2903.112';
+const WIN_EPOCH_OFFSET = 621355968000000000n;
+const ROUND_TICKS = 3000000000n;
+
+function generateSecMsGec(): string {
+  const nowTicks = WIN_EPOCH_OFFSET + BigInt(Date.now()) * 10000n;
+  const roundedTicks = nowTicks - (nowTicks % ROUND_TICKS);
+  const hmacKey = crypto.createHash('sha256').update(Buffer.from(TOKEN, 'hex')).digest();
+  return crypto.createHmac('sha256', hmacKey)
+    .update(String(roundedTicks), 'utf8')
+    .digest('hex')
+    .toUpperCase();
+}
+
+function buildWsUrl(connectionId: string): string {
+  const secToken = generateSecMsGec();
+  return `wss://${BASE_URL}/edge/v1?TrustedClientToken=${TOKEN}&ConnectionId=${connectionId}&Sec-MS-GEC=${secToken}&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}`;
+}
 
 export interface EdgeTTSVoice {
   Name: string;
@@ -91,11 +109,221 @@ export interface EdgeTTSOptions {
   volume?: string; // e.g. "+0%"
 }
 
+// Track whether Edge TTS is known to be unavailable (e.g. 403 from this IP)
+let edgeTTSBlocked = false;
+let edgeTTSBlockedAt = 0;
+const EDGE_TTS_BLOCK_RECHECK_MS = 5 * 60 * 1000; // retry Edge TTS every 5 min
+
+// Track whether Polly is unavailable (e.g. IAM permission denied)
+let pollyBlocked = false;
+let pollyBlockedAt = 0;
+const POLLY_BLOCK_RECHECK_MS = 30 * 60 * 1000; // retry Polly every 30 min
+
 /**
- * Synthesize text to audio buffer using Edge TTS.
- * Returns a Buffer containing MP3 audio (24kHz 48kbps mono).
+ * AWS Polly Neural TTS fallback — high quality, natural-sounding voices.
+ * Returns MP3 audio. Requires AWS credentials in env.
  */
-export function edgeTTS(text: string, options: EdgeTTSOptions = {}): Promise<Buffer> {
+async function pollyTTS(text: string, lang: string): Promise<Buffer> {
+  const { PollyClient, SynthesizeSpeechCommand } = await import('@aws-sdk/client-polly');
+
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    throw new Error('AWS credentials not configured for Polly');
+  }
+
+  const polly = new PollyClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+
+  const isChinese = lang.startsWith('zh');
+  const voiceId = isChinese ? 'Zhiyu' : 'Matthew';
+  const languageCode = isChinese ? 'cmn-CN' : 'en-US';
+
+  try {
+    const command = new SynthesizeSpeechCommand({
+      Engine: 'neural',
+      VoiceId: voiceId as any,
+      LanguageCode: languageCode,
+      OutputFormat: 'mp3',
+      Text: text,
+    });
+    const response = await polly.send(command);
+    if (!response.AudioStream) {
+      throw new Error('Polly returned no audio stream');
+    }
+    // Convert readable stream to Buffer
+    const chunks: Buffer[] = [];
+    for await (const chunk of response.AudioStream as any) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  } catch (err: any) {
+    // If neural engine isn't available for this voice, try standard
+    if (err.name === 'ValidationException') {
+      const fallbackCmd = new SynthesizeSpeechCommand({
+        Engine: 'standard',
+        VoiceId: voiceId as any,
+        LanguageCode: languageCode,
+        OutputFormat: 'mp3',
+        Text: text,
+      });
+      const response = await polly.send(fallbackCmd);
+      if (!response.AudioStream) {
+        throw new Error('Polly standard fallback returned no audio');
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of response.AudioStream as any) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      return Buffer.concat(chunks);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Deepgram Aura TTS — high quality English voices, reasonable Chinese via English models.
+ * Returns MP3 audio. Requires DEEPGRAM_API_KEY env.
+ */
+async function deepgramTTS(text: string, lang: string): Promise<Buffer> {
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) {
+    throw new Error('Deepgram API key not configured for TTS');
+  }
+
+  // Deepgram Aura only has English models; pick a natural-sounding one
+  const model = 'aura-asteria-en';
+
+  const resp = await fetch(
+    `https://api.deepgram.com/v1/speak?model=${model}&encoding=mp3`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': 'text/plain',
+      },
+      body: text,
+    },
+  );
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Deepgram TTS returned ${resp.status}: ${body}`);
+  }
+
+  return Buffer.from(await resp.arrayBuffer());
+}
+
+/**
+ * Google Translate TTS fallback — works worldwide from any server IP.
+ * Returns MP3 audio. Supports text up to ~200 chars per request.
+ */
+async function googleTranslateTTS(text: string, lang: string): Promise<Buffer> {
+  const maxChunkLength = 180;
+  const chunks: string[] = [];
+
+  // Split long text into chunks at sentence boundaries
+  let remaining = text;
+  while (remaining.length > maxChunkLength) {
+    let splitIdx = -1;
+    for (const sep of ['。', '！', '？', '.', '!', '?', '，', ',', '、', ' ']) {
+      const idx = remaining.lastIndexOf(sep, maxChunkLength);
+      if (idx > 0) { splitIdx = idx + 1; break; }
+    }
+    if (splitIdx <= 0) splitIdx = maxChunkLength;
+    chunks.push(remaining.slice(0, splitIdx).trim());
+    remaining = remaining.slice(splitIdx).trim();
+  }
+  if (remaining) chunks.push(remaining);
+
+  const audioBuffers: Buffer[] = [];
+  for (const chunk of chunks) {
+    const encoded = encodeURIComponent(chunk);
+    const tl = lang.startsWith('zh') ? 'zh-CN' : lang.startsWith('en') ? 'en' : lang;
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${tl}&client=tw-ob&q=${encoded}`;
+
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0',
+      },
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Google TTS returned ${resp.status}`);
+    }
+
+    const arrayBuf = await resp.arrayBuffer();
+    audioBuffers.push(Buffer.from(arrayBuf));
+  }
+
+  return Buffer.concat(audioBuffers);
+}
+
+/**
+ * Synthesize text to audio buffer.
+ * Priority: Edge TTS → AWS Polly Neural → Google Translate TTS.
+ */
+export async function edgeTTS(text: string, options: EdgeTTSOptions = {}): Promise<Buffer> {
+  const voice = options.voice || 'en-US-JennyNeural';
+  const isChinese = voice.startsWith('zh-');
+  const lang = isChinese ? 'zh-CN' : 'en';
+
+  // If Edge TTS was recently blocked, go straight to Polly/Google fallback
+  const shouldSkipEdge = edgeTTSBlocked && (Date.now() - edgeTTSBlockedAt < EDGE_TTS_BLOCK_RECHECK_MS);
+  if (!shouldSkipEdge) {
+    try {
+      const result = await edgeTTSOnce(text, options);
+      edgeTTSBlocked = false;
+      return result;
+    } catch (err: any) {
+      const is403 = err?.message?.includes('403');
+      if (is403) {
+        logger.warn('Edge TTS blocked (403), trying Polly fallback');
+        edgeTTSBlocked = true;
+        edgeTTSBlockedAt = Date.now();
+      } else {
+        logger.warn(`Edge TTS failed: ${err.message}, trying Polly fallback`);
+      }
+    }
+  }
+
+  // Fallback 1: AWS Polly Neural (natural voice quality)
+  const shouldSkipPolly = pollyBlocked && (Date.now() - pollyBlockedAt < POLLY_BLOCK_RECHECK_MS);
+  if (!shouldSkipPolly) {
+    try {
+      const pollyResult = await pollyTTS(text, lang);
+      logger.debug(`Polly TTS succeeded for ${text.length} chars`);
+      pollyBlocked = false;
+      return pollyResult;
+    } catch (pollyErr: any) {
+      const isIamDenied = pollyErr.message?.includes('not authorized');
+      if (isIamDenied) {
+        pollyBlocked = true;
+        pollyBlockedAt = Date.now();
+        logger.warn(`Polly TTS blocked (IAM denied), will retry in 30 min`);
+      } else {
+        logger.warn(`Polly TTS failed: ${pollyErr.message}`);
+      }
+    }
+  }
+
+  // Fallback 2: Deepgram Aura TTS (good English quality)
+  try {
+    const dgResult = await deepgramTTS(text, lang);
+    logger.debug(`Deepgram TTS succeeded for ${text.length} chars`);
+    return dgResult;
+  } catch (dgErr: any) {
+    logger.warn(`Deepgram TTS failed: ${dgErr.message}, falling back to Google Translate TTS`);
+  }
+
+  // Fallback 3: Google Translate TTS (robotic but always available)
+  return googleTranslateTTS(text, lang);
+}
+
+function edgeTTSOnce(text: string, options: EdgeTTSOptions = {}): Promise<Buffer> {
   const {
     voice = 'en-US-JennyNeural',
     rate = '+0%',
@@ -108,12 +336,12 @@ export function edgeTTS(text: string, options: EdgeTTSOptions = {}): Promise<Buf
     const timeoutMs = 30_000;
     let timer: NodeJS.Timeout | null = null;
 
-    const ws = new WebSocket(`${WS_URL}&ConnectionId=${connectionId}`, {
+    const ws = new WebSocket(buildWsUrl(connectionId), {
       host: 'speech.platform.bing.com',
       origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.2903.112',
       },
     });
 
@@ -230,12 +458,12 @@ export function edgeTTSStream(
   let cancelled = false;
   let timer: NodeJS.Timeout | null = null;
 
-  const ws = new WebSocket(`${WS_URL}&ConnectionId=${connectionId}`, {
+  const ws = new WebSocket(buildWsUrl(connectionId), {
     host: 'speech.platform.bing.com',
     origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.2903.112',
     },
   });
 

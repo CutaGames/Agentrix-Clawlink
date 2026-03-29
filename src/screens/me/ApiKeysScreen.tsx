@@ -313,6 +313,15 @@ export function ApiKeysScreen() {
               autoCapitalize="none"
             />
 
+            {(provider.id === 'bedrock' || provider.id === 'bedrock-cn') && (
+              <Text style={styles.fieldHint}>
+                {t({
+                  en: 'Use AWS IAM Access Key ID + Secret Access Key + Region. Do not paste a Bedrock API Key or Bearer token here.',
+                  zh: '这里必须填写 AWS IAM Access Key ID、Secret Access Key 和 Region，不要填写 Bedrock API Key 或 Bearer token。',
+                })}
+              </Text>
+            )}
+
             {/* Secret Key (Bedrock, Baidu) */}
             {provider.requiredFields.includes('secretKey') && (
               <>
@@ -603,6 +612,7 @@ const styles = StyleSheet.create({
   // Card body
   cardBody: { paddingHorizontal: 14, paddingBottom: 14 },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: 10, marginBottom: 4 },
+  fieldHint: { fontSize: 12, color: colors.textMuted, lineHeight: 18, marginBottom: 2 },
   input: {
     backgroundColor: colors.bgPrimary,
     borderWidth: 1, borderColor: colors.border, borderRadius: 8,

@@ -62,6 +62,7 @@
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "RECORD_AUDIO",
+        "SYSTEM_ALERT_WINDOW",
         "ACCESS_FINE_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_MICROPHONE"
@@ -142,14 +143,8 @@
       ]
     ],
     "extra": {
-      "picovoiceAccessKey": "",
       "wakeWord": {
         "enabled": true,
-        "accessKey": "",
-        "builtInKeywords": [
-          "picovoice"
-        ],
-        "customKeywordPaths": [],
         "fallbackPhrases": [
           "Hey Agentrix",
           "Hi Agentrix",

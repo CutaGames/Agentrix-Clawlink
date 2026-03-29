@@ -8,6 +8,64 @@ export interface SpeechWakeWordConfig {
   onError?: (error: Error) => void;
 }
 
+const AGENTRIX_ALIAS_GROUP = [
+  'agentrix',
+  'agenttrix',
+  'agentricks',
+  'agentricks',
+  'agent tricks',
+  'agent tricks',
+  'agent rix',
+  'agent ricks',
+  'agent rigs',
+  'agent rigs',
+  'agent race',
+  'agent trace',
+  'agent x',
+  'agent ex',
+  'a gentrix',
+  'a gent tricks',
+  'hey agent x',
+  'hey agent tricks',
+  'hi agent x',
+  'agents tricks',
+];
+
+function canonicalizeWakeWordText(value: string): string {
+  let normalized = normalizeTranscript(value);
+
+  for (const alias of AGENTRIX_ALIAS_GROUP) {
+    const normalizedAlias = normalizeTranscript(alias);
+    if (!normalizedAlias) {
+      continue;
+    }
+    normalized = normalized.split(normalizedAlias).join('agentrix');
+  }
+
+  return normalized;
+}
+
+function expandPhraseAliases(phrases: string[]): string[] {
+  const expanded = new Set<string>();
+
+  for (const phrase of phrases) {
+    const trimmedPhrase = phrase.trim();
+    if (!trimmedPhrase) {
+      continue;
+    }
+
+    expanded.add(trimmedPhrase);
+
+    if (/agentrix/i.test(trimmedPhrase)) {
+      for (const alias of AGENTRIX_ALIAS_GROUP) {
+        expanded.add(trimmedPhrase.replace(/agentrix/gi, alias));
+      }
+    }
+  }
+
+  return Array.from(expanded);
+}
+
 function normalizeTranscript(value: string): string {
   return value
     .toLowerCase()
@@ -16,13 +74,13 @@ function normalizeTranscript(value: string): string {
 }
 
 function findMatchedPhrase(transcript: string, phrases: string[]): string | null {
-  const normalizedTranscript = normalizeTranscript(transcript);
+  const normalizedTranscript = canonicalizeWakeWordText(transcript);
   if (!normalizedTranscript) {
     return null;
   }
 
   for (const phrase of phrases) {
-    const normalizedPhrase = normalizeTranscript(phrase);
+    const normalizedPhrase = canonicalizeWakeWordText(phrase);
     if (normalizedPhrase && normalizedTranscript.includes(normalizedPhrase)) {
       return phrase;
     }
@@ -49,7 +107,7 @@ export class SpeechWakeWordService {
   async init(config: SpeechWakeWordConfig): Promise<void> {
     this.config = {
       ...config,
-      phrases: config.phrases.map((item) => item.trim()).filter(Boolean),
+      phrases: expandPhraseAliases(config.phrases.map((item) => item.trim()).filter(Boolean)),
     };
     addVoiceDiagnostic('speech-wake', 'init', { phrases: this.config.phrases, language: this.config.language });
   }

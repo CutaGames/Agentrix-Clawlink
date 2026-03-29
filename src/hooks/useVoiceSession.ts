@@ -11,6 +11,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {
   isLiveSpeechRecognitionAvailable,
@@ -23,7 +24,21 @@ import type { UploadedChatAttachment } from '../services/api';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
+import { RealtimeMicrophoneService } from '../services/realtimeMicrophone.service';
 import { VADService, createRecordingMeterFn } from '../services/vad.service';
+
+// Lazy import to avoid circular dependency TDZ during module initialization.
+// testing/e2e.ts imports Zustand stores at top-level, which can cause
+// "Cannot access before initialization" when AgentChatScreen is the initial route.
+// Also checks the bootstrap flag since React Navigation rewrites the URL.
+function isVoiceUiE2EEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location?.search || '');
+    if (params.get('e2e') === 'voice-ui') return true;
+  } catch {}
+  return !!(window as any).__AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__;
+}
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -47,10 +62,15 @@ export interface UseVoiceSessionOptions {
   isSending?: boolean;
   /** Use WebSocket realtime voice channel in duplex mode (lower latency) */
   useRealtimeChannel?: boolean;
+  realtimeModelId?: string;
   /** TTS speech rate multiplier (0.8 - 1.5, default 1.0) */
   speechRate?: number;
   /** Called to send a transcript (and optional audio attachment) as a message */
   onSendMessage: (text: string, attachments?: UploadedChatAttachment[]) => void;
+  onRealtimeUserMessage?: (text: string) => void;
+  onRealtimeAssistantChunk?: (chunk: string) => void;
+  onRealtimeAssistantResponseEnd?: () => void;
+  onRealtimeError?: (message: string) => void;
   /** Called to stop/interrupt the current streaming response */
   onStopCurrentResponse: (showHint?: boolean) => void;
   /** i18n translation function */
@@ -74,6 +94,7 @@ export interface UseVoiceSessionReturn {
   autoSpeak: boolean;
   setAutoSpeak: (v: boolean) => void;
   liveVoiceAvailable: boolean;
+  liveSpeechPermissionState: 'unknown' | 'granted' | 'denied';
   /** Whether the low-latency WebSocket realtime voice channel is connected */
   realtimeConnected: boolean;
   /** Send barge-in interrupt via realtime channel */
@@ -96,10 +117,32 @@ export interface UseVoiceSessionReturn {
   setTranscriptPreview: (text: string) => void;
 }
 
+const REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS = 750;
+
 // ── Hook ───────────────────────────────────────────────────
 
 export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessionReturn {
-  const { token, language, voiceModeRequested, duplexModeRequested, agentVoiceId, instanceName, instanceId, isSending, onSendMessage, onStopCurrentResponse, t, useRealtimeChannel, speechRate } = options;
+  const {
+    token,
+    language,
+    voiceModeRequested,
+    duplexModeRequested,
+    agentVoiceId,
+    instanceName,
+    instanceId,
+    isSending,
+    onSendMessage,
+    onRealtimeUserMessage,
+    onRealtimeAssistantChunk,
+    onRealtimeAssistantResponseEnd,
+    onRealtimeError,
+    onStopCurrentResponse,
+    t,
+    useRealtimeChannel,
+    realtimeModelId,
+    speechRate,
+  } = options;
+  const isVoiceUiE2E = isVoiceUiE2EEnabled();
 
   // ── State ──
   const [voiceMode, setVoiceMode] = useState(!!voiceModeRequested);
@@ -111,6 +154,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
   const [transcriptPreview, setTranscriptPreview] = useState('');
   const [liveVoiceAvailable, setLiveVoiceAvailable] = useState(false);
+  const [liveSpeechPermissionState, setLiveSpeechPermissionState] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [liveListening, setLiveListening] = useState(false);
   const [liveVoiceVolume, setLiveVoiceVolume] = useState(-2);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
@@ -122,6 +166,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechRef = useRef<LiveSpeechController | null>(null);
   const liveSpeechManualStopRef = useRef(false);
   const lastLiveFinalTranscriptRef = useRef('');
+  const lastRealtimeFinalTranscriptRef = useRef('');
+  const lastRealtimeFinalAtRef = useRef(0);
   const voiceModeRef = useRef(voiceMode);
   const duplexModeRef = useRef(duplexMode);
   const isMountedRef = useRef(true);
@@ -143,18 +189,58 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechConsecutiveErrorsRef = useRef(0);
   const liveSpeechLastErrorTimeRef = useRef(0);
   const liveSpeechStartingRef = useRef(false);
+  const realtimeAudioSequenceRef = useRef(0);
+  const realtimeMicrophoneRef = useRef<RealtimeMicrophoneService | null>(null);
+  const onSendMessageRef = useRef(onSendMessage);
+  const onRealtimeUserMessageRef = useRef(onRealtimeUserMessage);
+  const onRealtimeAssistantChunkRef = useRef(onRealtimeAssistantChunk);
+  const onRealtimeAssistantResponseEndRef = useRef(onRealtimeAssistantResponseEnd);
+  const onRealtimeErrorRef = useRef(onRealtimeError);
+  const onStopCurrentResponseRef = useRef(onStopCurrentResponse);
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
   const vadRef = useRef<VADService | null>(null);
+    const persistRealtimeAudioChunk = useCallback(async (audioBase64: string, format: string) => {
+      const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+      if (!directory) {
+        // Fallback: return a data URI so expo-av can play directly without file I/O
+        const mime = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
+        return `data:${mime};base64,${audioBase64}`;
+      }
+
+      realtimeAudioSequenceRef.current += 1;
+      const extension = format === 'pcm' ? 'wav' : 'mp3';
+      const fileUri = `${directory}realtime-voice-${Date.now()}-${realtimeAudioSequenceRef.current}.${extension}`;
+      await FileSystem.writeAsStringAsync(fileUri, audioBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return fileUri;
+    }, []);
+
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
+
+  // Refs for values used inside the realtime connection but that should NOT
+  // tear down the socket when they change (e.g., voice ID settling from undefined).
+  const agentVoiceIdRef = useRef(agentVoiceId);
+  const realtimeModelIdRef = useRef(realtimeModelId);
+  const voiceLanguageHintRef = useRef(voiceLanguageHint);
 
   // Keep refs in sync
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
   useEffect(() => { sendingRef.current = !!isSending; }, [isSending]);
   useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { agentVoiceIdRef.current = agentVoiceId; }, [agentVoiceId]);
+  useEffect(() => { realtimeModelIdRef.current = realtimeModelId; }, [realtimeModelId]);
+  useEffect(() => { voiceLanguageHintRef.current = voiceLanguageHint; }, [voiceLanguageHint]);
+  useEffect(() => { onSendMessageRef.current = onSendMessage; }, [onSendMessage]);
+  useEffect(() => { onRealtimeUserMessageRef.current = onRealtimeUserMessage; }, [onRealtimeUserMessage]);
+  useEffect(() => { onRealtimeAssistantChunkRef.current = onRealtimeAssistantChunk; }, [onRealtimeAssistantChunk]);
+  useEffect(() => { onRealtimeAssistantResponseEndRef.current = onRealtimeAssistantResponseEnd; }, [onRealtimeAssistantResponseEnd]);
+  useEffect(() => { onRealtimeErrorRef.current = onRealtimeError; }, [onRealtimeError]);
+  useEffect(() => { onStopCurrentResponseRef.current = onStopCurrentResponse; }, [onStopCurrentResponse]);
 
   // ── Recording options ──
   const voiceRecordingOptions = Audio ? {
@@ -180,12 +266,35 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     web: {},
   } : null;
 
+  // ── Live Speech stop (declared early so realtime useEffect can reference it) ──
+
+  const stopLiveSpeech = useCallback((abort = false, manual = false) => {
+    liveSpeechManualStopRef.current = manual;
+    const realtimeMicrophone = realtimeMicrophoneRef.current;
+    realtimeMicrophoneRef.current = null;
+    const ctrl = liveSpeechRef.current;
+    liveSpeechRef.current = null;
+    if (isMountedRef.current) {
+      setLiveListening(false);
+      setLiveVoiceVolume(-2);
+    }
+    if (realtimeMicrophone) {
+      void realtimeMicrophone.stop();
+    }
+    if (!ctrl) return;
+    try {
+      if (abort) ctrl.abort(); else ctrl.stop();
+    } catch {}
+  }, []);
+
   // ── Check live speech availability ──
   useEffect(() => {
-    const available = isLiveSpeechRecognitionAvailable();
+    const available = isVoiceUiE2E
+      ? true
+      : (useRealtimeChannel ? RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable() : isLiveSpeechRecognitionAvailable());
     liveVoiceAvailableRef.current = available;
     setLiveVoiceAvailable(available);
-  }, []);
+  }, [isVoiceUiE2E, useRealtimeChannel]);
 
   // ── Realtime WebSocket Voice Channel ──
   // When useRealtimeChannel is true and duplex mode is active,
@@ -210,6 +319,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       onStateChange: (state) => {
         addVoiceDiagnostic('realtime-voice', 'state-change', { state });
         setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
+        if (state === 'connected' && duplexModeRef.current && voiceModeRef.current) {
+          void startLiveSpeechInternalRef.current?.();
+        }
         // Map realtime states to voice phases
         switch (state) {
           case 'listening': setVoicePhase('recording'); break;
@@ -222,13 +334,34 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setTranscriptPreview(text);
       },
       onFinalTranscript: (text) => {
-        setTranscriptPreview(text);
-        // In realtime mode, the server handles sending to LLM automatically
-        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: text.slice(0, 160) });
+        const normalized = text.trim();
+        if (!normalized) {
+          setTranscriptPreview('');
+          return;
+        }
+
+        setTranscriptPreview(normalized);
+        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: normalized.slice(0, 160) });
+
+        const now = Date.now();
+        const isDuplicateFinal = normalized === lastRealtimeFinalTranscriptRef.current
+          && now - lastRealtimeFinalAtRef.current < REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS;
+
+        if (isDuplicateFinal) {
+          addVoiceDiagnostic('realtime-voice', 'final-transcript-duplicate-skipped', {
+            text: normalized.slice(0, 160),
+          });
+          return;
+        }
+
+        lastRealtimeFinalTranscriptRef.current = normalized;
+        lastRealtimeFinalAtRef.current = now;
+
+        onRealtimeUserMessageRef.current?.(normalized);
       },
       onAgentTextChunk: (chunk) => {
-        // Display text in chat (delegate to the same onSendMessage flow)
-        // The AgentChatScreen will need to handle realtime text display
+        if (!chunk) return;
+        onRealtimeAssistantChunkRef.current?.(chunk);
       },
       onAgentAudioChunk: (audioBase64, format) => {
         // Play audio chunk directly — skip HTTP TTS round-trip
@@ -236,20 +369,28 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setIsSpeaking(true);
           isSpeakingRef.current = true;
           setVoicePhase('speaking');
-          // For base64 audio, create a data URI and enqueue
-          const mimeType = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
-          const dataUri = `data:${mimeType};base64,${audioBase64}`;
-          audioPlayerRef.current.enqueue(dataUri);
+          void persistRealtimeAudioChunk(audioBase64, format)
+            .then((fileUri) => {
+              audioPlayerRef.current?.enqueue(fileUri);
+            })
+            .catch((error) => {
+              addVoiceDiagnostic('realtime-voice', 'audio-persist-failed', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+              console.warn('[RealtimeVoice] Failed to persist audio chunk:', error);
+            });
         }
       },
       onAgentSpeechStart: () => {
+        // Mute mic to prevent echo but keep speech detection for barge-in
+        realtimeMicrophoneRef.current?.muteForEchoCancel();
         setIsSpeaking(true);
         isSpeakingRef.current = true;
         setVoicePhase('speaking');
       },
       onAgentResponseEnd: () => {
-        // Agent done — resume listening
         setVoicePhase('idle');
+        onRealtimeAssistantResponseEndRef.current?.();
       },
       onToolCall: (tool, status) => {
         addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
@@ -257,10 +398,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       onError: (error) => {
         addVoiceDiagnostic('realtime-voice', 'error', { error });
         console.warn('[RealtimeVoice] Error:', error);
+        onRealtimeErrorRef.current?.(error);
       },
       onDisconnect: (reason) => {
         setRealtimeConnected(false);
         addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
+        // Complete any in-flight assistant message so it gets persisted
+        onRealtimeAssistantResponseEndRef.current?.();
       },
     });
 
@@ -269,9 +413,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       wsUrl,
       token,
       instanceId,
-      language: voiceLanguageHint,
-      modelId: undefined, // use instance default
-      agentVoiceId,
+      language: voiceLanguageHintRef.current,
+      modelId: realtimeModelIdRef.current,
+      agentVoiceId: agentVoiceIdRef.current,
     });
 
     return () => {
@@ -279,23 +423,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       realtimeVoiceRef.current = null;
       setRealtimeConnected(false);
     };
-  }, [useRealtimeChannel, duplexMode, token, instanceId, agentVoiceId, voiceLanguageHint]);
-
-  // ── Live Speech ──
-
-  const stopLiveSpeech = useCallback((abort = false, manual = false) => {
-    liveSpeechManualStopRef.current = manual;
-    const ctrl = liveSpeechRef.current;
-    liveSpeechRef.current = null;
-    if (isMountedRef.current) {
-      setLiveListening(false);
-      setLiveVoiceVolume(-2);
-    }
-    if (!ctrl) return;
-    try {
-      if (abort) ctrl.abort(); else ctrl.stop();
-    } catch {}
-  }, []);
+  }, [
+    duplexMode,
+    instanceId,
+    persistRealtimeAudioChunk,
+    token,
+    isVoiceUiE2E,
+    useRealtimeChannel,
+    stopLiveSpeech,
+  ]);
 
   // ── TTS ──
 
@@ -314,9 +450,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setSpeakingMessageId(null);
         // Resume duplex listening after TTS finishes
         if (duplexModeRef.current && voiceModeRef.current && !sendingRef.current) {
+          // Unmute mic (it was muted for echo cancellation)
+          realtimeMicrophoneRef.current?.unmuteInput();
           setTimeout(() => {
             if (duplexModeRef.current && voiceModeRef.current && !isSpeakingRef.current) {
-              startLiveSpeechInternalRef.current?.();
+              // Only restart mic if it's not already running
+              if (!realtimeMicrophoneRef.current) {
+                startLiveSpeechInternalRef.current?.();
+              }
             }
           }, 200);
         }
@@ -325,32 +466,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       console.warn('[useVoiceSession] AudioQueuePlayer init failed:', err);
     }
     return () => {
-      try { audioPlayerRef.current?.stopAll(); } catch {}
+      try { audioPlayerRef.current?.destroy(); } catch {}
       stopLiveSpeech(true, true);
     };
   }, [stopLiveSpeech]);
-
-  useEffect(() => {
-    try {
-      const service = new BackgroundVoiceService();
-      backgroundVoiceRef.current = service;
-      void service.init({
-        onTimeout: () => {
-          setDuplexMode(false);
-          setVoiceMode(false);
-          stopSpeaking();
-          stopLiveSpeech(true, true);
-        },
-      });
-
-      return () => {
-        service.destroy();
-        backgroundVoiceRef.current = null;
-      };
-    } catch (err) {
-      console.warn('[useVoiceSession] BackgroundVoiceService init failed:', err);
-    }
-  }, [stopLiveSpeech, stopSpeaking]);
 
   // voiceModeRequested sync
   useEffect(() => {
@@ -379,6 +498,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setAutoSpeak(true);
       setVoiceInteractionMode('tap');
     } else {
+      setAutoSpeak(false);
       setVoiceInteractionMode('hold');
     }
   }, [duplexMode]);
@@ -399,9 +519,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     if (duplexModeRef.current) {
       stopLiveSpeech(true, false);
     }
+    // Strip markdown formatting before TTS
+    const cleanText = text
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_~`#>|]/g, '')
+      .trim();
+    if (!cleanText) return;
     setIsSpeaking(true);
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+    const sentences = cleanText.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [cleanText];
     const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
     for (const s of sentences) {
       const trimmed = s.trim();
@@ -419,6 +549,28 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     setSpeakingMessageId(null);
   }, []);
 
+  useEffect(() => {
+    try {
+      const service = new BackgroundVoiceService();
+      backgroundVoiceRef.current = service;
+      void service.init({
+        onTimeout: () => {
+          setDuplexMode(false);
+          setVoiceMode(false);
+          stopSpeaking();
+          stopLiveSpeech(true, true);
+        },
+      });
+
+      return () => {
+        service.destroy();
+        backgroundVoiceRef.current = null;
+      };
+    } catch (err) {
+      console.warn('[useVoiceSession] BackgroundVoiceService init failed:', err);
+    }
+  }, [stopLiveSpeech, stopSpeaking]);
+
   const handleSpeakMessage = useCallback((text: string, messageId?: string) => {
     if (!text) return;
     if (messageId) setSpeakingMessageId(messageId);
@@ -426,7 +578,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [speakText]);
 
   const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
-    if (!(voiceMode || autoSpeak)) return;
+    // Only auto-speak in duplex/realtime mode or when user explicitly enabled autoSpeak.
+    // PTT (hold-to-talk) mode should NOT auto-read agent responses.
+    if (!(duplexModeRef.current || autoSpeak)) return;
 
     if (duplexModeRef.current) {
       stopLiveSpeech(true, false);
@@ -479,7 +633,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
+  }, [autoSpeak, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
 
   const resetVoicePhaseAfterResponse = useCallback(() => {
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
@@ -492,6 +646,113 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const startLiveSpeechInternal = useCallback(async () => {
     if (!isMountedRef.current) return;
+
+    if (
+      !isVoiceUiE2E
+      && useRealtimeChannel
+      && duplexModeRef.current
+      && voiceModeRef.current
+      && realtimeVoiceRef.current?.isConnected
+      && RealtimeMicrophoneService.isAvailable()
+    ) {
+      if (realtimeMicrophoneRef.current || liveSpeechStartingRef.current) {
+        return;
+      }
+
+      liveSpeechStartingRef.current = true;
+      addVoiceDiagnostic('voice-session', 'realtime-mic-start-request');
+
+      try {
+        const realtimeMicrophone = new RealtimeMicrophoneService({
+          onFrame: (audioChunk) => {
+            realtimeVoiceRef.current?.sendAudioChunk(audioChunk);
+          },
+          onVolumeChange: (value) => {
+            if (!isMountedRef.current) return;
+            setLiveVoiceVolume(value * 100 - 2);
+          },
+          onSpeechStart: () => {
+            if (!isMountedRef.current) return;
+            setVoicePhase('recording');
+          },
+          onBargeIn: () => {
+            if (!isMountedRef.current) return;
+            // User spoke over agent — interrupt playback and resume mic
+            addVoiceDiagnostic('voice-session', 'barge-in');
+            audioPlayerRef.current?.stopAll();
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            realtimeVoiceRef.current?.sendInterrupt();
+            realtimeMicrophoneRef.current?.unmuteInput();
+            setVoicePhase('recording');
+          },
+          onSpeechEnd: () => {
+            if (!isMountedRef.current) return;
+            realtimeMicrophoneRef.current?.pauseInput(2500);
+            realtimeVoiceRef.current?.endAudioInput();
+            setVoicePhase((prev) => (prev === 'recording' ? 'thinking' : prev));
+          },
+          onError: (error) => {
+            if (!isMountedRef.current) return;
+            const message = error?.message || 'Realtime microphone error';
+            if (/permission denied/i.test(message)) {
+              setLiveSpeechPermissionState('denied');
+            }
+            addVoiceDiagnostic('voice-session', 'realtime-mic-error', { message });
+            setLiveListening(false);
+            setVoicePhase('idle');
+            setTranscriptPreview('');
+          },
+        });
+
+        await realtimeMicrophone.start();
+        realtimeMicrophoneRef.current = realtimeMicrophone;
+        liveSpeechManualStopRef.current = false;
+        setLiveSpeechPermissionState('granted');
+        setLiveListening(true);
+        setVoicePhase('recording');
+        setTranscriptPreview('');
+        addVoiceDiagnostic('voice-session', 'realtime-mic-started');
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/permission denied/i.test(message)) {
+          setLiveSpeechPermissionState('denied');
+        }
+        addVoiceDiagnostic('voice-session', 'realtime-mic-start-failed', { message });
+        console.warn('Realtime microphone start failed:', error);
+      } finally {
+        liveSpeechStartingRef.current = false;
+      }
+    }
+
+    if (isVoiceUiE2E) {
+      if (!duplexModeRef.current || liveSpeechRef.current || liveSpeechStartingRef.current || !voiceModeRef.current) {
+        return;
+      }
+
+      const permission = await requestLiveSpeechPermissions();
+      if (!permission?.granted) {
+        setLiveSpeechPermissionState('denied');
+        setLiveListening(false);
+        setVoicePhase('idle');
+        setTranscriptPreview('');
+        addVoiceDiagnostic('voice-session', 'live-speech-permission-denied');
+        return;
+      }
+
+      liveSpeechManualStopRef.current = false;
+      liveSpeechRef.current = {
+        stop: () => {},
+        abort: () => {},
+      };
+      setLiveSpeechPermissionState('granted');
+      setLiveListening(true);
+      setVoicePhase('recording');
+      setTranscriptPreview('E2E live voice ready');
+      return;
+    }
+
     const skipReasons = [
       !duplexModeRef.current ? 'duplex-off' : '',
       liveSpeechRef.current ? 'already-listening' : '',
@@ -519,6 +780,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     try {
     const permission = await requestLiveSpeechPermissions();
     if (!permission?.granted) {
+      setLiveSpeechPermissionState('denied');
       addVoiceDiagnostic('voice-session', 'live-speech-permission-denied');
       Alert.alert(
         t({ en: 'Speech Permission', zh: '语音权限' }),
@@ -526,6 +788,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       );
       return;
     }
+
+    setLiveSpeechPermissionState('granted');
 
     liveSpeechManualStopRef.current = false;
     lastLiveFinalTranscriptRef.current = '';
@@ -581,6 +845,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) {
             stopSpeaking();
+            realtimeVoiceRef.current?.sendInterrupt();
           }
         },
         onInterimResult: (transcript) => {
@@ -598,10 +863,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           stopLiveSpeech(true, false);
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) stopSpeaking();
-          onStopCurrentResponse(true);
+          realtimeVoiceRef.current?.sendInterrupt();
+          onStopCurrentResponseRef.current?.(true);
           setVoicePhase('thinking');
           setTimeout(() => {
-            onSendMessage(normalized);
+            if (useRealtimeChannel && realtimeVoiceRef.current?.isConnected) {
+              onRealtimeUserMessageRef.current?.(normalized);
+              realtimeVoiceRef.current.sendText(normalized);
+              return;
+            }
+            onSendMessageRef.current(normalized);
           }, 60);
         },
         onError: (error) => {
@@ -638,10 +909,62 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } finally {
       liveSpeechStartingRef.current = false;
     }
-  }, [agentVoiceId, instanceName, onSendMessage, onStopCurrentResponse, stopLiveSpeech, stopSpeaking, t, voiceLanguageHint]);
+  }, [
+    agentVoiceId,
+    instanceName,
+    stopLiveSpeech,
+    stopSpeaking,
+    t,
+    isVoiceUiE2E,
+    useRealtimeChannel,
+    voiceLanguageHint,
+  ]);
 
   // Keep startLiveSpeechInternal ref in sync for callbacks
   useEffect(() => { startLiveSpeechInternalRef.current = startLiveSpeechInternal; }, [startLiveSpeechInternal]);
+
+  useEffect(() => {
+    if (!isVoiceUiE2E || typeof window === 'undefined') {
+      return;
+    }
+
+    const handlePermissionChange = (event: Event) => {
+      const nextState = (event as CustomEvent<'granted' | 'denied'>).detail;
+      if (nextState !== 'granted' && nextState !== 'denied') {
+        return;
+      }
+
+      setLiveSpeechPermissionState(nextState);
+      if (nextState === 'denied') {
+        stopLiveSpeech(true, true);
+        setVoicePhase('idle');
+        setTranscriptPreview('');
+      }
+    };
+
+    window.addEventListener('agentrix:e2e-live-speech-permission', handlePermissionChange as EventListener);
+    return () => {
+      window.removeEventListener('agentrix:e2e-live-speech-permission', handlePermissionChange as EventListener);
+    };
+  }, [isVoiceUiE2E, stopLiveSpeech]);
+
+  useEffect(() => {
+    if (!isVoiceUiE2E || typeof window === 'undefined') {
+      return;
+    }
+
+    const nextState = window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_PERMISSION__;
+    if (!nextState || nextState === liveSpeechPermissionState) {
+      return;
+    }
+
+    setLiveSpeechPermissionState(nextState);
+    if (nextState === 'denied') {
+      stopLiveSpeech(true, true);
+      setVoicePhase('idle');
+      setTranscriptPreview('');
+    }
+  }, [isVoiceUiE2E, liveSpeechPermissionState, stopLiveSpeech]);
 
   // Duplex mode toggle → start/stop live speech
   useEffect(() => {
@@ -655,6 +978,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       stopLiveSpeech(true, true);
     }
   }, [duplexMode, startLiveSpeechInternal, stopLiveSpeech]);
+
+  useEffect(() => {
+    if (useRealtimeChannel && !realtimeConnected && realtimeMicrophoneRef.current) {
+      stopLiveSpeech(true, true);
+    }
+  }, [realtimeConnected, stopLiveSpeech, useRealtimeChannel]);
 
   // Auto-restart live speech when TTS finishes (isSpeaking: true → false)
   const wasSpeakingRef = useRef(false);
@@ -700,16 +1029,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           await audioPlayerRef.current?.stopAll();
           setIsSpeaking(false);
         }
-        onStopCurrentResponse(true);
+        onStopCurrentResponseRef.current?.(true);
         setVoicePhase('recording');
         setTranscriptPreview('');
         const permResult = await Audio.requestPermissionsAsync();
         if (!permResult.granted) {
+          setLiveSpeechPermissionState('denied');
           isRecordingRef.current = false;
           setVoicePhase('idle');
           Alert.alert(t({ en: 'Microphone Permission', zh: '麦克风权限' }), t({ en: 'Please enable microphone access.', zh: '请开启麦克风权限。' }));
           return;
         }
+        setLiveSpeechPermissionState('granted');
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
@@ -750,7 +1081,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || 'Unknown error');
     }
-  }, [isSpeaking, onStopCurrentResponse, t, voicePhase, voiceRecordingOptions]);
+  }, [isSpeaking, t, voicePhase, voiceRecordingOptions]);
 
   const stopVoiceRecording = useCallback(async () => {
     if (!Audio || !isRecordingRef.current) return;
@@ -792,7 +1123,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           if (transcript) {
             setTranscriptPreview(transcript);
             setVoicePhase('thinking');
-            setTimeout(() => onSendMessage(transcript), 80);
+            setTimeout(() => onSendMessageRef.current(transcript), 80);
           } else {
             // Try uploading audio as attachment fallback
             try {
@@ -805,7 +1136,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               if (uploadedAudio) {
                 setTranscriptPreview('[Voice Message]');
                 setVoicePhase('thinking');
-                setTimeout(() => onSendMessage('', [uploadedAudio]), 80);
+                setTimeout(() => onSendMessageRef.current('', [uploadedAudio]), 80);
               } else {
                 setVoicePhase('idle');
               }
@@ -826,7 +1157,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } finally {
       await resetAudioModeAfterRecording();
     }
-  }, [onSendMessage, resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
+  }, [resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
 
   // ── Interaction wrappers ──
 
@@ -849,7 +1180,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         return;
       }
       if (isSpeaking) stopSpeaking();
-      onStopCurrentResponse(true);
+      onStopCurrentResponseRef.current?.(true);
       await startLiveSpeechInternal();
       return;
     }
@@ -858,7 +1189,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       return;
     }
     await startVoiceRecording();
-  }, [duplexMode, isSpeaking, onStopCurrentResponse, startLiveSpeechInternal, startVoiceRecording, stopLiveSpeech, stopSpeaking, stopVoiceRecording]);
+  }, [duplexMode, isSpeaking, startLiveSpeechInternal, startVoiceRecording, stopLiveSpeech, stopSpeaking, stopVoiceRecording]);
 
   const resumeLiveSpeech = useCallback(() => {
     if (!duplexModeRef.current || sendingRef.current || isSpeakingRef.current || !voiceModeRef.current) return;
@@ -884,6 +1215,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     autoSpeak,
     setAutoSpeak,
     liveVoiceAvailable,
+    liveSpeechPermissionState,
     realtimeConnected,
     sendRealtimeInterrupt: useCallback(() => {
       realtimeVoiceRef.current?.sendInterrupt();

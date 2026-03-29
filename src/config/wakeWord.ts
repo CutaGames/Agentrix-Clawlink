@@ -1,30 +1,26 @@
 import Constants from 'expo-constants';
+import type { LocalWakeWordModel, WakeWordEngine } from '../services/localWakeWord.service';
 
 export interface MobileWakeWordSettingsOverride {
   enabled?: boolean;
-  accessKey?: string;
-  builtInKeywords?: string[];
-  customKeywordPaths?: string[];
+  engine?: WakeWordEngine;
   fallbackPhrases?: string[];
   displayName?: string;
   sensitivity?: number;
+  localModel?: LocalWakeWordModel | null;
 }
 
 export interface MobileWakeWordConfig {
   enabled: boolean;
-  accessKey: string;
-  builtInKeywords: string[];
-  customKeywordPaths: string[];
+  engine: WakeWordEngine;
   fallbackPhrases: string[];
   displayName: string;
   sensitivity: number;
+  localModel: LocalWakeWordModel | null;
 }
 
 interface ExpoWakeWordExtra {
   enabled?: boolean;
-  accessKey?: string;
-  builtInKeywords?: string[];
-  customKeywordPaths?: string[];
   fallbackPhrases?: string[];
   displayName?: string;
   sensitivity?: number;
@@ -41,6 +37,11 @@ function buildDefaultFallbackPhrases(displayName?: string): string[] {
     'Hey Agentrix',
     'Hi Agentrix',
     'Agentrix',
+    'Hey Agent Tricks',
+    'Hi Agent Tricks',
+    'Agent Tricks',
+    'Hey Agent Rix',
+    'Agent Rix',
     'Hey Claw',
     '嘿 Agentrix',
     '你好 Agentrix',
@@ -103,36 +104,14 @@ function clampSensitivity(value: number): number {
 
 export function resolveMobileWakeWordConfig(settings?: MobileWakeWordSettingsOverride): MobileWakeWordConfig {
   const extra = (Constants.expoConfig?.extra ?? {}) as {
-    picovoiceAccessKey?: string;
     wakeWord?: ExpoWakeWordExtra;
   };
   const extraWakeWord = extra.wakeWord ?? {};
 
-  const accessKey =
-    settings?.accessKey?.trim() ||
-    extraWakeWord.accessKey?.trim() ||
-    extra.picovoiceAccessKey?.trim() ||
-    process.env.EXPO_PUBLIC_PICOVOICE_ACCESS_KEY ||
-    '';
-
-  const builtInKeywords =
-    settings?.builtInKeywords?.length
-      ? settings.builtInKeywords.map((item) => item.trim()).filter(Boolean)
-      : extraWakeWord.builtInKeywords?.length
-        ? extraWakeWord.builtInKeywords.map((item) => item.trim()).filter(Boolean)
-        : parseList(process.env.EXPO_PUBLIC_PICOVOICE_BUILT_IN_KEYWORDS);
-
-  const customKeywordPaths =
-    settings?.customKeywordPaths?.length
-      ? settings.customKeywordPaths.map((item) => item.trim()).filter(Boolean)
-      : extraWakeWord.customKeywordPaths?.length
-        ? extraWakeWord.customKeywordPaths.map((item) => item.trim()).filter(Boolean)
-        : parseList(process.env.EXPO_PUBLIC_PICOVOICE_CUSTOM_KEYWORD_PATHS);
-
   const configuredDisplayName =
     settings?.displayName?.trim() ||
     extraWakeWord.displayName?.trim() ||
-    process.env.EXPO_PUBLIC_PICOVOICE_WAKE_WORD_LABEL ||
+    process.env.EXPO_PUBLIC_WAKE_WORD_LABEL ||
     'Hey Agentrix';
 
   const fallbackPhrases =
@@ -142,19 +121,18 @@ export function resolveMobileWakeWordConfig(settings?: MobileWakeWordSettingsOve
         ? extraWakeWord.fallbackPhrases.map((item) => item.trim()).filter(Boolean)
         : parseList(process.env.EXPO_PUBLIC_WAKE_WORD_FALLBACK_PHRASES);
 
-  const fallbackBuiltIns = builtInKeywords.length > 0 ? builtInKeywords : ['picovoice'];
   const resolvedFallbackPhrases = fallbackPhrases.length > 0 ? uniqueList(fallbackPhrases) : buildDefaultFallbackPhrases(configuredDisplayName);
-  const displayName = configuredDisplayName || (customKeywordPaths.length > 0 ? 'Custom wake word' : resolvedFallbackPhrases[0] || fallbackBuiltIns.join(', '));
+  const sanitizedEngine = settings?.engine === 'local-template' || settings?.engine === 'system-speech' ? settings.engine : 'auto';
+  const displayName = configuredDisplayName || resolvedFallbackPhrases[0] || 'Hey Agentrix';
 
   return {
-    enabled: parseBoolean(settings?.enabled ?? extraWakeWord.enabled ?? process.env.EXPO_PUBLIC_PICOVOICE_WAKE_WORD_ENABLED, true),
-    accessKey,
-    builtInKeywords: fallbackBuiltIns,
-    customKeywordPaths,
+    enabled: parseBoolean(settings?.enabled ?? extraWakeWord.enabled ?? process.env.EXPO_PUBLIC_WAKE_WORD_ENABLED, true),
+    engine: sanitizedEngine,
     fallbackPhrases: resolvedFallbackPhrases,
     displayName,
     sensitivity: clampSensitivity(
-      parseNumber(settings?.sensitivity ?? extraWakeWord.sensitivity ?? process.env.EXPO_PUBLIC_PICOVOICE_WAKE_WORD_SENSITIVITY, 0.65),
+      parseNumber(settings?.sensitivity ?? extraWakeWord.sensitivity ?? process.env.EXPO_PUBLIC_WAKE_WORD_SENSITIVITY, 0.65),
     ),
+    localModel: settings?.localModel ?? null,
   };
 }

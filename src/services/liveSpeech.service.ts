@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
+import { getVoiceUiE2ERuntime, isVoiceUiE2EEnabled } from '../testing/e2e';
 
 type SpeechSubscription = { remove: () => void };
 
@@ -32,6 +33,15 @@ export function isLiveSpeechRecognitionAvailable() {
 }
 
 export async function requestLiveSpeechPermissions() {
+  if (isVoiceUiE2EEnabled()) {
+    const runtime = getVoiceUiE2ERuntime();
+    const webPermissionState = typeof window !== 'undefined'
+      ? window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_PERMISSION__
+      : undefined;
+    const nextState = webPermissionState ?? runtime?.liveSpeechPermission;
+    return { granted: nextState !== 'denied' };
+  }
+
   const microphone = await ExpoSpeechRecognitionModule.requestMicrophonePermissionsAsync();
   if (!microphone?.granted) {
     return microphone;

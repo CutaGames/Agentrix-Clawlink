@@ -192,11 +192,12 @@ export function streamDirectClaude(
 let pollingTimer: ReturnType<typeof setInterval> | null = null;
 let lastPollTime = 0;
 
-export function startNotificationPolling(token: string, intervalMs = 30_000) {
+export function startNotificationPolling(token: string, intervalMs = 30_000, options?: { immediate?: boolean }) {
   stopNotificationPolling();
   pollingTimer = setInterval(() => pollNotifications(token), intervalMs);
-  // Immediate first poll
-  pollNotifications(token);
+  if (options?.immediate) {
+    pollNotifications(token);
+  }
 }
 
 export function stopNotificationPolling() {

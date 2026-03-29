@@ -2,6 +2,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
+import { API_BASE, APP_ENV } from '../config/env';
+import type { LocalWakeWordModel, WakeWordEngine } from '../services/localWakeWord.service';
 
 type Environment = 'sandbox' | 'production';
 
@@ -13,12 +15,11 @@ export type ModelId = string;
 
 export interface WakeWordSettings {
   enabled: boolean;
-  accessKey: string;
-  builtInKeywords: string[];
-  customKeywordPaths: string[];
+  engine: WakeWordEngine;
   fallbackPhrases: string[];
   displayName: string;
   sensitivity: number;
+  localModel: LocalWakeWordModel | null;
 }
 
 export interface ModelOption {
@@ -80,26 +81,38 @@ interface SettingsState {
 }
 
 const API_URLS = {
-  sandbox: 'https://sandbox-api.agentrix.io',
-  production: 'https://api.agentrix.io',
+  sandbox: 'https://staging-api.agentrix.top/api',
+  production: 'https://api.agentrix.top/api',
   local: 'http://localhost:3001/api',
 };
 
+const DEFAULT_ENVIRONMENT: Environment = APP_ENV === 'production' ? 'production' : 'sandbox';
+
 const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
   enabled: true,
-  accessKey: '',
-  builtInKeywords: [],
-  customKeywordPaths: [],
-  fallbackPhrases: ['Hey Agentrix', 'Hi Agentrix', 'Agentrix', '嘿 Agentrix', '你好 Agentrix'],
+  engine: 'auto',
+  fallbackPhrases: [
+    'Hey Agentrix',
+    'Hi Agentrix',
+    'Agentrix',
+    'Hey Agent Tricks',
+    'Hi Agent Tricks',
+    'Agent Tricks',
+    'Hey Agent Rix',
+    'Agent Rix',
+    '嘿 Agentrix',
+    '你好 Agentrix',
+  ],
   displayName: 'Hey Agentrix',
   sensitivity: 0.65,
+  localModel: null,
 };
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      environment: 'sandbox',
-      apiBaseUrl: API_URLS.local, // 开发时使用本地
+      environment: DEFAULT_ENVIRONMENT,
+      apiBaseUrl: API_BASE,
 
       customApiKeys: {} as Record<string, string>,
       setCustomApiKey: (provider: string, key: string) => set((state) => ({
@@ -114,16 +127,16 @@ export const useSettingsStore = create<SettingsState>()(
       speechRate: 1.0,
       silenceTimeoutMs: 1800,
       
-      notificationsEnabled: true,
-      airdropNotifications: true,
-      earningsNotifications: true,
-      paymentNotifications: true,
+      notificationsEnabled: false,
+      airdropNotifications: false,
+      earningsNotifications: false,
+      paymentNotifications: false,
       
       biometricEnabled: false,
       
       setEnvironment: (env) => set({ 
         environment: env,
-        apiBaseUrl: API_URLS[env],
+        apiBaseUrl: API_URLS[env] || API_BASE,
       }),
       
       setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
@@ -156,6 +169,24 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
+      version: 3,
+      migrate: (persistedState: any, version) => {
+        if (!persistedState || version >= 3) {
+          return persistedState;
+        }
+
+        return {
+          ...persistedState,
+          notificationsEnabled: false,
+          airdropNotifications: false,
+          earningsNotifications: false,
+          paymentNotifications: false,
+          wakeWordConfig: {
+            ...DEFAULT_WAKE_WORD_CONFIG,
+            ...(persistedState.wakeWordConfig || {}),
+          },
+        };
+      },
     }
   )
 );

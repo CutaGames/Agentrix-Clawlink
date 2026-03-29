@@ -145,6 +145,25 @@ export const PLATFORM_MODELS: AvailableModel[] = [
 export class OpenClawConnectionService implements OnModuleInit {
   private readonly logger = new Logger(OpenClawConnectionService.name);
 
+  private resolvePlatformHostedDefaultModel(providerId?: string): string {
+    switch (String(providerId || '').toLowerCase()) {
+      case 'deepseek':
+        return 'deepseek-v3';
+      case 'google':
+      case 'gemini':
+        return 'gemini-2.0-flash';
+      case 'groq':
+      case 'meta':
+      case 'llama':
+        return 'llama-3.3-70b';
+      case 'openai':
+        return 'gpt-4o';
+      case 'bedrock':
+      default:
+        return 'claude-haiku-4-5';
+    }
+  }
+
   constructor(
     @InjectRepository(OpenClawInstance)
     private instanceRepo: Repository<OpenClawInstance>,
@@ -163,6 +182,7 @@ export class OpenClawConnectionService implements OnModuleInit {
         ],
       });
       for (const inst of broken) {
+        const restoredProvider = (inst.capabilities as any)?.llmProvider || 'bedrock';
         this.logger.log(`Auto-fixing broken cloud instance ${inst.id} (was ${inst.status}) → platform-hosted`);
         await this.instanceRepo.update(inst.id, {
           status: OpenClawInstanceStatus.ACTIVE,
@@ -170,9 +190,9 @@ export class OpenClawConnectionService implements OnModuleInit {
           capabilities: {
             platformTools: getDefaultSkillHandlerNames(),
             provisionedAt: new Date().toISOString(),
-            llmProvider: 'bedrock',
+            llmProvider: restoredProvider,
             platformHosted: true,
-            activeModel: 'claude-haiku-4-5',
+            activeModel: this.resolvePlatformHostedDefaultModel(restoredProvider),
           } as any,
         });
       }
@@ -301,7 +321,7 @@ export class OpenClawConnectionService implements OnModuleInit {
           provisionedAt: new Date().toISOString(),
           llmProvider: resolvedProvider,
           platformHosted: true,
-          activeModel: 'claude-haiku-4-5',
+          activeModel: this.resolvePlatformHostedDefaultModel(resolvedProvider),
         } as any,
       });
 
