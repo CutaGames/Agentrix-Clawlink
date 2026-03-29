@@ -10,12 +10,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { GeminiLiveAdapter } from './adapters/gemini-live.adapter';
 
 @Injectable()
 export class VoiceService {
   private readonly logger = new Logger(VoiceService.name);
   private readonly REGION = process.env.AWS_REGION || 'us-east-1';
   private readonly groqBaseUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
+  private readonly geminiAdapter = new GeminiLiveAdapter();
 
   private getTranscriptionOrder(): Array<'openai' | 'groq' | 'aws'> {
     // Default: AWS Transcribe first (always works), then Groq (fast whisper), then OpenAI.
@@ -63,6 +65,30 @@ export class VoiceService {
     lang?: string,
   ): Promise<{ transcript: string }> {
     const normalizedLang = this.normalizeLanguageHint(lang);
+
+    // ── Tier 0: Gemini STT (free → paid) ──
+    // INPUT chain: Gemini Free → Gemini Paid → AWS/Groq/OpenAI
+    if (this.geminiAdapter.isAvailable) {
+      try {
+        const audioBase64 = buffer.toString('base64');
+        // Map mimetype for Gemini (it accepts common audio formats directly)
+        const geminiMime = mimetype?.includes('wav') ? 'audio/wav'
+          : mimetype?.includes('webm') ? 'audio/webm'
+          : mimetype?.includes('mp4') || mimetype?.includes('m4a') ? 'audio/mp4'
+          : mimetype?.includes('ogg') ? 'audio/ogg'
+          : mimetype?.includes('mpeg') || mimetype?.includes('mp3') ? 'audio/mpeg'
+          : 'audio/wav';
+        const result = await this.geminiAdapter.transcribeAudio(audioBase64, geminiMime, normalizedLang);
+        if (result?.transcript) {
+          this.logger.log(`✅ Gemini STT (tier=${result.tier}): "${result.transcript.slice(0, 60)}..."`);
+          return { transcript: result.transcript };
+        }
+      } catch (err: any) {
+        this.logger.warn(`Gemini STT failed, falling back to configured providers: ${err.message}`);
+      }
+    }
+
+    // ── Tier 1+: AWS / Groq / OpenAI (configured order) ──
     let attemptedProviders = 0;
     let lastProviderError: string | undefined;
 

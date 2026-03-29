@@ -6,6 +6,7 @@ import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from '@nes
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { VoiceService } from './voice.service';
 import { edgeTTSStream, resolveEdgeVoice } from './adapters/edge-tts.adapter';
+import { GeminiLiveAdapter } from './adapters/gemini-live.adapter';
 
 @ApiTags('Voice')
 @Controller('voice')
@@ -13,20 +14,21 @@ import { edgeTTSStream, resolveEdgeVoice } from './adapters/edge-tts.adapter';
 @ApiBearerAuth()
 export class VoiceController {
   private readonly logger = new Logger(VoiceController.name);
+  private readonly geminiAdapter = new GeminiLiveAdapter();
 
   constructor(private readonly voiceService: VoiceService) {}
 
   /**
-   * TTS provider order: VOICE_TTS_PROVIDER env (default: "edge,polly")
-   * - edge: Microsoft Edge TTS (free, 400+ voices, high quality)
-   * - polly: AWS Polly Neural (paid, stable fallback)
+   * TTS provider order: gemini_free → edge → polly
+   * OUTPUT chain: Gemini Free → Edge TTS → AWS Polly
+   * (Skip Gemini paid for output — $12/M tokens too expensive)
    */
-  private getTTSProviderOrder(): Array<'edge' | 'polly'> {
-    const configured = (process.env.VOICE_TTS_PROVIDER || 'edge,polly')
+  private getTTSProviderOrder(): Array<'gemini' | 'edge' | 'polly'> {
+    const configured = (process.env.VOICE_TTS_PROVIDER || 'gemini,edge,polly')
       .split(',')
       .map((v) => v.trim().toLowerCase())
-      .filter((v): v is 'edge' | 'polly' => v === 'edge' || v === 'polly');
-    return configured.length > 0 ? configured : ['edge', 'polly'];
+      .filter((v): v is 'gemini' | 'edge' | 'polly' => v === 'gemini' || v === 'edge' || v === 'polly');
+    return configured.length > 0 ? configured : ['gemini', 'edge', 'polly'];
   }
 
   @Get('tts')
@@ -56,6 +58,18 @@ export class VoiceController {
 
     for (const provider of this.getTTSProviderOrder()) {
       try {
+        if (provider === 'gemini' && this.geminiAdapter.isAvailable) {
+          const result = await this.geminiAdapter.synthesizeSpeech(truncated, isChinese ? 'zh' : 'en');
+          if (result) {
+            this.logger.log(`Gemini TTS success (tier=${result.tier})`);
+            // Gemini returns PCM audio — convert to WAV header for browser playback
+            const pcmBuf = Buffer.from(result.audioBase64, 'base64');
+            const wavBuf = this.pcmToWav(pcmBuf, 24000, 1, 16);
+            res.set({ 'Content-Type': 'audio/wav', 'Content-Length': String(wavBuf.length) });
+            res.end(wavBuf);
+            return;
+          }
+        }
         if (provider === 'edge') {
           await this.synthesizeWithEdge(truncated, isChinese, requestedVoice, res, edgeRate);
           return;
@@ -212,5 +226,26 @@ export class VoiceController {
       throw new BadRequestException('No audio file provided. Use field name "audio".');
     }
     return this.voiceService.transcribe(file.buffer, file.mimetype, file.originalname, lang);
+  }
+
+  /** Convert raw PCM to WAV with proper header */
+  private pcmToWav(pcm: Buffer, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const blockAlign = channels * (bitsPerSample / 8);
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + pcm.length, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20); // PCM
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(pcm.length, 40);
+    return Buffer.concat([header, pcm]);
   }
 }
