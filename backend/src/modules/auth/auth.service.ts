@@ -9,6 +9,7 @@ import { WalletConnection, WalletType, ChainType } from '../../entities/wallet-c
 import { RegisterDto, WalletLoginDto } from './dto/auth.dto';
 import { AccountService } from '../account/account.service';
 import { AccountOwnerType } from '../../entities/account.entity';
+import { UserAgent, UserAgentStatus, DelegationLevel } from '../../entities/user-agent.entity';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -21,6 +22,8 @@ export class AuthService {
     private userRepository: Repository<User>,
     @InjectRepository(WalletConnection)
     private walletRepository: Repository<WalletConnection>,
+    @InjectRepository(UserAgent)
+    private userAgentRepository: Repository<UserAgent>,
     private jwtService: JwtService,
     @Inject(forwardRef(() => AccountService))
     private accountService: AccountService,
@@ -40,6 +43,29 @@ export class AuthService {
     } catch (error) {
       // 如果创建失败，仅记录日志，不阻断登录流程
       this.logger.warn(`Failed to create default account for user ${userId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * 为用户自动创建默认 Agent（如果不存在）
+   */
+  private async ensureUserDefaultAgent(userId: string): Promise<void> {
+    try {
+      const agents = await this.userAgentRepository.find({ where: { userId } });
+      if (agents.length === 0) {
+        const agent = this.userAgentRepository.create({
+          userId,
+          name: 'My Agent',
+          delegationLevel: DelegationLevel.ASSISTANT,
+          status: UserAgentStatus.ACTIVE,
+          capabilities: [],
+          channelBindings: [],
+        });
+        await this.userAgentRepository.save(agent);
+        this.logger.log(`Created default agent for user ${userId}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to create default agent for user ${userId}: ${error.message}`);
     }
   }
 
@@ -71,6 +97,8 @@ export class AuthService {
 
     // 自动创建默认资金账户
     await this.ensureUserDefaultAccount(savedUser.id, dto.email);
+    // 自动创建默认 Agent
+    await this.ensureUserDefaultAgent(savedUser.id);
 
     // 生成JWT token
     const payload = { email: savedUser.email, sub: savedUser.id };
@@ -113,6 +141,8 @@ export class AuthService {
   async login(user: any) {
     // 确保用户有默认资金账户
     await this.ensureUserDefaultAccount(user.id, user.email || user.nickname);
+    // 确保用户有默认 Agent
+    await this.ensureUserDefaultAgent(user.id);
 
     const payload = { email: user.email, sub: user.id };
     
@@ -385,6 +415,7 @@ export class AuthService {
 
         user = await this.userRepository.save(user);
         await this.ensureUserDefaultAccount(user.id, verifiedProfile.displayName || verifiedProfile.email);
+        await this.ensureUserDefaultAgent(user.id);
       }
 
       // 绑定社交账号
@@ -642,6 +673,7 @@ export class AuthService {
 
       // 自动为新用户创建默认资金账户
       await this.ensureUserDefaultAccount(user.id, walletAddress.slice(0, 10));
+      await this.ensureUserDefaultAgent(user.id);
 
       // 创建钱包连接
       walletConnection = this.walletRepository.create({
@@ -657,6 +689,7 @@ export class AuthService {
 
     // 确保已有用户也有默认账户（用于已有用户登录场景）
     await this.ensureUserDefaultAccount(user.id);
+    await this.ensureUserDefaultAgent(user.id);
 
     const defaultWalletCount = await this.walletRepository.count({
       where: { userId: user.id, isDefault: true },
