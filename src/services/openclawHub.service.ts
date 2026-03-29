@@ -150,7 +150,7 @@ async function getHubSkills(): Promise<OpenClawHubSkill[]> {
 
   try {
     const resp = await apiFetch<any>(
-      '/openclaw/bridge/skill-hub/search?limit=100&sortBy=callCount&sortOrder=DESC',
+      '/openclaw/bridge/skill-hub/search?limit=250&sortBy=callCount&sortOrder=DESC',
     );
     const raw: any[] =
       resp?.items || resp?.skills || resp?.data || (Array.isArray(resp) ? resp : []);

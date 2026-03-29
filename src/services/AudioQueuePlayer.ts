@@ -7,26 +7,58 @@ interface QueueItem {
   language?: string;
 }
 
+export interface InterruptionInfo {
+  /** Number of items that finished playing before interruption */
+  playedCount: number;
+  /** Text of items that were skipped (current + remaining queue) */
+  skippedItems: string[];
+  /** Total items that were enqueued in this batch */
+  totalItems: number;
+}
+
 export class AudioQueuePlayer {
   private queue: QueueItem[] = [];
   private isPlaying: boolean = false;
   private currentSound: Audio.Sound | null = null;
   private onFinishedAll: (() => void) | null = null;
+  private _destroyed: boolean = false;
+
+  // Interruption tracking
+  private playedCount: number = 0;
+  private totalEnqueued: number = 0;
+  private currentItem: QueueItem | null = null;
+  private lastInterruption: InterruptionInfo | null = null;
 
   constructor(onFinishedAll?: () => void) {
     this.onFinishedAll = onFinishedAll || null;
   }
 
+  /** Permanently destroy this player — stops all audio and rejects future enqueues. */
+  destroy() {
+    this._destroyed = true;
+    this.stopAll();
+  }
+
+  get destroyed(): boolean {
+    return this._destroyed;
+  }
+
   enqueue(uri: string, fallbackText?: string, language?: string) {
+    if (this._destroyed) return;
     this.queue.push({ uri, fallbackText, language });
+    this.totalEnqueued++;
     if (!this.isPlaying) {
       this.playNext();
     }
   }
 
   private async playNext() {
-    if (this.queue.length === 0) {
+    if (this._destroyed || this.queue.length === 0) {
       this.isPlaying = false;
+      this.currentItem = null;
+      // Reset counters on natural completion
+      this.playedCount = 0;
+      this.totalEnqueued = 0;
       if (this.onFinishedAll) this.onFinishedAll();
       return;
     }
@@ -35,9 +67,14 @@ export class AudioQueuePlayer {
     const nextItem = this.queue.shift();
     if (!nextItem) {
       this.isPlaying = false;
+      this.currentItem = null;
+      this.playedCount = 0;
+      this.totalEnqueued = 0;
       if (this.onFinishedAll) this.onFinishedAll();
       return;
     }
+
+    this.currentItem = nextItem;
 
     try {
       const { sound } = await Audio.Sound.createAsync(
@@ -48,6 +85,8 @@ export class AudioQueuePlayer {
 
       sound.setOnPlaybackStatusUpdate(async (status: any) => {
         if (status.didJustFinish) {
+          this.playedCount++;
+          this.currentItem = null;
           await sound.unloadAsync();
           this.currentSound = null;
           this.playNext();
@@ -60,14 +99,18 @@ export class AudioQueuePlayer {
           Speech.speak(nextItem.fallbackText, {
             language: nextItem.language,
             onDone: () => {
+              this.playedCount++;
+              this.currentItem = null;
               this.currentSound = null;
               this.playNext();
             },
             onStopped: () => {
+              this.currentItem = null;
               this.currentSound = null;
               this.playNext();
             },
             onError: () => {
+              this.currentItem = null;
               this.currentSound = null;
               this.playNext();
             },
@@ -82,7 +125,26 @@ export class AudioQueuePlayer {
   }
 
   async stopAll() {
+    // Capture interruption info before clearing
+    const skippedItems: string[] = [];
+    if (this.currentItem?.fallbackText) {
+      skippedItems.push(this.currentItem.fallbackText);
+    }
+    for (const item of this.queue) {
+      if (item.fallbackText) skippedItems.push(item.fallbackText);
+    }
+    if (skippedItems.length > 0 || this.playedCount > 0) {
+      this.lastInterruption = {
+        playedCount: this.playedCount,
+        skippedItems,
+        totalItems: this.totalEnqueued,
+      };
+    }
+
     this.queue = [];
+    this.currentItem = null;
+    this.playedCount = 0;
+    this.totalEnqueued = 0;
     Speech.stop();
     if (this.currentSound) {
       await this.currentSound.stopAsync();
@@ -90,5 +152,15 @@ export class AudioQueuePlayer {
       this.currentSound = null;
     }
     this.isPlaying = false;
+  }
+
+  /** Get info about the last interruption (barge-in). Returns null if no interruption occurred. */
+  getLastInterruption(): InterruptionInfo | null {
+    return this.lastInterruption;
+  }
+
+  /** Clear saved interruption info after it has been consumed. */
+  clearInterruptionInfo(): void {
+    this.lastInterruption = null;
   }
 }

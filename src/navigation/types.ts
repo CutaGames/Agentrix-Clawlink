@@ -16,13 +16,15 @@ export type OnboardingStackParamList = {
 
 export type AgentStackParamList = {
   AgentConsole: undefined;
-  AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean };
+  AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean; duplexMode?: boolean };
   WearableHub: undefined;
+  WearableMonitor: { deviceId?: string };
   OpenClawBind: undefined;
   /** Deep-link target for the desktop installer QR code: agentrix://connect?instanceId=...&token=...&host=...&port=... */
   LocalConnect: { instanceId?: string; token?: string; host?: string; port?: string };
   Scan: undefined;
   SkillInstall: { skillId: string; skillName: string };
+  SkillPack: undefined;
   StoragePlan: undefined;
   AgentLogs: undefined;
   DesktopControl: undefined;
@@ -108,10 +110,30 @@ export type MeStackParamList = {
   SocialListener: undefined;
 };
 
+export type DiscoverStackParamList = {
+  DiscoverHome: undefined;
+  // Market screens
+  Marketplace: undefined;
+  SkillDetail: { skillId: string; skillName: string };
+  Checkout: { skillId: string; skillName?: string };
+  TaskMarket: undefined;
+  TaskDetail: { taskId: string };
+  PublishTask: undefined;
+  PostTask: undefined;
+  CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };
+  SkillInstall: { skillId: string; skillName: string };
+  ShareCard: ShareCardRouteParams;
+  // Social screens
+  Feed: undefined;
+  PostDetail: { postId: string };
+  ShowcaseDetail: { postId: string };
+  UserProfile: { userId: string };
+  SocialListener: undefined;
+};
+
 export type MainTabParamList = {
   Agent: undefined;
-  Explore: undefined;   // was: Market
-  Social: undefined;   // Agent Showcase + Social Bridge
+  Discover: undefined;
   Me: undefined;
 };
 

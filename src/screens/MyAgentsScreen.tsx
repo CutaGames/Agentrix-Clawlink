@@ -34,6 +34,7 @@ export default function MyAgentsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const persistedInstances = useAuthStore((s) => s.user?.openClawInstances ?? []);
   const userId = useAuthStore((s) => s.user?.id);
+  const setActiveInstance = useAuthStore((s) => s.setActiveInstance);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,6 +66,9 @@ export default function MyAgentsScreen() {
           instanceUrl: inst.instanceUrl || '',
           status: inst.status as 'active' | 'disconnected' | 'error',
           deployType: inst.deployType || 'custom',
+          version: inst.version,
+          lastSyncAt: inst.lastSyncAt,
+          metadata: inst.metadata,
         }));
         updateUser({ openClawInstances: storeInstances });
         if (!currentActive) {
@@ -163,11 +167,13 @@ export default function MyAgentsScreen() {
   const renderAgent = ({ item }: { item: Agent }) => (
     <TouchableOpacity
       style={styles.agentCard}
-      onPress={() => navigation.navigate('AgentChat', {
-        agentId: item.id,
-        agentName: item.name,
-        instanceId: item.instanceId,
-      })}
+      onPress={() => {
+        setActiveInstance(item.instanceId);
+        navigation.navigate('AgentChat', {
+          instanceId: item.instanceId,
+          instanceName: item.name,
+        });
+      }}
     >
       <View style={styles.agentIcon}>
         <Text style={styles.agentIconText}>{getCategoryIcon(item.category, item.deployType)}</Text>

@@ -1,9 +1,8 @@
-name: Build → Test → Release APK
+name: Reusable APK Build
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
+  workflow_call:
 
 # Allow creating releases and writing job summaries
 permissions:
@@ -18,10 +17,11 @@ jobs:
   build:
     name: 🔨 Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 75
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       release-apk: ${{ steps.paths.outputs.release }}
+      artifact-ready: ${{ steps.artifact-status.outputs.ready }}
 
     steps:
       - name: Checkout
@@ -59,17 +59,9 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      - name: Enforce no-reanimated policy (build stability)
+      - name: Verify native animation packages
         run: |
-          if [ -d node_modules/react-native-reanimated ]; then
-            echo "[ci] Removing node_modules/react-native-reanimated to prevent Gradle eval failures"
-            rm -rf node_modules/react-native-reanimated
-          fi
-          if [ -d node_modules/react-native-worklets ]; then
-            echo "[ci] Removing node_modules/react-native-worklets to prevent Gradle eval failures"
-            rm -rf node_modules/react-native-worklets
-          fi
-          node -e "const p=require('./package.json'); if (p.dependencies && p.dependencies['react-native-reanimated']) { process.exit(1) }"
+          node -e "const p=require('./package.json'); const deps={...(p.dependencies||{}), ...(p.devDependencies||{})}; if (!deps['react-native-reanimated'] || !deps['react-native-worklets']) { console.error('[ci] Expected react-native-reanimated and react-native-worklets to be installed'); process.exit(1) }"
 
       # expo-image@2.0.x has a Kotlin 2.x type-safety compile error in GlideUrlWrapperLoader.kt
       # (ResponseBody? vs ResponseBody). Kotlin 2.0+ required by KSP won't compile it without
@@ -98,9 +90,20 @@ jobs:
           PYEOF
 
       - name: Expo prebuild
-        run: npx expo prebuild --platform android --clean --no-install
+        run: npx expo prebuild --platform android --no-install
         env:
           CI: '1'
+
+      - name: Verify generated Android config
+        run: |
+          if ! grep -q '^newArchEnabled=true' android/gradle.properties; then
+            echo '[ci] android/gradle.properties must set newArchEnabled=true for reanimated/worklets builds'
+            exit 1
+          fi
+
+      - name: Skip legacy React Native path patch
+        run: |
+          echo "[ci] Skipping legacy React Native module path patch; current RN Gradle plugin rejects REACT_NATIVE_NODE_MODULES_DIR"
 
       # Inject signingConfigs into build.gradle if signing secrets exist.
       # This is needed because expo prebuild regenerates build.gradle and would wipe any manual edits.
@@ -178,12 +181,20 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x android/gradlew
 
+      # Free disk space — GitHub runners only have ~14 GB free.
+      # Remove large pre-installed SDKs we don't need to ensure Gradle has room.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc || true
+          df -h /
+
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
+            ~/.gradle/caches/build-cache-1
           key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
@@ -221,13 +232,13 @@ jobs:
       # Unsigned release APK installs fine on any emulator or test device.
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --parallel
+        run: ./gradlew assembleRelease --no-daemon --parallel --build-cache
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
       - name: Set build tag and APK paths
         id: tag
-        run: echo "tag=build-${{ github.run_number }}" >> $GITHUB_OUTPUT
+        run: echo "tag=build-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
       - name: Stage APK
         id: paths
@@ -244,12 +255,125 @@ jobs:
           cp "$APK" artifacts/ClawLink-build-${{ github.run_number }}.apk
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
 
+      # ── Deploy + Release BEFORE artifact upload ──────────────────
+      # Artifact upload may hit GitHub storage quota and crash the job,
+      # so we do the critical deploy/release steps first.
+
+      - name: Check deploy secret
+        id: deploy-check
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -n "$DEPLOY_SSH_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "[ci] DEPLOY_SSH_KEY is empty; skipping server deploy"
+          fi
+
+      - name: Upload APK to download server
+        if: ${{ steps.deploy-check.outputs.enabled == 'true' }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          APK="artifacts/ClawLink-build-${{ github.run_number }}.apk"
+          if [ ! -f "$APK" ]; then
+            echo "APK not found: $APK"
+            ls artifacts/ || true
+            exit 1
+          fi
+          echo "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
+          chmod 600 /tmp/deploy.pem
+          DEST="/home/ubuntu/Agentrix/frontend/public/downloads"
+          OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
+          ssh $OPTS ubuntu@18.139.157.116 \
+            "cp ${DEST}/clawlink-agent.apk ${DEST}/clawlink-agent.apk.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
+          scp $OPTS "$APK" "ubuntu@18.139.157.116:${DEST}/clawlink-agent.apk"
+          scp $OPTS "$APK" "ubuntu@18.139.157.116:${DEST}/ClawLink-latest.apk"
+          echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
+
+      - name: Create GitHub Release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "✅ ClawLink Build #${{ github.run_number }}"
+          body: |
+            ## ClawLink APK — Build #${{ github.run_number }}
+
+            | | |
+            |---|---|
+            | Commit | `${{ github.sha }}` |
+            | Branch | `${{ github.ref_name }}` |
+            | Author | ${{ github.actor }} |
+
+            ### 📥 Install on Android
+            1. Download **ClawLink-build-${{ github.run_number }}.apk** below
+            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
+            3. Open the APK and tap Install
+          files: artifacts/ClawLink-build-${{ github.run_number }}.apk
+          fail_on_unmatched_files: false
+          draft: false
+          prerelease: false
+
+      # ── Artifact upload (optional — only for UI test job) ────────
+      # Storage quota may be exceeded; this step must not block deploy/release.
+      # GitHub recalculates quota every 6-12h, so aggressive cleanup is needed.
+      - name: Delete old artifacts (free quota)
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Paginate to get ALL artifacts (not just first 30)
+            let page = 1;
+            let allArtifacts = [];
+            while (true) {
+              const resp = await github.rest.actions.listArtifactsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page: page,
+              });
+              if (resp.data.artifacts.length === 0) break;
+              allArtifacts.push(...resp.data.artifacts);
+              page++;
+            }
+            console.log(`Found ${allArtifacts.length} artifacts total`);
+            // Delete ALL old artifacts (apks + maestro-results)
+            for (const artifact of allArtifacts) {
+              try {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+                console.log(`Deleted: ${artifact.name}`);
+              } catch (e) {
+                console.log(`Failed to delete ${artifact.name}: ${e.message}`);
+              }
+            }
+
       - name: Upload APKs
+        id: upload-apks
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: apks-build-${{ github.run_number }}
           path: artifacts/
-          retention-days: 7
+          retention-days: 1
+
+      - name: Record artifact status
+        id: artifact-status
+        if: always()
+        run: |
+          if [ "${{ steps.upload-apks.outcome }}" = "success" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "[ci] Artifact upload failed or was skipped; UI test job will be skipped"
+          fi
 
   # ═══════════════════════════════════════════════════════════════════
   # JOB 2 — Spin up Android emulator, install APK, run Maestro UI tests
@@ -258,6 +382,7 @@ jobs:
     name: 🤖 UI Automation (Maestro)
     runs-on: ubuntu-latest     # Linux runner (10x cheaper than macOS)
     needs: build
+    if: ${{ always() && needs.build.outputs.artifact-ready == 'true' }}
     timeout-minutes: 40
     continue-on-error: true   # flaky emulator should not block release
 
@@ -443,48 +568,3 @@ jobs:
           Screenshots captured during tests are in the **maestro-results** artifact.
           SUMMARY
 
-  # ═══════════════════════════════════════════════════════════════════
-  # JOB 3 — Create GitHub Release with download link (only if build passes)
-  # ═══════════════════════════════════════════════════════════════════
-  release:
-    name: 🚀 Release
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: ${{ needs.build.result == 'success' }}
-    # Explicit write permission required for creating releases and tags
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download APKs
-        uses: actions/download-artifact@v4
-        with:
-          name: apks-build-${{ github.run_number }}
-          path: artifacts/
-
-      - name: List artifacts
-        run: ls -la artifacts/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: build-${{ github.run_number }}
-          name: "✅ ClawLink Build #${{ github.run_number }}"
-          body: |
-            ## ClawLink APK — Build #${{ github.run_number }}
-
-            | | |
-            |---|---|
-            | Commit | `${{ github.sha }}` |
-            | Branch | `${{ github.ref_name }}` |
-            | Author | ${{ github.actor }} |
-
-            ### 📥 Install on Android
-            1. Download **ClawLink-build-${{ github.run_number }}.apk** below
-            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
-            3. Open the APK and tap Install
-          files: artifacts/ClawLink-build-${{ github.run_number }}.apk
-          fail_on_unmatched_files: false
-          draft: false
-          prerelease: false

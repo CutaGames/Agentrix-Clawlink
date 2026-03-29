@@ -3,7 +3,7 @@
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { mmkvStorage } from './mmkvStorage';
 
 export interface AppNotification {
   id: string;
@@ -73,7 +73,7 @@ export const useNotificationStore = create<NotificationState>()(
     }),
     {
       name: 'clawlink-notifications',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
       partialize: (s) => ({
         notifications: s.notifications.slice(0, 50),
         pushToken: s.pushToken,

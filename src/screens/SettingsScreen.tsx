@@ -8,6 +8,7 @@ import { setApiConfig, getApiConfig, apiFetch } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { useI18n, Language } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { API_BASE } from '../config/env';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 // ─── App Version Check ──────────────────────────────────────────
@@ -54,7 +55,7 @@ const deleteApiKey = (id: string) =>
 
 export const SettingsScreen: React.FC = () => {
   const currentConfig = getApiConfig();
-  const [baseUrl, setBaseUrl] = useState(currentConfig.baseUrl || 'http://localhost:3001/api');
+  const [baseUrl, setBaseUrl] = useState(currentConfig.baseUrl || API_BASE);
   const [token, setToken] = useState('');
   const [newKeyName, setNewKeyName] = useState('');
   const user = useAuthStore((s) => s.user);
@@ -134,7 +135,7 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const save = () => {
-    setApiConfig({ baseUrl, token: token || undefined });
+    setApiConfig({ baseUrl: baseUrl.trim() || API_BASE, token: token || undefined });
     Alert.alert(t({ en: 'Saved', zh: '已保存' }), t({ en: 'API configuration updated', zh: 'API 配置已更新' }));
   };
 
@@ -247,11 +248,11 @@ export const SettingsScreen: React.FC = () => {
         </View>
       </Card>
 
-      {/* Custom Model API Keys (BYOK for AI Models) */}
+      {/* Advanced local BYOK keys for legacy/debug flows */}
       <Card>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>🤖 {t({ en: 'Model API Keys', zh: '模型 API 密钥' })}</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>🧪 {t({ en: 'Advanced Local Model Keys', zh: '高级本地模型密钥' })}</Text>
         <Text style={{ color: colors.muted, marginTop: 4, fontSize: 12 }}>
-          {t({ en: 'Use your own API keys for AI models (optional). Leave empty to use Agentrix cloud.', zh: '使用你自己的 AI 模型 API 密钥（可选）。留空则使用 Agentrix 云端。' })}
+          {t({ en: 'Legacy BYOK storage for local/debug flows only. ChatGPT and Copilot subscriptions should be configured in AI Providers, not here.', zh: '这里只保留给本地/调试流程使用的旧版 BYOK 存储。ChatGPT 和 Copilot 订阅应在 AI 厂商页配置，不走这里。' })}
         </Text>
         {[
           { provider: 'openai', label: 'OpenAI', placeholder: 'sk-...' },

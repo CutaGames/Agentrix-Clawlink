@@ -3,12 +3,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View } from 'react-native';
 import { MainTabParamList } from './types';
 import { AgentStackNavigator } from './AgentStackNavigator';
-import { MarketStackNavigator } from './MarketStackNavigator';
-import { SocialStackNavigator } from './SocialStackNavigator';
+import { DiscoverStackNavigator } from './DiscoverStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useI18n } from '../stores/i18nStore';
+import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -36,10 +36,13 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 }
 
 export function MainTabNavigator() {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const initialRouteName = 'Agent';
+
   return (
     <Tab.Navigator id={undefined}
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -59,28 +62,21 @@ export function MainTabNavigator() {
         },
       }}
     >
+      {/* Agent tab — now visible as Chat tab (first position) */}
       <Tab.Screen
         name="Agent"
         component={AgentStackNavigator}
         options={{
-          title: t({ en: 'Agent', zh: '智能体' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🤖" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Explore"
-        component={MarketStackNavigator}
-        options={{
-          title: t({ en: 'Explore', zh: '探索' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Social"
-        component={SocialStackNavigator}
-        options={{
-          title: t({ en: 'Social', zh: '社区' }),
+          title: t({ en: 'Chat', zh: '对话' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="Discover"
+        component={DiscoverStackNavigator}
+        options={{
+          title: t({ en: 'Discover', zh: '发现' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🔍" focused={focused} />,
         }}
       />
       <Tab.Screen
