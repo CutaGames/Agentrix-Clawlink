@@ -1293,7 +1293,7 @@ export class OpenClawProxyService {
         sessionId: dto.sessionId,
         model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
       }),
-      signal: callbacks.signal || AbortSignal.timeout(60_000),
+      signal: callbacks.signal || AbortSignal.timeout(180_000),
     });
 
     if (!upstreamResp.ok || !upstreamResp.body) {

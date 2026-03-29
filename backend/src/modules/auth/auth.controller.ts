@@ -13,6 +13,7 @@ import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { SocialAccountType } from '../../entities/social-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
+import { AgentAccount } from '../../entities/agent-account.entity';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -24,6 +25,8 @@ export class AuthController {
     private configService: ConfigService,
     @InjectRepository(OpenClawInstance)
     private readonly instanceRepo: Repository<OpenClawInstance>,
+    @InjectRepository(AgentAccount)
+    private readonly agentAccountRepo: Repository<AgentAccount>,
   ) {}
 
   @Post('register')
@@ -994,6 +997,16 @@ export class AuthController {
       order: { isPrimary: 'DESC', updatedAt: 'DESC' },
     });
 
+    // Batch-fetch agentAccounts for all instances that have one bound
+    const accountIds = instances
+      .map(i => (i.metadata as any)?.agentAccountId)
+      .filter(Boolean) as string[];
+    const accountMap = new Map<string, AgentAccount>();
+    if (accountIds.length) {
+      const accounts = await this.agentAccountRepo.findByIds(accountIds);
+      for (const a of accounts) accountMap.set(a.id, a);
+    }
+
     return {
       id: user.id,
       agentrixId: user.agentrixId,
@@ -1002,18 +1015,24 @@ export class AuthController {
       avatarUrl: user.avatarUrl,
       roles: user.roles,
       walletAddress: (user as any).walletAddress || null,
-      openClawInstances: instances.map(i => ({
-        id: i.id,
-        name: i.name,
-        instanceUrl: i.instanceUrl || '',
-        status: i.status,
-        instanceType: i.instanceType,
-        isPrimary: i.isPrimary,
-        relayToken: i.relayToken || undefined,
-        relayConnected: i.relayConnected || false,
-        capabilities: i.capabilities || undefined,
-        updatedAt: i.updatedAt,
-      })),
+      openClawInstances: instances.map(i => {
+        const acctId = (i.metadata as any)?.agentAccountId;
+        const acct = acctId ? accountMap.get(acctId) : undefined;
+        return {
+          id: i.id,
+          name: i.name,
+          instanceUrl: i.instanceUrl || '',
+          status: i.status,
+          instanceType: i.instanceType,
+          isPrimary: i.isPrimary,
+          relayToken: i.relayToken || undefined,
+          relayConnected: i.relayConnected || false,
+          capabilities: i.capabilities || undefined,
+          resolvedModel: acct?.preferredModel || (i.capabilities as any)?.activeModel || undefined,
+          resolvedProvider: acct?.preferredProvider || undefined,
+          updatedAt: i.updatedAt,
+        };
+      }),
     };
   }
 

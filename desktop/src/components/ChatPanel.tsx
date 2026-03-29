@@ -1082,9 +1082,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           >
             {instances.length === 0 && <option value="">No agent selected</option>}
             {instances.map((inst) => {
-              const model = inst.capabilities?.activeModel || "";
-              const provider = inst.capabilities?.llmProvider || "";
-              const suffix = model ? ` — ${model}${provider ? ` (${provider})` : ""}` : "";
+              const model = inst.resolvedModel || inst.capabilities?.activeModel || "";
+              const provider = inst.resolvedProvider || inst.capabilities?.llmProvider || "";
+              const shortModel = model.replace(/^claude-/, "").replace(/^us\.anthropic\.claude-/, "");
+              const suffix = shortModel ? ` — ${shortModel}${provider ? ` (${provider})` : ""}` : "";
               return (
                 <option key={inst.id} value={inst.id}>
                   {inst.name}{suffix}

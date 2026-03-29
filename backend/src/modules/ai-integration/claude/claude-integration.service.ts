@@ -993,7 +993,7 @@ export class ClaudeIntegrationService {
           tools: bedrockTools,
           userCredentials,
           onChunk: options?.onChunk,
-          maxTokens: 1500, // Limit 2nd LLM response length for faster completion
+          maxTokens: 4096, // Allow longer synthesis of complex tool results
         });
         _lap('2nd LLM call done');
         const finalText = this.stripToolUseXml(finalResult.text?.trim() || '');
