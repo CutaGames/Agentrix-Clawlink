@@ -19,6 +19,7 @@ import { AdminUser } from '../../entities/admin-user.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { UserAgent } from '../../entities/user-agent.entity';
 import { AgentAccount } from '../../entities/agent-account.entity';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { AccountModule } from '../account/account.module';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -27,7 +28,7 @@ import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, WalletConnection, SocialAccount, AdminUser, OpenClawInstance, UserAgent, AgentAccount]),
+    TypeOrmModule.forFeature([User, WalletConnection, SocialAccount, AdminUser, OpenClawInstance, UserAgent, AgentAccount, UserProviderConfig]),
     PassportModule,
     ApiKeyModule,
     forwardRef(() => AccountModule),

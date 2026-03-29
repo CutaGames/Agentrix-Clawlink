@@ -158,7 +158,14 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       fetchModels(token).then((m) => {
         if (Array.isArray(m) && m.length) {
           setModels(m);
-          setSelectedModel(m[0]?.id || "");
+          // If user has a custom provider, default to their resolved model
+          const activeInst = instances.find((i) => i.id === activeInstanceId);
+          if (activeInst?.hasCustomProvider && activeInst?.resolvedModel) {
+            // Don't override with platform model list — use user's own model
+            setSelectedModel(activeInst.resolvedModel);
+          } else {
+            setSelectedModel(m[0]?.id || "");
+          }
         }
       });
     }
@@ -745,12 +752,15 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           let ac: AbortController;
           if (activeInstanceId) {
             // Route through OpenClaw proxy — uses this instance's model/API config
+            const activeInst = instances.find((i) => i.id === activeInstanceId);
+            // Don't send model override when user has custom provider — let backend resolve from their config
+            const modelOverride = activeInst?.hasCustomProvider ? undefined : (selectedModel || undefined);
             ac = streamChat({
               instanceId: activeInstanceId,
               message: outboundText,
               sessionId: sessionIdRef.current,
               token,
-              model: selectedModel || undefined,
+              model: modelOverride,
               onChunk: chunkHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
@@ -1084,7 +1094,13 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             {instances.map((inst) => {
               const model = inst.resolvedModel || inst.capabilities?.activeModel || "";
               const provider = inst.resolvedProvider || inst.capabilities?.llmProvider || "";
-              const shortModel = model.replace(/^claude-/, "").replace(/^us\.anthropic\.claude-/, "");
+              // Clean up raw model IDs for display: strip Bedrock prefixes, version suffixes
+              const shortModel = model
+                .replace(/^us\.anthropic\./, "")
+                .replace(/^anthropic\./, "")
+                .replace(/^claude-/, "")
+                .replace(/-\d{8}-v\d+:\d+$/, "")  // strip version like -20250514-v1:0
+                .replace(/-v\d+:\d+$/, "");        // strip version like -v1:0
               const suffix = shortModel ? ` — ${shortModel}${provider ? ` (${provider})` : ""}` : "";
               return (
                 <option key={inst.id} value={inst.id}>
@@ -1093,8 +1109,8 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               );
             })}
           </select>
-          {/* Model selector */}
-          {models.length > 0 && (
+          {/* Model selector — hide when user has custom provider (they use their own API) */}
+          {models.length > 0 && !instances.find((i) => i.id === activeInstanceId)?.hasCustomProvider && (
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}

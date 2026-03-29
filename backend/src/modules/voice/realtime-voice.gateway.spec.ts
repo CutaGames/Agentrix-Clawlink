@@ -17,6 +17,7 @@ describe('RealtimeVoiceGateway', () => {
       {} as ConfigService,
       voiceService as any,
       {} as any,
+      { count: jest.fn().mockResolvedValue(0) } as any,
     );
 
     (gateway as any).streamingAdapter = { isAvailable: false };

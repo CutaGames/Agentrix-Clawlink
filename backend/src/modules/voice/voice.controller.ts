@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Query, Res, UseInterceptors, UploadedFile, UseGuards, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Query, Res, Request, UseInterceptors, UploadedFile, UseGuards, BadRequestException, Logger } from '@nestjs/common';
 import { PollyClient, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -7,6 +7,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { VoiceService } from './voice.service';
 import { edgeTTSStream, resolveEdgeVoice } from './adapters/edge-tts.adapter';
 import { GeminiLiveAdapter } from './adapters/gemini-live.adapter';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 
 @ApiTags('Voice')
 @Controller('voice')
@@ -16,7 +19,11 @@ export class VoiceController {
   private readonly logger = new Logger(VoiceController.name);
   private readonly geminiAdapter = new GeminiLiveAdapter();
 
-  constructor(private readonly voiceService: VoiceService) {}
+  constructor(
+    private readonly voiceService: VoiceService,
+    @InjectRepository(UserProviderConfig)
+    private readonly providerConfigRepo: Repository<UserProviderConfig>,
+  ) {}
 
   /**
    * TTS provider order: gemini_free → edge → polly
@@ -31,9 +38,20 @@ export class VoiceController {
     return configured.length > 0 ? configured : ['gemini', 'edge', 'polly'];
   }
 
+  /**
+   * Check if user has their own AI provider configured (e.g. Bedrock, OpenAI).
+   * If they do, skip Gemini voice and use the traditional pipeline.
+   */
+  private async userHasCustomProvider(userId: string): Promise<boolean> {
+    if (!userId) return false;
+    const count = await this.providerConfigRepo.count({ where: { userId, isActive: true } });
+    return count > 0;
+  }
+
   @Get('tts')
   @ApiOperation({ summary: 'Text-to-speech synthesis (Edge TTS default, Polly fallback)' })
   async synthesizeTTS(
+    @Request() req,
     @Query('text') text: string,
     @Query('lang') lang: string,
     @Query('voice') requestedVoice: string,
@@ -41,6 +59,10 @@ export class VoiceController {
     @Res() res: Response,
   ) {
     if (!text) throw new BadRequestException('Text is required');
+
+    // If user has their own API provider, skip Gemini TTS — use traditional pipeline only
+    const userId = req?.user?.id || req?.user?.sub;
+    const hasCustom = userId ? await this.userHasCustomProvider(userId) : false;
 
     // Truncate to prevent abuse
     const truncated = text.slice(0, 2000);
@@ -58,7 +80,7 @@ export class VoiceController {
 
     for (const provider of this.getTTSProviderOrder()) {
       try {
-        if (provider === 'gemini' && this.geminiAdapter.isAvailable) {
+        if (provider === 'gemini' && this.geminiAdapter.isAvailable && !hasCustom) {
           const result = await this.geminiAdapter.synthesizeSpeech(truncated, isChinese ? 'zh' : 'en');
           if (result) {
             this.logger.log(`Gemini TTS success (tier=${result.tier})`);
@@ -219,13 +241,16 @@ export class VoiceController {
     },
   })
   async transcribe(
+    @Request() req,
     @UploadedFile() file: Express.Multer.File,
     @Query('lang') lang?: string,
   ) {
     if (!file) {
       throw new BadRequestException('No audio file provided. Use field name "audio".');
     }
-    return this.voiceService.transcribe(file.buffer, file.mimetype, file.originalname, lang);
+    const userId = req?.user?.id || req?.user?.sub;
+    const hasCustom = userId ? await this.userHasCustomProvider(userId) : false;
+    return this.voiceService.transcribe(file.buffer, file.mimetype, file.originalname, lang, { useGeminiSTT: !hasCustom });
   }
 
   /** Convert raw PCM to WAV with proper header */

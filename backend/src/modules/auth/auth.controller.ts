@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { SocialAccountType } from '../../entities/social-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { AgentAccount } from '../../entities/agent-account.entity';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -27,6 +28,8 @@ export class AuthController {
     private readonly instanceRepo: Repository<OpenClawInstance>,
     @InjectRepository(AgentAccount)
     private readonly agentAccountRepo: Repository<AgentAccount>,
+    @InjectRepository(UserProviderConfig)
+    private readonly providerConfigRepo: Repository<UserProviderConfig>,
   ) {}
 
   @Post('register')
@@ -1007,6 +1010,16 @@ export class AuthController {
       for (const a of accounts) accountMap.set(a.id, a);
     }
 
+    // Fetch user's default provider config (e.g. Bedrock with Sonnet)
+    const defaultProviderConfig = await this.providerConfigRepo.findOne({
+      where: { userId: user.id, isActive: true },
+    }).then(async (first) => {
+      if (first?.metadata?.isDefault) return first;
+      // Find the one marked as default, or fall back to the first active one
+      const configs = await this.providerConfigRepo.find({ where: { userId: user.id, isActive: true } });
+      return configs.find(c => c.metadata?.isDefault === true) || configs[0] || null;
+    });
+
     return {
       id: user.id,
       agentrixId: user.agentrixId,
@@ -1018,6 +1031,14 @@ export class AuthController {
       openClawInstances: instances.map(i => {
         const acctId = (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
+        // Priority: agentAccount.preferredModel → user's defaultProviderConfig → instance capabilities
+        const resolvedModel = acct?.preferredModel
+          || defaultProviderConfig?.selectedModel
+          || (i.capabilities as any)?.activeModel
+          || undefined;
+        const resolvedProvider = acct?.preferredProvider
+          || defaultProviderConfig?.providerId
+          || undefined;
         return {
           id: i.id,
           name: i.name,
@@ -1028,8 +1049,9 @@ export class AuthController {
           relayToken: i.relayToken || undefined,
           relayConnected: i.relayConnected || false,
           capabilities: i.capabilities || undefined,
-          resolvedModel: acct?.preferredModel || (i.capabilities as any)?.activeModel || undefined,
-          resolvedProvider: acct?.preferredProvider || undefined,
+          resolvedModel,
+          resolvedProvider,
+          hasCustomProvider: !!defaultProviderConfig,
           updatedAt: i.updatedAt,
         };
       }),

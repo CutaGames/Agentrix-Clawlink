@@ -11,12 +11,15 @@ import { Server, Socket } from 'socket.io';
 import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { VoiceService } from './voice.service';
 import { edgeTTS, resolveEdgeVoice } from './adapters/edge-tts.adapter';
 import { DeepgramSTTAdapter } from './adapters/deepgram-stt.adapter';
 import { GeminiLiveAdapter, type GeminiTier } from './adapters/gemini-live.adapter';
 import type { StreamingSTTSession, RealtimeVoiceSession as GeminiSession } from './adapters/voice-provider.interface';
 import { OpenClawProxyService } from '../openclaw-proxy/openclaw-proxy.service';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 
 /**
  * RealtimeVoiceGateway — WebSocket gateway for bidirectional voice streaming.
@@ -106,6 +109,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly voiceService: VoiceService,
     @Inject(forwardRef(() => OpenClawProxyService))
     private readonly openClawProxyService: OpenClawProxyService,
+    @InjectRepository(UserProviderConfig)
+    private readonly providerConfigRepo: Repository<UserProviderConfig>,
   ) {}
 
   // ── Connection Lifecycle ─────────────────────────────────
@@ -199,8 +204,9 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     this.sessions.set(sessionId, session);
     client.join(`voice:${sessionId}`);
 
-    // Try Gemini Live for end-to-end voice (free tier first)
-    if (this.geminiAdapter.isAvailable && data.duplexMode !== false) {
+    // Try Gemini Live for end-to-end voice — only for platform users without custom API
+    const hasCustomProvider = await this.providerConfigRepo.count({ where: { userId: client.userId, isActive: true } }) > 0;
+    if (!hasCustomProvider && this.geminiAdapter.isAvailable && data.duplexMode !== false) {
       try {
         await this.initializeGeminiLiveSession(session, client);
       } catch (err: any) {

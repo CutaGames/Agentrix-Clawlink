@@ -63,12 +63,13 @@ export class VoiceService {
     mimetype: string,
     originalName: string,
     lang?: string,
+    opts?: { useGeminiSTT?: boolean },
   ): Promise<{ transcript: string }> {
     const normalizedLang = this.normalizeLanguageHint(lang);
 
-    // ── Tier 0: Gemini STT (free → paid) ──
+    // ── Tier 0: Gemini STT (free → paid) — only for platform users without custom API ──
     // INPUT chain: Gemini Free → Gemini Paid → AWS/Groq/OpenAI
-    if (this.geminiAdapter.isAvailable) {
+    if (opts?.useGeminiSTT !== false && this.geminiAdapter.isAvailable) {
       try {
         const audioBase64 = buffer.toString('base64');
         // Map mimetype for Gemini (it accepts common audio formats directly)

@@ -128,6 +128,7 @@ export interface OpenClawInstance {
   capabilities?: Record<string, any>;
   resolvedModel?: string;
   resolvedProvider?: string;
+  hasCustomProvider?: boolean;
   updatedAt: string;
 }
 
