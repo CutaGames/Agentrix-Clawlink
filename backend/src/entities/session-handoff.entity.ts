@@ -35,7 +35,7 @@ export class SessionHandoff {
   @Column({ type: 'uuid' })
   agentId: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   sessionId?: string;
 
   // Source device

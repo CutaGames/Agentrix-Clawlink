@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
 use std::sync::Mutex;
 use std::process::{Command, Stdio};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::time::{Duration, Instant};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -584,11 +586,13 @@ pub fn open_browser(url: String) -> Result<String, String> {
 
 #[cfg(target_os = "windows")]
 fn run_powershell_script(script: &str) -> Result<String, String> {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     let mut child = Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| e.to_string())?;
 
