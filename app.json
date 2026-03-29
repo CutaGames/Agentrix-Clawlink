@@ -20,9 +20,9 @@
       "bundleIdentifier": "app.agentrix.claw",
       "infoPlist": {
         "CFBundleDisplayName": "Agentrix",
-        "NSCameraUsageDescription": "Allow Agentrix to access your camera for visual AI context.",
-        "NSMicrophoneUsageDescription": "Allow Agentrix to access your microphone for voice commands.",
-        "NSPhotoLibraryUsageDescription": "Allow Agentrix to access your photo library for visual AI context.",
+        "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
+        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images.",
         "LSApplicationQueriesSchemes": [
           "metamask",
           "okx",
@@ -40,10 +40,7 @@
           "ledgerlive",
           "bnc"
         ],
-        "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
-        "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
-        "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
-        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images."
+        "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library."
       }
     },
     "android": {
@@ -63,15 +60,26 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "agentrix" }, { "scheme": "https", "host": "agentrix.top" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "scheme": "agentrix"
+            },
+            {
+              "scheme": "https",
+              "host": "agentrix.top"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
     "web": {
       "favicon": "./assets/icon.png"
     },
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "autolinking": {
       "exclude": [
         "react-native-reanimated",
@@ -92,8 +100,11 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": false,
+            "newArchEnabled": true,
             "ndkVersion": "27.0.12077973"
+          },
+          "ios": {
+            "newArchEnabled": true
           }
         }
       ],
