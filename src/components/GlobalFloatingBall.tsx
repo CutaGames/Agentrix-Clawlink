@@ -123,6 +123,9 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     if (!shouldHide) {
       setBallState('idle');
       navigatingToChatRef.current = false;
+    } else if (navigatingToChatRef.current) {
+      // Screen transitioned to AgentChat/VoiceChat — reset guard immediately
+      navigatingToChatRef.current = false;
     }
   }, [shouldHide]);
 
@@ -244,16 +247,23 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
   const activateVoiceExperience = useCallback(async () => {
     // Guard against double-tap while already navigating
-    if (navigatingToChatRef.current) return;
+    if (navigatingToChatRef.current) {
+      addVoiceDiagnostic('floating-ball', 'activate-blocked-navigating');
+      return;
+    }
     navigatingToChatRef.current = true;
     setBallState('listening');
     onVoiceActivate?.();
 
-    // Safety: auto-reset guard after 3s in case navigation silently fails
+    // Safety: auto-reset guard after 2s in case navigation silently fails
     // (shouldHide effect normally resets this, but navigation might not trigger it)
     setTimeout(() => {
-      navigatingToChatRef.current = false;
-    }, 3000);
+      if (navigatingToChatRef.current) {
+        addVoiceDiagnostic('floating-ball', 'guard-timeout-reset');
+        navigatingToChatRef.current = false;
+        setBallState('idle');
+      }
+    }, 2000);
 
     if (isVoiceUiE2EEnabled() && onVoiceActivate) {
       return;

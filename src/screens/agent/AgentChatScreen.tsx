@@ -4,7 +4,7 @@ import {
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, Linking,
   Dimensions,
 } from 'react-native';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -951,6 +951,22 @@ export function AgentChatScreen() {
     }
   }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, setVoiceMode, setDuplexMode]);
 
+  // Re-sync voice mode when screen gains focus (tab switch).
+  // React Navigation may not re-run useEffect dependencies on a tab switch
+  // because the component stays mounted. useFocusEffect fires every time the
+  // screen comes back into view, ensuring voice params are consumed.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (voiceModeRequested && !voiceMode) {
+        addVoiceDiagnostic('agent-chat', 'focus-voice-sync', { voiceModeRequested, duplexModeRequested, voiceMode, duplexMode });
+        setVoiceMode(true);
+      }
+      if (duplexModeRequested && !duplexMode) {
+        setDuplexMode(true);
+      }
+    }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, setVoiceMode, setDuplexMode])
+  );
+
   // Clear stale voiceMode/duplexMode route params after they've been consumed,
   // so returning to this screen later doesn't re-activate voice.
   useEffect(() => {
@@ -958,6 +974,25 @@ export function AgentChatScreen() {
       navigation.setParams({ voiceMode: undefined, duplexMode: undefined });
     }
   }, [voiceMode, voiceModeRequested, duplexModeRequested, navigation]);
+
+  // Diagnostic: log render state when voice mode is requested via navigation.
+  // This helps debug the white-screen issue (screen navigated but appears blank).
+  useEffect(() => {
+    if (voiceModeRequested || duplexModeRequested) {
+      addVoiceDiagnostic('agent-chat', 'voice-nav-render-state', {
+        voiceModeRequested,
+        duplexModeRequested,
+        voiceMode,
+        duplexMode,
+        instanceId: instanceId || null,
+        hasActiveInstance: !!activeInstance,
+        realtimeConnected,
+        voicePhase,
+        messageCount: messages.length,
+        token: token ? 'present' : 'missing',
+      });
+    }
+  }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, instanceId, activeInstance, realtimeConnected, voicePhase, messages.length, token]);
 
   const handleSpeakMessage = useCallback((message: Message) => {
     const text = buildDisplayMessageText(message.content);

@@ -720,6 +720,16 @@ export class ClaudeIntegrationService {
     return /(?:don't|do not|can't|cannot|unable to|lack)\b.{0,50}\b(?:web|internet|browse|search|real-time|current information|access)|(?:tool|web search|search tool).{0,20}(?:not available|unavailable)/i.test(text);
   }
 
+  /** Strip raw XML tool_use tags that leak into text when tools are absent from the API call */
+  private stripToolUseXml(text: string): string {
+    return text
+      .replace(/<\/?tool_use>/g, '')
+      .replace(/<tool_name>[\s\S]*?<\/tool_name>/g, '')
+      .replace(/<tool_parameters>[\s\S]*?<\/tool_parameters>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   async executeFunctionCall(
     functionName: string,
     parameters: Record<string, any>,
@@ -971,7 +981,8 @@ export class ClaudeIntegrationService {
           role: 'user' as const,
           content:
             `Answer the original request using the tool results below. Be concise and direct. ` +
-            `Do not say you lack web access or tool access when tool results are present.\n\n` +
+            `Do not say you lack web access or tool access when tool results are present. ` +
+            `Do NOT output <tool_use> XML tags — if you need to call another tool, use the provided tool API.\n\n` +
             `Original request:\n${lastUserMessage}\n\n` +
             `Tool results:\n${truncatedResults.join('\n')}`,
         },
@@ -979,12 +990,13 @@ export class ClaudeIntegrationService {
       try {
         const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
           model: modelId,
+          tools: bedrockTools,
           userCredentials,
           onChunk: options?.onChunk,
           maxTokens: 1500, // Limit 2nd LLM response length for faster completion
         });
         _lap('2nd LLM call done');
-        const finalText = finalResult.text?.trim();
+        const finalText = this.stripToolUseXml(finalResult.text?.trim() || '');
         return {
           text: !finalText || this.looksLikeToolAccessRefusal(finalText)
             ? (toolFallbackText || finalText || bedrockResult.text)
@@ -999,7 +1011,7 @@ export class ClaudeIntegrationService {
       }
     }
 
-    return { text: bedrockResult.text, toolCalls: bedrockResult.functionCalls ?? null };
+    return { text: this.stripToolUseXml(bedrockResult.text || ''), toolCalls: bedrockResult.functionCalls ?? null };
   }
 
   /**
@@ -1356,6 +1368,7 @@ export class ClaudeIntegrationService {
           max_tokens: options?.maxTokens || 2048,
           temperature: options?.temperature || 0.7,
           system: systemPrompt || undefined,
+          tools: hasFunctionCalling ? apiParams.tools : undefined,
           messages: [
             ...conversationMessages,
             {

@@ -40,14 +40,19 @@ const SPEECH_PRE_ROLL_FRAMES = 6;
 const SPEECH_POST_ROLL_FRAMES = 8;
 /**
  * Volume threshold for barge-in detection while mic is muted (agent speaking).
- * Higher than SPEECH_START_THRESHOLD to avoid triggering on speaker echo.
+ * Must be well above speaker echo levels — phone speakers can easily hit 0.4-0.5.
  */
-const BARGE_IN_THRESHOLD = 0.35;
+const BARGE_IN_THRESHOLD = 0.55;
 /**
  * Number of consecutive loud frames required to confirm barge-in.
- * At 16kHz/512 frame size (~32ms/frame), 8 frames ≈ 256ms.
+ * At 16kHz/512 frame size (~32ms/frame), 12 frames ≈ 384ms.
  */
-const BARGE_IN_FRAME_COUNT = 8;
+const BARGE_IN_FRAME_COUNT = 12;
+/**
+ * Cooldown (ms) after mic is muted before barge-in detection activates.
+ * Prevents the first burst of TTS audio from immediately triggering barge-in.
+ */
+const BARGE_IN_COOLDOWN_MS = 800;
 
 function getVoiceProcessor(): VoiceProcessorType | null {
   try {
@@ -101,6 +106,8 @@ export class RealtimeMicrophoneService {
   private muted = false;
   /** Consecutive loud frames while muted — need several to confirm barge-in (not echo) */
   private mutedLoudFrames = 0;
+  /** Timestamp after which barge-in detection becomes active (cooldown after mute start) */
+  private bargeInActiveAfter = 0;
   /** Ring buffer for pre-roll frames so we don't clip the start of speech */
   private preRollBuffer: ArrayBuffer[] = [];
   /** Post-roll counter: after speech ends, continue sending this many frames */
@@ -149,6 +156,10 @@ export class RealtimeMicrophoneService {
 
       // Muted mode: don't send audio, but detect barge-in (user speaking over agent)
       if (this.muted) {
+        // Skip barge-in detection during cooldown after mute starts (initial TTS burst)
+        if (Date.now() < this.bargeInActiveAfter) {
+          return;
+        }
         // Use a higher threshold and require multiple consecutive loud frames
         // to distinguish real speech from speaker echo
         if (normalizedVolume >= BARGE_IN_THRESHOLD) {
@@ -302,6 +313,7 @@ export class RealtimeMicrophoneService {
   muteForEchoCancel(): void {
     this.muted = true;
     this.mutedLoudFrames = 0;
+    this.bargeInActiveAfter = Date.now() + BARGE_IN_COOLDOWN_MS;
     this.speechActive = false;
     this.silentFrameCount = 0;
     this.speechFrameCount = 0;
