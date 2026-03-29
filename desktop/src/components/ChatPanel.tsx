@@ -320,12 +320,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         : [{ id: `sys-${Date.now()}`, role: "assistant", content: `Incoming handoff from ${payload.sourceDeviceId || "mobile"}.`, createdAt: Date.now() }],
     );
 
+    // Activate the agent that initiated the handoff so replies are routed correctly
+    if (payload.agentId) {
+      setActiveAgent(payload.agentId);
+    }
+
     if (payload.handoffId) {
       acceptHandoffWs(payload.handoffId);
     }
 
     localStorage.removeItem("agentrix_pending_handoff");
-    trackEvent("handoff_received", { sourceDeviceId: payload.sourceDeviceId || "mobile" });
+    trackEvent("handoff_received", { sourceDeviceId: payload.sourceDeviceId || "mobile", agentId: payload.agentId || "none" });
   }, [messages]);
 
   useEffect(() => {
@@ -717,6 +722,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           const ac = streamDirectChat({
             messages: history,
             sessionId: sessionIdRef.current,
+            agentId: activeAgentId,
             token,
             onChunk: (chunk) => {
               if (!audioPlayer?.playing) setBallState("speaking");

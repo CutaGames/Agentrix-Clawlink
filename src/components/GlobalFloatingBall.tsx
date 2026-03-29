@@ -408,6 +408,13 @@ export function GlobalFloatingBall({
     try {
       if (isVoiceUiE2EEnabled()) {
         navigation.navigate('AgentChat', chatParams);
+      } else if (!targetInstance?.id) {
+        // No instance available — navigate to Agent tab only (shows welcome/provision screen).
+        // Do NOT navigate to AgentChat with empty instanceId to avoid white screen.
+        addVoiceDiagnostic('floating-ball', 'no-instance-fallback');
+        (navigation as any).navigate('MainTabs', { screen: 'Agent' });
+        navigatingToChatRef.current = false;
+        setBallState('idle');
       } else {
         // Two-step navigation for reliability: first switch to Agent tab,
         // then navigate within the (now-mounted) Agent stack to AgentChat.
@@ -425,7 +432,7 @@ export function GlobalFloatingBall({
           } catch (retryErr) {
             addVoiceDiagnostic('floating-ball', 'navigate-retry-failed', retryErr);
           }
-        }, 80);
+        }, 150);
       }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
         instanceId: chatParams.instanceId || null,

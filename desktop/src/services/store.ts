@@ -347,6 +347,7 @@ export function streamChat(opts: {
 export function streamDirectChat(opts: {
   messages: Array<{ role: string; content: string }>;
   sessionId: string;
+  agentId?: string | null;
   token: string;
   onChunk: (chunk: string) => void;
   onDone: () => void;
@@ -363,6 +364,7 @@ export function streamDirectChat(opts: {
     body: JSON.stringify({
       messages: opts.messages,
       sessionId: opts.sessionId,
+      ...(opts.agentId ? { agentId: opts.agentId } : {}),
     }),
     signal: ac.signal,
   };
