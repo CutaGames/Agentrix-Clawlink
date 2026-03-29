@@ -973,14 +973,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     maxWidth: 480,
     height: "100%",
     maxHeight: 640,
-    background: "var(--bg-panel)",
+    background: "rgba(22, 33, 62, 0.85)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
     borderRadius: "var(--radius)",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    boxShadow: "var(--shadow)",
-    border: "1px solid var(--border)",
-    animation: "slideIn 0.2s ease-out",
+    boxShadow: "0 8px 40px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255, 255, 255, 0.06)",
+    animation: "hudFadeIn 0.25s ease-out",
+    transition: "opacity 0.3s ease",
   };
 
   return (

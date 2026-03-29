@@ -1,8 +1,17 @@
-import { type CSSProperties, useState, useCallback, useMemo } from "react";
+import { type CSSProperties, useState, useCallback, useMemo, type ReactNode } from "react";
 import type { ChatMessage } from "../services/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+
+function extractTextFromChildren(children: ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(extractTextFromChildren).join("");
+  if (children && typeof children === "object" && "props" in children) {
+    return extractTextFromChildren((children as any).props?.children ?? "");
+  }
+  return "";
+}
 
 interface Props {
   message: ChatMessage;
@@ -66,14 +75,30 @@ export default function MessageBubble({ message, onRetry }: Props) {
               rehypePlugins={[rehypeHighlight]}
               components={{
                 pre({ children, ...props }) {
-                  return <pre style={preStyle} {...props}>{children}</pre>;
+                  // Extract code text for copy button
+                  const codeText = extractTextFromChildren(children);
+                  return (
+                    <pre style={preStyle} {...props}>
+                      {children}
+                      {codeText && <CopyCodeButton code={codeText} />}
+                    </pre>
+                  );
                 },
                 code({ children, className, ...props }) {
                   const isInline = !className;
                   if (isInline) {
                     return <code style={inlineCodeStyle} {...props}>{children}</code>;
                   }
-                  return <code {...props} className={className}>{children}</code>;
+                  // Extract language label from className
+                  const lang = className?.replace("language-", "") || "";
+                  return (
+                    <>
+                      {lang && (
+                        <div style={codeLangLabelStyle}>{lang}</div>
+                      )}
+                      <code {...props} className={className}>{children}</code>
+                    </>
+                  );
                 },
                 a({ children, href, ...props }) {
                   return <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--accent-light)" }} {...props}>{children}</a>;
@@ -253,13 +278,16 @@ function ThinkBlock({ content }: { content: string }) {
         marginBottom: 8,
         padding: "6px 10px",
         borderRadius: 8,
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(108,92,231,0.06)",
+        border: "1px solid rgba(108,92,231,0.15)",
         fontSize: 12,
         color: "var(--text-dim)",
+        backgroundImage: open ? "none" : "linear-gradient(90deg, transparent, rgba(108,92,231,0.08), transparent)",
+        backgroundSize: "200% 100%",
+        animation: open ? "none" : "shimmerRibbon 2s linear infinite",
       }}
     >
-      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+      <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--accent-light, #A29BFE)" }}>
         💭 Thinking{open ? "" : "..."}
       </summary>
       <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
@@ -284,15 +312,30 @@ function CopyCodeButton({ code }: { code: string }) {
 }
 
 const preStyle: CSSProperties = {
-  background: "rgba(0,0,0,0.3)",
+  background: "rgba(13, 17, 23, 0.85)",
+  backdropFilter: "blur(8px)",
   borderRadius: 8,
-  padding: "10px 12px",
+  padding: "32px 14px 12px 14px",
   margin: "6px 0",
   overflowX: "auto",
   fontSize: 12,
   fontFamily: '"Fira Code", "Cascadia Code", "Consolas", monospace',
-  lineHeight: 1.5,
+  lineHeight: 1.6,
   position: "relative",
+  border: "1px solid rgba(255,255,255,0.06)",
+};
+
+const codeLangLabelStyle: CSSProperties = {
+  position: "absolute",
+  top: 6,
+  left: 12,
+  fontSize: 10,
+  fontWeight: 600,
+  color: "rgba(255,255,255,0.35)",
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+  fontFamily: '"Fira Code", monospace',
+  pointerEvents: "none",
 };
 
 const inlineCodeStyle: CSSProperties = {

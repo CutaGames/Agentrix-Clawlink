@@ -312,30 +312,7 @@ export default function App() {
           background: "#FF0000",
         }}
       >
-        <div
-          onClick={handleBallClick}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #6C5CE7 0%, #A29BFE 100%)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            boxShadow: "0 4px 20px rgba(108, 92, 231, 0.5)",
-            userSelect: "none" as const,
-          }}
-          title="Click to chat"
-        >
-          <img
-            src={agentrixLogo}
-            alt="Agentrix"
-            width={40}
-            height={40}
-            style={{ borderRadius: "50%", pointerEvents: "none" }}
-          />
-        </div>
+        <FloatingBall onTap={handleBallClick} />
       </div>
     );
   }
