@@ -11,10 +11,12 @@ import {
 import {
   useAuthStore,
   streamDirectChat,
+  streamChat,
   fetchModels,
   type ChatMessage,
   type ChatAttachment,
   type DesktopAgent,
+  type OpenClawInstance,
   uploadChatAttachment,
 } from "../services/store";
 import MessageBubble from "./MessageBubble";
@@ -97,7 +99,7 @@ type IncomingHandoffEvent = {
 };
 
 export default function ChatPanel({ onClose, networkStatus = "online" }: Props) {
-  const { token, activeAgentId, agents, setActiveAgent } =
+  const { token, activeAgentId, agents, setActiveAgent, instances, activeInstanceId, setActiveInstance } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -718,33 +720,53 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         }
         history.push({ role: "user", content: outboundText });
 
+        const chunkHandler = (chunk: string) => {
+          if (!audioPlayer?.playing) setBallState("speaking");
+          appendChunk(assistantId, chunk);
+          sentenceAcc?.push(chunk);
+        };
+        const doneHandler = (resolve: () => void) => () => {
+          finalizeMessage(assistantId);
+          sentenceAcc?.flush();
+          resolve();
+        };
+        const errorHandler = (resolve: () => void) => (err: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: `Error: ${err}`, error: true, streaming: false }
+                : m,
+            ),
+          );
+          resolve();
+        };
+
         await new Promise<void>((resolve) => {
-          const ac = streamDirectChat({
-            messages: history,
-            sessionId: sessionIdRef.current,
-            agentId: activeAgentId,
-            token,
-            onChunk: (chunk) => {
-              if (!audioPlayer?.playing) setBallState("speaking");
-              appendChunk(assistantId, chunk);
-              sentenceAcc?.push(chunk);
-            },
-            onDone: () => {
-              finalizeMessage(assistantId);
-              sentenceAcc?.flush();
-              resolve();
-            },
-            onError: (err) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, content: `Error: ${err}`, error: true, streaming: false }
-                    : m,
-                ),
-              );
-              resolve();
-            },
-          });
+          let ac: AbortController;
+          if (activeInstanceId) {
+            // Route through OpenClaw proxy — uses this instance's model/API config
+            ac = streamChat({
+              instanceId: activeInstanceId,
+              message: outboundText,
+              sessionId: sessionIdRef.current,
+              token,
+              model: selectedModel || undefined,
+              onChunk: chunkHandler,
+              onDone: doneHandler(resolve),
+              onError: errorHandler(resolve),
+            });
+          } else {
+            // Fallback: direct Claude chat (no instance)
+            ac = streamDirectChat({
+              messages: history,
+              sessionId: sessionIdRef.current,
+              agentId: activeAgentId,
+              token,
+              onChunk: chunkHandler,
+              onDone: doneHandler(resolve),
+              onError: errorHandler(resolve),
+            });
+          }
           abortRef.current = ac;
         });
       }
@@ -760,6 +782,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       input,
       sending,
       activeAgent,
+      activeInstanceId,
       token,
       selectedModel,
       messages,
@@ -1042,10 +1065,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       >
         <FloatingBall onTap={onClose} state={ballState} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Agent selector */}
+          {/* Instance selector (synced from mobile OpenClaw instances) */}
           <select
-            value={activeAgentId || ""}
-            onChange={(e) => setActiveAgent(e.target.value)}
+            value={activeInstanceId || ""}
+            onChange={(e) => setActiveInstance(e.target.value)}
             style={{
               background: "transparent",
               color: "var(--text)",
@@ -1053,16 +1076,21 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               fontSize: 14,
               fontWeight: 600,
               cursor: "pointer",
-              maxWidth: 160,
+              maxWidth: 200,
               WebkitAppRegion: "no-drag",
             }}
           >
-            {agents.length === 0 && <option value="">No agent selected</option>}
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name || agent.id.slice(0, 8)}
-              </option>
-            ))}
+            {instances.length === 0 && <option value="">No agent selected</option>}
+            {instances.map((inst) => {
+              const model = inst.capabilities?.activeModel || "";
+              const provider = inst.capabilities?.llmProvider || "";
+              const suffix = model ? ` — ${model}${provider ? ` (${provider})` : ""}` : "";
+              return (
+                <option key={inst.id} value={inst.id}>
+                  {inst.name}{suffix}
+                </option>
+              );
+            })}
           </select>
           {/* Model selector */}
           {models.length > 0 && (
