@@ -355,7 +355,7 @@ export function GlobalFloatingBall({
     setBallState('listening');
     onVoiceActivate?.();
 
-    // Safety: auto-reset guard after 2s in case navigation silently fails
+    // Safety: auto-reset guard after 3s in case navigation silently fails
     // (shouldHide effect normally resets this, but navigation might not trigger it)
     setTimeout(() => {
       if (navigatingToChatRef.current) {
@@ -363,7 +363,7 @@ export function GlobalFloatingBall({
         navigatingToChatRef.current = false;
         setBallState('idle');
       }
-    }, 2000);
+    }, 3000);
 
     if (isVoiceUiE2EEnabled() && onVoiceActivate) {
       return;
@@ -409,15 +409,23 @@ export function GlobalFloatingBall({
       if (isVoiceUiE2EEnabled()) {
         navigation.navigate('AgentChat', chatParams);
       } else {
-        // Use fully-qualified nested path from Root to ensure reliable resolution
-        // on native: Root(Main) → Drawer(MainTabs) → Tab(Agent) → Stack(AgentChat)
-        (navigation as any).navigate('MainTabs', {
-          screen: 'Agent',
-          params: {
-            screen: 'AgentChat',
-            params: chatParams,
-          },
-        });
+        // Two-step navigation for reliability: first switch to Agent tab,
+        // then navigate within the (now-mounted) Agent stack to AgentChat.
+        // Single-step deeply-nested navigate silently fails from some tabs (Me, Discover).
+        (navigation as any).navigate('MainTabs', { screen: 'Agent' });
+        setTimeout(() => {
+          try {
+            (navigation as any).navigate('MainTabs', {
+              screen: 'Agent',
+              params: {
+                screen: 'AgentChat',
+                params: chatParams,
+              },
+            });
+          } catch (retryErr) {
+            addVoiceDiagnostic('floating-ball', 'navigate-retry-failed', retryErr);
+          }
+        }, 80);
       }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
         instanceId: chatParams.instanceId || null,

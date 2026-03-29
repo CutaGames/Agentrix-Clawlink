@@ -634,7 +634,7 @@ export function AgentChatScreen() {
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 15;
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   const loadOlderMessages = useCallback(() => {
@@ -1005,6 +1005,7 @@ export function AgentChatScreen() {
     [
       ...msgs
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
+        .slice(-20)
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: serializeMessageForModel(m) })),
       { role: 'user' as const, content: newText },
     ];
