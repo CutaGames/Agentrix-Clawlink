@@ -670,112 +670,93 @@ export class OpenAIIntegrationService {
         max_tokens: options?.maxTokens || 2048,
       });
 
-      const message = completion.choices[0].message;
-      const responseText = message.content || '';
+      // Multi-turn agent loop: keep calling LLM while it returns tool calls
+      const maxToolRounds = 5;
+      let allToolCalls: any[] = [];
+      let currentMessages = [...messages.map((msg) => ({
+        role: msg.role === 'assistant' ? 'assistant' as const : msg.role === 'system' ? 'system' as const : 'user' as const,
+        content: msg.content,
+      }))];
+      let message = completion.choices[0].message;
+      let responseText = message.content || '';
 
-      // 检查是否有 Function Call
-      const toolCalls = message.tool_calls;
-      if (toolCalls && toolCalls.length > 0) {
-        // 处理 Function Calls
+      for (let round = 0; round <= maxToolRounds; round++) {
+        const toolCalls = message.tool_calls;
+        if (!toolCalls || toolCalls.length === 0) {
+          return { text: responseText, functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+        }
+
+        if (round === maxToolRounds) {
+          this.logger.warn(`OpenAI agent loop: max ${maxToolRounds} tool rounds reached`);
+          return { text: responseText, functionCalls: allToolCalls };
+        }
+
+        this.logger.log(`OpenAI round ${round + 1}: ${toolCalls.length} tool call(s): ${toolCalls.map(tc => tc.type === 'function' ? tc.function.name : tc.type).join(', ')}`);
+
+        // Execute tool calls in parallel
         const toolResults = await Promise.all(
           toolCalls.map(async (toolCall) => {
-            // 类型检查：确保 toolCall 有 function 属性
             if (toolCall.type !== 'function' || !('function' in toolCall)) {
-              this.logger.warn(`工具调用类型不正确: ${toolCall.type}`);
               return {
                 role: 'tool' as const,
                 tool_call_id: toolCall.id,
-                content: JSON.stringify({
-                  success: false,
-                  error: '不支持的工具调用类型',
-                }),
+                content: JSON.stringify({ success: false, error: 'unsupported tool call type' }),
               };
             }
 
             const functionName = toolCall.function.name;
             let parameters: Record<string, any> = {};
-            
             try {
               parameters = JSON.parse(toolCall.function.arguments);
-            } catch (error) {
-              this.logger.warn(`解析 Function 参数失败: ${toolCall.function.arguments}`);
+            } catch {
               parameters = {};
             }
 
             try {
               let result: any;
-              
-              // 优先尝试外部自定义回调
               if (options?.onToolCall) {
                 try {
                   const customResult = await options.onToolCall(functionName, parameters);
-                  if (customResult !== undefined) {
-                    result = customResult;
-                  }
+                  if (customResult !== undefined) result = customResult;
                 } catch (e) {
-                   this.logger.warn(`Custom tool execution failed for ${functionName}, falling back to default executor.`);
+                  this.logger.warn(`Custom tool execution failed for ${functionName}, falling back.`);
                 }
               }
-
               if (result === undefined) {
-                result = await this.executeFunctionCall(
-                  functionName,
-                  parameters,
-                  options?.context || {},
-                );
+                result = await this.executeFunctionCall(functionName, parameters, options?.context || {});
               }
-              
-              return {
-                role: 'tool' as const,
-                tool_call_id: toolCall.id,
-                content: JSON.stringify(result),
-              };
+              return { role: 'tool' as const, tool_call_id: toolCall.id, content: JSON.stringify(result) };
             } catch (error: any) {
-              this.logger.error(`Function 执行失败: ${functionName}`, error);
-              return {
-                role: 'tool' as const,
-                tool_call_id: toolCall.id,
-                content: JSON.stringify({
-                  success: false,
-                  error: error.message,
-                }),
-              };
+              return { role: 'tool' as const, tool_call_id: toolCall.id, content: JSON.stringify({ success: false, error: error.message }) };
             }
           }),
         );
 
-        // 将 Function 结果添加到消息中，继续对话
-        const allMessages = [
-          ...messages,
-          message,
-          ...toolResults,
-        ];
+        allToolCalls.push(...toolCalls
+          .filter((call) => call.type === 'function' && 'function' in call)
+          .map((call) => ({
+            id: call.id,
+            name: (call as any).function.name,
+            arguments: (call as any).function.arguments,
+          })));
 
-        // 再次调用 OpenAI，获取最终响应
-        const finalCompletion = await openai.chat.completions.create({
+        // Build messages for next round
+        currentMessages = [...currentMessages, message as any, ...toolResults];
+
+        const nextCompletion = await openai.chat.completions.create({
           model: options?.model || this.defaultModel,
-          messages: allMessages,
+          messages: currentMessages,
           tools: tools.length > 0 ? tools : undefined,
+          tool_choice: tools.length > 0 ? 'auto' : undefined,
           temperature: options?.temperature || 0.7,
           max_tokens: options?.maxTokens || 2048,
         });
 
-        return {
-          text: finalCompletion.choices[0].message.content || '',
-          functionCalls: toolCalls
-            .filter((call) => call.type === 'function' && 'function' in call)
-            .map((call) => ({
-              id: call.id,
-              name: (call as any).function.name,
-              arguments: (call as any).function.arguments,
-            })),
-        };
+        message = nextCompletion.choices[0].message;
+        responseText = message.content || '';
       }
 
-      return {
-        text: responseText,
-        functionCalls: null,
-      };
+      return { text: responseText, functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
     } catch (error: any) {
       this.logger.error(`OpenAI API调用失败: ${error.message}`, error.stack);
       throw error;

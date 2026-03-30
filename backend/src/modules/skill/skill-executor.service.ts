@@ -1665,5 +1665,74 @@ export class SkillExecutorService {
         };
       }
     });
+
+    /**
+     * open_url — Return a URL for the client to open in the user's browser
+     */
+    this.registerHandler('open_url', async (params, _context) => {
+      const { url, title } = params;
+      if (!url) throw new BadRequestException('url is required for open_url');
+      try { new URL(url); } catch { throw new BadRequestException('Invalid URL format'); }
+      return {
+        success: true,
+        action: 'open_url',
+        url,
+        title: title || url,
+        message: `Opening ${title || url} in browser`,
+      };
+    });
+
+    /**
+     * code_eval — Execute JavaScript in a sandboxed VM with timeout
+     */
+    this.registerHandler('code_eval', async (params, _context) => {
+      const { code } = params;
+      if (!code) throw new BadRequestException('code is required for code_eval');
+      if (typeof code !== 'string' || code.length > 10000) {
+        throw new BadRequestException('code must be a string under 10000 characters');
+      }
+
+      // Block dangerous patterns
+      const forbidden = [
+        /\brequire\s*\(/i,
+        /\bimport\s+/i,
+        /\bprocess\b/i,
+        /\bglobal\b/i,
+        /\b__dirname\b/i,
+        /\b__filename\b/i,
+        /\bchild_process\b/i,
+        /\bexecSync\b/i,
+        /\bspawnSync\b/i,
+      ];
+      for (const pattern of forbidden) {
+        if (pattern.test(code)) {
+          return { success: false, error: `Forbidden pattern detected: ${pattern.source}` };
+        }
+      }
+
+      try {
+        const vm = require('vm');
+        const sandbox = {
+          Math, JSON, Date, Array, Object, String, Number, RegExp,
+          parseInt, parseFloat, isNaN, isFinite,
+          console: { log: (...args: any[]) => outputs.push(args.map(String).join(' ')) },
+        };
+        const outputs: string[] = [];
+        const context = vm.createContext(sandbox);
+        const result = vm.runInContext(code, context, { timeout: 5000 });
+        return {
+          success: true,
+          result: result !== undefined ? String(result) : undefined,
+          output: outputs.length > 0 ? outputs.join('\n') : undefined,
+          type: typeof result,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err.message,
+          name: err.name,
+        };
+      }
+    });
   }
 }

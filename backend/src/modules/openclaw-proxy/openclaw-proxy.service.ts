@@ -409,6 +409,20 @@ export class OpenClawProxyService {
         },
         required: ['url'],
       },
+      open_url: {
+        properties: {
+          url: { type: 'string', description: 'URL to open in the user\'s browser (https://...)' },
+          title: { type: 'string', description: 'Optional display title for the link' },
+        },
+        required: ['url'],
+      },
+      code_eval: {
+        properties: {
+          code: { type: 'string', description: 'JavaScript code to execute. Has access to Math, JSON, Date, Array, Object, String, Number, RegExp. No network or filesystem access.' },
+          language: { type: 'string', enum: ['javascript'], description: 'Language (currently only javascript supported)' },
+        },
+        required: ['code'],
+      },
     };
 
     const specific = schemas[skill.handlerName];

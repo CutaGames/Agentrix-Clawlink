@@ -134,7 +134,18 @@ export default function MessageBubble({ message, onRetry }: Props) {
                   );
                 },
                 a({ children, href, ...props }) {
-                  return <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--accent-light)" }} {...props}>{children}</a>;
+                  const handleClick = async (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    if (href) {
+                      try {
+                        const { invoke } = await import("@tauri-apps/api/core");
+                        await invoke("desktop_bridge_open_browser", { url: href });
+                      } catch {
+                        window.open(href, "_blank");
+                      }
+                    }
+                  };
+                  return <a href={href} onClick={handleClick} style={{ color: "var(--accent-light)", cursor: "pointer" }} {...props}>{children}</a>;
                 },
                 table({ children, ...props }) {
                   return <table style={tableStyle} {...props}>{children}</table>;

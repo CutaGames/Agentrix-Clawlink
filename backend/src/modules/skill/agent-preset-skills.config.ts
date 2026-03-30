@@ -167,6 +167,22 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     icon: '🌐',
   },
   {
+    handlerName: 'open_url',
+    displayName: 'Open URL',
+    description: 'Open a URL in the user\'s browser. On desktop, this launches the default browser. Returns the URL for client handling.',
+    category: 'tools',
+    enabledByDefault: true,
+    icon: '🔗',
+  },
+  {
+    handlerName: 'code_eval',
+    displayName: 'Code Eval',
+    description: 'Execute a JavaScript code snippet in a sandboxed environment and return the result. Useful for calculations, data transformation, and quick scripting tasks.',
+    category: 'tools',
+    enabledByDefault: true,
+    icon: '⚙️',
+  },
+  {
     handlerName: 'echo',
     displayName: 'Echo (Debug)',
     description: 'Debug tool that echoes input parameters',
