@@ -107,6 +107,12 @@ import { DesktopSyncModule } from './modules/desktop-sync/desktop-sync.module';
 import { AgentPresenceModule } from './modules/agent-presence/agent-presence.module';
 // Wearable Phase 2-3: continuous telemetry + automation triggers
 import { WearableTelemetryModule } from './modules/wearable-telemetry/wearable-telemetry.module';
+// Agent Intelligence: Plan Mode, Auto-Memory, Compaction, Cross-device Sync
+import { AgentIntelligenceModule } from './modules/agent-intelligence/agent-intelligence.module';
+// P6: Hook system, Custom slash commands, MCP server registry
+import { HookModule } from './modules/hooks/hook.module';
+import { SlashCommandModule } from './modules/slash-commands/slash-command.module';
+import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
 
 @Module({
   imports: [
@@ -220,6 +226,12 @@ import { WearableTelemetryModule } from './modules/wearable-telemetry/wearable-t
     AgentPresenceModule,
     // Wearable Phase 2-3: continuous telemetry + automation triggers
     WearableTelemetryModule,
+    // Agent Intelligence: Plan Mode, Auto-Memory, Compaction, Cross-device Sync
+    AgentIntelligenceModule,
+    // P6: Developer Extension Capabilities
+    HookModule,
+    SlashCommandModule,
+    McpRegistryModule,
   ],
   controllers: [AppController],
   providers: [

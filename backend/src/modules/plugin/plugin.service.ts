@@ -291,5 +291,76 @@ export class PluginService {
 
     return 0;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P6.4 Plugin Lifecycle & Manifest
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Parse a plugin manifest and validate its structure.
+   */
+  parseManifest(manifest: any): Plugin['manifest'] | null {
+    if (!manifest || typeof manifest !== 'object') return null;
+    return {
+      commands: Array.isArray(manifest.commands) ? manifest.commands : undefined,
+      hooks: Array.isArray(manifest.hooks) ? manifest.hooks : undefined,
+      mcpServers: Array.isArray(manifest.mcpServers) ? manifest.mcpServers : undefined,
+      agents: Array.isArray(manifest.agents) ? manifest.agents : undefined,
+      tools: Array.isArray(manifest.tools) ? manifest.tools : undefined,
+      permissions: Array.isArray(manifest.permissions) ? manifest.permissions : undefined,
+    };
+  }
+
+  /**
+   * Get all active plugins with their manifests for a user.
+   */
+  async getActivePluginManifests(userId: string): Promise<Array<{ pluginId: string; name: string; manifest: Plugin['manifest'] }>> {
+    const userPlugins = await this.userPluginRepository.find({
+      where: { userId, isActive: true },
+      relations: ['plugin'],
+    });
+    return userPlugins
+      .filter((up: any) => up.plugin?.manifest)
+      .map((up: any) => ({
+        pluginId: up.pluginId,
+        name: up.plugin.name,
+        manifest: up.plugin.manifest,
+      }));
+  }
+
+  /**
+   * Get all tools provided by user's active plugins.
+   */
+  async getPluginProvidedTools(userId: string): Promise<Array<{
+    name: string;
+    description: string;
+    input_schema: Record<string, any>;
+    pluginId: string;
+    pluginName: string;
+  }>> {
+    const manifests = await this.getActivePluginManifests(userId);
+    const tools: Array<{
+      name: string;
+      description: string;
+      input_schema: Record<string, any>;
+      pluginId: string;
+      pluginName: string;
+    }> = [];
+
+    for (const { pluginId, name: pluginName, manifest } of manifests) {
+      if (!manifest?.tools?.length) continue;
+      for (const tool of manifest.tools) {
+        tools.push({
+          name: `plugin_${pluginName.replace(/\s+/g, '_').toLowerCase()}_${tool.name}`,
+          description: `[Plugin: ${pluginName}] ${tool.description}`,
+          input_schema: tool.inputSchema,
+          pluginId,
+          pluginName,
+        });
+      }
+    }
+
+    return tools;
+  }
 }
 

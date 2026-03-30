@@ -23,12 +23,40 @@ export default function MessageBubble({ message, onRetry }: Props) {
   const isUser = message.role === "user";
   const isError = message.error;
 
-  // Extract <think>...</think> blocks for collapsible thinking display
-  const { thinkContent, displayContent, toolCalls } = useMemo(() => {
+  // Extract <think>...</think> and [Thinking]...[/Thinking] blocks, plus tool markers
+  const { thinkContent, displayContent, toolCalls, toolProgress } = useMemo(() => {
     const text = message.content;
+    // Legacy <think> tags
     const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*/);
     let rest = thinkMatch ? text.slice(thinkMatch[0].length) : text;
-    // Extract [Tool Call] markers
+
+    // New [Thinking]...[/Thinking] blocks from extended thinking
+    let thinkingContent: string | null = thinkMatch ? thinkMatch[1].trim() : null;
+    const extThinkMatch = rest.match(/\[Thinking\]\s*([\s\S]*?)\[\/Thinking\]/);
+    if (extThinkMatch) {
+      const thinkLines = extThinkMatch[1]
+        .split('\n')
+        .map(l => l.replace(/^\[Think\]\s*/, ''))
+        .join('\n')
+        .trim();
+      thinkingContent = thinkingContent ? thinkingContent + '\n' + thinkLines : thinkLines;
+      rest = rest.replace(extThinkMatch[0], '');
+    }
+    // Still-streaming thinking (no closing tag yet)
+    if (!extThinkMatch) {
+      const streamThinkMatch = rest.match(/\[Thinking\]\s*([\s\S]*)$/);
+      if (streamThinkMatch) {
+        const thinkLines = streamThinkMatch[1]
+          .split('\n')
+          .map(l => l.replace(/^\[Think\]\s*/, ''))
+          .join('\n')
+          .trim();
+        thinkingContent = thinkingContent ? thinkingContent + '\n' + thinkLines : thinkLines;
+        rest = rest.replace(streamThinkMatch[0], '');
+      }
+    }
+
+    // Extract [Tool Call] markers (legacy)
     const tools: string[] = [];
     rest = rest.replace(/\[Tool Call\]\s*([^\n]+)/g, (_match, names) => {
       names.split(',').forEach((n: string) => {
@@ -37,10 +65,31 @@ export default function MessageBubble({ message, onRetry }: Props) {
       });
       return '';
     });
+
+    // Extract [Tool Start], [Tool Done], [Tool Error] markers
+    const progress: { name: string; status: 'running' | 'done' | 'error'; detail?: string }[] = [];
+    rest = rest.replace(/\[Tool Start\]\s*([^\n]+)/g, (_m, name) => {
+      progress.push({ name: name.trim(), status: 'running' });
+      return '';
+    });
+    rest = rest.replace(/\[Tool Done\]\s*([^\n]+)/g, (_m, name) => {
+      const existing = progress.find(p => p.name === name.trim() && p.status === 'running');
+      if (existing) existing.status = 'done';
+      else progress.push({ name: name.trim(), status: 'done' });
+      return '';
+    });
+    rest = rest.replace(/\[Tool Error\]\s*([^\n]+?)(?:\s*:\s*(.+))?$/gm, (_m, name, detail) => {
+      const existing = progress.find(p => p.name === name.trim() && p.status === 'running');
+      if (existing) { existing.status = 'error'; existing.detail = detail?.trim(); }
+      else progress.push({ name: name.trim(), status: 'error', detail: detail?.trim() });
+      return '';
+    });
+
     return {
-      thinkContent: thinkMatch ? thinkMatch[1].trim() : null,
+      thinkContent: thinkingContent,
       displayContent: rest.trim(),
       toolCalls: tools,
+      toolProgress: progress,
     };
   }, [message.content]);
 
@@ -83,6 +132,27 @@ export default function MessageBubble({ message, onRetry }: Props) {
               border: '1px solid rgba(59, 130, 246, 0.2)',
             }}>
               🔧 {tool}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Tool progress indicators */}
+      {toolProgress.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {toolProgress.map((tp, i) => (
+            <span key={i} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '2px 8px', borderRadius: 10, fontSize: 11,
+              background: tp.status === 'running' ? 'rgba(250, 204, 21, 0.12)' :
+                tp.status === 'done' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+              color: tp.status === 'running' ? '#fcd34d' :
+                tp.status === 'done' ? '#86efac' : '#fca5a5',
+              border: `1px solid ${tp.status === 'running' ? 'rgba(250, 204, 21, 0.2)' :
+                tp.status === 'done' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+            }}>
+              {tp.status === 'running' ? '⏳' : tp.status === 'done' ? '✅' : '❌'} {tp.name}
+              {tp.detail && <span style={{ opacity: 0.7, marginLeft: 2 }}>({tp.detail})</span>}
             </span>
           ))}
         </div>

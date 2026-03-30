@@ -75,6 +75,17 @@ export class Plugin {
     maxAgentVersion?: string;
   };
 
+  // P6.4 Plugin manifest — defines what the plugin provides
+  @Column({ type: 'jsonb', nullable: true })
+  manifest?: {
+    commands?: Array<{ name: string; description?: string; promptTemplate: string }>;
+    hooks?: Array<{ event: string; handler: string; priority?: number }>;
+    mcpServers?: Array<{ name: string; transport: string; url?: string; command?: string }>;
+    agents?: Array<{ name: string; model?: string; systemPrompt: string }>;
+    tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>;
+    permissions?: string[];
+  };
+
   @Column({ default: true })
   isActive: boolean;
 

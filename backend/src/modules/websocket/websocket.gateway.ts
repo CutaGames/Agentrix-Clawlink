@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
 import { desktopSyncEventBus, DESKTOP_SYNC_EVENT, type DesktopSyncEventEnvelope } from '../desktop-sync/desktop-sync.events';
+import { agentSyncEventBus, AGENT_SYNC_EVENT, type AgentSyncEventEnvelope } from '../agent-intelligence/agent-sync.events';
 import { DesktopSessionDeviceType } from '../desktop-sync/dto/desktop-sync.dto';
 
 interface AuthenticatedSocket extends Socket {
@@ -38,6 +39,9 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   private readonly desktopSyncListener = (envelope: DesktopSyncEventEnvelope) => {
     this.sendDesktopSyncEvent(envelope.userId, envelope.event, envelope.payload);
   };
+  private readonly agentSyncListener = (envelope: AgentSyncEventEnvelope) => {
+    this.sendAgentSyncEvent(envelope.userId, envelope.event, envelope.sessionId, envelope.payload, envelope.sourceDeviceId);
+  };
 
   constructor(
     private jwtService: JwtService,
@@ -47,10 +51,12 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   onModuleInit() {
     desktopSyncEventBus.on(DESKTOP_SYNC_EVENT, this.desktopSyncListener);
+    agentSyncEventBus.on(AGENT_SYNC_EVENT, this.agentSyncListener);
   }
 
   onModuleDestroy() {
     desktopSyncEventBus.off(DESKTOP_SYNC_EVENT, this.desktopSyncListener);
+    agentSyncEventBus.off(AGENT_SYNC_EVENT, this.agentSyncListener);
   }
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -123,6 +129,10 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   sendDesktopSyncEvent(userId: string, event: string, payload: unknown) {
     this.server.to(`user:${userId}`).emit(event, payload);
+  }
+
+  sendAgentSyncEvent(userId: string, event: string, sessionId: string, payload: unknown, sourceDeviceId?: string) {
+    this.server.to(`user:${userId}`).emit(event, { sessionId, payload, sourceDeviceId, timestamp: Date.now() });
   }
 
   @SubscribeMessage('payment:subscribe')

@@ -1170,6 +1170,10 @@ export class ClaudeIntegrationService {
       onToolCall?: (name: string, args: any) => Promise<any>;
       /** When provided, use streaming mode and emit text deltas through this callback */
       onChunk?: (text: string) => void;
+      /** P7.1: Enable extended thinking for supported models */
+      enableThinking?: boolean;
+      /** P7.1: Token budget for thinking blocks (default 1024) */
+      thinkingBudget?: number;
     },
   ): Promise<any> {
     // When caller provides additionalTools (even empty []), use ONLY those.
@@ -1288,7 +1292,7 @@ export class ClaudeIntegrationService {
         })));
 
       // 调用 Claude API — streaming mode when onChunk provided
-      const apiParams = {
+      const apiParams: Record<string, any> = {
         model: selectedModel,
         max_tokens: options?.maxTokens || 2048,
         temperature: options?.temperature || 0.7,
@@ -1297,9 +1301,33 @@ export class ClaudeIntegrationService {
         tools: hasFunctionCalling ? tools : undefined,
       };
 
+      // P7.1: Enable extended thinking for supported models
+      const supportsThinking = /claude-3-5-sonnet|claude-3-opus|claude-4|claude-sonnet-4|claude-opus-4/i.test(selectedModel);
+      if (supportsThinking && options?.enableThinking) {
+        apiParams.thinking = { type: 'enabled', budget_tokens: options.thinkingBudget || 1024 };
+        // Extended thinking requires temperature=1 and no max_tokens override for thinking
+        delete apiParams.temperature;
+      }
+
       let response: any;
       if (options?.onChunk) {
         const stream = anthropicClient.messages.stream(apiParams as any);
+        // P7.1: Handle thinking blocks in the stream
+        stream.on('contentBlockStart' as any, (block: any) => {
+          if (block?.content_block?.type === 'thinking') {
+            options.onChunk!('[Thinking]');
+          }
+        });
+        stream.on('contentBlockDelta' as any, (delta: any) => {
+          if (delta?.delta?.type === 'thinking_delta') {
+            options.onChunk!(`[Think] ${delta.delta.thinking}`);
+          }
+        });
+        stream.on('contentBlockStop' as any, (block: any) => {
+          if (block?.content_block?.type === 'thinking') {
+            options.onChunk!('[/Thinking]');
+          }
+        });
         stream.on('text', (text: string) => {
           options.onChunk!(text);
         });
@@ -1341,6 +1369,9 @@ export class ClaudeIntegrationService {
           toolUses.map(async (toolUse: any) => {
             const functionName = toolUse.name;
             const parameters = toolUse.input || {};
+            if (options?.onChunk) {
+              options.onChunk(`[Tool Start] ${functionName}`);
+            }
             try {
               let result: any;
               if (options?.onToolCall) {
@@ -1349,8 +1380,14 @@ export class ClaudeIntegrationService {
               if (result === undefined) {
                 result = await this.executeFunctionCall(functionName, parameters, options?.context || {});
               }
+              if (options?.onChunk) {
+                options.onChunk(`[Tool Done] ${functionName}`);
+              }
               return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(result) };
             } catch (error: any) {
+              if (options?.onChunk) {
+                options.onChunk(`[Tool Error] ${functionName}: ${error.message}`);
+              }
               return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify({ success: false, error: error.message }) };
             }
           }),
