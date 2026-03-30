@@ -73,6 +73,11 @@ export class AgentMessage {
     orderId?: string;
     paymentId?: string;
     productIds?: string[];
+    archived?: boolean;
+    compaction?: boolean;
+    compactedAt?: string;
+    archivedCount?: number;
+    [key: string]: any;
   };
 
   @CreateDateColumn()

@@ -15,6 +15,7 @@ import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integra
 import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integration.module';
 import { OpenAIIntegrationModule } from '../ai-integration/openai/openai-integration.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
+import { AgentIntelligenceModule } from '../agent-intelligence/agent-intelligence.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
     forwardRef(() => GeminiIntegrationModule),
     forwardRef(() => OpenAIIntegrationModule),
     AiProviderModule,
+    AgentIntelligenceModule,
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],

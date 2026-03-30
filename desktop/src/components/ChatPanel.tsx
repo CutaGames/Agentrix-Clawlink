@@ -44,6 +44,13 @@ import {
 import { pushSessionSync, isSessionSyncConnected } from "../services/sessionSync";
 import { trackEvent } from "../services/analytics";
 import {
+  getActivePlan,
+  approvePlan as approvePlanApi,
+  rejectPlan as rejectPlanApi,
+  type AgentPlan,
+} from "../services/agentIntelligence";
+import PlanPanel from "./PlanPanel";
+import {
   listSessionEntries,
   loadSessionMessages,
   persistSession,
@@ -120,6 +127,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
+  const [activePlan, setActivePlan] = useState<AgentPlan | null>(null);
   const activeAgent = useMemo<DesktopAgent | null>(
     () => agents.find((agent) => agent.id === activeAgentId) || null,
     [agents, activeAgentId],
@@ -732,14 +740,21 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           appendChunk(assistantId, chunk);
           sentenceAcc?.push(chunk);
         };
-        const metaHandler = (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => {
+        const metaHandler = (meta: { resolvedModel?: string; resolvedModelLabel?: string; plan?: AgentPlan }) => {
           setMessages((prev) =>
             prev.map((m) => m.id === assistantId ? { ...m, meta } : m),
           );
+          if (meta.plan) setActivePlan(meta.plan);
         };
         const doneHandler = (resolve: () => void) => () => {
           finalizeMessage(assistantId);
           sentenceAcc?.flush();
+          // Check for plan in the final message content
+          if (token) {
+            getActivePlan(token, sessionIdRef.current)
+              .then((p) => { if (p) setActivePlan(p); })
+              .catch(() => {});
+          }
           resolve();
         };
         const errorHandler = (resolve: () => void) => (err: string) => {
@@ -1330,6 +1345,22 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             }
           }} />
         ))}
+        {activePlan && (
+          <PlanPanel
+            plan={activePlan}
+            onApprove={async () => {
+              if (!token) return;
+              const updated = await approvePlanApi(token, sessionIdRef.current);
+              if (updated) setActivePlan(updated);
+              handleSend("approve");
+            }}
+            onReject={async () => {
+              if (!token) return;
+              const updated = await rejectPlanApi(token, sessionIdRef.current, "rejected by user");
+              if (updated) setActivePlan(updated);
+            }}
+          />
+        )}
         <div ref={listEndRef} />
       </div>
 

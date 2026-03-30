@@ -25,6 +25,8 @@ import { SkillService } from '../skill/skill.service';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
 import { RelayRegistry } from '../openclaw-connection/telegram-bot.service';
 import { Response } from 'express';
+import { AgentIntelligenceService } from '../agent-intelligence/agent-intelligence.service';
+import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
 
 export interface ChatMessageDto {
   message: string | any[];
@@ -75,6 +77,8 @@ export class OpenClawProxyService {
     private sessionRepo: Repository<AgentSession>,
     @InjectRepository(AgentMessage)
     private messageRepo: Repository<AgentMessage>,
+    @Inject(forwardRef(() => AgentIntelligenceService))
+    private readonly intelligenceService: AgentIntelligenceService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -769,10 +773,41 @@ export class OpenClawProxyService {
 
     const installedToolMap = new Map(installedToolEntries.map((entry) => [entry.toolName, entry.skill]));
 
+    // P4/P5 Intelligence tools
+    const intelligenceTools = [
+      {
+        name: 'save_memory',
+        description: 'Save a fact, preference, or decision that should be remembered for future conversations. Use this when the user expresses a preference, makes a decision, or provides important context.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            key: { type: 'string', description: 'A short key identifying the memory (e.g. "preferred_language", "project_name")' },
+            value: { type: 'string', description: 'The value/content to remember' },
+            scope: { type: 'string', enum: ['session', 'user'], description: 'session = this chat only, user = permanent across all chats' },
+          },
+          required: ['key', 'value'],
+        },
+      },
+      {
+        name: 'create_subtask',
+        description: 'Create a sub-task that can be delegated to another agent session or device. Use when a complex task can be broken into parallel work.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            title: { type: 'string', description: 'Short title for the subtask' },
+            description: { type: 'string', description: 'Detailed description of what the subtask should accomplish' },
+            assignedDeviceType: { type: 'string', enum: ['desktop', 'mobile', 'any'], description: 'Which device type should handle this subtask' },
+          },
+          required: ['title', 'description'],
+        },
+      },
+    ];
+
     return {
       additionalTools: [
         ...presetTools,
         ...installedToolEntries.map((entry) => entry.schema),
+        ...intelligenceTools,
       ],
       onToolCall: async (name: string, args: any) => {
         const preset = AGENT_PRESET_SKILLS.find((skill) => skill.handlerName === name);
@@ -789,6 +824,35 @@ export class OpenClawProxyService {
 
         if (permissionProfile?.deniedToolNames.includes(name)) {
           throw new ForbiddenException(`Tool ${name} is disabled by the bound Agent Account permission profile.`);
+        }
+
+        // P4/P5 Intelligence tool handlers
+        if (name === 'save_memory') {
+          const { MemoryType, MemoryScope } = await import('../../entities/agent-memory.entity');
+          const scope = args.scope === 'user' ? MemoryScope.USER : MemoryScope.SESSION;
+          const mem = this.intelligenceService['memoryRepo'].create({
+            sessionId: args.sessionId || undefined,
+            key: args.key,
+            value: { content: args.value },
+            type: MemoryType.ENTITY,
+            scope,
+            metadata: { importance: 0.7 },
+          });
+          await this.intelligenceService['memoryRepo'].save(mem);
+          emitAgentSyncEvent(userId, 'agent:memory_update', '', { action: 'saved', key: args.key });
+          return { saved: true, key: args.key, scope: args.scope || 'session' };
+        }
+
+        if (name === 'create_subtask') {
+          const subtask = await this.intelligenceService.createSubtask(
+            args.parentSessionId || '',
+            userId,
+            args.title,
+            args.description,
+            args.assignedDeviceType,
+          );
+          emitAgentSyncEvent(userId, 'agent:subtask_update', '', { action: 'created', subtask });
+          return { created: true, subtaskId: subtask.id, title: subtask.title };
         }
 
         if (preset) {
@@ -1075,10 +1139,63 @@ export class OpenClawProxyService {
       ? persistedHistory
       : persistedHistory.slice(-4);
 
+    // ── P4: Agent Intelligence ─────────────────────────────────────
+    // P4.1 Plan Mode: detect if we're in an active plan or generating one
+    const activePlan = this.intelligenceService.getActivePlan(sessionId);
+    const planApproval = activePlan?.status === 'awaiting_approval' && /^(approve|ok|go|批准|执行|是的|开始|yes|确认)/i.test(messageText);
+    const planRejection = activePlan?.status === 'awaiting_approval' && /^(reject|no|拒绝|修改|取消|不)/i.test(messageText);
+
+    let planModeSystemAddition = '';
+    if (planApproval && activePlan) {
+      this.intelligenceService.approvePlan(sessionId);
+      const step = this.intelligenceService.advancePlan(sessionId);
+      if (step) {
+        planModeSystemAddition = this.intelligenceService.buildPlanExecutionPrompt(activePlan);
+      }
+    } else if (planRejection && activePlan) {
+      this.intelligenceService.rejectPlan(sessionId, messageText);
+      planModeSystemAddition = '\n## Plan Rejected\nThe user rejected or wants changes to the plan. Ask them what they want to modify.\n';
+    } else if (!activePlan && this.intelligenceService.detectPlanIntent(messageText)) {
+      planModeSystemAddition = this.intelligenceService.getPlanModeSystemPrompt();
+    } else if (activePlan?.status === 'executing') {
+      // If plan is executing and we get a non-special message, continue execution
+      const step = this.intelligenceService.advancePlan(sessionId);
+      if (step) {
+        planModeSystemAddition = this.intelligenceService.buildPlanExecutionPrompt(activePlan);
+      }
+    }
+
+    // P4.2 Auto-Memory: load relevant memories into context
+    let memoryContext = '';
+    try {
+      const memories = await this.intelligenceService.getRelevantMemories(
+        session.id, userId, agentAccount?.id,
+      );
+      memoryContext = this.intelligenceService.buildMemoryContext(memories);
+    } catch (err: any) {
+      this.logger.warn(`Memory load failed: ${err.message}`);
+    }
+
+    // P4.3 Compaction: check if history needs compaction
+    const historyMessages = this.buildPlatformHistoryMessages(effectiveHistory);
+    if (this.intelligenceService.needsCompaction([...historyMessages, { role: 'user', content: messageText }])) {
+      this.logger.log(`💾 Conversation needs compaction (session=${sessionId})`);
+      const { compacted, result: compactionResult } = await this.intelligenceService.compactHistory(historyMessages);
+      historyMessages.splice(0, historyMessages.length, ...compacted as typeof historyMessages);
+      // Persist compaction in background
+      this.intelligenceService.persistCompaction(session.id, compactionResult.summary).catch(
+        (err) => this.logger.warn(`Compaction persist failed: ${err.message}`),
+      );
+      emitAgentSyncEvent(userId, 'agent:context_usage', sessionId, {
+        compacted: true,
+        ...compactionResult,
+      });
+    }
+
     const messages = [
       {
         role: 'system' as const,
-        content: needsTools
+        content: (needsTools
           ? (`You are "${instance.name || 'Agent'}", the user's personal AI agent with marketplace abilities.\n\n` +
           `## Available Tools\n` +
           `- skill_search/skill_install/skill_execute/skill_recommend/skill_publish: Marketplace skill lifecycle\n` +
@@ -1099,9 +1216,10 @@ export class OpenClawProxyService {
             : '7. No Agent Account bound.'}\n` +
           `8. Model: ${resolvedModelLabel}. Identify truthfully when asked.\n` +
           `9. Use prior conversation context when relevant.`)
-          : (`You are "${instance.name || 'Agent'}", the user's personal AI agent. Reply concisely in the user's language. Model: ${resolvedModelLabel}.`),
+          : (`You are "${instance.name || 'Agent'}", the user's personal AI agent. Reply concisely in the user's language. Model: ${resolvedModelLabel}.`))
+          + memoryContext + planModeSystemAddition,
       },
-      ...this.buildPlatformHistoryMessages(effectiveHistory),
+      ...historyMessages,
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
@@ -1146,6 +1264,40 @@ export class OpenClawProxyService {
       (err) => this.logger.warn(`Token deduct failed: ${err.message}`),
     );
 
+    // ── P4 Post-LLM hooks ──────────────────────────────────────────
+    // P4.1 Plan Mode: parse plan from response
+    const parsedPlan = this.intelligenceService.parsePlanFromResponse(text);
+    if (parsedPlan) {
+      this.intelligenceService.setActivePlan(sessionId, parsedPlan);
+      emitAgentSyncEvent(userId, 'agent:plan_update', sessionId, parsedPlan);
+    }
+    // Mark step done if we were executing a plan
+    if (activePlan?.status === 'executing') {
+      const completedStep = this.intelligenceService.completeStep(sessionId, text.substring(0, 500));
+      if (completedStep) {
+        emitAgentSyncEvent(userId, 'agent:plan_update', sessionId, this.intelligenceService.getActivePlan(sessionId));
+      }
+    }
+
+    // P4.2 Auto-Memory: extract memories in background
+    this.intelligenceService.extractAndSaveMemories(
+      session.id, userId, agentAccount?.id, messageText, text,
+    ).catch((err) => this.logger.warn(`Memory extraction failed: ${err.message}`));
+
+    // P4.4 Auto-title session on first message
+    if (persistedHistory.length === 0) {
+      this.intelligenceService.autoTitleSession(session.id, messageText).catch(
+        (err) => this.logger.warn(`Auto-title failed: ${err.message}`),
+      );
+    }
+
+    // P5.1 Cross-device sync: broadcast chat update
+    emitAgentSyncEvent(userId, 'agent:session_update', sessionId, {
+      type: 'new_message',
+      model: executionModel,
+      hasToolCalls: (result?.toolCalls?.length || 0) > 0,
+    });
+
     await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
       source: 'platform-hosted-chat',
       instanceId: instance.id,
@@ -1156,6 +1308,7 @@ export class OpenClawProxyService {
       instanceId: instance.id,
       model: executionModel,
       toolCalls: result?.toolCalls || null,
+      plan: parsedPlan || undefined,
     });
 
     return {
@@ -1169,6 +1322,7 @@ export class OpenClawProxyService {
         createdAt: new Date().toISOString(),
       },
       toolCalls: result?.toolCalls || null,
+      plan: parsedPlan || this.intelligenceService.getActivePlan(sessionId) || null,
       platformHosted: true,
     };
   }

@@ -107,6 +107,8 @@ import { DesktopSyncModule } from './modules/desktop-sync/desktop-sync.module';
 import { AgentPresenceModule } from './modules/agent-presence/agent-presence.module';
 // Wearable Phase 2-3: continuous telemetry + automation triggers
 import { WearableTelemetryModule } from './modules/wearable-telemetry/wearable-telemetry.module';
+// Agent Intelligence: Plan Mode, Auto-Memory, Compaction, Cross-device Sync
+import { AgentIntelligenceModule } from './modules/agent-intelligence/agent-intelligence.module';
 
 @Module({
   imports: [
@@ -220,6 +222,8 @@ import { WearableTelemetryModule } from './modules/wearable-telemetry/wearable-t
     AgentPresenceModule,
     // Wearable Phase 2-3: continuous telemetry + automation triggers
     WearableTelemetryModule,
+    // Agent Intelligence: Plan Mode, Auto-Memory, Compaction, Cross-device Sync
+    AgentIntelligenceModule,
   ],
   controllers: [AppController],
   providers: [
