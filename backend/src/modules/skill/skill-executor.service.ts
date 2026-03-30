@@ -1537,5 +1537,202 @@ export class SkillExecutorService {
         return { tasks: [], total: 0, error: `Task search failed: ${err.message}` };
       }
     });
+
+    // ────────────────────────────────────────────────────────
+    // Web Search & Fetch Tools
+    // ────────────────────────────────────────────────────────
+
+    /**
+     * web_search — Search the web for real-time information
+     * Uses Tavily API (if TAVILY_API_KEY set) or DuckDuckGo HTML as fallback
+     */
+    this.registerHandler('web_search', async (params, _context) => {
+      const { query, limit = 5 } = params;
+      if (!query) throw new BadRequestException('query is required for web_search');
+
+      const tavilyKey = process.env.TAVILY_API_KEY;
+      if (tavilyKey) {
+        try {
+          const resp = await axios.post('https://api.tavily.com/search', {
+            api_key: tavilyKey,
+            query,
+            max_results: Math.min(Number(limit), 10),
+            include_answer: true,
+            search_depth: 'basic',
+          }, { timeout: 15000 });
+          return {
+            success: true,
+            answer: resp.data.answer || null,
+            results: (resp.data.results || []).map((r: any) => ({
+              title: r.title,
+              url: r.url,
+              snippet: r.content?.substring(0, 500),
+            })),
+            query,
+            source: 'tavily',
+          };
+        } catch (err: any) {
+          this.logger.warn(`Tavily search failed, falling back to DuckDuckGo: ${err.message}`);
+        }
+      }
+
+      // Fallback: DuckDuckGo HTML Lite
+      try {
+        const resp = await axios.get('https://html.duckduckgo.com/html/', {
+          params: { q: query },
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Agentrix/1.0)' },
+          timeout: 10000,
+        });
+        const html = resp.data as string;
+        const results: { title: string; url: string; snippet: string }[] = [];
+        const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]*)"[^>]*>(.*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>(.*?)<\/a>/gi;
+        let match: RegExpExecArray | null;
+        while ((match = resultRegex.exec(html)) !== null && results.length < Math.min(Number(limit), 10)) {
+          const url = decodeURIComponent((match[1] || '').replace(/.*uddg=/, '').replace(/&.*/, ''));
+          const title = (match[2] || '').replace(/<[^>]*>/g, '').trim();
+          const snippet = (match[3] || '').replace(/<[^>]*>/g, '').trim();
+          if (url && title) results.push({ title, url, snippet });
+        }
+        return { success: true, results, query, source: 'duckduckgo' };
+      } catch (err: any) {
+        return { success: false, results: [], query, error: `Web search failed: ${err.message}` };
+      }
+    });
+
+    /**
+     * web_fetch — Fetch and extract readable text from a URL
+     */
+    this.registerHandler('web_fetch', async (params, _context) => {
+      const { url, maxLength = 8000 } = params;
+      if (!url) throw new BadRequestException('url is required for web_fetch');
+
+      // Basic URL validation
+      try { new URL(url); } catch { throw new BadRequestException('Invalid URL format'); }
+
+      try {
+        const resp = await axios.get(url, {
+          timeout: 15000,
+          maxContentLength: 2 * 1024 * 1024, // 2MB max
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Agentrix/1.0)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8',
+          },
+          responseType: 'text',
+        });
+
+        const contentType = String(resp.headers?.['content-type'] || '');
+        let text: string;
+
+        if (contentType.includes('application/json')) {
+          text = JSON.stringify(resp.data, null, 2);
+        } else if (contentType.includes('text/plain')) {
+          text = String(resp.data);
+        } else {
+          // HTML → extract text
+          const html = String(resp.data);
+          // Remove script, style, nav, header, footer
+          text = html
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+            .replace(/<header[\s\S]*?<\/header>/gi, '')
+            .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+
+        const truncated = text.length > Number(maxLength);
+        return {
+          success: true,
+          url,
+          contentType: contentType.split(';')[0].trim(),
+          text: text.substring(0, Number(maxLength)),
+          truncated,
+          originalLength: text.length,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          url,
+          error: `Failed to fetch URL: ${err.message}`,
+        };
+      }
+    });
+
+    /**
+     * open_url — Return a URL for the client to open in the user's browser
+     */
+    this.registerHandler('open_url', async (params, _context) => {
+      const { url, title } = params;
+      if (!url) throw new BadRequestException('url is required for open_url');
+      try { new URL(url); } catch { throw new BadRequestException('Invalid URL format'); }
+      return {
+        success: true,
+        action: 'open_url',
+        url,
+        title: title || url,
+        message: `Opening ${title || url} in browser`,
+      };
+    });
+
+    /**
+     * code_eval — Execute JavaScript in a sandboxed VM with timeout
+     */
+    this.registerHandler('code_eval', async (params, _context) => {
+      const { code } = params;
+      if (!code) throw new BadRequestException('code is required for code_eval');
+      if (typeof code !== 'string' || code.length > 10000) {
+        throw new BadRequestException('code must be a string under 10000 characters');
+      }
+
+      // Block dangerous patterns
+      const forbidden = [
+        /\brequire\s*\(/i,
+        /\bimport\s+/i,
+        /\bprocess\b/i,
+        /\bglobal\b/i,
+        /\b__dirname\b/i,
+        /\b__filename\b/i,
+        /\bchild_process\b/i,
+        /\bexecSync\b/i,
+        /\bspawnSync\b/i,
+      ];
+      for (const pattern of forbidden) {
+        if (pattern.test(code)) {
+          return { success: false, error: `Forbidden pattern detected: ${pattern.source}` };
+        }
+      }
+
+      try {
+        const vm = require('vm');
+        const sandbox = {
+          Math, JSON, Date, Array, Object, String, Number, RegExp,
+          parseInt, parseFloat, isNaN, isFinite,
+          console: { log: (...args: any[]) => outputs.push(args.map(String).join(' ')) },
+        };
+        const outputs: string[] = [];
+        const context = vm.createContext(sandbox);
+        const result = vm.runInContext(code, context, { timeout: 5000 });
+        return {
+          success: true,
+          result: result !== undefined ? String(result) : undefined,
+          output: outputs.length > 0 ? outputs.join('\n') : undefined,
+          type: typeof result,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err.message,
+          name: err.name,
+        };
+      }
+    });
   }
 }

@@ -11,11 +11,15 @@ import { Server, Socket } from 'socket.io';
 import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { VoiceService } from './voice.service';
 import { edgeTTS, resolveEdgeVoice } from './adapters/edge-tts.adapter';
 import { DeepgramSTTAdapter } from './adapters/deepgram-stt.adapter';
-import type { StreamingSTTSession } from './adapters/voice-provider.interface';
+import { GeminiLiveAdapter, type GeminiTier } from './adapters/gemini-live.adapter';
+import type { StreamingSTTSession, RealtimeVoiceSession as GeminiSession } from './adapters/voice-provider.interface';
 import { OpenClawProxyService } from '../openclaw-proxy/openclaw-proxy.service';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 
 /**
  * RealtimeVoiceGateway — WebSocket gateway for bidirectional voice streaming.
@@ -72,6 +76,9 @@ interface VoiceSession {
   /** Stores the last streaming final transcript (for non-duplex race recovery) */
   streamingFinalText: string;
   streamingFinalToken: symbol | null;
+  /** Gemini Live end-to-end session (when enabled) */
+  geminiSession: GeminiSession | null;
+  useGeminiLive: boolean;
 }
 
 const PCM_SAMPLE_RATE = 16000;
@@ -94,6 +101,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   private readonly logger = new Logger(RealtimeVoiceGateway.name);
   private sessions = new Map<string, VoiceSession>();
   private readonly streamingAdapter = new DeepgramSTTAdapter();
+  private readonly geminiAdapter = new GeminiLiveAdapter();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -101,6 +109,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly voiceService: VoiceService,
     @Inject(forwardRef(() => OpenClawProxyService))
     private readonly openClawProxyService: OpenClawProxyService,
+    @InjectRepository(UserProviderConfig)
+    private readonly providerConfigRepo: Repository<UserProviderConfig>,
   ) {}
 
   // ── Connection Lifecycle ─────────────────────────────────
@@ -135,6 +145,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     // Clean up any sessions for this socket
     for (const [sessionId, session] of this.sessions.entries()) {
       if (session.socketId === client.id) {
+        session.geminiSession?.close?.();
         session.streamingSession?.abort();
         session.currentResponseAbort?.abort();
         this.sessions.delete(sessionId);
@@ -186,12 +197,29 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       pendingStreamingEnd: null,
       streamingFinalText: '',
       streamingFinalToken: null,
+      geminiSession: null,
+      useGeminiLive: false,
     };
 
     this.sessions.set(sessionId, session);
     client.join(`voice:${sessionId}`);
 
-    await this.initializeStreamingSession(session, client);
+    // Try Gemini Live for end-to-end voice — only for platform users without custom API
+    const hasCustomProvider = await this.providerConfigRepo.count({ where: { userId: client.userId, isActive: true } }) > 0;
+    if (!hasCustomProvider && this.geminiAdapter.isAvailable && data.duplexMode !== false) {
+      try {
+        await this.initializeGeminiLiveSession(session, client);
+      } catch (err: any) {
+        this.logger.warn(`Gemini Live init failed, falling back to Deepgram+OpenClaw: ${err.message}`);
+        session.useGeminiLive = false;
+        session.geminiSession = null;
+      }
+    }
+
+    // Fall back to traditional Deepgram STT pipeline
+    if (!session.useGeminiLive) {
+      await this.initializeStreamingSession(session, client);
+    }
 
     this.logger.debug(`Voice session started: ${sessionId} (user: ${client.userId}, lang: ${session.lang}, duplex: ${session.duplexMode})`);
 
@@ -206,6 +234,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     const session = this.getSession(data.sessionId, client);
     if (!session) return;
 
+    session.geminiSession?.close?.();
     session.streamingSession?.abort();
     session.currentResponseAbort?.abort();
     this.sessions.delete(data.sessionId);
@@ -233,6 +262,13 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     this.logger.debug(`voice:text received for session ${data.sessionId} (instance: ${session.instanceId})`);
 
     session.model = data.model || session.model;
+
+    // Route text to Gemini Live when active
+    if (session.useGeminiLive && session.geminiSession) {
+      session.geminiSession.sendText(text);
+      return;
+    }
+
     await this.startAgentResponse(client, session, text);
   }
 
@@ -269,6 +305,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return;
     }
 
+    // Route to Gemini Live if active
+    if (session.useGeminiLive && session.geminiSession) {
+      session.geminiSession.sendAudio(chunk);
+      return;
+    }
+
     if (session.streamingSession) {
       session.streamingSession.write(chunk);
       session.audioChunks.push(chunk);
@@ -285,6 +327,11 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   ) {
     const session = this.getSession(data.sessionId, client);
     if (!session) {
+      return;
+    }
+
+    // Gemini Live manages turn detection itself — audio:end is a no-op
+    if (session.useGeminiLive && session.geminiSession) {
       return;
     }
 
@@ -409,6 +456,97 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   /** Get active session count (for monitoring) */
   getActiveSessionCount(): number {
     return this.sessions.size;
+  }
+
+  // ── Gemini Live End-to-End Session ────────────────────────
+
+  private async initializeGeminiLiveSession(
+    session: VoiceSession,
+    client: AuthenticatedVoiceSocket,
+  ): Promise<void> {
+    const systemPrompt =
+      `You are Agentrix, a helpful AI voice assistant. ` +
+      `Respond naturally and concisely in ${session.lang === 'zh' ? 'Chinese' : 'English'}. ` +
+      `For simple questions (weather, time, greetings, quick Q&A), answer directly. ` +
+      `For complex tasks (coding, analysis, multi-step reasoning, planning), ` +
+      `call the route_to_backend tool with the full user request.`;
+
+    session.geminiSession = await this.geminiAdapter.createSession(
+      systemPrompt,
+      {
+        onTranscript: (text, isFinal) => {
+          if (isFinal) {
+            client.emit('voice:stt:final', {
+              sessionId: session.sessionId,
+              transcript: text,
+              lang: session.lang,
+              provider: 'gemini-live',
+            });
+          } else {
+            client.emit('voice:stt:interim', {
+              sessionId: session.sessionId,
+              transcript: text,
+            });
+          }
+        },
+        onAgentText: (text, isFinal) => {
+          client.emit('voice:agent:text', {
+            sessionId: session.sessionId,
+            chunk: text,
+          });
+          if (isFinal) {
+            client.emit('voice:agent:end', { sessionId: session.sessionId });
+          }
+        },
+        onAgentAudio: (chunk) => {
+          // Gemini returns 24kHz PCM — send to client as base64
+          client.emit('voice:agent:audio', {
+            sessionId: session.sessionId,
+            audio: chunk.toString('base64'),
+            format: 'pcm24k',
+            text: '',
+          });
+        },
+        onAgentAudioEnd: () => {
+          client.emit('voice:agent:end', { sessionId: session.sessionId });
+        },
+        onToolCall: async (toolName, args) => {
+          if (toolName === 'route_to_backend') {
+            // Complexity routing: forward to Haiku/Sonnet via OpenClaw proxy
+            this.logger.log(`Gemini routed complex task (${args.complexity}): "${(args.transcript || '').slice(0, 80)}"`);
+
+            // Close Gemini audio output for this turn, use traditional TTS for the response
+            session.geminiSession?.interrupt?.();
+
+            // Route through OpenClaw proxy (user's configured model)
+            await this.startAgentResponse(client, session, args.transcript || '');
+          } else {
+            this.logger.log(`Gemini tool call: ${toolName}(${JSON.stringify(args).slice(0, 100)})`);
+          }
+        },
+        onError: (err) => {
+          this.logger.error(`Gemini Live session error: ${err.message}`);
+          // Fall back to traditional pipeline
+          session.useGeminiLive = false;
+          session.geminiSession = null;
+          this.initializeStreamingSession(session, client).catch(() => {});
+          client.emit('voice:error', {
+            sessionId: session.sessionId,
+            error: 'Voice session degraded to standard mode',
+            code: 'GEMINI_FALLBACK',
+          });
+        },
+        onSessionEnd: () => {
+          this.logger.debug(`Gemini Live session ended for ${session.sessionId}`);
+          session.geminiSession = null;
+          session.useGeminiLive = false;
+        },
+      },
+      { lang: session.lang, voice: session.voiceId },
+    );
+
+    session.useGeminiLive = true;
+    this.logger.log(`Gemini Live session initialized for ${session.sessionId}`);
   }
 
   private async initializeStreamingSession(
@@ -663,6 +801,9 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   }
 
   private interruptSessionResponse(client: AuthenticatedVoiceSocket, session: VoiceSession) {
+    // Interrupt Gemini Live audio output if active
+    session.geminiSession?.interrupt?.();
+
     const hadActiveResponse = !!session.currentResponseAbort;
     session.currentResponseAbort?.abort();
     session.currentResponseAbort = null;

@@ -395,6 +395,34 @@ export class OpenClawProxyService {
         },
         required: ['name', 'description'],
       },
+      web_search: {
+        properties: {
+          query: { type: 'string', description: 'Search query — factual questions, current events, technical docs, code examples' },
+          limit: { type: 'number', description: 'Max results to return (default 5, max 10)' },
+        },
+        required: ['query'],
+      },
+      web_fetch: {
+        properties: {
+          url: { type: 'string', description: 'Full URL to fetch content from (https://...)' },
+          maxLength: { type: 'number', description: 'Max characters of extracted text to return (default 8000)' },
+        },
+        required: ['url'],
+      },
+      open_url: {
+        properties: {
+          url: { type: 'string', description: 'URL to open in the user\'s browser (https://...)' },
+          title: { type: 'string', description: 'Optional display title for the link' },
+        },
+        required: ['url'],
+      },
+      code_eval: {
+        properties: {
+          code: { type: 'string', description: 'JavaScript code to execute. Has access to Math, JSON, Date, Array, Object, String, Number, RegExp. No network or filesystem access.' },
+          language: { type: 'string', enum: ['javascript'], description: 'Language (currently only javascript supported)' },
+        },
+        required: ['code'],
+      },
     };
 
     const specific = schemas[skill.handlerName];
@@ -1000,7 +1028,7 @@ export class OpenClawProxyService {
     const agentAccount = permissionProfile?.agentAccountId
       ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
       : null;
-    let resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    let resolvedModel = agentAccount?.preferredModel || dto.model || defaultConfig?.selectedModel || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
     const requestedProvider = this.inferProviderFromModelId(dto.model);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
@@ -1293,7 +1321,7 @@ export class OpenClawProxyService {
         sessionId: dto.sessionId,
         model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
       }),
-      signal: callbacks.signal || AbortSignal.timeout(60_000),
+      signal: callbacks.signal || AbortSignal.timeout(180_000),
     });
 
     if (!upstreamResp.ok || !upstreamResp.body) {

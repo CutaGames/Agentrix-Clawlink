@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Query, Res, UseInterceptors, UploadedFile, UseGuards, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Query, Res, Request, UseInterceptors, UploadedFile, UseGuards, BadRequestException, Logger } from '@nestjs/common';
 import { PollyClient, SynthesizeSpeechCommand } from '@aws-sdk/client-polly';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -6,6 +6,10 @@ import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from '@nes
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { VoiceService } from './voice.service';
 import { edgeTTSStream, resolveEdgeVoice } from './adapters/edge-tts.adapter';
+import { GeminiLiveAdapter } from './adapters/gemini-live.adapter';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 
 @ApiTags('Voice')
 @Controller('voice')
@@ -13,25 +17,41 @@ import { edgeTTSStream, resolveEdgeVoice } from './adapters/edge-tts.adapter';
 @ApiBearerAuth()
 export class VoiceController {
   private readonly logger = new Logger(VoiceController.name);
+  private readonly geminiAdapter = new GeminiLiveAdapter();
 
-  constructor(private readonly voiceService: VoiceService) {}
+  constructor(
+    private readonly voiceService: VoiceService,
+    @InjectRepository(UserProviderConfig)
+    private readonly providerConfigRepo: Repository<UserProviderConfig>,
+  ) {}
 
   /**
-   * TTS provider order: VOICE_TTS_PROVIDER env (default: "edge,polly")
-   * - edge: Microsoft Edge TTS (free, 400+ voices, high quality)
-   * - polly: AWS Polly Neural (paid, stable fallback)
+   * TTS provider order: gemini_free → edge → polly
+   * OUTPUT chain: Gemini Free → Edge TTS → AWS Polly
+   * (Skip Gemini paid for output — $12/M tokens too expensive)
    */
-  private getTTSProviderOrder(): Array<'edge' | 'polly'> {
-    const configured = (process.env.VOICE_TTS_PROVIDER || 'edge,polly')
+  private getTTSProviderOrder(): Array<'gemini' | 'edge' | 'polly'> {
+    const configured = (process.env.VOICE_TTS_PROVIDER || 'gemini,edge,polly')
       .split(',')
       .map((v) => v.trim().toLowerCase())
-      .filter((v): v is 'edge' | 'polly' => v === 'edge' || v === 'polly');
-    return configured.length > 0 ? configured : ['edge', 'polly'];
+      .filter((v): v is 'gemini' | 'edge' | 'polly' => v === 'gemini' || v === 'edge' || v === 'polly');
+    return configured.length > 0 ? configured : ['gemini', 'edge', 'polly'];
+  }
+
+  /**
+   * Check if user has their own AI provider configured (e.g. Bedrock, OpenAI).
+   * If they do, skip Gemini voice and use the traditional pipeline.
+   */
+  private async userHasCustomProvider(userId: string): Promise<boolean> {
+    if (!userId) return false;
+    const count = await this.providerConfigRepo.count({ where: { userId, isActive: true } });
+    return count > 0;
   }
 
   @Get('tts')
   @ApiOperation({ summary: 'Text-to-speech synthesis (Edge TTS default, Polly fallback)' })
   async synthesizeTTS(
+    @Request() req,
     @Query('text') text: string,
     @Query('lang') lang: string,
     @Query('voice') requestedVoice: string,
@@ -39,6 +59,10 @@ export class VoiceController {
     @Res() res: Response,
   ) {
     if (!text) throw new BadRequestException('Text is required');
+
+    // If user has their own API provider, skip Gemini TTS — use traditional pipeline only
+    const userId = req?.user?.id || req?.user?.sub;
+    const hasCustom = userId ? await this.userHasCustomProvider(userId) : false;
 
     // Truncate to prevent abuse
     const truncated = text.slice(0, 2000);
@@ -56,6 +80,18 @@ export class VoiceController {
 
     for (const provider of this.getTTSProviderOrder()) {
       try {
+        if (provider === 'gemini' && this.geminiAdapter.isAvailable && !hasCustom) {
+          const result = await this.geminiAdapter.synthesizeSpeech(truncated, isChinese ? 'zh' : 'en');
+          if (result) {
+            this.logger.log(`Gemini TTS success (tier=${result.tier})`);
+            // Gemini returns PCM audio — convert to WAV header for browser playback
+            const pcmBuf = Buffer.from(result.audioBase64, 'base64');
+            const wavBuf = this.pcmToWav(pcmBuf, 24000, 1, 16);
+            res.set({ 'Content-Type': 'audio/wav', 'Content-Length': String(wavBuf.length) });
+            res.end(wavBuf);
+            return;
+          }
+        }
         if (provider === 'edge') {
           await this.synthesizeWithEdge(truncated, isChinese, requestedVoice, res, edgeRate);
           return;
@@ -205,12 +241,36 @@ export class VoiceController {
     },
   })
   async transcribe(
+    @Request() req,
     @UploadedFile() file: Express.Multer.File,
     @Query('lang') lang?: string,
   ) {
     if (!file) {
       throw new BadRequestException('No audio file provided. Use field name "audio".');
     }
-    return this.voiceService.transcribe(file.buffer, file.mimetype, file.originalname, lang);
+    const userId = req?.user?.id || req?.user?.sub;
+    const hasCustom = userId ? await this.userHasCustomProvider(userId) : false;
+    return this.voiceService.transcribe(file.buffer, file.mimetype, file.originalname, lang, { useGeminiSTT: !hasCustom });
+  }
+
+  /** Convert raw PCM to WAV with proper header */
+  private pcmToWav(pcm: Buffer, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const blockAlign = channels * (bitsPerSample / 8);
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + pcm.length, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20); // PCM
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(pcm.length, 40);
+    return Buffer.concat([header, pcm]);
   }
 }

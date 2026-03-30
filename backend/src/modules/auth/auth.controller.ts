@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger, Inject, forwardRef } from '@nestjs/common';
 import { AuthRateLimitGuard } from '../../common/guards/auth-rate-limit.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +13,9 @@ import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { SocialAccountType } from '../../entities/social-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
+import { AgentAccount } from '../../entities/agent-account.entity';
+import { UserProviderConfig } from '../../entities/user-provider-config.entity';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -24,6 +27,12 @@ export class AuthController {
     private configService: ConfigService,
     @InjectRepository(OpenClawInstance)
     private readonly instanceRepo: Repository<OpenClawInstance>,
+    @InjectRepository(AgentAccount)
+    private readonly agentAccountRepo: Repository<AgentAccount>,
+    @InjectRepository(UserProviderConfig)
+    private readonly providerConfigRepo: Repository<UserProviderConfig>,
+    @Inject(forwardRef(() => AiProviderService))
+    private readonly aiProviderService: AiProviderService,
   ) {}
 
   @Post('register')
@@ -994,6 +1003,29 @@ export class AuthController {
       order: { isPrimary: 'DESC', updatedAt: 'DESC' },
     });
 
+    // Batch-fetch agentAccounts for all instances that have one bound
+    const accountIds = instances
+      .map(i => (i.metadata as any)?.agentAccountId)
+      .filter(Boolean) as string[];
+    const accountMap = new Map<string, AgentAccount>();
+    if (accountIds.length) {
+      const accounts = await this.agentAccountRepo.findByIds(accountIds);
+      for (const a of accounts) accountMap.set(a.id, a);
+    }
+
+    // Fetch user's default provider config (e.g. Bedrock with Sonnet)
+    const defaultProviderConfig = await this.providerConfigRepo.findOne({
+      where: { userId: user.id, isActive: true },
+    }).then(async (first) => {
+      if (first?.metadata?.isDefault) return first;
+      // Find the one marked as default, or fall back to the first active one
+      const configs = await this.providerConfigRepo.find({ where: { userId: user.id, isActive: true } });
+      return configs.find(c => c.metadata?.isDefault === true) || configs[0] || null;
+    });
+
+    // Build model label lookup from AI provider catalog
+    const allCatalogModels = this.aiProviderService.getCatalog().flatMap((p: any) => p.models || []);
+
     return {
       id: user.id,
       agentrixId: user.agentrixId,
@@ -1002,18 +1034,36 @@ export class AuthController {
       avatarUrl: user.avatarUrl,
       roles: user.roles,
       walletAddress: (user as any).walletAddress || null,
-      openClawInstances: instances.map(i => ({
-        id: i.id,
-        name: i.name,
-        instanceUrl: i.instanceUrl || '',
-        status: i.status,
-        instanceType: i.instanceType,
-        isPrimary: i.isPrimary,
-        relayToken: i.relayToken || undefined,
-        relayConnected: i.relayConnected || false,
-        capabilities: i.capabilities || undefined,
-        updatedAt: i.updatedAt,
-      })),
+      openClawInstances: instances.map(i => {
+        const acctId = (i.metadata as any)?.agentAccountId;
+        const acct = acctId ? accountMap.get(acctId) : undefined;
+        // Priority: agentAccount.preferredModel → user's defaultProviderConfig → instance capabilities
+        const resolvedModel = acct?.preferredModel
+          || defaultProviderConfig?.selectedModel
+          || (i.capabilities as any)?.activeModel
+          || undefined;
+        const resolvedProvider = acct?.preferredProvider
+          || defaultProviderConfig?.providerId
+          || undefined;
+        const resolvedModelLabel = allCatalogModels.find((m: any) => m.id === resolvedModel)?.label
+          || resolvedModel;
+        return {
+          id: i.id,
+          name: i.name,
+          instanceUrl: i.instanceUrl || '',
+          status: i.status,
+          instanceType: i.instanceType,
+          isPrimary: i.isPrimary,
+          relayToken: i.relayToken || undefined,
+          relayConnected: i.relayConnected || false,
+          capabilities: i.capabilities || undefined,
+          resolvedModel,
+          resolvedModelLabel,
+          resolvedProvider,
+          hasCustomProvider: !!defaultProviderConfig,
+          updatedAt: i.updatedAt,
+        };
+      }),
     };
   }
 

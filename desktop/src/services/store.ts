@@ -116,6 +116,23 @@ export interface DesktopAgent {
   updatedAt: string;
 }
 
+export interface OpenClawInstance {
+  id: string;
+  name: string;
+  instanceUrl: string;
+  status: string;
+  instanceType: string;
+  isPrimary: boolean;
+  relayToken?: string;
+  relayConnected: boolean;
+  capabilities?: Record<string, any>;
+  resolvedModel?: string;
+  resolvedModelLabel?: string;
+  resolvedProvider?: string;
+  hasCustomProvider?: boolean;
+  updatedAt: string;
+}
+
 async function fetchDesktopAgents(token: string): Promise<DesktopAgent[]> {
   const response = await apiFetch(`${API_BASE}/agent-presence/agents`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -136,12 +153,15 @@ interface AuthState {
   isGuest: boolean;
   agents: DesktopAgent[];
   activeAgentId: string | null;
+  instances: OpenClawInstance[];
+  activeInstanceId: string | null;
   loadToken: () => Promise<void>;
   login: (email: string, code: string) => Promise<boolean>;
   sendCode: (email: string) => Promise<boolean>;
   enterGuest: () => void;
   logout: () => Promise<void>;
   setActiveAgent: (id: string) => void;
+  setActiveInstance: (id: string) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -150,6 +170,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isGuest: false,
   agents: [],
   activeAgentId: null,
+  instances: [],
+  activeInstanceId: null,
 
   loadToken: async () => {
     try {
@@ -187,10 +209,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         (currentActiveAgentId && agents.some((agent) => agent.id === currentActiveAgentId)
           ? currentActiveAgentId
           : null) || agents[0]?.id || null;
+
+      // Extract OpenClaw instances from /auth/me response
+      const userData = data.user || data;
+      const instances: OpenClawInstance[] = Array.isArray(userData.openClawInstances)
+        ? userData.openClawInstances
+        : [];
+      const currentInstanceId = get().activeInstanceId;
+      const primaryInstance = instances.find((i) => i.isPrimary);
+      const nextInstanceId =
+        (currentInstanceId && instances.some((i) => i.id === currentInstanceId)
+          ? currentInstanceId
+          : null) || primaryInstance?.id || instances[0]?.id || null;
+
       set({
-        user: data.user || data,
+        user: userData,
         agents,
         activeAgentId: nextActiveAgentId,
+        instances,
+        activeInstanceId: nextInstanceId,
       });
     } catch (e) {
       // Offline / parse error — keep token, don't clear
@@ -228,12 +265,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     await secureClearToken();
-    set({ token: null, user: null, isGuest: false, agents: [], activeAgentId: null });
+    set({ token: null, user: null, isGuest: false, agents: [], activeAgentId: null, instances: [], activeInstanceId: null });
   },
 
   enterGuest: () => set({ isGuest: true }),
 
   setActiveAgent: (id: string) => set({ activeAgentId: id }),
+  setActiveInstance: (id: string) => set({ activeInstanceId: id }),
 }));
 
 // ─── Chat API ──────────────────────────────────────────
@@ -245,6 +283,7 @@ export interface ChatMessage {
   streaming?: boolean;
   error?: boolean;
   createdAt: number;
+  meta?: { resolvedModel?: string; resolvedModelLabel?: string };
 }
 
 /** SSE streaming chat via OpenClaw proxy */
@@ -255,6 +294,7 @@ export function streamChat(opts: {
   token: string;
   model?: string;
   onChunk: (chunk: string) => void;
+  onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
   onDone: () => void;
   onError: (err: string) => void;
 }): AbortController {
@@ -317,6 +357,11 @@ export function streamChat(opts: {
                 if (parsed.error) {
                   opts.onError(parsed.error);
                   return;
+                }
+                // Handle meta events (model info)
+                if (parsed.meta && opts.onMeta) {
+                  opts.onMeta(parsed.meta);
+                  continue;
                 }
                 // Extract text from known fields
                 const text = parsed.chunk ?? parsed.text ?? parsed.content;

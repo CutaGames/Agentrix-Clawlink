@@ -908,7 +908,8 @@ export class ClaudeIntegrationService {
     const _t0 = Date.now();
     const _lap = (label: string) => this.logger.log(`⏱ BR ${label}: ${Date.now() - _t0}ms`);
     const modelId = options.model || 'claude-haiku-4-5';
-    this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}`);
+    const maxToolRounds = options.maxToolRounds ?? 5;
+    this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}, maxToolRounds=${maxToolRounds}`);
 
     const bedrockTools = mergedTools.map(t => ({
       name: t.name,
@@ -916,24 +917,44 @@ export class ClaudeIntegrationService {
       parameters: t.input_schema || t.parameters,
     }));
 
-    const bedrockResult = await this.bedrockService.chatWithFunctions(messages, {
-      model: modelId,
-      tools: bedrockTools,
-      userCredentials,
-      onChunk: options?.onChunk,
-    });
-    _lap(`1st LLM call (toolCalls=${bedrockResult.functionCalls?.length || 0})`);
+    let currentMessages = [...messages];
+    let allToolCalls: any[] = [];
+    let lastText = '';
 
-    // If Bedrock returned tool calls, execute them and do a second LLM call
-    if (bedrockResult.functionCalls && bedrockResult.functionCalls.length > 0) {
-      this.logger.log(`Bedrock returned ${bedrockResult.functionCalls.length} tool call(s): ${bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ')}`);
-      // Emit progress events for tool calls so the frontend can show thinking/thought chain
+    for (let round = 0; round <= maxToolRounds; round++) {
+      const llmResult = await this.bedrockService.chatWithFunctions(currentMessages, {
+        model: modelId,
+        tools: bedrockTools,
+        userCredentials,
+        onChunk: options?.onChunk,
+        ...(round > 0 ? { maxTokens: 4096 } : {}),
+      });
+      _lap(`LLM call #${round + 1} (toolCalls=${llmResult.functionCalls?.length || 0})`);
+
+      lastText = llmResult.text || '';
+
+      // No tool calls → done
+      if (!llmResult.functionCalls || llmResult.functionCalls.length === 0) {
+        return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+      }
+
+      // Max rounds reached → return what we have
+      if (round === maxToolRounds) {
+        this.logger.warn(`Bedrock agent loop: max ${maxToolRounds} tool rounds reached, returning partial result`);
+        return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls };
+      }
+
+      // Execute tool calls
+      const toolNames = llmResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ');
+      this.logger.log(`Bedrock round ${round + 1}: tool call(s): ${toolNames}`);
+      allToolCalls.push(...llmResult.functionCalls);
+
       if (options?.onChunk) {
-        const toolNames = bedrockResult.functionCalls.map((tc: any) => tc.function?.name || tc.name).join(', ');
         options.onChunk(`[Tool Call] ${toolNames}`);
       }
+
       const toolResults: any[] = [];
-      for (const tc of bedrockResult.functionCalls) {
+      for (const tc of llmResult.functionCalls) {
         const fnName = tc.function?.name || tc.name;
         const fnArgs = tc.function?.arguments
           ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
@@ -959,24 +980,24 @@ export class ClaudeIntegrationService {
           });
         }
       }
+      _lap(`round ${round + 1} tool execution done`);
 
+      // Build follow-up messages for next round
       const lastUserContent = [...messages].reverse().find(m => m.role === 'user')?.content || '';
       const lastUserMessage = typeof lastUserContent === 'string'
         ? lastUserContent
         : Array.isArray(lastUserContent)
           ? lastUserContent.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
           : String(lastUserContent);
-      const toolFallbackText = this.buildToolFallbackText(toolResults);
-      _lap('tool execution done');
 
-      // Truncate tool results to reduce 2nd LLM input tokens (major latency driver)
       const truncatedResults = toolResults.map(r => {
         const s = r.content;
         return s.length > 2000 ? s.slice(0, 2000) + '...[truncated]' : s;
       });
-      const followUpMessages = [
-        ...messages,
-        { role: 'assistant' as const, content: bedrockResult.text || 'I used the available tools and received the results.' },
+
+      currentMessages = [
+        ...currentMessages,
+        { role: 'assistant' as const, content: llmResult.text || 'I used the available tools and received the results.' },
         {
           role: 'user' as const,
           content:
@@ -987,31 +1008,10 @@ export class ClaudeIntegrationService {
             `Tool results:\n${truncatedResults.join('\n')}`,
         },
       ];
-      try {
-        const finalResult = await this.bedrockService.chatWithFunctions(followUpMessages, {
-          model: modelId,
-          tools: bedrockTools,
-          userCredentials,
-          onChunk: options?.onChunk,
-          maxTokens: 1500, // Limit 2nd LLM response length for faster completion
-        });
-        _lap('2nd LLM call done');
-        const finalText = this.stripToolUseXml(finalResult.text?.trim() || '');
-        return {
-          text: !finalText || this.looksLikeToolAccessRefusal(finalText)
-            ? (toolFallbackText || finalText || bedrockResult.text)
-            : finalText,
-          toolCalls: bedrockResult.functionCalls,
-        };
-      } catch {
-        return {
-          text: toolFallbackText || (bedrockResult.text + '\n\n' + toolResults.map(r => r.content).join('\n')),
-          toolCalls: bedrockResult.functionCalls,
-        };
-      }
     }
 
-    return { text: this.stripToolUseXml(bedrockResult.text || ''), toolCalls: bedrockResult.functionCalls ?? null };
+    // Shouldn't reach here, but safety return
+    return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
   }
 
   /**
@@ -1308,111 +1308,84 @@ export class ClaudeIntegrationService {
         response = await anthropicClient.messages.create(apiParams);
       }
 
-      // 处理响应
-      const textContent = response.content.find(
-        (item: any) => item.type === 'text',
-      );
-      const text = textContent?.text || '';
+      // Multi-turn agent loop for Anthropic direct API
+      const maxToolRounds = 5;
+      let allToolCalls: any[] = [];
+      let currentConversationMessages = [...conversationMessages];
 
-      // 检查是否有 Tool Use（Function Call）
-      const toolUses = response.content.filter(
-        (item: any) => item.type === 'tool_use',
-      );
+      for (let round = 0; round <= maxToolRounds; round++) {
+        const textContent = response.content.find((item: any) => item.type === 'text');
+        const text = textContent?.text || '';
 
-      if (toolUses && toolUses.length > 0) {
-        // 处理 Tool Calls
+        const toolUses = response.content.filter((item: any) => item.type === 'tool_use');
+
+        // No tool calls → done
+        if (!toolUses || toolUses.length === 0) {
+          return { text, toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+        }
+
+        // Max rounds reached
+        if (round === maxToolRounds) {
+          this.logger.warn(`Anthropic agent loop: max ${maxToolRounds} tool rounds reached`);
+          return { text, toolCalls: allToolCalls };
+        }
+
+        this.logger.log(`Anthropic round ${round + 1}: ${toolUses.length} tool call(s): ${toolUses.map((t: any) => t.name).join(', ')}`);
+
+        if (options?.onChunk) {
+          options.onChunk(`[Tool Call] ${toolUses.map((t: any) => t.name).join(', ')}`);
+        }
+
+        // Execute tool calls
         const toolResults = await Promise.all(
           toolUses.map(async (toolUse: any) => {
             const functionName = toolUse.name;
             const parameters = toolUse.input || {};
-
             try {
               let result: any;
-              
-              // 优先检查外部定义的 onToolCall (如 HQ 总部工具)
               if (options?.onToolCall) {
                 result = await options.onToolCall(functionName, parameters);
               }
-
-              // 如果外部未处理或未定义，则尝试执行系统内定义的电商能力
               if (result === undefined) {
-                result = await this.executeFunctionCall(
-                  functionName,
-                  parameters,
-                  options?.context || {},
-                );
+                result = await this.executeFunctionCall(functionName, parameters, options?.context || {});
               }
-
-              return {
-                type: 'tool_result',
-                tool_use_id: toolUse.id,
-                content: JSON.stringify(result),
-              };
+              return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(result) };
             } catch (error: any) {
-              this.logger.error(`Function 执行失败: ${functionName}`, error);
-              return {
-                type: 'tool_result',
-                tool_use_id: toolUse.id,
-                content: JSON.stringify({
-                  success: false,
-                  error: error.message,
-                }),
-              };
+              return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify({ success: false, error: error.message }) };
             }
           }),
         );
 
-        // 发送 Tool 结果并获取最终响应
-        const followUpParams = {
+        allToolCalls.push(...toolUses.map((toolUse: any) => ({ name: toolUse.name, input: toolUse.input })));
+
+        // Build messages for next round
+        currentConversationMessages = [
+          ...currentConversationMessages,
+          { role: 'assistant' as const, content: response.content },
+          { role: 'user' as const, content: toolResults },
+        ];
+
+        const nextParams = {
           model: selectedModel,
-          max_tokens: options?.maxTokens || 2048,
+          max_tokens: options?.maxTokens || 4096,
           temperature: options?.temperature || 0.7,
           system: systemPrompt || undefined,
           tools: hasFunctionCalling ? apiParams.tools : undefined,
-          messages: [
-            ...conversationMessages,
-            {
-              role: 'assistant' as const,
-              content: response.content,
-            },
-            {
-              role: 'user' as const,
-              content: toolResults,
-            },
-          ],
+          messages: currentConversationMessages,
         };
 
-        let finalResponse: any;
         if (options?.onChunk) {
-          const followUpStream = anthropicClient.messages.stream(followUpParams as any);
-          followUpStream.on('text', (text: string) => {
-            options.onChunk!(text);
-          });
-          finalResponse = await followUpStream.finalMessage();
+          const nextStream = anthropicClient.messages.stream(nextParams as any);
+          nextStream.on('text', (t: string) => { options.onChunk!(t); });
+          response = await nextStream.finalMessage();
         } else {
-          finalResponse = await anthropicClient.messages.create(followUpParams);
+          response = await anthropicClient.messages.create(nextParams);
         }
-
-        const finalTextContent = finalResponse.content.find(
-          (item: any) => item.type === 'text',
-        );
-        const finalText = finalTextContent?.text || text;
-
-        return {
-          text: this.looksLikeToolAccessRefusal(finalText)
-            ? (this.buildToolFallbackText(toolResults) || finalText)
-            : finalText,
-          toolCalls: toolUses.map((toolUse: any) => ({
-            name: toolUse.name,
-            input: toolUse.input,
-          })),
-        };
       }
 
-      return {
-        text,
-        toolCalls: null,
-      };
+      // Safety fallback
+      const finalText = response.content?.find((item: any) => item.type === 'text')?.text || '';
+      return { text: finalText, toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
     } catch (error: any) {
       this.logger.error(`Claude API调用失败: ${error.message}`, error.stack);
       if (canUsePlatformFallback && !userDirectKey) {
