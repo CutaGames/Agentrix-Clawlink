@@ -177,8 +177,8 @@ export function GlobalFloatingBall({
     if (ballState !== 'idle') {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.12, duration: 500, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.12, duration: 500, useNativeDriver: false }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
         ]),
       );
       pulse.start();
@@ -303,8 +303,8 @@ export function GlobalFloatingBall({
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
       onPanResponderGrant: () => {
-        Animated.spring(magneticX, { toValue: MAGNETIC_OFFSET, useNativeDriver: true, friction: 6 }).start();
-        Animated.spring(magneticY, { toValue: -MAGNETIC_OFFSET, useNativeDriver: true, friction: 6 }).start();
+        Animated.spring(magneticX, { toValue: MAGNETIC_OFFSET, useNativeDriver: false, friction: 6 }).start();
+        Animated.spring(magneticY, { toValue: -MAGNETIC_OFFSET, useNativeDriver: false, friction: 6 }).start();
 
         longPressTimer.current = setTimeout(() => {
           if (!isDragging.current) {
@@ -326,8 +326,8 @@ export function GlobalFloatingBall({
         Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(_, gesture);
       },
       onPanResponderRelease: (_, gesture) => {
-        Animated.spring(magneticX, { toValue: 0, useNativeDriver: true, friction: 6 }).start();
-        Animated.spring(magneticY, { toValue: 0, useNativeDriver: true, friction: 6 }).start();
+        Animated.spring(magneticX, { toValue: 0, useNativeDriver: false, friction: 6 }).start();
+        Animated.spring(magneticY, { toValue: 0, useNativeDriver: false, friction: 6 }).start();
 
         if (longPressTimer.current) {
           clearTimeout(longPressTimer.current);
