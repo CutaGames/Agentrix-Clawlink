@@ -127,6 +127,7 @@ export interface OpenClawInstance {
   relayConnected: boolean;
   capabilities?: Record<string, any>;
   resolvedModel?: string;
+  resolvedModelLabel?: string;
   resolvedProvider?: string;
   hasCustomProvider?: boolean;
   updatedAt: string;

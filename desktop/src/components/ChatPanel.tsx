@@ -752,15 +752,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           let ac: AbortController;
           if (activeInstanceId) {
             // Route through OpenClaw proxy — uses this instance's model/API config
-            const activeInst = instances.find((i) => i.id === activeInstanceId);
-            // Don't send model override when user has custom provider — let backend resolve from their config
-            const modelOverride = activeInst?.hasCustomProvider ? undefined : (selectedModel || undefined);
             ac = streamChat({
               instanceId: activeInstanceId,
               message: outboundText,
               sessionId: sessionIdRef.current,
               token,
-              model: modelOverride,
+              model: selectedModel || undefined,
               onChunk: chunkHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
@@ -1092,16 +1089,9 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           >
             {instances.length === 0 && <option value="">No agent selected</option>}
             {instances.map((inst) => {
-              const model = inst.resolvedModel || inst.capabilities?.activeModel || "";
+              const label = inst.resolvedModelLabel || inst.resolvedModel || inst.capabilities?.activeModel || "";
               const provider = inst.resolvedProvider || inst.capabilities?.llmProvider || "";
-              // Clean up raw model IDs for display: strip Bedrock prefixes, version suffixes
-              const shortModel = model
-                .replace(/^us\.anthropic\./, "")
-                .replace(/^anthropic\./, "")
-                .replace(/^claude-/, "")
-                .replace(/-\d{8}-v\d+:\d+$/, "")  // strip version like -20250514-v1:0
-                .replace(/-v\d+:\d+$/, "");        // strip version like -v1:0
-              const suffix = shortModel ? ` — ${shortModel}${provider ? ` (${provider})` : ""}` : "";
+              const suffix = label ? ` — ${label}${provider ? ` (${provider})` : ""}` : "";
               return (
                 <option key={inst.id} value={inst.id}>
                   {inst.name}{suffix}
@@ -1109,8 +1099,8 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               );
             })}
           </select>
-          {/* Model selector — hide when user has custom provider (they use their own API) */}
-          {models.length > 0 && !instances.find((i) => i.id === activeInstanceId)?.hasCustomProvider && (
+          {/* Model selector — always visible so user can switch between custom and platform models */}
+          {models.length > 0 && (
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
@@ -1124,6 +1114,16 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                 WebkitAppRegion: "no-drag",
               }}
             >
+              {/* If user has a custom provider model not in platform list, show it as first option */}
+              {(() => {
+                const activeInst = instances.find((i) => i.id === activeInstanceId);
+                const userModel = activeInst?.resolvedModel;
+                const userLabel = activeInst?.resolvedModelLabel;
+                if (userModel && !models.some((m: any) => m.id === userModel)) {
+                  return <option key={userModel} value={userModel}>{userLabel || userModel}</option>;
+                }
+                return null;
+              })()}
               {models.map((m: any) => (
                 <option key={m.id} value={m.id}>
                   {m.label || m.id}

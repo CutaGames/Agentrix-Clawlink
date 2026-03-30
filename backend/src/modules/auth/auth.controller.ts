@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, BadRequestException, Get, Res, Delete, Param, ParseEnumPipe, ParseUUIDPipe, Logger, Inject, forwardRef } from '@nestjs/common';
 import { AuthRateLimitGuard } from '../../common/guards/auth-rate-limit.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +15,7 @@ import { SocialAccountType } from '../../entities/social-account.entity';
 import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { AgentAccount } from '../../entities/agent-account.entity';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
+import { AiProviderService } from '../ai-provider/ai-provider.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -30,6 +31,8 @@ export class AuthController {
     private readonly agentAccountRepo: Repository<AgentAccount>,
     @InjectRepository(UserProviderConfig)
     private readonly providerConfigRepo: Repository<UserProviderConfig>,
+    @Inject(forwardRef(() => AiProviderService))
+    private readonly aiProviderService: AiProviderService,
   ) {}
 
   @Post('register')
@@ -1020,6 +1023,9 @@ export class AuthController {
       return configs.find(c => c.metadata?.isDefault === true) || configs[0] || null;
     });
 
+    // Build model label lookup from AI provider catalog
+    const allCatalogModels = this.aiProviderService.getCatalog().flatMap((p: any) => p.models || []);
+
     return {
       id: user.id,
       agentrixId: user.agentrixId,
@@ -1039,6 +1045,8 @@ export class AuthController {
         const resolvedProvider = acct?.preferredProvider
           || defaultProviderConfig?.providerId
           || undefined;
+        const resolvedModelLabel = allCatalogModels.find((m: any) => m.id === resolvedModel)?.label
+          || resolvedModel;
         return {
           id: i.id,
           name: i.name,
@@ -1050,6 +1058,7 @@ export class AuthController {
           relayConnected: i.relayConnected || false,
           capabilities: i.capabilities || undefined,
           resolvedModel,
+          resolvedModelLabel,
           resolvedProvider,
           hasCustomProvider: !!defaultProviderConfig,
           updatedAt: i.updatedAt,

@@ -22,6 +22,7 @@ import { AgentAccount } from '../../entities/agent-account.entity';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { AccountModule } from '../account/account.module';
+import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { UnifiedAuthGuard } from './guards/unified-auth.guard';
 import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
@@ -32,6 +33,7 @@ import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
     PassportModule,
     ApiKeyModule,
     forwardRef(() => AccountModule),
+    forwardRef(() => AiProviderModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

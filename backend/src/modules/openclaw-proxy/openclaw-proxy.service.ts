@@ -1000,7 +1000,7 @@ export class OpenClawProxyService {
     const agentAccount = permissionProfile?.agentAccountId
       ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
       : null;
-    let resolvedModel = agentAccount?.preferredModel || dto.model || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    let resolvedModel = agentAccount?.preferredModel || dto.model || defaultConfig?.selectedModel || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
     const requestedProvider = this.inferProviderFromModelId(dto.model);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
