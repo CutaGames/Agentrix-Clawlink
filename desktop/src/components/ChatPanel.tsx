@@ -51,6 +51,7 @@ import {
 } from "../services/agentIntelligence";
 import PlanPanel from "./PlanPanel";
 import { ContextVisualizer } from "./ContextVisualizer";
+import CrossDevicePanel from "./CrossDevicePanel";
 import {
   listSessionEntries,
   loadSessionMessages,
@@ -129,6 +130,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
   const [activePlan, setActivePlan] = useState<AgentPlan | null>(null);
+  const [crossDeviceOpen, setCrossDeviceOpen] = useState(false);
   const activeAgent = useMemo<DesktopAgent | null>(
     () => agents.find((agent) => agent.id === activeAgentId) || null,
     [agents, activeAgentId],
@@ -1279,6 +1281,9 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           📋
         </button>
         <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
+        <button onClick={() => setCrossDeviceOpen(true)} style={iconBtnStyle} title="Cross-Device Hub">
+          🔗
+        </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
@@ -1355,6 +1360,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
 
       {/* Notification center */}
       <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} />
+
+      {/* Cross-device hub */}
+      {crossDeviceOpen && (
+        <CrossDevicePanel
+          onClose={() => setCrossDeviceOpen(false)}
+          onResumeSession={(sessionId, msgs) => {
+            sessionIdRef.current = sessionId;
+            setMessages(msgs);
+          }}
+        />
+      )}
 
       {/* History sidebar */}
       {historyOpen && (

@@ -10,11 +10,27 @@ import {
   DesktopApproval,
   DesktopCommand,
 } from '../../entities/desktop-sync.entity';
+import {
+  SharedWorkspace,
+  SharedWorkspaceMember,
+  SharedWorkspaceSession,
+  DeviceMediaTransfer,
+} from '../../entities/shared-workspace.entity';
 
 @Module({
   imports: [
     NotificationModule,
-    TypeOrmModule.forFeature([DesktopDevicePresence, DesktopSession, DesktopTask, DesktopApproval, DesktopCommand]),
+    TypeOrmModule.forFeature([
+      DesktopDevicePresence,
+      DesktopSession,
+      DesktopTask,
+      DesktopApproval,
+      DesktopCommand,
+      SharedWorkspace,
+      SharedWorkspaceMember,
+      SharedWorkspaceSession,
+      DeviceMediaTransfer,
+    ]),
   ],
   controllers: [DesktopSyncController],
   providers: [DesktopSyncService],

@@ -19,6 +19,12 @@ import {
   RespondDesktopApprovalDto,
   UpsertDesktopSessionDto,
   UpsertDesktopTaskDto,
+  UploadDeviceMediaDto,
+  CreateSharedWorkspaceDto,
+  InviteToWorkspaceDto,
+  RespondWorkspaceInviteDto,
+  ShareSessionToWorkspaceDto,
+  DeviceCapabilityDto,
 } from './dto/desktop-sync.dto';
 import { DesktopSyncService } from './desktop-sync.service';
 
@@ -154,5 +160,166 @@ export class DesktopSyncController {
   @ApiResponse({ status: 200, description: 'Desktop sync snapshot returned' })
   async getState(@Request() req): Promise<any> {
     return this.desktopSyncService.getState(req.user.id);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P8.1 — Unified Session History
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Get('sessions/unified')
+  @ApiOperation({ summary: 'Get unified cross-device session history' })
+  @ApiResponse({ status: 200, description: 'Unified session history returned' })
+  async getUnifiedSessionHistory(@Request() req, @Query('limit') limit?: string): Promise<any> {
+    return {
+      sessions: await this.desktopSyncService.getUnifiedSessionHistory(
+        req.user.id,
+        limit ? parseInt(limit, 10) : undefined,
+      ),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P8.2 — Remote Control Enhanced
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Post('notify-completion')
+  @ApiOperation({ summary: 'Notify all devices that an agent task is completed' })
+  @ApiResponse({ status: 200, description: 'Completion notification sent' })
+  async notifyAgentCompletion(
+    @Request() req,
+    @Body() body: { sessionId: string; deviceId: string; summary: string },
+  ): Promise<any> {
+    await this.desktopSyncService.notifyAgentCompletion(
+      req.user.id, body.sessionId, body.deviceId, body.summary,
+    );
+    return { ok: true };
+  }
+
+  @Get('capabilities')
+  @ApiOperation({ summary: 'Get all device capabilities for the current user' })
+  @ApiResponse({ status: 200, description: 'Device capabilities returned' })
+  async getDeviceCapabilities(@Request() req): Promise<any> {
+    return {
+      devices: await this.desktopSyncService.getDeviceCapabilities(req.user.id),
+    };
+  }
+
+  @Post('capabilities')
+  @ApiOperation({ summary: 'Update device capability context (GPS, sensors)' })
+  @ApiResponse({ status: 200, description: 'Capability context updated' })
+  async updateDeviceCapabilities(@Request() req, @Body() dto: DeviceCapabilityDto): Promise<any> {
+    return this.desktopSyncService.updateDeviceCapabilityContext(
+      req.user.id, dto.deviceId, dto.capabilities, dto.gps, dto.sensors,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P8.3 — Device Media Transfer
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Post('media')
+  @ApiOperation({ summary: 'Upload media from a device for cross-device sharing' })
+  @ApiResponse({ status: 201, description: 'Media transfer created' })
+  async uploadDeviceMedia(@Request() req, @Body() dto: UploadDeviceMediaDto): Promise<any> {
+    return this.desktopSyncService.uploadDeviceMedia(req.user.id, dto);
+  }
+
+  @Get('media')
+  @ApiOperation({ summary: 'List recent device media transfers' })
+  @ApiResponse({ status: 200, description: 'Media transfers returned' })
+  async listDeviceMedia(
+    @Request() req,
+    @Query('deviceId') deviceId?: string,
+    @Query('limit') limit?: string,
+  ): Promise<any> {
+    return {
+      transfers: await this.desktopSyncService.getDeviceMediaTransfers(
+        req.user.id, deviceId, limit ? parseInt(limit, 10) : undefined,
+      ),
+    };
+  }
+
+  @Get('media/:transferId')
+  @ApiOperation({ summary: 'Get media transfer data (base64)' })
+  @ApiResponse({ status: 200, description: 'Media data returned' })
+  async getDeviceMediaData(@Request() req, @Param('transferId') transferId: string): Promise<any> {
+    return this.desktopSyncService.getDeviceMediaData(req.user.id, transferId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P8.4 — Shared Workspace (Team Collaboration)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Post('workspaces')
+  @ApiOperation({ summary: 'Create a shared agent workspace' })
+  @ApiResponse({ status: 201, description: 'Shared workspace created' })
+  async createSharedWorkspace(@Request() req, @Body() dto: CreateSharedWorkspaceDto): Promise<any> {
+    return this.desktopSyncService.createSharedWorkspace(req.user.id, dto.name, dto.description);
+  }
+
+  @Get('workspaces')
+  @ApiOperation({ summary: 'List shared workspaces the user belongs to' })
+  @ApiResponse({ status: 200, description: 'Shared workspaces returned' })
+  async listSharedWorkspaces(@Request() req): Promise<any> {
+    return {
+      workspaces: await this.desktopSyncService.listSharedWorkspaces(req.user.id),
+    };
+  }
+
+  @Post('workspaces/:workspaceId/invite')
+  @ApiOperation({ summary: 'Invite a user to a shared workspace' })
+  @ApiResponse({ status: 201, description: 'Invitation sent' })
+  async inviteToWorkspace(
+    @Request() req,
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: InviteToWorkspaceDto,
+  ): Promise<any> {
+    return this.desktopSyncService.inviteToWorkspace(req.user.id, workspaceId, dto.userId, dto.role as any);
+  }
+
+  @Post('workspaces/:workspaceId/respond')
+  @ApiOperation({ summary: 'Accept or decline a workspace invitation' })
+  @ApiResponse({ status: 200, description: 'Invitation response recorded' })
+  async respondWorkspaceInvite(
+    @Request() req,
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: RespondWorkspaceInviteDto,
+  ): Promise<any> {
+    return this.desktopSyncService.respondToWorkspaceInvite(req.user.id, workspaceId, dto.action);
+  }
+
+  @Post('workspaces/:workspaceId/sessions')
+  @ApiOperation({ summary: 'Share a session to a workspace' })
+  @ApiResponse({ status: 201, description: 'Session shared to workspace' })
+  async shareSessionToWorkspace(
+    @Request() req,
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: ShareSessionToWorkspaceDto,
+  ): Promise<any> {
+    return this.desktopSyncService.shareSessionToWorkspace(req.user.id, workspaceId, dto.sessionId, dto.title);
+  }
+
+  @Get('workspaces/:workspaceId/sessions')
+  @ApiOperation({ summary: 'List sessions shared in a workspace' })
+  @ApiResponse({ status: 200, description: 'Workspace sessions returned' })
+  async getWorkspaceSessions(
+    @Request() req,
+    @Param('workspaceId') workspaceId: string,
+  ): Promise<any> {
+    return {
+      sessions: await this.desktopSyncService.getWorkspaceSessions(req.user.id, workspaceId),
+    };
+  }
+
+  @Get('workspaces/:workspaceId/members')
+  @ApiOperation({ summary: 'List workspace members' })
+  @ApiResponse({ status: 200, description: 'Workspace members returned' })
+  async getWorkspaceMembers(
+    @Request() req,
+    @Param('workspaceId') workspaceId: string,
+  ): Promise<any> {
+    return {
+      members: await this.desktopSyncService.getWorkspaceMembers(req.user.id, workspaceId),
+    };
   }
 }

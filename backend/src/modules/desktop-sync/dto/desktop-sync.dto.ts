@@ -415,3 +415,127 @@ export class CompleteDesktopCommandDto {
   @MaxLength(4000)
   error?: string;
 }
+
+// ─── P8.3: Device Media Transfer DTOs ────────────────────
+
+export class UploadDeviceMediaDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  sourceDeviceId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  targetDeviceId?: string;
+
+  @ApiProperty({ description: 'Media type: photo, screenshot, file, gps' })
+  @IsString()
+  @MaxLength(50)
+  mediaType: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  fileName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  mimeType?: string;
+
+  @ApiPropertyOptional({ description: 'Base64 data URL for small payloads (<2MB)' })
+  @IsOptional()
+  @IsString()
+  dataUrl?: string;
+
+  @ApiPropertyOptional({ description: 'GPS coords, image dimensions, etc.' })
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  sessionId?: string;
+}
+
+// ─── P8.4: Shared Workspace DTOs ─────────────────────────
+
+export enum SharedWorkspaceRoleDto {
+  OWNER = 'owner',
+  EDITOR = 'editor',
+  VIEWER = 'viewer',
+}
+
+export class CreateSharedWorkspaceDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(200)
+  name: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  description?: string;
+}
+
+export class InviteToWorkspaceDto {
+  @ApiProperty({ description: 'User ID to invite' })
+  @IsString()
+  @MaxLength(120)
+  userId: string;
+
+  @ApiPropertyOptional({ enum: SharedWorkspaceRoleDto, default: SharedWorkspaceRoleDto.VIEWER })
+  @IsOptional()
+  @IsEnum(SharedWorkspaceRoleDto)
+  role?: SharedWorkspaceRoleDto;
+}
+
+export class RespondWorkspaceInviteDto {
+  @ApiProperty({ description: 'accept or decline' })
+  @IsString()
+  @MaxLength(10)
+  action: 'accept' | 'decline';
+}
+
+export class ShareSessionToWorkspaceDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  sessionId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+}
+
+export class DeviceCapabilityDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(120)
+  deviceId: string;
+
+  @ApiProperty({ description: 'Capability names this device supports' })
+  @IsArray()
+  @IsString({ each: true })
+  capabilities: string[];
+
+  @ApiPropertyOptional({ description: 'GPS coordinates if available' })
+  @IsOptional()
+  @IsObject()
+  gps?: { lat: number; lng: number; accuracy?: number; altitude?: number };
+
+  @ApiPropertyOptional({ description: 'Device sensors available' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sensors?: string[];
+}

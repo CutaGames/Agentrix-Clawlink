@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationService } from '../notification/notification.service';
@@ -10,6 +10,14 @@ import {
   DesktopApproval,
   DesktopCommand,
 } from '../../entities/desktop-sync.entity';
+import {
+  SharedWorkspace,
+  SharedWorkspaceMember,
+  SharedWorkspaceSession,
+  DeviceMediaTransfer,
+  WorkspaceRole,
+  WorkspaceInviteStatus,
+} from '../../entities/shared-workspace.entity';
 import {
   ClaimDesktopCommandDto,
   CompleteDesktopCommandDto,
@@ -28,6 +36,8 @@ import {
   RespondDesktopApprovalDto,
   UpsertDesktopSessionDto,
   UpsertDesktopTaskDto,
+  UploadDeviceMediaDto,
+  SharedWorkspaceRoleDto,
 } from './dto/desktop-sync.dto';
 import { emitDesktopSyncEvent } from './desktop-sync.events';
 
@@ -50,6 +60,14 @@ export class DesktopSyncService {
     private readonly approvalRepo: Repository<DesktopApproval>,
     @InjectRepository(DesktopCommand)
     private readonly commandRepo: Repository<DesktopCommand>,
+    @InjectRepository(SharedWorkspace)
+    private readonly workspaceRepo: Repository<SharedWorkspace>,
+    @InjectRepository(SharedWorkspaceMember)
+    private readonly workspaceMemberRepo: Repository<SharedWorkspaceMember>,
+    @InjectRepository(SharedWorkspaceSession)
+    private readonly workspaceSessionRepo: Repository<SharedWorkspaceSession>,
+    @InjectRepository(DeviceMediaTransfer)
+    private readonly mediaTransferRepo: Repository<DeviceMediaTransfer>,
   ) {}
 
   async heartbeat(userId: string, dto: DesktopHeartbeatDto) {
@@ -353,6 +371,352 @@ export class DesktopSyncService {
     emitDesktopSyncEvent(userId, 'desktop-sync:command-updated', record);
 
     return { ok: true, command: record };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // P8.1 — Unified Session History (cross-device)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async getUnifiedSessionHistory(userId: string, limit: number = 50) {
+    // Combine desktop-sync sessions with device information
+    const sessions = await this.sessionRepo.find({
+      where: { userId },
+      order: { updatedAt: 'DESC' },
+      take: limit,
+    });
+
+    // Group by sessionId, merge cross-device data
+    const sessionMap = new Map<string, any>();
+    for (const s of sessions) {
+      const existing = sessionMap.get(s.sessionId);
+      if (!existing || s.updatedAt > existing.updatedAt) {
+        sessionMap.set(s.sessionId, {
+          sessionId: s.sessionId,
+          title: s.title,
+          messageCount: s.messageCount,
+          lastUpdatedAt: s.updatedAt?.getTime?.() ?? Date.now(),
+          originDeviceId: s.deviceId,
+          originDeviceType: s.deviceType,
+          devices: [{ deviceId: s.deviceId, deviceType: s.deviceType }],
+        });
+      } else {
+        existing.devices.push({ deviceId: s.deviceId, deviceType: s.deviceType });
+      }
+    }
+
+    return Array.from(sessionMap.values()).sort(
+      (a, b) => b.lastUpdatedAt - a.lastUpdatedAt,
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // P8.2 — Remote Control Enhanced (agent completion push)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async notifyAgentCompletion(
+    userId: string,
+    sessionId: string,
+    deviceId: string,
+    summary: string,
+  ) {
+    emitDesktopSyncEvent(userId, 'agent:task-completed', {
+      sessionId,
+      deviceId,
+      summary,
+      timestamp: Date.now(),
+    });
+
+    await this.notificationService.createNotification(userId, {
+      type: NotificationType.SYSTEM,
+      title: 'Agent task completed',
+      message: summary.slice(0, 200),
+    });
+    await this.notificationService.sendPushNotification(userId, {
+      title: 'Agent task completed',
+      body: summary.slice(0, 100),
+      data: { type: 'agent_task_completed', sessionId, deviceId },
+      channelId: 'developer',
+    });
+  }
+
+  async getDeviceCapabilities(userId: string) {
+    const devices = await this.devicePresenceRepo.find({
+      where: { userId },
+      order: { lastSeenAt: 'DESC' },
+    });
+    return devices.map((d) => ({
+      deviceId: d.deviceId,
+      platform: d.platform,
+      isOnline: (Date.now() - new Date(d.lastSeenAt).getTime()) < DEVICE_ONLINE_THRESHOLD_MS,
+      capabilities: this.inferDeviceCapabilities(d.platform),
+      context: d.context,
+    }));
+  }
+
+  private inferDeviceCapabilities(platform: string): string[] {
+    const p = platform.toLowerCase();
+    if (p.includes('android') || p.includes('ios') || p.includes('iphone')) {
+      return ['camera', 'gps', 'accelerometer', 'microphone', 'push_notifications', 'biometrics'];
+    }
+    if (p.includes('win') || p.includes('mac') || p.includes('linux')) {
+      return ['screenshot', 'file_system', 'terminal', 'clipboard', 'browser_control', 'microphone'];
+    }
+    return ['clipboard', 'microphone'];
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // P8.3 — Device Capability Sharing (media transfer)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async uploadDeviceMedia(
+    userId: string,
+    dto: { sourceDeviceId: string; targetDeviceId?: string; mediaType: string; fileName?: string; mimeType?: string; dataUrl?: string; metadata?: Record<string, unknown>; sessionId?: string },
+  ) {
+    const entity = this.mediaTransferRepo.create({
+      userId,
+      sourceDeviceId: dto.sourceDeviceId,
+      targetDeviceId: dto.targetDeviceId,
+      mediaType: dto.mediaType,
+      fileName: dto.fileName,
+      mimeType: dto.mimeType,
+      dataUrl: dto.dataUrl?.substring(0, 2 * 1024 * 1024), // 2MB limit
+      metadata: dto.metadata,
+      sessionId: dto.sessionId,
+      status: 'pending',
+    });
+
+    const saved = await this.mediaTransferRepo.save(entity);
+
+    emitDesktopSyncEvent(userId, 'device:media-transfer', {
+      transferId: saved.id,
+      sourceDeviceId: saved.sourceDeviceId,
+      targetDeviceId: saved.targetDeviceId,
+      mediaType: saved.mediaType,
+      fileName: saved.fileName,
+      sessionId: saved.sessionId,
+      timestamp: Date.now(),
+    });
+
+    return { ok: true, transferId: saved.id };
+  }
+
+  async getDeviceMediaTransfers(userId: string, deviceId?: string, limit: number = 20) {
+    const qb = this.mediaTransferRepo.createQueryBuilder('m')
+      .where('m.userId = :userId', { userId })
+      .orderBy('m.createdAt', 'DESC')
+      .take(limit);
+
+    if (deviceId) {
+      qb.andWhere('(m.sourceDeviceId = :did OR m.targetDeviceId = :did OR m.targetDeviceId IS NULL)', { did: deviceId });
+    }
+
+    const entities = await qb.getMany();
+    return entities.map((e) => ({
+      transferId: e.id,
+      sourceDeviceId: e.sourceDeviceId,
+      targetDeviceId: e.targetDeviceId,
+      mediaType: e.mediaType,
+      fileName: e.fileName,
+      mimeType: e.mimeType,
+      fileSize: e.fileSize,
+      metadata: e.metadata,
+      sessionId: e.sessionId,
+      status: e.status,
+      createdAt: e.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      hasData: !!e.dataUrl,
+    }));
+  }
+
+  async getDeviceMediaData(userId: string, transferId: string) {
+    const entity = await this.mediaTransferRepo.findOne({ where: { userId, id: transferId } });
+    if (!entity) throw new NotFoundException('Media transfer not found');
+
+    entity.status = 'delivered';
+    await this.mediaTransferRepo.save(entity);
+
+    return {
+      transferId: entity.id,
+      mediaType: entity.mediaType,
+      fileName: entity.fileName,
+      mimeType: entity.mimeType,
+      dataUrl: entity.dataUrl,
+      metadata: entity.metadata,
+    };
+  }
+
+  async updateDeviceCapabilityContext(
+    userId: string,
+    deviceId: string,
+    capabilities: string[],
+    gps?: { lat: number; lng: number; accuracy?: number; altitude?: number },
+    sensors?: string[],
+  ) {
+    const device = await this.devicePresenceRepo.findOne({ where: { userId, deviceId } });
+    if (!device) return null;
+
+    device.context = {
+      ...device.context,
+      capabilities,
+      gps,
+      sensors,
+      capabilityUpdatedAt: Date.now(),
+    };
+    await this.devicePresenceRepo.save(device);
+
+    emitDesktopSyncEvent(userId, 'device:capability-update', {
+      deviceId, capabilities, gps, sensors,
+    });
+
+    return { ok: true };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // P8.4 — Shared Workspace (Team Collaboration)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async createSharedWorkspace(userId: string, name: string, description?: string) {
+    const ws = this.workspaceRepo.create({
+      ownerId: userId,
+      name,
+      description,
+      settings: {},
+      isActive: true,
+    });
+    const saved = await this.workspaceRepo.save(ws);
+
+    // Auto-add owner as member
+    const member = this.workspaceMemberRepo.create({
+      workspaceId: saved.id,
+      userId,
+      role: WorkspaceRole.OWNER,
+      inviteStatus: WorkspaceInviteStatus.ACCEPTED,
+      joinedAt: new Date(),
+    });
+    await this.workspaceMemberRepo.save(member);
+
+    return { ok: true, workspace: saved };
+  }
+
+  async listSharedWorkspaces(userId: string) {
+    const memberships = await this.workspaceMemberRepo.find({
+      where: { userId, inviteStatus: WorkspaceInviteStatus.ACCEPTED },
+    });
+
+    if (!memberships.length) return [];
+
+    const workspaceIds = memberships.map((m) => m.workspaceId);
+    const workspaces = await this.workspaceRepo.findByIds(workspaceIds);
+
+    return workspaces.map((ws) => {
+      const membership = memberships.find((m) => m.workspaceId === ws.id);
+      return {
+        workspaceId: ws.id,
+        name: ws.name,
+        description: ws.description,
+        role: membership?.role,
+        ownerId: ws.ownerId,
+        createdAt: ws.createdAt?.toISOString?.(),
+      };
+    });
+  }
+
+  async inviteToWorkspace(userId: string, workspaceId: string, inviteeUserId: string, role: WorkspaceRole = WorkspaceRole.VIEWER) {
+    // Verify user is owner or editor
+    const callerMember = await this.workspaceMemberRepo.findOne({
+      where: { workspaceId, userId, inviteStatus: WorkspaceInviteStatus.ACCEPTED },
+    });
+    if (!callerMember || callerMember.role === WorkspaceRole.VIEWER) {
+      throw new ForbiddenException('Insufficient permissions to invite');
+    }
+
+    // Check if already invited
+    const existing = await this.workspaceMemberRepo.findOne({
+      where: { workspaceId, userId: inviteeUserId },
+    });
+    if (existing) {
+      return { ok: true, status: 'already_invited', member: existing };
+    }
+
+    const member = this.workspaceMemberRepo.create({
+      workspaceId,
+      userId: inviteeUserId,
+      role,
+      inviteStatus: WorkspaceInviteStatus.PENDING,
+      invitedBy: userId,
+    });
+    const saved = await this.workspaceMemberRepo.save(member);
+
+    await this.notificationService.createNotification(inviteeUserId, {
+      type: NotificationType.SYSTEM,
+      title: 'Workspace invitation',
+      message: `You have been invited to a shared workspace`,
+    });
+
+    return { ok: true, member: saved };
+  }
+
+  async respondToWorkspaceInvite(userId: string, workspaceId: string, action: 'accept' | 'decline') {
+    const member = await this.workspaceMemberRepo.findOne({
+      where: { workspaceId, userId, inviteStatus: WorkspaceInviteStatus.PENDING },
+    });
+    if (!member) throw new NotFoundException('No pending invitation found');
+
+    member.inviteStatus = action === 'accept' ? WorkspaceInviteStatus.ACCEPTED : WorkspaceInviteStatus.DECLINED;
+    if (action === 'accept') member.joinedAt = new Date();
+    await this.workspaceMemberRepo.save(member);
+
+    return { ok: true, status: member.inviteStatus };
+  }
+
+  async shareSessionToWorkspace(userId: string, workspaceId: string, sessionId: string, title?: string) {
+    // Verify membership
+    const member = await this.workspaceMemberRepo.findOne({
+      where: { workspaceId, userId, inviteStatus: WorkspaceInviteStatus.ACCEPTED },
+    });
+    if (!member || member.role === WorkspaceRole.VIEWER) {
+      throw new ForbiddenException('Insufficient permissions to share sessions');
+    }
+
+    const shared = this.workspaceSessionRepo.create({
+      workspaceId,
+      sessionId,
+      createdByUserId: userId,
+      title: title || 'Shared Chat',
+      isActive: true,
+    });
+    const saved = await this.workspaceSessionRepo.save(shared);
+
+    emitDesktopSyncEvent(userId, 'workspace:session-shared', {
+      workspaceId,
+      sessionId,
+      title: saved.title,
+    });
+
+    return { ok: true, sharedSession: saved };
+  }
+
+  async getWorkspaceSessions(userId: string, workspaceId: string) {
+    // Verify membership
+    const member = await this.workspaceMemberRepo.findOne({
+      where: { workspaceId, userId, inviteStatus: WorkspaceInviteStatus.ACCEPTED },
+    });
+    if (!member) throw new ForbiddenException('Not a member of this workspace');
+
+    const sessions = await this.workspaceSessionRepo.find({
+      where: { workspaceId, isActive: true },
+      order: { updatedAt: 'DESC' },
+    });
+    return sessions;
+  }
+
+  async getWorkspaceMembers(userId: string, workspaceId: string) {
+    // Verify membership
+    const member = await this.workspaceMemberRepo.findOne({
+      where: { workspaceId, userId, inviteStatus: WorkspaceInviteStatus.ACCEPTED },
+    });
+    if (!member) throw new ForbiddenException('Not a member of this workspace');
+
+    return this.workspaceMemberRepo.find({ where: { workspaceId } });
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────

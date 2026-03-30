@@ -279,3 +279,91 @@ export async function fetchDesktopSyncState(token: string) {
     serverTime: string;
   }>(response);
 }
+
+// ── P8: Cross-Device Capabilities ───────────────────────
+
+export async function fetchUnifiedSessions(token: string, limit?: number) {
+  const suffix = limit ? `?limit=${limit}` : "";
+  const response = await apiFetch(`${API_BASE}/desktop-sync/sessions/unified${suffix}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return readJson<{ sessions: Array<any> }>(response);
+}
+
+export async function fetchDeviceCapabilities(token: string) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/capabilities`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return readJson<{ devices: Array<any> }>(response);
+}
+
+export async function uploadDeviceMedia(
+  token: string,
+  payload: {
+    sourceDeviceId: string;
+    targetDeviceId?: string;
+    mediaType: string;
+    fileName?: string;
+    mimeType?: string;
+    dataUrl?: string;
+    metadata?: Record<string, unknown>;
+    sessionId?: string;
+  },
+) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/media`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  return readJson<{ ok: boolean; transferId: string }>(response);
+}
+
+export async function fetchDeviceMediaTransfers(token: string, deviceId?: string) {
+  const suffix = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : "";
+  const response = await apiFetch(`${API_BASE}/desktop-sync/media${suffix}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return readJson<{ transfers: Array<any> }>(response);
+}
+
+export async function notifyAgentCompletion(
+  token: string,
+  sessionId: string,
+  summary: string,
+) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/notify-completion`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      sessionId,
+      deviceId: getDesktopDeviceId(),
+      summary,
+    }),
+  });
+  return readJson<{ ok: boolean }>(response);
+}
+
+export async function createSharedWorkspace(token: string, name: string, description?: string) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/workspaces`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ name, description }),
+  });
+  return readJson<{ ok: boolean; workspace: any }>(response);
+}
+
+export async function fetchSharedWorkspaces(token: string) {
+  const response = await apiFetch(`${API_BASE}/desktop-sync/workspaces`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return readJson<{ workspaces: Array<any> }>(response);
+}
