@@ -732,6 +732,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           appendChunk(assistantId, chunk);
           sentenceAcc?.push(chunk);
         };
+        const metaHandler = (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => {
+          setMessages((prev) =>
+            prev.map((m) => m.id === assistantId ? { ...m, meta } : m),
+          );
+        };
         const doneHandler = (resolve: () => void) => () => {
           finalizeMessage(assistantId);
           sentenceAcc?.flush();
@@ -759,6 +764,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               token,
               model: selectedModel || undefined,
               onChunk: chunkHandler,
+              onMeta: metaHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
             });

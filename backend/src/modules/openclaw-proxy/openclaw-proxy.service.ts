@@ -395,6 +395,20 @@ export class OpenClawProxyService {
         },
         required: ['name', 'description'],
       },
+      web_search: {
+        properties: {
+          query: { type: 'string', description: 'Search query — factual questions, current events, technical docs, code examples' },
+          limit: { type: 'number', description: 'Max results to return (default 5, max 10)' },
+        },
+        required: ['query'],
+      },
+      web_fetch: {
+        properties: {
+          url: { type: 'string', description: 'Full URL to fetch content from (https://...)' },
+          maxLength: { type: 'number', description: 'Max characters of extracted text to return (default 8000)' },
+        },
+        required: ['url'],
+      },
     };
 
     const specific = schemas[skill.handlerName];

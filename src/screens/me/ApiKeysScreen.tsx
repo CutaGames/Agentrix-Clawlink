@@ -21,6 +21,7 @@ interface ModelDef {
   positioning?: string;
   freeApi?: boolean;
   freeNote?: string;
+  premiumMultiplier?: number;
 }
 
 interface ProviderDef {
@@ -543,6 +544,14 @@ export function ApiKeysScreen() {
                       {m.inputPrice || m.outputPrice ? (
                         <Text style={styles.modelPricing}>
                           📥 {m.inputPrice}  📤 {m.outputPrice}
+                        </Text>
+                      ) : m.premiumMultiplier != null && m.premiumMultiplier === 0 ? (
+                        <Text style={[styles.modelPricing, { color: '#22c55e' }]}>
+                          🎫 {t({ en: '0x — no premium request used', zh: '0x — 不消耗高级请求额度' })}
+                        </Text>
+                      ) : m.premiumMultiplier != null && m.premiumMultiplier > 0 ? (
+                        <Text style={[styles.modelPricing, { color: m.premiumMultiplier >= 3 ? '#ef4444' : '#f59e0b' }]}>
+                          🎫 {m.premiumMultiplier}x {t({ en: 'premium request', zh: '高级请求额度' })}
                         </Text>
                       ) : m.costTier === 'free' ? (
                         <Text style={[styles.modelPricing, { color: '#22c55e' }]}>

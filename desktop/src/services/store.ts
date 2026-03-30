@@ -283,6 +283,7 @@ export interface ChatMessage {
   streaming?: boolean;
   error?: boolean;
   createdAt: number;
+  meta?: { resolvedModel?: string; resolvedModelLabel?: string };
 }
 
 /** SSE streaming chat via OpenClaw proxy */
@@ -293,6 +294,7 @@ export function streamChat(opts: {
   token: string;
   model?: string;
   onChunk: (chunk: string) => void;
+  onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
   onDone: () => void;
   onError: (err: string) => void;
 }): AbortController {
@@ -355,6 +357,11 @@ export function streamChat(opts: {
                 if (parsed.error) {
                   opts.onError(parsed.error);
                   return;
+                }
+                // Handle meta events (model info)
+                if (parsed.meta && opts.onMeta) {
+                  opts.onMeta(parsed.meta);
+                  continue;
                 }
                 // Extract text from known fields
                 const text = parsed.chunk ?? parsed.text ?? parsed.content;

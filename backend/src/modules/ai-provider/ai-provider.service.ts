@@ -20,6 +20,7 @@ export interface ModelDef {
   positioning?: string;  // brief positioning tag
   freeApi?: boolean;
   freeNote?: string;     // e.g. "每日250次"
+  premiumMultiplier?: number;  // Copilot premium request multiplier (0=free, 0.25, 0.33, 1, 3, 30)
 }
 
 export interface ProviderDef {
@@ -51,8 +52,27 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
   'chatgpt-sub-gpt-5.4': 'gpt-5.4',
   'chatgpt-sub-gpt-5.3-instant': 'gpt-5.3-instant',
   'chatgpt-sub-gpt-5-mini': 'gpt-5-mini',
+  // ── Copilot Subscription (20 models) ──
   'copilot-sub-gpt-5.3-instant': 'gpt-5.3-instant',
   'copilot-sub-gpt-5-mini': 'gpt-5-mini',
+  'copilot-sub-gpt-4.1': 'gpt-4.1',
+  'copilot-sub-raptor-mini': 'raptor-mini',
+  'copilot-sub-grok-code-fast-1': 'grok-code-fast-1',
+  'copilot-sub-claude-haiku-4.5': 'claude-haiku-4.5',
+  'copilot-sub-gpt-5.4-mini': 'gpt-5.4-mini',
+  'copilot-sub-gemini-3-flash': 'gemini-3-flash',
+  'copilot-sub-gpt-5.1': 'gpt-5.1',
+  'copilot-sub-gpt-5.2': 'gpt-5.2',
+  'copilot-sub-gpt-5.2-codex': 'gpt-5.2-codex',
+  'copilot-sub-gpt-5.3-codex': 'gpt-5.3-codex',
+  'copilot-sub-gpt-5.4': 'gpt-5.4',
+  'copilot-sub-claude-sonnet-4': 'claude-sonnet-4',
+  'copilot-sub-claude-sonnet-4.5': 'claude-sonnet-4.5',
+  'copilot-sub-claude-sonnet-4.6': 'claude-sonnet-4.6',
+  'copilot-sub-gemini-2.5-pro': 'gemini-2.5-pro',
+  'copilot-sub-gemini-3.1-pro': 'gemini-3.1-pro',
+  'copilot-sub-claude-opus-4.5': 'claude-opus-4.5',
+  'copilot-sub-claude-opus-4.6': 'claude-opus-4.6',
 };
 
 export const PROVIDER_CATALOG: ProviderDef[] = [
@@ -82,16 +102,38 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'copilot-subscription', name: 'Microsoft Copilot Subscription', icon: '🪟', region: 'international', currency: 'USD',
+    id: 'copilot-subscription', name: 'GitHub Copilot Subscription', icon: '🪟', region: 'international', currency: 'USD',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
-    credentialLabel: 'Subscription Token',
+    credentialLabel: 'Copilot Token',
     placeholder: {
       apiKey: 'copilot-session-or-relay-token',
       baseUrl: 'https://your-openclaw-relay.example.com/v1',
     },
     models: [
-      { id: 'copilot-sub-gpt-5.3-instant', label: 'GPT-5.3 Instant via Copilot Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '使用你的 Copilot 订阅额度' },
-      { id: 'copilot-sub-gpt-5-mini', label: 'GPT-5 mini via Copilot Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: 'Copilot 高并发/低成本' },
+      // ── 🆓 Free Tier (0x multiplier, all plans) ──
+      { id: 'copilot-sub-gpt-4.1', label: 'GPT-4.1', contextWindow: 1047576, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 0, positioning: '🆓 免费 · 全能通用/百万上下文' },
+      { id: 'copilot-sub-gpt-5-mini', label: 'GPT-5 mini', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 0, positioning: '🆓 免费 · 极致低成本/高并发' },
+      { id: 'copilot-sub-raptor-mini', label: 'Raptor mini', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'], multimodal: false, premiumMultiplier: 0, positioning: '🆓 免费 · 微软自研/轻量' },
+      // ── ⚡ Budget Tier (0.25x–0.33x) ──
+      { id: 'copilot-sub-grok-code-fast-1', label: 'Grok Code Fast 1', contextWindow: 128000, costTier: 'low', capabilities: ['chat', 'function_calling'], multimodal: false, premiumMultiplier: 0.25, positioning: '⚡ 0.25x · 代码专用/极速' },
+      { id: 'copilot-sub-claude-haiku-4.5', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 0.33, positioning: '⚡ 0.33x · 轻量/快速/全Free计划可用' },
+      { id: 'copilot-sub-gpt-5.4-mini', label: 'GPT-5.4 mini', contextWindow: 270000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 0.33, positioning: '⚡ 0.33x · 新一代mini/高性价比' },
+      { id: 'copilot-sub-gemini-3-flash', label: 'Gemini 3 Flash', contextWindow: 1000000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 0.33, positioning: '⚡ 0.33x · 百万上下文/极速' },
+      { id: 'copilot-sub-gpt-5.3-instant', label: 'GPT-5.3 Instant', contextWindow: 270000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 0.33, positioning: '⚡ 0.33x · 日常对话/性价比' },
+      // ── 🔥 Standard Tier (1x multiplier, Pro/Pro+) ──
+      { id: 'copilot-sub-gpt-5.1', label: 'GPT-5.1', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 推理增强/上一代旗舰' },
+      { id: 'copilot-sub-gpt-5.2', label: 'GPT-5.2', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 代码+推理/均衡' },
+      { id: 'copilot-sub-gpt-5.2-codex', label: 'GPT-5.2 Codex', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, premiumMultiplier: 1, positioning: '🔥 1x · 代码生成专用' },
+      { id: 'copilot-sub-gpt-5.3-codex', label: 'GPT-5.3 Codex', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, premiumMultiplier: 1, positioning: '🔥 1x · 最新Codex/代码专精' },
+      { id: 'copilot-sub-gpt-5.4', label: 'GPT-5.4', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · OpenAI旗舰/电脑操作/Agent' },
+      { id: 'copilot-sub-claude-sonnet-4', label: 'Claude Sonnet 4', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · Anthropic均衡/工具调用' },
+      { id: 'copilot-sub-claude-sonnet-4.5', label: 'Claude Sonnet 4.5', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 混合推理/创意写作' },
+      { id: 'copilot-sub-claude-sonnet-4.6', label: 'Claude Sonnet 4.6', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 最新Sonnet/接近旗舰' },
+      { id: 'copilot-sub-gemini-2.5-pro', label: 'Gemini 2.5 Pro', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 百万上下文/长文档分析' },
+      { id: 'copilot-sub-gemini-3.1-pro', label: 'Gemini 3.1 Pro', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · Google最新旗舰' },
+      // ── 💎 Premium Tier (3x+ multiplier, Pro+ only) ──
+      { id: 'copilot-sub-claude-opus-4.5', label: 'Claude Opus 4.5', contextWindow: 200000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 3, positioning: '💎 3x · 深度推理/扩展思考' },
+      { id: 'copilot-sub-claude-opus-4.6', label: 'Claude Opus 4.6', contextWindow: 200000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 3, positioning: '💎 3x · Anthropic旗舰/最强推理' },
     ],
   },
   {

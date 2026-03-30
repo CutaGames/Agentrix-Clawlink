@@ -151,6 +151,22 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
 
   // ─── Tools ───
   {
+    handlerName: 'web_search',
+    displayName: 'Web Search',
+    description: 'Search the web for real-time information, news, documentation, and answers to factual questions',
+    category: 'tools',
+    enabledByDefault: true,
+    icon: '🔍',
+  },
+  {
+    handlerName: 'web_fetch',
+    displayName: 'Web Fetch',
+    description: 'Fetch and extract readable text content from a specific URL or webpage',
+    category: 'tools',
+    enabledByDefault: true,
+    icon: '🌐',
+  },
+  {
     handlerName: 'echo',
     displayName: 'Echo (Debug)',
     description: 'Debug tool that echoes input parameters',

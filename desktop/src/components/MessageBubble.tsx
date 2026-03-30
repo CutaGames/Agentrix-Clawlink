@@ -24,16 +24,24 @@ export default function MessageBubble({ message, onRetry }: Props) {
   const isError = message.error;
 
   // Extract <think>...</think> blocks for collapsible thinking display
-  const { thinkContent, displayContent } = useMemo(() => {
+  const { thinkContent, displayContent, toolCalls } = useMemo(() => {
     const text = message.content;
     const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*/);
-    if (thinkMatch) {
-      return {
-        thinkContent: thinkMatch[1].trim(),
-        displayContent: text.slice(thinkMatch[0].length),
-      };
-    }
-    return { thinkContent: null, displayContent: text };
+    let rest = thinkMatch ? text.slice(thinkMatch[0].length) : text;
+    // Extract [Tool Call] markers
+    const tools: string[] = [];
+    rest = rest.replace(/\[Tool Call\]\s*([^\n]+)/g, (_match, names) => {
+      names.split(',').forEach((n: string) => {
+        const trimmed = n.trim();
+        if (trimmed) tools.push(trimmed);
+      });
+      return '';
+    });
+    return {
+      thinkContent: thinkMatch ? thinkMatch[1].trim() : null,
+      displayContent: rest.trim(),
+      toolCalls: tools,
+    };
   }, [message.content]);
 
   const bubble: CSSProperties = {
@@ -63,6 +71,31 @@ export default function MessageBubble({ message, onRetry }: Props) {
     >
       {/* Collapsible thinking block */}
       {thinkContent && <ThinkBlock content={thinkContent} />}
+
+      {/* Tool call indicators */}
+      {toolCalls.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {toolCalls.map((tool, i) => (
+            <span key={i} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '2px 8px', borderRadius: 10, fontSize: 11,
+              background: 'rgba(59, 130, 246, 0.15)', color: '#93c5fd',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+            }}>
+              🔧 {tool}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Model meta label */}
+      {message.meta?.resolvedModelLabel && !isUser && (
+        <div style={{
+          fontSize: 10, color: 'var(--text-dim)', marginBottom: 4, opacity: 0.7,
+        }}>
+          {message.meta.resolvedModelLabel}
+        </div>
+      )}
 
       {/* Markdown content — user messages render as plain text, assistant uses full markdown */}
       {displayContent && (
