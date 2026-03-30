@@ -27,6 +27,9 @@ import { RelayRegistry } from '../openclaw-connection/telegram-bot.service';
 import { Response } from 'express';
 import { AgentIntelligenceService } from '../agent-intelligence/agent-intelligence.service';
 import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
+import { HookService } from '../hooks/hook.service';
+import { HookEventType } from '../../entities/hook-config.entity';
+import { McpServerRegistryService } from '../mcp-registry/mcp-server-registry.service';
 
 export interface ChatMessageDto {
   message: string | any[];
@@ -79,6 +82,10 @@ export class OpenClawProxyService {
     private messageRepo: Repository<AgentMessage>,
     @Inject(forwardRef(() => AgentIntelligenceService))
     private readonly intelligenceService: AgentIntelligenceService,
+    @Inject(forwardRef(() => HookService))
+    private readonly hookService: HookService,
+    @Inject(forwardRef(() => McpServerRegistryService))
+    private readonly mcpRegistryService: McpServerRegistryService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -826,6 +833,24 @@ export class OpenClawProxyService {
           throw new ForbiddenException(`Tool ${name} is disabled by the bound Agent Account permission profile.`);
         }
 
+        // P6.1: Pre-tool-use hook
+        try {
+          const preResults = await this.hookService.executeHooks({
+            userId,
+            sessionId: ctx.sessionId || '',
+            eventType: HookEventType.PRE_TOOL_USE,
+            toolName: name,
+            toolArgs: args,
+          });
+          if (this.hookService.hasBlockingResult(preResults)) {
+            return { blocked: true, reason: 'Blocked by pre-tool-use hook' };
+          }
+          const mods = this.hookService.getMergedModifications(preResults);
+          if (mods) Object.assign(args, mods);
+        } catch (err: any) {
+          this.logger.warn(`Pre-tool hook error: ${err.message}`);
+        }
+
         // P4/P5 Intelligence tool handlers
         if (name === 'save_memory') {
           const { MemoryType, MemoryScope } = await import('../../entities/agent-memory.entity');
@@ -856,12 +881,43 @@ export class OpenClawProxyService {
         }
 
         if (preset) {
-          return this.skillExecutorService.executeInternal(name, args || {}, ctx);
+          const result = await this.skillExecutorService.executeInternal(name, args || {}, ctx);
+          // P6.1: Post-tool-use hook
+          this.hookService.executeHooks({
+            userId, sessionId: ctx.sessionId || '', eventType: HookEventType.POST_TOOL_USE,
+            toolName: name, toolArgs: args, toolResult: result,
+          }).catch(() => {});
+          return result;
         }
 
         const installedSkill = installedToolMap.get(name);
         if (installedSkill) {
-          return this.skillExecutorService.execute(installedSkill.id, args || {}, ctx);
+          const result = await this.skillExecutorService.execute(installedSkill.id, args || {}, ctx);
+          this.hookService.executeHooks({
+            userId, sessionId: ctx.sessionId || '', eventType: HookEventType.POST_TOOL_USE,
+            toolName: name, toolArgs: args, toolResult: result,
+          }).catch(() => {});
+          return result;
+        }
+
+        // P6.3: MCP server tool execution
+        if (name.startsWith('mcp_')) {
+          try {
+            const mcpTools = await this.mcpRegistryService.getUserMcpTools(userId);
+            const mcpTool = mcpTools.find(t => t.name === name);
+            if (mcpTool) {
+              // Extract the original tool name (strip the mcp_servername_ prefix)
+              const originalName = name.replace(/^mcp_[^_]+_/, '');
+              const result = await this.mcpRegistryService.executeToolCall(mcpTool.mcpServerId, originalName, args);
+              this.hookService.executeHooks({
+                userId, sessionId: ctx.sessionId || '', eventType: HookEventType.POST_TOOL_USE,
+                toolName: name, toolArgs: args, toolResult: result,
+              }).catch(() => {});
+              return result;
+            }
+          } catch (err: any) {
+            return { error: `MCP tool call failed: ${err.message}` };
+          }
         }
 
         return undefined;
@@ -1225,6 +1281,50 @@ export class OpenClawProxyService {
 
     const executionModel = this.resolveExecutionModelId(resolvedModel);
     _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
+
+    // ── P6.1 Pre-message hooks ──────────────────────────────────────
+    try {
+      const preHookResults = await this.hookService.executeHooks({
+        userId,
+        sessionId,
+        eventType: HookEventType.MESSAGE_PRE,
+        message: messageText,
+        model: executionModel,
+      });
+      if (this.hookService.hasBlockingResult(preHookResults)) {
+        return {
+          sessionId,
+          reply: {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: 'Message blocked by pre-message hook.',
+            createdAt: new Date().toISOString(),
+          },
+          toolCalls: null,
+          platformHosted: true,
+        };
+      }
+    } catch (err: any) {
+      this.logger.warn(`Pre-message hook error: ${err.message}`);
+    }
+
+    // ── P6.3 MCP Server tools injection ─────────────────────────────
+    try {
+      const mcpTools = await this.mcpRegistryService.getUserMcpTools(userId);
+      if (mcpTools.length > 0 && needsTools) {
+        for (const mcpTool of mcpTools) {
+          effectiveTools.push({
+            name: mcpTool.name,
+            description: mcpTool.description,
+            input_schema: mcpTool.input_schema,
+          });
+        }
+        this.logger.log(`Injected ${mcpTools.length} MCP server tools`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`MCP tools injection failed: ${err.message}`);
+    }
+
     let result: any;
     if (resolvedProvider === 'gemini') {
       result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
@@ -1297,6 +1397,16 @@ export class OpenClawProxyService {
       model: executionModel,
       hasToolCalls: (result?.toolCalls?.length || 0) > 0,
     });
+
+    // ── P6.1 Post-message hooks ─────────────────────────────────────
+    this.hookService.executeHooks({
+      userId,
+      sessionId,
+      eventType: HookEventType.MESSAGE_POST,
+      message: text,
+      model: executionModel,
+      metadata: { toolCalls: result?.toolCalls },
+    }).catch((err: any) => this.logger.warn(`Post-message hook error: ${err.message}`));
 
     await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
       source: 'platform-hosted-chat',

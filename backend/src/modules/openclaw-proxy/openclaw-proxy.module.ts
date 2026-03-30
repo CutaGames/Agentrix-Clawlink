@@ -16,6 +16,8 @@ import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integra
 import { OpenAIIntegrationModule } from '../ai-integration/openai/openai-integration.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { AgentIntelligenceModule } from '../agent-intelligence/agent-intelligence.module';
+import { HookModule } from '../hooks/hook.module';
+import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { AgentIntelligenceModule } from '../agent-intelligence/agent-intelligenc
     forwardRef(() => OpenAIIntegrationModule),
     AiProviderModule,
     AgentIntelligenceModule,
+    HookModule,
+    McpRegistryModule,
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],

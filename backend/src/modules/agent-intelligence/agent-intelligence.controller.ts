@@ -191,4 +191,47 @@ export class AgentIntelligenceController {
   ) {
     return this.intelligenceService.createTeam(parentSessionId, body.name, body.task, body.members);
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P7.4 Session Export / Fork / Search
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Get('sessions/:sessionId/export')
+  @ApiOperation({ summary: 'Export session as markdown or JSON' })
+  async exportSession(
+    @Param('sessionId') sessionId: string,
+    @Query('format') format?: string,
+  ) {
+    if (format === 'json') {
+      return this.intelligenceService.exportSessionAsJSON(sessionId);
+    }
+    const markdown = await this.intelligenceService.exportSessionAsMarkdown(sessionId);
+    return { markdown, format: 'markdown' };
+  }
+
+  @Post('sessions/:sessionId/fork')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Fork a session (copy messages up to a given point)' })
+  async forkSession(
+    @Request() req: any,
+    @Param('sessionId') sessionId: string,
+    @Body() body: { fromMessageIndex?: number },
+  ) {
+    return this.intelligenceService.forkSession(sessionId, req.user.id, body.fromMessageIndex);
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Full-text search across all sessions' })
+  async searchMessages(
+    @Request() req: any,
+    @Query('q') query: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    if (!query) return { results: [], total: 0 };
+    return this.intelligenceService.searchMessages(req.user.id, query, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
 }

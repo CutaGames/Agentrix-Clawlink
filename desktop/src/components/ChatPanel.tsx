@@ -50,6 +50,7 @@ import {
   type AgentPlan,
 } from "../services/agentIntelligence";
 import PlanPanel from "./PlanPanel";
+import { ContextVisualizer } from "./ContextVisualizer";
 import {
   listSessionEntries,
   loadSessionMessages,
@@ -645,6 +646,10 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         "• `/git branch` `/gb` — List branches\n" +
         "• `/screenshot` `/ss` — Capture screen\n" +
         "• `/history` — Show session info\n" +
+        "• `/export [format]` — Export session (markdown/json)\n" +
+        "• `/fork [index]` — Fork session from a message\n" +
+        "• `/find <query>` — Search across all sessions\n" +
+        "• `/context` — Show context window usage\n" +
         "• `/help` — Show this help"
       );
       return true;
@@ -656,8 +661,119 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       return true;
     }
 
+    // /export [format] — export session as markdown or JSON (P7.4)
+    if (trimmed === "/export" || trimmed.startsWith("/export ")) {
+      const format = trimmed.slice(7).trim() || "markdown";
+      if (!token) { addSystemMessage("❌ Not logged in"); return true; }
+      try {
+        addSystemMessage("📤 Exporting session...");
+        const { exportSession } = await import("../services/extensionApi");
+        const data = await exportSession(token, sessionIdRef.current, format as any);
+        if (data.markdown) {
+          addSystemMessage(`📋 **Session Export (Markdown)**\n\n${data.markdown.substring(0, 3000)}${data.markdown.length > 3000 ? "\n\n... (truncated)" : ""}`);
+        } else {
+          addSystemMessage(`📋 **Session Export (JSON)**\n\n\`\`\`json\n${JSON.stringify(data, null, 2).substring(0, 2000)}\n\`\`\``);
+        }
+      } catch (err: any) {
+        addSystemMessage(`❌ Export failed: ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /fork [messageIndex] — fork session from a point (P7.4)
+    if (trimmed === "/fork" || trimmed.startsWith("/fork ")) {
+      const indexArg = trimmed.slice(5).trim();
+      if (!token) { addSystemMessage("❌ Not logged in"); return true; }
+      try {
+        const { forkSession } = await import("../services/extensionApi");
+        const fromIdx = indexArg ? parseInt(indexArg) : undefined;
+        const result = await forkSession(token, sessionIdRef.current, fromIdx);
+        addSystemMessage(`✅ Session forked! New session: ${result.newSessionId} (${result.messageCount} messages copied)`);
+      } catch (err: any) {
+        addSystemMessage(`❌ Fork failed: ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /find <query> — search across all sessions (P7.4)
+    if (trimmed.startsWith("/find ")) {
+      const query = trimmed.slice(6).trim();
+      if (!query) { addSystemMessage("Usage: /find <search query>"); return true; }
+      if (!token) { addSystemMessage("❌ Not logged in"); return true; }
+      try {
+        const { searchMessages } = await import("../services/extensionApi");
+        const result = await searchMessages(token, query, 10);
+        if (result.results.length === 0) {
+          addSystemMessage(`🔍 No messages found matching "${query}"`);
+        } else {
+          const lines = result.results.map((r: any, i: number) =>
+            `${i + 1}. **${r.sessionTitle}** (${r.role})\n   ${r.snippet}`
+          ).join("\n\n");
+          addSystemMessage(`🔍 Found ${result.total} result(s) for "${query}":\n\n${lines}`);
+        }
+      } catch (err: any) {
+        addSystemMessage(`❌ Search failed: ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // /context — show context window usage (P7.5)
+    if (trimmed === "/context") {
+      if (!token) { addSystemMessage("❌ Not logged in"); return true; }
+      try {
+        const { apiFetch, API_BASE } = await import("../services/store");
+        const res = await apiFetch(`${API_BASE}/agent-intelligence/sessions/${encodeURIComponent(sessionIdRef.current)}/context-usage`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const usage = await res.json();
+        const bar = "█".repeat(Math.round(usage.usagePercent / 5)) + "░".repeat(20 - Math.round(usage.usagePercent / 5));
+        const lines = [
+          `📊 **Context Window Usage**`,
+          `\`[${bar}]\` ${usage.usagePercent}%`,
+          `Tokens: ${usage.estimatedTokens.toLocaleString()} / ${usage.contextWindowSize.toLocaleString()}`,
+          `Messages: ${usage.messageCount}`,
+          ``,
+          `**Breakdown:**`,
+          `• System Prompt: ${usage.breakdown?.systemPrompt || 0} tokens`,
+          `• Chat History: ${usage.breakdown?.history || 0} tokens`,
+          `• Memories: ${usage.breakdown?.memories || 0} tokens`,
+          `• Tool Schemas: ${usage.breakdown?.toolSchemas || 0} tokens`,
+          `• Active Plan: ${usage.breakdown?.plan || 0} tokens`,
+        ];
+        if (usage.recommendations?.length > 0) {
+          lines.push(``, `**Recommendations:**`);
+          usage.recommendations.forEach((r: string) => lines.push(`💡 ${r}`));
+        }
+        addSystemMessage(lines.join("\n"));
+      } catch (err: any) {
+        addSystemMessage(`❌ Context usage failed: ${err?.message || err}`);
+      }
+      return true;
+    }
+
+    // P6.2: Try resolving custom slash commands via backend
+    if (token && trimmed.startsWith("/")) {
+      const cmdName = trimmed.split(/\s+/)[0].slice(1); // e.g. "review" from "/review foo"
+      const cmdArgs = trimmed.slice(cmdName.length + 2).trim();
+      try {
+        const { resolveSlashCommand } = await import("../services/extensionApi");
+        const result = await resolveSlashCommand(token, cmdName, cmdArgs);
+        if (result.prompt && !result.error) {
+          // Custom command resolved — send the expanded prompt as a chat message
+          addSystemMessage(`🔧 Running custom command: /${result.command}`);
+          // Don't return true — let it fall through to handleSend with the expanded prompt
+          // We'll handle this by directly sending the resolved prompt
+          setTimeout(() => handleSend(result.prompt), 50);
+          return true;
+        }
+      } catch {
+        // Not a custom command — fall through
+      }
+    }
+
     return false;
-  }, [models, messages, activeAgent, activeAgentId]);
+  }, [models, messages, activeAgent, activeAgentId, token]);
 
   const addSystemMessage = useCallback((content: string) => {
     setMessages(prev => [...prev, {
@@ -1359,6 +1475,13 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               const updated = await rejectPlanApi(token, sessionIdRef.current, "rejected by user");
               if (updated) setActivePlan(updated);
             }}
+          />
+        )}
+        {token && sessionIdRef.current && (
+          <ContextVisualizer
+            sessionId={sessionIdRef.current}
+            token={token}
+            instanceId={activeInstanceId || undefined}
           />
         )}
         <div ref={listEndRef} />

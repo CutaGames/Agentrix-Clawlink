@@ -591,6 +591,14 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
     contextWindowSize: number;
     usagePercent: number;
     needsCompaction: boolean;
+    breakdown: {
+      systemPrompt: number;
+      history: number;
+      memories: number;
+      toolSchemas: number;
+      plan: number;
+    };
+    recommendations: string[];
   }> {
     const messages = await this.messageRepo.find({
       where: { sessionId },
@@ -598,15 +606,44 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
     });
 
     const nonArchived = messages.filter(m => !m.metadata?.archived);
-    const tokenEstimate = nonArchived.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 3.5), 0);
+    const historyTokens = nonArchived.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 3.5), 0);
+
+    // Estimate other context components
+    const systemPromptTokens = 800; // approximate for full system prompt with rules
+    const memoryTokens = 200; // approximate for loaded memories
+    const toolSchemaTokens = 1500; // approximate for 30+ tool schemas
+
+    const plan = this.getActivePlan(sessionId);
+    const planTokens = plan ? Math.ceil(JSON.stringify(plan).length / 3.5) : 0;
+
+    const totalTokens = systemPromptTokens + historyTokens + memoryTokens + toolSchemaTokens + planTokens;
     const contextWindow = 128000; // default, can vary by model
+
+    const recommendations: string[] = [];
+    if (historyTokens > contextWindow * 0.5) {
+      recommendations.push('Consider compacting conversation history — it uses over 50% of context');
+    }
+    if (nonArchived.length > 50) {
+      recommendations.push(`${nonArchived.length} messages in history — older messages may be less relevant`);
+    }
+    if (totalTokens > contextWindow * 0.75) {
+      recommendations.push('Overall context usage is high — compaction recommended');
+    }
 
     return {
       messageCount: nonArchived.length,
-      estimatedTokens: tokenEstimate,
+      estimatedTokens: totalTokens,
       contextWindowSize: contextWindow,
-      usagePercent: Math.round((tokenEstimate / contextWindow) * 100),
-      needsCompaction: tokenEstimate > contextWindow * 0.75,
+      usagePercent: Math.round((totalTokens / contextWindow) * 100),
+      needsCompaction: totalTokens > contextWindow * 0.75,
+      breakdown: {
+        systemPrompt: systemPromptTokens,
+        history: historyTokens,
+        memories: memoryTokens,
+        toolSchemas: toolSchemaTokens,
+        plan: planTokens,
+      },
+      recommendations,
     };
   }
 
@@ -868,5 +905,241 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
     if (updates.value !== undefined) mem.value = updates.value;
     if (updates.key) mem.key = updates.key;
     return this.memoryRepo.save(mem);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // P7.4 — Session Export / Fork / Search
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Export a session as Markdown.
+   */
+  async exportSessionAsMarkdown(sessionId: string): Promise<string> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new Error('Session not found');
+
+    const messages = await this.messageRepo.find({
+      where: { sessionId: session.id },
+      order: { sequenceNumber: 'ASC' },
+    });
+
+    const lines: string[] = [
+      `# ${session.title || 'Untitled Session'}`,
+      '',
+      `**Session ID**: ${session.sessionId || session.id}`,
+      `**Created**: ${session.createdAt?.toISOString() || 'unknown'}`,
+      `**Messages**: ${messages.length}`,
+      '',
+      '---',
+      '',
+    ];
+
+    for (const msg of messages) {
+      if (msg.metadata?.archived) continue;
+
+      const role = msg.role === MessageRole.USER ? '👤 User' : '🤖 Assistant';
+      const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString() : '';
+      lines.push(`### ${role} ${time ? `(${time})` : ''}`);
+      lines.push('');
+      lines.push(msg.content || '*(empty)*');
+      lines.push('');
+
+      // Include tool calls if any
+      if (msg.metadata?.toolCalls?.length) {
+        lines.push('<details><summary>🔧 Tool Calls</summary>');
+        lines.push('');
+        for (const tc of msg.metadata.toolCalls) {
+          lines.push(`- **${tc.name}**: \`${JSON.stringify(tc.input || {}).substring(0, 200)}\``);
+        }
+        lines.push('</details>');
+        lines.push('');
+      }
+    }
+
+    // Include memories if any
+    const memories = await this.memoryRepo.find({
+      where: { sessionId: session.id },
+      take: 20,
+    });
+    if (memories.length > 0) {
+      lines.push('---');
+      lines.push('');
+      lines.push('## Memories');
+      lines.push('');
+      for (const mem of memories) {
+        lines.push(`- **${mem.key}**: ${JSON.stringify(mem.value)}`);
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Export a session as JSON.
+   */
+  async exportSessionAsJSON(sessionId: string): Promise<any> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new Error('Session not found');
+
+    const messages = await this.messageRepo.find({
+      where: { sessionId: session.id },
+      order: { sequenceNumber: 'ASC' },
+    });
+
+    const memories = await this.memoryRepo.find({
+      where: { sessionId: session.id },
+    });
+
+    return {
+      session: {
+        id: session.id,
+        sessionId: session.sessionId,
+        title: session.title,
+        status: session.status,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      },
+      messages: messages.map(m => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        type: m.type,
+        metadata: m.metadata,
+        createdAt: m.createdAt,
+      })),
+      memories: memories.map(m => ({
+        key: m.key,
+        value: m.value,
+        scope: m.scope,
+        type: m.type,
+      })),
+      plan: this.getActivePlan(sessionId) || null,
+      exportedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Fork a session — create a new session with messages up to a given message index.
+   */
+  async forkSession(
+    sessionId: string,
+    userId: string,
+    fromMessageIndex?: number,
+  ): Promise<{ newSessionId: string; messageCount: number }> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (!session) throw new Error('Session not found');
+
+    const messages = await this.messageRepo.find({
+      where: { sessionId: session.id },
+      order: { sequenceNumber: 'ASC' },
+    });
+
+    const messagesToCopy = fromMessageIndex !== undefined
+      ? messages.slice(0, fromMessageIndex + 1)
+      : messages;
+
+    // Create new session
+    const newSession = this.sessionRepo.create({
+      userId,
+      title: `${session.title || 'Untitled'} (fork)`,
+      status: SessionStatus.ACTIVE,
+      metadata: {
+        ...session.metadata,
+        forkedFrom: session.id,
+        forkedAt: new Date().toISOString(),
+        forkedMessageCount: messagesToCopy.length,
+      },
+      context: session.context,
+    });
+    const saved = await this.sessionRepo.save(newSession);
+
+    // Copy messages
+    for (let i = 0; i < messagesToCopy.length; i++) {
+      const orig = messagesToCopy[i];
+      const copy = this.messageRepo.create({
+        sessionId: saved.id,
+        role: orig.role,
+        content: orig.content,
+        type: orig.type,
+        metadata: { ...orig.metadata, forkedFrom: orig.id },
+        sequenceNumber: i + 1,
+      });
+      await this.messageRepo.save(copy);
+    }
+
+    // Copy memories
+    const memories = await this.memoryRepo.find({ where: { sessionId: session.id } });
+    for (const mem of memories) {
+      const copy = this.memoryRepo.create({
+        sessionId: saved.id,
+        key: mem.key,
+        value: mem.value,
+        type: mem.type,
+        scope: mem.scope,
+        metadata: mem.metadata,
+      });
+      await this.memoryRepo.save(copy);
+    }
+
+    return { newSessionId: saved.id, messageCount: messagesToCopy.length };
+  }
+
+  /**
+   * Full-text search across all user sessions' messages.
+   */
+  async searchMessages(
+    userId: string,
+    query: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<{
+    results: Array<{
+      sessionId: string;
+      sessionTitle: string;
+      messageId: string;
+      role: string;
+      content: string;
+      createdAt: Date;
+      snippet: string;
+    }>;
+    total: number;
+  }> {
+    const limit = options?.limit || 20;
+    const offset = options?.offset || 0;
+
+    const qb = this.messageRepo
+      .createQueryBuilder('msg')
+      .innerJoin('msg.session', 'session')
+      .where('session.userId = :userId', { userId })
+      .andWhere('msg.content ILIKE :query', { query: `%${query}%` })
+      .orderBy('msg.createdAt', 'DESC')
+      .skip(offset)
+      .take(limit);
+
+    const [messages, total] = await qb.getManyAndCount();
+
+    const results = await Promise.all(
+      messages.map(async (msg) => {
+        const session = await this.sessionRepo.findOne({ where: { id: msg.sessionId } });
+        // Build a snippet around the match
+        const idx = (msg.content || '').toLowerCase().indexOf(query.toLowerCase());
+        const start = Math.max(0, idx - 50);
+        const end = Math.min((msg.content || '').length, idx + query.length + 50);
+        const snippet = (start > 0 ? '...' : '') +
+          (msg.content || '').substring(start, end) +
+          (end < (msg.content || '').length ? '...' : '');
+
+        return {
+          sessionId: msg.sessionId,
+          sessionTitle: session?.title || 'Untitled',
+          messageId: msg.id,
+          role: msg.role,
+          content: msg.content,
+          createdAt: msg.createdAt,
+          snippet,
+        };
+      }),
+    );
+
+    return { results, total };
   }
 }
