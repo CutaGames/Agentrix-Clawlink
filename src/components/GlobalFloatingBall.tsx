@@ -10,8 +10,12 @@ import {
   Platform,
   Alert,
   Linking,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import Svg, { Circle } from 'react-native-svg';
 import { colors } from '../theme/colors';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '../stores/i18nStore';
@@ -22,20 +26,24 @@ import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity }
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
+// ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
+const CAPSULE_WIDTH = 220;
+const CAPSULE_HEIGHT = 52;
 const EDGE_MARGIN = 12;
+const MINIMIZED_REVEAL = 18;
 const LONG_PRESS_DURATION = 400;
+const MAGNETIC_OFFSET = 4;
 
-const PILL_WIDTH = 260;
-const PILL_HEIGHT = 120;
+const PILL_WIDTH = 280;
 
 type BallState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-const STATE_COLORS: Record<BallState, string> = {
-  idle: '#1a1a2e',
-  listening: '#10B981',
-  thinking: '#F59E0B',
-  speaking: '#3b82f6',
+const STATE_GRADIENTS: Record<BallState, [string, string]> = {
+  idle:      ['#6C5CE7', '#a78bfa'],
+  listening: ['#10B981', '#34d399'],
+  thinking:  ['#F59E0B', '#fbbf24'],
+  speaking:  ['#3b82f6', '#60a5fa'],
 };
 
 const STATE_BORDER_COLORS: Record<BallState, string> = {
@@ -45,29 +53,69 @@ const STATE_BORDER_COLORS: Record<BallState, string> = {
   speaking: '#3b82f6',
 };
 
-interface Props {
-  onVoiceActivate?: () => void;
-  /** Transcript text to show in the voice pill */
-  pillTranscript?: string;
-  /** Send the current transcript from the pill */
-  onPillSend?: (text: string) => void;
-  /** Volume level (0-1) for waveform visualization */
-  pillVolume?: number;
+// ─── Orbiting Particles (Processing state) ──────────────────────────────────
+function OrbitingParticles({ active }: { active: boolean }) {
+  const rotation = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!active) { rotation.setValue(0); return; }
+    const spin = Animated.loop(
+      Animated.timing(rotation, { toValue: 1, duration: 2000, useNativeDriver: true }),
+    );
+    spin.start();
+    return () => spin.stop();
+  }, [active, rotation]);
+
+  if (!active) return null;
+
+  const rotateStr = rotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const ORBIT_R = BALL_SIZE / 2 + 10;
+  const P = 5;
+  const angles = [0, 90, 180, 270];
+
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', transform: [{ rotate: rotateStr }] }]}
+      pointerEvents="none"
+    >
+      <Svg width={ORBIT_R * 2 + P} height={ORBIT_R * 2 + P}>
+        {angles.map((deg, i) => {
+          const a = (deg * Math.PI) / 180;
+          return (
+            <Circle key={i} cx={ORBIT_R + P / 2 + Math.cos(a) * ORBIT_R} cy={ORBIT_R + P / 2 + Math.sin(a) * ORBIT_R}
+              r={P / 2} fill={i % 2 === 0 ? '#F59E0B' : '#fbbf24'} opacity={0.85} />
+          );
+        })}
+      </Svg>
+    </Animated.View>
+  );
 }
 
-export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0 }: Props) {
+interface Props {
+  onVoiceActivate?: () => void;
+  pillTranscript?: string;
+  onPillSend?: (text: string) => void;
+  pillVolume?: number;
+  resultText?: string;
+  onResultAction?: (action: string) => void;
+}
+
+export function GlobalFloatingBall({
+  onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0,
+  resultText, onResultAction,
+}: Props) {
   const navigation = useNavigation<any>();
   const { language } = useI18n();
   const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
   const { width: screenW, height: screenH } = Dimensions.get('window');
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
-  // Hide on chat screen (chat has its own voice controls).
-  // On native, initial route state may not be populated (route.state === undefined)
-  // until the first navigation event, so we also check for shallow container names.
   const currentRouteName = useNavigationState((state) => {
     if (!state) return '';
-    // Traverse up to 4 levels deep: Root → Drawer → Tab → Stack → Screen
     let route = state.routes[state.index];
     for (let depth = 0; depth < 4; depth++) {
       if (!route.state) break;
@@ -78,17 +126,33 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     return route.name || '';
   });
 
-  // The deepest resolved route name may be 'Main' or 'MainTabs' when
-  // the nested navigator hasn't fired any navigation event yet.
-  // In that case, the active screen IS the initial route: AgentChat.
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
   const resolvedToShallow = ['Main', 'MainTabs', 'Agent'].includes(currentRouteName);
   const shouldHide = hideOnScreens.includes(currentRouteName) || resolvedToShallow;
   const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
+  // ── Core state ──
   const [ballState, setBallState] = useState<BallState>('idle');
-  const pan = useRef(new Animated.ValueXY({ x: screenW - BALL_SIZE - EDGE_MARGIN, y: screenH - 200 })).current;
+  const [isMinimized, setIsMinimized] = useState(true);
+  const [isCapsule, setIsCapsule] = useState(false);
+  const [pillExpanded, setPillExpanded] = useState(false);
+  const [quickInput, setQuickInput] = useState('');
+  const [showResultCard, setShowResultCard] = useState(false);
+
+  // ── Animation values ──
+  const pan = useRef(new Animated.ValueXY({ x: screenW - MINIMIZED_REVEAL, y: screenH - 200 })).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const coreBreathAnim = useRef(new Animated.Value(0.6)).current;
+  const morphWidth = useRef(new Animated.Value(BALL_SIZE)).current;
+  const morphRadius = useRef(new Animated.Value(BALL_SIZE / 2)).current;
+  const magneticX = useRef(new Animated.Value(0)).current;
+  const magneticY = useRef(new Animated.Value(0)).current;
+  const pillExpandAnim = useRef(new Animated.Value(0)).current;
+  const resultCardAnim = useRef(new Animated.Value(0)).current;
+  const waveformAnims = useRef(
+    Array.from({ length: 7 }, () => new Animated.Value(0.15))
+  ).current;
+
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDragging = useRef(false);
   const wakeListenerRef = useRef<SpeechWakeWordService | LocalWakeWordService | null>(null);
@@ -96,21 +160,26 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
   const activateVoiceExperienceRef = useRef<() => void>(() => {});
   const lastWakeWordAlertRef = useRef<{ message: string; shownAt: number }>({ message: '', shownAt: 0 });
 
-  // Voice pill expansion state
-  const [pillExpanded, setPillExpanded] = useState(false);
-  const pillExpandAnim = useRef(new Animated.Value(0)).current;
-  const waveformAnims = useRef(
-    Array.from({ length: 5 }, () => new Animated.Value(0.3))
-  ).current;
+  // ── Core breathing animation (always runs) ──
+  useEffect(() => {
+    const breath = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coreBreathAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
+        Animated.timing(coreBreathAnim, { toValue: 0.6, duration: 1800, useNativeDriver: true }),
+      ]),
+    );
+    breath.start();
+    return () => breath.stop();
+  }, [coreBreathAnim]);
 
-  // Pulse animation for non-idle states
+  // ── Pulse for non-idle states ──
   useEffect(() => {
     if (ballState !== 'idle') {
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.15, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ])
+          Animated.timing(pulseAnim, { toValue: 1.12, duration: 500, useNativeDriver: false }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
+        ]),
       );
       pulse.start();
       return () => pulse.stop();
@@ -123,48 +192,84 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     if (!shouldHide) {
       setBallState('idle');
       navigatingToChatRef.current = false;
+    } else if (navigatingToChatRef.current) {
+      navigatingToChatRef.current = false;
     }
   }, [shouldHide]);
 
-  // Pill expand/collapse animation
+  // ── Capsule morph animation ──
   useEffect(() => {
-    Animated.spring(pillExpandAnim, {
-      toValue: pillExpanded ? 1 : 0,
-      useNativeDriver: false,
-      friction: 8,
-    }).start();
+    Animated.parallel([
+      Animated.spring(morphWidth, { toValue: isCapsule ? CAPSULE_WIDTH : BALL_SIZE, useNativeDriver: false, friction: 8, tension: 80 }),
+      Animated.spring(morphRadius, { toValue: isCapsule ? CAPSULE_HEIGHT / 2 : BALL_SIZE / 2, useNativeDriver: false, friction: 8, tension: 80 }),
+    ]).start();
+  }, [isCapsule, morphWidth, morphRadius]);
+
+  // Auto-expand capsule when listening/speaking
+  useEffect(() => {
+    if (ballState === 'listening' || ballState === 'speaking') {
+      setIsCapsule(true);
+      if (isMinimized) setIsMinimized(false);
+    } else if (ballState === 'idle') {
+      setIsCapsule(false);
+    }
+  }, [ballState, isMinimized]);
+
+  // Pill expand/collapse
+  useEffect(() => {
+    Animated.spring(pillExpandAnim, { toValue: pillExpanded ? 1 : 0, useNativeDriver: false, friction: 8 }).start();
   }, [pillExpanded, pillExpandAnim]);
 
-  // Waveform animation driven by volume
   useEffect(() => {
-    if (!pillExpanded || ballState !== 'listening') return;
+    if (ballState !== 'listening' && pillExpanded) setPillExpanded(false);
+  }, [ballState, pillExpanded]);
+
+  // Waveform driven by volume
+  useEffect(() => {
+    if (ballState !== 'listening' && ballState !== 'speaking') return;
     waveformAnims.forEach((anim, i) => {
-      const base = Math.min(1, 0.2 + pillVolume * 0.8);
-      const jitter = Math.random() * 0.3;
+      const base = Math.min(1, 0.15 + pillVolume * 0.85);
+      const jitter = Math.random() * 0.35;
       Animated.timing(anim, {
-        toValue: Math.min(1, base + jitter * (i % 2 === 0 ? 1 : 0.6)),
-        duration: 120,
+        toValue: Math.min(1, base + jitter * (i % 2 === 0 ? 1 : 0.5)),
+        duration: 100 + Math.random() * 60,
         useNativeDriver: false,
       }).start();
     });
-  }, [pillExpanded, ballState, pillVolume, waveformAnims]);
+  }, [ballState, pillVolume, waveformAnims]);
 
-  // Collapse pill when leaving listening state
+  // Result card animation
   useEffect(() => {
-    if (ballState !== 'listening' && pillExpanded) {
-      setPillExpanded(false);
-    }
-  }, [ballState, pillExpanded]);
+    const show = !!resultText && resultText.length > 0;
+    setShowResultCard(show);
+    Animated.spring(resultCardAnim, { toValue: show ? 1 : 0, useNativeDriver: false, friction: 8 }).start();
+  }, [resultText, resultCardAnim]);
 
+  // ── Edge snapping ──
   const snapToEdge = useCallback((x: number, y: number) => {
-    const snapX = x < screenW / 2 ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN;
+    const onLeft = x < screenW / 2;
+    const snapX = isMinimized
+      ? (onLeft ? -(BALL_SIZE - MINIMIZED_REVEAL) : screenW - MINIMIZED_REVEAL)
+      : (onLeft ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN);
     const clampedY = Math.max(EDGE_MARGIN + 50, Math.min(y, screenH - BALL_SIZE - 100));
-    Animated.spring(pan, {
-      toValue: { x: snapX, y: clampedY },
-      useNativeDriver: false,
-      friction: 7,
-    }).start();
-  }, [pan, screenW, screenH]);
+    Animated.spring(pan, { toValue: { x: snapX, y: clampedY }, useNativeDriver: false, friction: 7 }).start();
+  }, [pan, screenW, screenH, isMinimized]);
+
+  // Re-dock when going minimized
+  useEffect(() => {
+    if (isMinimized) {
+      const currentX = (pan.x as any)._value ?? screenW - MINIMIZED_REVEAL;
+      const currentY = (pan.y as any)._value ?? screenH - 200;
+      snapToEdge(currentX, currentY);
+    }
+  }, [isMinimized, snapToEdge, pan, screenW, screenH]);
+
+  // Auto re-minimize after 8s idle
+  useEffect(() => {
+    if (ballState !== 'idle' || isMinimized || pillExpanded || showResultCard) return;
+    const timer = setTimeout(() => setIsMinimized(true), 8000);
+    return () => clearTimeout(timer);
+  }, [ballState, isMinimized, pillExpanded, showResultCard]);
 
   const showWakeWordGuidance = useCallback((message: string) => {
     const now = Date.now();
@@ -198,12 +303,13 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
       onPanResponderGrant: () => {
-        // Start long press timer
+        Animated.spring(magneticX, { toValue: MAGNETIC_OFFSET, useNativeDriver: false, friction: 6 }).start();
+        Animated.spring(magneticY, { toValue: -MAGNETIC_OFFSET, useNativeDriver: false, friction: 6 }).start();
+
         longPressTimer.current = setTimeout(() => {
           if (!isDragging.current) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-            // Long press → voice activation
-            handleVoiceActivate();
+            handleLongPress();
           }
         }, LONG_PRESS_DURATION);
 
@@ -220,22 +326,19 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
         Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(_, gesture);
       },
       onPanResponderRelease: (_, gesture) => {
+        Animated.spring(magneticX, { toValue: 0, useNativeDriver: false, friction: 6 }).start();
+        Animated.spring(magneticY, { toValue: 0, useNativeDriver: false, friction: 6 }).start();
+
         if (longPressTimer.current) {
           clearTimeout(longPressTimer.current);
           longPressTimer.current = null;
         }
-
         pan.flattenOffset();
 
-        // Get current position
         const currentX = (pan.x as any)._value ?? screenW - BALL_SIZE - EDGE_MARGIN;
         const currentY = (pan.y as any)._value ?? screenH - 200;
 
-        if (!isDragging.current) {
-          // It was a tap, not a drag
-          handleTap();
-        }
-
+        if (!isDragging.current) handleTap();
         isDragging.current = false;
         snapToEdge(currentX, currentY);
       },
@@ -244,7 +347,10 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
 
   const activateVoiceExperience = useCallback(async () => {
     // Guard against double-tap while already navigating
-    if (navigatingToChatRef.current) return;
+    if (navigatingToChatRef.current) {
+      addVoiceDiagnostic('floating-ball', 'activate-blocked-navigating');
+      return;
+    }
     navigatingToChatRef.current = true;
     setBallState('listening');
     onVoiceActivate?.();
@@ -252,7 +358,11 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     // Safety: auto-reset guard after 3s in case navigation silently fails
     // (shouldHide effect normally resets this, but navigation might not trigger it)
     setTimeout(() => {
-      navigatingToChatRef.current = false;
+      if (navigatingToChatRef.current) {
+        addVoiceDiagnostic('floating-ball', 'guard-timeout-reset');
+        navigatingToChatRef.current = false;
+        setBallState('idle');
+      }
     }, 3000);
 
     if (isVoiceUiE2EEnabled() && onVoiceActivate) {
@@ -298,16 +408,31 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     try {
       if (isVoiceUiE2EEnabled()) {
         navigation.navigate('AgentChat', chatParams);
+      } else if (!targetInstance?.id) {
+        // No instance available — navigate to Agent tab only (shows welcome/provision screen).
+        // Do NOT navigate to AgentChat with empty instanceId to avoid white screen.
+        addVoiceDiagnostic('floating-ball', 'no-instance-fallback');
+        (navigation as any).navigate('MainTabs', { screen: 'Agent' });
+        navigatingToChatRef.current = false;
+        setBallState('idle');
       } else {
-        // Use fully-qualified nested path from Root to ensure reliable resolution
-        // on native: Root(Main) → Drawer(MainTabs) → Tab(Agent) → Stack(AgentChat)
-        (navigation as any).navigate('MainTabs', {
-          screen: 'Agent',
-          params: {
-            screen: 'AgentChat',
-            params: chatParams,
-          },
-        });
+        // Two-step navigation for reliability: first switch to Agent tab,
+        // then navigate within the (now-mounted) Agent stack to AgentChat.
+        // Single-step deeply-nested navigate silently fails from some tabs (Me, Discover).
+        (navigation as any).navigate('MainTabs', { screen: 'Agent' });
+        setTimeout(() => {
+          try {
+            (navigation as any).navigate('MainTabs', {
+              screen: 'Agent',
+              params: {
+                screen: 'AgentChat',
+                params: chatParams,
+              },
+            });
+          } catch (retryErr) {
+            addVoiceDiagnostic('floating-ball', 'navigate-retry-failed', retryErr);
+          }
+        }, 150);
       }
       addVoiceDiagnostic('floating-ball', 'navigate-agent-chat', {
         instanceId: chatParams.instanceId || null,
@@ -321,26 +446,59 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     }
   }, [navigation, onVoiceActivate, currentRouteName]);
 
-  // Keep ref in sync so wake word callbacks don't need activateVoiceExperience in deps
   activateVoiceExperienceRef.current = activateVoiceExperience;
 
   const handleTap = useCallback(() => {
     addVoiceDiagnostic('floating-ball', 'tap');
     Haptics.selectionAsync().catch(() => {});
-    void activateVoiceExperience();
-  }, [activateVoiceExperience]);
 
-  const handleVoiceActivate = useCallback(() => {
-    addVoiceDiagnostic('floating-ball', 'long-press-activate');
-    // Long press → expand voice pill panel (or navigate if no pill handler)
-    if (onPillSend) {
-      setPillExpanded(true);
-      setBallState('listening');
-      onVoiceActivate?.();
-    } else {
-      void activateVoiceExperience();
+    if (isMinimized) {
+      setIsMinimized(false);
+      const currentX = (pan.x as any)._value ?? screenW - BALL_SIZE - EDGE_MARGIN;
+      const currentY = (pan.y as any)._value ?? screenH - 200;
+      const onLeft = currentX < screenW / 2;
+      Animated.spring(pan, {
+        toValue: { x: onLeft ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN, y: currentY },
+        useNativeDriver: false, friction: 7,
+      }).start();
+      return;
     }
-  }, [activateVoiceExperience, onPillSend, onVoiceActivate]);
+
+    void activateVoiceExperience();
+  }, [activateVoiceExperience, isMinimized, pan, screenW, screenH]);
+
+  const handleLongPress = useCallback(() => {
+    addVoiceDiagnostic('floating-ball', 'long-press-activate');
+    if (isMinimized) { setIsMinimized(false); return; }
+    setPillExpanded(true);
+    setBallState('listening');
+    onVoiceActivate?.();
+  }, [isMinimized, onVoiceActivate]);
+
+  const handleQuickSend = useCallback(() => {
+    const text = quickInput.trim();
+    if (!text) return;
+    if (onPillSend) {
+      onPillSend(text);
+      setQuickInput('');
+      setPillExpanded(false);
+      setBallState('thinking');
+    }
+  }, [quickInput, onPillSend]);
+
+  const handlePillSend = useCallback(() => {
+    if (pillTranscript && onPillSend) {
+      onPillSend(pillTranscript);
+      setPillExpanded(false);
+      setBallState('thinking');
+    }
+  }, [pillTranscript, onPillSend]);
+
+  const handlePillClose = useCallback(() => {
+    setPillExpanded(false);
+    setQuickInput('');
+    setBallState('idle');
+  }, []);
 
   useEffect(() => {
     if (!isVoiceUiE2EEnabled() || Platform.OS !== 'web') {
@@ -474,200 +632,305 @@ export function GlobalFloatingBall({ onVoiceActivate, pillTranscript, onPillSend
     showWakeWordGuidance,
   ]);
 
-  const handlePillSend = useCallback(() => {
-    if (pillTranscript && onPillSend) {
-      onPillSend(pillTranscript);
-      setPillExpanded(false);
-      setBallState('thinking');
-    }
-  }, [pillTranscript, onPillSend]);
-
-  const handlePillClose = useCallback(() => {
-    setPillExpanded(false);
-    setBallState('idle');
-  }, []);
-
   if (shouldHide) return null;
 
-  const ballColor = STATE_COLORS[ballState];
   const borderColor = STATE_BORDER_COLORS[ballState];
-  const stateIndicator = ballState === 'listening' ? '🎙' : ballState === 'thinking' ? '·​·​·' : ballState === 'speaking' ? '🔊' : null;
+  const gradientColors = STATE_GRADIENTS[ballState];
 
   return (
     <Animated.View
       testID="voice-floating-ball"
       accessibilityLabel="voice-floating-ball"
       style={[
-        styles.container,
+        styles.outerContainer,
         {
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
+            { translateX: magneticX },
+            { translateY: magneticY },
             { scale: pulseAnim },
           ],
         },
       ]}
       {...(useDirectPressHandlers ? {} : panResponder.panHandlers)}
     >
-      {/* Voice Pill panel — expands on long press */}
+      {/* Result Card (Phase 2) — below the ball */}
+      {showResultCard && (
+        <Animated.View
+          style={[
+            styles.resultCard,
+            {
+              opacity: resultCardAnim,
+              transform: [{ translateY: resultCardAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
+            },
+          ]}
+        >
+          <BlurView intensity={60} tint="dark" style={styles.resultCardBlur}>
+            <Text style={styles.resultCardText} numberOfLines={4}>{resultText}</Text>
+            {onResultAction && (
+              <View style={styles.resultCardActions}>
+                <TouchableOpacity style={styles.resultActionBtn} onPress={() => onResultAction('open')}>
+                  <Text style={styles.resultActionText}>{language === 'zh' ? '查看详情' : 'View'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.resultActionBtn, styles.resultActionBtnPrimary]} onPress={() => onResultAction('dismiss')}>
+                  <Text style={[styles.resultActionText, styles.resultActionTextPrimary]}>{language === 'zh' ? '好的' : 'OK'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </BlurView>
+        </Animated.View>
+      )}
+
+      {/* Voice Pill / Quick Input panel — above the ball */}
       {pillExpanded && (
         <Animated.View
           style={[
             styles.pillPanel,
             {
               opacity: pillExpandAnim,
-              transform: [{
-                scale: pillExpandAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.7, 1],
-                }),
-              }],
+              transform: [{ scale: pillExpandAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) }],
             },
           ]}
         >
-          <View style={styles.pillHeader}>
-            <Text style={styles.pillTitle}>
-              {ballState === 'listening' ? '🎙 Listening...' : ballState === 'thinking' ? '💭 Thinking...' : '🔊 Speaking'}
-            </Text>
-            <TouchableOpacity onPress={handlePillClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.pillCloseBtn}>✕</Text>
-            </TouchableOpacity>
-          </View>
+          <BlurView intensity={50} tint="dark" style={styles.pillBlur}>
+            <View style={styles.pillHeader}>
+              <Text style={styles.pillTitle}>
+                {ballState === 'listening'
+                  ? (language === 'zh' ? '🎙 聆听中…' : '🎙 Listening…')
+                  : ballState === 'thinking'
+                  ? (language === 'zh' ? '💭 思考中…' : '💭 Thinking…')
+                  : (language === 'zh' ? '🔊 回复中' : '🔊 Speaking')}
+              </Text>
+              <TouchableOpacity onPress={handlePillClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.pillCloseBtn}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-          {/* Waveform bars */}
-          <View style={styles.waveformRow}>
-            {waveformAnims.map((anim, i) => (
-              <Animated.View
-                key={i}
-                style={[
-                  styles.waveformBar,
-                  {
-                    height: anim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [4, 28],
-                    }),
-                    backgroundColor: ballState === 'listening' ? '#10B981' : '#6C5CE7',
-                  },
-                ]}
+            <View style={styles.waveformRow}>
+              {waveformAnims.map((anim, i) => (
+                <Animated.View
+                  key={i}
+                  style={[
+                    styles.waveformBar,
+                    {
+                      height: anim.interpolate({ inputRange: [0, 1], outputRange: [3, 26] }),
+                      backgroundColor: gradientColors[i % 2],
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+
+            {!!pillTranscript && (
+              <Text style={styles.pillTranscript} numberOfLines={2}>{pillTranscript}</Text>
+            )}
+
+            <View style={styles.quickInputRow}>
+              <TextInput
+                style={styles.quickInput}
+                placeholder={language === 'zh' ? '快捷指令…' : 'Quick command…'}
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                value={quickInput}
+                onChangeText={setQuickInput}
+                onSubmitEditing={handleQuickSend}
+                returnKeyType="send"
+                blurOnSubmit
               />
-            ))}
-          </View>
-
-          {/* Transcript preview */}
-          {!!pillTranscript && (
-            <Text style={styles.pillTranscript} numberOfLines={2}>
-              {pillTranscript}
-            </Text>
-          )}
-
-          {/* Send button */}
-          {!!pillTranscript && (
-            <TouchableOpacity style={styles.pillSendBtn} onPress={handlePillSend}>
-              <Text style={styles.pillSendText}>⬆ Send</Text>
-            </TouchableOpacity>
-          )}
+              {(quickInput.trim().length > 0 || !!pillTranscript) && (
+                <TouchableOpacity
+                  style={styles.pillSendBtn}
+                  onPress={quickInput.trim() ? handleQuickSend : handlePillSend}
+                >
+                  <Text style={styles.pillSendText}>⬆</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </BlurView>
         </Animated.View>
       )}
 
-      {/* Glow ring for non-idle state */}
+      {/* Glow ring for non-idle */}
       {ballState !== 'idle' && (
-        <View style={[styles.glowRing, { borderColor: borderColor + '60' }]} />
+        <View style={[styles.glowRing, { borderColor: borderColor + '50' }]} />
       )}
+
+      {/* Orbiting Particles (thinking state) */}
+      <OrbitingParticles active={ballState === 'thinking'} />
+
+      {/* The Ball / Capsule */}
       <TouchableOpacity
         testID="voice-floating-ball-core"
         accessibilityLabel={`voice-floating-ball-core:${ballState}`}
-        activeOpacity={0.9}
+        activeOpacity={0.85}
         disabled={!useDirectPressHandlers}
         onPress={useDirectPressHandlers ? handleTap : undefined}
-        onLongPress={useDirectPressHandlers ? handleVoiceActivate : undefined}
+        onLongPress={useDirectPressHandlers ? handleLongPress : undefined}
         delayLongPress={LONG_PRESS_DURATION}
-        style={[styles.ball, { backgroundColor: ballColor, borderColor: borderColor + '80' }]}
       >
-        <Text style={styles.brandMark}>AX</Text>
-        {stateIndicator && (
-          <View style={[styles.stateIndicatorDot, { backgroundColor: borderColor }]}>
-            <Text style={styles.stateIndicatorText}>{stateIndicator}</Text>
-          </View>
-        )}
+        <Animated.View
+          style={[
+            styles.ballBody,
+            {
+              width: morphWidth,
+              height: BALL_SIZE,
+              borderRadius: morphRadius,
+              borderColor: borderColor + '60',
+            },
+          ]}
+        >
+          {/* Glassmorphism blur background */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 40 : 20}
+            tint="dark"
+            style={[StyleSheet.absoluteFill, { borderRadius: BALL_SIZE / 2, overflow: 'hidden' }]}
+          />
+
+          {/* Dark overlay for contrast */}
+          <View style={[StyleSheet.absoluteFill, styles.ballOverlay]} />
+
+          {/* Inner gradient core */}
+          <Animated.View
+            style={[styles.innerCore, { opacity: coreBreathAnim, transform: [{ scale: coreBreathAnim }] }]}
+          >
+            <LinearGradient colors={gradientColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.innerCoreGradient} />
+          </Animated.View>
+
+          {/* Label — morph between "AX" and capsule content */}
+          {isCapsule ? (
+            <View style={styles.capsuleContent}>
+              <Text style={styles.capsuleBrand}>AX</Text>
+              <View style={styles.capsuleWaveRow}>
+                {waveformAnims.slice(0, 5).map((anim, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      styles.capsuleWaveBar,
+                      { height: anim.interpolate({ inputRange: [0, 1], outputRange: [3, 16] }), backgroundColor: '#fff', opacity: 0.8 },
+                    ]}
+                  />
+                ))}
+              </View>
+              <Text style={styles.capsuleStatusText}>
+                {ballState === 'listening'
+                  ? (language === 'zh' ? '聆听中' : 'Listening')
+                  : ballState === 'speaking'
+                  ? (language === 'zh' ? '回复中' : 'Speaking')
+                  : (language === 'zh' ? '思考中' : 'Thinking')}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.brandMark}>AX</Text>
+          )}
+        </Animated.View>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     position: 'absolute',
-    width: BALL_SIZE,
-    height: BALL_SIZE,
+    alignItems: 'center',
     zIndex: 9999,
     elevation: 10,
   },
-  ball: {
-    width: BALL_SIZE,
+  ballBody: {
     height: BALL_SIZE,
-    borderRadius: BALL_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
+    overflow: 'hidden',
     shadowColor: '#6C5CE7',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
     elevation: 8,
   },
-  glowRing: {
-    position: 'absolute',
-    width: BALL_SIZE + 12,
-    height: BALL_SIZE + 12,
-    borderRadius: (BALL_SIZE + 12) / 2,
-    borderWidth: 2.5,
-    top: -6,
-    left: -6,
+  ballOverlay: {
+    backgroundColor: 'rgba(11, 18, 32, 0.55)',
+    borderRadius: BALL_SIZE / 2,
   },
-  brandMark: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 1,
-  },
-  stateIndicatorDot: {
+  innerCore: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
     width: 18,
     height: 18,
     borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  innerCoreGradient: {
+    flex: 1,
+    borderRadius: 9,
+  },
+  glowRing: {
+    position: 'absolute',
+    width: BALL_SIZE + 14,
+    height: BALL_SIZE + 14,
+    borderRadius: (BALL_SIZE + 14) / 2,
     borderWidth: 2,
-    borderColor: '#1a1a2e',
+    top: -7,
+    alignSelf: 'center',
   },
-  stateIndicatorText: {
-    fontSize: 9,
+  brandMark: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 1.5,
+    zIndex: 1,
+  },
+  capsuleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    zIndex: 1,
+  },
+  capsuleBrand: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#fff',
+    letterSpacing: 1,
   },
-  // Voice Pill panel styles
+  capsuleWaveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    height: 20,
+  },
+  capsuleWaveBar: {
+    width: 2.5,
+    borderRadius: 1.5,
+  },
+  capsuleStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+  },
   pillPanel: {
     position: 'absolute',
-    bottom: BALL_SIZE + 10,
+    bottom: BALL_SIZE + 12,
     right: 0,
     width: PILL_WIDTH,
-    backgroundColor: 'rgba(17, 24, 39, 0.92)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 18,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  pillBlur: {
+    padding: 14,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   pillHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   pillTitle: {
     color: '#E5E7EB',
@@ -682,12 +945,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    height: 32,
-    marginBottom: 6,
+    gap: 3,
+    height: 30,
+    marginBottom: 8,
   },
   waveformBar: {
-    width: 4,
+    width: 3.5,
     borderRadius: 2,
   },
   pillTranscript: {
@@ -696,17 +959,83 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginBottom: 8,
   },
+  quickInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  quickInput: {
+    flex: 1,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 10,
+    color: '#fff',
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
   pillSendBtn: {
-    alignSelf: 'flex-end',
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: '#6C5CE7',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pillSendText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  resultCard: {
+    position: 'absolute',
+    top: BALL_SIZE + 10,
+    right: 0,
+    width: PILL_WIDTH,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  resultCardBlur: {
+    padding: 14,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  resultCardText: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  resultCardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  resultActionBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  resultActionBtnPrimary: {
+    backgroundColor: '#6C5CE7',
+  },
+  resultActionText: {
+    color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
     fontWeight: '600',
+  },
+  resultActionTextPrimary: {
+    color: '#fff',
   },
 });
 

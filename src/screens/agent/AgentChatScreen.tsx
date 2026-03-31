@@ -2,10 +2,13 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, ScrollView, Linking,
-  Dimensions,
+  Dimensions, Animated,
 } from 'react-native';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Swipeable } from 'react-native-gesture-handler';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
@@ -191,27 +194,136 @@ const InlineAudioPlayer = ({ uri }: { uri: string }) => {
   );
 };
 
+// ─── Long-press context menu for messages ──────────────────────────────────
+const MessageContextMenu = ({
+  visible, onClose, message, onQuote, onExportNote, onDeepSearch, onCrossDevice, onCopy,
+}: {
+  visible: boolean; onClose: () => void; message: Message | null;
+  onQuote: () => void; onExportNote: () => void; onDeepSearch: () => void;
+  onCrossDevice: () => void; onCopy: () => void;
+}) => {
+  const { t } = useI18n();
+  if (!visible || !message) return null;
+  const actions = [
+    { icon: '📋', label: t({ en: 'Copy', zh: '复制' }), onPress: onCopy },
+    { icon: '💬', label: t({ en: 'Quote & Ask', zh: '引用追问' }), onPress: onQuote },
+    { icon: '📝', label: t({ en: 'Save as Note', zh: '导出笔记' }), onPress: onExportNote },
+    { icon: '🔍', label: t({ en: 'Deep Search', zh: '深度搜索' }), onPress: onDeepSearch },
+    { icon: '💻', label: t({ en: 'Send to Desktop', zh: '发到电脑' }), onPress: onCrossDevice },
+  ];
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={sf.ctxOverlay} onPress={onClose} activeOpacity={1}>
+        <BlurView intensity={30} tint="dark" style={sf.ctxMenuWrap}>
+          <View style={sf.ctxMenu}>
+            <Text style={sf.ctxPreview} numberOfLines={2}>{message.content?.slice(0, 80)}</Text>
+            <View style={sf.ctxDivider} />
+            {actions.map((a, i) => (
+              <TouchableOpacity key={i} style={sf.ctxItem} onPress={() => { a.onPress(); onClose(); }}>
+                <Text style={sf.ctxIcon}>{a.icon}</Text>
+                <Text style={sf.ctxLabel}>{a.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </BlurView>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
+// ─── Thought Ribbon (animated light strip for thinking chain) ───────────────
+const ThoughtRibbon = ({ thoughts, streaming }: { thoughts: string[]; streaming?: boolean }) => {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (streaming) {
+      const loop = Animated.loop(
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+  }, [streaming, shimmerAnim]);
+
+  const shimmerTranslate = shimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-200, 200],
+  });
+
+  return (
+    <View style={sf.ribbonWrap}>
+      <TouchableOpacity
+        style={sf.ribbonHeader}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
+        <View style={sf.ribbonHeaderLeft}>
+          {streaming ? (
+            <View style={sf.ribbonShimmerWrap}>
+              <Animated.View style={[sf.ribbonShimmer, { transform: [{ translateX: shimmerTranslate }] }]} />
+              <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.55 }] }} />
+            </View>
+          ) : (
+            <Text style={sf.ribbonDoneIcon}>⚡</Text>
+          )}
+          <Text style={sf.ribbonTitle} numberOfLines={1}>
+            {streaming
+              ? (thoughts[thoughts.length - 1]?.replace('[Tool Call]', '').trim().slice(0, 40) || t({ en: 'Processing…', zh: '处理中…' }))
+              : t({ en: `${thoughts.length} steps`, zh: `${thoughts.length} 步` })}
+          </Text>
+        </View>
+        <Text style={sf.ribbonChevron}>{expanded ? '▾' : '›'}</Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <ScrollView style={sf.ribbonBody} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          {thoughts.map((thought, idx) => {
+            const isTool = thought.includes('[Tool Call]') || thought.includes('Using skill:') || thought.includes('Searching');
+            const isError = thought.includes('Error') || thought.includes('Failed');
+            return (
+              <View key={idx} style={sf.ribbonStep}>
+                <View style={[sf.ribbonStepDot, isTool && { backgroundColor: colors.primary }, isError && { backgroundColor: colors.error }]} />
+                <Text style={[sf.ribbonStepText, isError && { color: colors.error }]}>
+                  {thought.replace('[Tool Call]', '').trim()}
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+};
+
+// ─── MessageBubble — Spatial Flow borderless design with swipe actions ──────
 const MessageBubble = ({
   item,
   onSpeak,
   onStopSpeaking,
   speakingMessageId,
   onPreviewImage,
+  onQuoteMessage,
+  onExportNote,
 }: {
   item: Message;
   onSpeak: (message: Message) => void;
   onStopSpeaking: () => void;
   speakingMessageId: string | null;
   onPreviewImage: (uri: string) => void;
+  onQuoteMessage?: (msg: Message) => void;
+  onExportNote?: (msg: Message) => void;
 }) => {
   const { t } = useI18n();
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
-  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
   const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
   const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
   const isThisMessageSpeaking = speakingMessageId === item.id;
+  const [ctxVisible, setCtxVisible] = useState(false);
+  const swipeableRef = useRef<Swipeable>(null);
 
   const handleCopy = useCallback(async () => {
     const text = getCopyableMessageText(item);
@@ -222,83 +334,95 @@ const MessageBubble = ({
   }, [item, t]);
 
   const openExternalUrl = useCallback(async (url: string) => {
-    try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert(t({ en: 'Open Failed', zh: '打开失败' }), url);
-    }
+    try { await Linking.openURL(url); } catch { Alert.alert(t({ en: 'Open Failed', zh: '打开失败' }), url); }
   }, [t]);
 
-  return (
-    <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
+  const handleLongPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setCtxVisible(true);
+  }, []);
+
+  // Swipe left → Quote & Ask
+  const renderLeftActions = useCallback(() => (
+    <View style={sf.swipeAction}>
+      <Text style={sf.swipeActionIcon}>💬</Text>
+      <Text style={sf.swipeActionLabel}>{t({ en: 'Quote', zh: '引用' })}</Text>
+    </View>
+  ), [t]);
+
+  // Swipe right → Export as note
+  const renderRightActions = useCallback(() => (
+    <View style={[sf.swipeAction, sf.swipeActionRight]}>
+      <Text style={sf.swipeActionIcon}>📝</Text>
+      <Text style={sf.swipeActionLabel}>{t({ en: 'Note', zh: '笔记' })}</Text>
+    </View>
+  ), [t]);
+
+  const handleSwipeLeft = useCallback(() => {
+    onQuoteMessage?.(item);
+    swipeableRef.current?.close();
+  }, [item, onQuoteMessage]);
+
+  const handleSwipeRight = useCallback(() => {
+    onExportNote?.(item);
+    swipeableRef.current?.close();
+  }, [item, onExportNote]);
+
+  const messageContent = (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onLongPress={handleLongPress}
+      delayLongPress={400}
+      style={[sf.msgContainer, isUser ? sf.msgContainerUser : sf.msgContainerBot]}
+    >
+      {/* AI avatar */}
       {!isUser && (
-        <View style={styles.avatarBot}>
-          <Text style={styles.avatarBotText}>🤖</Text>
+        <View style={sf.botAvatarCol}>
+          <LinearGradient
+            colors={['#6C5CE7', '#a78bfa']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={sf.avatarGradient}
+          >
+            <Text style={sf.avatarText}>AX</Text>
+          </LinearGradient>
         </View>
       )}
+
       <View style={{ flex: 1, maxWidth: '100%' }}>
-        {/* Thought Chain UI */}
+        {/* Thought Ribbon — replaces static thought chain */}
         {!isUser && hasThoughts && (
-          <View style={styles.thoughtContainer}>
-            <TouchableOpacity 
-              style={styles.thoughtCapsule} 
-              onPress={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
-              activeOpacity={0.7}
-            >
-              {item.streaming ? (
-                <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.6 }] }} />
-              ) : (
-                <Text style={{ color: colors.accent, fontSize: 10 }}>{'⚡'}</Text>
-              )}
-              <Text style={styles.thoughtCapsuleText} numberOfLines={1}>
-                {item.streaming
-                  ? (item.thoughts?.[item.thoughts.length - 1]?.replace('[Tool Call]', '').trim().slice(0, 40) || t({ en: 'Processing...', zh: '处理中…' }))
-                  : t({ en: `${item.thoughts?.length} steps completed`, zh: `已完成 ${item.thoughts?.length} 步` })}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 10 }}>{isThoughtsExpanded ? '▼' : '›'}</Text>
-            </TouchableOpacity>
-            
-            {isThoughtsExpanded && (
-              <View style={styles.thoughtList}>
-                {item.thoughts?.map((thought, idx) => {
-                  // Try to parse structured tool calls or steps
-                  const isTool = thought.includes('[Tool Call]') || thought.includes('Using skill:') || thought.includes('Searching');
-                  const isError = thought.includes('Error') || thought.includes('Failed');
-                  
-                  return (
-                    <View key={idx} style={styles.thoughtItemRow}>
-                      <Text style={[styles.thoughtIcon, isTool && {color: colors.primary}, isError && {color: colors.error}]}>
-                        {isError ? '❌' : isTool ? '⚡' : '›'}
-                      </Text>
-                      <Text style={[styles.thoughtItemText, isError && {color: colors.error}]}>
-                        {thought.replace('[Tool Call]', '').trim()}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </View>
+          <ThoughtRibbon thoughts={item.thoughts!} streaming={item.streaming} />
         )}
 
-        {/* Main Message Bubble */}
+        {/* Main message body — borderless */}
         {(bubbleText || item.streaming) && (
           <View
             testID={`chat-message-${item.role}`}
             accessibilityLabel={`chat-message-${item.role}`}
             style={[
-              styles.bubble,
-              isUser ? styles.bubbleUser : styles.bubbleBot,
-              item.error && styles.bubbleError,
+              sf.msgBody,
+              isUser ? sf.msgBodyUser : sf.msgBodyBot,
+              item.error && sf.msgBodyError,
             ]}
           >
+            {/* Subtle gradient background for bot messages */}
+            {!isUser && !item.error && (
+              <LinearGradient
+                colors={['rgba(108,92,231,0.06)', 'rgba(0,212,255,0.03)', 'transparent']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
+              />
+            )}
+
             <Text
               testID={`chat-message-text-${item.role}`}
               accessibilityLabel={`chat-message-text-${item.role}`}
               style={[
-                styles.bubbleText,
-                isUser && styles.bubbleTextUser,
-                item.streaming && !item.content && styles.bubbleTextPending,
+                sf.msgText,
+                isUser && sf.msgTextUser,
+                item.streaming && !item.content && { opacity: 0.6 },
               ]}
               selectable
             >
@@ -307,87 +431,125 @@ const MessageBubble = ({
             {item.streaming && (
               <ActivityIndicator size="small" color={colors.accent} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
             )}
+
+            {/* Inline actions row */}
             {!item.streaming && (canSpeak || !!getCopyableMessageText(item)) && (
-              <View style={styles.bubbleActions}>
+              <View style={sf.msgActions}>
                 {canSpeak && (
-                  <TouchableOpacity style={styles.copyBtn} onPress={() => (isThisMessageSpeaking ? onStopSpeaking() : onSpeak(item))}>
-                    <Text style={styles.copyBtnText}>
-                      {isThisMessageSpeaking ? t({ en: 'Stop Audio', zh: '停止朗读' }) : t({ en: 'Play Audio', zh: '朗读' })}
+                  <TouchableOpacity style={sf.actionChip} onPress={() => (isThisMessageSpeaking ? onStopSpeaking() : onSpeak(item))}>
+                    <Text style={sf.actionChipText}>
+                      {isThisMessageSpeaking ? t({ en: '⏹ Stop', zh: '⏹ 停止' }) : t({ en: '▶ Play', zh: '▶ 播放' })}
                     </Text>
                   </TouchableOpacity>
                 )}
                 {!!getCopyableMessageText(item) && (
-                  <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-                    <Text style={styles.copyBtnText}>{t({ en: 'Copy', zh: '复制' })}</Text>
+                  <TouchableOpacity style={sf.actionChip} onPress={handleCopy}>
+                    <Text style={sf.actionChipText}>{t({ en: 'Copy', zh: '复制' })}</Text>
                   </TouchableOpacity>
                 )}
               </View>
             )}
           </View>
         )}
+
+        {/* Attachments, images, audio, files — same structure, updated styles */}
         {!!item.attachments?.length && (
-          <View style={styles.attachmentList}>
+          <View style={sf.mediaList}>
             {item.attachments.map((attachment) => (
               <TouchableOpacity
                 key={`${item.id}-${attachment.fileName}`}
-                style={styles.attachmentCard}
+                style={sf.mediaCard}
                 activeOpacity={0.8}
                 onPress={() => attachment.isImage ? onPreviewImage(attachment.publicUrl) : openExternalUrl(attachment.publicUrl)}
               >
                 {attachment.isImage ? (
-                  <Image source={{ uri: attachment.publicUrl }} style={styles.attachmentImage} resizeMode="cover" />
+                  <Image source={{ uri: attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
                 ) : (
-                  <View style={styles.attachmentFileIconWrap}>
-                    <Text style={styles.attachmentFileIcon}>📎</Text>
-                  </View>
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>📎</Text></View>
                 )}
-                <View style={styles.attachmentMeta}>
-                  <Text style={styles.attachmentName} numberOfLines={1}>{attachment.originalName}</Text>
-                  <Text style={styles.attachmentSub} numberOfLines={1}>
-                    {attachment.mimetype} · {formatAttachmentSize(attachment.size)}
-                  </Text>
+                <View style={sf.mediaMeta}>
+                  <Text style={sf.mediaName} numberOfLines={1}>{attachment.originalName}</Text>
+                  <Text style={sf.mediaSub} numberOfLines={1}>{attachment.mimetype} · {formatAttachmentSize(attachment.size)}</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         )}
         {!!imageUrls.length && (
-          <View style={styles.attachmentList}>
+          <View style={sf.mediaList}>
             {imageUrls.map((url) => (
-              <TouchableOpacity key={`${item.id}-${url}`} style={styles.attachmentCard} activeOpacity={0.8} onPress={() => onPreviewImage(url)}>
-                <Image source={{ uri: url }} style={styles.attachmentImage} resizeMode="cover" />
-                <View style={styles.attachmentMeta}>
-                  <Text style={styles.attachmentName} numberOfLines={1}>{t({ en: 'Generated image', zh: '生成图片' })}</Text>
-                  <Text style={styles.attachmentSub} numberOfLines={1}>{url}</Text>
+              <TouchableOpacity key={`${item.id}-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => onPreviewImage(url)}>
+                <Image source={{ uri: url }} style={sf.mediaThumb} resizeMode="cover" />
+                <View style={sf.mediaMeta}>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated image', zh: '生成图片' })}</Text>
+                  <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         )}
         {!!audioUrls.length && (
-          <View style={styles.attachmentList}>
+          <View style={sf.mediaList}>
             {audioUrls.map((url) => (
               <InlineAudioPlayer key={`${item.id}-audio-${url}`} uri={url} />
             ))}
           </View>
         )}
         {!!fileUrls.length && (
-          <View style={styles.attachmentList}>
+          <View style={sf.mediaList}>
             {fileUrls.map((url) => (
-              <TouchableOpacity key={`${item.id}-${url}`} style={styles.attachmentCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
-                <View style={styles.attachmentFileIconWrap}>
-                  <Text style={styles.attachmentFileIcon}>📎</Text>
-                </View>
-                <View style={styles.attachmentMeta}>
-                  <Text style={styles.attachmentName} numberOfLines={1}>{t({ en: 'Generated file', zh: '生成文件' })}</Text>
-                  <Text style={styles.attachmentSub} numberOfLines={1}>{url}</Text>
+              <TouchableOpacity key={`${item.id}-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
+                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>📎</Text></View>
+                <View style={sf.mediaMeta}>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated file', zh: '生成文件' })}</Text>
+                  <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
         )}
       </View>
-    </View>
+
+      {/* Context menu */}
+      <MessageContextMenu
+        visible={ctxVisible}
+        onClose={() => setCtxVisible(false)}
+        message={item}
+        onCopy={handleCopy}
+        onQuote={() => onQuoteMessage?.(item)}
+        onExportNote={() => onExportNote?.(item)}
+        onDeepSearch={() => {
+          const q = item.content?.slice(0, 200);
+          if (q) Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(q)}`).catch(() => {});
+        }}
+        onCrossDevice={async () => {
+          const text = getCopyableMessageText(item);
+          if (text) {
+            try {
+              await DeviceBridgingService.writeClipboard(text);
+              Alert.alert(t({ en: 'Sent', zh: '已发送' }), t({ en: 'Copied to shared clipboard for desktop pickup.', zh: '已复制到共享剪贴板，电脑端可接收。' }));
+            } catch {}
+          }
+        }}
+      />
+    </TouchableOpacity>
+  );
+
+  return (
+    <Swipeable
+      ref={swipeableRef}
+      renderLeftActions={renderLeftActions}
+      renderRightActions={renderRightActions}
+      onSwipeableOpen={(direction) => {
+        if (direction === 'left') handleSwipeLeft();
+        else handleSwipeRight();
+      }}
+      overshootLeft={false}
+      overshootRight={false}
+      friction={2}
+    >
+      {messageContent}
+    </Swipeable>
   );
 };
 
@@ -446,6 +608,7 @@ export function AgentChatScreen() {
     },
   ]);
   const [input, setInput] = useState('');
+  const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -634,7 +797,7 @@ export function AgentChatScreen() {
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 15;
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   const loadOlderMessages = useCallback(() => {
@@ -951,6 +1114,22 @@ export function AgentChatScreen() {
     }
   }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, setVoiceMode, setDuplexMode]);
 
+  // Re-sync voice mode when screen gains focus (tab switch).
+  // React Navigation may not re-run useEffect dependencies on a tab switch
+  // because the component stays mounted. useFocusEffect fires every time the
+  // screen comes back into view, ensuring voice params are consumed.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (voiceModeRequested && !voiceMode) {
+        addVoiceDiagnostic('agent-chat', 'focus-voice-sync', { voiceModeRequested, duplexModeRequested, voiceMode, duplexMode });
+        setVoiceMode(true);
+      }
+      if (duplexModeRequested && !duplexMode) {
+        setDuplexMode(true);
+      }
+    }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, setVoiceMode, setDuplexMode])
+  );
+
   // Clear stale voiceMode/duplexMode route params after they've been consumed,
   // so returning to this screen later doesn't re-activate voice.
   useEffect(() => {
@@ -958,6 +1137,25 @@ export function AgentChatScreen() {
       navigation.setParams({ voiceMode: undefined, duplexMode: undefined });
     }
   }, [voiceMode, voiceModeRequested, duplexModeRequested, navigation]);
+
+  // Diagnostic: log render state when voice mode is requested via navigation.
+  // This helps debug the white-screen issue (screen navigated but appears blank).
+  useEffect(() => {
+    if (voiceModeRequested || duplexModeRequested) {
+      addVoiceDiagnostic('agent-chat', 'voice-nav-render-state', {
+        voiceModeRequested,
+        duplexModeRequested,
+        voiceMode,
+        duplexMode,
+        instanceId: instanceId || null,
+        hasActiveInstance: !!activeInstance,
+        realtimeConnected,
+        voicePhase,
+        messageCount: messages.length,
+        token: token ? 'present' : 'missing',
+      });
+    }
+  }, [voiceModeRequested, duplexModeRequested, voiceMode, duplexMode, instanceId, activeInstance, realtimeConnected, voicePhase, messages.length, token]);
 
   const handleSpeakMessage = useCallback((message: Message) => {
     const text = buildDisplayMessageText(message.content);
@@ -970,6 +1168,7 @@ export function AgentChatScreen() {
     [
       ...msgs
         .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
+        .slice(-20)
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: serializeMessageForModel(m) })),
       { role: 'user' as const, content: newText },
     ];
@@ -1430,6 +1629,21 @@ export function AgentChatScreen() {
     try { mmkv.delete(`chat_hist_${instanceId}_${sid}`); } catch {}
   }, [activeSessionId, instanceId]);
 
+  const handleQuoteMessage = useCallback((msg: Message) => {
+    setQuotedMessage(msg);
+    const snippet = msg.content?.slice(0, 60)?.replace(/\n/g, ' ') || '';
+    setInput((prev) => prev ? prev : `> ${snippet}…\n`);
+    Haptics.selectionAsync().catch(() => {});
+  }, []);
+
+  const handleExportNote = useCallback((msg: Message) => {
+    const text = getCopyableMessageText(msg);
+    if (text) {
+      DeviceBridgingService.writeClipboard(text);
+      Alert.alert(t({ en: 'Saved', zh: '已保存' }), t({ en: 'Message copied — paste into Notes.', zh: '消息已复制，可粘贴到笔记。' }));
+    }
+  }, [t]);
+
   const renderMessage = ({ item }: { item: Message }) => {
     return (
       <MessageBubble
@@ -1438,6 +1652,8 @@ export function AgentChatScreen() {
         onStopSpeaking={stopSpeaking}
         speakingMessageId={speakingMessageId}
         onPreviewImage={(uri) => setPreviewImageUri(uri)}
+        onQuoteMessage={handleQuoteMessage}
+        onExportNote={handleExportNote}
       />
     );
   };
@@ -1718,8 +1934,19 @@ export function AgentChatScreen() {
         </>
       )}
 
-      {/* Input bar — WeChat / Doubao style */}
-      <View style={styles.inputArea}>
+      {/* Floating glassmorphism input bar */}
+      <BlurView intensity={40} tint="dark" style={sf.floatingInputWrap}>
+        {/* Quoted message chip */}
+        {quotedMessage && (
+          <View style={sf.quoteChip}>
+            <Text style={sf.quoteChipText} numberOfLines={1}>
+              💬 {quotedMessage.content?.slice(0, 50)?.replace(/\n/g, ' ')}…
+            </Text>
+            <TouchableOpacity onPress={() => { setQuotedMessage(null); setInput(''); }}>
+              <Text style={sf.quoteChipClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {!!pendingAttachments.length && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pendingAttachmentRow}>
             {pendingAttachments.map((attachment) => (
@@ -1896,7 +2123,7 @@ export function AgentChatScreen() {
         )}
 
       </View>
-      </View>
+      </BlurView>
 
       {/* Voice onboarding tooltip */}
       <VoiceOnboardingTooltip
@@ -2187,6 +2414,291 @@ export function AgentChatScreen() {
   );
 }
 
+// ─── Spatial Flow Styles ────────────────────────────────────────────────────
+const sf = StyleSheet.create({
+  // ── Message layout (borderless) ──
+  msgContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    gap: 10,
+  },
+  msgContainerUser: {
+    flexDirection: 'row-reverse',
+    paddingLeft: 48,
+  },
+  msgContainerBot: {
+    paddingRight: 32,
+  },
+  botAvatarCol: {
+    marginTop: 2,
+  },
+  avatarGradient: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // ── Message body (borderless, subtle bg) ──
+  msgBody: {
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    overflow: 'hidden',
+  },
+  msgBodyUser: {
+    backgroundColor: colors.primary + '20',
+    borderBottomRightRadius: 4,
+  },
+  msgBodyBot: {
+    backgroundColor: 'transparent',
+  },
+  msgBodyError: {
+    backgroundColor: colors.error + '12',
+    borderLeftWidth: 2,
+    borderLeftColor: colors.error,
+  },
+  msgText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textPrimary,
+  },
+  msgTextUser: {
+    color: colors.textPrimary,
+  },
+  msgActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    opacity: 0.7,
+  },
+  actionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: colors.bgCard,
+  },
+  actionChipText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+
+  // ── Thought Ribbon ──
+  ribbonWrap: {
+    marginBottom: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.accent + '08',
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent + '40',
+  },
+  ribbonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  ribbonHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  ribbonShimmerWrap: {
+    width: 18,
+    height: 18,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ribbonShimmer: {
+    position: 'absolute',
+    width: 60,
+    height: 18,
+    backgroundColor: colors.accent + '20',
+    borderRadius: 9,
+  },
+  ribbonDoneIcon: {
+    fontSize: 12,
+    color: colors.accent,
+  },
+  ribbonTitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  ribbonChevron: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginLeft: 4,
+  },
+  ribbonBody: {
+    maxHeight: 160,
+    paddingHorizontal: 10,
+    paddingBottom: 8,
+  },
+  ribbonStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  ribbonStepDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    marginTop: 6,
+  },
+  ribbonStepText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+
+  // ── Swipe actions ──
+  swipeAction: {
+    width: 72,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '20',
+    borderRadius: 12,
+    marginVertical: 4,
+    marginHorizontal: 4,
+  },
+  swipeActionRight: {
+    backgroundColor: colors.accent + '18',
+  },
+  swipeActionIcon: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  swipeActionLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+
+  // ── Context menu ──
+  ctxOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  ctxMenuWrap: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    width: 260,
+  },
+  ctxMenu: {
+    padding: 12,
+  },
+  ctxPreview: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 8,
+    lineHeight: 16,
+  },
+  ctxDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: 4,
+  },
+  ctxItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 10,
+  },
+  ctxIcon: {
+    fontSize: 18,
+  },
+  ctxLabel: {
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+
+  // ── Media attachments (updated) ──
+  mediaList: {
+    gap: 8,
+    marginTop: 8,
+  },
+  mediaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgCard,
+    borderRadius: 12,
+    padding: 8,
+    gap: 10,
+  },
+  mediaThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+  },
+  mediaFileIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: colors.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaMeta: {
+    flex: 1,
+  },
+  mediaName: {
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  mediaSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+
+  // ── Floating input ──
+  floatingInputWrap: {
+    borderTopWidth: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: colors.bgSecondary + 'CC',
+  },
+  quoteChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    gap: 6,
+  },
+  quoteChipText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  quoteChipClose: {
+    fontSize: 14,
+    color: colors.textMuted,
+    paddingLeft: 4,
+  },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   chatBar: {
@@ -2296,7 +2808,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   remoteClipboardActionText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
-  messageList: { padding: 16, paddingBottom: 8, gap: 12 },
+  messageList: { paddingTop: 12, paddingBottom: 8, gap: 4 },
   e2eHiddenMarker: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, maxWidth: '85%' },
   msgRowUser: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
@@ -2347,9 +2859,8 @@ const styles = StyleSheet.create({
   voiceStatusText: { color: colors.textMuted, fontSize: 13, flex: 1 },
   voiceTranscriptPreview: { color: colors.textPrimary, fontSize: 12, marginTop: 4, lineHeight: 18 },
   inputArea: {
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    // Legacy — now uses sf.floatingInputWrap via BlurView
+    backgroundColor: 'transparent',
   },
   inputRow: {
     flexDirection: 'row',
@@ -2423,7 +2934,7 @@ const styles = StyleSheet.create({
   utilityBtnText: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
   input: {
     flex: 1,
-    backgroundColor: colors.bgCard,
+    backgroundColor: colors.bgCard + '80',
     borderRadius: 22,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -2431,7 +2942,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     maxHeight: 120,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.border + '60',
   },
   sendBtn: {
     width: 42,
@@ -2694,5 +3205,42 @@ const styles = StyleSheet.create({
   },
   cameraAuxSpacer: {
     width: 72,
+  },
+  voiceQuickGuideCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  voiceQuickGuideTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  voiceQuickGuideText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  voiceQuickGuideActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  voiceQuickGuideActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  voiceQuickGuideActionText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
   },
 });

@@ -87,11 +87,10 @@ jobs:
           with open(filepath) as f:
               content = f.read()
 
-          # 1. Replace entryFile line entirely to use index.watch.js
-          # Original line uses complex expression with nested parens/brackets
+          # 1. Replace entryFile to use index.watch.js
           content = re.sub(
-              r'entryFile\s*=\s*file\(.*',
-              'entryFile = file("../../index.watch.js")',
+              r'(entryFile\s*=\s*file\().*?\)',
+              r'\1"../../index.watch.js")',
               content, count=1
           )
           print('[patched] entryFile → index.watch.js')
