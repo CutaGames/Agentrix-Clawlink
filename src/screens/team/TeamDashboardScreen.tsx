@@ -11,7 +11,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { apiFetch } from '../../services/api';
-import { fetchAgentPresenceAccounts, type MobileAgentAccount } from '../../services/agentPresenceAccount';
+import { fetchUnifiedAgents, type UnifiedAgent } from '../../services/unifiedAgent';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ──────────────────────────────────────────────
@@ -238,7 +238,7 @@ const STATUS_COLOR: Record<string, string> = {
   disconnected: '#6b7280',
 };
 
-function AgentProgressCard({ agent, t, onPress }: { agent: MobileAgentAccount; t: (p: { en: string; zh: string }) => string; onPress?: () => void }) {
+function AgentProgressCard({ agent, t, onPress }: { agent: UnifiedAgent; t: (p: { en: string; zh: string }) => string; onPress?: () => void }) {
   const statusColor = STATUS_COLOR[agent.status] ?? '#6b7280';
   const score = agent.creditScore ?? 720;
   const scoreColor = score >= 800 ? '#22c55e' : score >= 500 ? '#3b82f6' : score >= 200 ? '#f59e0b' : '#ef4444';
@@ -537,7 +537,7 @@ export function TeamDashboardScreen({ navigation }: Props) {
     refetch: refetchAgents,
   } = useQuery({
     queryKey: ['agent-accounts'],
-    queryFn: () => fetchAgentPresenceAccounts(),
+    queryFn: () => fetchUnifiedAgents(),
     retry: false,
   });
 
