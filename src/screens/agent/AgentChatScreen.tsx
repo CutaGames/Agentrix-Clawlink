@@ -37,6 +37,17 @@ try { Audio = require('expo-av').Audio; } catch (_) {}
 
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
+const LOCAL_ONLY_MODEL_IDS = new Set([
+  'gemma-nano-2b',
+  'gemma-4-2b',
+  'gemma-4-4b',
+  'gemma-nano-2b-local',
+]);
+
+function isLocalOnlyModelId(modelId?: string | null) {
+  return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -575,12 +586,19 @@ export function AgentChatScreen() {
   // Dynamic model list from backend (platform default + user's configured providers)
   const [availableModels, setAvailableModels] = useState<ModelOption[]>(SUPPORTED_MODELS);
   // The ACTUAL model this agent is running on (resolved by backend)
-  const [resolvedModelLabel, setResolvedModelLabel] = useState<string | null>(null);
+  const [resolvedModelLabel, setResolvedModelLabel] = useState<string | null>(activeInstance?.resolvedModelLabel || null);
+  const [resolvedModelId, setResolvedModelId] = useState<string | null>(activeInstance?.resolvedModel || null);
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
-  // The effective model ID to display and send
+  const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
+    || (!isLocalOnlyModelId(resolvedModelId) ? resolvedModelId : null)
+    || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
+    || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
+    || 'claude-haiku-4-5';
+  // The effective model ID to display in the picker and chat header
   const effectiveModelId = agentPreferredModel || selectedModelId;
+  const proxyModelId = isLocalOnlyModelId(effectiveModelId) ? remoteResolvedModelId : effectiveModelId;
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
@@ -765,6 +783,8 @@ export function AgentChatScreen() {
   // Fetch dynamic model list from backend and per-agent model
   useEffect(() => {
     (async () => {
+      setResolvedModelId(activeInstance?.resolvedModel || null);
+      setResolvedModelLabel(activeInstance?.resolvedModelLabel || null);
       try {
         const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
         if (Array.isArray(models) && models.length > 0) {
@@ -793,7 +813,7 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.metadata?.agentAccountId]);
+  }, [instanceId, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModel, activeInstance?.resolvedModelLabel]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1277,9 +1297,10 @@ export function AgentChatScreen() {
             message: outgoingText,
             sessionId: sessionIdRef.current,
             token,
-            model: effectiveModelId,
+            model: proxyModelId,
             voiceId: agentVoiceId || undefined,
             onMeta: (meta) => {
+              if (meta.resolvedModel) setResolvedModelId(meta.resolvedModel);
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
             },
             onChunk: (chunk) => {
@@ -1303,7 +1324,7 @@ export function AgentChatScreen() {
       if (!streamSucceeded) {
         if (instanceId) {
           try {
-            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current, effectiveModelId);
+            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current, proxyModelId);
             const proxyReply = typeof proxyResult?.reply === 'string'
               ? proxyResult.reply
               : proxyResult?.reply?.content || '';
@@ -1335,7 +1356,7 @@ export function AgentChatScreen() {
             const ac = streamDirectClaude({
               messages: history,
               token,
-              model: effectiveModelId,
+              model: proxyModelId,
               sessionId: sessionIdRef.current,
               onChunk: (chunk) => {
                 streamSucceeded = true;

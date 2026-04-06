@@ -19,6 +19,9 @@ export interface OpenClawInstanceInfo {
   models?: string[];
   agentCount?: number;
   lastSyncAt?: string;
+  resolvedModel?: string;
+  resolvedModelLabel?: string;
+  resolvedProvider?: string;
   metadata?: {
     agentAccountId?: string;
     [key: string]: any;
