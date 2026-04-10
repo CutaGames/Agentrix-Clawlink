@@ -32,6 +32,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
 import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -60,6 +61,8 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
+const MOBILE_AUTO_CONTINUE_LIMIT = 3;
+const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
@@ -662,6 +665,11 @@ export function AgentChatScreen() {
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
+  const autoContinueCountRef = useRef(0);
+  const pendingAutoContinuePromptRef = useRef<string | null>(null);
+  const pendingAutoContinueReasonRef = useRef<'max_tokens' | 'tool_use' | null>(null);
+  const pendingAutoContinueSessionIdRef = useRef<string | null>(null);
+  const autoContinueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Multi-session state
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
@@ -1028,6 +1036,13 @@ export function AgentChatScreen() {
 
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
+    if (autoContinueTimerRef.current) {
+      clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
     setSending(false);
@@ -1050,6 +1065,40 @@ export function AgentChatScreen() {
 
     activeAssistantMessageIdRef.current = null;
   }, [t]);
+
+  const clearAutoContinueTimer = useCallback(() => {
+    if (autoContinueTimerRef.current) {
+      clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingAutoContinue = useCallback(() => {
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
+  }, []);
+
+  const markAutoContinueNeeded = useCallback((reason: 'max_tokens' | 'tool_use') => {
+    pendingAutoContinuePromptRef.current = MOBILE_CONTINUE_PROMPT;
+    pendingAutoContinueReasonRef.current = reason;
+    pendingAutoContinueSessionIdRef.current = sessionIdRef.current;
+  }, []);
+
+  const handleStructuredStreamEvent = useCallback((event: StreamEvent) => {
+    if (event.type !== 'done') {
+      return;
+    }
+
+    if (event.reason === 'max_tokens' || event.reason === 'tool_use') {
+      markAutoContinueNeeded(event.reason);
+      return;
+    }
+
+    clearPendingAutoContinue();
+  }, [clearPendingAutoContinue, markAutoContinueNeeded]);
+
+  useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -1297,13 +1346,23 @@ export function AgentChatScreen() {
     const rawText = typeof overrideText === 'string' ? overrideText : input;
     const text = rawText.trim();
     const attachments = overrideAttachments ?? pendingAttachments;
+    const isSyntheticContinueTurn = text === MOBILE_CONTINUE_PROMPT;
+    const shouldDisplayUserTurn = !isSyntheticContinueTurn;
     if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
+
+    clearAutoContinueTimer();
+    clearPendingAutoContinue();
+    if (!isSyntheticContinueTurn) {
+      autoContinueCountRef.current = 0;
+    }
 
     // Offline: queue the message instead of streaming
     if (isOffline) {
       offlineQueueRef.current.push({ text, attachments });
       const queueMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, attachments, createdAt: Date.now() };
-      setMessages((prev) => [...prev, queueMsg]);
+      if (shouldDisplayUserTurn) {
+        setMessages((prev) => [...prev, queueMsg]);
+      }
       setInput('');
       setPendingAttachments([]);
       return;
@@ -1336,7 +1395,7 @@ export function AgentChatScreen() {
     const currentMsgs = messages;
     responseInterruptedRef.current = false;
     activeAssistantMessageIdRef.current = assistantMsgId;
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [...prev, ...(shouldDisplayUserTurn ? [userMsg] : []), assistantMsg]);
     setInput('');
     setPendingAttachments([]);
     try { mmkv.delete(draftStorageKey); } catch {}
@@ -1345,7 +1404,7 @@ export function AgentChatScreen() {
     streamAbortRef.current?.abort();
 
     // Auto-label session from first user message
-    if (text) {
+    if (text && shouldDisplayUserTurn) {
       setChatSessions((prev) => {
         const idx = prev.findIndex(s => s.id === activeSessionId);
         if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
@@ -1454,6 +1513,7 @@ export function AgentChatScreen() {
             token,
             model: proxyModelId,
             voiceId: agentVoiceId || undefined,
+            onEvent: handleStructuredStreamEvent,
             onMeta: (meta) => {
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
             },
@@ -1488,6 +1548,9 @@ export function AgentChatScreen() {
               resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, proxyReply);
               enqueueStreamedSpeech(proxyReply, true);
+              if (proxyResult?.stopReason === 'max_tokens' || proxyResult?.stopReason === 'tool_use') {
+                markAutoContinueNeeded(proxyResult.stopReason);
+              }
             }
           } catch (error: any) {
             proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
@@ -1512,6 +1575,7 @@ export function AgentChatScreen() {
               token,
               model: proxyModelId,
               sessionId: sessionIdRef.current,
+              onEvent: handleStructuredStreamEvent,
               onChunk: (chunk) => {
                 streamSucceeded = true;
                 resetVoicePhaseAfterResponse();
@@ -1575,6 +1639,47 @@ export function AgentChatScreen() {
       resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
+
+      const autoContinuePrompt = pendingAutoContinuePromptRef.current;
+      const autoContinueReason = pendingAutoContinueReasonRef.current;
+      const autoContinueSessionId = pendingAutoContinueSessionIdRef.current;
+      if (
+        !responseInterruptedRef.current
+        && autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === sessionIdRef.current
+        && autoContinueCountRef.current < MOBILE_AUTO_CONTINUE_LIMIT
+      ) {
+        const scheduledSessionId = autoContinueSessionId;
+        autoContinueCountRef.current += 1;
+        clearPendingAutoContinue();
+        autoContinueTimerRef.current = setTimeout(() => {
+          autoContinueTimerRef.current = null;
+          if (responseInterruptedRef.current || sessionIdRef.current !== scheduledSessionId) {
+            return;
+          }
+          void handleSendRef.current(autoContinuePrompt, []);
+        }, 180);
+      } else if (
+        autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === sessionIdRef.current
+        && autoContinueCountRef.current >= MOBILE_AUTO_CONTINUE_LIMIT
+      ) {
+        clearPendingAutoContinue();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}-continue-hint`,
+            role: 'assistant',
+            content: autoContinueReason === 'tool_use'
+              ? t({ en: '⚠️ The task paused before finishing. Send "Continue" to resume the remaining steps.', zh: '⚠️ 任务在完成前暂停了，发送“继续”即可接着执行剩余步骤。' })
+              : t({ en: '⚠️ The reply is still incomplete. Send "Continue" to keep generating.', zh: '⚠️ 回复仍未完成，发送“继续”即可继续生成。' }),
+            createdAt: Date.now(),
+          },
+        ]);
+      }
+
       resumeLiveSpeech();
     }
   };
