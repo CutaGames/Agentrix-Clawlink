@@ -850,7 +850,11 @@ export function AgentChatScreen() {
   useEffect(() => {
     setAgentPreferredModel(null);
     setAgentVoiceId(null);
-    setResolvedModelLabel(activeInstance?.resolvedModelLabel || null);
+    setResolvedModelLabel(
+      isLocalModelSelected
+        ? getLocalModelLabel(selectedModelId)
+        : activeInstance?.resolvedModelLabel || null,
+    );
     (async () => {
       try {
         const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
@@ -895,7 +899,16 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel, localAiModelId, localAiStatus]);
+  }, [
+    instanceId,
+    activeInstance?.id,
+    activeInstance?.metadata?.agentAccountId,
+    activeInstance?.resolvedModelLabel,
+    isLocalModelSelected,
+    localAiModelId,
+    localAiStatus,
+    selectedModelId,
+  ]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1443,6 +1456,7 @@ export function AgentChatScreen() {
           ? MobileLocalInferenceService.modelLabel
           : getLocalModelLabel(effectiveModelId);
         setResolvedModelLabel(localModelLabel);
+        let localAssistantText = '';
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
@@ -1471,12 +1485,13 @@ export function AgentChatScreen() {
 
             localProducedOutput = true;
             streamSucceeded = true;
+            localAssistantText += chunk;
             appendToStreamingMessage(assistantMsgId, chunk);
             enqueueStreamedSpeech(chunk);
           }
           enqueueStreamedSpeech('', true);
 
-          const finalAssistant = (allMessagesRef.current || []).find((message) => message.id === assistantMsgId)?.content?.trim();
+          const finalAssistant = localAssistantText.trim();
           if (!localProducedOutput || !finalAssistant) {
             streamSucceeded = false;
             proxyFailureMessage = t({ en: 'Local model returned an empty response.', zh: '本地模型返回了空响应。' });
@@ -2637,10 +2652,11 @@ export function AgentChatScreen() {
                       isActive && styles.modelOptionActive,
                     ]}
                     onPress={async () => {
+                      const isLocalTargetModel = isLocalOnlyModelId(m.id);
                       setSelectedModel(m.id);
-                      setResolvedModelLabel(m.label);
+                      setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
                       setShowModelPicker(false);
-                      if (instanceId) {
+                      if (instanceId && !isLocalTargetModel) {
                         updateInstance(instanceId, {
                           capabilities: {
                             ...(activeInstance?.capabilities || {}),

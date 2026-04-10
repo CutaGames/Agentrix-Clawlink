@@ -107,11 +107,23 @@ const bridge = {
     messages: MobileLocalChatMessage[];
     temperature?: number;
     maxTokens?: number;
+    onToken?: (chunk: string) => void;
   }): Promise<string[]> {
     const modelId = resolveModelId(payload.model);
     const context = await getOrLoadContext(modelId);
 
-    const tokens: string[] = [];
+    const chunks: string[] = [];
+    let pendingChunk = '';
+
+    const flushPendingChunk = () => {
+      if (!pendingChunk) {
+        return;
+      }
+
+      chunks.push(pendingChunk);
+      payload.onToken?.(pendingChunk);
+      pendingChunk = '';
+    };
 
     await context.completion(
       {
@@ -125,12 +137,17 @@ const bridge = {
       },
       (data) => {
         if (data.token) {
-          tokens.push(data.token);
+          pendingChunk += data.token;
+          if (/[\n。！？.!?]$/.test(data.token) || pendingChunk.length >= 48) {
+            flushPendingChunk();
+          }
         }
       },
     );
 
-    return tokens;
+    flushPendingChunk();
+
+    return chunks;
   },
 };
 

@@ -28,20 +28,26 @@ type LocalBridge = {
     messages: MobileLocalChatMessage[];
     temperature?: number;
     maxTokens?: number;
+    onToken?: (chunk: string) => void;
   }) => Promise<string[] | LocalBridgeGenerateResult>;
+};
+
+type ResolvedLocalBridge = {
+  bridge: LocalBridge;
+  source: 'native' | 'global';
 };
 
 const DEFAULT_MODEL_ID = 'gemma-4-2b';
 const DEFAULT_MODEL_LABEL = 'Gemma 4 2B (Local)';
 
-function resolveBridge(): LocalBridge | null {
+function resolveBridge(): ResolvedLocalBridge | null {
   const nativeBridge = (NativeModules as Record<string, unknown>)?.AgentrixLocalLLM as LocalBridge | undefined;
   if (nativeBridge) {
-    return nativeBridge;
+    return { bridge: nativeBridge, source: 'native' };
   }
 
   const globalBridge = (globalThis as { __AGENTRIX_LOCAL_LLM__?: LocalBridge }).__AGENTRIX_LOCAL_LLM__;
-  return globalBridge || null;
+  return globalBridge ? { bridge: globalBridge, source: 'global' } : null;
 }
 
 function extractText(result: LocalBridgeGenerateResult | null | undefined): string {
@@ -97,10 +103,11 @@ export class MobileLocalInferenceService {
   static readonly modelLabel = DEFAULT_MODEL_LABEL;
 
   static async isAvailable(): Promise<boolean> {
-    const bridge = resolveBridge();
-    if (!bridge) {
+    const resolvedBridge = resolveBridge();
+    if (!resolvedBridge) {
       return false;
     }
+    const { bridge } = resolvedBridge;
 
     if (typeof bridge.isAvailable === 'function') {
       try {
@@ -114,10 +121,11 @@ export class MobileLocalInferenceService {
   }
 
   static async generate(messages: MobileLocalChatMessage[], options?: { model?: string; temperature?: number; maxTokens?: number }): Promise<string> {
-    const bridge = resolveBridge();
-    if (!bridge) {
+    const resolvedBridge = resolveBridge();
+    if (!resolvedBridge) {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
+    const { bridge } = resolvedBridge;
 
     if (typeof bridge.generate === 'function') {
       const result = await bridge.generate({
@@ -151,31 +159,86 @@ export class MobileLocalInferenceService {
     messages: MobileLocalChatMessage[],
     options?: { model?: string; temperature?: number; maxTokens?: number },
   ): AsyncGenerator<string> {
-    const bridge = resolveBridge();
-    if (!bridge) {
+    const resolvedBridge = resolveBridge();
+    if (!resolvedBridge) {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
+    const { bridge, source } = resolvedBridge;
 
     if (typeof bridge.generateStream === 'function') {
-      const streamed = await bridge.generateStream({
+      const queuedChunks: string[] = [];
+      let streamCompleted = false;
+      let streamError: unknown;
+      let wakeConsumer: (() => void) | null = null;
+      const waitForChunk = () => new Promise<void>((resolve) => {
+        wakeConsumer = resolve;
+      });
+
+      const pushChunk = (chunk: string) => {
+        if (!chunk) {
+          return;
+        }
+
+        queuedChunks.push(chunk);
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
+      };
+
+      const streamPromise = bridge.generateStream({
         model: options?.model || DEFAULT_MODEL_ID,
         messages,
         temperature: options?.temperature,
         maxTokens: options?.maxTokens,
+        ...(source === 'global' ? { onToken: pushChunk } : {}),
+      }).then((streamed) => {
+        if (Array.isArray(streamed) && queuedChunks.length === 0) {
+          const normalized = normalizeLocalOutput(streamed.join(''));
+          for (const chunk of chunkText(normalized)) {
+            pushChunk(chunk);
+          }
+        } else if (!Array.isArray(streamed)) {
+          const text = normalizeLocalOutput(extractText(streamed));
+          if (text) {
+            pushChunk(text);
+          }
+        }
+
+        streamCompleted = true;
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
+      }).catch((error) => {
+        streamError = error;
+        streamCompleted = true;
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
       });
 
-      if (Array.isArray(streamed)) {
-        const normalized = normalizeLocalOutput(streamed.join(''));
-        for (const chunk of chunkText(normalized)) {
-          yield chunk;
+      while (!streamCompleted || queuedChunks.length > 0) {
+        if (queuedChunks.length === 0) {
+          await waitForChunk();
+          continue;
         }
-        return;
+
+        const nextChunk = queuedChunks.shift();
+        if (nextChunk) {
+          yield nextChunk;
+        }
       }
 
-      const text = normalizeLocalOutput(extractText(streamed));
-      for (const chunk of chunkText(text)) {
-        yield chunk;
+      await streamPromise;
+      if (streamError) {
+        throw streamError;
       }
+
       return;
     }
 
