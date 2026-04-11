@@ -20,6 +20,12 @@ import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
+const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b', 'gemma-nano-2b-local']);
+
+function isLocalOnlyModelId(modelId?: string | null) {
+  return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
+}
+
 const STATUS_COLOR: Record<string, string> = {
   active: colors.success,
   disconnected: colors.textMuted,
@@ -38,6 +44,7 @@ export function AgentConsoleScreen() {
   const navigation = useNavigation<Nav>();
   const { t } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
+  const updateInstance = useAuthStore((s) => s.updateInstance);
   // NOTE: do NOT use `?? []` inside the selector — it creates a new array reference
   // every render and triggers an infinite re-render loop.
   const rawInstances = useAuthStore((s) => s.user?.openClawInstances);
@@ -62,9 +69,12 @@ export function AgentConsoleScreen() {
     })();
   }, []);
 
-  const selectedModelLabel = dynamicModels.find((m) => m.id === selectedModelId)?.label
-    ?? SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label
-    ?? selectedModelId;
+  const currentEngineId = isLocalOnlyModelId(selectedModelId)
+    ? selectedModelId
+    : activeInstance?.resolvedModel || selectedModelId;
+  const selectedModelLabel = dynamicModels.find((m) => m.id === currentEngineId)?.label
+    ?? SUPPORTED_MODELS.find((m) => m.id === currentEngineId)?.label
+    ?? currentEngineId;
 
   const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
@@ -354,9 +364,15 @@ export function AgentConsoleScreen() {
               { icon: '💻', label: t({ en: 'Desktop Control', zh: '桌面控制' }), route: 'DesktopControl' as const },
               { icon: '⌚', label: t({ en: 'Wearables', zh: '可穿戴设备' }), route: 'WearableHub' as const },
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
+              { icon: '🗃️', label: t({ en: 'Memory Slots', zh: '记忆槽' }), route: 'AgentMemory' as const },
+              { icon: '🔁', label: t({ en: 'ACP Sessions', zh: 'ACP 会话' }), route: 'AcpSessions' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
               { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
-              { icon: '👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
+              { icon: '�', label: t({ en: 'Dreaming', zh: '梦境引擎' }), route: 'DreamingDashboard' as const },
+              { icon: '🧩', label: t({ en: 'Plugin Hub', zh: '插件中心' }), route: 'PluginHub' as const },
+              { icon: '📝', label: t({ en: 'Memory Wiki', zh: '记忆Wiki' }), route: 'MemoryWiki' as const },
+              { icon: '🔌', label: t({ en: 'MCP Manager', zh: 'MCP 管理' }), route: 'McpManager' as const },
+              { icon: '�👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
               { icon: '🤖', label: t({ en: 'Agent Accounts', zh: '智能体账户' }), route: 'AgentAccount' as const },
             ] as const).map((item) => (
               <TouchableOpacity
@@ -484,10 +500,22 @@ export function AgentConsoleScreen() {
       <SelectEngineModal 
         visible={showEngineModal} 
         onClose={() => setShowEngineModal(false)}
-        selectedModelId={selectedModelId}
+        selectedModelId={currentEngineId}
         onSelect={async (id) => {
           setSelectedModel(id);
-          if (activeInstance?.id) {
+          if (activeInstance?.id && !isLocalOnlyModelId(id)) {
+            const nextLabel = dynamicModels.find((model) => model.id === id)?.label
+              ?? SUPPORTED_MODELS.find((model) => model.id === id)?.label
+              ?? id;
+            updateInstance(activeInstance.id, {
+              capabilities: {
+                ...(activeInstance.capabilities || {}),
+                activeModel: id,
+                modelPinned: true,
+              },
+              resolvedModel: id,
+              resolvedModelLabel: nextLabel,
+            });
             try { await switchInstanceModel(activeInstance.id, id); } catch (_) {}
           }
         }}

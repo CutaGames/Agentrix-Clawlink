@@ -34,8 +34,11 @@ export interface ModelOption {
 
 /** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
+  { id: 'gemma-4-2b',       label: 'Gemma 4 E2B (端侧本地)',         provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
   { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
+
+export type LocalAiStatus = 'not_downloaded' | 'downloading' | 'ready' | 'error';
 
 interface SettingsState {
   customApiKeys: Record<string, string>;
@@ -46,6 +49,12 @@ interface SettingsState {
   
   // AI Model
   selectedModelId: ModelId;
+
+  // Local AI Model (端侧 Gemma)
+  localAiEnabled: boolean;
+  localAiStatus: LocalAiStatus;
+  localAiModelId: string;
+  localAiProgress: number; // 0-100 download progress
   
   // Progressive UI complexity
   uiComplexity: UiComplexity;
@@ -53,6 +62,8 @@ interface SettingsState {
   wakeWordConfig: WakeWordSettings;
 
   // Voice / TTS settings
+  /** Prefer on-device speech recognition / playback when possible */
+  preferOnDeviceVoice: boolean;
   /** TTS playback speed multiplier (0.8 - 1.5, default 1.0) */
   speechRate: number;
   /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
@@ -71,9 +82,14 @@ interface SettingsState {
   setEnvironment: (env: Environment) => void;
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
+  setLocalAiEnabled: (enabled: boolean) => void;
+  setLocalAiStatus: (status: LocalAiStatus) => void;
+  setLocalAiModelId: (modelId: string) => void;
+  setLocalAiProgress: (progress: number) => void;
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
   resetWakeWordConfig: () => void;
+  setPreferOnDeviceVoice: (enabled: boolean) => void;
   setSpeechRate: (rate: number) => void;
   setSilenceTimeoutMs: (ms: number) => void;
   toggleNotifications: (enabled: boolean) => void;
@@ -121,9 +137,15 @@ export const useSettingsStore = create<SettingsState>()(
       
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 
+      localAiEnabled: false,
+      localAiStatus: 'not_downloaded' as LocalAiStatus,
+      localAiModelId: 'gemma-4-2b',
+      localAiProgress: 0,
+
       uiComplexity: 'beginner' as UiComplexity,
       wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
 
+      preferOnDeviceVoice: true,
       speechRate: 1.0,
       silenceTimeoutMs: 1800,
       
@@ -143,6 +165,11 @@ export const useSettingsStore = create<SettingsState>()(
       
       setSelectedModel: (modelId) => set({ selectedModelId: modelId }),
 
+      setLocalAiEnabled: (enabled) => set({ localAiEnabled: enabled }),
+      setLocalAiStatus: (status) => set({ localAiStatus: status }),
+      setLocalAiModelId: (modelId) => set({ localAiModelId: modelId }),
+      setLocalAiProgress: (progress) => set({ localAiProgress: progress }),
+
       setUiComplexity: (level) => set({ uiComplexity: level }),
 
       setWakeWordConfig: (patch) => set((state) => ({
@@ -154,6 +181,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
 
+      setPreferOnDeviceVoice: (enabled) => set({ preferOnDeviceVoice: enabled }),
       setSpeechRate: (rate) => set({ speechRate: Math.max(0.8, Math.min(1.5, rate)) }),
       setSilenceTimeoutMs: (ms) => set({ silenceTimeoutMs: Math.max(800, Math.min(3000, ms)) }),
 
@@ -169,23 +197,36 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 3) {
+        if (!persistedState || version >= 4) {
           return persistedState;
         }
 
-        return {
-          ...persistedState,
-          notificationsEnabled: false,
-          airdropNotifications: false,
-          earningsNotifications: false,
-          paymentNotifications: false,
-          wakeWordConfig: {
-            ...DEFAULT_WAKE_WORD_CONFIG,
-            ...(persistedState.wakeWordConfig || {}),
-          },
-        };
+        let nextState = { ...persistedState };
+
+        if (version < 3) {
+          nextState = {
+            ...nextState,
+            notificationsEnabled: false,
+            airdropNotifications: false,
+            earningsNotifications: false,
+            paymentNotifications: false,
+            wakeWordConfig: {
+              ...DEFAULT_WAKE_WORD_CONFIG,
+              ...(persistedState.wakeWordConfig || {}),
+            },
+          };
+        }
+
+        if (version < 4) {
+          nextState = {
+            ...nextState,
+            preferOnDeviceVoice: true,
+          };
+        }
+
+        return nextState;
       },
     }
   )
