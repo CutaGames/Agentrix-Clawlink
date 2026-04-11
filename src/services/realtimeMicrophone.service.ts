@@ -16,16 +16,46 @@ export interface RealtimeMicrophoneCallbacks {
   onVolumeChange?: (value: number) => void;
   onSpeechStart?: () => void;
   onSpeechEnd?: () => void;
+  /** Fired when speech is detected while input is muted (echo-cancel mode).
+   *  Use this for barge-in: stop agent audio and resume mic input. */
+  onBargeIn?: () => void;
   onError?: (error: Error) => void;
 }
 
 const FRAME_LENGTH = 512;
 const SAMPLE_RATE = 16000;
-const SPEECH_START_THRESHOLD = 0.12;
-const SPEECH_END_THRESHOLD = 0.035;
-const SPEECH_END_FRAME_COUNT = 18;
+const SPEECH_START_THRESHOLD = 0.15;
+const SPEECH_END_THRESHOLD = 0.05;
+// Increased from 30 to 50 frames (~1.6s silence) to prevent mid-sentence splits
+const SPEECH_END_FRAME_COUNT = 50;
 const MIN_SPEECH_FRAME_COUNT = 8;
 const SPEECH_RESTART_COOLDOWN_FRAMES = 20;
+/**
+ * Number of frames to send as pre-roll when speech starts.
+ * This avoids cutting off the beginning of a word.
+ */
+const SPEECH_PRE_ROLL_FRAMES = 6;
+/**
+ * Extra frames to send after speech ends (post-roll) so tail isn't clipped.
+ */
+const SPEECH_POST_ROLL_FRAMES = 8;
+/**
+ * Volume threshold for barge-in detection while mic is muted (agent speaking).
+ * Lowered from 0.72 to 0.50 鈥?phone users speaking at normal distance easily hit 0.50+
+ * but typical phone speaker echo stays below 0.45 on most devices.
+ */
+const BARGE_IN_THRESHOLD = 0.50;
+/**
+ * Number of consecutive loud frames required to confirm barge-in.
+ * Reduced from 20 to 10 frames (~320ms) 鈥?enough to confirm real speech,
+ * while single-frame echo spikes still won't trigger false barge-in.
+ */
+const BARGE_IN_FRAME_COUNT = 10;
+/**
+ * Cooldown (ms) after mic is muted before barge-in detection activates.
+ * Prevents initial TTS burst from triggering barge-in.
+ */
+const BARGE_IN_COOLDOWN_MS = 1500;
 
 function getVoiceProcessor(): VoiceProcessorType | null {
   try {
@@ -75,6 +105,16 @@ export class RealtimeMicrophoneService {
   private speechFrameCount = 0;
   private restartCooldownFrameCount = 0;
   private pausedUntil = 0;
+  /** When true, frames are not sent but speech detection still runs for barge-in */
+  private muted = false;
+  /** Consecutive loud frames while muted 鈥?need several to confirm barge-in (not echo) */
+  private mutedLoudFrames = 0;
+  /** Timestamp after which barge-in detection becomes active (cooldown after mute start) */
+  private bargeInActiveAfter = 0;
+  /** Ring buffer for pre-roll frames so we don't clip the start of speech */
+  private preRollBuffer: ArrayBuffer[] = [];
+  /** Post-roll counter: after speech ends, continue sending this many frames */
+  private postRollRemaining = 0;
 
   constructor(callbacks: RealtimeMicrophoneCallbacks) {
     this.callbacks = callbacks;
@@ -104,6 +144,10 @@ export class RealtimeMicrophoneService {
     this.silentFrameCount = 0;
     this.speechFrameCount = 0;
     this.restartCooldownFrameCount = 0;
+    this.muted = false;
+    this.mutedLoudFrames = 0;
+    this.preRollBuffer = [];
+    this.postRollRemaining = 0;
 
     this.frameListener = (frame: number[]) => {
       const normalizedVolume = calculateNormalizedVolume(frame);
@@ -113,9 +157,33 @@ export class RealtimeMicrophoneService {
         return;
       }
 
+      // Muted mode: don't send audio, but detect barge-in (user speaking over agent)
+      if (this.muted) {
+        // Skip barge-in detection during cooldown after mute starts (initial TTS burst)
+        if (Date.now() < this.bargeInActiveAfter) {
+          return;
+        }
+        // Use a higher threshold and require multiple consecutive loud frames
+        // to distinguish real speech from speaker echo
+        if (normalizedVolume >= BARGE_IN_THRESHOLD) {
+          this.mutedLoudFrames += 1;
+          if (this.mutedLoudFrames >= BARGE_IN_FRAME_COUNT) {
+            addVoiceDiagnostic('realtime-mic', 'barge-in-detected', { normalizedVolume, frames: this.mutedLoudFrames });
+            this.muted = false;
+            this.mutedLoudFrames = 0;
+            this.callbacks.onBargeIn?.();
+          }
+        } else {
+          this.mutedLoudFrames = 0;
+        }
+        return;
+      }
+
       if (!this.speechActive && this.restartCooldownFrameCount > 0) {
         this.restartCooldownFrameCount -= 1;
       }
+
+      const pcmChunk = toPcmBuffer(frame);
 
       if (this.speechActive) {
         this.speechFrameCount += 1;
@@ -127,6 +195,7 @@ export class RealtimeMicrophoneService {
             this.silentFrameCount = 0;
             this.speechFrameCount = 0;
             this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
+            this.postRollRemaining = SPEECH_POST_ROLL_FRAMES;
 
             if (speechFrameCount >= MIN_SPEECH_FRAME_COUNT) {
               addVoiceDiagnostic('realtime-mic', 'speech-end', { speechFrameCount });
@@ -138,6 +207,8 @@ export class RealtimeMicrophoneService {
         } else {
           this.silentFrameCount = 0;
         }
+        // During speech: always send audio
+        this.callbacks.onFrame(pcmChunk);
       } else if (
         normalizedVolume >= SPEECH_START_THRESHOLD
         && this.restartCooldownFrameCount === 0
@@ -145,14 +216,27 @@ export class RealtimeMicrophoneService {
         this.silentFrameCount = 0;
         this.speechActive = true;
         this.speechFrameCount = 1;
+        this.postRollRemaining = 0;
         addVoiceDiagnostic('realtime-mic', 'speech-start', { normalizedVolume });
         this.callbacks.onSpeechStart?.();
-      } else if (!this.speechActive) {
-        this.silentFrameCount = 0;
-        this.speechFrameCount = 0;
+        // Flush pre-roll buffer so onset of speech isn't clipped
+        for (const preRollChunk of this.preRollBuffer) {
+          this.callbacks.onFrame(preRollChunk);
         }
-
-      this.callbacks.onFrame(toPcmBuffer(frame));
+        this.preRollBuffer = [];
+        this.callbacks.onFrame(pcmChunk);
+      } else {
+        // No speech 鈥?buffer for pre-roll only, don't send to server
+        this.preRollBuffer.push(pcmChunk);
+        if (this.preRollBuffer.length > SPEECH_PRE_ROLL_FRAMES) {
+          this.preRollBuffer.shift();
+        }
+        // Send post-roll frames after speech end so tail isn't clipped
+        if (this.postRollRemaining > 0) {
+          this.postRollRemaining -= 1;
+          this.callbacks.onFrame(pcmChunk);
+        }
+      }
     };
 
     this.errorListener = (error: unknown) => {
@@ -190,6 +274,10 @@ export class RealtimeMicrophoneService {
     this.speechFrameCount = 0;
     this.restartCooldownFrameCount = 0;
     this.pausedUntil = 0;
+    this.muted = false;
+    this.mutedLoudFrames = 0;
+    this.preRollBuffer = [];
+    this.postRollRemaining = 0;
 
     try {
       if (await processor.isRecording()) {
@@ -211,6 +299,33 @@ export class RealtimeMicrophoneService {
     this.speechActive = false;
     this.silentFrameCount = 0;
     this.speechFrameCount = 0;
+    this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
+  }
+
+  resumeInput(): void {
+    this.pausedUntil = 0;
+    this.muted = false;
+    this.mutedLoudFrames = 0;
+    this.speechActive = false;
+    this.silentFrameCount = 0;
+    this.speechFrameCount = 0;
+    this.restartCooldownFrameCount = 0;
+  }
+
+  /** Mute audio sending but keep speech detection active for barge-in */
+  muteForEchoCancel(): void {
+    this.muted = true;
+    this.mutedLoudFrames = 0;
+    this.bargeInActiveAfter = Date.now() + BARGE_IN_COOLDOWN_MS;
+    this.speechActive = false;
+    this.silentFrameCount = 0;
+    this.speechFrameCount = 0;
+  }
+
+  /** Unmute after agent stops speaking */
+  unmuteInput(): void {
+    this.muted = false;
+    this.mutedLoudFrames = 0;
     this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
   }
 

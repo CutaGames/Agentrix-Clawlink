@@ -1,4 +1,4 @@
-// 设置 Store
+// 璁剧疆 Store
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
@@ -7,10 +7,10 @@ import type { LocalWakeWordModel, WakeWordEngine } from '../services/localWakeWo
 
 type Environment = 'sandbox' | 'production';
 
-/** Progressive UI complexity — controls which features are visible */
+/** Progressive UI complexity 鈥?controls which features are visible */
 export type UiComplexity = 'beginner' | 'advanced' | 'professional';
 
-/** Model ID — now a plain string to support dynamic models from backend providers */
+/** Model ID 鈥?now a plain string to support dynamic models from backend providers */
 export type ModelId = string;
 
 export interface WakeWordSettings {
@@ -32,20 +32,29 @@ export interface ModelOption {
   costTier: string;
 }
 
-/** Hardcoded fallback models — used only when backend is unreachable */
+/** Hardcoded fallback models 鈥?used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
-  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
+  { id: 'gemma-4-2b',       label: 'Gemma 4 E2B (绔晶鏈湴)',         provider: 'On-device',         icon: '馃摫', badge: 'Local', availability: 'available', costTier: 'free' },
+  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (骞冲彴榛樿 API)',    provider: 'Agentrix Platform', icon: '馃', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
+
+export type LocalAiStatus = 'not_downloaded' | 'downloading' | 'ready' | 'error';
 
 interface SettingsState {
   customApiKeys: Record<string, string>;
   setCustomApiKey: (provider: string, key: string) => void;
-  // 环境配置
+  // 鐜閰嶇疆
   environment: Environment;
   apiBaseUrl: string;
   
   // AI Model
   selectedModelId: ModelId;
+
+  // Local AI Model (绔晶 Gemma)
+  localAiEnabled: boolean;
+  localAiStatus: LocalAiStatus;
+  localAiModelId: string;
+  localAiProgress: number; // 0-100 download progress
   
   // Progressive UI complexity
   uiComplexity: UiComplexity;
@@ -53,27 +62,34 @@ interface SettingsState {
   wakeWordConfig: WakeWordSettings;
 
   // Voice / TTS settings
+  /** Prefer on-device speech recognition / playback when possible */
+  preferOnDeviceVoice: boolean;
   /** TTS playback speed multiplier (0.8 - 1.5, default 1.0) */
   speechRate: number;
   /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
   silenceTimeoutMs: number;
   
-  // 通知设置
+  // 閫氱煡璁剧疆
   notificationsEnabled: boolean;
   airdropNotifications: boolean;
   earningsNotifications: boolean;
   paymentNotifications: boolean;
   
-  // 安全设置
+  // 瀹夊叏璁剧疆
   biometricEnabled: boolean;
   
   // Actions
   setEnvironment: (env: Environment) => void;
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
+  setLocalAiEnabled: (enabled: boolean) => void;
+  setLocalAiStatus: (status: LocalAiStatus) => void;
+  setLocalAiModelId: (modelId: string) => void;
+  setLocalAiProgress: (progress: number) => void;
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
   resetWakeWordConfig: () => void;
+  setPreferOnDeviceVoice: (enabled: boolean) => void;
   setSpeechRate: (rate: number) => void;
   setSilenceTimeoutMs: (ms: number) => void;
   toggleNotifications: (enabled: boolean) => void;
@@ -100,8 +116,8 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
     'Agent Tricks',
     'Hey Agent Rix',
     'Agent Rix',
-    '嘿 Agentrix',
-    '你好 Agentrix',
+    '鍢?Agentrix',
+    '浣犲ソ Agentrix',
   ],
   displayName: 'Hey Agentrix',
   sensitivity: 0.65,
@@ -121,9 +137,15 @@ export const useSettingsStore = create<SettingsState>()(
       
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 
+      localAiEnabled: false,
+      localAiStatus: 'not_downloaded' as LocalAiStatus,
+      localAiModelId: 'gemma-4-2b',
+      localAiProgress: 0,
+
       uiComplexity: 'beginner' as UiComplexity,
       wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
 
+      preferOnDeviceVoice: true,
       speechRate: 1.0,
       silenceTimeoutMs: 1800,
       
@@ -143,6 +165,11 @@ export const useSettingsStore = create<SettingsState>()(
       
       setSelectedModel: (modelId) => set({ selectedModelId: modelId }),
 
+      setLocalAiEnabled: (enabled) => set({ localAiEnabled: enabled }),
+      setLocalAiStatus: (status) => set({ localAiStatus: status }),
+      setLocalAiModelId: (modelId) => set({ localAiModelId: modelId }),
+      setLocalAiProgress: (progress) => set({ localAiProgress: progress }),
+
       setUiComplexity: (level) => set({ uiComplexity: level }),
 
       setWakeWordConfig: (patch) => set((state) => ({
@@ -154,6 +181,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
 
+      setPreferOnDeviceVoice: (enabled) => set({ preferOnDeviceVoice: enabled }),
       setSpeechRate: (rate) => set({ speechRate: Math.max(0.8, Math.min(1.5, rate)) }),
       setSilenceTimeoutMs: (ms) => set({ silenceTimeoutMs: Math.max(800, Math.min(3000, ms)) }),
 
@@ -169,23 +197,36 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 3) {
+        if (!persistedState || version >= 4) {
           return persistedState;
         }
 
-        return {
-          ...persistedState,
-          notificationsEnabled: false,
-          airdropNotifications: false,
-          earningsNotifications: false,
-          paymentNotifications: false,
-          wakeWordConfig: {
-            ...DEFAULT_WAKE_WORD_CONFIG,
-            ...(persistedState.wakeWordConfig || {}),
-          },
-        };
+        let nextState = { ...persistedState };
+
+        if (version < 3) {
+          nextState = {
+            ...nextState,
+            notificationsEnabled: false,
+            airdropNotifications: false,
+            earningsNotifications: false,
+            paymentNotifications: false,
+            wakeWordConfig: {
+              ...DEFAULT_WAKE_WORD_CONFIG,
+              ...(persistedState.wakeWordConfig || {}),
+            },
+          };
+        }
+
+        if (version < 4) {
+          nextState = {
+            ...nextState,
+            preferOnDeviceVoice: true,
+          };
+        }
+
+        return nextState;
       },
     }
   )

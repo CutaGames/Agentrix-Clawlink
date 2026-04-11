@@ -29,6 +29,38 @@ export interface FileAttachment {
   size: number | null;
 }
 
+function inferMimeTypeFromFileName(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const mimeFromExt: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    m4a: 'audio/mp4',
+    ogg: 'audio/ogg',
+    aac: 'audio/aac',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    mov: 'video/quicktime',
+    m4v: 'video/x-m4v',
+    pdf: 'application/pdf',
+    txt: 'text/plain',
+    md: 'text/markdown',
+    csv: 'text/csv',
+    json: 'application/json',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  };
+  return mimeFromExt[ext] || 'application/octet-stream';
+}
+
 export class DeviceBridgingService {
   /**
    * Get current device location (GPS)
@@ -167,7 +199,7 @@ export class DeviceBridgingService {
       return {
         uri: file.uri,
         fileName: file.uri.split('/').pop() || 'attachment',
-        mimeType: file.type || 'application/octet-stream',
+        mimeType: file.type || inferMimeTypeFromFileName(file.uri.split('/').pop() || 'attachment'),
         size: typeof file.size === 'number' ? file.size : null,
       };
     } catch (error: any) {
@@ -234,17 +266,17 @@ export class DeviceBridgingService {
 
           return null;
         } catch (launchErr: any) {
-          // Camera launch crashed — fall through to album fallback
+          // Camera launch crashed 鈥?fall through to album fallback
           console.warn('Camera launch failed, falling back to album:', launchErr?.message);
         }
       }
 
       // Fallback: album picker when camera is unavailable or crashed
-      console.warn('Camera unavailable — falling back to photo album');
+      console.warn('Camera unavailable 鈥?falling back to photo album');
       const { Alert } = require('react-native');
       Alert.alert(
-        '📷',
-        'Camera unavailable — opening photo album instead.',
+        '馃摲',
+        'Camera unavailable 鈥?opening photo album instead.',
         [{ text: 'OK' }],
       );
       return await DeviceBridgingService.pickImageAttachment();

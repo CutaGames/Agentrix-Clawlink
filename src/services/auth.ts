@@ -1,4 +1,4 @@
-// ClawLink Auth Service — OpenClaw + Social + Wallet Login
+// ClawLink Auth Service 鈥?OpenClaw + Social + Wallet Login
 // Primary path: OpenClaw bind (scan QR or enter address+token)
 // Secondary: Google/Apple/X/Discord/Telegram/Wallet/Email
 import * as WebBrowser from 'expo-web-browser';
@@ -9,10 +9,90 @@ import { useAuthStore, AuthUser, AuthProvider, OpenClawInstance } from '../store
 import { ensureMPCWallet } from './mpcWallet';
 import { bindOpenClaw, BindPayload, pollBindSession, createBindSession, getMyInstances } from './openclaw.service';
 
+export { bindOpenClaw };
+
 WebBrowser.maybeCompleteAuthSession();
 
 function getBackendBaseUrl(): string {
   return getApiConfig().baseUrl || 'https://api.agentrix.top/api';
+}
+
+const AGENTRIX_HOST_SUFFIX = '.agentrix.top';
+const LOOPBACK_BASE_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
+
+function parseApiBase(baseUrl?: string): URL | null {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed.replace(/\/+$/, ''));
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeApiBase(baseUrl?: string): string | undefined {
+  const parsed = parseApiBase(baseUrl);
+  if (!parsed) {
+    return undefined;
+  }
+
+  const normalized = parsed.toString().replace(/\/+$/, '');
+  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
+}
+
+function isAgentrixHostedApiBase(baseUrl?: string): boolean {
+  const parsed = parseApiBase(baseUrl);
+  if (!parsed) {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  return hostname === 'agentrix.top' || hostname.endsWith(AGENTRIX_HOST_SUFFIX);
+}
+
+function normalizeOverrideApiBase(baseUrl?: string): string | undefined {
+  const normalized = normalizeApiBase(baseUrl);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (LOOPBACK_BASE_URL_RE.test(normalized)) {
+    return getBackendBaseUrl();
+  }
+
+  const currentBase = normalizeApiBase(getBackendBaseUrl()) || 'https://api.agentrix.top/api';
+  const currentParsed = parseApiBase(currentBase);
+  const overrideParsed = parseApiBase(normalized);
+  if (currentParsed && overrideParsed && currentParsed.origin.toLowerCase() === overrideParsed.origin.toLowerCase()) {
+    return normalized;
+  }
+
+  if (isAgentrixHostedApiBase(normalized)) {
+    return normalized;
+  }
+
+  return currentBase;
+}
+
+async function readApiErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => '');
+  let message = `Request failed: ${res.status}`;
+  try {
+    const payload = JSON.parse(text);
+    message = payload.message || payload.error || message;
+  } catch {
+    if (text) {
+      message = text;
+    }
+  }
+  return message;
 }
 
 // ClawLink deep link scheme
@@ -23,7 +103,7 @@ function getMobileCallbackUrl(): string {
   });
 }
 
-// 原生 App URI Scheme 配置
+// 鍘熺敓 App URI Scheme 閰嶇疆
 const APP_SCHEMES: Record<string, { scheme: string; name: string }> = {
   google: { scheme: Platform.OS === 'ios' ? 'com.google.gmail://' : 'com.google.android.gm://', name: 'Google' },
   twitter: { scheme: 'twitter://', name: 'Twitter/X' },
@@ -34,7 +114,7 @@ const APP_SCHEMES: Record<string, { scheme: string; name: string }> = {
   okx: { scheme: 'okx://', name: 'OKX Wallet' },
 };
 
-// ========== 工具函数 ==========
+// ========== 宸ュ叿鍑芥暟 ==========
 
 export async function isAppInstalled(appKey: string): Promise<boolean> {
   const config = APP_SCHEMES[appKey];
@@ -46,7 +126,7 @@ export async function isAppInstalled(appKey: string): Promise<boolean> {
   }
 }
 
-// ========== 后端 API 类型 ==========
+// ========== 鍚庣 API 绫诲瀷 ==========
 
 interface LoginResponse {
   access_token: string;
@@ -61,7 +141,7 @@ interface LoginResponse {
   };
 }
 
-// ========== 通用登录结果处理 ==========
+// ========== 閫氱敤鐧诲綍缁撴灉澶勭悊 ==========
 
 async function handleLoginResult(
   result: LoginResponse,
@@ -85,7 +165,7 @@ async function handleLoginResult(
   await saveTokenToStorage(result.access_token);
   await setAuth(user, result.access_token);
 
-  // 异步创建 MPC 钱包（不阻塞登录）
+  // 寮傛鍒涘缓 MPC 閽卞寘锛堜笉闃诲鐧诲綍锛?
   if (provider !== 'wallet' && socialId) {
     ensureMPCWallet(socialId)
       .then((walletAddress) => {
@@ -102,7 +182,7 @@ async function handleLoginResult(
   }
 
   // Fetch full user profile WITH instances in a single /auth/me call.
-  // No more race condition — /auth/me now returns openClawInstances.
+  // No more race condition 鈥?/auth/me now returns openClawInstances.
   // This single call replaces both the old fetchCurrentUser() and getMyInstances().
   fetchCurrentUser().then((fullUser) => {
     if (fullUser) {
@@ -137,7 +217,7 @@ async function handleLoginResult(
   return user;
 }
 
-// ========== 从 agentrix://auth/callback URL 提取登录结果 ==========
+// ========== 浠?agentrix://auth/callback URL 鎻愬彇鐧诲綍缁撴灉 ==========
 
 function parseCallbackUrl(url: string): LoginResponse {
   const parsed = new URL(url);
@@ -158,14 +238,14 @@ function parseCallbackUrl(url: string): LoginResponse {
   };
 }
 
-// ========== 核心：尝试唤起原生 App，失败则降级到 Web OAuth ==========
+// ========== 鏍稿績锛氬皾璇曞敜璧峰師鐢?App锛屽け璐ュ垯闄嶇骇鍒?Web OAuth ==========
 //
-// 逻辑：
-//   1. Linking.canOpenURL(scheme) 检测是否安装了原生 App
-//   2. 如果已安装 → Linking.openURL(scheme) 唤起原生 App
-//      同时打开 WebBrowser.openAuthSessionAsync 监听 agentrix:// 回调
-//   3. 如果未安装 → 直接走 WebBrowser.openAuthSessionAsync 网页 OAuth
-//   4. 后端 /auth/mobile/{provider} 统一处理 OAuth 流程
+// 閫昏緫锛?
+//   1. Linking.canOpenURL(scheme) 妫€娴嬫槸鍚﹀畨瑁呬簡鍘熺敓 App
+//   2. 濡傛灉宸插畨瑁?鈫?Linking.openURL(scheme) 鍞よ捣鍘熺敓 App
+//      鍚屾椂鎵撳紑 WebBrowser.openAuthSessionAsync 鐩戝惉 agentrix:// 鍥炶皟
+//   3. 濡傛灉鏈畨瑁?鈫?鐩存帴璧?WebBrowser.openAuthSessionAsync 缃戦〉 OAuth
+//   4. 鍚庣 /auth/mobile/{provider} 缁熶竴澶勭悊 OAuth 娴佺▼
 
 async function socialLogin(provider: string, providerName: string): Promise<AuthUser> {
   const baseUrl = getBackendBaseUrl();
@@ -187,7 +267,7 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
     }
   }
 
-  // 将 redirect_uri 传给后端，让后端知道 OAuth 完成后重定向到哪里
+  // 灏?redirect_uri 浼犵粰鍚庣锛岃鍚庣鐭ラ亾 OAuth 瀹屾垚鍚庨噸瀹氬悜鍒板摢閲?
   const isTgNative = provider === 'telegram' && await Linking.canOpenURL('tg://').catch(() => false);
   const entryUrl = `${baseUrl}/auth/mobile/${provider}?redirect_uri=${encodeURIComponent(callbackUrl)}${isTgNative ? '&native=1' : ''}`;
 
@@ -195,12 +275,12 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
   console.log(`[Auth] Entry URL: ${entryUrl}`);
   console.log(`[Auth] Expected callback: ${callbackUrl}`);
 
-  // Note: No HEAD pre-check — it can cause false 403s from nginx/rate-limiting.
+  // Note: No HEAD pre-check 鈥?it can cause false 403s from nginx/rate-limiting.
   // The openAuthSessionAsync flow will surface backend errors via the redirect URL.
 
   const result = await WebBrowser.openAuthSessionAsync(entryUrl, callbackUrl, {
     showInRecents: true,
-    // 必须为 false：ephemeral session 会清除 cookies，导致 OAuth state 丢失
+    // 蹇呴』涓?false锛歟phemeral session 浼氭竻闄?cookies锛屽鑷?OAuth state 涓㈠け
     preferEphemeralSession: false,
   });
 
@@ -213,7 +293,7 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
     // 'dismiss' often means the callback URL scheme wasn't intercepted
     if (result.type === 'dismiss') {
       throw new Error(
-        `${providerName} login dismissed — the OAuth callback may not have redirected correctly. ` +
+        `${providerName} login dismissed 鈥?the OAuth callback may not have redirected correctly. ` +
         `Expected callback: ${callbackUrl}. Please check server OAuth configuration.`
       );
     }
@@ -230,34 +310,34 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
   }
 }
 
-// ========== 1) Google 登录 ==========
-// 统一走后端 /auth/mobile/google → Google OAuth → 后端回调 → agentrix://
+// ========== 1) Google 鐧诲綍 ==========
+// 缁熶竴璧板悗绔?/auth/mobile/google 鈫?Google OAuth 鈫?鍚庣鍥炶皟 鈫?agentrix://
 
 export async function loginWithGoogle(): Promise<AuthUser> {
   return socialLogin('google', 'Google');
 }
 
-// ========== 2) Twitter/X 登录 ==========
+// ========== 2) Twitter/X 鐧诲綍 ==========
 
 export async function loginWithTwitter(): Promise<AuthUser> {
   return socialLogin('twitter', 'Twitter/X');
 }
 
-// ========== 3) Discord 登录 ==========
+// ========== 3) Discord 鐧诲綍 ==========
 
 export async function loginWithDiscord(): Promise<AuthUser> {
   return socialLogin('discord', 'Discord');
 }
 
-// ========== 4) Telegram 登录 ==========
+// ========== 4) Telegram 鐧诲綍 ==========
 
 export async function loginWithTelegram(): Promise<AuthUser> {
   return socialLogin('telegram', 'Telegram');
 }
 
-// ========== 5) 钱包登录（简化版）==========
-// 检测 MetaMask / TokenPocket → 有则唤起 → 签名 → 登录
-// 无则提示安装
+// ========== 5) 閽卞寘鐧诲綍锛堢畝鍖栫増锛?=========
+// 妫€娴?MetaMask / TokenPocket 鈫?鏈夊垯鍞よ捣 鈫?绛惧悕 鈫?鐧诲綍
+// 鏃犲垯鎻愮ず瀹夎
 
 export async function loginWithWallet(params: {
   address: string;
@@ -279,7 +359,7 @@ export async function loginWithWallet(params: {
   return handleLoginResult(loginResult, 'wallet');
 }
 
-// 检测已安装的钱包 App 列表
+// 妫€娴嬪凡瀹夎鐨勯挶鍖?App 鍒楄〃
 export async function detectInstalledWallets(): Promise<string[]> {
   const walletKeys = ['metamask', 'tokenpocket', 'okx'];
   const installed: string[] = [];
@@ -291,7 +371,7 @@ export async function detectInstalledWallets(): Promise<string[]> {
   return installed;
 }
 
-// 唤起钱包 App
+// 鍞よ捣閽卞寘 App
 export async function openWalletApp(walletKey: string): Promise<boolean> {
   const config = APP_SCHEMES[walletKey];
   if (!config) return false;
@@ -307,7 +387,7 @@ export async function openWalletApp(walletKey: string): Promise<boolean> {
   }
 }
 
-// ========== 6) 邮箱验证码登录（注册+登录合一，无密码）==========
+// ========== 6) 閭楠岃瘉鐮佺櫥褰曪紙娉ㄥ唽+鐧诲綍鍚堜竴锛屾棤瀵嗙爜锛?=========
 
 export async function sendEmailCode(email: string): Promise<{ success: boolean; message: string }> {
   return apiFetch('/auth/email/send-code', {
@@ -325,7 +405,7 @@ export async function loginWithEmailCode(email: string, code: string): Promise<A
   return handleLoginResult(loginResult, 'email');
 }
 
-// ========== 兼容：邮箱密码登录（保留旧接口）==========
+// ========== 鍏煎锛氶偖绠卞瘑鐮佺櫥褰曪紙淇濈暀鏃ф帴鍙ｏ級==========
 
 export async function loginWithEmail(email: string, password: string): Promise<AuthUser> {
   const loginResult = await apiFetch<LoginResponse>('/auth/login', {
@@ -351,7 +431,8 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
   const { setAuth } = useAuthStore.getState();
   // Try to connect first to validate
   const instance = await bindOpenClaw(payload);
-  // Bind also logs the user in (or creates account) — get the token
+  const mappedInstance = mapRawInstance(instance);
+  // Bind also logs the user in (or creates account) 鈥?get the token
   const loginResult = await apiFetch<{ access_token: string; user: any }>('/auth/openclaw/login', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -365,8 +446,8 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
     walletAddress: loginResult.user.walletAddress,
     roles: loginResult.user.roles || ['user'],
     provider: 'openclaw',
-    openClawInstances: [instance as any],
-    activeInstanceId: instance.id,
+    openClawInstances: [mappedInstance],
+    activeInstanceId: mappedInstance.id,
   };
   setApiConfig({ token: loginResult.access_token });
   await saveTokenToStorage(loginResult.access_token);
@@ -377,15 +458,7 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
 export async function bindOpenClawToCurrentUser(payload: BindPayload): Promise<OpenClawInstance> {
   const { addInstance } = useAuthStore.getState();
   const instance = await bindOpenClaw(payload);
-  const openclawInstance: OpenClawInstance = {
-    id: instance.id,
-    name: instance.name,
-    instanceUrl: instance.instanceUrl,
-    status: instance.status,
-    version: instance.version,
-    deployType: instance.deployType as 'cloud' | 'local' | 'server' | 'existing',
-    lastSyncAt: instance.lastSyncAt,
-  };
+  const openclawInstance = mapRawInstance(instance);
   addInstance(openclawInstance);
   return openclawInstance;
 }
@@ -399,7 +472,7 @@ export async function startQrBindSession(): Promise<{
 }
 
 /**
- * 确认桌面端扫码配对（移动端已登录用户调用）
+ * 纭妗岄潰绔壂鐮侀厤瀵癸紙绉诲姩绔凡鐧诲綍鐢ㄦ埛璋冪敤锛?
  */
 export async function confirmDesktopPair(sessionId: string): Promise<{ success: boolean }> {
   return apiFetch<{ success: boolean }>('/auth/desktop-pair/confirm', {
@@ -408,40 +481,98 @@ export async function confirmDesktopPair(sessionId: string): Promise<{ success: 
   });
 }
 
+export async function confirmDesktopPairWithApiBase(
+  sessionId: string,
+  apiBaseOverride?: string,
+): Promise<{ success: boolean }> {
+  const normalizedBase = normalizeOverrideApiBase(apiBaseOverride);
+  if (!normalizedBase) {
+    return confirmDesktopPair(sessionId);
+  }
+
+  const token = getApiConfig().token || useAuthStore.getState().token;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${normalizedBase}/auth/desktop-pair/confirm`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res));
+  }
+
+  if (res.status === 204) {
+    return { success: true };
+  }
+
+  return res.json().catch(() => ({ success: true }));
+}
+
 export async function waitForQrBind(sessionId: string): Promise<OpenClawInstance | null> {
   const result = await pollBindSession(sessionId);
   if (result.status === 'confirmed' && result.instance) {
-    const { addInstance } = useAuthStore.getState();
-    const inst: OpenClawInstance = {
-      id: result.instance.id,
-      name: result.instance.name,
-      instanceUrl: result.instance.instanceUrl,
-      status: result.instance.status,
-      version: result.instance.version,
-      deployType: result.instance.deployType as 'cloud' | 'local' | 'server' | 'existing',
-    };
-    addInstance(inst);
-    return inst;
+    return mapRawInstance(result.instance);
   }
   return null;
 }
 
-// Helper: map raw API instance data to OpenClawInstance shape
-function mapRawInstances(raw: any[]): OpenClawInstance[] {
-  return raw.map((inst: any) => ({
-    id: inst.id,
-    name: inst.name || 'My Agent',
-    instanceUrl: inst.instanceUrl || inst.instance_url || '',
-    status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
-    deployType: (inst.instanceType || inst.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
-    relayToken: inst.relayToken || inst.relay_token || undefined,
-    version: inst.version,
-    lastSyncAt: inst.lastSyncAt || inst.updatedAt,
-    metadata: inst.metadata || undefined,
-  }));
+function normalizeDeployType(raw: any): OpenClawInstance['deployType'] {
+  const value = String(raw?.deployType || raw?.instanceType || '').toLowerCase();
+  if (value === 'cloud') return 'cloud';
+  if (value === 'local') return 'local';
+  if (value === 'server') return 'server';
+  if (value === 'existing' || value === 'self_hosted' || value === 'self-hosted') return 'existing';
+  return 'existing';
 }
 
-// ========== 获取当前用户 ==========
+export function mapRawInstance(raw: any, overrides: Partial<OpenClawInstance> = {}): OpenClawInstance {
+  const rawMetadata = raw?.metadata && typeof raw.metadata === 'object' ? raw.metadata : undefined;
+  const mergedMetadata = {
+    ...(overrides.metadata || {}),
+    ...(rawMetadata || {}),
+  };
+  const agentAccountId = raw?.agentAccountId
+    || raw?.agent_account_id
+    || overrides.agentAccountId
+    || mergedMetadata.agentAccountId;
+
+  if (agentAccountId) {
+    mergedMetadata.agentAccountId = agentAccountId;
+  }
+
+  return {
+    id: raw?.id || overrides.id || '',
+    name: raw?.name || overrides.name || 'My Agent',
+    instanceUrl: raw?.instanceUrl || raw?.instance_url || overrides.instanceUrl || '',
+    status: (raw?.status || overrides.status || 'active') as 'active' | 'disconnected' | 'error',
+    deployType: overrides.deployType || normalizeDeployType(raw),
+    relayToken: raw?.relayToken || raw?.relay_token || overrides.relayToken,
+    wsRelayUrl: raw?.wsRelayUrl || raw?.ws_relay_url || raw?.capabilities?.wsRelayUrl || overrides.wsRelayUrl,
+    version: raw?.version || overrides.version,
+    lastSyncAt: raw?.lastSyncAt || raw?.updatedAt || overrides.lastSyncAt,
+    agentAccountId: agentAccountId || undefined,
+    capabilities: raw?.capabilities || overrides.capabilities,
+    resolvedModel: raw?.resolvedModel || raw?.resolved_model || overrides.resolvedModel,
+    resolvedModelLabel: raw?.resolvedModelLabel || raw?.resolved_model_label || overrides.resolvedModelLabel,
+    resolvedProvider: raw?.resolvedProvider || raw?.resolved_provider || overrides.resolvedProvider,
+    hasCustomProvider: raw?.hasCustomProvider ?? raw?.has_custom_provider ?? overrides.hasCustomProvider,
+    metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
+  };
+}
+
+export function mapRawInstances(raw: any[]): OpenClawInstance[] {
+  return raw.map((inst: any) => mapRawInstance(inst));
+}
+
+// ========== 鑾峰彇褰撳墠鐢ㄦ埛 ==========
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   try {
@@ -468,7 +599,7 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   }
 }
 
-// ========== 获取钱包 Nonce ==========
+// ========== 鑾峰彇閽卞寘 Nonce ==========
 
 export async function getWalletNonce(address: string): Promise<{ nonce: string; message: string }> {
   return apiFetch(`/auth/wallet/nonce?address=${address}`);
@@ -476,12 +607,12 @@ export async function getWalletNonce(address: string): Promise<{ nonce: string; 
 
 // ========== Aliases & Missing Providers ==========
 
-/** loginWithX — alias for loginWithTwitter */
+/** loginWithX 鈥?alias for loginWithTwitter */
 export async function loginWithX(): Promise<AuthUser> {
   return loginWithTwitter();
 }
 
-/** loginWithApple — Native iOS Sign in with Apple + WebBrowser fallback (Android) */
+/** loginWithApple 鈥?Native iOS Sign in with Apple + WebBrowser fallback (Android) */
 export async function loginWithApple(): Promise<AuthUser> {
   if (Platform.OS === 'ios') {
     return loginWithAppleNative();
@@ -548,7 +679,7 @@ async function loginWithAppleNative(): Promise<AuthUser> {
   }
 }
 
-/** handleOAuthCallback — called from AuthCallbackScreen */
+/** handleOAuthCallback 鈥?called from AuthCallbackScreen */
 export async function handleOAuthCallback(params: {
   token?: string | null;
   code?: string | null;
@@ -590,4 +721,3 @@ async function fetchCurrentUserWithToken(token: string): Promise<AuthUser> {
     openClawInstances,
   };
 }
-

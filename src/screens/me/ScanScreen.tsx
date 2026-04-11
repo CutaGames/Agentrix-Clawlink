@@ -7,18 +7,17 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { confirmDesktopPair } from '../../services/auth';
-import { bindOpenClaw } from '../../services/auth';
+import { confirmDesktopPairWithApiBase, bindOpenClaw, mapRawInstance } from '../../services/auth';
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 /**
- * Universal QR Scanner — handles all Agentrix QR types:
- *   • Desktop pair  (agentrix.top/pair?session=...&platform=desktop)
- *   • Web pair      (agentrix.top/pair?session=...&platform=web)
- *   • OpenClaw JSON ({"url":..., "token":...})
- *   • Relay JSON    ({"relayToken":..., "wsRelayUrl":...})
- *   • Deep links    (agentrix://connect?... or clawlink://connect?...)
- *   • Plain URL     (http://ip:port)
+ * Universal QR Scanner 鈥?handles all Agentrix QR types:
+ *   鈥?Desktop pair  (agentrix.top/pair?session=...&platform=desktop)
+ *   鈥?Web pair      (agentrix.top/pair?session=...&platform=web)
+ *   鈥?OpenClaw JSON ({"url":..., "token":...})
+ *   鈥?Relay JSON    ({"relayToken":..., "wsRelayUrl":...})
+ *   鈥?Deep links    (agentrix://connect?... or clawlink://connect?...)
+ *   鈥?Plain URL     (http://ip:port)
  */
 export function ScanScreen() {
   const navigation = useNavigation<any>();
@@ -44,26 +43,53 @@ export function ScanScreen() {
     try {
       const scanText = data.trim();
 
-      // ── 1) Desktop / Web pair QR ──
+      // 鈹€鈹€ 1) Desktop / Web pair QR 鈹€鈹€
       if (scanText.includes('agentrix.top/pair') || scanText.includes('platform=desktop') || scanText.includes('platform=web')) {
         const pairUrl = new URL(scanText);
         const pairSession = pairUrl.searchParams.get('session');
         const platform = pairUrl.searchParams.get('platform') || 'desktop';
-        if (!pairSession) throw new Error(t({ en: 'QR code missing session info.', zh: '二维码缺少会话信息。' }));
-        await confirmDesktopPair(pairSession);
+        const pairApiBase = pairUrl.searchParams.get('api') || undefined;
+        if (!pairSession) throw new Error(t({ en: 'QR code missing session info.', zh: '浜岀淮鐮佺己灏戜細璇濅俊鎭€? }));
+
+        // Retry confirm up to 2 times with delay (session may still be propagating)
+        let lastErr: any;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await confirmDesktopPairWithApiBase(pairSession, pairApiBase);
+            lastErr = null;
+            break;
+          } catch (e: any) {
+            lastErr = e;
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
+        }
+        if (lastErr) {
+          const platformLabel = platform === 'web'
+            ? t({ en: 'Web', zh: '缃戦〉绔? })
+            : t({ en: 'Desktop', zh: '妗岄潰绔? });
+          throw new Error(
+            t({
+              en: `${platformLabel} session expired or not found. Please refresh the QR code on ${platformLabel} and try again.`,
+              zh: `${platformLabel}浼氳瘽宸茶繃鏈熸垨涓嶅瓨鍦紝璇峰湪${platformLabel}鍒锋柊浜岀淮鐮佸悗閲嶆柊鎵弿銆俙,
+            }),
+          );
+        }
+
         const platformLabel = platform === 'web'
-          ? t({ en: 'Web', zh: '网页端' })
-          : t({ en: 'Desktop', zh: '桌面端' });
+          ? t({ en: 'Web', zh: '缃戦〉绔? })
+          : t({ en: 'Desktop', zh: '妗岄潰绔? });
         Alert.alert(
-          t({ en: 'Paired!', zh: '配对成功！' }),
-          t({ en: `${platformLabel} is now logged in with your account.`, zh: `${platformLabel}已使用你的账号登录。` }),
+          t({ en: 'Paired!', zh: '閰嶅鎴愬姛锛? }),
+          t({ en: `${platformLabel} is now logged in with your account.`, zh: `${platformLabel}宸蹭娇鐢ㄤ綘鐨勮处鍙风櫥褰曘€俙 }),
           [{ text: 'OK', onPress: () => navigation.goBack() }],
         );
         setProcessing(false);
         return;
       }
 
-      // ── 2) JSON payload (OpenClaw / Relay) ──
+      // 鈹€鈹€ 2) JSON payload (OpenClaw / Relay) 鈹€鈹€
       let parsedData: { url?: string; token?: string; relayToken?: string; wsRelayUrl?: string; mode?: string; name?: string } | null = null;
       try {
         const json = JSON.parse(scanText);
@@ -79,7 +105,7 @@ export function ScanScreen() {
         // not JSON, continue to other handlers
       }
 
-      // ── 3) Deep link (agentrix:// or clawlink://) ──
+      // 鈹€鈹€ 3) Deep link (agentrix:// or clawlink://) 鈹€鈹€
       if (!parsedData && (
         scanText.startsWith('agentrix://connect') ||
         scanText.startsWith('clawlink://connect') ||
@@ -96,12 +122,12 @@ export function ScanScreen() {
         }
       }
 
-      // ── 4) Plain URL ──
+      // 鈹€鈹€ 4) Plain URL 鈹€鈹€
       if (!parsedData && (scanText.startsWith('http') || scanText.startsWith('ws'))) {
         parsedData = { url: scanText };
       }
 
-      // ── 5) host:port pattern ──
+      // 鈹€鈹€ 5) host:port pattern 鈹€鈹€
       if (!parsedData) {
         const m = scanText.match(/^([a-zA-Z0-9.-]+|\d{1,3}(?:\.\d{1,3}){3})(?::(\d{2,5}))?(?:\?token=(.+))?$/);
         if (m) {
@@ -109,9 +135,9 @@ export function ScanScreen() {
         }
       }
 
-      if (!parsedData) throw new Error(t({ en: 'QR code format not recognized.', zh: '无法识别的二维码格式。' }));
+      if (!parsedData) throw new Error(t({ en: 'QR code format not recognized.', zh: '鏃犳硶璇嗗埆鐨勪簩缁寸爜鏍煎紡銆? }));
 
-      // ── Connect: Relay or Direct ──
+      // 鈹€鈹€ Connect: Relay or Direct 鈹€鈹€
       if (parsedData.mode === 'relay' || parsedData.relayToken) {
         if (!parsedData.relayToken) throw new Error('Relay QR missing relayToken.');
         const registered = await registerLocalRelayAgent({
@@ -119,40 +145,38 @@ export function ScanScreen() {
           name: parsedData.name || 'My PC Agent',
           wsRelayUrl: parsedData.wsRelayUrl,
         });
-        addInstance?.({
-          id: registered.id,
+        const instance = mapRawInstance(registered, {
           name: registered.name || 'My PC (Agentrix Relay)',
           instanceUrl: parsedData.wsRelayUrl || 'wss://api.agentrix.top/relay',
-          status: 'active',
           deployType: 'local',
           relayToken: parsedData.relayToken,
           wsRelayUrl: parsedData.wsRelayUrl,
         });
-        setActiveInstance?.(registered.id);
-        Alert.alert(t({ en: 'Connected!', zh: '连接成功！' }), t({ en: 'Agent connected via relay.', zh: '智能体已通过中继连接。' }),
+        addInstance?.(instance);
+        setActiveInstance?.(instance.id);
+        Alert.alert(t({ en: 'Connected!', zh: '杩炴帴鎴愬姛锛? }), t({ en: 'Agent connected via relay.', zh: '鏅鸿兘浣撳凡閫氳繃涓户杩炴帴銆? }),
           [{ text: 'OK', onPress: () => navigation.goBack() }]);
       } else {
-        if (!parsedData.url) throw new Error(t({ en: 'QR code missing URL.', zh: '二维码缺少地址。' }));
+        if (!parsedData.url) throw new Error(t({ en: 'QR code missing URL.', zh: '浜岀淮鐮佺己灏戝湴鍧€銆? }));
         const result = await bindOpenClaw({
           instanceUrl: parsedData.url,
           apiToken: parsedData.token || '',
           instanceName: parsedData.name || 'My Agent',
         });
-        addInstance?.({
-          id: result.id,
+        const instance = mapRawInstance(result, {
           name: result.name || 'My Agent',
           instanceUrl: parsedData.url,
-          status: (result.status || 'active') as 'active' | 'disconnected' | 'error',
           deployType: 'existing',
         });
-        setActiveInstance?.(result.id);
-        Alert.alert(t({ en: 'Connected!', zh: '连接成功！' }), t({ en: 'Agent connected.', zh: '智能体已连接。' }),
+        addInstance?.(instance);
+        setActiveInstance?.(instance.id);
+        Alert.alert(t({ en: 'Connected!', zh: '杩炴帴鎴愬姛锛? }), t({ en: 'Agent connected.', zh: '鏅鸿兘浣撳凡杩炴帴銆? }),
           [{ text: 'OK', onPress: () => navigation.goBack() }]);
       }
     } catch (error: any) {
       Alert.alert(
-        t({ en: 'Scan Error', zh: '扫描错误' }),
-        error.message || t({ en: 'Failed to process QR code.', zh: '二维码处理失败。' }),
+        t({ en: 'Scan Error', zh: '鎵弿閿欒' }),
+        error.message || t({ en: 'Failed to process QR code.', zh: '浜岀淮鐮佸鐞嗗け璐ャ€? }),
       );
       setScanned(false);
     } finally {
@@ -163,9 +187,9 @@ export function ScanScreen() {
   if (!permission?.granted) {
     return (
       <View style={styles.center}>
-        <Text style={styles.permText}>{t({ en: 'Camera permission required', zh: '需要相机权限' })}</Text>
+        <Text style={styles.permText}>{t({ en: 'Camera permission required', zh: '闇€瑕佺浉鏈烘潈闄? })}</Text>
         <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
-          <Text style={styles.permBtnText}>{t({ en: 'Grant Permission', zh: '授予权限' })}</Text>
+          <Text style={styles.permBtnText}>{t({ en: 'Grant Permission', zh: '鎺堜簣鏉冮檺' })}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -186,20 +210,20 @@ export function ScanScreen() {
           {processing && (
             <View style={styles.processingOverlay}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.processingText}>{t({ en: 'Processing...', zh: '处理中...' })}</Text>
+              <Text style={styles.processingText}>{t({ en: 'Processing...', zh: '澶勭悊涓?..' })}</Text>
             </View>
           )}
         </View>
 
         {/* Hint */}
         <Text style={styles.hint}>
-          {t({ en: 'Scan desktop, web, or agent QR code', zh: '扫描桌面端、网页端或智能体二维码' })}
+          {t({ en: 'Scan desktop, web, or agent QR code', zh: '鎵弿妗岄潰绔€佺綉椤电鎴栨櫤鑳戒綋浜岀淮鐮? })}
         </Text>
 
         {/* Rescan button */}
         {scanned && !processing && (
           <TouchableOpacity style={styles.rescanBtn} onPress={() => setScanned(false)}>
-            <Text style={styles.rescanText}>{t({ en: 'Tap to Rescan', zh: '点击重新扫描' })}</Text>
+            <Text style={styles.rescanText}>{t({ en: 'Tap to Rescan', zh: '鐐瑰嚮閲嶆柊鎵弿' })}</Text>
           </TouchableOpacity>
         )}
       </View>

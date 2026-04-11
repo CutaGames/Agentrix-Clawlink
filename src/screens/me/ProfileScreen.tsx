@@ -21,28 +21,27 @@ export function ProfileScreen() {
   const { t } = useI18n();
 
   const menuItems = [
-    { id: 'referral', icon: '🎁', label: t({ en: 'Referrals & Earnings', zh: '推广与收益' }), route: 'ReferralDashboard' },
-    { id: 'account', icon: '🔐', label: t({ en: 'Wallet & Account', zh: '钱包与账户' }), route: 'Account' },
-    { id: 'wallet-backup', icon: '🧩', label: t({ en: 'Wallet Backup', zh: '钱包备份' }), route: 'WalletBackup' },
-    { id: 'skills', icon: '⚡', label: t({ en: 'My Skills', zh: '我的技能' }), route: 'MySkills' },
-    { id: 'orders', icon: '📦', label: t({ en: 'My Orders', zh: '我的订单' }), route: 'MyOrders' },
-    { id: 'social-listener', icon: '📡', label: t({ en: 'Social Listener', zh: '社交监听' }), route: 'SocialListener' },
-    { id: 'agent-manage', icon: '🤖', label: t({ en: 'Agent Management', zh: '智能体管理' }), route: '__agent_manage__' },
-    { id: 'settings', icon: '⚙️', label: t({ en: 'Settings', zh: '设置' }), route: 'Settings' },
+    { id: 'social', icon: '馃寪', label: t({ en: 'Social Bridge', zh: '绀句氦妗ユ帴' }), route: 'SocialListener' },
+    { id: 'referral', icon: '馃巵', label: t({ en: 'Referrals & Earnings', zh: '鎺ㄥ箍涓庢敹鐩? }), route: 'ReferralDashboard' },
+    { id: 'account', icon: '馃攼', label: t({ en: 'Wallet & Account', zh: '閽卞寘涓庤处鎴? }), route: 'Account' },
+    { id: 'wallet-backup', icon: '馃З', label: t({ en: 'Wallet Backup', zh: '閽卞寘澶囦唤' }), route: 'WalletBackup' },
+    { id: 'skills', icon: '鈿?, label: t({ en: 'My Skills', zh: '鎴戠殑鎶€鑳? }), route: 'MySkills' },
+    { id: 'orders', icon: '馃摝', label: t({ en: 'My Orders', zh: '鎴戠殑璁㈠崟' }), route: 'MyOrders' },
+    { id: 'settings', icon: '鈿欙笍', label: t({ en: 'Settings', zh: '璁剧疆' }), route: 'Settings' },
   ] as const;
 
   const handleShare = () => {
     navigation.navigate('ShareCard', {
       shareUrl: `https://agentrix.top/i/${user?.agentrixId ?? ''}`,
-      title: t({ en: 'Agentrix-Claw — Your 24/7 AI Agent', zh: 'Agentrix-Claw —— 你的 24/7 AI 助手' }),
+      title: t({ en: 'Agentrix-Claw 鈥?Your 24/7 AI Agent', zh: 'Agentrix-Claw 鈥斺€?浣犵殑 24/7 AI 鍔╂墜' }),
       userName: user?.nickname ?? undefined,
     });
   };
 
   const handleLogout = () => {
-    Alert.alert(t({ en: 'Sign Out', zh: '退出登录' }), t({ en: 'Are you sure you want to sign out?', zh: '确定要退出登录吗？' }), [
-      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
-      { text: t({ en: 'Sign Out', zh: '退出登录' }), style: 'destructive', onPress: clearAuth },
+    Alert.alert(t({ en: 'Sign Out', zh: '閫€鍑虹櫥褰? }), t({ en: 'Are you sure you want to sign out?', zh: '纭畾瑕侀€€鍑虹櫥褰曞悧锛? }), [
+      { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+      { text: t({ en: 'Sign Out', zh: '閫€鍑虹櫥褰? }), style: 'destructive', onPress: clearAuth },
     ]);
   };
 
@@ -50,13 +49,13 @@ export function ProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Top bar: title + scan + notification bell */}
       <View style={styles.topBar}>
-        <Text style={styles.topBarTitle}>{t({ en: 'Profile', zh: '我的' })}</Text>
+        <Text style={styles.topBarTitle}>{t({ en: 'Profile', zh: '鎴戠殑' })}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('Scan')}>
-          <Text style={styles.bellIcon}>📷</Text>
+          <Text style={styles.bellIcon}>馃摲</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bellBtn} onPress={() => navigation.navigate('NotificationCenter')}>
-          <Text style={styles.bellIcon}>🔔</Text>
+          <Text style={styles.bellIcon}>馃敂</Text>
           {unreadCount > 0 && (
             <View style={styles.bellBadge}>
               <Text style={styles.bellBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
@@ -70,12 +69,12 @@ export function ProfileScreen() {
       <View style={styles.profileHeader}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {user?.avatarUrl ? '👤' : (user?.nickname?.charAt(0)?.toUpperCase() || '?')}
+            {user?.avatarUrl ? '馃懁' : (user?.nickname?.charAt(0)?.toUpperCase() || '?')}
           </Text>
         </View>
         <View>
-          <Text style={styles.nickname}>{user?.nickname || t({ en: 'Anonymous', zh: '匿名用户' })}</Text>
-          <Text style={styles.email}>{user?.email || user?.walletAddress?.slice(0, 14) || t({ en: 'Guest', zh: '访客' })}</Text>
+          <Text style={styles.nickname}>{user?.nickname || t({ en: 'Anonymous', zh: '鍖垮悕鐢ㄦ埛' })}</Text>
+          <Text style={styles.email}>{user?.email || user?.walletAddress?.slice(0, 14) || t({ en: 'Guest', zh: '璁垮' })}</Text>
           <View style={styles.roleRow}>
             {user?.roles?.map((r) => (
               <View key={r} style={styles.roleBadge}>
@@ -90,12 +89,12 @@ export function ProfileScreen() {
       {activeInstance ? (
         <View style={styles.instanceCard}>
           <View style={styles.instanceLeft}>
-            <Text style={styles.instanceEmoji}>🤖</Text>
+            <Text style={styles.instanceEmoji}>馃</Text>
             <View>
               <Text style={styles.instanceName}>{activeInstance.name}</Text>
               <View style={styles.instanceStatus}>
                 <View style={[styles.statusDot, { backgroundColor: activeInstance.status === 'active' ? colors.success : colors.error }]} />
-                <Text style={styles.statusText}>{activeInstance.status} · {activeInstance.deployType}</Text>
+                <Text style={styles.statusText}>{activeInstance.status} 路 {activeInstance.deployType}</Text>
               </View>
             </View>
           </View>
@@ -103,18 +102,18 @@ export function ProfileScreen() {
         </View>
       ) : (
         <View style={styles.noInstanceCard}>
-          <Text style={styles.noInstanceText}>{t({ en: 'No agent connected', zh: '暂未连接智能体' })}</Text>
+          <Text style={styles.noInstanceText}>{t({ en: 'No agent connected', zh: '鏆傛湭杩炴帴鏅鸿兘浣? })}</Text>
         </View>
       )}
 
       {/* Share CTA */}
       <TouchableOpacity style={styles.shareCard} onPress={handleShare}>
-        <Text style={styles.shareEmoji}>🦀</Text>
+        <Text style={styles.shareEmoji}>馃</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.shareTitle}>{t({ en: 'Invite friends, earn commissions', zh: '邀请好友，赚取佣金' })}</Text>
-          <Text style={styles.shareSub}>{t({ en: 'Share Agentrix-Claw and earn 30% on every purchase', zh: '分享 Agentrix-Claw，每笔购买都可获得 30% 佣金' })}</Text>
+          <Text style={styles.shareTitle}>{t({ en: 'Invite friends, earn commissions', zh: '閭€璇峰ソ鍙嬶紝璧氬彇浣ｉ噾' })}</Text>
+          <Text style={styles.shareSub}>{t({ en: 'Share Agentrix-Claw and earn 30% on every purchase', zh: '鍒嗕韩 Agentrix-Claw锛屾瘡绗旇喘涔伴兘鍙幏寰?30% 浣ｉ噾' })}</Text>
         </View>
-        <Text style={styles.shareArrow}>›</Text>
+        <Text style={styles.shareArrow}>鈥?/Text>
       </TouchableOpacity>
 
       {/* Menu */}
@@ -124,23 +123,19 @@ export function ProfileScreen() {
             key={item.id}
             style={styles.menuItem}
             onPress={() => {
-              if (item.route === '__agent_manage__') {
-                (navigation as any).navigate('Agent', { screen: 'AgentConsole' });
-              } else {
-                navigation.navigate(item.route as any);
-              }
+              navigation.navigate(item.route as any);
             }}
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>
             <Text style={styles.menuLabel}>{item.label}</Text>
-            <Text style={styles.menuArrow}>›</Text>
+            <Text style={styles.menuArrow}>鈥?/Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-        <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
+        <Text style={styles.logoutText}>{t({ en: 'Sign Out', zh: '閫€鍑虹櫥褰? })}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

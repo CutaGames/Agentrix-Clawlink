@@ -6,6 +6,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { mapRawInstance } from '../../services/auth';
 import { provisionCloudAgent, getInstanceById } from '../../services/openclaw.service';
 
 type WizardStep = 'setup' | 'deploying' | 'done';
@@ -30,11 +31,11 @@ export function CloudDeployScreen() {
     }, 400);
 
     try {
-      // llmProvider is determined by platform backend — user doesn't choose
+      // llmProvider is determined by platform backend 鈥?user doesn't choose
       const result = await provisionCloudAgent({ name, llmProvider: 'default' });
 
-      // SSH provisioning is async — poll up to 30 s for instanceUrl to be ready
-      // 1s interval × 30 polls = 30s max wait (vs 3s × 20 = 60s previously)
+      // SSH provisioning is async 鈥?poll up to 30 s for instanceUrl to be ready
+      // 1s interval 脳 30 polls = 30s max wait (vs 3s 脳 20 = 60s previously)
       let finalUrl = result.instanceUrl;
       let finalStatus = result.status;
       if (!finalUrl && finalStatus !== 'active') {
@@ -58,13 +59,11 @@ export function CloudDeployScreen() {
       clearInterval(interval);
       setProgress(100);
 
-      const instance = {
-        id: result.id,
+      const instance = mapRawInstance(result, {
         name,
         instanceUrl: finalUrl || `cloud-${result.id}.openclaw.app`,
-        status: 'active' as const,
-        deployType: 'cloud' as const,
-      };
+        deployType: 'cloud',
+      });
       addInstance(instance);
       setActiveInstance(instance.id);
       setInstanceUrl(instance.instanceUrl);
@@ -110,7 +109,7 @@ export function CloudDeployScreen() {
   if (wizardStep === 'done') {
     return (
       <View style={styles.centered}>
-        <Text style={styles.celebrateTitle}>Your agent is live! 🎉</Text>
+        <Text style={styles.celebrateTitle}>Your agent is live! 馃帀</Text>
         <Text style={styles.celebrateSubtitle}>
           {agentName || 'Your agent'} is running at:
         </Text>
@@ -118,8 +117,8 @@ export function CloudDeployScreen() {
           <Text style={styles.urlText} numberOfLines={1}>{instanceUrl}</Text>
         </View>
         <View style={[styles.featureBox, styles.storageGift, { width: '100%' }]}>
-          <Text style={styles.storageGiftTitle}>🎁 10 GB Storage Activated</Text>
-          <Text style={styles.storageGiftDesc}>Your free early-access storage is ready. Upgrade to 40 GB or 100 GB in Agent Console → Storage.</Text>
+          <Text style={styles.storageGiftTitle}>馃巵 10 GB Storage Activated</Text>
+          <Text style={styles.storageGiftDesc}>Your free early-access storage is ready. Upgrade to 40 GB or 100 GB in Agent Console 鈫?Storage.</Text>
         </View>
         <TouchableOpacity style={styles.primaryBtn} onPress={handleFinish}>
           <Text style={styles.primaryBtnText}>Start Chatting</Text>
@@ -129,24 +128,24 @@ export function CloudDeployScreen() {
     );
   }
 
-  // ── Single-screen setup: just a name + deploy ─────────────────────────────
+  // 鈹€鈹€ Single-screen setup: just a name + deploy 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>1-Click Cloud Deploy</Text>
       <Text style={styles.subtitle}>
-        We handle everything — server, AI model, and configuration.
+        We handle everything 鈥?server, AI model, and configuration.
       </Text>
 
       <View style={[styles.featureBox, styles.storageGift]}>
-        <Text style={styles.storageGiftTitle}>🎁 Early Access Gift</Text>
+        <Text style={styles.storageGiftTitle}>馃巵 Early Access Gift</Text>
         <Text style={styles.storageGiftDesc}>New users receive <Text style={{ fontWeight: '800', color: '#a78bfa' }}>10 GB</Text> cloud storage free. Upgrade to 40 GB or 100 GB anytime.</Text>
       </View>
 
       <View style={styles.featureBox}>
-        <Text style={styles.featureItem}>☁️  AI model auto-configured by platform</Text>
-        <Text style={styles.featureItem}>🔒  No API keys or setup required</Text>
-        <Text style={styles.featureItem}>⚡  Agent live in ~30 seconds</Text>
-        <Text style={styles.featureItem}>📦  5200+ ClawHub Skills ready to install</Text>
+        <Text style={styles.featureItem}>鈽侊笍  AI model auto-configured by platform</Text>
+        <Text style={styles.featureItem}>馃敀  No API keys or setup required</Text>
+        <Text style={styles.featureItem}>鈿? Agent live in ~30 seconds</Text>
+        <Text style={styles.featureItem}>馃摝  5200+ ClawHub Skills ready to install</Text>
       </View>
 
       <Text style={styles.label}>Name your agent (optional)</Text>

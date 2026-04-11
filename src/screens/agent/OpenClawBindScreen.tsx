@@ -7,8 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { bindOpenClaw, createBindSession, pollBindSession } from '../../services/openclaw.service';
-import { startQrBindSession, waitForQrBind } from '../../services/auth';
+import { bindOpenClaw } from '../../services/openclaw.service';
+import { startQrBindSession, waitForQrBind, mapRawInstance } from '../../services/auth';
 import { QrCode } from '../../components/common/QrCode';
 import type { AgentStackParamList } from '../../navigation/types';
 
@@ -67,13 +67,11 @@ export function OpenClawBindScreen() {
     setLoading(true);
     try {
       const result = await bindOpenClaw({ instanceUrl: url, apiToken: apiToken.trim() || '' });
-      const instance = {
-        id: result.id,
+      const instance = mapRawInstance(result, {
         name: instanceName.trim() || result.name || `Instance ${Date.now()}`,
         instanceUrl: url,
-        status: 'active' as const,
-        deployType: 'existing' as const,
-      };
+        deployType: 'existing',
+      });
       addInstance(instance);
       setActiveInstance(instance.id);
       navigation.goBack();
@@ -97,7 +95,7 @@ export function OpenClawBindScreen() {
             onPress={() => setMode(m)}
           >
             <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>
-              {m === 'manual' ? '⌨️ Manual' : '📱 QR Scan'}
+              {m === 'manual' ? '鈱笍 Manual' : '馃摫 QR Scan'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -138,7 +136,7 @@ export function OpenClawBindScreen() {
             disabled={loading}
           >
             {loading ? <ActivityIndicator color="#fff" size="small" /> :
-              <Text style={styles.primaryBtnText}>🔗 Bind Instance</Text>}
+              <Text style={styles.primaryBtnText}>馃敆 Bind Instance</Text>}
           </TouchableOpacity>
         </View>
       )}
@@ -150,18 +148,18 @@ export function OpenClawBindScreen() {
           ) : qrCode ? (
             <>
               <Text style={styles.qrInstructions}>
-                Open your OpenClaw instance → Settings → Mobile Bind → Scan this code
+                Open your OpenClaw instance 鈫?Settings 鈫?Mobile Bind 鈫?Scan this code
               </Text>
               <View style={styles.qrBox}>
                 <QrCode value={qrCode} size={200} bgColor={colors.bgCard} fgColor={colors.textPrimary} />
               </View>
               <Text style={[styles.qrStatus, qrStatus === 'scanned' && { color: colors.success }]}>
-                {qrStatus === 'pending' ? '⏳ Waiting for scan...' :
-                 qrStatus === 'scanned' ? '✅ Connected!' : '❌ Session expired'}
+                {qrStatus === 'pending' ? '鈴?Waiting for scan...' :
+                 qrStatus === 'scanned' ? '鉁?Connected!' : '鉂?Session expired'}
               </Text>
               {qrStatus === 'error' && (
                 <TouchableOpacity style={styles.secondaryBtn} onPress={startQRSession}>
-                  <Text style={styles.secondaryBtnText}>🔄 Refresh QR</Text>
+                  <Text style={styles.secondaryBtnText}>馃攧 Refresh QR</Text>
                 </TouchableOpacity>
               )}
             </>
