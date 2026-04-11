@@ -38,7 +38,7 @@ type ResolvedLocalBridge = {
 };
 
 const DEFAULT_MODEL_ID = 'gemma-4-2b';
-const DEFAULT_MODEL_LABEL = 'Gemma 4 2B (Local)';
+const DEFAULT_MODEL_LABEL = 'Gemma 4 E2B (Local)';
 
 function resolveBridge(): ResolvedLocalBridge | null {
   const nativeBridge = (NativeModules as Record<string, unknown>)?.AgentrixLocalLLM as LocalBridge | undefined;
@@ -169,6 +169,7 @@ export class MobileLocalInferenceService {
       const queuedChunks: string[] = [];
       let streamCompleted = false;
       let streamError: unknown;
+      let receivedIncrementalChunk = false;
       let wakeConsumer: (() => void) | null = null;
       const waitForChunk = () => new Promise<void>((resolve) => {
         wakeConsumer = resolve;
@@ -187,22 +188,33 @@ export class MobileLocalInferenceService {
         }
       };
 
+      const handleIncrementalChunk = (chunk: string) => {
+        if (!chunk) {
+          return;
+        }
+
+        receivedIncrementalChunk = true;
+        pushChunk(chunk);
+      };
+
       const streamPromise = bridge.generateStream({
         model: options?.model || DEFAULT_MODEL_ID,
         messages,
         temperature: options?.temperature,
         maxTokens: options?.maxTokens,
-        ...(source === 'global' ? { onToken: pushChunk } : {}),
+        ...(source === 'global' ? { onToken: handleIncrementalChunk } : {}),
       }).then((streamed) => {
-        if (Array.isArray(streamed) && queuedChunks.length === 0) {
-          const normalized = normalizeLocalOutput(streamed.join(''));
-          for (const chunk of chunkText(normalized)) {
-            pushChunk(chunk);
-          }
-        } else if (!Array.isArray(streamed)) {
-          const text = normalizeLocalOutput(extractText(streamed));
-          if (text) {
-            pushChunk(text);
+        if (!receivedIncrementalChunk) {
+          if (Array.isArray(streamed)) {
+            const normalized = normalizeLocalOutput(streamed.join(''));
+            for (const chunk of chunkText(normalized)) {
+              pushChunk(chunk);
+            }
+          } else {
+            const text = normalizeLocalOutput(extractText(streamed));
+            if (text) {
+              pushChunk(text);
+            }
           }
         }
 

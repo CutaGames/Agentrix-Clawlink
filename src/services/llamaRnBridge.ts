@@ -29,6 +29,25 @@ const STOP_TOKENS = [
   '</s>',
 ];
 
+const STREAM_SOFT_FLUSH_CHARS = 16;
+const STREAM_HARD_FLUSH_CHARS = 28;
+
+function shouldFlushStreamChunk(token: string, pendingChunk: string): boolean {
+  if (!token || !pendingChunk) {
+    return false;
+  }
+
+  if (/[\n\r。！？.!?]$/.test(token)) {
+    return true;
+  }
+
+  if (pendingChunk.length >= STREAM_HARD_FLUSH_CHARS) {
+    return true;
+  }
+
+  return pendingChunk.length >= STREAM_SOFT_FLUSH_CHARS && /\s$/.test(token);
+}
+
 async function getOrLoadContext(modelId: string): Promise<LlamaContext> {
   if (activeContext && activeModelId === modelId) {
     return activeContext;
@@ -138,7 +157,7 @@ const bridge = {
       (data) => {
         if (data.token) {
           pendingChunk += data.token;
-          if (/[\n。！？.!?]$/.test(data.token) || pendingChunk.length >= 48) {
+          if (shouldFlushStreamChunk(data.token, pendingChunk)) {
             flushPendingChunk();
           }
         }

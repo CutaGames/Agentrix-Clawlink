@@ -28,24 +28,24 @@ export interface OtaModelEntry {
 
 /**
  * Available models for OTA download.
- * CDN hosted on Hugging Face (public weights, no auth required).
+ * CDN hosted on HF Mirror (public weights, no auth required).
  */
 const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
   'gemma-4-2b': {
     id: 'gemma-4-2b',
-    name: 'Gemma 4 2B (Q4_K_M)',
-    filename: 'gemma-2-2b-it-Q4_K_M.gguf',
-    sizeBytes: 1_500_000_000,
-    sizeLabel: '1.5 GB',
-    cdnBase: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main',
+    name: 'Gemma 4 E2B (Q4_K_M)',
+    filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
+    sizeBytes: 3_110_000_000,
+    sizeLabel: '3.1 GB',
+    cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
   },
   'gemma-4-4b': {
     id: 'gemma-4-4b',
-    name: 'Gemma 4 4B (Q4_K_M)',
-    filename: 'gemma-2-4b-it-Q4_K_M.gguf',
-    sizeBytes: 2_800_000_000,
-    sizeLabel: '2.8 GB',
-    cdnBase: 'https://huggingface.co/bartowski/gemma-2-4b-it-GGUF/resolve/main',
+    name: 'Gemma 4 E4B (Q4_K_M)',
+    filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
+    sizeBytes: 4_980_000_000,
+    sizeLabel: '5.0 GB',
+    cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
   },
 };
 

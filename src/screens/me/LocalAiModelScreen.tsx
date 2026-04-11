@@ -27,17 +27,17 @@ interface LocalModelInfo {
 const AVAILABLE_MODELS: LocalModelInfo[] = [
   {
     id: 'gemma-4-2b',
-    name: 'Gemma 4 2B',
-    size: '1.5 GB',
-    description: 'Fast on-device model for wake word, intent routing, simple queries, and privacy filtering.',
+    name: 'Gemma 4 E2B',
+    size: '3.1 GB',
+    description: 'Fast on-device Gemma 4 for local text generation. Image, audio, and tool-heavy turns will auto-upgrade to cloud orchestration.',
     tier: 'LOCAL',
     recommended: true,
   },
   {
     id: 'gemma-4-4b',
-    name: 'Gemma 4 4B',
-    size: '2.8 GB',
-    description: 'Higher quality local model with better reasoning. Requires 6GB+ RAM.',
+    name: 'Gemma 4 E4B',
+    size: '5.0 GB',
+    description: 'Higher quality Gemma 4 local model for richer text reasoning. Requires 8GB+ RAM and still escalates multimodal/tool turns to the cloud path.',
     tier: 'LOCAL',
   },
 ];
@@ -129,7 +129,7 @@ export function LocalAiModelScreen() {
         setDownloadEta('');
         Alert.alert(
           t({ en: 'Download Complete', zh: '下载完成' }),
-          t({ en: 'Local AI model is ready. Simple queries will now be processed on-device.', zh: '本地 AI 模型已就绪。简单查询将在设备端处理。' }),
+          t({ en: 'Local AI model is ready. Simple turns now run on-device, while multimodal or tool-heavy requests can auto-upgrade to the cloud path.', zh: '本地 AI 模型已就绪。简单请求会在设备端处理，多模态或工具型请求可自动升级到云端编排。' }),
         );
       },
       onError: (error: string) => {

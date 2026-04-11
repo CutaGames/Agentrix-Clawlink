@@ -63,6 +63,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
 ]);
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
+const MOBILE_HYBRID_TASK_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume|tool|skill|agent|plan|orchestrat)\b|搜索|查找|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码|工具|技能|继续|恢复|计划|编排/i;
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
@@ -71,15 +72,32 @@ function isLocalOnlyModelId(modelId?: string | null) {
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
     case 'gemma-4-4b':
-      return 'Gemma 4 4B (Local)';
+      return 'Gemma 4 E4B (Local)';
     case 'gemma-nano-2b-local':
       return 'Gemma Nano 2B (Local)';
     case 'gemma-nano-2b':
       return 'Gemma Nano 2B (Local)';
     case 'gemma-4-2b':
     default:
-      return 'Gemma 4 2B (Local)';
+      return 'Gemma 4 E2B (Local)';
   }
+}
+
+function shouldEscalateLocalTurnToCloud(text: string, attachments: UploadedChatAttachment[]) {
+  if (attachments.length > 0) {
+    return true;
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (trimmed.length >= 240 || trimmed.includes('\n')) {
+    return true;
+  }
+
+  return MOBILE_HYBRID_TASK_PATTERN.test(trimmed);
 }
 
 interface Message {
@@ -1435,11 +1453,20 @@ export function AgentChatScreen() {
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
+      const shouldEscalateToCloud = isLocalOnlyModelId(effectiveModelId)
+        && shouldEscalateLocalTurnToCloud(text, attachments);
 
       const shouldTryLocalNano = (
         isLocalOnlyModelId(effectiveModelId)
-        && attachments.length === 0
+        && !shouldEscalateToCloud
       );
+
+      if (shouldEscalateToCloud) {
+        setResolvedModelLabel(
+          t({ en: 'Hybrid cloud orchestration', zh: '混合云端编排' })
+          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
+        );
+      }
 
       // When local model selected but bridge unavailable, notify user and fall through to cloud
       if (shouldTryLocalNano && !(await MobileLocalInferenceService.isAvailable())) {
