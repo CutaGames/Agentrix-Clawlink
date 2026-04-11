@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -79,7 +79,6 @@ export function LocalAiModelScreen() {
   const [runtimeCapabilities, setRuntimeCapabilities] = useState<MobileLocalRuntimeCapabilities | null>(null);
   const [downloadSpeed, setDownloadSpeed] = useState('');
   const [downloadEta, setDownloadEta] = useState('');
-  const pauseStateRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,37 +171,6 @@ export function LocalAiModelScreen() {
     });
   }, [setLocalAiEnabled, setLocalAiModelId, setLocalAiProgress, setLocalAiStatus, setSelectedModel, t]);
 
-  const handlePause = useCallback(async () => {
-    const state = await OtaModelDownloadService.pauseDownload();
-    if (state) {
-      pauseStateRef.current = state;
-      setLocalAiStatus('not_downloaded');
-    }
-  }, [setLocalAiStatus]);
-
-  const handleResume = useCallback(() => {
-    if (!pauseStateRef.current) return;
-    setLocalAiStatus('downloading');
-    void OtaModelDownloadService.resumeDownload(pauseStateRef.current, {
-      onProgress: (progress: DownloadProgress) => {
-        setLocalAiProgress(progress.percent);
-        if (progress.speedBps > 0) setDownloadSpeed(formatSpeed(progress.speedBps));
-        if (progress.etaSeconds > 0) setDownloadEta(formatEta(progress.etaSeconds));
-      },
-      onComplete: () => {
-        setLocalAiProgress(100);
-        setLocalAiStatus('ready');
-        setLocalAiEnabled(true);
-        setSelectedModel(localAiModelId);
-        pauseStateRef.current = null;
-      },
-      onError: (error: string) => {
-        setLocalAiStatus('error');
-        Alert.alert(t({ en: 'Resume Failed', zh: '恢复失败' }), error);
-      },
-    });
-  }, [localAiModelId, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, setSelectedModel, t]);
-
   const handleDelete = useCallback(() => {
     Alert.alert(
       t({ en: 'Delete Local Model', zh: '删除本地模型' }),
@@ -227,6 +195,9 @@ export function LocalAiModelScreen() {
   const currentPackageReady = OtaModelDownloadService.areRequiredArtifactsDownloaded(localAiModelId);
   const currentModelEntry = OtaModelDownloadService.getModelEntry(localAiModelId);
   const currentPackageSize = OtaModelDownloadService.getPackageSizeLabel(localAiModelId);
+  const currentProjectorSize = currentModelEntry?.multimodalProjector?.sizeLabel || '';
+  const bridgeUnavailable = bridgeAvailable === false;
+  const canUpgradeCurrentPackage = localAiStatus === 'ready' && !currentPackageReady && !!currentModelEntry?.multimodalProjector;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -280,16 +251,16 @@ export function LocalAiModelScreen() {
           <View style={styles.downloadMeta}>
             {downloadSpeed ? <Text style={styles.downloadMetaText}>⚡ {downloadSpeed}</Text> : null}
             {downloadEta ? <Text style={styles.downloadMetaText}>⏱️ {downloadEta}</Text> : null}
-            <TouchableOpacity onPress={handlePause} style={styles.pauseBtn}>
-              <Text style={styles.pauseBtnText}>{t({ en: 'Pause', zh: '暂停' })}</Text>
-            </TouchableOpacity>
           </View>
         )}
 
-        {pauseStateRef.current && localAiStatus === 'not_downloaded' && (
-          <TouchableOpacity onPress={handleResume} style={styles.resumeBtn}>
-            <Text style={styles.resumeBtnText}>▶️ {t({ en: 'Resume Download', zh: '继续下载' })}</Text>
-          </TouchableOpacity>
+        {localAiStatus === 'downloading' && (
+          <Text style={styles.downloadHintText}>
+            {t({
+              en: 'Downloads currently need to finish in one pass. If the app or network is interrupted, restart the download from this screen.',
+              zh: '当前下载暂不支持断点续传。如果应用或网络中断，请回到此页重新开始下载。',
+            })}
+          </Text>
         )}
 
         {localAiStatus === 'ready' && (
@@ -299,25 +270,44 @@ export function LocalAiModelScreen() {
               {t({
                 en: currentPackageReady
                   ? 'On-device package is active. Text is local, image turns stay local when runtime vision is enabled, and speech playback still uses the local TTS path until a vocoder package exists.'
-                  : 'Base text model is active, but the multimodal projector add-on is still missing. Tap upgrade to finish the local image package.',
+                  : 'Base text is active, but the multimodal projector add-on is still missing. Image turns are blocked until you finish the full package, and Agentrix will no longer auto-switch them to the cloud.',
                 zh: currentPackageReady
                   ? '端侧完整包已激活。文本可本地处理，图片轮次会在运行时视觉能力开启后留在端侧；语音播报暂时仍走本地 TTS 路径，等待后续 vocoder 包。'
-                  : '基础文本模型已激活，但多模态投影器附件还未补齐。点击升级即可补完本地图片能力。',
+                  : '基础文本能力已激活，但多模态投影器附件还未补齐。图片轮次在补齐完整包前会被直接拦截，Agentrix 不会再自动切到云端。',
               })}
             </Text>
             <Text style={styles.readyMeta}>{t({ en: `Full package size: ${currentPackageSize}`, zh: `完整包大小：${currentPackageSize}` })}</Text>
           </View>
         )}
 
-        {bridgeAvailable === false && localAiStatus !== 'ready' && (
+        {bridgeUnavailable && (
           <Text style={styles.warningText}>
             {t({
-              en: 'Native inference bridge not available on this device. Model will be downloaded and ready for future updates.',
-              zh: '当前设备暂不支持原生推理。模型将下载供后续版本使用。',
+              en: localAiStatus === 'ready'
+                ? 'The local package is on disk, but this device is not exposing the native inference bridge yet. Local chat turns will be blocked instead of silently falling back to the cloud.'
+                : 'Native inference bridge is not available on this device yet. You can still download the package now, but local chat will stay blocked until the bridge is exposed.',
+              zh: localAiStatus === 'ready'
+                ? '模型包已经下载到本机，但这台设备暂时还没有暴露原生推理桥。本地聊天轮次会被直接拦截，不会再偷偷回退到云端。'
+                : '当前设备暂时还没有暴露原生推理桥。你仍可先下载模型包，但在桥接可用前，本地聊天会保持拦截状态。',
             })}
           </Text>
         )}
       </View>
+
+      {canUpgradeCurrentPackage && (
+        <View style={styles.upgradeCard}>
+          <Text style={styles.upgradeTitle}>{t({ en: 'Finish the local image package', zh: '补齐本地图片包' })}</Text>
+          <Text style={styles.upgradeDesc}>
+            {t({
+              en: `${currentModel.name} is currently text-only on this device. Download the projector add-on (${currentProjectorSize}) to unlock local image turns. Until then, Agentrix will block image turns instead of silently switching to the cloud.`,
+              zh: `当前设备上的 ${currentModel.name} 仍是纯文本模式。继续下载投影器附件（${currentProjectorSize}）后，图片轮次才能留在端侧。在此之前，Agentrix 会直接拦截图片轮次，不会再偷偷切到云端。`,
+            })}
+          </Text>
+          <TouchableOpacity style={styles.upgradePrimaryBtn} onPress={() => handleDownload(localAiModelId)}>
+            <Text style={styles.upgradePrimaryBtnText}>{t({ en: `Complete full package (+${currentProjectorSize})`, zh: `补齐完整包（+${currentProjectorSize}）` })}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{t({ en: 'Local Multimodal Surface', zh: '本地多模态能力面' })}</Text>
@@ -328,8 +318,8 @@ export function LocalAiModelScreen() {
               ? t({ en: '📷 Local ready', zh: '📷 端侧可用' })
               : currentModelEntry?.multimodalProjector
                 ? (currentPackageReady
-                  ? t({ en: '⏳ Runtime not exposing vision yet', zh: '⏳ 运行时暂未暴露视觉能力' })
-                  : t({ en: '⬇️ Download projector add-on', zh: '⬇️ 需下载投影器附件' }))
+                  ? t({ en: '⛔ Runtime still not exposing vision; image turns stay blocked', zh: '⛔ 运行时仍未暴露视觉能力；图片轮次保持拦截' })
+                  : t({ en: '⬇️ Download projector add-on to unlock local image turns', zh: '⬇️ 需下载投影器附件后才能本地处理图片' }))
                 : t({ en: '—', zh: '—' })}
           </Text>
         </View>
@@ -338,7 +328,7 @@ export function LocalAiModelScreen() {
           <Text style={styles.routeValue}>
             {runtimeCapabilities?.supportsAudioInput
               ? t({ en: '🎙️ Local ready (wav/mp3)', zh: '🎙️ 端侧可用（wav/mp3）' })
-              : t({ en: '☁️ Still falls back to cloud/STT path', zh: '☁️ 仍回退到云端/STT 路径' })}
+              : t({ en: '⛔ Not local yet; switch to a cloud model manually for audio files', zh: '⛔ 端侧暂不支持；音频文件请手动切到云端模型' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
@@ -346,7 +336,7 @@ export function LocalAiModelScreen() {
           <Text style={styles.routeValue}>
             {runtimeCapabilities?.supportsAudioOutput
               ? t({ en: '🔊 Model-native ready', zh: '🔊 模型原生可用' })
-              : t({ en: '🗣️ Local TTS playback for now', zh: '🗣️ 当前仍走本地 TTS 播放' })}
+              : t({ en: '🗣️ Local TTS wrapper for now', zh: '🗣️ 当前仍走本地 TTS 包装层' })}
           </Text>
         </View>
       </View>
@@ -430,34 +420,32 @@ export function LocalAiModelScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{t({ en: 'Current Model Routing', zh: '当前模型路由' })}</Text>
         <View style={styles.routeRow}>
-          <Text style={styles.routeLabel}>{t({ en: 'Simple queries', zh: '简单查询' })}</Text>
+          <Text style={styles.routeLabel}>{t({ en: 'Short text turns', zh: '简短文本轮次' })}</Text>
           <Text style={styles.routeValue}>
-            {localAiStatus === 'ready' ? `📱 ${currentModel.name}` : `☁️ ${selectedModelId}`}
+            {localAiStatus === 'ready' && !bridgeUnavailable
+              ? t({ en: `📱 ${currentModel.name} (when you select it in chat)`, zh: `📱 ${currentModel.name}（需在聊天中手动选中）` })
+              : t({ en: `☁️ Use a cloud model until the local runtime is ready`, zh: '☁️ 本地运行时就绪前请继续使用云端模型' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Image turns', zh: '图片轮次' })}</Text>
           <Text style={styles.routeValue}>
             {runtimeCapabilities?.supportsVisionInput
-              ? `📱 ${currentModel.name}`
-              : t({ en: '☁️ Cloud / upgrade required', zh: '☁️ 云端 / 需升级完整包' })}
+              ? t({ en: `📱 ${currentModel.name}`, zh: `📱 ${currentModel.name}` })
+              : t({ en: '⛔ Blocked until the projector/full package is ready', zh: '⛔ 补齐投影器/完整包前会被直接拦截' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Audio file turns', zh: '音频文件轮次' })}</Text>
           <Text style={styles.routeValue}>
             {runtimeCapabilities?.supportsAudioInput
-              ? `📱 ${currentModel.name} (wav/mp3)`
-              : t({ en: '☁️ Cloud / STT path', zh: '☁️ 云端 / STT 路径' })}
+              ? t({ en: `📱 ${currentModel.name} (wav/mp3)`, zh: `📱 ${currentModel.name}（wav/mp3）` })
+              : t({ en: '⛔ Blocked until local audio input is exposed', zh: '⛔ 本地音频输入可用前会被直接拦截' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
-          <Text style={styles.routeLabel}>{t({ en: 'Daily conversations', zh: '日常对话' })}</Text>
-          <Text style={styles.routeValue}>☁️ {selectedModelId}</Text>
-        </View>
-        <View style={styles.routeRow}>
-          <Text style={styles.routeLabel}>{t({ en: 'Complex tasks', zh: '复杂任务' })}</Text>
-          <Text style={styles.routeValue}>🧠 {t({ en: 'Auto (Opus/GPT-5)', zh: '自动 (Opus/GPT-5)' })}</Text>
+          <Text style={styles.routeLabel}>{t({ en: 'Unsupported turns', zh: '不支持的轮次' })}</Text>
+          <Text style={styles.routeValue}>{t({ en: '⛔ Blocked until you switch models manually', zh: '⛔ 会被直接拦截，需手动切到云端模型' })}</Text>
         </View>
       </View>
     </ScrollView>
@@ -551,27 +539,30 @@ const styles = StyleSheet.create({
   downloadingText: { fontSize: 13, color: '#3B82F6' },
   downloadMeta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   downloadMetaText: { fontSize: 11, color: colors.textMuted },
-  pauseBtn: {
-    marginLeft: 'auto',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+  downloadHintText: { fontSize: 11, color: colors.textMuted, lineHeight: 16 },
+  upgradeCard: {
+    backgroundColor: 'rgba(59,130,246,0.08)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.22)',
+    padding: 16,
+    gap: 10,
   },
-  pauseBtnText: { fontSize: 11, fontWeight: '600', color: colors.textMuted },
-  resumeBtn: {
-    paddingVertical: 10,
+  upgradeTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  upgradeDesc: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
+  upgradePrimaryBtn: {
+    paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: 'rgba(59,130,246,0.12)',
+    backgroundColor: 'rgba(59,130,246,0.16)',
     alignItems: 'center',
   },
-  resumeBtnText: { fontSize: 13, fontWeight: '700', color: '#3B82F6' },
+  upgradePrimaryBtnText: { fontSize: 14, fontWeight: '700', color: '#3B82F6' },
   routeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 6,
   },
-  routeLabel: { fontSize: 12, color: colors.textMuted },
-  routeValue: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
+  routeLabel: { flex: 1, fontSize: 12, color: colors.textMuted },
+  routeValue: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
 });
