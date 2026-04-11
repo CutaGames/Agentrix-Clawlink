@@ -12,13 +12,16 @@
 import { initLlama, type LlamaContext } from 'llama.rn';
 import { AppState, type AppStateStatus } from 'react-native';
 import { OtaModelDownloadService } from './otaModelDownload.service';
-import type { MobileLocalChatMessage } from './mobileLocalInference.service';
+import type { MobileLocalChatMessage, MobileLocalRuntimeCapabilities } from './mobileLocalInference.service';
 
 // ── Context Pool ───────────────────────────────────────
 
 let activeContext: LlamaContext | null = null;
 let activeModelId: string | null = null;
 let loadingPromise: Promise<LlamaContext | null> | null = null;
+let activeMultimodalInitialized = false;
+let activeVocoderInitialized = false;
+let activeRuntimeCapabilities: MobileLocalRuntimeCapabilities | null = null;
 
 const STOP_TOKENS = [
   '<end_of_turn>',
@@ -31,6 +34,38 @@ const STOP_TOKENS = [
 
 const STREAM_SOFT_FLUSH_CHARS = 16;
 const STREAM_HARD_FLUSH_CHARS = 28;
+
+type MultimodalSupport = {
+  vision: boolean;
+  audio: boolean;
+};
+
+type MessageRequirements = {
+  needsVision: boolean;
+  needsAudioInput: boolean;
+};
+
+type CompletionMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string | Array<Record<string, unknown>>;
+};
+
+type LlamaContextWithExtras = LlamaContext & {
+  initMultimodal: (options: {
+    path: string;
+    use_gpu?: boolean;
+    image_min_tokens?: number;
+    image_max_tokens?: number;
+  }) => Promise<boolean>;
+  getMultimodalSupport: () => Promise<MultimodalSupport>;
+  releaseMultimodal: () => Promise<void>;
+  initVocoder: (options: {
+    path: string;
+    n_batch?: number;
+  }) => Promise<boolean>;
+  isVocoderEnabled: () => Promise<boolean>;
+  releaseVocoder: () => Promise<void>;
+};
 
 function shouldFlushStreamChunk(token: string, pendingChunk: string): boolean {
   if (!token || !pendingChunk) {
@@ -60,11 +95,7 @@ async function getOrLoadContext(modelId: string): Promise<LlamaContext> {
 
   // Release previous context
   if (activeContext) {
-    try {
-      await activeContext.release();
-    } catch { /* ignore */ }
-    activeContext = null;
-    activeModelId = null;
+    await releaseActiveContext();
   }
 
   const modelPath = OtaModelDownloadService.getLocalPath(modelId);
@@ -87,16 +118,248 @@ async function getOrLoadContext(modelId: string): Promise<LlamaContext> {
   const ctx = await loadingPromise;
   activeContext = ctx;
   loadingPromise = null;
+  activeMultimodalInitialized = false;
+  activeVocoderInitialized = false;
+  activeRuntimeCapabilities = null;
   return ctx;
+}
+
+function resetRuntimeState() {
+  activeContext = null;
+  activeModelId = null;
+  loadingPromise = null;
+  activeMultimodalInitialized = false;
+  activeVocoderInitialized = false;
+  activeRuntimeCapabilities = null;
+}
+
+function withExtras(context: LlamaContext): LlamaContextWithExtras {
+  return context as unknown as LlamaContextWithExtras;
+}
+
+async function releaseActiveContext(): Promise<void> {
+  if (!activeContext) {
+    resetRuntimeState();
+    return;
+  }
+
+  const context = activeContext;
+  const extendedContext = withExtras(context);
+  try {
+    if (activeVocoderInitialized) {
+      await extendedContext.releaseVocoder();
+    }
+  } catch {}
+
+  try {
+    if (activeMultimodalInitialized) {
+      await extendedContext.releaseMultimodal();
+    }
+  } catch {}
+
+  try {
+    await context.release();
+  } catch {}
+
+  resetRuntimeState();
+}
+
+function resolveCapabilityModelId(input?: string): string | null {
+  if (input) {
+    return resolveModelId(input);
+  }
+
+  if (activeModelId) {
+    return activeModelId;
+  }
+
+  return KNOWN_MODEL_IDS.find((id) => OtaModelDownloadService.isModelDownloaded(id)) || null;
+}
+
+function buildStaticCapabilities(modelId?: string | null): MobileLocalRuntimeCapabilities {
+  if (!modelId) {
+    return {
+      available: KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.isModelDownloaded(id)),
+      runtimeSource: 'global',
+      supportsTextGeneration: true,
+      supportsStreaming: true,
+      supportsVisionInput: KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.hasMultimodalAssets(id)),
+      supportsAudioInput: false,
+      supportsAudioOutput: KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.hasVocoderAssets(id)),
+    };
+  }
+
+  return {
+    available: OtaModelDownloadService.isModelDownloaded(modelId),
+    runtimeSource: 'global',
+    supportsTextGeneration: true,
+    supportsStreaming: true,
+    supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId),
+    supportsAudioInput: false,
+    supportsAudioOutput: OtaModelDownloadService.hasVocoderAssets(modelId),
+  };
+}
+
+function getMessageRequirements(messages: MobileLocalChatMessage[]): MessageRequirements {
+  return messages.reduce<MessageRequirements>((requirements, message) => {
+    if (!Array.isArray(message.content)) {
+      return requirements;
+    }
+
+    for (const part of message.content) {
+      if (part.type === 'image_url') {
+        requirements.needsVision = true;
+      }
+
+      if (part.type === 'input_audio') {
+        if (part.input_audio?.format !== 'wav' && part.input_audio?.format !== 'mp3') {
+          throw new Error(`Unsupported local audio format: ${part.input_audio?.format || 'unknown'}`);
+        }
+
+        requirements.needsAudioInput = true;
+      }
+    }
+
+    return requirements;
+  }, { needsVision: false, needsAudioInput: false });
+}
+
+async function ensureMultimodalSupport(
+  context: LlamaContext,
+  modelId: string,
+): Promise<MultimodalSupport> {
+  const extendedContext = withExtras(context);
+
+  if (!OtaModelDownloadService.hasMultimodalAssets(modelId)) {
+    return { vision: false, audio: false };
+  }
+
+  try {
+    if (!activeMultimodalInitialized) {
+      const projectorPath = OtaModelDownloadService.getMultimodalProjectorPath(modelId);
+      if (!projectorPath) {
+        return { vision: false, audio: false };
+      }
+
+      activeMultimodalInitialized = await extendedContext.initMultimodal({
+        path: projectorPath,
+        use_gpu: true,
+        image_max_tokens: 512,
+      });
+    }
+
+    if (!activeMultimodalInitialized) {
+      return { vision: false, audio: false };
+    }
+
+    return await extendedContext.getMultimodalSupport();
+  } catch {
+    activeMultimodalInitialized = false;
+    return { vision: false, audio: false };
+  }
+}
+
+async function ensureVocoderSupport(
+  context: LlamaContext,
+  modelId: string,
+): Promise<boolean> {
+  const extendedContext = withExtras(context);
+
+  if (!OtaModelDownloadService.hasVocoderAssets(modelId)) {
+    return false;
+  }
+
+  try {
+    if (!activeVocoderInitialized) {
+      const vocoderPath = OtaModelDownloadService.getVocoderPath(modelId);
+      if (!vocoderPath) {
+        return false;
+      }
+
+      activeVocoderInitialized = await extendedContext.initVocoder({ path: vocoderPath });
+    }
+
+    return activeVocoderInitialized ? await extendedContext.isVocoderEnabled() : false;
+  } catch {
+    activeVocoderInitialized = false;
+    return false;
+  }
+}
+
+async function ensureRuntimeCapabilities(modelId: string): Promise<MobileLocalRuntimeCapabilities> {
+  if (!OtaModelDownloadService.isModelDownloaded(modelId)) {
+    return buildStaticCapabilities(modelId);
+  }
+
+  if (activeContext && activeModelId === modelId && activeRuntimeCapabilities) {
+    return activeRuntimeCapabilities;
+  }
+
+  const context = await getOrLoadContext(modelId);
+  const multimodalSupport = await ensureMultimodalSupport(context, modelId);
+  const supportsAudioOutput = await ensureVocoderSupport(context, modelId);
+
+  activeRuntimeCapabilities = {
+    ...buildStaticCapabilities(modelId),
+    supportsVisionInput: multimodalSupport.vision,
+    supportsAudioInput: multimodalSupport.audio,
+    supportsAudioOutput,
+  };
+
+  return activeRuntimeCapabilities;
+}
+
+async function ensureMessageSupport(modelId: string, messages: MobileLocalChatMessage[]): Promise<void> {
+  const requirements = getMessageRequirements(messages);
+  if (!requirements.needsVision && !requirements.needsAudioInput) {
+    return;
+  }
+
+  const capabilities = await ensureRuntimeCapabilities(modelId);
+  if (requirements.needsVision && !capabilities.supportsVisionInput) {
+    throw new Error('Local Gemma package is missing image support on this device.');
+  }
+
+  if (requirements.needsAudioInput && !capabilities.supportsAudioInput) {
+    throw new Error('Local Gemma audio input is not available for this model/runtime yet.');
+  }
+}
+
+function toCompletionMessages(messages: MobileLocalChatMessage[]): CompletionMessage[] {
+  return messages.map((message) => ({
+    role: message.role as 'system' | 'user' | 'assistant',
+    content: message.content as string | Array<Record<string, unknown>>,
+  }));
 }
 
 // ── Bridge Implementation ──────────────────────────────
 
 const KNOWN_MODEL_IDS = ['gemma-4-2b', 'gemma-4-4b'];
 
+function getBridgeCapabilities(options?: { model?: string }): Partial<MobileLocalRuntimeCapabilities> {
+  const modelId = resolveCapabilityModelId(options?.model);
+  return buildStaticCapabilities(modelId);
+}
+
 const bridge = {
-  isAvailable(): boolean {
-    return KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.isModelDownloaded(id));
+  isAvailable(options?: { model?: string }): boolean {
+    const modelId = resolveCapabilityModelId(options?.model);
+    return modelId
+      ? OtaModelDownloadService.isModelDownloaded(modelId)
+      : KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.isModelDownloaded(id));
+  },
+
+  async getCapabilities(options?: { model?: string }): Promise<Partial<MobileLocalRuntimeCapabilities>> {
+    const modelId = resolveCapabilityModelId(options?.model);
+    if (!modelId) {
+      return getBridgeCapabilities(options);
+    }
+
+    try {
+      return await ensureRuntimeCapabilities(modelId);
+    } catch {
+      return getBridgeCapabilities({ model: modelId });
+    }
   },
 
   async generate(payload: {
@@ -106,17 +369,15 @@ const bridge = {
     maxTokens?: number;
   }): Promise<string> {
     const modelId = resolveModelId(payload.model);
+    await ensureMessageSupport(modelId, payload.messages);
     const context = await getOrLoadContext(modelId);
 
     const result = await context.completion({
-      messages: payload.messages.map((m) => ({
-        role: m.role as 'system' | 'user' | 'assistant',
-        content: m.content,
-      })),
+      messages: toCompletionMessages(payload.messages),
       n_predict: payload.maxTokens || 512,
       temperature: payload.temperature ?? 0.7,
       stop: STOP_TOKENS,
-    });
+    } as any);
 
     return result.text;
   },
@@ -129,6 +390,7 @@ const bridge = {
     onToken?: (chunk: string) => void;
   }): Promise<string[]> {
     const modelId = resolveModelId(payload.model);
+    await ensureMessageSupport(modelId, payload.messages);
     const context = await getOrLoadContext(modelId);
 
     const chunks: string[] = [];
@@ -145,15 +407,12 @@ const bridge = {
     };
 
     await context.completion(
-      {
-        messages: payload.messages.map((m) => ({
-          role: m.role as 'system' | 'user' | 'assistant',
-          content: m.content,
-        })),
+      ({
+        messages: toCompletionMessages(payload.messages),
         n_predict: payload.maxTokens || 512,
         temperature: payload.temperature ?? 0.7,
         stop: STOP_TOKENS,
-      },
+      } as any),
       (data) => {
         if (data.token) {
           pendingChunk += data.token;
@@ -192,12 +451,7 @@ function resolveModelId(input?: string): string {
 function handleAppStateChange(state: AppStateStatus) {
   if (state === 'background' || state === 'inactive') {
     // Release model from memory when app backgrounds to save RAM
-    if (activeContext) {
-      activeContext.release().catch(() => {});
-      activeContext = null;
-      activeModelId = null;
-      loadingPromise = null;
-    }
+    void releaseActiveContext();
   }
 }
 
@@ -209,11 +463,6 @@ export function initLlamaBridge(): void {
 }
 
 export async function releaseLlamaBridge(): Promise<void> {
-  if (activeContext) {
-    await activeContext.release();
-    activeContext = null;
-    activeModelId = null;
-    loadingPromise = null;
-  }
+  await releaseActiveContext();
   (globalThis as { __AGENTRIX_LOCAL_LLM__?: typeof bridge }).__AGENTRIX_LOCAL_LLM__ = undefined;
 }

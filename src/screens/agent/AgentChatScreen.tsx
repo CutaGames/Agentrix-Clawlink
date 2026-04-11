@@ -32,6 +32,11 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
 import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
+import {
+  buildLocalUserContent,
+  shouldEscalateLocalTurnToCloud as shouldEscalateLocalMultimodalTurnToCloud,
+} from '../../services/mobileLocalMultimodalRouting.service';
 import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
@@ -63,7 +68,6 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
 ]);
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
-const MOBILE_HYBRID_TASK_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume|tool|skill|agent|plan|orchestrat)\b|搜索|查找|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码|工具|技能|继续|恢复|计划|编排/i;
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
@@ -81,23 +85,6 @@ function getLocalModelLabel(modelId: string) {
     default:
       return 'Gemma 4 E2B (Local)';
   }
-}
-
-function shouldEscalateLocalTurnToCloud(text: string, attachments: UploadedChatAttachment[]) {
-  if (attachments.length > 0) {
-    return true;
-  }
-
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  if (trimmed.length >= 240 || trimmed.includes('\n')) {
-    return true;
-  }
-
-  return MOBILE_HYBRID_TASK_PATTERN.test(trimmed);
 }
 
 interface Message {
@@ -654,6 +641,8 @@ export function AgentChatScreen() {
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const localAiStatus = useSettingsStore((s) => s.localAiStatus);
   const localAiModelId = useSettingsStore((s) => s.localAiModelId);
+  const preferOnDeviceVoice = useSettingsStore((s) => s.preferOnDeviceVoice);
+  const setPreferOnDeviceVoice = useSettingsStore((s) => s.setPreferOnDeviceVoice);
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -669,7 +658,13 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
-  const duplexUsesRealtimeChannel = !isLocalModelSelected;
+  const localVoicePlan = planLocalVoiceCapabilitySplit({
+    localModelSelected: isLocalModelSelected,
+    preferOnDeviceVoice,
+    selectedVoiceId: agentVoiceId,
+    runtimeCapabilities: MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }),
+  });
+  const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
     || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
     || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
@@ -1243,6 +1238,7 @@ export function AgentChatScreen() {
     enqueueStreamedSpeech,
     resetVoicePhaseAfterResponse,
     resumeLiveSpeech,
+    sendRealtimeImageFrame,
   } = useVoiceSession({
     token,
     language,
@@ -1254,6 +1250,8 @@ export function AgentChatScreen() {
     isSending: sending,
     useRealtimeChannel: duplexUsesRealtimeChannel,
     realtimeModelId: remoteResolvedModelId,
+    preferLocalSpeechRecognition: localVoicePlan.preferLocalSpeechRecognition,
+    preferLocalTextToSpeech: localVoicePlan.preferLocalTextToSpeech,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
@@ -1453,11 +1451,21 @@ export function AgentChatScreen() {
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
+      const localRuntimeCapabilities = isLocalOnlyModelId(effectiveModelId)
+        ? await MobileLocalInferenceService.getCapabilities({ model: effectiveModelId }).catch(() => (
+          MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId })
+        ))
+        : null;
       const shouldEscalateToCloud = isLocalOnlyModelId(effectiveModelId)
-        && shouldEscalateLocalTurnToCloud(text, attachments);
+        && shouldEscalateLocalMultimodalTurnToCloud(
+          text,
+          attachments,
+          localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }),
+        );
 
       const shouldTryLocalNano = (
         isLocalOnlyModelId(effectiveModelId)
+        && !!localRuntimeCapabilities?.available
         && !shouldEscalateToCloud
       );
 
@@ -1469,14 +1477,14 @@ export function AgentChatScreen() {
       }
 
       // When local model selected but bridge unavailable, notify user and fall through to cloud
-      if (shouldTryLocalNano && !(await MobileLocalInferenceService.isAvailable())) {
+      if (isLocalOnlyModelId(effectiveModelId) && !shouldEscalateToCloud && !localRuntimeCapabilities?.available) {
         setResolvedModelLabel(
           t({ en: 'Cloud fallback', zh: '云端回退' })
           + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
         );
       }
 
-      if (shouldTryLocalNano && await MobileLocalInferenceService.isAvailable()) {
+      if (shouldTryLocalNano) {
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
         const localModelLabel = effectiveModelId === MobileLocalInferenceService.modelId
@@ -1484,13 +1492,16 @@ export function AgentChatScreen() {
           : getLocalModelLabel(effectiveModelId);
         setResolvedModelLabel(localModelLabel);
         let localAssistantText = '';
+        const localUserContent = buildLocalUserContent(text, attachments);
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
           .slice(-12)
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
-            content: message.content,
+            content: message.role === 'user'
+              ? buildLocalUserContent(message.content, message.attachments || [])
+              : message.content,
           }));
 
         resetVoicePhaseAfterResponse();
@@ -1500,7 +1511,7 @@ export function AgentChatScreen() {
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
             { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational. Never reveal chain-of-thought or thinking traces. Reply with the final answer directly.` },
             ...localHistory,
-            { role: 'user', content: text },
+            { role: 'user', content: localUserContent },
           ], { model: effectiveModelId })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) {
               break;
@@ -1610,7 +1621,10 @@ export function AgentChatScreen() {
           resetVoicePhaseAfterResponse();
           appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
         } else {
-          const history = buildHistory(currentMsgs, outgoingText);
+          const history = buildHistory(
+            currentMsgs,
+            typeof outgoingText === 'string' ? outgoingText : serializeMessageForModel(userMsg),
+          );
           await new Promise<void>((resolve) => {
             const ac = streamDirectClaude({
               messages: history,
@@ -1772,12 +1786,17 @@ export function AgentChatScreen() {
       setCapturingPhoto(true);
       const captured = await cameraRef.current.takePictureAsync({
         quality: 0.8,
+        base64: localVoicePlan.relayCameraFramesToRealtime && duplexSessionConnected,
         exif: false,
         skipProcessing: false,
       });
 
       if (!captured?.uri) {
         return;
+      }
+
+      if (captured.base64 && localVoicePlan.relayCameraFramesToRealtime) {
+        sendRealtimeImageFrame(captured.base64, 'image/jpeg');
       }
 
       await enqueueAttachment({
@@ -1792,7 +1811,14 @@ export function AgentChatScreen() {
     } finally {
       setCapturingPhoto(false);
     }
-  }, [capturingPhoto, enqueueAttachment, t]);
+  }, [
+    capturingPhoto,
+    duplexSessionConnected,
+    enqueueAttachment,
+    localVoicePlan.relayCameraFramesToRealtime,
+    sendRealtimeImageFrame,
+    t,
+  ]);
 
   const handleAttachCamera = async () => {
     await openInAppCamera();
@@ -2545,6 +2571,18 @@ export function AgentChatScreen() {
               >
                 <Text style={[styles.sheetToggleText, duplexMode && { color: colors.accent }]}>
                   {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'On-device Voice First', zh: '端侧语音优先' })}</Text>
+              <TouchableOpacity
+                onPress={() => setPreferOnDeviceVoice(!preferOnDeviceVoice)}
+                style={[styles.sheetToggle, preferOnDeviceVoice && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, preferOnDeviceVoice && { color: colors.accent }]}>
+                  {preferOnDeviceVoice ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
                 </Text>
               </TouchableOpacity>
             </View>
