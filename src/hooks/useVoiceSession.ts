@@ -12,6 +12,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
+import { BleManager } from 'react-native-ble-plx';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {
   isLiveSpeechRecognitionAvailable,
@@ -26,7 +27,30 @@ import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
 import { RealtimeMicrophoneService } from '../services/realtimeMicrophone.service';
 import { VADService, createRecordingMeterFn } from '../services/vad.service';
-import { isVoiceUiE2EEnabled } from '../testing/e2e';
+import { WearablePairingStoreService } from '../services/wearables/wearablePairingStore.service';
+import { WearableAudioRelay } from '../services/wearables/wearableAudioRelay.service';
+import { WearableImageRelay } from '../services/wearables/wearableImageRelay.service';
+import { GlassAuthInterceptor } from '../services/wearables/glassAuthInterceptor.service';
+import type { PairedWearableRecord } from '../services/wearables/wearableTypes';
+import {
+  concatPcmChunks,
+  encodePcm16ToWav,
+  estimatePcmDurationMs,
+} from '../services/localPcmWav.service';
+import { LocalSpeechOutputService } from '../services/localSpeechOutput.service';
+
+// Lazy import to avoid circular dependency TDZ during module initialization.
+// testing/e2e.ts imports Zustand stores at top-level, which can cause
+// "Cannot access before initialization" when AgentChatScreen is the initial route.
+// Also checks the bootstrap flag since React Navigation rewrites the URL.
+function isVoiceUiE2EEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location?.search || '');
+    if (params.get('e2e') === 'voice-ui') return true;
+  } catch {}
+  return !!(window as any).__AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__;
+}
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -51,6 +75,16 @@ export interface UseVoiceSessionOptions {
   /** Use WebSocket realtime voice channel in duplex mode (lower latency) */
   useRealtimeChannel?: boolean;
   realtimeModelId?: string;
+  /** Prefer on-device speech recognition before cloud transcription when feasible */
+  preferLocalSpeechRecognition?: boolean;
+  /** Prefer on-device text-to-speech playback when feasible */
+  preferLocalTextToSpeech?: boolean;
+  /** Whether a local-only model is currently selected for chat turns */
+  localModelSelected?: boolean;
+  /** Selected on-device model id when a local-only model is active */
+  localModelId?: string;
+  /** Whether the selected on-device model currently exposes audio-file input */
+  localAudioInputAvailable?: boolean;
   /** TTS speech rate multiplier (0.8 - 1.5, default 1.0) */
   speechRate?: number;
   /** Called to send a transcript (and optional audio attachment) as a message */
@@ -100,12 +134,49 @@ export interface UseVoiceSessionReturn {
   enqueueStreamedSpeech: (chunk: string, flush?: boolean) => void;
   resetVoicePhaseAfterResponse: () => void;
   resumeLiveSpeech: () => void;
+  sendRealtimeImageFrame: (frameBase64: string, mimeType?: string) => boolean;
   speakingMessageId: string | null;
   setVoicePhase: (phase: VoicePhase) => void;
   setTranscriptPreview: (text: string) => void;
 }
 
+type LocalDirectAudioCaptureState = {
+  microphone: RealtimeMicrophoneService;
+  pcmChunks: ArrayBuffer[];
+};
+
 const REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS = 750;
+
+function detectRecordedAudioExtension(uri: string): string {
+  const normalized = uri.split('?')[0]?.toLowerCase() || '';
+  if (normalized.endsWith('.mp3')) return 'mp3';
+  if (normalized.endsWith('.wav')) return 'wav';
+  if (normalized.endsWith('.m4a')) return 'm4a';
+  if (normalized.endsWith('.aac')) return 'aac';
+  if (normalized.endsWith('.caf')) return 'caf';
+  return 'bin';
+}
+
+function isSupportedLocalAudioRecordingUri(uri: string): boolean {
+  const extension = detectRecordedAudioExtension(uri);
+  return extension === 'mp3' || extension === 'wav';
+}
+
+function inferRecordedAudioMimeType(uri: string): string {
+  switch (detectRecordedAudioExtension(uri)) {
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'aac':
+      return 'audio/aac';
+    case 'caf':
+      return 'audio/x-caf';
+    case 'm4a':
+    default:
+      return 'audio/m4a';
+  }
+}
 
 // ── Hook ───────────────────────────────────────────────────
 
@@ -128,6 +199,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     t,
     useRealtimeChannel,
     realtimeModelId,
+    preferLocalSpeechRecognition,
+    preferLocalTextToSpeech,
+    localModelSelected,
+    localModelId,
+    localAudioInputAvailable,
     speechRate,
   } = options;
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
@@ -152,6 +228,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const recordingRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
   const liveSpeechRef = useRef<LiveSpeechController | null>(null);
+  const localHoldSpeechRef = useRef<LiveSpeechController | null>(null);
+  const localHoldTranscriptRef = useRef('');
   const liveSpeechManualStopRef = useRef(false);
   const lastLiveFinalTranscriptRef = useRef('');
   const lastRealtimeFinalTranscriptRef = useRef('');
@@ -179,6 +257,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechStartingRef = useRef(false);
   const realtimeAudioSequenceRef = useRef(0);
   const realtimeMicrophoneRef = useRef<RealtimeMicrophoneService | null>(null);
+  const localDirectAudioCaptureRef = useRef<LocalDirectAudioCaptureState | null>(null);
+  const localSpeechPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const localSpeechGenerationRef = useRef(0);
   const onSendMessageRef = useRef(onSendMessage);
   const onRealtimeUserMessageRef = useRef(onRealtimeUserMessage);
   const onRealtimeAssistantChunkRef = useRef(onRealtimeAssistantChunk);
@@ -188,11 +269,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
+  const activeGlassRef = useRef<PairedWearableRecord | null>(null);
+  const wearableRelayCleanupRef = useRef<(() => Promise<void>) | null>(null);
   const vadRef = useRef<VADService | null>(null);
     const persistRealtimeAudioChunk = useCallback(async (audioBase64: string, format: string) => {
       const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
       if (!directory) {
-        throw new Error('No writable directory available for realtime audio');
+        // Fallback: return a data URI so expo-av can play directly without file I/O
+        const mime = format === 'pcm' ? 'audio/wav' : 'audio/mpeg';
+        return `data:${mime};base64,${audioBase64}`;
       }
 
       realtimeAudioSequenceRef.current += 1;
@@ -206,12 +291,22 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
+  const voiceLanguageCode = voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US';
+
+  // Refs for values used inside the realtime connection but that should NOT
+  // tear down the socket when they change (e.g., voice ID settling from undefined).
+  const agentVoiceIdRef = useRef(agentVoiceId);
+  const realtimeModelIdRef = useRef(realtimeModelId);
+  const voiceLanguageHintRef = useRef(voiceLanguageHint);
 
   // Keep refs in sync
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { duplexModeRef.current = duplexMode; }, [duplexMode]);
   useEffect(() => { sendingRef.current = !!isSending; }, [isSending]);
   useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { agentVoiceIdRef.current = agentVoiceId; }, [agentVoiceId]);
+  useEffect(() => { realtimeModelIdRef.current = realtimeModelId; }, [realtimeModelId]);
+  useEffect(() => { voiceLanguageHintRef.current = voiceLanguageHint; }, [voiceLanguageHint]);
   useEffect(() => { onSendMessageRef.current = onSendMessage; }, [onSendMessage]);
   useEffect(() => { onRealtimeUserMessageRef.current = onRealtimeUserMessage; }, [onRealtimeUserMessage]);
   useEffect(() => { onRealtimeAssistantChunkRef.current = onRealtimeAssistantChunk; }, [onRealtimeAssistantChunk]);
@@ -220,6 +315,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   useEffect(() => { onStopCurrentResponseRef.current = onStopCurrentResponse; }, [onStopCurrentResponse]);
 
   // ── Recording options ──
+  const iosMp3RecordingFormat = Audio ? (Audio as any).RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEGLAYER3 : undefined;
+  const canRecordSupportedLocalAudioFormat = Platform.OS === 'ios' && !!iosMp3RecordingFormat;
   const voiceRecordingOptions = Audio ? {
     android: {
       extension: '.m4a',
@@ -230,8 +327,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       bitRate: 32000,
     },
     ios: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+      extension: canRecordSupportedLocalAudioFormat ? '.mp3' : '.m4a',
+      outputFormat: canRecordSupportedLocalAudioFormat
+        ? iosMp3RecordingFormat
+        : Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
       audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
       sampleRate: 16000,
       numberOfChannels: 1,
@@ -243,152 +342,78 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     web: {},
   } : null;
 
-  // ── Check live speech availability ──
-  useEffect(() => {
-    const available = isVoiceUiE2E
-      ? true
-      : (useRealtimeChannel ? RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable() : isLiveSpeechRecognitionAvailable());
-    liveVoiceAvailableRef.current = available;
-    setLiveVoiceAvailable(available);
-  }, [isVoiceUiE2E, useRealtimeChannel]);
+  const buildLocalRecordedAudioAttachment = useCallback(async (uri: string): Promise<UploadedChatAttachment> => {
+    const extension = detectRecordedAudioExtension(uri);
+    const mimeType = inferRecordedAudioMimeType(uri);
+    const inferredName = uri.split('/').pop()?.split('?')[0] || `voice-${Date.now()}.${extension}`;
 
-  // ── Realtime WebSocket Voice Channel ──
-  // When useRealtimeChannel is true and duplex mode is active,
-  // use the low-latency WebSocket path instead of HTTP serial.
-  useEffect(() => {
-    if (!useRealtimeChannel || !duplexMode || !token || !instanceId) {
-      // Clean up existing realtime connection
-      if (realtimeVoiceRef.current) {
-        realtimeVoiceRef.current.disconnect();
-        realtimeVoiceRef.current = null;
-        setRealtimeConnected(false);
+    let size = 0;
+    try {
+      const getInfoAsync = (FileSystem as any).getInfoAsync;
+      if (typeof getInfoAsync === 'function') {
+        const info = await getInfoAsync(uri);
+        if (info && typeof info.size === 'number') {
+          size = info.size;
+        }
       }
+    } catch {}
+
+    return {
+      url: uri,
+      publicUrl: uri,
+      localUri: uri,
+      fileName: inferredName,
+      originalName: inferredName,
+      mimetype: mimeType,
+      size,
+      kind: 'audio',
+      isImage: false,
+      isAudio: true,
+      isVideo: false,
+    };
+  }, []);
+
+  const persistDirectLocalAudioCaptureAsWav = useCallback(async (pcmChunks: ArrayBuffer[]): Promise<string> => {
+    const pcmBuffer = concatPcmChunks(pcmChunks);
+    const wavBuffer = encodePcm16ToWav(pcmBuffer);
+    const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+    if (!directory) {
+      return `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
+    }
+
+    const fileUri = `${directory}local-direct-voice-${Date.now()}.wav`;
+    await FileSystem.writeAsStringAsync(fileUri, wavBuffer.toString('base64'), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return fileUri;
+  }, []);
+
+  const showLocalVoicePathBlockedAlert = useCallback((reason: 'audio-input-unavailable' | 'recording-format-unsupported') => {
+    if (reason === 'audio-input-unavailable') {
+      Alert.alert(
+        t({ en: 'Local Audio Unavailable', zh: '本地音频不可用' }),
+        t({
+          en: 'The selected local model does not expose on-device audio input on this device yet. Agentrix will not send this recording to cloud transcription. Use the on-device live speech path when available, attach a wav/mp3 file manually, or switch models yourself.',
+          zh: '当前选中的本地模型在这台设备上暂时还没有暴露端侧音频输入能力。Agentrix 不会再把这段录音偷偷送去云端转写。请优先使用端侧实时语音链路、手动附加 wav/mp3 文件，或自行切换模型。',
+        }),
+      );
       return;
     }
 
-    const wsBaseUrl = (typeof WS_BASE === 'string' && WS_BASE)
-      ? WS_BASE
-      : API_BASE.replace(/^http/, 'ws').replace(/\/api$/, '');
-    const wsUrl = `${wsBaseUrl}/voice`;
+    Alert.alert(
+      t({ en: 'Recording Format Blocked', zh: '录音格式受限' }),
+      t({
+        en: Platform.OS === 'android'
+          ? 'This device does not currently expose a direct local microphone path that the on-device audio model can consume. Agentrix will not upload this recording for cloud transcription. Use on-device live speech recognition when available, or attach a wav/mp3 file manually until this build exposes direct PCM or wav/mp3 capture.'
+          : 'This device did not produce a local microphone capture that the on-device audio model can consume. Agentrix will not upload this recording for cloud transcription. Use on-device live speech recognition when available, or attach a wav/mp3 file manually until direct local capture is available.',
+        zh: Platform.OS === 'android'
+          ? '当前设备暂时还没有暴露可被端侧音频模型直接消费的本地麦克风链路。Agentrix 不会再把这段录音上传到云端转写。请优先使用端侧实时语音识别，或在当前构建补齐直出 PCM / wav/mp3 前手动附加 wav/mp3 文件。'
+          : '当前设备没有产出端侧音频模型可直接消费的本地麦克风录音。Agentrix 不会再把这段录音上传到云端转写。请优先使用端侧实时语音识别，或在直连本地采集可用前手动附加 wav/mp3 文件。',
+      }),
+    );
+  }, [t]);
 
-    const service = new RealtimeVoiceService({
-      onStateChange: (state) => {
-        addVoiceDiagnostic('realtime-voice', 'state-change', { state });
-        setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
-        if (state === 'connected' && duplexModeRef.current && voiceModeRef.current) {
-          void startLiveSpeechInternalRef.current?.();
-        }
-        // Map realtime states to voice phases
-        switch (state) {
-          case 'listening': setVoicePhase('recording'); break;
-          case 'thinking': setVoicePhase('thinking'); break;
-          case 'speaking': setVoicePhase('speaking'); break;
-          case 'connected': setVoicePhase('idle'); break;
-        }
-      },
-      onInterimTranscript: (text) => {
-        setTranscriptPreview(text);
-      },
-      onFinalTranscript: (text) => {
-        const normalized = text.trim();
-        if (!normalized) {
-          setTranscriptPreview('');
-          return;
-        }
-
-        setTranscriptPreview(normalized);
-        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: normalized.slice(0, 160) });
-
-        const now = Date.now();
-        const isDuplicateFinal = normalized === lastRealtimeFinalTranscriptRef.current
-          && now - lastRealtimeFinalAtRef.current < REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS;
-
-        if (isDuplicateFinal) {
-          addVoiceDiagnostic('realtime-voice', 'final-transcript-duplicate-skipped', {
-            text: normalized.slice(0, 160),
-          });
-          return;
-        }
-
-        lastRealtimeFinalTranscriptRef.current = normalized;
-        lastRealtimeFinalAtRef.current = now;
-
-        onRealtimeUserMessageRef.current?.(normalized);
-      },
-      onAgentTextChunk: (chunk) => {
-        if (!chunk) return;
-        onRealtimeAssistantChunkRef.current?.(chunk);
-      },
-      onAgentAudioChunk: (audioBase64, format) => {
-        // Play audio chunk directly — skip HTTP TTS round-trip
-        if (audioBase64 && audioPlayerRef.current) {
-          setIsSpeaking(true);
-          isSpeakingRef.current = true;
-          setVoicePhase('speaking');
-          void persistRealtimeAudioChunk(audioBase64, format)
-            .then((fileUri) => {
-              audioPlayerRef.current?.enqueue(fileUri);
-            })
-            .catch((error) => {
-              addVoiceDiagnostic('realtime-voice', 'audio-persist-failed', {
-                error: error instanceof Error ? error.message : String(error),
-              });
-              console.warn('[RealtimeVoice] Failed to persist audio chunk:', error);
-            });
-        }
-      },
-      onAgentSpeechStart: () => {
-        stopLiveSpeech(true, false);
-        setIsSpeaking(true);
-        isSpeakingRef.current = true;
-        setVoicePhase('speaking');
-      },
-      onAgentResponseEnd: () => {
-        setVoicePhase('idle');
-        onRealtimeAssistantResponseEndRef.current?.();
-      },
-      onToolCall: (tool, status) => {
-        addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
-      },
-      onError: (error) => {
-        addVoiceDiagnostic('realtime-voice', 'error', { error });
-        console.warn('[RealtimeVoice] Error:', error);
-        onRealtimeErrorRef.current?.(error);
-      },
-      onDisconnect: (reason) => {
-        setRealtimeConnected(false);
-        addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
-      },
-    });
-
-    realtimeVoiceRef.current = service;
-    service.connect({
-      wsUrl,
-      token,
-      instanceId,
-      language: voiceLanguageHint,
-      modelId: realtimeModelId,
-      agentVoiceId,
-    });
-
-    return () => {
-      service.disconnect();
-      realtimeVoiceRef.current = null;
-      setRealtimeConnected(false);
-    };
-  }, [
-    agentVoiceId,
-    duplexMode,
-    instanceId,
-    persistRealtimeAudioChunk,
-    realtimeModelId,
-    token,
-    isVoiceUiE2E,
-    useRealtimeChannel,
-    voiceLanguageHint,
-  ]);
-
-  // ── Live Speech ──
+  // ── Live Speech stop (declared early so realtime useEffect can reference it) ──
 
   const stopLiveSpeech = useCallback((abort = false, manual = false) => {
     liveSpeechManualStopRef.current = manual;
@@ -409,11 +434,286 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } catch {}
   }, []);
 
+  const stopLocalHoldSpeech = useCallback((abort = false) => {
+    const ctrl = localHoldSpeechRef.current;
+    localHoldSpeechRef.current = null;
+    localHoldTranscriptRef.current = '';
+    if (isMountedRef.current) {
+      setLiveListening(false);
+      setLiveVoiceVolume(-2);
+    }
+    if (!ctrl) return;
+    try {
+      if (abort) ctrl.abort(); else ctrl.stop();
+    } catch {}
+  }, []);
+
+  // ── Check live speech availability ──
+  useEffect(() => {
+    const available = isVoiceUiE2E
+      ? true
+      : (useRealtimeChannel ? RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable() : isLiveSpeechRecognitionAvailable());
+    liveVoiceAvailableRef.current = available;
+    setLiveVoiceAvailable(available);
+  }, [isVoiceUiE2E, useRealtimeChannel]);
+
+  // ── Realtime WebSocket Voice Channel ──
+  // When useRealtimeChannel is true and duplex mode is active,
+  // use the low-latency WebSocket path instead of HTTP serial.
+  useEffect(() => {
+    if (!useRealtimeChannel || !duplexMode || !token || !instanceId) {
+      // Clean up existing realtime connection
+      activeGlassRef.current = null;
+      if (wearableRelayCleanupRef.current) {
+        void wearableRelayCleanupRef.current();
+        wearableRelayCleanupRef.current = null;
+      }
+      if (realtimeVoiceRef.current) {
+        realtimeVoiceRef.current.disconnect();
+        realtimeVoiceRef.current = null;
+        setRealtimeConnected(false);
+      }
+      return;
+    }
+
+    const wsBaseUrl = (typeof WS_BASE === 'string' && WS_BASE)
+      ? WS_BASE
+      : API_BASE.replace(/^http/, 'ws').replace(/\/api$/, '');
+    const wsUrl = `${wsBaseUrl}/voice`;
+    let cancelled = false;
+    let service: RealtimeVoiceService | null = null;
+
+    const setupWearableRelay = async (sessionId: string) => {
+      const pairedGlass = activeGlassRef.current;
+      const voiceSocket = service?.getSocketClient();
+
+      if (!pairedGlass || !voiceSocket || cancelled) {
+        return;
+      }
+
+      if (wearableRelayCleanupRef.current) {
+        await wearableRelayCleanupRef.current();
+        wearableRelayCleanupRef.current = null;
+      }
+
+      const bleManager = new BleManager();
+      const audioRelay = new WearableAudioRelay(bleManager, {
+        deviceId: pairedGlass.id,
+        sessionId,
+      }, {
+        onError: (error, direction) => {
+          addVoiceDiagnostic('wearable-relay', 'audio-error', {
+            direction,
+            message: error.message,
+            deviceId: pairedGlass.id,
+          });
+        },
+      });
+      const imageRelay = new WearableImageRelay(bleManager, {
+        deviceId: pairedGlass.id,
+        sessionId,
+      }, {
+        onError: (error) => {
+          addVoiceDiagnostic('wearable-relay', 'image-error', {
+            message: error.message,
+            deviceId: pairedGlass.id,
+          });
+        },
+      });
+      const authInterceptor = new GlassAuthInterceptor(sessionId, {
+        onPaymentDetected: (intent) => {
+          addVoiceDiagnostic('wearable-relay', 'payment-detected', {
+            intentId: intent.intentId,
+            token: intent.token,
+            amount: intent.amount,
+          });
+        },
+        onPaymentResult: (result) => {
+          addVoiceDiagnostic('wearable-relay', 'payment-result', result);
+        },
+      });
+
+      try {
+        await audioRelay.startUpstream(voiceSocket);
+        audioRelay.startDownstream(voiceSocket);
+        await imageRelay.start(voiceSocket);
+        authInterceptor.attach(voiceSocket);
+        wearableRelayCleanupRef.current = async () => {
+          authInterceptor.detach();
+          await imageRelay.stop().catch(() => {});
+          await audioRelay.stop().catch(() => {});
+          bleManager.destroy();
+        };
+        addVoiceDiagnostic('wearable-relay', 'bridge-ready', {
+          deviceId: pairedGlass.id,
+          sessionId,
+        });
+      } catch (error) {
+        authInterceptor.detach();
+        await imageRelay.stop().catch(() => {});
+        await audioRelay.stop().catch(() => {});
+        bleManager.destroy();
+        addVoiceDiagnostic('wearable-relay', 'bridge-failed', {
+          deviceId: pairedGlass.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
+    void (async () => {
+      const pairedWearables = await WearablePairingStoreService.list().catch(() => []);
+      activeGlassRef.current = pairedWearables.find((item) => item.kind === 'glass') || null;
+
+      if (cancelled) {
+        return;
+      }
+
+      service = new RealtimeVoiceService({
+        onStateChange: (state) => {
+          addVoiceDiagnostic('realtime-voice', 'state-change', { state });
+          setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
+          if (state === 'connected' && duplexModeRef.current && voiceModeRef.current) {
+            void startLiveSpeechInternalRef.current?.();
+          }
+          switch (state) {
+            case 'listening': setVoicePhase('recording'); break;
+            case 'thinking': setVoicePhase('thinking'); break;
+            case 'speaking': setVoicePhase('speaking'); break;
+            case 'connected': setVoicePhase('idle'); break;
+          }
+        },
+        onSessionReady: (sessionId) => {
+          void setupWearableRelay(sessionId);
+        },
+        onInterimTranscript: (text) => {
+          setTranscriptPreview(text);
+        },
+        onFinalTranscript: (text) => {
+          const normalized = text.trim();
+          if (!normalized) {
+            setTranscriptPreview('');
+            return;
+          }
+
+          setTranscriptPreview(normalized);
+          addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: normalized.slice(0, 160) });
+
+          const now = Date.now();
+          const isDuplicateFinal = normalized === lastRealtimeFinalTranscriptRef.current
+            && now - lastRealtimeFinalAtRef.current < REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS;
+
+          if (isDuplicateFinal) {
+            addVoiceDiagnostic('realtime-voice', 'final-transcript-duplicate-skipped', {
+              text: normalized.slice(0, 160),
+            });
+            return;
+          }
+
+          lastRealtimeFinalTranscriptRef.current = normalized;
+          lastRealtimeFinalAtRef.current = now;
+          onRealtimeUserMessageRef.current?.(normalized);
+        },
+        onAgentTextChunk: (chunk) => {
+          if (!chunk) return;
+          onRealtimeAssistantChunkRef.current?.(chunk);
+        },
+        onAgentAudioChunk: (audioBase64, format) => {
+          if (audioBase64 && audioPlayerRef.current) {
+            setIsSpeaking(true);
+            isSpeakingRef.current = true;
+            setVoicePhase('speaking');
+            void persistRealtimeAudioChunk(audioBase64, format)
+              .then((fileUri) => {
+                audioPlayerRef.current?.enqueue(fileUri);
+              })
+              .catch((error) => {
+                addVoiceDiagnostic('realtime-voice', 'audio-persist-failed', {
+                  error: error instanceof Error ? error.message : String(error),
+                });
+                console.warn('[RealtimeVoice] Failed to persist audio chunk:', error);
+              });
+          }
+        },
+        onAgentSpeechStart: () => {
+          realtimeMicrophoneRef.current?.muteForEchoCancel();
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+          setVoicePhase('speaking');
+        },
+        onAgentResponseEnd: () => {
+          setVoicePhase('idle');
+          onRealtimeAssistantResponseEndRef.current?.();
+        },
+        onToolCall: (tool, status) => {
+          addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
+        },
+        onError: (error) => {
+          addVoiceDiagnostic('realtime-voice', 'error', { error });
+          console.warn('[RealtimeVoice] Error:', error);
+          onRealtimeErrorRef.current?.(error);
+        },
+        onDisconnect: (reason) => {
+          setRealtimeConnected(false);
+          addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
+          if (wearableRelayCleanupRef.current) {
+            void wearableRelayCleanupRef.current();
+            wearableRelayCleanupRef.current = null;
+          }
+          onRealtimeAssistantResponseEndRef.current?.();
+        },
+      });
+
+      if (cancelled) {
+        service.disconnect();
+        return;
+      }
+
+      realtimeVoiceRef.current = service;
+      service.connect({
+        wsUrl,
+        token,
+        instanceId,
+        language: voiceLanguageHintRef.current,
+        modelId: realtimeModelIdRef.current,
+        agentVoiceId: agentVoiceIdRef.current,
+        deviceType: activeGlassRef.current ? 'glass' : 'phone',
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      activeGlassRef.current = null;
+      if (wearableRelayCleanupRef.current) {
+        void wearableRelayCleanupRef.current();
+        wearableRelayCleanupRef.current = null;
+      }
+      service?.disconnect();
+      if (realtimeVoiceRef.current === service) {
+        realtimeVoiceRef.current = null;
+      }
+      setRealtimeConnected(false);
+    };
+  }, [
+    duplexMode,
+    instanceId,
+    persistRealtimeAudioChunk,
+    token,
+    isVoiceUiE2E,
+    useRealtimeChannel,
+    stopLiveSpeech,
+  ]);
+
   // ── TTS ──
 
   const resumeLiveSpeechFn = useCallback(() => {
     if (!duplexModeRef.current || sendingRef.current) return;
     // Will be called after TTS finishes; startLiveSpeech defined below
+  }, []);
+
+  const cancelPendingLocalSpeechOutput = useCallback(() => {
+    localSpeechGenerationRef.current += 1;
+    localSpeechPlaybackQueueRef.current = Promise.resolve();
+    void LocalSpeechOutputService.cancelActiveSynthesis();
   }, []);
 
   // Init AudioQueuePlayer
@@ -426,9 +726,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setSpeakingMessageId(null);
         // Resume duplex listening after TTS finishes
         if (duplexModeRef.current && voiceModeRef.current && !sendingRef.current) {
+          // Unmute mic (it was muted for echo cancellation)
+          realtimeMicrophoneRef.current?.unmuteInput();
           setTimeout(() => {
             if (duplexModeRef.current && voiceModeRef.current && !isSpeakingRef.current) {
-              startLiveSpeechInternalRef.current?.();
+              // Only restart mic if it's not already running
+              if (!realtimeMicrophoneRef.current) {
+                startLiveSpeechInternalRef.current?.();
+              }
             }
           }, 200);
         }
@@ -437,10 +742,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       console.warn('[useVoiceSession] AudioQueuePlayer init failed:', err);
     }
     return () => {
-      try { audioPlayerRef.current?.stopAll(); } catch {}
+      cancelPendingLocalSpeechOutput();
+      void LocalSpeechOutputService.release();
+      try { audioPlayerRef.current?.destroy(); } catch {}
+      stopLocalHoldSpeech(true);
       stopLiveSpeech(true, true);
     };
-  }, [stopLiveSpeech]);
+  }, [cancelPendingLocalSpeechOutput, stopLiveSpeech, stopLocalHoldSpeech]);
 
   // voiceModeRequested sync
   useEffect(() => {
@@ -458,9 +766,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setVoicePhase('idle');
       setIsRecording(false);
       isRecordingRef.current = false;
+      cancelPendingLocalSpeechOutput();
+      audioPlayerRef.current?.stopAll();
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+      stopLocalHoldSpeech(true);
       stopLiveSpeech(true, true);
     }
-  }, [stopLiveSpeech, voiceMode]);
+  }, [cancelPendingLocalSpeechOutput, stopLiveSpeech, stopLocalHoldSpeech, voiceMode]);
 
   // duplexMode → enable voiceMode, autoSpeak, tap mode
   useEffect(() => {
@@ -469,6 +782,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setAutoSpeak(true);
       setVoiceInteractionMode('tap');
     } else {
+      setAutoSpeak(false);
       setVoiceInteractionMode('hold');
     }
   }, [duplexMode]);
@@ -484,30 +798,92 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
   }, [duplexMode, isRecording, isSpeaking, liveListening, voiceMode]);
 
+  const enqueueSpeechSegment = useCallback((segment: string) => {
+    const trimmed = segment.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    if (preferLocalTextToSpeech) {
+      if (!LocalSpeechOutputService.hasOnDeviceSpeechPack(localModelId)) {
+        audioPlayerRef.current?.enqueueLocal(trimmed, voiceLanguageCode, speechRate);
+        return;
+      }
+
+      const generation = localSpeechGenerationRef.current;
+      localSpeechPlaybackQueueRef.current = localSpeechPlaybackQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (generation !== localSpeechGenerationRef.current) {
+            return;
+          }
+
+          try {
+            const synthesized = await LocalSpeechOutputService.synthesizeToFile({
+              modelId: localModelId,
+              text: trimmed,
+            });
+            if (generation !== localSpeechGenerationRef.current || audioPlayerRef.current?.destroyed) {
+              return;
+            }
+
+            audioPlayerRef.current?.enqueueGeneratedAudio(
+              synthesized.fileUri,
+              trimmed,
+              voiceLanguageCode,
+              speechRate,
+            );
+            return;
+          } catch (error) {
+            if (LocalSpeechOutputService.isCancellationError(error)) {
+              return;
+            }
+
+            console.warn('[useVoiceSession] Local speech synthesis failed, falling back to device speech:', error);
+          }
+
+          if (generation !== localSpeechGenerationRef.current || audioPlayerRef.current?.destroyed) {
+            return;
+          }
+
+          audioPlayerRef.current?.enqueueLocal(trimmed, voiceLanguageCode, speechRate);
+        });
+      return;
+    }
+
+    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
+    const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(trimmed)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
+    audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageCode, speechRate);
+  }, [agentVoiceId, localModelId, preferLocalTextToSpeech, speechRate, voiceLanguageCode]);
+
   const speakText = useCallback((text: string) => {
     if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
     if (duplexModeRef.current) {
       stopLiveSpeech(true, false);
     }
+    // Strip markdown formatting before TTS
+    const cleanText = text
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_~`#>|]/g, '')
+      .trim();
+    if (!cleanText) return;
     setIsSpeaking(true);
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
-    const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
-    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
+    const sentences = cleanText.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [cleanText];
     for (const s of sentences) {
-      const trimmed = s.trim();
-      if (!trimmed || trimmed.length < 2) continue;
-      const encoded = encodeURIComponent(trimmed);
-      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
-      audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
+      enqueueSpeechSegment(s);
     }
-  }, [agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
+  }, [enqueueSpeechSegment, stopLiveSpeech]);
 
   const stopSpeaking = useCallback(() => {
+    cancelPendingLocalSpeechOutput();
     audioPlayerRef.current?.stopAll();
     setIsSpeaking(false);
     setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
     setSpeakingMessageId(null);
-  }, []);
+  }, [cancelPendingLocalSpeechOutput]);
 
   useEffect(() => {
     try {
@@ -518,6 +894,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setDuplexMode(false);
           setVoiceMode(false);
           stopSpeaking();
+          stopLocalHoldSpeech(true);
           stopLiveSpeech(true, true);
         },
       });
@@ -529,7 +906,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } catch (err) {
       console.warn('[useVoiceSession] BackgroundVoiceService init failed:', err);
     }
-  }, [stopLiveSpeech, stopSpeaking]);
+  }, [stopLiveSpeech, stopLocalHoldSpeech, stopSpeaking]);
 
   const handleSpeakMessage = useCallback((text: string, messageId?: string) => {
     if (!text) return;
@@ -538,7 +915,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [speakText]);
 
   const enqueueStreamedSpeech = useCallback((chunk: string, flush = false) => {
-    if (!(voiceMode || autoSpeak)) return;
+    // Only auto-speak in duplex/realtime mode or when user explicitly enabled autoSpeak.
+    // PTT (hold-to-talk) mode should NOT auto-read agent responses.
+    if (!(duplexModeRef.current || autoSpeak)) return;
 
     if (duplexModeRef.current) {
       stopLiveSpeech(true, false);
@@ -565,15 +944,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       }
     }
 
-    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
-
     if (segmentsToSpeak.length > 0) {
       setIsSpeaking(true);
       setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
       streamedTtsStartedRef.current = true;
       for (const sentence of segmentsToSpeak) {
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
-        audioPlayerRef.current?.enqueue(url, sentence, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
+        enqueueSpeechSegment(sentence);
       }
       if (!shouldEarlyFlush) {
         pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
@@ -586,12 +962,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setIsSpeaking(true);
         setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
         streamedTtsStartedRef.current = true;
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
-        audioPlayerRef.current?.enqueue(url, remainder, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
+        enqueueSpeechSegment(remainder);
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, voiceMode, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
+  }, [autoSpeak, enqueueSpeechSegment, stopLiveSpeech]);
 
   const resetVoicePhaseAfterResponse = useCallback(() => {
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
@@ -631,6 +1006,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           },
           onSpeechStart: () => {
             if (!isMountedRef.current) return;
+            setVoicePhase('recording');
+          },
+          onBargeIn: () => {
+            if (!isMountedRef.current) return;
+            // User spoke over agent — interrupt playback and resume mic
+            addVoiceDiagnostic('voice-session', 'barge-in');
+            cancelPendingLocalSpeechOutput();
+            audioPlayerRef.current?.stopAll();
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            realtimeVoiceRef.current?.sendInterrupt();
+            realtimeMicrophoneRef.current?.unmuteInput();
             setVoicePhase('recording');
           },
           onSpeechEnd: () => {
@@ -811,7 +1198,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // Use ref to avoid stale closure
           if (isSpeakingRef.current) stopSpeaking();
           realtimeVoiceRef.current?.sendInterrupt();
-          onStopCurrentResponseRef.current(true);
+          onStopCurrentResponseRef.current?.(true);
           setVoicePhase('thinking');
           setTimeout(() => {
             if (useRealtimeChannel && realtimeVoiceRef.current?.isConnected) {
@@ -858,6 +1245,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
   }, [
     agentVoiceId,
+    cancelPendingLocalSpeechOutput,
     instanceName,
     stopLiveSpeech,
     stopSpeaking,
@@ -961,7 +1349,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, []);
 
   const startVoiceRecording = useCallback(async () => {
-    if (!Audio) {
+    const canUseRealtimePcmForHold = !duplexModeRef.current
+      && !!localModelSelected
+      && !!localAudioInputAvailable
+      && RealtimeMicrophoneService.isAvailable();
+
+    if (!Audio && !canUseRealtimePcmForHold && !(preferLocalSpeechRecognition && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable()))) {
       Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available.', zh: '当前音频模块不可用。' }));
       return;
     }
@@ -973,12 +1366,168 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       if (!isRecordingRef.current) {
         isRecordingRef.current = true;
         if (isSpeaking) {
+          cancelPendingLocalSpeechOutput();
           await audioPlayerRef.current?.stopAll();
           setIsSpeaking(false);
         }
-        onStopCurrentResponseRef.current(true);
+        onStopCurrentResponseRef.current?.(true);
         setVoicePhase('recording');
         setTranscriptPreview('');
+
+        const shouldPreferDirectLocalAudioForHold = canUseRealtimePcmForHold || (
+          !duplexModeRef.current
+          && !!localModelSelected
+          && !!localAudioInputAvailable
+          && canRecordSupportedLocalAudioFormat
+        );
+        const canUseLocalSpeechForHold = !duplexModeRef.current
+          && !shouldPreferDirectLocalAudioForHold
+          && preferLocalSpeechRecognition
+          && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable());
+
+        const shouldBlockLocalRecordingStart = !duplexModeRef.current
+          && !!localModelSelected
+          && !canUseLocalSpeechForHold
+          && !canUseRealtimePcmForHold
+          && (!localAudioInputAvailable || !canRecordSupportedLocalAudioFormat);
+
+        if (shouldBlockLocalRecordingStart) {
+          isRecordingRef.current = false;
+          setVoicePhase('idle');
+          showLocalVoicePathBlockedAlert(
+            localAudioInputAvailable ? 'recording-format-unsupported' : 'audio-input-unavailable',
+          );
+          return;
+        }
+
+        if (canUseRealtimePcmForHold) {
+          addVoiceDiagnostic('voice-session', 'hold-local-audio-start-request', {
+            model: localModelId || 'local-model',
+          });
+
+          const pcmChunks: ArrayBuffer[] = [];
+          const realtimeMicrophone = new RealtimeMicrophoneService({
+            onFrame: (audioChunk) => {
+              pcmChunks.push(audioChunk);
+            },
+            onVolumeChange: (value) => {
+              if (!isMountedRef.current) return;
+              setLiveVoiceVolume(value * 100 - 2);
+            },
+            onSpeechStart: () => {
+              if (!isMountedRef.current) return;
+              setVoicePhase('recording');
+            },
+            onError: (error) => {
+              if (!isMountedRef.current) return;
+              const message = error?.message || 'Local audio capture error';
+              if (/permission denied/i.test(message)) {
+                setLiveSpeechPermissionState('denied');
+              }
+              addVoiceDiagnostic('voice-session', 'hold-local-audio-error', {
+                message,
+                model: localModelId || 'local-model',
+              });
+              localDirectAudioCaptureRef.current = null;
+              isRecordingRef.current = false;
+              setIsRecording(false);
+              setLiveVoiceVolume(-2);
+              setVoicePhase('idle');
+              Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), message);
+            },
+          });
+
+          localDirectAudioCaptureRef.current = {
+            microphone: realtimeMicrophone,
+            pcmChunks,
+          };
+
+          try {
+            await realtimeMicrophone.start();
+            setLiveSpeechPermissionState('granted');
+            setIsRecording(true);
+            setLiveListening(false);
+            addVoiceDiagnostic('voice-session', 'hold-local-audio-started', {
+              model: localModelId || 'local-model',
+            });
+            if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            return;
+          } catch (error) {
+            localDirectAudioCaptureRef.current = null;
+            const message = error instanceof Error ? error.message : String(error);
+            if (/permission denied/i.test(message)) {
+              setLiveSpeechPermissionState('denied');
+            }
+            addVoiceDiagnostic('voice-session', 'hold-local-audio-start-failed', {
+              message,
+              model: localModelId || 'local-model',
+            });
+            throw error;
+          }
+        }
+
+        if (canUseLocalSpeechForHold) {
+          const permission = await requestLiveSpeechPermissions();
+          if (!permission?.granted) {
+            setLiveSpeechPermissionState('denied');
+            isRecordingRef.current = false;
+            setVoicePhase('idle');
+            Alert.alert(
+              t({ en: 'Speech Permission', zh: '语音权限' }),
+              t({ en: 'Please enable microphone and speech recognition access.', zh: '请开启麦克风和语音识别权限。' }),
+            );
+            return;
+          }
+
+          setLiveSpeechPermissionState('granted');
+          localHoldTranscriptRef.current = '';
+          localHoldSpeechRef.current = startLiveSpeechRecognition(
+            voiceLanguageHint,
+            {
+              onStart: () => {
+                if (!isMountedRef.current) return;
+                addVoiceDiagnostic('voice-session', 'hold-local-speech-started');
+                setLiveListening(true);
+                setIsRecording(true);
+                setVoicePhase('recording');
+                setTranscriptPreview('');
+              },
+              onEnd: () => {
+                if (!isMountedRef.current) return;
+                setLiveListening(false);
+                setLiveVoiceVolume(-2);
+              },
+              onInterimResult: (transcript) => {
+                const normalized = transcript.trim();
+                if (!normalized) return;
+                localHoldTranscriptRef.current = normalized;
+                setTranscriptPreview(normalized);
+              },
+              onFinalResult: (transcript) => {
+                const normalized = transcript.trim();
+                if (!normalized) return;
+                localHoldTranscriptRef.current = normalized;
+                setTranscriptPreview(normalized);
+              },
+              onError: (error) => {
+                if (!isMountedRef.current) return;
+                if (error?.error === 'aborted' || error?.error === 'no-speech') return;
+                addVoiceDiagnostic('voice-session', 'hold-local-speech-error', error);
+                setLiveListening(false);
+                setLiveVoiceVolume(-2);
+              },
+              onVolumeChange: (value) => {
+                if (!isMountedRef.current) return;
+                setLiveVoiceVolume(value);
+              },
+            },
+            [instanceName || '', agentVoiceId || '', 'Agentrix'],
+          );
+          setIsRecording(true);
+          if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          return;
+        }
+
         const permResult = await Audio.requestPermissionsAsync();
         if (!permResult.granted) {
           setLiveSpeechPermissionState('denied');
@@ -1028,11 +1577,95 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || 'Unknown error');
     }
-  }, [isSpeaking, t, voicePhase, voiceRecordingOptions]);
+  }, [
+    agentVoiceId,
+    cancelPendingLocalSpeechOutput,
+    canRecordSupportedLocalAudioFormat,
+    instanceName,
+    isSpeaking,
+    isVoiceUiE2E,
+    localAudioInputAvailable,
+    localModelId,
+    localModelSelected,
+    preferLocalSpeechRecognition,
+    showLocalVoicePathBlockedAlert,
+    t,
+    voiceLanguageHint,
+    voicePhase,
+    voiceRecordingOptions,
+  ]);
 
   const stopVoiceRecording = useCallback(async () => {
-    if (!Audio || !isRecordingRef.current) return;
+    if (!isRecordingRef.current) return;
     try {
+      if (localDirectAudioCaptureRef.current) {
+        const directCapture = localDirectAudioCaptureRef.current;
+        localDirectAudioCaptureRef.current = null;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setLiveVoiceVolume(-2);
+        setVoicePhase('transcribing');
+        if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        try {
+          await directCapture.microphone.stop();
+        } catch {}
+
+        const pcmBuffer = concatPcmChunks(directCapture.pcmChunks);
+        if (pcmBuffer.length === 0) {
+          addVoiceDiagnostic('voice-session', 'hold-local-audio-empty', {
+            model: localModelId || 'local-model',
+          });
+          setVoicePhase('idle');
+          Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+          return;
+        }
+
+        const durationMs = Math.round(estimatePcmDurationMs(pcmBuffer.length));
+        addVoiceDiagnostic('voice-session', 'hold-local-audio-stop', {
+          model: localModelId || 'local-model',
+          pcmBytes: pcmBuffer.length,
+          durationMs,
+        });
+
+        const wavUri = await persistDirectLocalAudioCaptureAsWav(directCapture.pcmChunks);
+        const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
+        setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+        setVoicePhase('thinking');
+        setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
+        return;
+      }
+
+      if (localHoldSpeechRef.current) {
+        const controller = localHoldSpeechRef.current;
+        localHoldSpeechRef.current = null;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setLiveListening(false);
+        setLiveVoiceVolume(-2);
+        setVoicePhase('transcribing');
+        if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        try {
+          controller.stop();
+        } catch {}
+
+        const transcript = localHoldTranscriptRef.current.trim();
+        localHoldTranscriptRef.current = '';
+        if (transcript) {
+          setTranscriptPreview(transcript);
+          setVoicePhase('thinking');
+          setTimeout(() => onSendMessageRef.current(transcript), 80);
+        } else {
+          setVoicePhase('idle');
+          Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+        }
+        return;
+      }
+
+      if (!Audio) {
+        return;
+      }
+
       // Stop VAD monitoring
       vadRef.current?.stop();
       isRecordingRef.current = false;
@@ -1045,6 +1678,22 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
+          if (localModelSelected) {
+            if (localAudioInputAvailable && isSupportedLocalAudioRecordingUri(uri)) {
+              const localAudioAttachment = await buildLocalRecordedAudioAttachment(uri);
+              setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+              setVoicePhase('thinking');
+              setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
+              return;
+            }
+
+            setVoicePhase('idle');
+            showLocalVoicePathBlockedAlert(
+              localAudioInputAvailable ? 'recording-format-unsupported' : 'audio-input-unavailable',
+            );
+            return;
+          }
+
           let transcript = '';
           const formData = new FormData();
           formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
@@ -1104,7 +1753,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } finally {
       await resetAudioModeAfterRecording();
     }
-  }, [resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
+  }, [
+    buildLocalRecordedAudioAttachment,
+    localModelId,
+    localAudioInputAvailable,
+    localModelSelected,
+    persistDirectLocalAudioCaptureAsWav,
+    resetAudioModeAfterRecording,
+    showLocalVoicePathBlockedAlert,
+    t,
+    token,
+    voiceLanguageHint,
+  ]);
 
   // ── Interaction wrappers ──
 
@@ -1127,7 +1787,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         return;
       }
       if (isSpeaking) stopSpeaking();
-      onStopCurrentResponseRef.current(true);
+      onStopCurrentResponseRef.current?.(true);
       await startLiveSpeechInternal();
       return;
     }
@@ -1142,6 +1802,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     if (!duplexModeRef.current || sendingRef.current || isSpeakingRef.current || !voiceModeRef.current) return;
     void startLiveSpeechInternal();
   }, [startLiveSpeechInternal]);
+
+  const sendRealtimeImageFrame = useCallback((frameBase64: string, mimeType = 'image/jpeg') => {
+    if (!frameBase64 || !realtimeVoiceRef.current?.isConnected) {
+      return false;
+    }
+
+    realtimeVoiceRef.current.sendImageFrame(frameBase64, mimeType);
+    return true;
+  }, []);
 
   return {
     // State
@@ -1181,5 +1850,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     enqueueStreamedSpeech,
     resetVoicePhaseAfterResponse,
     resumeLiveSpeech,
+    sendRealtimeImageFrame,
   };
 }

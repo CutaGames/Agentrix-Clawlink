@@ -1,0 +1,601 @@
+/**
+ * llama.rn Bridge for Mobile On-Device LLM Inference
+ *
+ * Uses llama.rn (React Native binding for llama.cpp) to run GGUF models
+ * on-device. Registers as globalThis.__AGENTRIX_LOCAL_LLM__ so the existing
+ * MobileLocalInferenceService picks it up automatically.
+ *
+ * Model files are downloaded by OtaModelDownloadService to the device's
+ * document directory under models/.
+ */
+
+import { File as ExpoFile } from 'expo-file-system';
+import { initLlama, type LlamaContext } from 'llama.rn';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
+import { OtaModelDownloadService } from './otaModelDownload.service';
+import type {
+  MobileLocalChatContentPart,
+  MobileLocalChatMessage,
+  MobileLocalRuntimeCapabilities,
+} from './mobileLocalInference.service';
+
+// ── Context Pool ───────────────────────────────────────
+
+let activeContext: LlamaContext | null = null;
+let activeModelId: string | null = null;
+let loadingPromise: Promise<LlamaContext | null> | null = null;
+let activeContextProfile: ContextProfile | null = null;
+let loadingContextProfile: ContextProfile | null = null;
+let activeMultimodalInitialized = false;
+let activeRuntimeCapabilities: MobileLocalRuntimeCapabilities | null = null;
+
+const STOP_TOKENS = [
+  '<end_of_turn>',
+  '<|end|>',
+  '<|eot_id|>',
+  '<|im_end|>',
+  '<|endoftext|>',
+  '</s>',
+];
+
+const STREAM_SOFT_FLUSH_CHARS = 16;
+const STREAM_HARD_FLUSH_CHARS = 28;
+const TEXT_CONTEXT_WINDOW = 2048;
+const TEXT_FALLBACK_CONTEXT_WINDOW = 1536;
+const MULTIMODAL_CONTEXT_WINDOW = 4096;
+const MULTIMODAL_FALLBACK_CONTEXT_WINDOW = 3072;
+
+type MultimodalSupport = {
+  vision: boolean;
+  audio: boolean;
+};
+
+type ContextProfile = 'text' | 'multimodal';
+
+type MessageRequirements = {
+  needsVision: boolean;
+  needsAudioInput: boolean;
+};
+
+type CompletionMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string | Array<Record<string, unknown>>;
+};
+
+type LlamaContextWithExtras = LlamaContext & {
+  initMultimodal: (options: {
+    path: string;
+    use_gpu?: boolean;
+    image_min_tokens?: number;
+    image_max_tokens?: number;
+  }) => Promise<boolean>;
+  getMultimodalSupport: () => Promise<MultimodalSupport>;
+  releaseMultimodal: () => Promise<void>;
+};
+
+function shouldFlushStreamChunk(token: string, pendingChunk: string): boolean {
+  if (!token || !pendingChunk) {
+    return false;
+  }
+
+  if (/[\n\r。！？.!?]$/.test(token)) {
+    return true;
+  }
+
+  if (pendingChunk.length >= STREAM_HARD_FLUSH_CHARS) {
+    return true;
+  }
+
+  return pendingChunk.length >= STREAM_SOFT_FLUSH_CHARS && /\s$/.test(token);
+}
+
+function resolveContextProfile(messages: MobileLocalChatMessage[]): ContextProfile {
+  const requirements = getMessageRequirements(messages);
+  return requirements.needsVision || requirements.needsAudioInput ? 'multimodal' : 'text';
+}
+
+function profileSatisfies(requested: ContextProfile, active: ContextProfile | null): boolean {
+  return active === requested || (requested === 'text' && active === 'multimodal');
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    for (const key of ['message', 'reason', 'error', 'detail', 'code']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {}
+  }
+
+  return '';
+}
+
+function buildContextInitOptions(profile: ContextProfile, stage: 'primary' | 'fallback') {
+  const multimodal = profile === 'multimodal';
+  const useFallback = stage === 'fallback';
+  const onAndroid = Platform.OS === 'android';
+
+  return {
+    n_ctx: multimodal
+      ? (useFallback ? MULTIMODAL_FALLBACK_CONTEXT_WINDOW : MULTIMODAL_CONTEXT_WINDOW)
+      : (useFallback ? TEXT_FALLBACK_CONTEXT_WINDOW : TEXT_CONTEXT_WINDOW),
+    n_gpu_layers: onAndroid && useFallback ? 0 : 99,
+    use_mlock: !onAndroid && !useFallback,
+    ...(multimodal ? { ctx_shift: false } : {}),
+  };
+}
+
+async function initializeContext(modelPath: string, profile: ContextProfile): Promise<LlamaContext> {
+  try {
+    return await initLlama({
+      model: modelPath,
+      ...buildContextInitOptions(profile, 'primary'),
+    });
+  } catch (primaryError) {
+    try {
+      return await initLlama({
+        model: modelPath,
+        ...buildContextInitOptions(profile, 'fallback'),
+      });
+    } catch (fallbackError) {
+      const reason = formatUnknownError(fallbackError)
+        || formatUnknownError(primaryError)
+        || 'unknown runtime error';
+      throw new Error(`Failed to initialize the on-device ${profile} runtime: ${reason}`);
+    }
+  }
+}
+
+async function getOrLoadContext(modelId: string, profile: ContextProfile = 'text'): Promise<LlamaContext> {
+  if (activeContext && activeModelId === modelId && profileSatisfies(profile, activeContextProfile)) {
+    return activeContext;
+  }
+
+  if (loadingPromise && activeModelId === modelId && profileSatisfies(profile, loadingContextProfile)) {
+    const ctx = await loadingPromise;
+    if (ctx) return ctx;
+  }
+
+  // Release previous context
+  if (activeContext) {
+    await releaseActiveContext();
+  }
+
+  const modelPath = OtaModelDownloadService.getLocalPath(modelId);
+  if (!modelPath) {
+    throw new Error(`Model ${modelId} is not downloaded. Go to Settings → Local Model to download.`);
+  }
+
+  activeModelId = modelId;
+  loadingContextProfile = profile;
+  loadingPromise = initializeContext(modelPath, profile).catch((err) => {
+    activeModelId = null;
+    loadingPromise = null;
+    loadingContextProfile = null;
+    throw err;
+  });
+
+  const ctx = await loadingPromise;
+  activeContext = ctx;
+  activeContextProfile = profile;
+  loadingPromise = null;
+  loadingContextProfile = null;
+  activeMultimodalInitialized = false;
+  activeRuntimeCapabilities = null;
+  return ctx;
+}
+
+function resetRuntimeState() {
+  activeContext = null;
+  activeModelId = null;
+  loadingPromise = null;
+  activeContextProfile = null;
+  loadingContextProfile = null;
+  activeMultimodalInitialized = false;
+  activeRuntimeCapabilities = null;
+}
+
+function withExtras(context: LlamaContext): LlamaContextWithExtras {
+  return context as unknown as LlamaContextWithExtras;
+}
+
+async function releaseActiveContext(): Promise<void> {
+  if (!activeContext) {
+    resetRuntimeState();
+    return;
+  }
+
+  const context = activeContext;
+  const extendedContext = withExtras(context);
+  try {
+    if (activeMultimodalInitialized) {
+      await extendedContext.releaseMultimodal();
+    }
+  } catch {}
+
+  try {
+    await context.release();
+  } catch {}
+
+  resetRuntimeState();
+}
+
+function resolveCapabilityModelId(input?: string): string | null {
+  if (input) {
+    return resolveModelId(input);
+  }
+
+  if (activeModelId) {
+    return activeModelId;
+  }
+
+  return KNOWN_MODEL_IDS.find((id) => OtaModelDownloadService.isModelDownloaded(id)) || null;
+}
+
+function buildStaticCapabilities(modelId?: string | null): MobileLocalRuntimeCapabilities {
+  if (!modelId) {
+    return {
+      available: KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.isModelDownloaded(id)),
+      runtimeSource: 'global',
+      supportsTextGeneration: true,
+      supportsStreaming: true,
+      supportsVisionInput: KNOWN_MODEL_IDS.some((id) => (
+        OtaModelDownloadService.hasMultimodalAssets(id)
+        && OtaModelDownloadService.declaresVisionInput(id)
+      )),
+      supportsAudioInput: KNOWN_MODEL_IDS.some((id) => (
+        OtaModelDownloadService.hasMultimodalAssets(id)
+        && OtaModelDownloadService.declaresAudioInput(id)
+      )),
+      supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(),
+    };
+  }
+
+  return {
+    available: OtaModelDownloadService.isModelDownloaded(modelId),
+    runtimeSource: 'global',
+    supportsTextGeneration: true,
+    supportsStreaming: true,
+    supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
+      && OtaModelDownloadService.declaresVisionInput(modelId),
+    supportsAudioInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
+      && OtaModelDownloadService.declaresAudioInput(modelId),
+    supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(modelId),
+  };
+}
+
+function getMessageRequirements(messages: MobileLocalChatMessage[]): MessageRequirements {
+  return messages.reduce<MessageRequirements>((requirements, message) => {
+    if (!Array.isArray(message.content)) {
+      return requirements;
+    }
+
+    for (const part of message.content) {
+      if (part.type === 'image_url') {
+        requirements.needsVision = true;
+      }
+
+      if (part.type === 'input_audio') {
+        if (part.input_audio?.format !== 'wav' && part.input_audio?.format !== 'mp3') {
+          throw new Error(`Unsupported local audio format: ${part.input_audio?.format || 'unknown'}`);
+        }
+
+        requirements.needsAudioInput = true;
+      }
+    }
+
+    return requirements;
+  }, { needsVision: false, needsAudioInput: false });
+}
+
+async function ensureMultimodalSupport(
+  context: LlamaContext,
+  modelId: string,
+): Promise<MultimodalSupport> {
+  const extendedContext = withExtras(context);
+
+  if (!OtaModelDownloadService.hasMultimodalAssets(modelId)) {
+    return { vision: false, audio: false };
+  }
+
+  try {
+    if (!activeMultimodalInitialized) {
+      const projectorPath = OtaModelDownloadService.getMultimodalProjectorPath(modelId);
+      if (!projectorPath) {
+        return { vision: false, audio: false };
+      }
+
+      activeMultimodalInitialized = await extendedContext.initMultimodal({
+        path: projectorPath,
+        use_gpu: true,
+        image_max_tokens: 512,
+      });
+    }
+
+    if (!activeMultimodalInitialized) {
+      return { vision: false, audio: false };
+    }
+
+    return await extendedContext.getMultimodalSupport();
+  } catch {
+    activeMultimodalInitialized = false;
+    return { vision: false, audio: false };
+  }
+}
+
+async function ensureRuntimeCapabilities(modelId: string): Promise<MobileLocalRuntimeCapabilities> {
+  if (!OtaModelDownloadService.isModelDownloaded(modelId)) {
+    return buildStaticCapabilities(modelId);
+  }
+
+  if (activeContext && activeModelId === modelId && activeRuntimeCapabilities) {
+    return activeRuntimeCapabilities;
+  }
+
+  const context = await getOrLoadContext(modelId, 'multimodal');
+  const multimodalSupport = await ensureMultimodalSupport(context, modelId);
+
+  activeRuntimeCapabilities = {
+    ...buildStaticCapabilities(modelId),
+    supportsVisionInput: multimodalSupport.vision,
+    supportsAudioInput: multimodalSupport.audio,
+  };
+
+  return activeRuntimeCapabilities;
+}
+
+async function ensureMessageSupport(modelId: string, messages: MobileLocalChatMessage[]): Promise<void> {
+  const requirements = getMessageRequirements(messages);
+  if (!requirements.needsVision && !requirements.needsAudioInput) {
+    return;
+  }
+
+  const capabilities = await ensureRuntimeCapabilities(modelId);
+  if (requirements.needsVision && !capabilities.supportsVisionInput) {
+    throw new Error('The selected local package is missing image support on this device.');
+  }
+
+  if (requirements.needsAudioInput && !capabilities.supportsAudioInput) {
+    throw new Error('The selected local model does not expose on-device audio input on this device yet.');
+  }
+}
+
+function inferMimeTypeFromUri(uri: string, fallback: string): string {
+  const normalized = uri.split('?')[0]?.toLowerCase() || '';
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.gif')) return 'image/gif';
+  if (normalized.endsWith('.bmp')) return 'image/bmp';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.mp3')) return 'audio/mpeg';
+  if (normalized.endsWith('.wav')) return 'audio/wav';
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
+  return fallback;
+}
+
+function audioMimeTypeFromFormat(format: string): string {
+  return format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+}
+
+async function readContentUriAsDataUrl(uri: string, mimeType: string): Promise<string> {
+  try {
+    const file = new ExpoFile(uri);
+    const resolvedMimeType = file.type || inferMimeTypeFromUri(uri, mimeType);
+    const base64 = await file.base64();
+    return `data:${resolvedMimeType};base64,${base64}`;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read local media attachment: ${reason}`);
+  }
+}
+
+async function normalizeContentPart(part: MobileLocalChatContentPart): Promise<Record<string, unknown>> {
+  if (part.type === 'text') {
+    return part;
+  }
+
+  if (part.type === 'image_url') {
+    const url = part.image_url.url;
+    if (!url.startsWith('content://')) {
+      return part;
+    }
+
+    return {
+      type: 'image_url',
+      image_url: {
+        url: await readContentUriAsDataUrl(url, 'image/jpeg'),
+      },
+    };
+  }
+
+  if (part.input_audio.data || !part.input_audio.url?.startsWith('content://')) {
+    return part;
+  }
+
+  const data = await readContentUriAsDataUrl(
+    part.input_audio.url,
+    audioMimeTypeFromFormat(part.input_audio.format),
+  );
+
+  return {
+    type: 'input_audio',
+    input_audio: {
+      format: part.input_audio.format,
+      data,
+    },
+  };
+}
+
+async function toNormalizedCompletionMessages(
+  messages: MobileLocalChatMessage[],
+): Promise<CompletionMessage[]> {
+  return Promise.all(messages.map(async (message) => {
+    if (!Array.isArray(message.content)) {
+      return {
+        role: message.role as 'system' | 'user' | 'assistant',
+        content: message.content,
+      };
+    }
+
+    return {
+      role: message.role as 'system' | 'user' | 'assistant',
+      content: await Promise.all(message.content.map((part) => normalizeContentPart(part))),
+    };
+  }));
+}
+
+// ── Bridge Implementation ──────────────────────────────
+
+const KNOWN_MODEL_IDS = ['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b'];
+
+function getBridgeCapabilities(options?: { model?: string }): Partial<MobileLocalRuntimeCapabilities> {
+  const modelId = resolveCapabilityModelId(options?.model);
+  return buildStaticCapabilities(modelId);
+}
+
+const bridge = {
+  isAvailable(options?: { model?: string }): boolean {
+    const modelId = resolveCapabilityModelId(options?.model);
+    return modelId
+      ? OtaModelDownloadService.isModelDownloaded(modelId)
+      : KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.isModelDownloaded(id));
+  },
+
+  async getCapabilities(options?: { model?: string }): Promise<Partial<MobileLocalRuntimeCapabilities>> {
+    const modelId = resolveCapabilityModelId(options?.model);
+    if (!modelId) {
+      return getBridgeCapabilities(options);
+    }
+
+    try {
+      return await ensureRuntimeCapabilities(modelId);
+    } catch {
+      return getBridgeCapabilities({ model: modelId });
+    }
+  },
+
+  async generate(payload: {
+    model?: string;
+    messages: MobileLocalChatMessage[];
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<string> {
+    const modelId = resolveModelId(payload.model);
+    const contextProfile = resolveContextProfile(payload.messages);
+    await ensureMessageSupport(modelId, payload.messages);
+    const context = await getOrLoadContext(modelId, contextProfile);
+    const completionMessages = await toNormalizedCompletionMessages(payload.messages);
+
+    const result = await context.completion({
+      messages: completionMessages,
+      n_predict: payload.maxTokens || 512,
+      temperature: payload.temperature ?? 0.7,
+      stop: STOP_TOKENS,
+    } as any);
+
+    return result.text;
+  },
+
+  async generateStream(payload: {
+    model?: string;
+    messages: MobileLocalChatMessage[];
+    temperature?: number;
+    maxTokens?: number;
+    onToken?: (chunk: string) => void;
+  }): Promise<string[]> {
+    const modelId = resolveModelId(payload.model);
+    const contextProfile = resolveContextProfile(payload.messages);
+    await ensureMessageSupport(modelId, payload.messages);
+    const context = await getOrLoadContext(modelId, contextProfile);
+    const completionMessages = await toNormalizedCompletionMessages(payload.messages);
+
+    const chunks: string[] = [];
+    let pendingChunk = '';
+
+    const flushPendingChunk = () => {
+      if (!pendingChunk) {
+        return;
+      }
+
+      chunks.push(pendingChunk);
+      payload.onToken?.(pendingChunk);
+      pendingChunk = '';
+    };
+
+    await context.completion(
+      ({
+        messages: completionMessages,
+        n_predict: payload.maxTokens || 512,
+        temperature: payload.temperature ?? 0.7,
+        stop: STOP_TOKENS,
+      } as any),
+      (data) => {
+        const tokenText = typeof data.token === 'string' ? data.token : '';
+        if (tokenText) {
+          pendingChunk += tokenText;
+          if (shouldFlushStreamChunk(tokenText, pendingChunk)) {
+            flushPendingChunk();
+          }
+        }
+      },
+    );
+
+    flushPendingChunk();
+
+    return chunks;
+  },
+};
+
+function resolveModelId(input?: string): string {
+  if (!input) return 'gemma-4-2b';
+
+  // Alias normalization: gemma-nano-2b variants → gemma-4-2b
+  const lower = input.toLowerCase();
+  if (lower.includes('nano') || lower === 'gemma-nano-2b' || lower === 'gemma-nano-2b-local') {
+    return 'gemma-4-2b';
+  }
+
+  if (KNOWN_MODEL_IDS.includes(input)) {
+    return input;
+  }
+
+  // Default to smallest model
+  return 'gemma-4-2b';
+}
+
+// ── Lifecycle ──────────────────────────────────────────
+
+function handleAppStateChange(state: AppStateStatus) {
+  if (state === 'background' || state === 'inactive') {
+    // Release model from memory when app backgrounds to save RAM
+    void releaseActiveContext();
+  }
+}
+
+// ── Registration ───────────────────────────────────────
+
+export function initLlamaBridge(): void {
+  (globalThis as { __AGENTRIX_LOCAL_LLM__?: typeof bridge }).__AGENTRIX_LOCAL_LLM__ = bridge;
+  AppState.addEventListener('change', handleAppStateChange);
+}
+
+export async function releaseLlamaBridge(): Promise<void> {
+  await releaseActiveContext();
+  (globalThis as { __AGENTRIX_LOCAL_LLM__?: typeof bridge }).__AGENTRIX_LOCAL_LLM__ = undefined;
+}

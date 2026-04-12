@@ -4,31 +4,37 @@ import {
   RefreshControl, ActivityIndicator, Alert, Modal,
   TextInput, ScrollView, Platform, StatusBar,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import {
-  fetchAgentPresenceAccounts,
-  createAgentPresenceAccount,
-  setAgentPresenceAccountStatus,
-  type MobileAgentAccount as AgentAccount,
-  type CreateMobileAgentAccountDto as CreateAgentDto,
-} from '../../services/agentPresenceAccount';
+  fetchUnifiedAgents,
+  createUnifiedAgent,
+  type UnifiedAgent,
+  type CreateUnifiedAgentDto,
+} from '../../services/unifiedAgent';
+import { apiFetch } from '../../services/api';
+import type { AgentStackParamList } from '../../navigation/types';
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
+type AgentAccount = UnifiedAgent;
+type CreateAgentDto = CreateUnifiedAgentDto;
 
 // ──────────────────────────────────────────────
 // API helpers
 // ──────────────────────────────────────────────
 
 async function fetchAgentAccounts(): Promise<AgentAccount[]> {
-  return fetchAgentPresenceAccounts();
+  return fetchUnifiedAgents();
 }
 
 async function createAgentAccount(dto: CreateAgentDto): Promise<AgentAccount> {
-  return createAgentPresenceAccount(dto);
+  return createUnifiedAgent(dto);
 }
 
 async function openWalletForAgent(agentId: string): Promise<{ walletAddress: string }> {
@@ -41,11 +47,48 @@ async function openWalletForAgent(agentId: string): Promise<{ walletAddress: str
 }
 
 async function suspendAgent(agentId: string): Promise<void> {
-  await setAgentPresenceAccountStatus(agentId, 'suspended');
+  // Use openclaw-connection to pause the instance
+  await apiFetch(`/openclaw-connection/instances/${agentId}/pause`, { method: 'POST' });
 }
 
 async function resumeAgent(agentId: string): Promise<void> {
-  await setAgentPresenceAccountStatus(agentId, 'active');
+  await apiFetch(`/openclaw-connection/instances/${agentId}/resume`, { method: 'POST' });
+}
+
+async function generateAgentApiKey(agentId: string): Promise<{ apiKey: string; prefix: string }> {
+  const res = await apiFetch<{ data: { apiKey: string; prefix: string } }>(`/agent-accounts/${agentId}/api-key`, {
+    method: 'POST',
+  });
+  return res.data;
+}
+
+// Balance API
+interface AgentBalance {
+  platformBalance: { amount: string; currency: string };
+  onchainBalance?: { amount: string; currency: string; chain: string };
+}
+
+async function fetchAgentBalance(agentAccountId: string): Promise<AgentBalance> {
+  const res = await apiFetch<{ success: boolean; data: AgentBalance }>(`/agent-accounts/${agentAccountId}/balance`);
+  return res.data ?? res as any;
+}
+
+// On-chain status API
+interface OnchainStatus {
+  registered: boolean;
+  chain?: string;
+  contractAddress?: string;
+  attestationUid?: string;
+  status?: 'pending' | 'confirmed' | 'failed';
+}
+
+async function fetchOnchainStatus(agentAccountId: string): Promise<OnchainStatus> {
+  const res = await apiFetch<{ success: boolean; data: OnchainStatus }>(`/agent-accounts/${agentAccountId}/onchain-status`);
+  return res.data ?? res as any;
+}
+
+async function registerOnchain(agentAccountId: string): Promise<any> {
+  return apiFetch(`/agent-accounts/${agentAccountId}/onchain-register`, { method: 'POST' });
 }
 
 // ──────────────────────────────────────────────
@@ -81,7 +124,6 @@ function CreateAgentModal({
     onCreate({
       name: name.trim(),
       description: description.trim() || undefined,
-      agentType,
       spendingLimits: {
         singleTxLimit: Number(singleTxLimit) || 100,
         dailyLimit: Number(dailyLimit) || 500,
@@ -202,12 +244,161 @@ const STATUS_COLOR: Record<string, string> = {
   disconnected: '#6b7280',
 };
 
+// ──────────────────────────────────────────────
+// Balance Badge (inline in agent card)
+// ──────────────────────────────────────────────
+function BalanceBadge({ agentAccountId, t: _t }: { agentAccountId?: string; t: ReturnType<typeof useI18n>['t'] }) {
+  const { data: balance } = useQuery({
+    queryKey: ['agent-balance', agentAccountId],
+    queryFn: () => fetchAgentBalance(agentAccountId!),
+    enabled: !!agentAccountId,
+    retry: false,
+    staleTime: 30_000,
+  });
+  if (!balance) return null;
+  const amt = parseFloat(balance?.platformBalance?.amount || '0');
+  const chainAmt = balance?.onchainBalance ? parseFloat(balance.onchainBalance.amount || '0') : 0;
+  return (
+    <View style={balBadge.row}>
+      <View style={balBadge.chip}>
+        <Text style={balBadge.label}>{_t({ en: 'Platform', zh: '平台' })}</Text>
+        <Text style={balBadge.value}>${amt.toFixed(2)}</Text>
+      </View>
+      {chainAmt > 0 && (
+        <View style={[balBadge.chip, balBadge.chipChain]}>
+          <Text style={[balBadge.label, { color: '#a78bfa' }]}>{_t({ en: 'On-chain', zh: '链上' })}</Text>
+          <Text style={[balBadge.value, { color: '#a78bfa' }]}>${chainAmt.toFixed(2)}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+const balBadge = StyleSheet.create({
+  row: { flexDirection: 'row', gap: 6 },
+  chip: {
+    flex: 1,
+    backgroundColor: '#22c55e18',
+    borderRadius: 10,
+    padding: 8,
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+    borderColor: '#22c55e33',
+  },
+  chipChain: {
+    backgroundColor: '#a78bfa18',
+    borderColor: '#a78bfa33',
+  },
+  label: { fontSize: 10, color: '#22c55e', fontWeight: '600' },
+  value: { fontSize: 14, color: '#22c55e', fontWeight: '800' },
+});
+
+// ──────────────────────────────────────────────
+// Chain Identity Badge
+// ──────────────────────────────────────────────
+function ChainIdentityBadge({ agentAccountId, t: _t }: { agentAccountId?: string; t: ReturnType<typeof useI18n>['t'] }) {
+  const queryClient = useQueryClient();
+  const { data: onchain } = useQuery({
+    queryKey: ['onchain-status', agentAccountId],
+    queryFn: () => fetchOnchainStatus(agentAccountId!),
+    enabled: !!agentAccountId,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async () => {
+    if (!agentAccountId) return;
+    Alert.alert(
+      _t({ en: 'Register On-Chain Identity', zh: '注册链上身份' }),
+      _t({ en: 'This will create an on-chain attestation for this agent. Gas fees are subsidized.', zh: '这将为该智能体创建链上身份证明，Gas费由平台补贴。' }),
+      [
+        { text: _t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: _t({ en: 'Register', zh: '注册' }),
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await registerOnchain(agentAccountId);
+              queryClient.invalidateQueries({ queryKey: ['onchain-status', agentAccountId] });
+              Alert.alert('✅', _t({ en: 'On-chain registration submitted!', zh: '链上注册已提交！' }));
+            } catch (err: any) {
+              Alert.alert(_t({ en: 'Error', zh: '错误' }), err?.message || _t({ en: 'Registration failed.', zh: '注册失败。' }));
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  if (!onchain) return null;
+  if (onchain.registered) {
+    return (
+      <View style={chainBadge.confirmed}>
+        <Text style={chainBadge.confirmedIcon}>⛓️</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={chainBadge.confirmedText}>{_t({ en: 'On-Chain Identity', zh: '链上身份' })}</Text>
+          <Text style={chainBadge.chainName}>{onchain.chain || 'BSC Testnet'}</Text>
+        </View>
+        <Text style={chainBadge.confirmedStatus}>{_t({ en: 'Verified', zh: '已认证' })}</Text>
+      </View>
+    );
+  }
+  return (
+    <TouchableOpacity style={chainBadge.register} onPress={handleRegister} disabled={loading}>
+      {loading ? (
+        <ActivityIndicator color="#a78bfa" size="small" />
+      ) : (
+        <>
+          <Text style={chainBadge.registerIcon}>⛓️</Text>
+          <Text style={chainBadge.registerText}>{_t({ en: 'Register On-Chain Identity', zh: '注册链上身份' })}</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+const chainBadge = StyleSheet.create({
+  confirmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#a78bfa15',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#a78bfa33',
+  },
+  confirmedIcon: { fontSize: 16 },
+  confirmedText: { fontSize: 12, color: '#a78bfa', fontWeight: '700' },
+  chainName: { fontSize: 10, color: colors.textMuted, marginTop: 1 },
+  confirmedStatus: { fontSize: 11, color: '#22c55e', fontWeight: '700' },
+  register: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#a78bfa44',
+    paddingVertical: 9,
+    backgroundColor: '#a78bfa11',
+  },
+  registerIcon: { fontSize: 14 },
+  registerText: { fontSize: 13, color: '#a78bfa', fontWeight: '600' },
+});
+
 export function AgentAccountScreen() {
   const { t } = useI18n();
+  const navigation = useNavigation<NativeStackNavigationProp<AgentStackParamList>>();
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [walletLoading, setWalletLoading] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [apiKeyLoading, setApiKeyLoading] = useState<string | null>(null);
+  // { [agentId]: { key?: string (full, shown once); prefix?: string } }
+  const [apiKeys, setApiKeys] = useState<Record<string, { key?: string; prefix?: string }>>({}); 
 
   const { data: agents = [], isLoading, refetch } = useQuery({
     queryKey: ['agent-accounts'],
@@ -326,7 +517,43 @@ export function AgentAccountScreen() {
     );
   };
 
-  const renderAgent = ({ item: agent }: { item: AgentAccount }) => (
+  const handleGenerateApiKey = (agent: AgentAccount) => {
+    Alert.alert(
+      t({ en: 'Generate API Key', zh: '生成 API Key' }),
+      t({ en: `Generate a new API Key for "${agent.name}"?\n\nThis will invalidate any existing key.`, zh: `为"${agent.name}"生成新 API Key？\n\n这将使旧 Key 失效。` }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Generate', zh: '生成' }),
+          onPress: async () => {
+            setApiKeyLoading(agent.id);
+            try {
+              const result = await generateAgentApiKey(agent.id);
+              setApiKeys((prev) => ({ ...prev, [agent.id]: { key: result.apiKey, prefix: result.prefix } }));
+            } catch (err: any) {
+              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to generate API Key.', zh: '生成 API Key 失败。' }));
+            } finally {
+              setApiKeyLoading(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleNavigateBalance = (agent: AgentAccount) => {
+    try {
+      navigation.navigate('AgentBalance' as any, { agentAccountId: agent.agentAccountId, agentName: agent.name });
+    } catch {
+      Alert.alert(t({ en: 'Navigate', zh: '导航' }), t({ en: 'Please access Balance from the Agent tab.', zh: '请从 Agent 标签页访问余额。' }));
+    }
+  };
+
+  const renderAgent = ({ item: agent }: { item: AgentAccount }) => {
+    if (!agent?.id) return null;
+    const agentApiKey = apiKeys[agent.id];
+    try {
+    return (
     <View style={styles.card}>
       {/* Card header */}
       <View style={styles.cardHeader}>
@@ -373,21 +600,18 @@ export function AgentAccountScreen() {
         </View>
       )}
 
-      {/* Wallet */}
-      {agent.walletAddress ? (
-        <TouchableOpacity style={styles.walletRowActive} onPress={() => handleOpenWallet(agent)}>
-          <Text style={styles.walletIcon}>💳</Text>
-          <Text style={styles.walletAddress} numberOfLines={1}>
-            {agent.walletAddress.slice(0, 14)}...{agent.walletAddress.slice(-8)}
-          </Text>
-          {/* Balance chip */}
-          {agent.balance != null && (
-            <View style={styles.balanceChip}>
-              <Text style={styles.balanceText}>
-                {agent.balance.toFixed(4)} {agent.balanceCurrency ?? 'USDT'}
-              </Text>
-            </View>
-          )}
+      {/* Wallet address display */}
+      {(agent as any).walletAddress ? (
+        <TouchableOpacity
+          style={styles.walletRowActive}
+          onPress={() => {
+            Clipboard.setStringAsync((agent as any).walletAddress);
+            Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Wallet address copied.', zh: '钱包地址已复制。' }));
+          }}
+        >
+          <Text style={styles.walletIcon}>🔐</Text>
+          <Text style={styles.walletAddress} numberOfLines={1}>{(agent as any).walletAddress}</Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted }}>📋</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
@@ -400,11 +624,17 @@ export function AgentAccountScreen() {
           ) : (
             <>
               <Text style={styles.openWalletIcon}>🔐</Text>
-              <Text style={styles.openWalletText}>{t({ en: 'Open Independent Wallet', zh: '打开独立钱包' })}</Text>
+              <Text style={styles.openWalletText}>{t({ en: 'Open Wallet', zh: '打开独立钱包' })}</Text>
             </>
           )}
         </TouchableOpacity>
       )}
+
+      {/* Balance display */}
+      <BalanceBadge agentAccountId={agent.agentAccountId} t={t} />
+
+      {/* Chain Identity */}
+      <ChainIdentityBadge agentAccountId={agent.agentAccountId} t={t} />
 
       {/* Actions row */}
       <View style={styles.actionsRow}>
@@ -426,27 +656,78 @@ export function AgentAccountScreen() {
             )}
           </TouchableOpacity>
         )}
-        {agent.walletAddress && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnFund]}
-            onPress={() =>
-              Alert.alert(t({ en: 'Fund Agent', zh: '给智能体充值' }), t({ en: `Top up agent wallet:\n${agent.walletAddress}\n\nSend USDT (BSC) to this address.`, zh: `请向该智能体钱包充值：\n${agent.walletAddress}\n\n请向此地址发送 USDT（BSC）。` }))
-            }
-          >
-            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>💰 {t({ en: 'Fund', zh: '充值' })}</Text>
-          </TouchableOpacity>
+        {/* Credit Score */}
+        {agent.creditScore != null && (
+          <View style={[styles.actionBtn, styles.actionBtnFund]}>
+            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>⭐ {agent.creditScore}</Text>
+          </View>
         )}
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={() =>
-            Alert.alert(t({ en: 'Transactions', zh: '交易记录' }), t({ en: `Transaction history for ${agent.name} will open in the Orders tab.`, zh: `${agent.name} 的交易记录会在订单页中打开。` }))
-          }
+          onPress={() => handleNavigateBalance(agent)}
         >
           <Text style={styles.actionBtnText}>📋 {t({ en: 'Txs', zh: '交易' })}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* API Key section */}
+      {agentApiKey?.key ? (
+        <View style={styles.apiKeyBox}>
+          <View style={styles.apiKeyHeader}>
+            <Text style={styles.apiKeyLabel}>🔑 API Key</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Clipboard.setStringAsync(agentApiKey.key!);
+                Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'API Key copied to clipboard.', zh: 'API Key 已复制到剪贴板。' }));
+              }}
+            >
+              <Text style={styles.apiKeyCopyBtn}>{t({ en: 'Copy', zh: '复制' })}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.apiKeyText} numberOfLines={2} selectable>{agentApiKey.key}</Text>
+          <Text style={styles.apiKeyWarn}>
+            ⚠️ {t({ en: 'Store this key now — it will not be shown again.', zh: '请立即保存此 Key，关闭后无法再次查看。' })}
+          </Text>
+        </View>
+      ) : agentApiKey?.prefix ? (
+        <View style={styles.apiKeyExisting}>
+          <Text style={styles.apiKeyExistingText}>🔑 {agentApiKey.prefix}***</Text>
+          <TouchableOpacity
+            style={styles.apiKeyRegenBtn}
+            onPress={() => handleGenerateApiKey(agent)}
+            disabled={apiKeyLoading === agent.id}
+          >
+            {apiKeyLoading === agent.id ? (
+              <ActivityIndicator color={colors.accent} size="small" />
+            ) : (
+              <Text style={styles.apiKeyRegenText}>{t({ en: 'Regenerate', zh: '重新生成' })}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.apiKeyBtn}
+          onPress={() => handleGenerateApiKey(agent)}
+          disabled={apiKeyLoading === agent.id}
+        >
+          {apiKeyLoading === agent.id ? (
+            <ActivityIndicator color={colors.accent} size="small" />
+          ) : (
+            <Text style={styles.apiKeyBtnText}>🔑 {t({ en: 'Generate API Key', zh: '生成 API Key' })}</Text>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
-  );
+    );
+    } catch (e: any) {
+      console.error('[AgentAccountScreen] renderAgent error:', e?.message);
+      return (
+        <View style={styles.card}>
+          <Text style={{ color: colors.textMuted, textAlign: 'center' }}>⚠️ {t({ en: 'Failed to render agent card', zh: '渲染 Agent 卡片失败' })}</Text>
+        </View>
+      );
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -616,6 +897,57 @@ const styles = StyleSheet.create({
   headerCard: { marginBottom: 8, gap: 4 },
   headerTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary },
   headerSub: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  // API Key
+  apiKeyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.accent + '66',
+    paddingVertical: 9,
+    backgroundColor: colors.accent + '0f',
+  },
+  apiKeyBtnText: { fontSize: 13, color: colors.accent, fontWeight: '600' },
+  apiKeyBox: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 10,
+    padding: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.accent + '55',
+  },
+  apiKeyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  apiKeyLabel: { fontSize: 12, color: colors.accent, fontWeight: '700' },
+  apiKeyCopyBtn: { fontSize: 12, color: colors.accent, fontWeight: '600', textDecorationLine: 'underline' },
+  apiKeyText: {
+    fontSize: 11,
+    color: '#a5f3fc',
+    fontFamily: 'monospace',
+    letterSpacing: 0.3,
+    lineHeight: 17,
+  },
+  apiKeyWarn: { fontSize: 11, color: '#f59e0b', lineHeight: 16 },
+  apiKeyExisting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  apiKeyExistingText: { flex: 1, fontSize: 12, color: colors.textMuted, fontFamily: 'monospace' },
+  apiKeyRegenBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  apiKeyRegenText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
 });
 
 const modal = StyleSheet.create({

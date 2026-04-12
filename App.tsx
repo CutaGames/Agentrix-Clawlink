@@ -6,7 +6,7 @@ import { View, ActivityIndicator, Text, AppState, AppStateStatus, Platform } fro
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
-import { setApiConfig, loadTokenFromStorage } from './src/services/api';
+import { setApiConfig, loadTokenFromStorage, apiFetch } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
 import { colors } from './src/theme/colors';
@@ -25,6 +25,10 @@ import {
   stopAndroidBackgroundWakeWordService,
   syncAndroidBackgroundWakeWordConfig,
 } from './src/services/androidBackgroundWakeWord.service';
+import { initLlamaBridge } from './src/services/llamaRnBridge';
+
+// Register llama.rn bridge for on-device LLM inference
+initLlamaBridge();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -303,9 +307,23 @@ function AppNavigator() {
     startNotificationPolling(token, 30_000, { immediate: false });
 
     let cancelled = false;
-    void registerForPushNotifications().then((pushToken) => {
+    void registerForPushNotifications().then(async (pushToken) => {
       if (!cancelled) {
         useNotificationStore.getState().setPushToken(pushToken);
+        // Register push token with backend so server can send push notifications
+        if (pushToken) {
+          try {
+            await apiFetch('/notifications/register', {
+              method: 'POST',
+              body: JSON.stringify({
+                token: pushToken,
+                platform: Platform.OS,
+              }),
+            });
+          } catch (e) {
+            console.warn('Failed to register push token with backend:', e);
+          }
+        }
       }
     });
 
@@ -349,20 +367,25 @@ const linking = {
       },
       Main: {
         screens: {
-          Agent: {
+          MainTabs: {
             screens: {
-              AgentConsole: 'agent',
-              AgentChat: 'agent/chat',
-              VoiceChat: 'voice-chat',
-              OpenClawBind: 'agent/bind',
-              // Desktop installer QR code deep link:
-              // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
-              LocalConnect: 'connect',
+              Agent: {
+                initialRouteName: 'AgentChat',
+                screens: {
+                  AgentChat: '',
+                  AgentConsole: 'agent/console',
+                  VoiceChat: 'voice-chat',
+                  OpenClawBind: 'agent/bind',
+                  // Desktop installer QR code deep link:
+                  // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
+                  LocalConnect: 'connect',
+                },
+              },
+              Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
+              Social: { screens: { Feed: 'social' } },
+              Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
             },
           },
-          Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
-          Social: { screens: { Feed: 'social' } },
-          Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
         },
       },
     },

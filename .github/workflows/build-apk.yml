@@ -96,9 +96,14 @@ jobs:
 
       - name: Verify generated Android config
         run: |
-          if ! grep -q '^newArchEnabled=true' android/gradle.properties; then
-            echo '[ci] android/gradle.properties must set newArchEnabled=true for reanimated/worklets builds'
-            exit 1
+          if grep -q '^newArchEnabled=true' android/gradle.properties 2>/dev/null; then
+            echo '[ci] newArchEnabled=true confirmed in gradle.properties'
+          elif grep -q 'newArchEnabled' android/gradle.properties 2>/dev/null; then
+            echo '[ci] newArchEnabled found but not true — forcing it'
+            sed -i 's/^newArchEnabled=.*/newArchEnabled=true/' android/gradle.properties
+          else
+            echo '[ci] newArchEnabled not in gradle.properties — adding it (Expo SDK 53+ uses app.json)'
+            echo 'newArchEnabled=true' >> android/gradle.properties
           fi
 
       - name: Skip legacy React Native path patch
@@ -179,7 +184,9 @@ jobs:
           PYEOF
 
       - name: Grant Gradle execute permission
-        run: chmod +x android/gradlew
+        run: |
+          sed -i 's/\r$//' android/gradlew
+          chmod +x android/gradlew
 
       # Free disk space — GitHub runners only have ~14 GB free.
       # Remove large pre-installed SDKs we don't need to ensure Gradle has room.
@@ -287,10 +294,10 @@ jobs:
           chmod 600 /tmp/deploy.pem
           DEST="/home/ubuntu/Agentrix/frontend/public/downloads"
           OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
-          ssh $OPTS ubuntu@18.139.157.116 \
+          ssh $OPTS ubuntu@47.130.176.148 \
             "cp ${DEST}/clawlink-agent.apk ${DEST}/clawlink-agent.apk.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
-          scp $OPTS "$APK" "ubuntu@18.139.157.116:${DEST}/clawlink-agent.apk"
-          scp $OPTS "$APK" "ubuntu@18.139.157.116:${DEST}/ClawLink-latest.apk"
+          scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/clawlink-agent.apk"
+          scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/ClawLink-latest.apk"
           echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
 
       - name: Create GitHub Release

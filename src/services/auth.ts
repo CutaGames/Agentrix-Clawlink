@@ -9,10 +9,90 @@ import { useAuthStore, AuthUser, AuthProvider, OpenClawInstance } from '../store
 import { ensureMPCWallet } from './mpcWallet';
 import { bindOpenClaw, BindPayload, pollBindSession, createBindSession, getMyInstances } from './openclaw.service';
 
+export { bindOpenClaw };
+
 WebBrowser.maybeCompleteAuthSession();
 
 function getBackendBaseUrl(): string {
   return getApiConfig().baseUrl || 'https://api.agentrix.top/api';
+}
+
+const AGENTRIX_HOST_SUFFIX = '.agentrix.top';
+const LOOPBACK_BASE_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
+
+function parseApiBase(baseUrl?: string): URL | null {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed.replace(/\/+$/, ''));
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeApiBase(baseUrl?: string): string | undefined {
+  const parsed = parseApiBase(baseUrl);
+  if (!parsed) {
+    return undefined;
+  }
+
+  const normalized = parsed.toString().replace(/\/+$/, '');
+  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
+}
+
+function isAgentrixHostedApiBase(baseUrl?: string): boolean {
+  const parsed = parseApiBase(baseUrl);
+  if (!parsed) {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  return hostname === 'agentrix.top' || hostname.endsWith(AGENTRIX_HOST_SUFFIX);
+}
+
+function normalizeOverrideApiBase(baseUrl?: string): string | undefined {
+  const normalized = normalizeApiBase(baseUrl);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (LOOPBACK_BASE_URL_RE.test(normalized)) {
+    return getBackendBaseUrl();
+  }
+
+  const currentBase = normalizeApiBase(getBackendBaseUrl()) || 'https://api.agentrix.top/api';
+  const currentParsed = parseApiBase(currentBase);
+  const overrideParsed = parseApiBase(normalized);
+  if (currentParsed && overrideParsed && currentParsed.origin.toLowerCase() === overrideParsed.origin.toLowerCase()) {
+    return normalized;
+  }
+
+  if (isAgentrixHostedApiBase(normalized)) {
+    return normalized;
+  }
+
+  return currentBase;
+}
+
+async function readApiErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => '');
+  let message = `Request failed: ${res.status}`;
+  try {
+    const payload = JSON.parse(text);
+    message = payload.message || payload.error || message;
+  } catch {
+    if (text) {
+      message = text;
+    }
+  }
+  return message;
 }
 
 // ClawLink deep link scheme
@@ -351,6 +431,7 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
   const { setAuth } = useAuthStore.getState();
   // Try to connect first to validate
   const instance = await bindOpenClaw(payload);
+  const mappedInstance = mapRawInstance(instance);
   // Bind also logs the user in (or creates account) — get the token
   const loginResult = await apiFetch<{ access_token: string; user: any }>('/auth/openclaw/login', {
     method: 'POST',
@@ -365,8 +446,8 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
     walletAddress: loginResult.user.walletAddress,
     roles: loginResult.user.roles || ['user'],
     provider: 'openclaw',
-    openClawInstances: [instance as any],
-    activeInstanceId: instance.id,
+    openClawInstances: [mappedInstance],
+    activeInstanceId: mappedInstance.id,
   };
   setApiConfig({ token: loginResult.access_token });
   await saveTokenToStorage(loginResult.access_token);
@@ -377,15 +458,7 @@ export async function loginWithOpenClaw(payload: BindPayload): Promise<AuthUser>
 export async function bindOpenClawToCurrentUser(payload: BindPayload): Promise<OpenClawInstance> {
   const { addInstance } = useAuthStore.getState();
   const instance = await bindOpenClaw(payload);
-  const openclawInstance: OpenClawInstance = {
-    id: instance.id,
-    name: instance.name,
-    instanceUrl: instance.instanceUrl,
-    status: instance.status,
-    version: instance.version,
-    deployType: instance.deployType as 'cloud' | 'local' | 'server' | 'existing',
-    lastSyncAt: instance.lastSyncAt,
-  };
+  const openclawInstance = mapRawInstance(instance);
   addInstance(openclawInstance);
   return openclawInstance;
 }
@@ -408,37 +481,95 @@ export async function confirmDesktopPair(sessionId: string): Promise<{ success: 
   });
 }
 
+export async function confirmDesktopPairWithApiBase(
+  sessionId: string,
+  apiBaseOverride?: string,
+): Promise<{ success: boolean }> {
+  const normalizedBase = normalizeOverrideApiBase(apiBaseOverride);
+  if (!normalizedBase) {
+    return confirmDesktopPair(sessionId);
+  }
+
+  const token = getApiConfig().token || useAuthStore.getState().token;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${normalizedBase}/auth/desktop-pair/confirm`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res));
+  }
+
+  if (res.status === 204) {
+    return { success: true };
+  }
+
+  return res.json().catch(() => ({ success: true }));
+}
+
 export async function waitForQrBind(sessionId: string): Promise<OpenClawInstance | null> {
   const result = await pollBindSession(sessionId);
   if (result.status === 'confirmed' && result.instance) {
-    const { addInstance } = useAuthStore.getState();
-    const inst: OpenClawInstance = {
-      id: result.instance.id,
-      name: result.instance.name,
-      instanceUrl: result.instance.instanceUrl,
-      status: result.instance.status,
-      version: result.instance.version,
-      deployType: result.instance.deployType as 'cloud' | 'local' | 'server' | 'existing',
-    };
-    addInstance(inst);
-    return inst;
+    return mapRawInstance(result.instance);
   }
   return null;
 }
 
-// Helper: map raw API instance data to OpenClawInstance shape
-function mapRawInstances(raw: any[]): OpenClawInstance[] {
-  return raw.map((inst: any) => ({
-    id: inst.id,
-    name: inst.name || 'My Agent',
-    instanceUrl: inst.instanceUrl || inst.instance_url || '',
-    status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
-    deployType: (inst.instanceType || inst.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
-    relayToken: inst.relayToken || inst.relay_token || undefined,
-    version: inst.version,
-    lastSyncAt: inst.lastSyncAt || inst.updatedAt,
-    metadata: inst.metadata || undefined,
-  }));
+function normalizeDeployType(raw: any): OpenClawInstance['deployType'] {
+  const value = String(raw?.deployType || raw?.instanceType || '').toLowerCase();
+  if (value === 'cloud') return 'cloud';
+  if (value === 'local') return 'local';
+  if (value === 'server') return 'server';
+  if (value === 'existing' || value === 'self_hosted' || value === 'self-hosted') return 'existing';
+  return 'existing';
+}
+
+export function mapRawInstance(raw: any, overrides: Partial<OpenClawInstance> = {}): OpenClawInstance {
+  const rawMetadata = raw?.metadata && typeof raw.metadata === 'object' ? raw.metadata : undefined;
+  const mergedMetadata = {
+    ...(overrides.metadata || {}),
+    ...(rawMetadata || {}),
+  };
+  const agentAccountId = raw?.agentAccountId
+    || raw?.agent_account_id
+    || overrides.agentAccountId
+    || mergedMetadata.agentAccountId;
+
+  if (agentAccountId) {
+    mergedMetadata.agentAccountId = agentAccountId;
+  }
+
+  return {
+    id: raw?.id || overrides.id || '',
+    name: raw?.name || overrides.name || 'My Agent',
+    instanceUrl: raw?.instanceUrl || raw?.instance_url || overrides.instanceUrl || '',
+    status: (raw?.status || overrides.status || 'active') as 'active' | 'disconnected' | 'error',
+    deployType: overrides.deployType || normalizeDeployType(raw),
+    relayToken: raw?.relayToken || raw?.relay_token || overrides.relayToken,
+    wsRelayUrl: raw?.wsRelayUrl || raw?.ws_relay_url || raw?.capabilities?.wsRelayUrl || overrides.wsRelayUrl,
+    version: raw?.version || overrides.version,
+    lastSyncAt: raw?.lastSyncAt || raw?.updatedAt || overrides.lastSyncAt,
+    agentAccountId: agentAccountId || undefined,
+    capabilities: raw?.capabilities || overrides.capabilities,
+    resolvedModel: raw?.resolvedModel || raw?.resolved_model || overrides.resolvedModel,
+    resolvedModelLabel: raw?.resolvedModelLabel || raw?.resolved_model_label || overrides.resolvedModelLabel,
+    resolvedProvider: raw?.resolvedProvider || raw?.resolved_provider || overrides.resolvedProvider,
+    hasCustomProvider: raw?.hasCustomProvider ?? raw?.has_custom_provider ?? overrides.hasCustomProvider,
+    metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
+  };
+}
+
+export function mapRawInstances(raw: any[]): OpenClawInstance[] {
+  return raw.map((inst: any) => mapRawInstance(inst));
 }
 
 // ========== 获取当前用户 ==========
