@@ -99,6 +99,19 @@ describe('mobileLocalMultimodalRouting', () => {
     assert.equal(shouldEscalateLocalTurnToCloud('Describe this image', [attachment], baseCapabilities), true);
   });
 
+  it('accepts Android content URIs as device-local attachments', () => {
+    const attachment = createAttachment({
+      kind: 'image',
+      isImage: true,
+      originalName: 'remote.jpg',
+      fileName: 'remote.jpg',
+      mimetype: 'image/jpeg',
+      localUri: 'content://media/external/images/media/42',
+    });
+
+    assert.equal(shouldEscalateLocalTurnToCloud('Describe this image', [attachment], baseCapabilities), false);
+  });
+
   it('rejects unsupported local audio formats', () => {
     const attachment = createAttachment({
       kind: 'audio',
@@ -164,6 +177,46 @@ describe('mobileLocalMultimodalRouting', () => {
       { type: 'text', text: 'Inspect these inputs' },
       { type: 'image_url', image_url: { url: 'file:///tmp/photo.jpg' } },
       { type: 'input_audio', input_audio: { url: 'file:///tmp/clip.mp3', format: 'mp3' } },
+    ]);
+  });
+
+  it('uses the data field for data-url audio attachments', () => {
+    const audio = createAttachment({
+      kind: 'audio',
+      isAudio: true,
+      originalName: 'clip.wav',
+      fileName: 'clip.wav',
+      mimetype: 'audio/wav',
+      localUri: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10',
+    });
+
+    assert.deepEqual(buildLocalUserContent('', [audio]), [
+      {
+        type: 'input_audio',
+        input_audio: {
+          data: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10',
+          format: 'wav',
+        },
+      },
+    ]);
+  });
+
+  it('degrades unsupported historical audio attachments to text fallback', () => {
+    const audio = createAttachment({
+      kind: 'audio',
+      isAudio: true,
+      originalName: 'clip.mp3',
+      fileName: 'clip.mp3',
+      mimetype: 'audio/mpeg',
+      localUri: 'file:///tmp/clip.mp3',
+    });
+
+    assert.deepEqual(buildLocalUserContent('Keep this in context', [audio], {
+      ...baseCapabilities,
+      supportsAudioInput: false,
+    }), [
+      { type: 'text', text: 'Keep this in context' },
+      { type: 'text', text: '[Audio Attachment 1: clip.mp3] URL: https://cdn.agentrix.test/example' },
     ]);
   });
 });

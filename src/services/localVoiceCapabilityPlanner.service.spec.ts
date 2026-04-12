@@ -26,6 +26,7 @@ describe('localVoiceCapabilityPlanner', () => {
       preferLocalSpeechRecognition: true,
       preferLocalTextToSpeech: true,
       relayCameraFramesToRealtime: false,
+      localAudioInputReady: false,
       localMultimodalReady: false,
       missingOnDeviceCapabilities: ['vision-input', 'audio-input', 'audio-output'],
     });
@@ -45,6 +46,7 @@ describe('localVoiceCapabilityPlanner', () => {
       preferLocalSpeechRecognition: true,
       preferLocalTextToSpeech: true,
       relayCameraFramesToRealtime: true,
+      localAudioInputReady: false,
       localMultimodalReady: false,
       missingOnDeviceCapabilities: ['audio-input', 'audio-output'],
     });

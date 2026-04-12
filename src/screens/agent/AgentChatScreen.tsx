@@ -64,6 +64,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen2.5-omni-3b',
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
@@ -76,6 +77,8 @@ function isLocalOnlyModelId(modelId?: string | null) {
 
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
+    case 'qwen2.5-omni-3b':
+      return 'Qwen 2.5 Omni 3B (Local)';
     case 'gemma-4-4b':
       return 'Gemma 4 E4B (Local)';
     case 'gemma-nano-2b-local':
@@ -170,25 +173,27 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
   }
 
   attachments.forEach((attachment, index) => {
+    const attachmentUrl = attachment.publicUrl || attachment.localUri || '';
+
     if (attachment.kind === 'image') {
       multimodalContent.push({
         type: 'image',
-        source: { type: 'url', url: attachment.publicUrl },
+        source: { type: 'url', url: attachmentUrl },
       });
     } else if (attachment.kind === 'video' || attachment.isVideo || attachment.mimetype?.startsWith('video/')) {
       multimodalContent.push({
         type: 'text',
-        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`,
+        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
       multimodalContent.push({
         type: 'input_audio',
-        input_audio: { url: attachment.publicUrl }
+        input_audio: { url: attachmentUrl }
       });
     } else {
       multimodalContent.push({
         type: 'text',
-        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`
+        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`
       });
     }
   });
@@ -222,7 +227,7 @@ function extractUrlsFromMessage(content: string) {
 }
 
 function getCopyableMessageText(message: Message) {
-  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl}`);
+  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl || attachment.localUri || ''}`);
   return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
 }
 
@@ -571,10 +576,18 @@ const MessageBubble = ({
                 key={`${item.id}-${attachment.fileName}`}
                 style={sf.mediaCard}
                 activeOpacity={0.8}
-                onPress={() => attachment.isImage ? onPreviewImage(attachment.publicUrl) : openExternalUrl(attachment.publicUrl)}
+                onPress={() => {
+                  const attachmentUri = attachment.localUri || attachment.publicUrl;
+                  if (!attachmentUri) return;
+                  if (attachment.isImage) {
+                    onPreviewImage(attachmentUri);
+                    return;
+                  }
+                  openExternalUrl(attachmentUri);
+                }}
               >
                 {attachment.isImage ? (
-                  <Image source={{ uri: attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
+                  <Image source={{ uri: attachment.localUri || attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
                 ) : attachment.isVideo ? (
                   <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
                 ) : attachment.isAudio ? (
@@ -713,11 +726,13 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
+  const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
+  const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
   const localVoicePlan = planLocalVoiceCapabilitySplit({
     localModelSelected: isLocalModelSelected,
     preferOnDeviceVoice,
     selectedVoiceId: agentVoiceId,
-    runtimeCapabilities: MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }),
+    runtimeCapabilities: localVoiceRuntimeCapabilities,
   });
   const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
@@ -1307,6 +1322,9 @@ export function AgentChatScreen() {
     realtimeModelId: remoteResolvedModelId,
     preferLocalSpeechRecognition: localVoicePlan.preferLocalSpeechRecognition,
     preferLocalTextToSpeech: localVoicePlan.preferLocalTextToSpeech,
+    localModelSelected: isLocalModelSelected,
+    localModelId: isLocalModelSelected ? localCapabilityModelId : undefined,
+    localAudioInputAvailable: isLocalModelSelected && localVoiceRuntimeCapabilities.supportsAudioInput,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
@@ -1557,7 +1575,7 @@ export function AgentChatScreen() {
           setResolvedModelLabel(localModelLabel);
         }
         let localAssistantText = '';
-        const localUserContent = buildLocalUserContent(text, attachments);
+        const localUserContent = buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
@@ -1565,7 +1583,7 @@ export function AgentChatScreen() {
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
             content: message.role === 'user'
-              ? buildLocalUserContent(message.content, message.attachments || [])
+              ? buildLocalUserContent(message.content, message.attachments || [], localRuntimeSnapshot || undefined)
               : message.content,
           }));
 
@@ -2312,8 +2330,8 @@ export function AgentChatScreen() {
                       ? (realtimeConnected
                         ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
                         : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
-                      : (localVoicePlan.localMultimodalReady
-                        ? t({ en: 'Live local voice is ready. Short supported turns stay on-device; unsupported turns will ask you to switch models.', zh: '连续本地语音已就绪。简短且受支持的轮次会留在端侧；不支持的轮次会提示你手动切换模型。' })
+                      : (localVoicePlan.localAudioInputReady
+                        ? t({ en: 'Live local voice is ready. Supported short turns can stay on-device; unsupported turns are blocked instead of silently switching to the cloud.', zh: '连续本地语音已就绪。受支持的简短轮次会留在端侧；不支持的轮次会被直接拦截，不会再偷偷切到云端。' })
                         : t({ en: 'Live voice is ready for the local text path. Unsupported multimodal turns will be blocked instead of silently switching to the cloud.', zh: '连续语音已就绪，可用于本地文本链路。不支持的多模态轮次会被直接拦截，不会再偷偷切到云端。' })))
                     : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                   {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
@@ -2515,6 +2533,8 @@ export function AgentChatScreen() {
         {/* Right: Send (when has text) or Mic toggle (when empty) */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
+            testID="chat-send-button"
+            accessibilityLabel="chat-send-button"
             style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
             onPress={() => handleSend()}
             disabled={sending || uploadingAttachment}

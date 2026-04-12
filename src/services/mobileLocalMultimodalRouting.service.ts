@@ -65,7 +65,11 @@ export function resolveSupportedLocalAudioFormat(
 }
 
 export function hasUsableLocalUri(attachment: UploadedChatAttachment): boolean {
-  return !!attachment.localUri && (attachment.localUri.startsWith('file://') || attachment.localUri.startsWith('data:'));
+  return !!attachment.localUri && (
+    attachment.localUri.startsWith('file://')
+    || attachment.localUri.startsWith('content://')
+    || attachment.localUri.startsWith('data:')
+  );
 }
 
 export function canAttachmentRunLocally(
@@ -155,6 +159,7 @@ export function shouldEscalateLocalTurnToCloud(
 export function buildLocalUserContent(
   text: string,
   attachments: UploadedChatAttachment[],
+  runtimeCapabilities?: MobileLocalRuntimeCapabilities,
 ): MobileLocalChatContent {
   const trimmed = text.trim();
   if (attachments.length === 0) {
@@ -167,7 +172,11 @@ export function buildLocalUserContent(
   }
 
   attachments.forEach((attachment, index) => {
-    if (hasUsableLocalUri(attachment) && (attachment.kind === 'image' || attachment.isImage || attachment.mimetype?.startsWith('image/'))) {
+    if (
+      hasUsableLocalUri(attachment)
+      && isImageAttachment(attachment)
+      && (!runtimeCapabilities || runtimeCapabilities.supportsVisionInput)
+    ) {
       content.push({
         type: 'image_url',
         image_url: { url: attachment.localUri },
@@ -176,12 +185,18 @@ export function buildLocalUserContent(
     }
 
     const audioFormat = resolveSupportedLocalAudioFormat(attachment);
-    if (hasUsableLocalUri(attachment) && audioFormat) {
+    if (
+      hasUsableLocalUri(attachment)
+      && audioFormat
+      && (!runtimeCapabilities || runtimeCapabilities.supportsAudioInput)
+    ) {
       content.push({
         type: 'input_audio',
         input_audio: {
-          url: attachment.localUri,
           format: audioFormat,
+          ...(attachment.localUri.startsWith('data:')
+            ? { data: attachment.localUri }
+            : { url: attachment.localUri }),
         },
       });
       return;
