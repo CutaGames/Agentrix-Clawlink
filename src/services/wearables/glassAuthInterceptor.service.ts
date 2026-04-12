@@ -1,15 +1,15 @@
 /**
- * GlassAuthInterceptor 鈥?Intercepts payment-intent signals from Agent
+ * GlassAuthInterceptor — Intercepts payment-intent signals from Agent
  * responses on the glass voice channel and delegates MPC signing to the phone.
  *
  * Flow:
  *   1. Agent response contains a payment intent (tool_call: create_payment_intent)
  *   2. This interceptor catches the intent before TTS / HUD delivery
  *   3. Phone shows a biometric/PIN confirmation modal
- *   4. On approval 鈫?phone sends shard A to MPCSignerService
+ *   4. On approval → phone sends shard A to MPCSignerService
  *   5. Result relayed back to the glass voice session
  *
- * This keeps the glass as a "thin client" 鈥?all sensitive key material
+ * This keeps the glass as a "thin client" — all sensitive key material
  * stays on the phone. The glass never sees shard A or signing secrets.
  */
 
@@ -23,7 +23,7 @@ class EventEmitter {
 }
 import type { Socket } from 'socket.io-client';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 /** Payment intent detected in an agent response */
 export interface DetectedPaymentIntent {
@@ -50,14 +50,14 @@ export interface PaymentAuthResult {
 }
 
 export interface GlassAuthInterceptorCallbacks {
-  /** Called when a payment intent is detected 鈥?show phone confirmation UI */
+  /** Called when a payment intent is detected — show phone confirmation UI */
   onPaymentDetected?: (intent: DetectedPaymentIntent) => void;
   /** Called when the user approves/rejects on phone */
   onPaymentResult?: (result: PaymentAuthResult) => void;
   onError?: (error: Error) => void;
 }
 
-// 鈹€鈹€ Known tool-call names that trigger payment 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Known tool-call names that trigger payment ─────────
 
 const PAYMENT_TOOL_NAMES = new Set([
   'create_payment_intent',
@@ -67,7 +67,7 @@ const PAYMENT_TOOL_NAMES = new Set([
   'x402_pay',
 ]);
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class GlassAuthInterceptor extends EventEmitter {
   private voiceSocket: Socket | null = null;
@@ -83,7 +83,7 @@ export class GlassAuthInterceptor extends EventEmitter {
     this.callbacks = callbacks;
   }
 
-  // 鈹€鈹€ Attach to voice socket 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Attach to voice socket ──────────────────────────
 
   /**
    * Start intercepting agent tool calls on the given voice socket.
@@ -112,7 +112,7 @@ export class GlassAuthInterceptor extends EventEmitter {
     };
   }
 
-  // 鈹€鈹€ Detach 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Detach ──────────────────────────────────────────
 
   detach(): void {
     this.active = false;
@@ -122,7 +122,7 @@ export class GlassAuthInterceptor extends EventEmitter {
     this.pendingIntents.clear();
   }
 
-  // 鈹€鈹€ Submit user decision from phone 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Submit user decision from phone ─────────────────
 
   /**
    * Called by the phone confirmation UI after biometric/PIN approval.
@@ -151,7 +151,7 @@ export class GlassAuthInterceptor extends EventEmitter {
     this.emit('paymentResult', result);
   }
 
-  // 鈹€鈹€ Inspect pending intents 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Inspect pending intents ─────────────────────────
 
   getPendingIntents(): DetectedPaymentIntent[] {
     return [...this.pendingIntents.values()];
@@ -161,7 +161,7 @@ export class GlassAuthInterceptor extends EventEmitter {
     return this.active;
   }
 
-  // 鈹€鈹€ Private 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Private ─────────────────────────────────────────
 
   private handlePaymentToolCall(data: {
     toolName: string;
@@ -185,7 +185,7 @@ export class GlassAuthInterceptor extends EventEmitter {
     this.callbacks.onPaymentDetected?.(intent);
     this.emit('paymentDetected', intent);
 
-    // Send a hold signal to the Voice Gateway 鈥?pause agent response
+    // Send a hold signal to the Voice Gateway — pause agent response
     // until the user confirms on phone
     this.voiceSocket?.emit('voice:tool_hold', {
       sessionId: this.sessionId,

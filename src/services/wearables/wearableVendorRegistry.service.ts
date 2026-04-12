@@ -5,7 +5,7 @@ import {
 } from './wearableTypes';
 
 const KNOWN_VENDOR_PROFILES: WearableVendorProfile[] = [
-  // 鈹€鈹€ AI Glasses 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── AI Glasses ─────────────────────────────────────
   {
     key: 'even-g1',
     name: 'Even Realities G1',
@@ -46,7 +46,7 @@ const KNOWN_VENDOR_PROFILES: WearableVendorProfile[] = [
     gestureHints: ['Audio-only glasses. Mic and speakers via BLE Audio or classic A2DP.'],
     summary: 'Generic audio-only smart glasses with mic and speaker over BLE.',
   },
-  // 鈹€鈹€ Rings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Rings ──────────────────────────────────────────
   {
     key: 'oura-ring',
     name: 'Oura Ring',

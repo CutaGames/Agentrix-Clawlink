@@ -9,7 +9,7 @@ const EAS_PROJECT_ID =
   (Constants.expoConfig?.extra?.eas?.projectId as string | undefined) ??
   '96a641e0-ce03-45ff-9de7-2cd89c488236';
 
-// 閰嶇疆閫氱煡澶勭悊琛屼负
+// 配置通知处理行为
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -31,17 +31,17 @@ class NotificationService {
   private responseListener: any = null;
 
   /**
-   * 鍒濆鍖栨帹閫侀€氱煡
+   * 初始化推送通知
    */
   async initialize(): Promise<string | null> {
     try {
-      // 妫€鏌ユ槸鍚︽槸鐪熷疄璁惧
+      // 检查是否是真实设备
       if (!Device.isDevice) {
         console.log('Push notifications require a physical device');
         return null;
       }
 
-      // 鑾峰彇鏉冮檺
+      // 获取权限
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
@@ -55,18 +55,18 @@ class NotificationService {
         return null;
       }
 
-      // 鑾峰彇 Expo Push Token
+      // 获取 Expo Push Token
       const tokenResponse = await Notifications.getExpoPushTokenAsync({
         projectId: EAS_PROJECT_ID,
       });
       this.expoPushToken = tokenResponse.data;
 
-      // Android 闇€瑕佽缃€氱煡娓犻亾
+      // Android 需要设置通知渠道
       if (Platform.OS === 'android') {
         await this.setupAndroidChannels();
       }
 
-      // 娉ㄥ唽 token 鍒板悗绔?
+      // 注册 token 到后端
       await this.registerTokenWithBackend(this.expoPushToken);
 
       return this.expoPushToken;
@@ -77,55 +77,55 @@ class NotificationService {
   }
 
   /**
-   * 璁剧疆 Android 閫氱煡娓犻亾
+   * 设置 Android 通知渠道
    */
   private async setupAndroidChannels() {
-    // 绌烘姇閫氱煡
+    // 空投通知
     await Notifications.setNotificationChannelAsync('airdrops', {
-      name: '绌烘姇鎻愰啋',
+      name: '空投提醒',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#7C3AED',
     });
 
-    // Agent 瀹℃壒閫氱煡
+    // Agent 审批通知
     await Notifications.setNotificationChannelAsync('approvals', {
-      name: 'Agent 瀹℃壒',
+      name: 'Agent 审批',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#3B82F6',
     });
 
-    // 鏀剁泭閫氱煡
+    // 收益通知
     await Notifications.setNotificationChannelAsync('earnings', {
-      name: '鏀剁泭鍒拌处',
+      name: '收益到账',
       importance: Notifications.AndroidImportance.DEFAULT,
       lightColor: '#10B981',
     });
 
-    // 浜ゆ槗閫氱煡
+    // 交易通知
     await Notifications.setNotificationChannelAsync('transactions', {
-      name: '浜ゆ槗閫氱煡',
+      name: '交易通知',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#F59E0B',
     });
 
-    // 鍟嗘埛閫氱煡
+    // 商户通知
     await Notifications.setNotificationChannelAsync('merchant', {
-      name: '鍟嗘埛娑堟伅',
+      name: '商户消息',
       importance: Notifications.AndroidImportance.DEFAULT,
     });
 
-    // 寮€鍙戣€呴€氱煡
+    // 开发者通知
     await Notifications.setNotificationChannelAsync('developer', {
-      name: '寮€鍙戣€呮秷鎭?,
+      name: '开发者消息',
       importance: Notifications.AndroidImportance.DEFAULT,
     });
   }
 
   /**
-   * 娉ㄥ唽 Token 鍒板悗绔?
+   * 注册 Token 到后端
    */
   private async registerTokenWithBackend(token: string) {
     try {
@@ -144,21 +144,21 @@ class NotificationService {
   }
 
   /**
-   * 娣诲姞閫氱煡鐩戝惉鍣?
+   * 添加通知监听器
    */
   addListeners(
     onNotification: (notification: Notifications.Notification) => void,
     onNotificationResponse: (response: Notifications.NotificationResponse) => void,
   ) {
-    // 鏀跺埌閫氱煡鏃惰Е鍙戯紙搴旂敤鍦ㄥ墠鍙帮級
+    // 收到通知时触发（应用在前台）
     this.notificationListener = Notifications.addNotificationReceivedListener(onNotification);
 
-    // 鐢ㄦ埛鐐瑰嚮閫氱煡鏃惰Е鍙?
+    // 用户点击通知时触发
     this.responseListener = Notifications.addNotificationResponseReceivedListener(onNotificationResponse);
   }
 
   /**
-   * 绉婚櫎鐩戝惉鍣?
+   * 移除监听器
    */
   removeListeners() {
     if (this.notificationListener) {
@@ -170,7 +170,7 @@ class NotificationService {
   }
 
   /**
-   * 鍙戦€佹湰鍦伴€氱煡锛堢敤浜庢祴璇曟垨鍗虫椂鎻愰啋锛?
+   * 发送本地通知（用于测试或即时提醒）
    */
   async sendLocalNotification(params: {
     title: string;
@@ -187,40 +187,40 @@ class NotificationService {
           ? { channelId: params.channelId }
           : {}),
       },
-      trigger: null, // 绔嬪嵆鍙戦€?
+      trigger: null, // 立即发送
     });
   }
 
   /**
-   * 鑾峰彇褰撳墠 Push Token
+   * 获取当前 Push Token
    */
   getToken() {
     return this.expoPushToken;
   }
 
   /**
-   * 鑾峰彇鎵€鏈夊緟澶勭悊鐨勯€氱煡
+   * 获取所有待处理的通知
    */
   async getPendingNotifications() {
     return Notifications.getAllScheduledNotificationsAsync();
   }
 
   /**
-   * 鍙栨秷鎵€鏈夐€氱煡
+   * 取消所有通知
    */
   async cancelAllNotifications() {
     await Notifications.cancelAllScheduledNotificationsAsync();
   }
 
   /**
-   * 璁剧疆搴旂敤 Badge 鏁伴噺
+   * 设置应用 Badge 数量
    */
   async setBadgeCount(count: number) {
     await Notifications.setBadgeCountAsync(count);
   }
 
   /**
-   * 鑾峰彇閫氱煡璁剧疆
+   * 获取通知设置
    */
   async getSettings() {
     return Notifications.getPermissionsAsync();
@@ -229,26 +229,26 @@ class NotificationService {
 
 export const notificationService = new NotificationService();
 
-// 閫氱煡绫诲瀷瀹氫箟
+// 通知类型定义
 export type NotificationType = 
-  | 'airdrop_available'    // 鏂扮┖鎶曞彲棰?
-  | 'airdrop_claimed'      // 绌烘姇宸查鍙?
-  | 'earning_received'     // 鏀剁泭鍒拌处
-  | 'payment_received'     // 鏀舵鍒拌处
-  | 'payment_sent'         // 浠樻鎴愬姛
-  | 'task_assigned'        // 浠诲姟鍒嗛厤
-  | 'task_completed'       // 浠诲姟瀹屾垚
-  | 'milestone_approved'   // 閲岀▼纰戦€氳繃
-  | 'settlement_ready';    // 缁撶畻灏辩华
+  | 'airdrop_available'    // 新空投可领
+  | 'airdrop_claimed'      // 空投已领取
+  | 'earning_received'     // 收益到账
+  | 'payment_received'     // 收款到账
+  | 'payment_sent'         // 付款成功
+  | 'task_assigned'        // 任务分配
+  | 'task_completed'       // 任务完成
+  | 'milestone_approved'   // 里程碑通过
+  | 'settlement_ready';    // 结算就绪
 
-// 閫氱煡鏁版嵁缁撴瀯
+// 通知数据结构
 export interface NotificationData {
   type: NotificationType;
   [key: string]: any;
 }
 
 /**
- * 澶勭悊閫氱煡鐐瑰嚮锛屽鑸埌瀵瑰簲椤甸潰
+ * 处理通知点击，导航到对应页面
  */
 export function handleNotificationNavigation(
   data: NotificationData,

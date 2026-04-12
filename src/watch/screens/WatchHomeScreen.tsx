@@ -96,7 +96,7 @@ export function WatchHomeScreen() {
       {/* Health Mini Cards */}
       <View style={styles.miniCards}>
         <View style={styles.miniCard}>
-          <Text style={[styles.miniIcon, { color: watchColors.heartRate }]}>鉂?/Text>
+          <Text style={[styles.miniIcon, { color: watchColors.heartRate }]}>❤</Text>
           <Text style={styles.miniValue}>
             {state.heartRate ?? '--'}
           </Text>
@@ -104,11 +104,11 @@ export function WatchHomeScreen() {
         </View>
 
         <View style={styles.miniCard}>
-          <Text style={[styles.miniIcon, { color: watchColors.steps }]}>馃毝</Text>
+          <Text style={[styles.miniIcon, { color: watchColors.steps }]}>🚶</Text>
           <Text style={styles.miniValue}>
             {state.steps != null ? state.steps.toLocaleString() : '--'}
           </Text>
-          <Text style={styles.miniUnit}>姝?/Text>
+          <Text style={styles.miniUnit}>步</Text>
         </View>
       </View>
 
@@ -122,14 +122,14 @@ export function WatchHomeScreen() {
         </View>
       ) : (
         <TouchableOpacity style={styles.messageCard}>
-          <Text style={styles.messagePlaceholder}>鈫?婊戝姩寮€濮嬪璇?/Text>
+          <Text style={styles.messagePlaceholder}>← 滑动开始对话</Text>
         </TouchableOpacity>
       )}
 
       {/* Alerts Badge */}
       {state.unreadAlerts > 0 && (
         <View style={styles.alertBadge}>
-          <Text style={styles.alertText}>馃敂 {state.unreadAlerts} 鏉℃湭璇诲憡璀?/Text>
+          <Text style={styles.alertText}>🔔 {state.unreadAlerts} 条未读告警</Text>
         </View>
       )}
     </ScrollView>

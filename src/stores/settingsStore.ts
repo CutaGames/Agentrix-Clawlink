@@ -1,4 +1,4 @@
-// 璁剧疆 Store
+// 设置 Store
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
@@ -7,10 +7,10 @@ import type { LocalWakeWordModel, WakeWordEngine } from '../services/localWakeWo
 
 type Environment = 'sandbox' | 'production';
 
-/** Progressive UI complexity 鈥?controls which features are visible */
+/** Progressive UI complexity — controls which features are visible */
 export type UiComplexity = 'beginner' | 'advanced' | 'professional';
 
-/** Model ID 鈥?now a plain string to support dynamic models from backend providers */
+/** Model ID — now a plain string to support dynamic models from backend providers */
 export type ModelId = string;
 
 export interface WakeWordSettings {
@@ -32,10 +32,11 @@ export interface ModelOption {
   costTier: string;
 }
 
-/** Hardcoded fallback models 鈥?used only when backend is unreachable */
+/** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
-  { id: 'gemma-4-2b',       label: 'Gemma 4 E2B (绔晶鏈湴)',         provider: 'On-device',         icon: '馃摫', badge: 'Local', availability: 'available', costTier: 'free' },
-  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (骞冲彴榛樿 API)',    provider: 'Agentrix Platform', icon: '馃', badge: 'Default', availability: 'available', costTier: 'free_trial' },
+  { id: 'gemma-4-2b',       label: 'Gemma 4 E2B (端侧本地)',         provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
+  { id: 'qwen2.5-omni-3b',  label: 'Qwen 2.5 Omni 3B (端侧音频)',   provider: 'On-device',         icon: '🎙️', badge: 'Local Audio', availability: 'available', costTier: 'free' },
+  { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 
 export type LocalAiStatus = 'not_downloaded' | 'downloading' | 'ready' | 'error';
@@ -43,14 +44,14 @@ export type LocalAiStatus = 'not_downloaded' | 'downloading' | 'ready' | 'error'
 interface SettingsState {
   customApiKeys: Record<string, string>;
   setCustomApiKey: (provider: string, key: string) => void;
-  // 鐜閰嶇疆
+  // 环境配置
   environment: Environment;
   apiBaseUrl: string;
   
   // AI Model
   selectedModelId: ModelId;
 
-  // Local AI Model (绔晶 Gemma)
+  // Local AI Model (端侧 Gemma)
   localAiEnabled: boolean;
   localAiStatus: LocalAiStatus;
   localAiModelId: string;
@@ -69,13 +70,13 @@ interface SettingsState {
   /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
   silenceTimeoutMs: number;
   
-  // 閫氱煡璁剧疆
+  // 通知设置
   notificationsEnabled: boolean;
   airdropNotifications: boolean;
   earningsNotifications: boolean;
   paymentNotifications: boolean;
   
-  // 瀹夊叏璁剧疆
+  // 安全设置
   biometricEnabled: boolean;
   
   // Actions
@@ -116,8 +117,8 @@ const DEFAULT_WAKE_WORD_CONFIG: WakeWordSettings = {
     'Agent Tricks',
     'Hey Agent Rix',
     'Agent Rix',
-    '鍢?Agentrix',
-    '浣犲ソ Agentrix',
+    '嘿 Agentrix',
+    '你好 Agentrix',
   ],
   displayName: 'Hey Agentrix',
   sensitivity: 0.65,

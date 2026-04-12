@@ -178,7 +178,7 @@ function chunkText(text: string): string[] {
     return [];
   }
 
-  const sentenceMatches = trimmed.match(/[^銆傦紒锛?!?\n]+[銆傦紒锛?!?\n]*/g);
+  const sentenceMatches = trimmed.match(/[^。！？.!?\n]+[。！？.!?\n]*/g);
   if (sentenceMatches?.length) {
     return sentenceMatches.map((item) => item.trim()).filter(Boolean);
   }

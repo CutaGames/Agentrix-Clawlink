@@ -25,7 +25,7 @@ const SCREENS = [
 ] as const;
 
 /**
- * Horizontal pager 鈥?swipe left/right to switch between screens.
+ * Horizontal pager — swipe left/right to switch between screens.
  * Dots indicator at the bottom.
  */
 export function WatchNavigator() {

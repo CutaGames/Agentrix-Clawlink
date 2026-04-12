@@ -266,17 +266,17 @@ export class DeviceBridgingService {
 
           return null;
         } catch (launchErr: any) {
-          // Camera launch crashed 鈥?fall through to album fallback
+          // Camera launch crashed — fall through to album fallback
           console.warn('Camera launch failed, falling back to album:', launchErr?.message);
         }
       }
 
       // Fallback: album picker when camera is unavailable or crashed
-      console.warn('Camera unavailable 鈥?falling back to photo album');
+      console.warn('Camera unavailable — falling back to photo album');
       const { Alert } = require('react-native');
       Alert.alert(
-        '馃摲',
-        'Camera unavailable 鈥?opening photo album instead.',
+        '📷',
+        'Camera unavailable — opening photo album instead.',
         [{ text: 'OK' }],
       );
       return await DeviceBridgingService.pickImageAttachment();

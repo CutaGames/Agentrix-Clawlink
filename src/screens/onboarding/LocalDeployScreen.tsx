@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, ActivityIndicator, Linking,
@@ -384,3 +384,4 @@ const styles = StyleSheet.create({
   cancelBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 20 },
   cancelBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
+

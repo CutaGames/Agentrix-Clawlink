@@ -12,9 +12,9 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Types
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 interface MerchantTask {
   id: string;
   title: string;
@@ -48,18 +48,18 @@ interface MyTeam {
   agents: TeamAgent[];
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Agent icons
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 const AGENT_ICONS: Record<string, string> = {
-  ceo: '馃憫', dev: '馃捇', 'qa-ops': '馃敡', growth: '馃搱',
-  ops: '馃搳', media: '馃摫', ecosystem: '馃寪', community: '馃懃',
-  brand: '馃帹', hunter: '馃攳', treasury: '馃挵',
+  ceo: '👑', dev: '💻', 'qa-ops': '🔧', growth: '📈',
+  ops: '📊', media: '📱', ecosystem: '🌐', community: '👥',
+  brand: '🎨', hunter: '🔍', treasury: '💰',
 };
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // API
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 async function fetchMyTasks(): Promise<MerchantTask[]> {
   const res = await apiFetch<MerchantTask[] | { data: MerchantTask[] }>('/merchant-tasks/my-tasks');
   return Array.isArray(res) ? res : (res as any).data || [];
@@ -90,31 +90,31 @@ async function completeTask(taskId: string): Promise<void> {
   await apiFetch(`/merchant-tasks/${taskId}/complete`, { method: 'PUT' });
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Status metadata
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 const STATUS_META: Record<string, { label: { en: string; zh: string }; color: string; icon: string }> = {
-  pending:     { label: { en: 'Pending', zh: '寰呭鐞? },     color: '#6366f1', icon: '馃搵' },
-  accepted:    { label: { en: 'Accepted', zh: '宸叉帴鍙? },    color: '#3b82f6', icon: '鉁? },
-  open:        { label: { en: 'Open', zh: '寰呭紑濮? },        color: '#6366f1', icon: '馃搵' },
-  in_progress: { label: { en: 'In Progress', zh: '杩涜涓? }, color: '#f59e0b', icon: '鈿欙笍' },
-  delivered:   { label: { en: 'Delivered', zh: '宸蹭氦浠? },   color: '#8b5cf6', icon: '馃摝' },
-  completed:   { label: { en: 'Completed', zh: '宸插畬鎴? },   color: '#22c55e', icon: '鉁? },
-  cancelled:   { label: { en: 'Cancelled', zh: '宸插彇娑? },   color: '#ef4444', icon: '鉂? },
+  pending:     { label: { en: 'Pending', zh: '待处理' },     color: '#6366f1', icon: '📋' },
+  accepted:    { label: { en: 'Accepted', zh: '已接受' },    color: '#3b82f6', icon: '✋' },
+  open:        { label: { en: 'Open', zh: '待开始' },        color: '#6366f1', icon: '📋' },
+  in_progress: { label: { en: 'In Progress', zh: '进行中' }, color: '#f59e0b', icon: '⚙️' },
+  delivered:   { label: { en: 'Delivered', zh: '已交付' },   color: '#8b5cf6', icon: '📦' },
+  completed:   { label: { en: 'Completed', zh: '已完成' },   color: '#22c55e', icon: '✅' },
+  cancelled:   { label: { en: 'Cancelled', zh: '已取消' },   color: '#ef4444', icon: '❌' },
 };
 
 const TASK_TYPES = [
-  { key: 'custom_service', en: 'Custom', zh: '瀹氬埗' },
-  { key: 'research', en: 'Research', zh: '璋冪爺' },
-  { key: 'content', en: 'Content', zh: '鍐呭' },
-  { key: 'development', en: 'Dev', zh: '寮€鍙? },
-  { key: 'data_analysis', en: 'Analysis', zh: '鍒嗘瀽' },
-  { key: 'consultation', en: 'Consult', zh: '鍜ㄨ' },
+  { key: 'custom_service', en: 'Custom', zh: '定制' },
+  { key: 'research', en: 'Research', zh: '调研' },
+  { key: 'content', en: 'Content', zh: '内容' },
+  { key: 'development', en: 'Dev', zh: '开发' },
+  { key: 'data_analysis', en: 'Analysis', zh: '分析' },
+  { key: 'consultation', en: 'Consult', zh: '咨询' },
 ];
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Assign Task Modal
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 function AssignTaskModal({
   visible, agents, t, onClose, onCreated,
 }: {
@@ -132,7 +132,7 @@ function AssignTaskModal({
 
   const handleCreate = async () => {
     if (!title.trim()) {
-      Alert.alert(t({ en: 'Required', zh: '蹇呭～' }), t({ en: 'Title is required', zh: '鏍囬涓嶈兘涓虹┖' }));
+      Alert.alert(t({ en: 'Required', zh: '必填' }), t({ en: 'Title is required', zh: '标题不能为空' }));
       return;
     }
     setSaving(true);
@@ -147,9 +147,9 @@ function AssignTaskModal({
       setTitle(''); setDesc(''); setSelectedAgent(undefined);
       onCreated();
       onClose();
-      Alert.alert('鉁?, t({ en: 'Task assigned!', zh: '浠诲姟宸插垎閰嶏紒' }));
+      Alert.alert('✅', t({ en: 'Task assigned!', zh: '任务已分配！' }));
     } catch (e: any) {
-      Alert.alert(t({ en: 'Error', zh: '澶辫触' }), e?.message ?? 'Failed');
+      Alert.alert(t({ en: 'Error', zh: '失败' }), e?.message ?? 'Failed');
     } finally {
       setSaving(false);
     }
@@ -160,12 +160,12 @@ function AssignTaskModal({
       <KeyboardAvoidingView style={modalS.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={modalS.container}>
           <View style={modalS.header}>
-            <Text style={modalS.title}>{t({ en: 'Assign Task', zh: '鍒嗛厤浠诲姟' })}</Text>
-            <TouchableOpacity onPress={onClose}><Text style={modalS.close}>鉁?/Text></TouchableOpacity>
+            <Text style={modalS.title}>{t({ en: 'Assign Task', zh: '分配任务' })}</Text>
+            <TouchableOpacity onPress={onClose}><Text style={modalS.close}>✕</Text></TouchableOpacity>
           </View>
 
           {/* Agent Picker */}
-          <Text style={modalS.label}>{t({ en: 'Assign to', zh: '鍒嗛厤缁? })}</Text>
+          <Text style={modalS.label}>{t({ en: 'Assign to', zh: '分配给' })}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={modalS.agentRow}>
               <TouchableOpacity
@@ -173,11 +173,11 @@ function AssignTaskModal({
                 onPress={() => setSelectedAgent(undefined)}
               >
                 <Text style={[modalS.agentPillText, !selectedAgent && modalS.agentPillTextActive]}>
-                  {t({ en: 'Unassigned', zh: '鏈寚娲? })}
+                  {t({ en: 'Unassigned', zh: '未指派' })}
                 </Text>
               </TouchableOpacity>
               {agents.map(a => {
-                const icon = AGENT_ICONS[a.codename] ?? '馃';
+                const icon = AGENT_ICONS[a.codename] ?? '🤖';
                 const active = selectedAgent === a.id;
                 return (
                   <TouchableOpacity
@@ -196,13 +196,13 @@ function AssignTaskModal({
 
           <TextInput
             style={modalS.input}
-            placeholder={t({ en: 'Task title', zh: '浠诲姟鏍囬' })}
+            placeholder={t({ en: 'Task title', zh: '任务标题' })}
             placeholderTextColor={colors.textMuted}
             value={title} onChangeText={setTitle}
           />
           <TextInput
             style={[modalS.input, { minHeight: 70, textAlignVertical: 'top' }]}
-            placeholder={t({ en: 'Description / instructions', zh: '鎻忚堪 / 璇︾粏鎸囦护' })}
+            placeholder={t({ en: 'Description / instructions', zh: '描述 / 详细指令' })}
             placeholderTextColor={colors.textMuted}
             value={desc} onChangeText={setDesc} multiline
           />
@@ -223,7 +223,7 @@ function AssignTaskModal({
 
           <TouchableOpacity style={modalS.createBtn} onPress={handleCreate} disabled={saving}>
             {saving ? <ActivityIndicator color="#fff" /> : (
-              <Text style={modalS.createBtnText}>{t({ en: 'Assign Task', zh: '鍒嗛厤浠诲姟' })}</Text>
+              <Text style={modalS.createBtnText}>{t({ en: 'Assign Task', zh: '分配任务' })}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -232,9 +232,9 @@ function AssignTaskModal({
   );
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // View tabs
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 type BoardTab = 'by-agent' | 'all';
 
 export function TaskBoardScreen() {
@@ -288,12 +288,12 @@ export function TaskBoardScreen() {
 
   const handleComplete = (task: MerchantTask) => {
     Alert.alert(
-      t({ en: 'Complete Task', zh: '瀹屾垚浠诲姟' }),
-      t({ en: `Complete "${task.title}"?`, zh: `瀹屾垚"${task.title}"锛焋 }),
+      t({ en: 'Complete Task', zh: '完成任务' }),
+      t({ en: `Complete "${task.title}"?`, zh: `完成"${task.title}"？` }),
       [
-        { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Complete', zh: '瀹屾垚' }),
+          text: t({ en: 'Complete', zh: '完成' }),
           onPress: async () => {
             try {
               await completeTask(task.id);
@@ -333,7 +333,7 @@ export function TaskBoardScreen() {
         )}
         {task.status === 'in_progress' && (
           <TouchableOpacity style={s.completeBtn} onPress={() => handleComplete(task)}>
-            <Text style={s.completeBtnText}>鉁?{t({ en: 'Complete', zh: '瀹屾垚' })}</Text>
+            <Text style={s.completeBtnText}>✅ {t({ en: 'Complete', zh: '完成' })}</Text>
           </TouchableOpacity>
         )}
       </TouchableOpacity>
@@ -342,7 +342,7 @@ export function TaskBoardScreen() {
 
   const renderAgentSection = (item: { agent: TeamAgent; tasks: MerchantTask[] }) => {
     const { agent, tasks } = item;
-    const icon = AGENT_ICONS[agent.codename] ?? '馃';
+    const icon = AGENT_ICONS[agent.codename] ?? '🤖';
     const activeCount = tasks.filter(t => t.status === 'in_progress').length;
     const statusColor = agent.status === 'active' ? '#22c55e' : '#f59e0b';
 
@@ -364,17 +364,17 @@ export function TaskBoardScreen() {
           <View style={[s.agentDot, { backgroundColor: statusColor }]} />
           {activeCount > 0 ? (
             <View style={s.activeBadge}>
-              <Text style={s.activeText}>{activeCount} {t({ en: 'active', zh: '杩涜涓? })}</Text>
+              <Text style={s.activeText}>{activeCount} {t({ en: 'active', zh: '进行中' })}</Text>
             </View>
           ) : (
-            <Text style={s.idleText}>{t({ en: 'Idle', zh: '绌洪棽' })}</Text>
+            <Text style={s.idleText}>{t({ en: 'Idle', zh: '空闲' })}</Text>
           )}
-          <Text style={s.chevron}>鈥?/Text>
+          <Text style={s.chevron}>›</Text>
         </TouchableOpacity>
         {tasks.length > 0 ? (
           tasks.map(renderTaskCard)
         ) : (
-          <Text style={s.noTasks}>{t({ en: 'No tasks assigned', zh: '鏆傛棤浠诲姟' })}</Text>
+          <Text style={s.noTasks}>{t({ en: 'No tasks assigned', zh: '暂无任务' })}</Text>
         )}
       </View>
     );
@@ -386,17 +386,17 @@ export function TaskBoardScreen() {
       <View style={s.summary}>
         <View style={s.summaryItem}>
           <Text style={[s.summaryNum, { color: '#f59e0b' }]}>{totalActive}</Text>
-          <Text style={s.summaryLabel}>{t({ en: 'Active', zh: '杩涜涓? })}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Active', zh: '进行中' })}</Text>
         </View>
         <View style={s.summaryDivider} />
         <View style={s.summaryItem}>
           <Text style={[s.summaryNum, { color: '#3b82f6' }]}>{totalOpen}</Text>
-          <Text style={s.summaryLabel}>{t({ en: 'Open', zh: '寰呭垎閰? })}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Open', zh: '待分配' })}</Text>
         </View>
         <View style={s.summaryDivider} />
         <View style={s.summaryItem}>
           <Text style={[s.summaryNum, { color: '#22c55e' }]}>{totalDone}</Text>
-          <Text style={s.summaryLabel}>{t({ en: 'Done', zh: '宸插畬鎴? })}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Done', zh: '已完成' })}</Text>
         </View>
         <View style={s.summaryDivider} />
         <View style={s.summaryItem}>
@@ -412,7 +412,7 @@ export function TaskBoardScreen() {
           onPress={() => setTab('by-agent')}
         >
           <Text style={[s.tabText, tab === 'by-agent' && s.tabTextActive]}>
-            馃懃 {t({ en: 'By Agent', zh: '鎸堿gent' })}
+            👥 {t({ en: 'By Agent', zh: '按Agent' })}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -420,7 +420,7 @@ export function TaskBoardScreen() {
           onPress={() => setTab('all')}
         >
           <Text style={[s.tabText, tab === 'all' && s.tabTextActive]}>
-            馃搵 {t({ en: 'All Tasks', zh: '鍏ㄩ儴浠诲姟' })}
+            📋 {t({ en: 'All Tasks', zh: '全部任务' })}
           </Text>
         </TouchableOpacity>
       </View>
@@ -443,10 +443,10 @@ export function TaskBoardScreen() {
             <>
               {tasksByAgent.length === 0 && allAgents.length === 0 ? (
                 <View style={s.empty}>
-                  <Text style={{ fontSize: 40 }}>馃彈锔?/Text>
-                  <Text style={s.emptyTitle}>{t({ en: 'No team yet', zh: '杩樻病鏈夊洟闃? })}</Text>
+                  <Text style={{ fontSize: 40 }}>🏗️</Text>
+                  <Text style={s.emptyTitle}>{t({ en: 'No team yet', zh: '还没有团队' })}</Text>
                   <Text style={s.emptySub}>
-                    {t({ en: 'Create an agent team first from the Team tab', zh: '璇峰厛鍦ㄥ洟闃熼〉鍒涘缓Agent鍥㈤槦' })}
+                    {t({ en: 'Create an agent team first from the Team tab', zh: '请先在团队页创建Agent团队' })}
                   </Text>
                 </View>
               ) : (
@@ -455,10 +455,10 @@ export function TaskBoardScreen() {
                   {unassignedTasks.length > 0 && (
                     <View style={s.agentSection}>
                       <View style={s.agentHeader}>
-                        <Text style={s.agentIcon}>馃摝</Text>
+                        <Text style={s.agentIcon}>📦</Text>
                         <View style={{ flex: 1 }}>
-                          <Text style={s.agentName}>{t({ en: 'Unassigned', zh: '鏈寚娲? })}</Text>
-                          <Text style={s.agentCode}>{unassignedTasks.length} {t({ en: 'tasks', zh: '涓换鍔? })}</Text>
+                          <Text style={s.agentName}>{t({ en: 'Unassigned', zh: '未指派' })}</Text>
+                          <Text style={s.agentCode}>{unassignedTasks.length} {t({ en: 'tasks', zh: '个任务' })}</Text>
                         </View>
                       </View>
                       {unassignedTasks.map(renderTaskCard)}
@@ -471,10 +471,10 @@ export function TaskBoardScreen() {
             <>
               {myTasks.length === 0 ? (
                 <View style={s.empty}>
-                  <Text style={{ fontSize: 40 }}>馃搵</Text>
-                  <Text style={s.emptyTitle}>{t({ en: 'No tasks', zh: '鏆傛棤浠诲姟' })}</Text>
+                  <Text style={{ fontSize: 40 }}>📋</Text>
+                  <Text style={s.emptyTitle}>{t({ en: 'No tasks', zh: '暂无任务' })}</Text>
                   <Text style={s.emptySub}>
-                    {t({ en: 'Assign tasks to your agents to get started', zh: '缁橝gent鍒嗛厤浠诲姟寮€濮嬪伐浣? })}
+                    {t({ en: 'Assign tasks to your agents to get started', zh: '给Agent分配任务开始工作' })}
                   </Text>
                 </View>
               ) : (
@@ -488,7 +488,7 @@ export function TaskBoardScreen() {
 
       {/* FAB */}
       <TouchableOpacity style={s.fab} onPress={() => setShowCreate(true)}>
-        <Text style={s.fabText}>锛?{t({ en: 'Assign Task', zh: '鍒嗛厤浠诲姟' })}</Text>
+        <Text style={s.fabText}>＋ {t({ en: 'Assign Task', zh: '分配任务' })}</Text>
       </TouchableOpacity>
 
       <AssignTaskModal
@@ -502,9 +502,9 @@ export function TaskBoardScreen() {
   );
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Styles
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },

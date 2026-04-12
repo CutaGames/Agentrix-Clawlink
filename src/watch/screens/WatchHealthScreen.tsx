@@ -60,11 +60,11 @@ export function WatchHealthScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.title}>鍋ュ悍鏁版嵁</Text>
+      <Text style={styles.title}>健康数据</Text>
 
-      {/* Heart Rate 鈥?hero display */}
+      {/* Heart Rate — hero display */}
       <View style={styles.heroCard}>
-        <Text style={[styles.heroIcon, { color: watchColors.heartRate }]}>鉂?/Text>
+        <Text style={[styles.heroIcon, { color: watchColors.heartRate }]}>❤</Text>
         <Text style={styles.heroValue}>
           {health.heartRate ?? '--'}
         </Text>
@@ -80,20 +80,20 @@ export function WatchHealthScreen() {
       {/* Metric Grid */}
       <View style={styles.grid}>
         <MetricCard
-          icon="馃毝"
-          label="姝ユ暟"
+          icon="🚶"
+          label="步数"
           value={health.steps != null ? health.steps.toLocaleString() : '--'}
           color={watchColors.steps}
         />
         <MetricCard
-          icon="馃攱"
-          label="鐢甸噺"
+          icon="🔋"
+          label="电量"
           value={health.battery != null ? `${health.battery}%` : '--'}
           color={watchColors.battery}
         />
         <MetricCard
-          icon="鈼?
-          label="SpO鈧?
+          icon="○"
+          label="SpO₂"
           value={health.spo2 != null ? `${health.spo2}%` : '--'}
           color={watchColors.spo2}
         />
@@ -105,7 +105,7 @@ export function WatchHealthScreen() {
           <ActivityIndicator color={watchColors.accent} size="small" />
         ) : null}
         <Text style={styles.syncText}>
-          {health.lastSync ? `鍚屾浜?${health.lastSync}` : '绛夊緟浼犳劅鍣ㄢ€?}
+          {health.lastSync ? `同步于 ${health.lastSync}` : '等待传感器…'}
         </Text>
       </View>
     </ScrollView>

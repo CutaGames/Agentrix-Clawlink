@@ -10,9 +10,9 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Types
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 interface MerchantTask {
   id: string;
   title: string;
@@ -54,9 +54,9 @@ interface Milestone {
   dueDate?: string;
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // API
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 async function fetchTaskDetail(taskId: string): Promise<MerchantTask> {
   const res = await apiFetch<MerchantTask | { data: MerchantTask }>(`/merchant-tasks/${taskId}`);
   return (res as any).data || res;
@@ -92,26 +92,26 @@ async function chatWithAgent(agentCodename: string, message: string): Promise<st
   return (res as any).response || (res as any).message || JSON.stringify(res);
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Status mapping (aligned with backend TaskStatus enum)
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 const STATUS_META: Record<string, { label: { en: string; zh: string }; color: string; icon: string }> = {
-  pending:     { label: { en: 'Pending', zh: '寰呭鐞? },     color: '#6366f1', icon: '馃搵' },
-  accepted:    { label: { en: 'Accepted', zh: '宸叉帴鍙? },    color: '#3b82f6', icon: '鉁? },
-  in_progress: { label: { en: 'In Progress', zh: '杩涜涓? }, color: '#f59e0b', icon: '鈿欙笍' },
-  delivered:   { label: { en: 'Delivered', zh: '宸蹭氦浠? },   color: '#8b5cf6', icon: '馃摝' },
-  completed:   { label: { en: 'Completed', zh: '宸插畬鎴? },   color: '#22c55e', icon: '鉁? },
-  cancelled:   { label: { en: 'Cancelled', zh: '宸插彇娑? },   color: '#ef4444', icon: '鉂? },
-  disputed:    { label: { en: 'Disputed', zh: '浜夎涓? },    color: '#ef4444', icon: '鈿狅笍' },
+  pending:     { label: { en: 'Pending', zh: '待处理' },     color: '#6366f1', icon: '📋' },
+  accepted:    { label: { en: 'Accepted', zh: '已接受' },    color: '#3b82f6', icon: '✋' },
+  in_progress: { label: { en: 'In Progress', zh: '进行中' }, color: '#f59e0b', icon: '⚙️' },
+  delivered:   { label: { en: 'Delivered', zh: '已交付' },   color: '#8b5cf6', icon: '📦' },
+  completed:   { label: { en: 'Completed', zh: '已完成' },   color: '#22c55e', icon: '✅' },
+  cancelled:   { label: { en: 'Cancelled', zh: '已取消' },   color: '#ef4444', icon: '❌' },
+  disputed:    { label: { en: 'Disputed', zh: '争议中' },    color: '#ef4444', icon: '⚠️' },
   // Legacy / frontend aliases
-  open:        { label: { en: 'Open', zh: '寰呭紑濮? },        color: '#6366f1', icon: '馃搵' },
+  open:        { label: { en: 'Open', zh: '待开始' },        color: '#6366f1', icon: '📋' },
 };
 
 // Map agent codenames to icons
 const AGENT_ICONS: Record<string, string> = {
-  ceo: '馃憫', dev: '馃捇', 'qa-ops': '馃敡', growth: '馃搱',
-  ops: '馃搳', media: '馃摫', ecosystem: '馃寪', community: '馃懃',
-  brand: '馃帹', hunter: '馃攳', treasury: '馃挵',
+  ceo: '👑', dev: '💻', 'qa-ops': '🔧', growth: '📈',
+  ops: '📊', media: '📱', ecosystem: '🌐', community: '👥',
+  brand: '🎨', hunter: '🔍', treasury: '💰',
 };
 
 function getProgressPercent(progress: MerchantTask['progress']): number {
@@ -131,7 +131,7 @@ export function TaskDetailScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
 
-  // 鈹€鈹€ Safe params extraction 鈹€鈹€
+  // ── Safe params extraction ──
   const taskId = route.params?.taskId;
   const [progressVal, setProgressVal] = useState('');
   const [agentMsg, setAgentMsg] = useState('');
@@ -145,22 +145,22 @@ export function TaskDetailScreen() {
     retry: false,
   });
 
-  // 鈹€鈹€ No taskId = navigation error 鈹€鈹€
+  // ── No taskId = navigation error ──
   if (!taskId) {
     return (
       <View style={s.container}>
         <View style={s.errorBox}>
-          <Text style={s.errorIcon}>鈿狅笍</Text>
-          <Text style={s.errorText}>{t({ en: 'Task not found', zh: '浠诲姟鏈壘鍒? })}</Text>
+          <Text style={s.errorIcon}>⚠️</Text>
+          <Text style={s.errorText}>{t({ en: 'Task not found', zh: '任务未找到' })}</Text>
           <TouchableOpacity style={s.errorBtn} onPress={() => navigation.goBack()}>
-            <Text style={s.errorBtnText}>{t({ en: 'Go Back', zh: '杩斿洖' })}</Text>
+            <Text style={s.errorBtnText}>{t({ en: 'Go Back', zh: '返回' })}</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-  // 鈹€鈹€ Actions 鈹€鈹€
+  // ── Actions ──
   const handleStartTask = async () => {
     setActionLoading('start');
     try {
@@ -168,16 +168,16 @@ export function TaskDetailScreen() {
       await acceptTask(taskId);
       queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] });
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      Alert.alert('鉁?, t({ en: 'Task started!', zh: '浠诲姟宸插惎鍔紒' }));
+      Alert.alert('✅', t({ en: 'Task started!', zh: '任务已启动！' }));
     } catch {
       // If accept fails (merchantId mismatch), update progress to trigger status change
       try {
         await updateProgress(taskId, { message: 'Task started by team member', percentage: 5 });
         queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] });
         queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-        Alert.alert('鉁?, t({ en: 'Task started!', zh: '浠诲姟宸插惎鍔紒' }));
+        Alert.alert('✅', t({ en: 'Task started!', zh: '任务已启动！' }));
       } catch (e2: any) {
-        Alert.alert(t({ en: 'Error', zh: '閿欒' }), e2?.message || t({ en: 'Failed to start task', zh: '鍚姩浠诲姟澶辫触' }));
+        Alert.alert(t({ en: 'Error', zh: '错误' }), e2?.message || t({ en: 'Failed to start task', zh: '启动任务失败' }));
       }
     } finally {
       setActionLoading(null);
@@ -186,7 +186,7 @@ export function TaskDetailScreen() {
 
   const handleSendToAgent = async () => {
     if (!task?.agentId && !task?.agentName) {
-      Alert.alert(t({ en: 'No Agent', zh: '鏈垎閰岮gent' }), t({ en: 'Assign an agent to this task first.', zh: '璇峰厛涓烘浠诲姟鍒嗛厤涓€涓狝gent銆? }));
+      Alert.alert(t({ en: 'No Agent', zh: '未分配Agent' }), t({ en: 'Assign an agent to this task first.', zh: '请先为此任务分配一个Agent。' }));
       return;
     }
     const codename = task?.agentName?.toLowerCase() || 'ceo';
@@ -204,7 +204,7 @@ export function TaskDetailScreen() {
         queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
       } catch { /* non-critical */ }
     } catch (err: any) {
-      Alert.alert(t({ en: 'Error', zh: '閿欒' }), err?.message || t({ en: 'Failed to contact agent', zh: '鑱旂郴Agent澶辫触' }));
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to contact agent', zh: '联系Agent失败' }));
     } finally {
       setActionLoading(null);
     }
@@ -213,7 +213,7 @@ export function TaskDetailScreen() {
   const handleUpdateProgress = async () => {
     const p = parseInt(progressVal, 10);
     if (isNaN(p) || p < 0 || p > 100) {
-      Alert.alert(t({ en: 'Invalid', zh: '鏃犳晥' }), t({ en: 'Enter 0-100', zh: '璇疯緭鍏?0-100' }));
+      Alert.alert(t({ en: 'Invalid', zh: '无效' }), t({ en: 'Enter 0-100', zh: '请输入 0-100' }));
       return;
     }
     setActionLoading('progress');
@@ -222,9 +222,9 @@ export function TaskDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] });
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
       setProgressVal('');
-      Alert.alert('鉁?, t({ en: 'Progress updated!', zh: '杩涘害宸叉洿鏂帮紒' }));
+      Alert.alert('✅', t({ en: 'Progress updated!', zh: '进度已更新！' }));
     } catch (err: any) {
-      Alert.alert(t({ en: 'Error', zh: '閿欒' }), err?.message || '');
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || '');
     } finally {
       setActionLoading(null);
     }
@@ -232,21 +232,21 @@ export function TaskDetailScreen() {
 
   const handleComplete = () => {
     Alert.alert(
-      t({ en: 'Complete Task', zh: '瀹屾垚浠诲姟' }),
-      t({ en: 'Mark this task as completed?', zh: '灏嗘浠诲姟鏍囪涓哄凡瀹屾垚锛? }),
+      t({ en: 'Complete Task', zh: '完成任务' }),
+      t({ en: 'Mark this task as completed?', zh: '将此任务标记为已完成？' }),
       [
-        { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Complete', zh: '瀹屾垚' }),
+          text: t({ en: 'Complete', zh: '完成' }),
           onPress: async () => {
             setActionLoading('complete');
             try {
               await completeTask(taskId);
               queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] });
               queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-              Alert.alert('鉁?, t({ en: 'Task completed!', zh: '浠诲姟宸插畬鎴愶紒' }));
+              Alert.alert('✅', t({ en: 'Task completed!', zh: '任务已完成！' }));
             } catch (err: any) {
-              Alert.alert(t({ en: 'Error', zh: '閿欒' }), err?.message || '');
+              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || '');
             } finally {
               setActionLoading(null);
             }
@@ -258,12 +258,12 @@ export function TaskDetailScreen() {
 
   const handleCancel = () => {
     Alert.alert(
-      t({ en: 'Cancel Task', zh: '鍙栨秷浠诲姟' }),
-      t({ en: 'Are you sure you want to cancel this task?', zh: '纭畾瑕佸彇娑堟浠诲姟鍚楋紵' }),
+      t({ en: 'Cancel Task', zh: '取消任务' }),
+      t({ en: 'Are you sure you want to cancel this task?', zh: '确定要取消此任务吗？' }),
       [
-        { text: t({ en: 'No', zh: '鍚? }), style: 'cancel' },
+        { text: t({ en: 'No', zh: '否' }), style: 'cancel' },
         {
-          text: t({ en: 'Yes, Cancel', zh: '纭鍙栨秷' }),
+          text: t({ en: 'Yes, Cancel', zh: '确认取消' }),
           style: 'destructive',
           onPress: async () => {
             setActionLoading('cancel');
@@ -271,9 +271,9 @@ export function TaskDetailScreen() {
               await cancelTask(taskId);
               queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] });
               queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-              Alert.alert('鉁?, t({ en: 'Task cancelled.', zh: '浠诲姟宸插彇娑堛€? }));
+              Alert.alert('✅', t({ en: 'Task cancelled.', zh: '任务已取消。' }));
             } catch (err: any) {
-              Alert.alert(t({ en: 'Error', zh: '閿欒' }), err?.message || '');
+              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || '');
             } finally {
               setActionLoading(null);
             }
@@ -294,7 +294,7 @@ export function TaskDetailScreen() {
   const meta = STATUS_META[task.status] || STATUS_META.pending;
   const pct = getProgressPercent(task.progress);
   const step = getProgressStep(task.progress);
-  const agentIcon = task.agentName ? (AGENT_ICONS[task.agentName.toLowerCase()] ?? '馃') : '馃';
+  const agentIcon = task.agentName ? (AGENT_ICONS[task.agentName.toLowerCase()] ?? '🤖') : '🤖';
   const canStart = task.status === 'pending' || task.status === 'open';
   const canProgress = task.status === 'accepted' || task.status === 'in_progress';
   const canComplete = task.status === 'in_progress' || task.status === 'delivered';
@@ -326,7 +326,7 @@ export function TaskDetailScreen() {
           <View style={s.agentCard}>
             <Text style={{ fontSize: 22 }}>{agentIcon}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={s.agentLabel}>{t({ en: 'Assigned Agent', zh: '璐熻矗Agent' })}</Text>
+              <Text style={s.agentLabel}>{t({ en: 'Assigned Agent', zh: '负责Agent' })}</Text>
               <Text style={s.agentName}>@{task.agentName || task.agentId}</Text>
             </View>
             {(canStart || canProgress) && (
@@ -338,35 +338,35 @@ export function TaskDetailScreen() {
         {/* Progress */}
         <View style={s.progressCard}>
           <View style={s.progressHeader}>
-            <Text style={s.progressLabel}>{t({ en: 'Progress', zh: '杩涘害' })}</Text>
+            <Text style={s.progressLabel}>{t({ en: 'Progress', zh: '进度' })}</Text>
             <Text style={s.progressPct}>{pct}%</Text>
           </View>
           <View style={s.progressBarOuter}>
             <View style={[s.progressBarFill, { width: `${Math.min(pct, 100)}%` }]} />
           </View>
-          {step && <Text style={s.progressStep}>馃搷 {step}</Text>}
+          {step && <Text style={s.progressStep}>📍 {step}</Text>}
         </View>
 
         {/* Budget & Info */}
         <View style={s.infoRow}>
           <View style={s.infoChip}>
-            <Text style={s.infoLabel}>{t({ en: 'Budget', zh: '棰勭畻' })}</Text>
-            <Text style={s.infoValue}>馃挵 ${task.budget} {task.currency || 'USD'}</Text>
+            <Text style={s.infoLabel}>{t({ en: 'Budget', zh: '预算' })}</Text>
+            <Text style={s.infoValue}>💰 ${task.budget} {task.currency || 'USD'}</Text>
           </View>
           <View style={s.infoChip}>
-            <Text style={s.infoLabel}>{t({ en: 'Type', zh: '绫诲瀷' })}</Text>
+            <Text style={s.infoLabel}>{t({ en: 'Type', zh: '类型' })}</Text>
             <Text style={s.infoValue}>{task.type?.replace(/_/g, ' ') || '-'}</Text>
           </View>
         </View>
 
-        {/* 鈺愨晲鈺愨晲鈺愨晲鈺?START TASK 鈺愨晲鈺愨晲鈺愨晲鈺?*/}
+        {/* ═══════ START TASK ═══════ */}
         {canStart && (
           <View style={s.actionSection}>
-            <Text style={s.actionTitle}>馃殌 {t({ en: 'Start This Task', zh: '鍚姩浠诲姟' })}</Text>
+            <Text style={s.actionTitle}>🚀 {t({ en: 'Start This Task', zh: '启动任务' })}</Text>
             <Text style={s.actionDesc}>
               {t({
                 en: 'Start the task and instruct the assigned agent to begin working.',
-                zh: '鍚姩浠诲姟锛屾寚绀鸿礋璐ｇ殑Agent寮€濮嬪伐浣溿€?,
+                zh: '启动任务，指示负责的Agent开始工作。',
               })}
             </Text>
             <TouchableOpacity
@@ -377,18 +377,18 @@ export function TaskDetailScreen() {
               {actionLoading === 'start' ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={s.startBtnText}>鈻?{t({ en: 'Start Task', zh: '鍚姩浠诲姟' })}</Text>
+                <Text style={s.startBtnText}>▶ {t({ en: 'Start Task', zh: '启动任务' })}</Text>
               )}
             </TouchableOpacity>
 
             {/* Direct agent message */}
             {(task.agentName || task.agentId) && (
               <>
-                <Text style={s.chatLabel}>馃挰 {t({ en: 'Or send instructions to agent:', zh: '鎴栫洿鎺ョ粰Agent涓嬭揪鎸囦护锛? })}</Text>
+                <Text style={s.chatLabel}>💬 {t({ en: 'Or send instructions to agent:', zh: '或直接给Agent下达指令：' })}</Text>
                 <View style={s.chatRow}>
                   <TextInput
                     style={s.chatInput}
-                    placeholder={t({ en: `Message @${task.agentName || 'agent'}...`, zh: `缁?@${task.agentName || 'agent'} 鍙戞秷鎭?..` })}
+                    placeholder={t({ en: `Message @${task.agentName || 'agent'}...`, zh: `给 @${task.agentName || 'agent'} 发消息...` })}
                     placeholderTextColor={colors.textMuted}
                     value={agentMsg}
                     onChangeText={setAgentMsg}
@@ -402,13 +402,13 @@ export function TaskDetailScreen() {
                     {actionLoading === 'chat' ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Text style={s.chatSendText}>鈫?/Text>
+                      <Text style={s.chatSendText}>→</Text>
                     )}
                   </TouchableOpacity>
                 </View>
                 {agentReply ? (
                   <View style={s.replyBox}>
-                    <Text style={s.replyLabel}>馃 @{task.agentName || 'agent'}</Text>
+                    <Text style={s.replyLabel}>🤖 @{task.agentName || 'agent'}</Text>
                     <Text style={s.replyText}>{agentReply}</Text>
                   </View>
                 ) : null}
@@ -417,19 +417,19 @@ export function TaskDetailScreen() {
           </View>
         )}
 
-        {/* 鈺愨晲鈺愨晲鈺愨晲鈺?IN PROGRESS ACTIONS 鈺愨晲鈺愨晲鈺愨晲鈺?*/}
+        {/* ═══════ IN PROGRESS ACTIONS ═══════ */}
         {canProgress && (
           <View style={s.actionSection}>
-            <Text style={s.actionTitle}>鈿欙笍 {t({ en: 'Task In Progress', zh: '浠诲姟杩涜涓? })}</Text>
+            <Text style={s.actionTitle}>⚙️ {t({ en: 'Task In Progress', zh: '任务进行中' })}</Text>
 
             {/* Chat with agent */}
             {(task.agentName || task.agentId) && (
               <>
-                <Text style={s.chatLabel}>馃挰 {t({ en: 'Send follow-up to agent:', zh: '缁橝gent鍙戦€佽窡杩涙秷鎭細' })}</Text>
+                <Text style={s.chatLabel}>💬 {t({ en: 'Send follow-up to agent:', zh: '给Agent发送跟进消息：' })}</Text>
                 <View style={s.chatRow}>
                   <TextInput
                     style={s.chatInput}
-                    placeholder={t({ en: `Message @${task.agentName || 'agent'}...`, zh: `缁?@${task.agentName || 'agent'} 鍙戞秷鎭?..` })}
+                    placeholder={t({ en: `Message @${task.agentName || 'agent'}...`, zh: `给 @${task.agentName || 'agent'} 发消息...` })}
                     placeholderTextColor={colors.textMuted}
                     value={agentMsg}
                     onChangeText={setAgentMsg}
@@ -443,13 +443,13 @@ export function TaskDetailScreen() {
                     {actionLoading === 'chat' ? (
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Text style={s.chatSendText}>鈫?/Text>
+                      <Text style={s.chatSendText}>→</Text>
                     )}
                   </TouchableOpacity>
                 </View>
                 {agentReply ? (
                   <View style={s.replyBox}>
-                    <Text style={s.replyLabel}>馃 @{task.agentName || 'agent'}</Text>
+                    <Text style={s.replyLabel}>🤖 @{task.agentName || 'agent'}</Text>
                     <Text style={s.replyText}>{agentReply}</Text>
                   </View>
                 ) : null}
@@ -457,7 +457,7 @@ export function TaskDetailScreen() {
             )}
 
             {/* Update progress */}
-            <Text style={s.chatLabel}>馃搳 {t({ en: 'Update Progress', zh: '鏇存柊杩涘害' })}</Text>
+            <Text style={s.chatLabel}>📊 {t({ en: 'Update Progress', zh: '更新进度' })}</Text>
             <View style={s.progressInputRow}>
               <TextInput
                 style={s.progressInput}
@@ -475,20 +475,20 @@ export function TaskDetailScreen() {
                 {actionLoading === 'progress' ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={s.progressSubmitText}>{t({ en: 'Update', zh: '鏇存柊' })}</Text>
+                  <Text style={s.progressSubmitText}>{t({ en: 'Update', zh: '更新' })}</Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* 鈺愨晲鈺愨晲鈺愨晲鈺?COMPLETE BUTTON 鈺愨晲鈺愨晲鈺愨晲鈺?*/}
+        {/* ═══════ COMPLETE BUTTON ═══════ */}
         {canComplete && (
           <TouchableOpacity style={s.completeBtn} onPress={handleComplete} disabled={actionLoading === 'complete'}>
             {actionLoading === 'complete' ? (
               <ActivityIndicator color="#22c55e" />
             ) : (
-              <Text style={s.completeBtnText}>鉁?{t({ en: 'Mark Complete', zh: '鏍囪瀹屾垚' })}</Text>
+              <Text style={s.completeBtnText}>✅ {t({ en: 'Mark Complete', zh: '标记完成' })}</Text>
             )}
           </TouchableOpacity>
         )}
@@ -496,12 +496,12 @@ export function TaskDetailScreen() {
         {/* Requirements */}
         {task.requirements && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>{t({ en: 'Requirements', zh: '闇€姹? })}</Text>
+            <Text style={s.sectionTitle}>{t({ en: 'Requirements', zh: '需求' })}</Text>
             {task.requirements.deadline && (
-              <Text style={s.reqText}>馃搮 {t({ en: 'Deadline', zh: '鎴鏃ユ湡' })}: {new Date(task.requirements.deadline).toLocaleDateString()}</Text>
+              <Text style={s.reqText}>📅 {t({ en: 'Deadline', zh: '截止日期' })}: {new Date(task.requirements.deadline).toLocaleDateString()}</Text>
             )}
             {task.requirements.deliverables?.map((d, i) => (
-              <Text key={i} style={s.reqText}>鈥?{d}</Text>
+              <Text key={i} style={s.reqText}>• {d}</Text>
             ))}
           </View>
         )}
@@ -509,15 +509,15 @@ export function TaskDetailScreen() {
         {/* Cancel */}
         {canCancel && (
           <TouchableOpacity style={s.cancelBtn} onPress={handleCancel} disabled={actionLoading === 'cancel'}>
-            <Text style={s.cancelBtnText}>鉂?{t({ en: 'Cancel Task', zh: '鍙栨秷浠诲姟' })}</Text>
+            <Text style={s.cancelBtnText}>❌ {t({ en: 'Cancel Task', zh: '取消任务' })}</Text>
           </TouchableOpacity>
         )}
 
         {/* Metadata */}
         <View style={s.metaCard}>
-          <Text style={s.metaRow}>馃搮 {t({ en: 'Created', zh: '鍒涘缓鏃堕棿' })}: {new Date(task.createdAt).toLocaleString()}</Text>
-          <Text style={s.metaRow}>馃攧 {t({ en: 'Updated', zh: '鏇存柊鏃堕棿' })}: {new Date(task.updatedAt).toLocaleString()}</Text>
-          <Text style={s.metaRow}>馃啍 {task.id}</Text>
+          <Text style={s.metaRow}>📅 {t({ en: 'Created', zh: '创建时间' })}: {new Date(task.createdAt).toLocaleString()}</Text>
+          <Text style={s.metaRow}>🔄 {t({ en: 'Updated', zh: '更新时间' })}: {new Date(task.updatedAt).toLocaleString()}</Text>
+          <Text style={s.metaRow}>🆔 {task.id}</Text>
         </View>
 
         <View style={{ height: 40 }} />
@@ -526,9 +526,9 @@ export function TaskDetailScreen() {
   );
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 // Styles
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ──────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, gap: 12, paddingBottom: 40 },

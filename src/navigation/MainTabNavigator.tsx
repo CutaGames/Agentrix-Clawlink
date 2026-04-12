@@ -64,37 +64,37 @@ export function MainTabNavigator() {
         },
       }}
     >
-      {/* Agent tab 鈥?now visible as Chat tab (first position) */}
+      {/* Agent tab — now visible as Chat tab (first position) */}
       <Tab.Screen
         name="Agent"
         component={AgentStackNavigator}
         options={{
-          title: t({ en: 'Chat', zh: '瀵硅瘽' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="馃挰" focused={focused} />,
+          title: t({ en: 'Chat', zh: '对话' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
         }}
       />
       <Tab.Screen
         name="Discover"
         component={DiscoverStackNavigator}
         options={{
-          title: t({ en: 'Discover', zh: '鍙戠幇' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="馃攳" focused={focused} />,
+          title: t({ en: 'Discover', zh: '发现' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🔍" focused={focused} />,
         }}
       />
       <Tab.Screen
         name="Team"
         component={TeamStackNavigator}
         options={{
-          title: t({ en: 'Team', zh: '鍥㈤槦' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="馃懃" focused={focused} badge={approvalCount} />,
+          title: t({ en: 'Team', zh: '团队' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👥" focused={focused} badge={approvalCount} />,
         }}
       />
       <Tab.Screen
         name="Me"
         component={MeStackNavigator}
         options={{
-          title: t({ en: 'Me', zh: '鎴戠殑' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="馃懁" focused={focused} badge={unreadCount} />,
+          title: t({ en: 'Me', zh: '我的' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} badge={unreadCount} />,
         }}
       />
     </Tab.Navigator>

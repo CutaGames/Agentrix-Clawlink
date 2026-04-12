@@ -28,13 +28,13 @@ import {
 type DeviceFilter = 'all' | 'glass' | 'watch' | 'ring' | 'band' | 'clip' | 'sensor';
 
 const KIND_CFG: Record<WearableKind | 'unknown', { icon: string; en: string; zh: string; color: string }> = {
-  glass: { icon: '馃暥锔?, en: 'AI Glasses', zh: 'AI 鐪奸暅', color: '#EC4899' },
-  watch: { icon: '鈱?, en: 'Watch', zh: '鎵嬭〃', color: '#F59E0B' },
-  ring: { icon: '馃拲', en: 'Ring', zh: '鎴掓寚', color: '#8B5CF6' },
-  band: { icon: '鈱?, en: 'Band', zh: '鎵嬬幆', color: '#3B82F6' },
-  clip: { icon: '馃搸', en: 'Clip', zh: '澶规墸', color: '#10B981' },
-  sensor: { icon: '馃摗', en: 'Sensor', zh: '浼犳劅鍣?, color: '#F59E0B' },
-  unknown: { icon: '馃摫', en: 'Device', zh: '璁惧', color: '#6B7280' },
+  glass: { icon: '🕶️', en: 'AI Glasses', zh: 'AI 眼镜', color: '#EC4899' },
+  watch: { icon: '⌚', en: 'Watch', zh: '手表', color: '#F59E0B' },
+  ring: { icon: '💍', en: 'Ring', zh: '戒指', color: '#8B5CF6' },
+  band: { icon: '⌚', en: 'Band', zh: '手环', color: '#3B82F6' },
+  clip: { icon: '📎', en: 'Clip', zh: '夹扣', color: '#10B981' },
+  sensor: { icon: '📡', en: 'Sensor', zh: '传感器', color: '#F59E0B' },
+  unknown: { icon: '📱', en: 'Device', zh: '设备', color: '#6B7280' },
 };
 
 function upsertCandidate(list: WearableScanCandidate[], next: WearableScanCandidate): WearableScanCandidate[] {
@@ -84,7 +84,7 @@ export function WearableHubScreen({ navigation }: any) {
     [scanCandidates, scanFilter],
   );
 
-  // 鈹€鈹€ Lifecycle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     void loadPairedRecords();
@@ -108,7 +108,7 @@ export function WearableHubScreen({ navigation }: any) {
     return () => anim.stop();
   }, [isScanning]);
 
-  // 鈹€鈹€ Actions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const loadPairedRecords = async () => {
     const records = await WearablePairingStoreService.list();
@@ -122,7 +122,7 @@ export function WearableHubScreen({ navigation }: any) {
       if (!mountedRef.current) return null;
       setPermissionState(s);
       if (!s.granted) {
-        setScanError(t({ en: 'Please enable Bluetooth, nearby devices, and location permissions.', zh: '璇峰紑鍚摑鐗欍€侀檮杩戣澶囧拰瀹氫綅鏉冮檺銆? }));
+        setScanError(t({ en: 'Please enable Bluetooth, nearby devices, and location permissions.', zh: '请开启蓝牙、附近设备和定位权限。' }));
       }
       return s;
     } catch (e: any) {
@@ -216,29 +216,29 @@ export function WearableHubScreen({ navigation }: any) {
     navigation?.navigate?.('WearableMonitor', { deviceId });
   };
 
-  // 鈹€鈹€ Render 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={st.safe} edges={['top']}>
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
 
-        {/* 鈹€鈹€ Header 鈹€鈹€ */}
+        {/* ── Header ── */}
         <View style={st.header}>
-          <Text style={st.headerTitle}>{t({ en: 'Wearable Devices', zh: '绌挎埓璁惧' })}</Text>
+          <Text style={st.headerTitle}>{t({ en: 'Wearable Devices', zh: '穿戴设备' })}</Text>
           <Text style={st.headerSub}>
             {pairedRecords.length > 0
-              ? `${pairedRecords.length} ${t({ en: 'paired', zh: '宸查厤瀵? })}`
-              : t({ en: 'Scan to add a device', zh: '鎼滅储娣诲姞璁惧' })}
+              ? `${pairedRecords.length} ${t({ en: 'paired', zh: '已配对' })}`
+              : t({ en: 'Scan to add a device', zh: '搜索添加设备' })}
           </Text>
         </View>
 
-        {/* 鈹€鈹€ Supported device types 鈹€鈹€ */}
+        {/* ── Supported device types ── */}
         <View style={st.supportedRow}>
           {([
-            { icon: '馃暥锔?, label: t({ en: 'AI Glasses', zh: 'AI 鐪奸暅' }), color: '#EC4899' },
-            { icon: '鈱?, label: t({ en: 'Watch', zh: '鎵嬭〃' }), color: '#F59E0B' },
-            { icon: '馃拲', label: t({ en: 'Ring', zh: '鎴掓寚' }), color: '#8B5CF6' },
-            { icon: '馃摗', label: t({ en: 'Sensor', zh: '浼犳劅鍣? }), color: '#10B981' },
+            { icon: '🕶️', label: t({ en: 'AI Glasses', zh: 'AI 眼镜' }), color: '#EC4899' },
+            { icon: '⌚', label: t({ en: 'Watch', zh: '手表' }), color: '#F59E0B' },
+            { icon: '💍', label: t({ en: 'Ring', zh: '戒指' }), color: '#8B5CF6' },
+            { icon: '📡', label: t({ en: 'Sensor', zh: '传感器' }), color: '#10B981' },
           ]).map((d) => (
             <View key={d.label} style={[st.supportedChip, { borderColor: d.color + '40' }]}>
               <Text style={{ fontSize: 18 }}>{d.icon}</Text>
@@ -247,10 +247,10 @@ export function WearableHubScreen({ navigation }: any) {
           ))}
         </View>
 
-        {/* 鈹€鈹€ Paired devices 鈹€鈹€ */}
+        {/* ── Paired devices ── */}
         {pairedRecords.length > 0 && (
           <View style={st.section}>
-            <Text style={st.sectionLabel}>{t({ en: 'MY DEVICES', zh: '鎴戠殑璁惧' })}</Text>
+            <Text style={st.sectionLabel}>{t({ en: 'MY DEVICES', zh: '我的设备' })}</Text>
             {pairedRecords.map((rec) => {
               const kc = KIND_CFG[rec.kind] || KIND_CFG.unknown;
               return (
@@ -260,7 +260,7 @@ export function WearableHubScreen({ navigation }: any) {
                   </View>
                   <View style={st.pairedInfo}>
                     <Text style={st.pairedName} numberOfLines={1}>{rec.name}</Text>
-                    <Text style={st.pairedMeta}>{t({ en: kc.en, zh: kc.zh })} 路 {relativeTime(rec.lastSeenAt)}</Text>
+                    <Text style={st.pairedMeta}>{t({ en: kc.en, zh: kc.zh })} · {relativeTime(rec.lastSeenAt)}</Text>
                     <View style={st.chipRow}>
                       {rec.serviceLabels.slice(0, 3).map((lbl) => (
                         <View key={`${rec.id}-${lbl}`} style={st.chip}><Text style={st.chipText}>{lbl}</Text></View>
@@ -269,10 +269,10 @@ export function WearableHubScreen({ navigation }: any) {
                   </View>
                   <View style={st.pairedRight}>
                     <TouchableOpacity style={st.monitorBtn} onPress={() => openMonitor(rec.id)}>
-                      <Text style={st.monitorBtnText}>{t({ en: 'Monitor', zh: '鐩戞帶' })}</Text>
+                      <Text style={st.monitorBtnText}>{t({ en: 'Monitor', zh: '监控' })}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => { void removePairedRecord(rec.id); }}>
-                      <Text style={st.removeText}>鉁?/Text>
+                      <Text style={st.removeText}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -281,13 +281,13 @@ export function WearableHubScreen({ navigation }: any) {
           </View>
         )}
 
-        {/* 鈹€鈹€ Quick health summary 鈹€鈹€ */}
+        {/* ── Quick health summary ── */}
         {pairedRecords.length > 0 && (
           <View style={st.healthRow}>
             {[
-              { icon: '鈾?, label: t({ en: 'Heart', zh: '蹇冪巼' }), val: '--', unit: 'bpm', c: '#EF4444' },
-              { icon: '馃攱', label: t({ en: 'Battery', zh: '鐢甸噺' }), val: '--', unit: '%', c: '#10B981' },
-              { icon: '馃毝', label: t({ en: 'Steps', zh: '姝ユ暟' }), val: '--', unit: '', c: '#3B82F6' },
+              { icon: '♥', label: t({ en: 'Heart', zh: '心率' }), val: '--', unit: 'bpm', c: '#EF4444' },
+              { icon: '🔋', label: t({ en: 'Battery', zh: '电量' }), val: '--', unit: '%', c: '#10B981' },
+              { icon: '🚶', label: t({ en: 'Steps', zh: '步数' }), val: '--', unit: '', c: '#3B82F6' },
             ].map((m) => (
               <View key={m.label} style={st.healthCard}>
                 <Text style={[st.healthIcon, { color: m.c }]}>{m.icon}</Text>
@@ -299,13 +299,13 @@ export function WearableHubScreen({ navigation }: any) {
           </View>
         )}
 
-        {/* 鈹€鈹€ Add device 鈹€鈹€ */}
+        {/* ── Add device ── */}
         <View style={st.section}>
-          <Text style={st.sectionLabel}>{t({ en: 'ADD DEVICE', zh: '娣诲姞璁惧' })}</Text>
+          <Text style={st.sectionLabel}>{t({ en: 'ADD DEVICE', zh: '添加设备' })}</Text>
 
           {(scanError || connectionError) && (
             <View style={st.alertCard}>
-              <Text style={st.alertEmoji}>鈿狅笍</Text>
+              <Text style={st.alertEmoji}>⚠️</Text>
               <Text style={st.alertText}>{scanError || connectionError}</Text>
             </View>
           )}
@@ -318,15 +318,15 @@ export function WearableHubScreen({ navigation }: any) {
           >
             {isScanning ? (
               <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <Text style={st.scanBtnIcon}>鈱?/Text>
+                <Text style={st.scanBtnIcon}>⌁</Text>
               </Animated.View>
             ) : (
-              <Text style={st.scanBtnIcon}>馃摗</Text>
+              <Text style={st.scanBtnIcon}>📡</Text>
             )}
             <Text style={st.scanBtnText}>
               {isScanning
-                ? t({ en: 'Scanning...', zh: '鎼滅储涓?..' })
-                : t({ en: 'Scan for Devices', zh: '鎼滅储璁惧' })}
+                ? t({ en: 'Scanning...', zh: '搜索中...' })
+                : t({ en: 'Scan for Devices', zh: '搜索设备' })}
             </Text>
           </TouchableOpacity>
 
@@ -335,7 +335,7 @@ export function WearableHubScreen({ navigation }: any) {
             <View style={st.filterRow}>
               {(['all', 'glass', 'watch', 'ring', 'band', 'clip', 'sensor'] as DeviceFilter[]).map((f) => {
                 const lbl = f === 'all'
-                  ? t({ en: 'All', zh: '鍏ㄩ儴' })
+                  ? t({ en: 'All', zh: '全部' })
                   : t({ en: KIND_CFG[f].en, zh: KIND_CFG[f].zh });
                 return (
                   <TouchableOpacity key={f} style={[st.filterChip, scanFilter === f && st.filterChipOn]} onPress={() => setScanFilter(f)}>
@@ -363,7 +363,7 @@ export function WearableHubScreen({ navigation }: any) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={st.scanName} numberOfLines={1}>{c.name}</Text>
-                    <Text style={st.scanMeta}>{t({ en: kc.en, zh: kc.zh })} 路 {sig.label}</Text>
+                    <Text style={st.scanMeta}>{t({ en: kc.en, zh: kc.zh })} · {sig.label}</Text>
                   </View>
                   <View style={st.sigBars}>
                     {[1, 2, 3, 4].map((i) => (
@@ -387,10 +387,10 @@ export function WearableHubScreen({ navigation }: any) {
                         <View key={s} style={st.stageItem}>
                           <View style={[st.stageDot, past && st.stageDotDone, connectionStage === s && st.stageDotCur]} />
                           <Text style={[st.stageText, past && st.stageTextDone]}>
-                            {s === 'connecting' ? t({ en: 'Connect', zh: '杩炴帴' })
-                              : s === 'discovering' ? t({ en: 'Discover', zh: '鍙戠幇' })
-                                : s === 'reading' ? t({ en: 'Verify', zh: '楠岃瘉' })
-                                  : t({ en: 'Done', zh: '瀹屾垚' })}
+                            {s === 'connecting' ? t({ en: 'Connect', zh: '连接' })
+                              : s === 'discovering' ? t({ en: 'Discover', zh: '发现' })
+                                : s === 'reading' ? t({ en: 'Verify', zh: '验证' })
+                                  : t({ en: 'Done', zh: '完成' })}
                           </Text>
                         </View>
                       );
@@ -399,20 +399,20 @@ export function WearableHubScreen({ navigation }: any) {
                 )}
                 {!connected && !connecting && (
                   <TouchableOpacity style={st.connectBtn} onPress={() => { void connectCandidate(c); }} activeOpacity={0.8}>
-                    <Text style={st.connectBtnText}>{t({ en: 'Connect & Pair', zh: '杩炴帴閰嶅' })}</Text>
+                    <Text style={st.connectBtnText}>{t({ en: 'Connect & Pair', zh: '连接配对' })}</Text>
                   </TouchableOpacity>
                 )}
                 {connecting && (
                   <View style={st.connectingBar}>
-                    <Text style={st.connectingText}>{t({ en: 'Connecting...', zh: '姝ｅ湪杩炴帴...' })}</Text>
+                    <Text style={st.connectingText}>{t({ en: 'Connecting...', zh: '正在连接...' })}</Text>
                   </View>
                 )}
                 {connected && profile && (
                   <View style={st.connectedBar}>
-                    <Text style={st.connectedIcon}>鉁?/Text>
-                    <Text style={st.connectedText}>{t({ en: 'Paired', zh: '宸查厤瀵? })}</Text>
+                    <Text style={st.connectedIcon}>✓</Text>
+                    <Text style={st.connectedText}>{t({ en: 'Paired', zh: '已配对' })}</Text>
                     <TouchableOpacity style={st.goMonitorBtn} onPress={() => openMonitor(c.id)}>
-                      <Text style={st.goMonitorText}>{t({ en: 'Open Monitor 鈫?, zh: '鎵撳紑鐩戞帶 鈫? })}</Text>
+                      <Text style={st.goMonitorText}>{t({ en: 'Open Monitor →', zh: '打开监控 →' })}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -423,18 +423,18 @@ export function WearableHubScreen({ navigation }: any) {
           {/* Empty */}
           {!isScanning && scanCandidates.length === 0 && pairedRecords.length === 0 && (
             <View style={st.empty}>
-              <Text style={st.emptyEmoji}>鈱?/Text>
-              <Text style={st.emptyTitle}>{t({ en: 'No Wearable Devices', zh: '鏃犵┛鎴磋澶? })}</Text>
+              <Text style={st.emptyEmoji}>⌚</Text>
+              <Text style={st.emptyTitle}>{t({ en: 'No Wearable Devices', zh: '无穿戴设备' })}</Text>
               <Text style={st.emptyDesc}>
-                {t({ en: 'Tap the scan button to discover nearby Bluetooth LE wearables.', zh: '鐐瑰嚮鎼滅储鎸夐挳锛屽彂鐜伴檮杩戠殑钃濈墮浣庡姛鑰楃┛鎴磋澶囥€? })}
+                {t({ en: 'Tap the scan button to discover nearby Bluetooth LE wearables.', zh: '点击搜索按钮，发现附近的蓝牙低功耗穿戴设备。' })}
               </Text>
             </View>
           )}
         </View>
 
-        {/* 鈹€鈹€ Supported devices 鈹€鈹€ */}
+        {/* ── Supported devices ── */}
         <View style={st.supportSection}>
-          <Text style={st.supportTitle}>{t({ en: 'Supported Devices', zh: '鏀寔鐨勮澶? })}</Text>
+          <Text style={st.supportTitle}>{t({ en: 'Supported Devices', zh: '支持的设备' })}</Text>
           <View style={st.supportGrid}>
             {(['ring', 'band', 'clip', 'sensor'] as const).map((k) => (
               <View key={k} style={st.supportItem}>
@@ -446,7 +446,7 @@ export function WearableHubScreen({ navigation }: any) {
             ))}
           </View>
           <Text style={st.supportHint}>
-            {t({ en: 'Any BLE device with standard GATT services is automatically recognized.', zh: '鏀寔浠讳綍鍏锋湁鏍囧噯 GATT 鏈嶅姟鐨勪綆鍔熻€楄摑鐗欒澶囥€? })}
+            {t({ en: 'Any BLE device with standard GATT services is automatically recognized.', zh: '支持任何具有标准 GATT 服务的低功耗蓝牙设备。' })}
           </Text>
         </View>
 
@@ -456,7 +456,7 @@ export function WearableHubScreen({ navigation }: any) {
   );
 }
 
-// 鈹€鈹€ Styles 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },

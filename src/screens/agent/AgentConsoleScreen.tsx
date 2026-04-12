@@ -20,7 +20,7 @@ import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
-const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b', 'gemma-nano-2b-local']);
+const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b', 'gemma-nano-2b-local']);
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
@@ -45,7 +45,7 @@ export function AgentConsoleScreen() {
   const { t } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const updateInstance = useAuthStore((s) => s.updateInstance);
-  // NOTE: do NOT use `?? []` inside the selector 鈥?it creates a new array reference
+  // NOTE: do NOT use `?? []` inside the selector — it creates a new array reference
   // every render and triggers an infinite re-render loop.
   const rawInstances = useAuthStore((s) => s.user?.openClawInstances);
   const instances = rawInstances ?? [];
@@ -127,9 +127,9 @@ export function AgentConsoleScreen() {
         text: 'Restart', style: 'destructive', onPress: async () => {
           try {
             await restartInstance(activeInstance.id);
-            Alert.alert(t({ en: 'Success', zh: '鎴愬姛' }), t({ en: 'Agent restarting...', zh: '鏅鸿兘浣撴鍦ㄩ噸鍚€? }));
+            Alert.alert(t({ en: 'Success', zh: '成功' }), t({ en: 'Agent restarting...', zh: '智能体正在重启…' }));
           } catch (e: any) {
-            Alert.alert(t({ en: 'Restart Failed', zh: '閲嶅惎澶辫触' }), e?.message || t({ en: 'The agent server might be offline. Please try again later.', zh: '鏅鸿兘浣撴湇鍔″彲鑳芥殏鏃剁绾匡紝璇风◢鍚庨噸璇曘€? }));
+            Alert.alert(t({ en: 'Restart Failed', zh: '重启失败' }), e?.message || t({ en: 'The agent server might be offline. Please try again later.', zh: '智能体服务可能暂时离线，请稍后重试。' }));
           }
         }
       },
@@ -139,14 +139,14 @@ export function AgentConsoleScreen() {
   if (!activeInstance) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyIcon}>馃</Text>
-        <Text style={styles.emptyTitle}>{t({ en: 'No Agent Connected', zh: '灏氭湭杩炴帴鏅鸿兘浣? })}</Text>
-        <Text style={styles.emptySub}>{t({ en: 'Deploy or connect an OpenClaw instance to get started.', zh: '鍏堥儴缃叉垨杩炴帴涓€涓?OpenClaw 瀹炰緥鍗冲彲寮€濮嬨€? })}</Text>
+        <Text style={styles.emptyIcon}>🤖</Text>
+        <Text style={styles.emptyTitle}>{t({ en: 'No Agent Connected', zh: '尚未连接智能体' })}</Text>
+        <Text style={styles.emptySub}>{t({ en: 'Deploy or connect an OpenClaw instance to get started.', zh: '先部署或连接一个 OpenClaw 实例即可开始。' })}</Text>
         <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('DeploySelect')}>
-          <Text style={styles.primaryBtnText}>馃殌 {t({ en: 'Deploy / Connect Agent 鈫?, zh: '閮ㄧ讲 / 杩炴帴鏅鸿兘浣?鈫? })}</Text>
+          <Text style={styles.primaryBtnText}>🚀 {t({ en: 'Deploy / Connect Agent →', zh: '部署 / 连接智能体 →' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border, marginTop: 8 }]} onPress={() => navigation.navigate('OpenClawBind')}>
-          <Text style={[styles.primaryBtnText, { color: colors.textSecondary }]}>{t({ en: 'Connect existing OpenClaw', zh: '杩炴帴宸叉湁 OpenClaw' })}</Text>
+          <Text style={[styles.primaryBtnText, { color: colors.textSecondary }]}>{t({ en: 'Connect existing OpenClaw', zh: '连接已有 OpenClaw' })}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -167,15 +167,15 @@ export function AgentConsoleScreen() {
           <View>
             <Text style={styles.instanceName}>{activeInstance.name}</Text>
             <Text style={styles.instanceUrl} numberOfLines={1}>
-                {activeInstance.deployType === 'cloud' ? t({ en: '鈽侊笍 Agentrix Cloud', zh: '鈽侊笍 Agentrix 浜戠' }) : 
-                activeInstance.deployType === 'local' ? t({ en: '馃捇 Local Device', zh: '馃捇 鏈湴璁惧' }) : 
+                {activeInstance.deployType === 'cloud' ? t({ en: '☁️ Agentrix Cloud', zh: '☁️ Agentrix 云端' }) : 
+                activeInstance.deployType === 'local' ? t({ en: '💻 Local Device', zh: '💻 本地设备' }) : 
                activeInstance.instanceUrl}
             </Text>
           </View>
         </View>
         <View style={styles.statusActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={handleRestart}>
-            <Text style={styles.iconBtnText}>馃攧</Text>
+            <Text style={styles.iconBtnText}>🔄</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconBtn}
@@ -191,13 +191,13 @@ export function AgentConsoleScreen() {
 
       {/* Model Switcher */}
       <View style={styles.modelSwitcher}>
-        <Text style={styles.modelLabel}>{t({ en: 'Current Engine:', zh: '褰撳墠寮曟搸锛? })}</Text>
+        <Text style={styles.modelLabel}>{t({ en: 'Current Engine:', zh: '当前引擎：' })}</Text>
         <TouchableOpacity 
           style={styles.modelSelector}
           onPress={() => setShowEngineModal(true)}
         >
           <Text style={styles.modelSelectorText}>{selectedModelLabel}</Text>
-          <Text style={styles.modelSelectorArrow}>鈻?/Text>
+          <Text style={styles.modelSelectorArrow}>▼</Text>
         </TouchableOpacity>
       </View>
 
@@ -229,20 +229,20 @@ export function AgentConsoleScreen() {
           >
             <Text style={[styles.tabText, tab === tabKey && styles.tabTextActive]}>
               {tabKey === 'overview'
-                ? `馃搳 ${t({ en: 'Overview', zh: '姒傝' })}`
+                ? `📊 ${t({ en: 'Overview', zh: '概览' })}`
                 : tabKey === 'skills'
-                  ? `鈿?${t({ en: 'Skills', zh: '鎶€鑳? })}`
-                  : `馃搵 ${t({ en: 'Tasks', zh: '浠诲姟' })}`}
+                  ? `⚡ ${t({ en: 'Skills', zh: '技能' })}`
+                  : `📋 ${t({ en: 'Tasks', zh: '任务' })}`}
             </Text>
           </TouchableOpacity>
         ))}
-        {/* 4th tab: Permissions 鈥?visible in advanced/professional mode */}
+        {/* 4th tab: Permissions — visible in advanced/professional mode */}
         {(uiComplexity === 'advanced' || uiComplexity === 'professional') && (
           <TouchableOpacity
             style={[styles.tabBtn, tab === 'permissions' && styles.tabBtnActive]}
             onPress={() => setTab('permissions')}
           >
-            <Text style={[styles.tabText, tab === 'permissions' && styles.tabTextActive]}>馃攼 {t({ en: 'Perms', zh: '鏉冮檺' })}</Text>
+            <Text style={[styles.tabText, tab === 'permissions' && styles.tabTextActive]}>🔐 {t({ en: 'Perms', zh: '权限' })}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -256,28 +256,28 @@ export function AgentConsoleScreen() {
             style={styles.chatCta}
             onPress={() => navigation.navigate('AgentChat', { instanceId: activeInstance.id, instanceName: activeInstance.name })}
           >
-            <Text style={styles.chatCtaEmoji}>馃挰</Text>
+            <Text style={styles.chatCtaEmoji}>💬</Text>
             <View>
-              <Text style={styles.chatCtaTitle}>{t({ en: `Chat with ${activeInstance.name}`, zh: `涓?${activeInstance.name} 瀵硅瘽` })}</Text>
-              <Text style={styles.chatCtaSub}>{t({ en: 'Start a conversation with your agent', zh: '绔嬪嵆寮€濮嬩笌浣犵殑鏅鸿兘浣撲氦娴? })}</Text>
+              <Text style={styles.chatCtaTitle}>{t({ en: `Chat with ${activeInstance.name}`, zh: `与 ${activeInstance.name} 对话` })}</Text>
+              <Text style={styles.chatCtaSub}>{t({ en: 'Start a conversation with your agent', zh: '立即开始与你的智能体交流' })}</Text>
             </View>
-            <Text style={styles.chatCtaArrow}>鈥?/Text>
+            <Text style={styles.chatCtaArrow}>›</Text>
           </TouchableOpacity>
 
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>{skills?.length ?? 0}</Text>
-              <Text style={styles.statLabel}>{t({ en: 'Skills', zh: '鎶€鑳? })}</Text>
+              <Text style={styles.statLabel}>{t({ en: 'Skills', zh: '技能' })}</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={[styles.statValue, { color: STATUS_COLOR[activeInstance.status] ?? '#6b7280' }]}>
                 {STATUS_LABEL[activeInstance.status] ?? activeInstance.status.toUpperCase()}
               </Text>
-              <Text style={styles.statLabel}>{t({ en: 'Status', zh: '鐘舵€? })}</Text>
+              <Text style={styles.statLabel}>{t({ en: 'Status', zh: '状态' })}</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{activeInstance.deployType || '鈥?}</Text>
-              <Text style={styles.statLabel}>{t({ en: 'Type', zh: '绫诲瀷' })}</Text>
+              <Text style={styles.statValue}>{activeInstance.deployType || '—'}</Text>
+              <Text style={styles.statLabel}>{t({ en: 'Type', zh: '类型' })}</Text>
             </View>
           </View>
 
@@ -285,10 +285,10 @@ export function AgentConsoleScreen() {
           {activeInstance.status === 'error' && (
             <View style={{ backgroundColor: '#ef444418', borderRadius: 12, padding: 12, marginTop: -8 }}>
               <Text style={{ color: '#f87171', fontSize: 13, fontWeight: '600', marginBottom: 4 }}>
-                {t({ en: '鈿狅笍 This instance encountered an error during provisioning.', zh: '鈿狅笍 璇ュ疄渚嬪湪閮ㄧ讲杩囩▼涓亣鍒颁簡閿欒銆? })}
+                {t({ en: '⚠️ This instance encountered an error during provisioning.', zh: '⚠️ 该实例在部署过程中遇到了错误。' })}
               </Text>
               <Text style={{ color: '#94a3b8', fontSize: 12, lineHeight: 18 }}>
-                {t({ en: 'Go to My Agents to clean up error instances, then deploy a new one.', zh: '璇峰墠寰€鈥滄垜鐨勬櫤鑳戒綋鈥濇竻鐞嗗紓甯稿疄渚嬶紝鐒跺悗閲嶆柊閮ㄧ讲銆? })}
+                {t({ en: 'Go to My Agents to clean up error instances, then deploy a new one.', zh: '请前往“我的智能体”清理异常实例，然后重新部署。' })}
               </Text>
             </View>
           )}
@@ -301,16 +301,16 @@ export function AgentConsoleScreen() {
           >
             <View style={styles.storageCardHeader}>
               <Text style={styles.storageCardTitle}>
-                馃捑 {storageInfo
+                💾 {storageInfo
                   ? `${storageInfo.usedGb.toFixed(1)} / ${storageInfo.totalGb} GB`
-                  : '10 GB'} {t({ en: 'Storage', zh: '瀛樺偍' })}
+                  : '10 GB'} {t({ en: 'Storage', zh: '存储' })}
               </Text>
               {storageInfo?.isGiftStorage && (
                 <View style={styles.giftBadge}>
-                  <Text style={styles.giftBadgeText}>馃巵 {t({ en: 'Free', zh: '鍏嶈垂' })}</Text>
+                  <Text style={styles.giftBadgeText}>🎁 {t({ en: 'Free', zh: '免费' })}</Text>
                 </View>
               )}
-              <Text style={styles.storageCardArrow}>鈥?/Text>
+              <Text style={styles.storageCardArrow}>›</Text>
             </View>
             <View style={styles.storageBar}>
               <View style={[styles.storageBarFill, {
@@ -320,16 +320,16 @@ export function AgentConsoleScreen() {
             </View>
             <Text style={styles.storageCardSub}>
               {storageInfo
-                ? t({ en: `${storageInfo.availableGb.toFixed(1)} GB available 路 Tap to manage`, zh: `鍙敤 ${storageInfo.availableGb.toFixed(1)} GB 路 鐐瑰嚮绠＄悊` })
-                : t({ en: 'Upgrade for more storage', zh: '鍗囩骇浠ヨ幏寰楁洿澶氬瓨鍌? })}
+                ? t({ en: `${storageInfo.availableGb.toFixed(1)} GB available · Tap to manage`, zh: `可用 ${storageInfo.availableGb.toFixed(1)} GB · 点击管理` })
+                : t({ en: 'Upgrade for more storage', zh: '升级以获得更多存储' })}
             </Text>
           </TouchableOpacity>
 
-          {/* 鈹€鈹€ Token Usage Card 鈹€鈹€ */}
+          {/* ── Token Usage Card ── */}
           {quota && (
             <View style={styles.quotaCard}>
               <View style={styles.quotaHeader}>
-                <Text style={styles.quotaTitle}>鈿?{t({ en: 'Token Usage', zh: 'Token 鐢ㄩ噺' })}</Text>
+                <Text style={styles.quotaTitle}>⚡ {t({ en: 'Token Usage', zh: 'Token 用量' })}</Text>
                 <View style={[styles.planBadge, { backgroundColor: PLAN_COLOR[quota.planType] + '22' }]}>
                   <Text style={[styles.planBadgeText, { color: PLAN_COLOR[quota.planType] }]}>
                     {PLAN_LABEL[quota.planType]}
@@ -346,34 +346,34 @@ export function AgentConsoleScreen() {
                 <Text style={styles.quotaStat}>
                   {(quota.usedTokens / 1000).toFixed(0)}k / {(quota.totalQuota / 1000000).toFixed(1)}M tokens
                 </Text>
-                <Text style={styles.quotaStat}>{t({ en: `${quota.callCount} calls 路 ${quota.usagePercent.toFixed(1)}% used`, zh: `${quota.callCount} 娆¤皟鐢?路 宸蹭娇鐢?${quota.usagePercent.toFixed(1)}%` })}</Text>
+                <Text style={styles.quotaStat}>{t({ en: `${quota.callCount} calls · ${quota.usagePercent.toFixed(1)}% used`, zh: `${quota.callCount} 次调用 · 已使用 ${quota.usagePercent.toFixed(1)}%` })}</Text>
               </View>
               {quota.quotaExhausted && (
                 <View style={styles.quotaExhausted}>
-                  <Text style={styles.quotaExhaustedText}>鈿狅笍 {t({ en: 'Quota exhausted 鈥?upgrade plan', zh: '棰濆害宸茬敤灏?鈥?璇峰崌绾у椁? })}</Text>
+                  <Text style={styles.quotaExhaustedText}>⚠️ {t({ en: 'Quota exhausted — upgrade plan', zh: '额度已用尽 — 请升级套餐' })}</Text>
                 </View>
               )}
             </View>
           )}
 
-          {/* 鈹€鈹€ Quick Actions 鈹€鈹€ */}
+          {/* ── Quick Actions ── */}
           <View style={styles.quickActions}>
             {([
-              { icon: '馃摲', label: t({ en: 'Scan QR', zh: '鎵竴鎵? }), route: 'Scan' as const },
-              { icon: '馃搵', label: t({ en: 'Activity Logs', zh: '娲诲姩鏃ュ織' }), route: 'AgentLogs' as const },
-              { icon: '馃捇', label: t({ en: 'Desktop Control', zh: '妗岄潰鎺у埗' }), route: 'DesktopControl' as const },
-              { icon: '鈱?, label: t({ en: 'Wearables', zh: '鍙┛鎴磋澶? }), route: 'WearableHub' as const },
-              { icon: '馃', label: t({ en: 'Memory Hub', zh: '璁板繂涓績' }), route: 'MemoryManagement' as const },
-              { icon: '馃梼锔?, label: t({ en: 'Memory Slots', zh: '璁板繂妲? }), route: 'AgentMemory' as const },
-              { icon: '馃攣', label: t({ en: 'ACP Sessions', zh: 'ACP 浼氳瘽' }), route: 'AcpSessions' as const },
-              { icon: '鈿欙笍', label: t({ en: 'Workflows', zh: '宸ヤ綔娴? }), route: 'WorkflowList' as const },
-              { icon: '馃洜锔?, label: t({ en: 'Agent Tools', zh: '绯荤粺宸ュ叿' }), route: 'AgentTools' as const },
-              { icon: '锟?, label: t({ en: 'Dreaming', zh: '姊﹀寮曟搸' }), route: 'DreamingDashboard' as const },
-              { icon: '馃З', label: t({ en: 'Plugin Hub', zh: '鎻掍欢涓績' }), route: 'PluginHub' as const },
-              { icon: '馃摑', label: t({ en: 'Memory Wiki', zh: '璁板繂Wiki' }), route: 'MemoryWiki' as const },
-              { icon: '馃攲', label: t({ en: 'MCP Manager', zh: 'MCP 绠＄悊' }), route: 'McpManager' as const },
-              { icon: '锟金煈?, label: t({ en: 'Team Space', zh: '鍥㈤槦绌洪棿' }), route: 'TeamSpace' as const },
-              { icon: '馃', label: t({ en: 'Agent Accounts', zh: '鏅鸿兘浣撹处鎴? }), route: 'AgentAccount' as const },
+              { icon: '📷', label: t({ en: 'Scan QR', zh: '扫一扫' }), route: 'Scan' as const },
+              { icon: '📋', label: t({ en: 'Activity Logs', zh: '活动日志' }), route: 'AgentLogs' as const },
+              { icon: '💻', label: t({ en: 'Desktop Control', zh: '桌面控制' }), route: 'DesktopControl' as const },
+              { icon: '⌚', label: t({ en: 'Wearables', zh: '可穿戴设备' }), route: 'WearableHub' as const },
+              { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
+              { icon: '🗃️', label: t({ en: 'Memory Slots', zh: '记忆槽' }), route: 'AgentMemory' as const },
+              { icon: '🔁', label: t({ en: 'ACP Sessions', zh: 'ACP 会话' }), route: 'AcpSessions' as const },
+              { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
+              { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
+              { icon: '�', label: t({ en: 'Dreaming', zh: '梦境引擎' }), route: 'DreamingDashboard' as const },
+              { icon: '🧩', label: t({ en: 'Plugin Hub', zh: '插件中心' }), route: 'PluginHub' as const },
+              { icon: '📝', label: t({ en: 'Memory Wiki', zh: '记忆Wiki' }), route: 'MemoryWiki' as const },
+              { icon: '🔌', label: t({ en: 'MCP Manager', zh: 'MCP 管理' }), route: 'McpManager' as const },
+              { icon: '�👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
+              { icon: '🤖', label: t({ en: 'Agent Accounts', zh: '智能体账户' }), route: 'AgentAccount' as const },
             ] as const).map((item) => (
               <TouchableOpacity
                 key={item.route}
@@ -388,32 +388,32 @@ export function AgentConsoleScreen() {
               >
                 <Text style={styles.quickActionIcon}>{item.icon}</Text>
                 <Text style={styles.quickActionLabel}>{item.label}</Text>
-                <Text style={styles.quickActionArrow}>鈥?/Text>
+                <Text style={styles.quickActionArrow}>›</Text>
               </TouchableOpacity>
             ))}
           </View>
-        {/* 鈹€鈹€ Download Desktop App Banner 鈹€鈹€ */}
+        {/* ── Download Desktop App Banner ── */}
         <TouchableOpacity
           style={styles.downloadBanner}
           onPress={() => {
             Alert.alert(
-              t({ en: '馃捇 Agentrix Desktop', zh: '馃捇 Agentrix 妗岄潰鐗? }),
-              t({ en: 'Download the Agentrix Desktop app to control your computer with AI, run local agents, and sync with your mobile.', zh: '涓嬭浇 Agentrix 妗岄潰鐗堬紝鐢?AI 鎺у埗浣犵殑鐢佃剳銆佽繍琛屾湰鍦版櫤鑳戒綋锛屽苟涓庢墜鏈哄悓姝ャ€? }),
+              t({ en: '💻 Agentrix Desktop', zh: '💻 Agentrix 桌面版' }),
+              t({ en: 'Download the Agentrix Desktop app to control your computer with AI, run local agents, and sync with your mobile.', zh: '下载 Agentrix 桌面版，用 AI 控制你的电脑、运行本地智能体，并与手机同步。' }),
               [
-                { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
-                { text: t({ en: 'Download Standard (.exe)', zh: '涓嬭浇鏍囧噯鐗?(.exe)' }), onPress: () => {} },
-                { text: t({ en: 'Download AIO (All-in-One)', zh: '涓嬭浇 AIO 涓€浣撶増' }), onPress: () => {} },
+                { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+                { text: t({ en: 'Download Standard (.exe)', zh: '下载标准版 (.exe)' }), onPress: () => {} },
+                { text: t({ en: 'Download AIO (All-in-One)', zh: '下载 AIO 一体版' }), onPress: () => {} },
               ]
             );
           }}
           activeOpacity={0.8}
         >
-          <Text style={styles.downloadBannerIcon}>馃捇</Text>
+          <Text style={styles.downloadBannerIcon}>💻</Text>
           <View style={{ flex: 1 }}>
-            <Text style={styles.downloadBannerTitle}>{t({ en: 'Get Agentrix Desktop', zh: '鑾峰彇 Agentrix 妗岄潰鐗? })}</Text>
-            <Text style={styles.downloadBannerSub}>{t({ en: 'Run AI agents on your computer 鈥?one-click AIO installer available', zh: '鍦ㄤ綘鐨勭數鑴戜笂杩愯 AI 鏅鸿兘浣?鈥斺€?鏀寔涓€閿?AIO 瀹夎鍣? })}</Text>
+            <Text style={styles.downloadBannerTitle}>{t({ en: 'Get Agentrix Desktop', zh: '获取 Agentrix 桌面版' })}</Text>
+            <Text style={styles.downloadBannerSub}>{t({ en: 'Run AI agents on your computer — one-click AIO installer available', zh: '在你的电脑上运行 AI 智能体 —— 支持一键 AIO 安装器' })}</Text>
           </View>
-          <Text style={styles.downloadBannerArrow}>鈫?/Text>
+          <Text style={styles.downloadBannerArrow}>↓</Text>
         </TouchableOpacity>
         </>
       )}
@@ -423,25 +423,25 @@ export function AgentConsoleScreen() {
         <View style={styles.skillsSection}>
           {(!skills || skills.length === 0) ? (
             <View style={styles.emptySection}>
-              <Text style={styles.emptySectionText}>{t({ en: 'No skills installed.', zh: '杩樻病鏈夊畨瑁呮妧鑳姐€? })}</Text>
+              <Text style={styles.emptySectionText}>{t({ en: 'No skills installed.', zh: '还没有安装技能。' })}</Text>
               <TouchableOpacity
                 style={styles.secondaryBtn}
                 onPress={() => navigation.navigate('SkillInstall', { skillId: '', skillName: '' })}
               >
-                <Text style={styles.secondaryBtnText}>{t({ en: 'Browse Skill Market 鈫?, zh: '娴忚鎶€鑳藉競鍦?鈫? })}</Text>
+                <Text style={styles.secondaryBtnText}>{t({ en: 'Browse Skill Market →', zh: '浏览技能市场 →' })}</Text>
               </TouchableOpacity>
             </View>
           ) : (
             skills.map((skill: any) => (
               <View key={skill.id} style={styles.skillRow}>
-                <Text style={styles.skillEmoji}>{skill.icon || '鈿?}</Text>
+                <Text style={styles.skillEmoji}>{skill.icon || '⚡'}</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.skillName}>{skill.name}</Text>
                   <Text style={styles.skillSub}>{skill.description}</Text>
                 </View>
                 <View style={[styles.skillStatus, skill.enabled && { backgroundColor: colors.success + '22' }]}>
                   <Text style={{ fontSize: 11, color: skill.enabled ? colors.success : colors.textMuted }}>
-                    {skill.enabled ? t({ en: 'ON', zh: '寮€' }) : t({ en: 'OFF', zh: '鍏? })}
+                    {skill.enabled ? t({ en: 'ON', zh: '开' }) : t({ en: 'OFF', zh: '关' })}
                   </Text>
                 </View>
               </View>
@@ -452,8 +452,8 @@ export function AgentConsoleScreen() {
 
       {tab === 'tasks' && (
         <View style={styles.emptySection}>
-          <Text style={styles.emptySectionText}>{t({ en: 'No recent tasks.', zh: '鏆傛棤鏈€杩戜换鍔°€? })}</Text>
-          <Text style={styles.emptySectionSub}>{t({ en: 'Tasks triggered by your agent will appear here.', zh: '鐢变綘鐨勬櫤鑳戒綋瑙﹀彂鐨勪换鍔′細鏄剧ず鍦ㄨ繖閲屻€? })}</Text>
+          <Text style={styles.emptySectionText}>{t({ en: 'No recent tasks.', zh: '暂无最近任务。' })}</Text>
+          <Text style={styles.emptySectionSub}>{t({ en: 'Tasks triggered by your agent will appear here.', zh: '由你的智能体触发的任务会显示在这里。' })}</Text>
         </View>
       )}
 
@@ -465,20 +465,20 @@ export function AgentConsoleScreen() {
             onPress={() => navigation.navigate('AgentPermissions', { agentAccountId: activeInstance.metadata?.agentAccountId })}
             activeOpacity={0.8}
           >
-            <Text style={styles.permissionsCardIcon}>馃攼</Text>
+            <Text style={styles.permissionsCardIcon}>🔐</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.permissionsCardTitle}>{t({ en: 'Permissions & Security', zh: '鏉冮檺涓庡畨鍏? })}</Text>
-              <Text style={styles.permissionsCardSub}>{t({ en: 'Manage payment limits, device access, network tools', zh: '绠＄悊鏀粯闄愰銆佽澶囪闂拰缃戠粶宸ュ叿鏉冮檺' })}</Text>
+              <Text style={styles.permissionsCardTitle}>{t({ en: 'Permissions & Security', zh: '权限与安全' })}</Text>
+              <Text style={styles.permissionsCardSub}>{t({ en: 'Manage payment limits, device access, network tools', zh: '管理支付限额、设备访问和网络工具权限' })}</Text>
             </View>
-            <Text style={styles.permissionsCardArrow}>鈥?/Text>
+            <Text style={styles.permissionsCardArrow}>›</Text>
           </TouchableOpacity>
           {/* Quick summary rows */}
           {[
-            { icon: '馃挸', label: t({ en: 'Autonomous Payment', zh: '鑷富鏀粯' }), status: t({ en: 'ON', zh: '寮€' }), color: colors.success },
-            { icon: '馃攳', label: t({ en: 'Web Search', zh: '缃戠粶鎼滅储' }), status: t({ en: 'ON', zh: '寮€' }), color: colors.success },
-            { icon: '馃搧', label: t({ en: 'File Read', zh: '鏂囦欢璇诲彇' }), status: t({ en: 'ON', zh: '寮€' }), color: colors.success },
-            { icon: '馃摳', label: t({ en: 'Screenshot', zh: '鎴浘' }), status: t({ en: 'OFF', zh: '鍏? }), color: colors.textMuted },
-            { icon: '馃摟', label: t({ en: 'Email Send', zh: '閭欢鍙戦€? }), status: t({ en: 'OFF', zh: '鍏? }), color: colors.textMuted },
+            { icon: '💳', label: t({ en: 'Autonomous Payment', zh: '自主支付' }), status: t({ en: 'ON', zh: '开' }), color: colors.success },
+            { icon: '🔍', label: t({ en: 'Web Search', zh: '网络搜索' }), status: t({ en: 'ON', zh: '开' }), color: colors.success },
+            { icon: '📁', label: t({ en: 'File Read', zh: '文件读取' }), status: t({ en: 'ON', zh: '开' }), color: colors.success },
+            { icon: '📸', label: t({ en: 'Screenshot', zh: '截图' }), status: t({ en: 'OFF', zh: '关' }), color: colors.textMuted },
+            { icon: '📧', label: t({ en: 'Email Send', zh: '邮件发送' }), status: t({ en: 'OFF', zh: '关' }), color: colors.textMuted },
           ].map((row) => (
             <View key={row.label} style={styles.permSummaryRow}>
               <Text style={styles.permSummaryIcon}>{row.icon}</Text>
@@ -492,7 +492,7 @@ export function AgentConsoleScreen() {
             style={[styles.primaryBtn, { marginTop: 4 }]}
             onPress={() => navigation.navigate('AgentPermissions', { agentAccountId: activeInstance.metadata?.agentAccountId })}
           >
-            <Text style={styles.primaryBtnText}>馃攼 {t({ en: 'Open Full Permissions Manager 鈫?, zh: '鎵撳紑瀹屾暣鏉冮檺绠＄悊鍣?鈫? })}</Text>
+            <Text style={styles.primaryBtnText}>🔐 {t({ en: 'Open Full Permissions Manager →', zh: '打开完整权限管理器 →' })}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
   skillName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   skillSub: { fontSize: 12, color: colors.textMuted },
   skillStatus: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.bgSecondary, borderRadius: 6 },
-  // 鈹€鈹€ Token Quota 鈹€鈹€
+  // ── Token Quota ──
   quotaCard: {
     backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: '#2563eb33', gap: 8,
@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef444422', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#ef444440',
   },
   quotaExhaustedText: { fontSize: 12, color: '#ef4444', fontWeight: '600', textAlign: 'center' },
-  // 鈹€鈹€ Quick Actions 鈹€鈹€
+  // ── Quick Actions ──
   quickActions: { gap: 8 },
   quickAction: {
     flexDirection: 'row', alignItems: 'center',
@@ -629,7 +629,7 @@ const styles = StyleSheet.create({
   quickActionIcon: { fontSize: 20 },
   quickActionLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   quickActionArrow: { fontSize: 20, color: colors.textMuted },
-  // 鈹€鈹€ Download Desktop Banner 鈹€鈹€
+  // ── Download Desktop Banner ──
   downloadBanner: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
   downloadBannerTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   downloadBannerSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   downloadBannerArrow: { fontSize: 22, color: colors.accent },
-  // 鈹€鈹€ Permissions Tab 鈹€鈹€
+  // ── Permissions Tab ──
   permissionsCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,

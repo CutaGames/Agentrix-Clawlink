@@ -1,20 +1,20 @@
 /**
- * Glass Vendor SDK Adapters 鈥?platform-specific integrations for AI glasses.
+ * Glass Vendor SDK Adapters — platform-specific integrations for AI glasses.
  *
  * Abstracting vendor differences behind a common GlassVendorAdapter interface
  * so glassSessionBridge, glassGestureHandler, and glassHUDController can work
  * across different hardware without vendor-specific branching.
  *
  * Supported vendors:
- *   - XREAL Air 2 Ultra 鈥?Full AR, dual cameras, 6DoF IMU, open nebula SDK
- *   - Meta Ray-Ban 鈥?Camera, speakers, limited BLE API
- *   - Even Realities G1 鈥?Monochrome HUD, temple touch bar, mic/speaker
- *   - Generic BLE Glass 鈥?Fallback for unknown BLE glasses
+ *   - XREAL Air 2 Ultra — Full AR, dual cameras, 6DoF IMU, open nebula SDK
+ *   - Meta Ray-Ban — Camera, speakers, limited BLE API
+ *   - Even Realities G1 — Monochrome HUD, temple touch bar, mic/speaker
+ *   - Generic BLE Glass — Fallback for unknown BLE glasses
  */
 
 import type { BleManager, Device, Characteristic } from 'react-native-ble-plx';
 
-// 鈹€鈹€ Common Interface 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Common Interface ───────────────────────────────────
 
 export interface GlassCapabilities {
   hasCamera: boolean;
@@ -61,7 +61,7 @@ export interface GlassGestureEvent {
   rawImu?: { ax: number; ay: number; az: number; gx: number; gy: number; gz: number };
 }
 
-// 鈹€鈹€ XREAL Air 2 Ultra 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── XREAL Air 2 Ultra ──────────────────────────────────
 
 const XREAL_SERVICE_UUID = '0000fe00-0000-1000-8000-00805f9b34fb';
 const XREAL_CAMERA_CHAR = '0000fe01-0000-1000-8000-00805f9b34fb';
@@ -159,7 +159,7 @@ export class XrealAir2Adapter implements GlassVendorAdapter {
   }
 }
 
-// 鈹€鈹€ Meta Ray-Ban 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Meta Ray-Ban ───────────────────────────────────────
 
 const META_SERVICE_UUID = '0000fd00-0000-1000-8000-00805f9b34fb';
 const META_AUDIO_CHAR = '0000fd01-0000-1000-8000-00805f9b34fb';
@@ -202,7 +202,7 @@ export class MetaRayBanAdapter implements GlassVendorAdapter {
   }
 
   formatHudPayload(_text: string): Buffer {
-    // Meta Ray-Ban has no HUD 鈥?return empty
+    // Meta Ray-Ban has no HUD — return empty
     return Buffer.alloc(0);
   }
 
@@ -227,7 +227,7 @@ export class MetaRayBanAdapter implements GlassVendorAdapter {
   }
 }
 
-// 鈹€鈹€ Even Realities G1 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Even Realities G1 ──────────────────────────────────
 
 const EVEN_SERVICE_UUID = '0000ee00-0000-1000-8000-00805f9b34fb';
 const EVEN_AUDIO_CHAR = '0000ee01-0000-1000-8000-00805f9b34fb';
@@ -305,7 +305,7 @@ export class EvenG1Adapter implements GlassVendorAdapter {
   }
 }
 
-// 鈹€鈹€ Generic BLE Glass (fallback) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Generic BLE Glass (fallback) ───────────────────────
 
 export class GenericBleGlassAdapter implements GlassVendorAdapter {
   readonly vendorKey = 'generic-ble-glass';
@@ -337,7 +337,7 @@ export class GenericBleGlassAdapter implements GlassVendorAdapter {
 
   getCharacteristicUuid(fn: string): string | null {
     if (fn === 'battery') return '00002a19-0000-1000-8000-00805f9b34fb';
-    return null; // Generic 鈥?use standard audio profile
+    return null; // Generic — use standard audio profile
   }
 
   formatHudPayload(): Buffer {
@@ -349,7 +349,7 @@ export class GenericBleGlassAdapter implements GlassVendorAdapter {
   }
 }
 
-// 鈹€鈹€ Adapter Registry 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Adapter Registry ───────────────────────────────────
 
 const ALL_ADAPTERS: GlassVendorAdapter[] = [
   new XrealAir2Adapter(),

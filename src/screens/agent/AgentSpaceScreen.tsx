@@ -1,14 +1,14 @@
 /**
- * AgentSpaceScreen 鈥?Agent-centric collaboration room.
+ * AgentSpaceScreen — Agent-centric collaboration room.
  *
  * Replaces the legacy GroupChatScreen with a task-oriented room where
  * humans and agents collaborate. Supports @Agent mentions to invoke
  * AI replies, task progress updates, and DB-persisted messages.
  *
  * API endpoints:
- *   GET  /messaging/spaces/:spaceId           鈥?space details
- *   GET  /messaging/spaces/:spaceId/messages   鈥?paginated messages
- *   POST /messaging/spaces/:spaceId/messages   鈥?send message
+ *   GET  /messaging/spaces/:spaceId           — space details
+ *   GET  /messaging/spaces/:spaceId/messages   — paginated messages
+ *   POST /messaging/spaces/:spaceId/messages   — send message
  */
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
@@ -55,9 +55,9 @@ type SpaceInfo = {
 };
 
 const TYPE_BADGE: Record<string, { icon: string; label: string; color: string }> = {
-  task_room: { icon: '馃幆', label: 'Task Room', color: '#10B981' },
-  collaboration: { icon: '馃', label: 'Collaboration', color: '#8B5CF6' },
-  general: { icon: '馃挰', label: 'General', color: colors.accent },
+  task_room: { icon: '🎯', label: 'Task Room', color: '#10B981' },
+  collaboration: { icon: '🤝', label: 'Collaboration', color: '#8B5CF6' },
+  general: { icon: '💬', label: 'General', color: colors.accent },
 };
 
 function formatTime(iso: string) {
@@ -133,7 +133,7 @@ export function AgentSpaceScreen() {
       const typingId = `agent-typing-${Date.now()}`;
       const typingMsg: SpaceMessage = {
         id: typingId, spaceId, senderId: `agent_${agentName}`,
-        senderName: `馃 @${agentName}`, content: '鈥?鈥?鈥?,
+        senderName: `🤖 @${agentName}`, content: '• • •',
         type: 'agent_reply', createdAt: new Date().toISOString(),
       };
       qc.setQueryData(['space-messages', spaceId], (old: SpaceMessage[] | undefined) => [...(old ?? []), typingMsg]);
@@ -156,7 +156,7 @@ export function AgentSpaceScreen() {
       } catch {
         qc.setQueryData(['space-messages', spaceId], (old: SpaceMessage[] | undefined) =>
           (old ?? []).map((m) =>
-            m.id === typingId ? { ...m, id: `agent-err-${Date.now()}`, content: `鈿狅笍 @${agentName} is unavailable.`, type: 'system' as any } : m
+            m.id === typingId ? { ...m, id: `agent-err-${Date.now()}`, content: `⚠️ @${agentName} is unavailable.`, type: 'system' as any } : m
           )
         );
       } finally {
@@ -174,7 +174,7 @@ export function AgentSpaceScreen() {
       return (
         <View style={styles.systemRow}>
           <Text style={styles.systemText}>
-            {item.type === 'task_update' ? '馃搳 ' : ''}{item.content}
+            {item.type === 'task_update' ? '📊 ' : ''}{item.content}
           </Text>
         </View>
       );
@@ -195,7 +195,7 @@ export function AgentSpaceScreen() {
         {!isMine && (
           <View style={[styles.avatar, isAgent && styles.avatarAgent]}>
             <Text style={styles.avatarText}>
-              {item.senderAvatar ?? (isAgent ? '馃' : (item.senderName ?? '?').charAt(0).toUpperCase())}
+              {item.senderAvatar ?? (isAgent ? '🤖' : (item.senderName ?? '?').charAt(0).toUpperCase())}
             </Text>
           </View>
         )}
@@ -236,7 +236,7 @@ export function AgentSpaceScreen() {
             <Text style={[styles.typeBadgeText, { color: typeBadge.color }]}>{typeBadge.label}</Text>
           </View>
           {spaceInfo?.memberIds && (
-            <Text style={styles.memberCount}>{spaceInfo.memberIds.length} {t({ en: 'members', zh: '鎴愬憳' })}</Text>
+            <Text style={styles.memberCount}>{spaceInfo.memberIds.length} {t({ en: 'members', zh: '成员' })}</Text>
           )}
         </View>
 
@@ -253,12 +253,12 @@ export function AgentSpaceScreen() {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>馃</Text>
+                <Text style={styles.emptyIcon}>🤖</Text>
                 <Text style={styles.emptyText}>
-                  {t({ en: 'No messages yet. Start collaborating with your agent!', zh: '杩樻病鏈夋秷鎭€傚紑濮嬪拰浣犵殑 Agent 鍗忎綔鍚э紒' })}
+                  {t({ en: 'No messages yet. Start collaborating with your agent!', zh: '还没有消息。开始和你的 Agent 协作吧！' })}
                 </Text>
                 <Text style={styles.emptyHint}>
-                  {t({ en: 'Tip: Use @Agent to invoke an AI reply', zh: '鎻愮ず锛氫娇鐢?@Agent 璋冪敤 AI 鍥炲' })}
+                  {t({ en: 'Tip: Use @Agent to invoke an AI reply', zh: '提示：使用 @Agent 调用 AI 回复' })}
                 </Text>
               </View>
             }
@@ -269,7 +269,7 @@ export function AgentSpaceScreen() {
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
-            placeholder={t({ en: 'Message鈥?(use @Agent to invoke)', zh: '杈撳叆娑堟伅鈥︼紙鐢?@Agent 璋冪敤锛? })}
+            placeholder={t({ en: 'Message… (use @Agent to invoke)', zh: '输入消息…（用 @Agent 调用）' })}
             placeholderTextColor={colors.textMuted}
             value={input}
             onChangeText={setInput}
@@ -284,7 +284,7 @@ export function AgentSpaceScreen() {
               onPress={handleSend}
               disabled={!input.trim()}
             >
-              <Text style={styles.sendBtnText}>鉃?/Text>
+              <Text style={styles.sendBtnText}>➤</Text>
             </TouchableOpacity>
           )}
         </View>

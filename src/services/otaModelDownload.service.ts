@@ -1,8 +1,9 @@
 /**
  * OTA Model Download Service
  *
- * Real model download orchestration for on-device Gemma models.
- * Handles: CDN URL resolution 鈫?download with expo-file-system 鈫? * integrity verification 鈫?storage management 鈫?cleanup.
+ * Real model download orchestration for on-device local models.
+ * Handles: CDN URL resolution → download with expo-file-system →
+ * integrity verification → storage management → cleanup.
  *
  * Uses expo-file-system (Expo SDK 54) File.downloadFileAsync for
  * robust native downloads.
@@ -11,7 +12,7 @@
 import { File as ExpoFile, Directory, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 
-// 鈹€鈹€ Model Registry 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Model Registry ─────────────────────────────────────
 
 export interface OtaModelEntry {
   id: string;
@@ -21,21 +22,29 @@ export interface OtaModelEntry {
   sizeBytes: number;
   /** Human-readable size */
   sizeLabel: string;
-  /** CDN base URL 鈥?full URL is `${cdnBase}/${filename}` */
+  /** CDN base URL — full URL is `${cdnBase}/${filename}` */
   cdnBase: string;
+  declaredCapabilities?: OtaModelDeclaredCapabilities;
   multimodalProjector?: OtaModelArtifact;
+  audioOutputModel?: OtaModelArtifact;
   vocoder?: OtaModelArtifact;
 }
 
+export interface OtaModelDeclaredCapabilities {
+  visionInput: boolean;
+  audioInput: boolean;
+  onDeviceAudioOutput: boolean;
+}
+
 export interface OtaModelArtifact {
-  kind: 'model' | 'mmproj' | 'vocoder';
+  kind: 'model' | 'mmproj' | 'tts-model' | 'vocoder';
   filename: string;
   sizeBytes: number;
   sizeLabel: string;
   cdnBase?: string;
 }
 
-type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'vocoder';
+type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioOutputModel' | 'vocoder';
 
 interface ResolvedOtaModelArtifact {
   key: OtaModelArtifactKey;
@@ -54,6 +63,11 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: false,
+      onDeviceAudioOutput: false,
+    },
     multimodalProjector: {
       kind: 'mmproj',
       filename: 'mmproj-F16.gguf',
@@ -68,6 +82,11 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: false,
+      onDeviceAudioOutput: false,
+    },
     multimodalProjector: {
       kind: 'mmproj',
       filename: 'mmproj-F16.gguf',
@@ -75,9 +94,48 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
       sizeLabel: '990 MB',
     },
   },
+  'qwen2.5-omni-3b': {
+    id: 'qwen2.5-omni-3b',
+    name: 'Qwen2.5 Omni 3B (Q4_K_M)',
+    filename: 'Qwen2.5-Omni-3B-Q4_K_M.gguf',
+    sizeBytes: 2_100_000_000,
+    sizeLabel: '2.1 GB',
+    cdnBase: 'https://hf-mirror.com/ggml-org/Qwen2.5-Omni-3B-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: true,
+      onDeviceAudioOutput: true,
+    },
+    multimodalProjector: {
+      kind: 'mmproj',
+      filename: 'mmproj-Qwen2.5-Omni-3B-Q8_0.gguf',
+      sizeBytes: 1_540_000_000,
+      sizeLabel: '1.5 GB',
+    },
+    audioOutputModel: {
+      kind: 'tts-model',
+      filename: 'OuteTTS-0.3-500M-Q4_K_M.gguf',
+      sizeBytes: 403_000_000,
+      sizeLabel: '403 MB',
+      cdnBase: 'https://hf-mirror.com/OuteAI/OuteTTS-0.3-500M-GGUF/resolve/main',
+    },
+    vocoder: {
+      kind: 'vocoder',
+      filename: 'WavTokenizer-Large-75-Q5_1.gguf',
+      sizeBytes: 73_300_000,
+      sizeLabel: '73 MB',
+      cdnBase: 'https://hf-mirror.com/ggml-org/WavTokenizer/resolve/main',
+    },
+  },
 };
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+const DEFAULT_DECLARED_CAPABILITIES: OtaModelDeclaredCapabilities = {
+  visionInput: false,
+  audioInput: false,
+  onDeviceAudioOutput: false,
+};
+
+// ── Types ──────────────────────────────────────────────
 
 export type DownloadState =
   | 'idle'
@@ -110,7 +168,7 @@ export interface DownloadCallbacks {
   onError?: (error: string) => void;
 }
 
-// 鈹€鈹€ Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Helpers ────────────────────────────────────────────
 
 function getModelsDir(): Directory {
   return new Directory(Paths.document, 'models');
@@ -152,6 +210,10 @@ function resolveArtifacts(entry: OtaModelEntry): ResolvedOtaModelArtifact[] {
     artifacts.push({ key: 'multimodalProjector', artifact: entry.multimodalProjector });
   }
 
+  if (entry.audioOutputModel) {
+    artifacts.push({ key: 'audioOutputModel', artifact: entry.audioOutputModel });
+  }
+
   if (entry.vocoder) {
     artifacts.push({ key: 'vocoder', artifact: entry.vocoder });
   }
@@ -177,7 +239,7 @@ function getArtifactPath(artifact: OtaModelArtifact | null | undefined): string 
   return file.exists ? file.uri : null;
 }
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class OtaModelDownloadService {
   private static callbacks: DownloadCallbacks = {};
@@ -189,6 +251,26 @@ export class OtaModelDownloadService {
    */
   static getModelEntry(modelId: string): OtaModelEntry | null {
     return MODEL_REGISTRY[modelId] ?? null;
+  }
+
+  static getDeclaredCapabilities(modelId?: string | null): OtaModelDeclaredCapabilities {
+    if (!modelId) {
+      return DEFAULT_DECLARED_CAPABILITIES;
+    }
+
+    return MODEL_REGISTRY[modelId]?.declaredCapabilities ?? DEFAULT_DECLARED_CAPABILITIES;
+  }
+
+  static declaresVisionInput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).visionInput;
+  }
+
+  static declaresAudioInput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).audioInput;
+  }
+
+  static declaresOnDeviceAudioOutput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).onDeviceAudioOutput;
   }
 
   static getPackageSizeBytes(modelId: string): number {
@@ -223,6 +305,33 @@ export class OtaModelDownloadService {
     return isArtifactDownloaded(entry.vocoder);
   }
 
+  static isAudioOutputModelDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.audioOutputModel) return false;
+    return isArtifactDownloaded(entry.audioOutputModel);
+  }
+
+  static hasOnDeviceAudioOutputAssets(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.audioOutputModel || !entry.vocoder) return false;
+    return isArtifactDownloaded(entry.audioOutputModel) && isArtifactDownloaded(entry.vocoder);
+  }
+
+  static findDownloadedOnDeviceAudioOutputModelId(preferredModelId?: string | null): string | null {
+    if (
+      preferredModelId
+      && this.declaresOnDeviceAudioOutput(preferredModelId)
+      && this.hasOnDeviceAudioOutputAssets(preferredModelId)
+    ) {
+      return preferredModelId;
+    }
+
+    return Object.keys(MODEL_REGISTRY).find((modelId) => (
+      this.declaresOnDeviceAudioOutput(modelId)
+      && this.hasOnDeviceAudioOutputAssets(modelId)
+    )) || null;
+  }
+
   static areRequiredArtifactsDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
@@ -248,12 +357,21 @@ export class OtaModelDownloadService {
     return getArtifactPath(entry?.vocoder);
   }
 
+  static getAudioOutputModelPath(modelId: string): string | null {
+    const entry = MODEL_REGISTRY[modelId];
+    return getArtifactPath(entry?.audioOutputModel);
+  }
+
   static hasMultimodalAssets(modelId: string): boolean {
     return this.isMultimodalProjectorDownloaded(modelId);
   }
 
   static hasVocoderAssets(modelId: string): boolean {
     return this.isVocoderDownloaded(modelId);
+  }
+
+  static hasAnyOnDeviceAudioOutputAssets(preferredModelId?: string | null): boolean {
+    return !!this.findDownloadedOnDeviceAudioOutputModelId(preferredModelId);
   }
 
   /**
@@ -409,7 +527,7 @@ export class OtaModelDownloadService {
   ): Promise<void> {
     // In the new API, re-downloading with idempotent: true overwrites
     // We don't have a modelId in serialized state, so caller should invoke startDownload directly
-    callbacks.onError?.('Resume not supported 鈥?please re-download.');
+    callbacks.onError?.('Resume not supported — please re-download.');
   }
 
   /**
@@ -480,7 +598,7 @@ export class OtaModelDownloadService {
     return models.reduce((sum, m) => sum + m.sizeBytes, 0);
   }
 
-  // 鈹€鈹€ Internal helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Internal helpers ─────────────────────────────────
 
   private static emitProgress(
     state: DownloadState,

@@ -56,7 +56,7 @@ const MIN_DURATION_MS = 200;
 const MAX_DURATION_MS = 2500;
 const DEFAULT_TIMEOUT_MS = 4500;
 const COOLDOWN_MS = 1500;
-/** Global cooldown after a wake word fires 鈥?survives across listener re-creation. */
+/** Global cooldown after a wake word fires — survives across listener re-creation. */
 const GLOBAL_WAKE_COOLDOWN_MS = 4000;
 let lastGlobalWakeTriggerAt = 0;
 const MAX_SAVED_SAMPLES = 5;

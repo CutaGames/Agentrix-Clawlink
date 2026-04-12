@@ -5,10 +5,10 @@
  * Handles two flows:
  *
  *   A) QR deep-link:  agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
- *      鈫?received when user scans the QR code shown by the Windows installer wizard.
+ *      → received when user scans the QR code shown by the Windows installer wizard.
  *
  *   B) Manual entry: user types the agent URL and token manually.
- *      鈫?fallback when QR scan is unavailable or fails.
+ *      → fallback when QR scan is unavailable or fails.
  *
  * Also shows a step-by-step install guide if the user hasn't installed Agentrix-Claw yet.
  */
@@ -37,26 +37,26 @@ type Route = RouteProp<AgentStackParamList, 'LocalConnect'>;
 
 const DOWNLOAD_URL = 'https://agentrix.top/download';
 
-// 鈹€鈹€ Step-by-step install guide 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Step-by-step install guide ───────────────────────────────────────────────
 const INSTALL_STEPS = [
   {
-    icon: '馃捇',
+    icon: '💻',
     title: 'Download the installer',
     desc: 'Get Agentrix-Claw-Setup.exe from agentrix.top/download and run it on your Windows PC.',
     action: { label: 'Open Download Page', url: DOWNLOAD_URL },
   },
   {
-    icon: '鈿欙笍',
+    icon: '⚙️',
     title: 'Complete the wizard',
     desc: 'The installer automatically sets up Node.js and downloads the Agentrix-Claw agent. Accept the UAC prompt when asked.',
   },
   {
-    icon: '馃摫',
+    icon: '📱',
     title: 'Scan the QR code',
     desc: 'On the final step of the installer, a QR code appears. Scan it with this app while both devices are on the same Wi-Fi.',
   },
   {
-    icon: '鉁?,
+    icon: '✅',
     title: 'You\'re connected!',
     desc: 'The mobile app links to your local agent. Your queries are processed on your own PC.',
   },
@@ -119,7 +119,7 @@ export function LocalConnectScreen() {
       const msg = err?.message || 'Unknown error';
       setErrorMsg(
         msg.includes('Cannot reach') || msg.includes('Network') || msg.includes('fetch')
-          ? `Cannot connect to the agent at:\n${url}\n\nMake sure:\n鈥?Your phone and PC are on the same Wi-Fi\n鈥?The Agentrix-Claw agent is running on your PC\n鈥?Port ${port ?? '7474'} is not blocked by a firewall`
+          ? `Cannot connect to the agent at:\n${url}\n\nMake sure:\n• Your phone and PC are on the same Wi-Fi\n• The Agentrix-Claw agent is running on your PC\n• Port ${port ?? '7474'} is not blocked by a firewall`
           : msg,
       );
     }
@@ -132,7 +132,7 @@ export function LocalConnectScreen() {
     connectInstance(url, id, manualToken.trim());
   };
 
-  // 鈹€鈹€ GUIDE screen 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── GUIDE screen ─────────────────────────────────────────────────────────
   if (status === 'guide') {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -156,7 +156,7 @@ export function LocalConnectScreen() {
                 style={styles.stepBtn}
                 onPress={() => Linking.openURL(step.action!.url)}
               >
-                <Text style={styles.stepBtnText}>{step.action.label} 鈫?/Text>
+                <Text style={styles.stepBtnText}>{step.action.label} ↗</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -171,11 +171,11 @@ export function LocalConnectScreen() {
     );
   }
 
-  // 鈹€鈹€ MANUAL entry screen 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── MANUAL entry screen ───────────────────────────────────────────────────
   if (status === 'manual') {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.manualTitle}>馃摗  Manual Connection</Text>
+        <Text style={styles.manualTitle}>📡  Manual Connection</Text>
         <Text style={styles.manualSub}>
           Find your PC's local IP (e.g. 192.168.1.x) and enter it below.{'\n'}
           The agent runs on port 7474 by default.
@@ -228,20 +228,20 @@ export function LocalConnectScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.btnSecondary} onPress={() => setStatus('guide')}>
-          <Text style={styles.btnSecondaryText}>鈫?Back to guide</Text>
+          <Text style={styles.btnSecondaryText}>← Back to guide</Text>
         </TouchableOpacity>
       </ScrollView>
     );
   }
 
-  // 鈹€鈹€ CONNECTING / SUCCESS / ERROR screens 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── CONNECTING / SUCCESS / ERROR screens ─────────────────────────────────
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.statusEmoji}>
-        {status === 'success' ? '鉁? : status === 'error' ? '鉂? : '馃敆'}
+        {status === 'success' ? '✅' : status === 'error' ? '❌' : '🔗'}
       </Text>
       <Text style={styles.statusTitle}>
-        {status === 'connecting' && 'Connecting鈥?}
+        {status === 'connecting' && 'Connecting…'}
         {status === 'success' && 'Agent Connected!'}
         {status === 'error' && 'Connection Failed'}
       </Text>
@@ -249,7 +249,7 @@ export function LocalConnectScreen() {
       {status === 'connecting' && (
         <View style={styles.spinnerBox}>
           <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={styles.spinnerText}>Reaching {instanceUrl}鈥?/Text>
+          <Text style={styles.spinnerText}>Reaching {instanceUrl}…</Text>
         </View>
       )}
 
@@ -259,7 +259,7 @@ export function LocalConnectScreen() {
             Your local Agentrix-Claw agent is now linked to your account.
           </Text>
           <Text style={styles.mono}>{instanceUrl}</Text>
-          <Text style={styles.successSub}>Redirecting to Agent Console鈥?/Text>
+          <Text style={styles.successSub}>Redirecting to Agent Console…</Text>
         </View>
       )}
 
@@ -283,7 +283,7 @@ export function LocalConnectScreen() {
                   connectInstance(url, instanceId!, token ?? '');
                 }}
               >
-                <Text style={styles.btnPrimaryText}>鈫? Retry</Text>
+                <Text style={styles.btnPrimaryText}>↺  Retry</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.btnSecondary} onPress={() => setStatus('manual')}>

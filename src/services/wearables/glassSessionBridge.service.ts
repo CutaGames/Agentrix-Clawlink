@@ -1,5 +1,5 @@
 /**
- * GlassSessionBridge 鈥?Manage the lifecycle of a glass 鈫?cloud voice session.
+ * GlassSessionBridge — Manage the lifecycle of a glass ↔ cloud voice session.
  *
  * Orchestrates:
  * - BLE connection monitoring + auto-reconnect
@@ -17,7 +17,7 @@ import { WearableImageRelay } from './wearableImageRelay.service';
 import { GlassHUDController } from './glassHUDController.service';
 import { GlassGestureHandler } from './glassGestureHandler.service';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export type BridgeState =
   | 'disconnected'
@@ -52,7 +52,7 @@ export interface GlassBridgeCallbacks {
   onSessionActive?: () => void;
 }
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class GlassSessionBridge {
   private bleManager: BleManager;
@@ -85,11 +85,11 @@ export class GlassSessionBridge {
     this.callbacks = callbacks;
   }
 
-  // 鈹€鈹€ Lifecycle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Lifecycle ─────────────────────────────────────────
 
   /**
    * Initialize and start the full glass session:
-   * BLE connect 鈫?start all relays 鈫?activate voice session
+   * BLE connect → start all relays → activate voice session
    */
   async start(): Promise<void> {
     if (this.destroyed) return;
@@ -184,7 +184,7 @@ export class GlassSessionBridge {
     return this.gestureHandler;
   }
 
-  // 鈹€鈹€ Relay management 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Relay management ──────────────────────────────────
 
   private async startRelays(): Promise<void> {
     const { deviceId, vendorKey, voiceSocket, sessionId } = this.config;
@@ -233,7 +233,7 @@ export class GlassSessionBridge {
     });
 
     voiceSocket.on('voice:deepthink:start', () => {
-      void this.hudController?.showNotification('Deep analysis in progress...', '馃');
+      void this.hudController?.showNotification('Deep analysis in progress...', '🧠');
     });
 
     voiceSocket.on('voice:deepthink:done', (data: { summary?: string }) => {
@@ -275,7 +275,7 @@ export class GlassSessionBridge {
     }
   }
 
-  // 鈹€鈹€ Reconnection 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Reconnection ──────────────────────────────────────
 
   private handleBleDisconnect(): void {
     if (this.destroyed) return;
@@ -316,7 +316,7 @@ export class GlassSessionBridge {
     }
   }
 
-  // 鈹€鈹€ App state handling 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── App state handling ────────────────────────────────
 
   private handleAppStateChange(nextState: AppStateStatus): void {
     if (this.destroyed) return;
@@ -334,7 +334,7 @@ export class GlassSessionBridge {
     }
   }
 
-  // 鈹€鈹€ State management 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── State management ──────────────────────────────────
 
   private setState(newState: BridgeState): void {
     if (this.state === newState) return;

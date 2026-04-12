@@ -1,26 +1,26 @@
 /**
- * Watch 鈫?Phone Data Layer Bridge 鈥?Google Wear Data Layer API integration.
+ * Watch ↔ Phone Data Layer Bridge — Google Wear Data Layer API integration.
  *
  * Provides bidirectional communication between the Agentrix phone app
  * and the WearOS watch app using Google's Data Layer API (Messages + DataItems).
  *
  * Communication paths:
- *   Phone 鈫?Watch:  agent responses, approval requests, TTS audio, session state
- *   Watch 鈫?Phone:  voice commands, approval decisions, gesture events, heartbeat
+ *   Phone → Watch:  agent responses, approval requests, TTS audio, session state
+ *   Watch → Phone:  voice commands, approval decisions, gesture events, heartbeat
  *
  * Requires:  react-native-wear-connectivity (Expo config plugin)
  */
 
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export type WatchDataPath =
-  | '/agentrix/voice/command'       // Watch 鈫?Phone: voice text command
-  | '/agentrix/voice/state'         // Phone 鈫?Watch: voice session state
-  | '/agentrix/approval/request'    // Phone 鈫?Watch: approval request
-  | '/agentrix/approval/response'   // Watch 鈫?Phone: approve/reject
-  | '/agentrix/agent/text'          // Phone 鈫?Watch: agent response text
+  | '/agentrix/voice/command'       // Watch → Phone: voice text command
+  | '/agentrix/voice/state'         // Phone → Watch: voice session state
+  | '/agentrix/approval/request'    // Phone → Watch: approval request
+  | '/agentrix/approval/response'   // Watch → Phone: approve/reject
+  | '/agentrix/agent/text'          // Phone → Watch: agent response text
   | '/agentrix/session/state'       // Bidirectional: session sync
   | '/agentrix/heartbeat';          // Bidirectional: keepalive
 
@@ -44,7 +44,7 @@ export interface WatchNode {
 
 type MessageCallback = (message: WatchMessage) => void;
 
-// 鈹€鈹€ Bridge 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Bridge ─────────────────────────────────────────────
 
 interface WearDataLayerBridge {
   sendMessage: (nodeId: string, path: string, data: string) => Promise<void>;
@@ -60,7 +60,7 @@ function resolveNativeBridge(): WearDataLayerBridge | null {
   return bridge || null;
 }
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class WatchDataLayerService {
   private static emitter: NativeEventEmitter | null = null;
@@ -185,7 +185,7 @@ export class WatchDataLayerService {
     };
   }
 
-  // 鈹€鈹€ High-level helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── High-level helpers ───────────────────────────────
 
   /**
    * Send agent response text to watch for display.
@@ -217,7 +217,7 @@ export class WatchDataLayerService {
     await this.putDataItem('/agentrix/voice/state', state);
   }
 
-  // 鈹€鈹€ Internal 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Internal ─────────────────────────────────────────
 
   private static dispatchMessage(message: WatchMessage): void {
     const callbacks = this.listeners.get(message.path);

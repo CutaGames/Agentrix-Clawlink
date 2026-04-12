@@ -21,7 +21,7 @@ interface ChatMessage {
   timestamp: string;
 }
 
-const QUICK_REPLIES = ['濂界殑', '绋嶅悗鍐嶈', '鍙栨秷', '璇︾粏璇?];
+const QUICK_REPLIES = ['好的', '稍后再说', '取消', '详细说'];
 const MAX_DISPLAY_CHARS = 200; // truncate long Agent replies for watch
 
 export function WatchChatScreen() {
@@ -66,14 +66,14 @@ export function WatchChatScreen() {
 
         const assistantMsg: ChatMessage = {
           role: 'assistant',
-          content: reply || '(鏃犲洖澶?',
+          content: reply || '(无回复)',
           timestamp: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, assistantMsg]);
       } catch {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: '鈿?杩炴帴澶辫触', timestamp: new Date().toISOString() },
+          { role: 'assistant', content: '⚠ 连接失败', timestamp: new Date().toISOString() },
         ]);
       } finally {
         setSending(false);
@@ -96,7 +96,7 @@ export function WatchChatScreen() {
         showsVerticalScrollIndicator={false}
       >
         {messages.length === 0 && (
-          <Text style={styles.emptyText}>鎶厱闂?Agent 浠讳綍闂</Text>
+          <Text style={styles.emptyText}>抬腕问 Agent 任何问题</Text>
         )}
         {messages.map((msg, i) => (
           <View
@@ -119,7 +119,7 @@ export function WatchChatScreen() {
         {sending && (
           <View style={styles.thinkingRow}>
             <ActivityIndicator color={watchColors.accent} size="small" />
-            <Text style={styles.thinkingText}>鎬濊€冧腑鈥?/Text>
+            <Text style={styles.thinkingText}>思考中…</Text>
           </View>
         )}
       </ScrollView>
@@ -146,7 +146,7 @@ export function WatchChatScreen() {
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
-          placeholder="杈撳叆娑堟伅鈥?
+          placeholder="输入消息…"
           placeholderTextColor={watchColors.textMuted}
           value={input}
           onChangeText={setInput}
@@ -159,7 +159,7 @@ export function WatchChatScreen() {
           onPress={() => sendMessage(input)}
           disabled={!input.trim() || sending}
         >
-          <Text style={styles.sendBtnText}>鈫?/Text>
+          <Text style={styles.sendBtnText}>↑</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

@@ -1,6 +1,6 @@
 /**
- * ACP Bridge API 鈥?绉诲姩绔?Agent Client Protocol 妗ユ帴
- * P4: Session 绠＄悊 / Action 璋冪敤 / 璺?session 娑堟伅杞彂
+ * ACP Bridge API — 移动端 Agent Client Protocol 桥接
+ * P4: Session 管理 / Action 调用 / 跨 session 消息转发
  */
 import { apiFetch } from './api';
 
@@ -31,7 +31,7 @@ export interface AcpSteerCommand {
   reason?: string;
 }
 
-// 鈹€鈹€ Session Lifecycle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Session Lifecycle ──────────────────────────────────────────
 
 export async function createAcpSession(
   agentId?: string,
@@ -65,7 +65,7 @@ export async function killAcpSession(sessionId: string, reason?: string): Promis
   });
 }
 
-// 鈹€鈹€ Reply Dispatch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Reply Dispatch ─────────────────────────────────────────────
 
 export async function replyDispatch(params: {
   fromSessionId: string;
@@ -79,7 +79,7 @@ export async function replyDispatch(params: {
   });
 }
 
-// 鈹€鈹€ Actions (Skills) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Actions (Skills) ───────────────────────────────────────────
 
 export async function listAcpActions(): Promise<AcpAction[]> {
   return apiFetch<AcpAction[]>('/acp/actions');
@@ -96,7 +96,7 @@ export async function invokeAcpAction(
   });
 }
 
-// 鈹€鈹€ MCP Mobile Proxy 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── MCP Mobile Proxy ───────────────────────────────────────────
 
 export async function proxyMcpToolCall(
   serverIdOrName: string,

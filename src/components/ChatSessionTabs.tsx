@@ -1,5 +1,5 @@
 /**
- * ChatSessionTabs 鈥?Horizontal session tab bar for multi-session management
+ * ChatSessionTabs — Horizontal session tab bar for multi-session management
  *
  * Shows up to MAX_SESSIONS tabs at the top of the chat screen.
  * Users can switch between sessions, create new ones, or close existing ones.
@@ -76,7 +76,7 @@ export function ChatSessionTabs({ sessions, activeSessionId, onSelect, onNew, on
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   style={styles.closeBtn}
                 >
-                  <Text style={styles.closeBtnText}>脳</Text>
+                  <Text style={styles.closeBtnText}>×</Text>
                 </TouchableOpacity>
               )}
             </TouchableOpacity>

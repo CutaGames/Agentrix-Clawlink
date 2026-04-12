@@ -106,12 +106,12 @@ export function McpManagerScreen() {
 
   const deleteServer = (id: string) => {
     Alert.alert(
-      t({ en: 'Delete Server', zh: '鍒犻櫎鏈嶅姟鍣? }),
-      t({ en: 'Are you sure?', zh: '纭畾鍒犻櫎锛? }),
+      t({ en: 'Delete Server', zh: '删除服务器' }),
+      t({ en: 'Are you sure?', zh: '确定删除？' }),
       [
-        { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Delete', zh: '鍒犻櫎' }),
+          text: t({ en: 'Delete', zh: '删除' }),
           style: 'destructive',
           onPress: async () => {
             await fetch(`${apiBase}/mcp-servers/${id}`, {
@@ -125,7 +125,7 @@ export function McpManagerScreen() {
     );
   };
 
-  const TRANSPORT_EMOJI: Record<string, string> = { stdio: '鈱笍', sse: '馃摗', http: '馃寪' };
+  const TRANSPORT_EMOJI: Record<string, string> = { stdio: '⌨️', sse: '📡', http: '🌐' };
 
   const renderServer = ({ item }: { item: McpServer }) => (
     <View style={styles.serverCard}>
@@ -137,7 +137,7 @@ export function McpManagerScreen() {
           style={[styles.statusBadge, item.isActive ? styles.statusActive : styles.statusInactive]}
           onPress={() => toggleServer(item.id)}>
           <Text style={styles.statusText}>
-            {item.isActive ? t({ en: 'Active', zh: '鍚敤' }) : t({ en: 'Off', zh: '鍏抽棴' })}
+            {item.isActive ? t({ en: 'Active', zh: '启用' }) : t({ en: 'Off', zh: '关闭' })}
           </Text>
         </TouchableOpacity>
       </View>
@@ -146,10 +146,10 @@ export function McpManagerScreen() {
       )}
       <View style={styles.serverMeta}>
         <Text style={styles.metaText}>{item.transport.toUpperCase()}</Text>
-        <Text style={styles.metaText}>{item.url || item.command || '鈥?}</Text>
+        <Text style={styles.metaText}>{item.url || item.command || '—'}</Text>
       </View>
       <TouchableOpacity onPress={() => deleteServer(item.id)}>
-        <Text style={styles.deleteBtn}>馃棏 {t({ en: 'Delete', zh: '鍒犻櫎' })}</Text>
+        <Text style={styles.deleteBtn}>🗑 {t({ en: 'Delete', zh: '删除' })}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -160,12 +160,12 @@ export function McpManagerScreen() {
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.formHeader}>
           <TouchableOpacity onPress={() => setViewMode('servers')}>
-            <Text style={styles.backBtn}>鈫?{t({ en: 'Back', zh: '杩斿洖' })}</Text>
+            <Text style={styles.backBtn}>← {t({ en: 'Back', zh: '返回' })}</Text>
           </TouchableOpacity>
-          <Text style={styles.formTitle}>{t({ en: 'Add MCP Server', zh: '娣诲姞 MCP 鏈嶅姟鍣? })}</Text>
+          <Text style={styles.formTitle}>{t({ en: 'Add MCP Server', zh: '添加 MCP 服务器' })}</Text>
         </View>
         <ScrollView style={styles.formBody}>
-          <Text style={styles.fieldLabel}>{t({ en: 'Name', zh: '鍚嶇О' })}</Text>
+          <Text style={styles.fieldLabel}>{t({ en: 'Name', zh: '名称' })}</Text>
           <TextInput
             style={styles.fieldInput}
             value={formName}
@@ -174,7 +174,7 @@ export function McpManagerScreen() {
             placeholderTextColor={colors.textMuted}
           />
 
-          <Text style={styles.fieldLabel}>{t({ en: 'Transport', zh: '浼犺緭鏂瑰紡' })}</Text>
+          <Text style={styles.fieldLabel}>{t({ en: 'Transport', zh: '传输方式' })}</Text>
           <View style={styles.transportRow}>
             {(['stdio', 'sse', 'http'] as const).map((tr) => (
               <TouchableOpacity
@@ -190,8 +190,8 @@ export function McpManagerScreen() {
 
           <Text style={styles.fieldLabel}>
             {formTransport === 'stdio'
-              ? t({ en: 'Command', zh: '鍛戒护' })
-              : t({ en: 'Endpoint URL', zh: '绔偣 URL' })}
+              ? t({ en: 'Command', zh: '命令' })
+              : t({ en: 'Endpoint URL', zh: '端点 URL' })}
           </Text>
           <TextInput
             style={styles.fieldInput}
@@ -201,12 +201,12 @@ export function McpManagerScreen() {
             placeholderTextColor={colors.textMuted}
           />
 
-          <Text style={styles.fieldLabel}>{t({ en: 'Description', zh: '鎻忚堪' })}</Text>
+          <Text style={styles.fieldLabel}>{t({ en: 'Description', zh: '描述' })}</Text>
           <TextInput
             style={styles.fieldInput}
             value={formDesc}
             onChangeText={setFormDesc}
-            placeholder={t({ en: 'Optional description', zh: '鍙€夋弿杩? })}
+            placeholder={t({ en: 'Optional description', zh: '可选描述' })}
             placeholderTextColor={colors.textMuted}
           />
 
@@ -214,7 +214,7 @@ export function McpManagerScreen() {
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitBtnText}>{t({ en: 'Register Server', zh: '娉ㄥ唽鏈嶅姟鍣? })}</Text>
+              <Text style={styles.submitBtnText}>{t({ en: 'Register Server', zh: '注册服务器' })}</Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -227,10 +227,10 @@ export function McpManagerScreen() {
       {/* Toolbar */}
       <View style={styles.toolbar}>
         <Text style={styles.toolbarTitle}>
-          {t({ en: 'MCP Servers', zh: 'MCP 鏈嶅姟鍣? })} ({servers.length})
+          {t({ en: 'MCP Servers', zh: 'MCP 服务器' })} ({servers.length})
         </Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setViewMode('add')}>
-          <Text style={styles.addBtnText}>+ {t({ en: 'Add', zh: '娣诲姞' })}</Text>
+          <Text style={styles.addBtnText}>+ {t({ en: 'Add', zh: '添加' })}</Text>
         </TouchableOpacity>
       </View>
 
@@ -242,7 +242,7 @@ export function McpManagerScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchServers} />}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
-            {t({ en: 'No MCP servers registered. Add your first server!', zh: '鏆傛棤 MCP 鏈嶅姟鍣紝娣诲姞绗竴涓惂锛? })}
+            {t({ en: 'No MCP servers registered. Add your first server!', zh: '暂无 MCP 服务器，添加第一个吧！' })}
           </Text>
         }
       />

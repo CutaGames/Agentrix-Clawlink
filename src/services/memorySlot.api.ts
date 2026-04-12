@@ -1,5 +1,6 @@
 /**
- * Memory Slot API 鈥?绉诲姩绔蹇嗘Ы浣嶇鐞? * P1: 璁板繂璇诲啓 / 鍙洖 / flush
+ * Memory Slot API — 移动端记忆槽位管理
+ * P1: 记忆读写 / 召回 / flush
  */
 import { apiFetch } from './api';
 

@@ -20,9 +20,9 @@ interface DynamicModel extends ModelOption {
 }
 
 const BILLING_BADGE: Record<string, { label: string; color: string }> = {
-  platform: { label: '馃啌 骞冲彴', color: '#22c55e' },
-  subscription: { label: '馃攧 璁㈤槄', color: '#6366f1' },
-  'api-key': { label: '馃攽 API', color: '#f59e0b' },
+  platform: { label: '🆓 平台', color: '#22c55e' },
+  subscription: { label: '🔄 订阅', color: '#6366f1' },
+  'api-key': { label: '🔑 API', color: '#f59e0b' },
 };
 
 export function SelectEngineModal({ visible, onClose, selectedModelId, onSelect }: SelectEngineModalProps) {
@@ -39,7 +39,7 @@ export function SelectEngineModal({ visible, onClose, selectedModelId, onSelect 
             id: m.id,
             label: m.label,
             provider: m.provider,
-            icon: m.billingType === 'platform' ? '馃' : m.billingType === 'subscription' ? '馃攧' : '馃攽',
+            icon: m.billingType === 'platform' ? '🤖' : m.billingType === 'subscription' ? '🔄' : '🔑',
             availability: 'available' as const,
             costTier: m.costTier,
             billingType: (m.billingType as DynamicModel['billingType']) || 'platform',
@@ -60,8 +60,8 @@ export function SelectEngineModal({ visible, onClose, selectedModelId, onSelect 
     <Modal visible={visible} transparent animationType="slide">
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.content} onStartShouldSetResponder={() => true}>
-          <Text style={styles.title}>{t({ en: 'Select Engine', zh: '閫夋嫨寮曟搸' })}</Text>
-          <Text style={styles.subtitle}>{t({ en: 'Choose the AI model for your agent', zh: '涓烘偍鐨勬櫤鑳戒綋閫夋嫨 AI 妯″瀷' })}</Text>
+          <Text style={styles.title}>{t({ en: 'Select Engine', zh: '选择引擎' })}</Text>
+          <Text style={styles.subtitle}>{t({ en: 'Choose the AI model for your agent', zh: '为您的智能体选择 AI 模型' })}</Text>
 
           <ScrollView style={styles.modelList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
             {availableModels.map((m) => {
@@ -83,7 +83,7 @@ export function SelectEngineModal({ visible, onClose, selectedModelId, onSelect 
                         {m.label}
                       </Text>
                       {isSelected && (
-                        <Text style={styles.checkIcon}>鉁?/Text>
+                        <Text style={styles.checkIcon}>✓</Text>
                       )}
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 }}>

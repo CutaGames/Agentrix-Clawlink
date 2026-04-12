@@ -129,12 +129,12 @@ export function MemoryWikiScreen() {
 
   const deletePage = (slug: string) => {
     Alert.alert(
-      t({ en: 'Delete Page', zh: '鍒犻櫎椤甸潰' }),
-      t({ en: 'Are you sure?', zh: '纭畾鍒犻櫎锛? }),
+      t({ en: 'Delete Page', zh: '删除页面' }),
+      t({ en: 'Are you sure?', zh: '确定删除？' }),
       [
-        { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Delete', zh: '鍒犻櫎' }),
+          text: t({ en: 'Delete', zh: '删除' }),
           style: 'destructive',
           onPress: async () => {
             await fetch(`${apiBase}/memory-wiki/pages/${slug}`, {
@@ -166,15 +166,15 @@ export function MemoryWikiScreen() {
   const renderPage = ({ item }: { item: WikiPage }) => (
     <TouchableOpacity style={styles.pageCard} onPress={() => openEditor(item)} onLongPress={() => deletePage(item.slug)}>
       <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>馃搫 {item.title}</Text>
-        <Text style={styles.pageViews}>馃憗 {item.viewCount}</Text>
+        <Text style={styles.pageTitle}>📄 {item.title}</Text>
+        <Text style={styles.pageViews}>👁 {item.viewCount}</Text>
       </View>
       {renderWikilinkHighlight(item.content)}
       {item.outgoingLinks.length > 0 && (
         <View style={styles.linksRow}>
           {item.outgoingLinks.slice(0, 4).map((link, i) => (
             <View key={i} style={styles.linkBadge}>
-              <Text style={styles.linkText}>馃敆 {link}</Text>
+              <Text style={styles.linkText}>🔗 {link}</Text>
             </View>
           ))}
         </View>
@@ -192,10 +192,10 @@ export function MemoryWikiScreen() {
 
   const renderGraphNode = ({ item }: { item: GraphNode }) => (
     <View style={styles.graphNode}>
-      <Text style={styles.graphNodeTitle}>馃搫 {item.title}</Text>
+      <Text style={styles.graphNodeTitle}>📄 {item.title}</Text>
       <View style={styles.graphLinks}>
         <Text style={styles.graphLinkLabel}>
-          鈫?{item.linksTo.length} | 鈫?{item.linkedFrom.length}
+          → {item.linksTo.length} | ← {item.linkedFrom.length}
         </Text>
       </View>
     </View>
@@ -210,11 +210,11 @@ export function MemoryWikiScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.editorHeader}>
             <TouchableOpacity onPress={() => setViewMode('list')}>
-              <Text style={styles.editorBack}>鈫?{t({ en: 'Back', zh: '杩斿洖' })}</Text>
+              <Text style={styles.editorBack}>← {t({ en: 'Back', zh: '返回' })}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.saveBtn} onPress={savePage} disabled={saving}>
               <Text style={styles.saveBtnText}>
-                {saving ? '...' : t({ en: 'Save', zh: '淇濆瓨' })}
+                {saving ? '...' : t({ en: 'Save', zh: '保存' })}
               </Text>
             </TouchableOpacity>
           </View>
@@ -223,14 +223,14 @@ export function MemoryWikiScreen() {
               style={styles.editorTitleInput}
               value={editorTitle}
               onChangeText={setEditorTitle}
-              placeholder={t({ en: 'Page title...', zh: '椤甸潰鏍囬...' })}
+              placeholder={t({ en: 'Page title...', zh: '页面标题...' })}
               placeholderTextColor={colors.textMuted}
             />
             <TextInput
               style={styles.editorContentInput}
               value={editorContent}
               onChangeText={setEditorContent}
-              placeholder={t({ en: 'Write with [[wikilinks]]...', zh: '鐢?[[缁村熀閾炬帴]] 鍐欎綔...' })}
+              placeholder={t({ en: 'Write with [[wikilinks]]...', zh: '用 [[维基链接]] 写作...' })}
               placeholderTextColor={colors.textMuted}
               multiline
               textAlignVertical="top"
@@ -239,7 +239,7 @@ export function MemoryWikiScreen() {
               style={styles.editorTagsInput}
               value={editorTags}
               onChangeText={setEditorTags}
-              placeholder={t({ en: 'Tags (comma separated)', zh: '鏍囩锛堥€楀彿鍒嗛殧锛? })}
+              placeholder={t({ en: 'Tags (comma separated)', zh: '标签（逗号分隔）' })}
               placeholderTextColor={colors.textMuted}
             />
           </ScrollView>
@@ -258,12 +258,12 @@ export function MemoryWikiScreen() {
             style={[styles.modeTab, viewMode === mode && styles.modeTabActive]}
             onPress={() => setViewMode(mode)}>
             <Text style={styles.modeLabel}>
-              {mode === 'list' ? `馃摑 ${t({ en: 'Pages', zh: '椤甸潰' })}` : `馃暩 ${t({ en: 'Graph', zh: '鍥捐氨' })}`}
+              {mode === 'list' ? `📝 ${t({ en: 'Pages', zh: '页面' })}` : `🕸 ${t({ en: 'Graph', zh: '图谱' })}`}
             </Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity style={styles.newBtn} onPress={() => openEditor()}>
-          <Text style={styles.newBtnText}>+ {t({ en: 'New', zh: '鏂板缓' })}</Text>
+          <Text style={styles.newBtnText}>+ {t({ en: 'New', zh: '新建' })}</Text>
         </TouchableOpacity>
       </View>
 
@@ -274,7 +274,7 @@ export function MemoryWikiScreen() {
             style={styles.searchInput}
             value={searchText}
             onChangeText={setSearchText}
-            placeholder={t({ en: 'Search pages...', zh: '鎼滅储椤甸潰...' })}
+            placeholder={t({ en: 'Search pages...', zh: '搜索页面...' })}
             placeholderTextColor={colors.textMuted}
             returnKeyType="search"
             onSubmitEditing={fetchPages}
@@ -292,7 +292,7 @@ export function MemoryWikiScreen() {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPages} />}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              {t({ en: 'No wiki pages yet. Create your first page!', zh: '鏆傛棤缁村熀椤甸潰锛屽垱寤虹涓€涓惂锛? })}
+              {t({ en: 'No wiki pages yet. Create your first page!', zh: '暂无维基页面，创建第一个吧！' })}
             </Text>
           }
         />
@@ -304,7 +304,7 @@ export function MemoryWikiScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <Text style={styles.emptyText}>
-              {t({ en: 'No graph data', zh: '鏆傛棤鍥捐氨鏁版嵁' })}
+              {t({ en: 'No graph data', zh: '暂无图谱数据' })}
             </Text>
           }
         />

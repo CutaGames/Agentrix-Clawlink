@@ -29,7 +29,7 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
   const navigateAndClose = useCallback(
     (screen: string, params?: any) => {
       navigation.closeDrawer();
-      // Use fully-qualified nested path: Drawer 鈫?MainTabs 鈫?Agent tab 鈫?target screen
+      // Use fully-qualified nested path: Drawer → MainTabs → Agent tab → target screen
       // Direct 'Agent' resolution can fail on native when the screen is >1 level deep.
       (navigation as any).navigate('MainTabs', {
         screen: 'Agent',
@@ -63,7 +63,7 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* 鈹€鈹€ Instance Switcher 鈹€鈹€ */}
+        {/* ── Instance Switcher ── */}
         <TouchableOpacity
           style={styles.instanceSwitcher}
           onPress={() => setInstancePickerOpen(!instancePickerOpen)}
@@ -78,19 +78,19 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
             />
             <View style={styles.instanceInfo}>
               <Text style={styles.instanceName} numberOfLines={1}>
-                {activeInstance?.name || t({ en: 'No Agent', zh: '鏃犳櫤鑳戒綋' })}
+                {activeInstance?.name || t({ en: 'No Agent', zh: '无智能体' })}
               </Text>
               <Text style={styles.instanceMeta}>
                 {activeInstance
-                  ? `${activeInstance.deployType === 'cloud' ? '鈽侊笍' : '馃捇'} ${activeInstance.deployType} 路 ${activeInstance.status}`
-                  : t({ en: 'Tap to connect', zh: '鐐瑰嚮杩炴帴' })}
+                  ? `${activeInstance.deployType === 'cloud' ? '☁️' : '💻'} ${activeInstance.deployType} · ${activeInstance.status}`
+                  : t({ en: 'Tap to connect', zh: '点击连接' })}
               </Text>
             </View>
-            <Text style={styles.chevron}>{instancePickerOpen ? '鈻? : '鈻?}</Text>
+            <Text style={styles.chevron}>{instancePickerOpen ? '▴' : '▾'}</Text>
           </View>
         </TouchableOpacity>
 
-        {/* 鈹€鈹€ Instance Picker Dropdown 鈹€鈹€ */}
+        {/* ── Instance Picker Dropdown ── */}
         {instancePickerOpen && (
           <View style={styles.instanceDropdown}>
             {instances.map((inst) => (
@@ -116,11 +116,11 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
                   ]}
                   numberOfLines={1}
                 >
-                  {inst.id === activeInstance?.id ? '鉁?' : ''}
+                  {inst.id === activeInstance?.id ? '✓ ' : ''}
                   {inst.name}
                 </Text>
                 <Text style={styles.instanceOptionMeta}>
-                  {inst.deployType === 'cloud' ? '鈽侊笍' : inst.deployType === 'local' ? '馃捇' : '鈿欙笍'}
+                  {inst.deployType === 'cloud' ? '☁️' : inst.deployType === 'local' ? '💻' : '⚙️'}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -130,13 +130,13 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
               activeOpacity={0.7}
             >
               <Text style={styles.addAgentText}>
-                鉃?{t({ en: 'New / Connect Agent', zh: '鏂板缓 / 杩炴帴 Agent' })}
+                ➕ {t({ en: 'New / Connect Agent', zh: '新建 / 连接 Agent' })}
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* 鈹€鈹€ Status Card 鈹€鈹€ */}
+        {/* ── Status Card ── */}
         {activeInstance && (
           <View style={styles.statusCard}>
             <View style={styles.statusRow}>
@@ -156,23 +156,23 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
               />
             </View>
             <Text style={styles.statusDetail}>
-              {activeInstance.version ? `v${activeInstance.version}` : ''} 路{' '}
+              {activeInstance.version ? `v${activeInstance.version}` : ''} ·{' '}
               {activeInstance.status === 'active'
-                ? t({ en: 'Online', zh: '鍦ㄧ嚎' })
-                : t({ en: 'Offline', zh: '绂荤嚎' })}
+                ? t({ en: 'Online', zh: '在线' })
+                : t({ en: 'Offline', zh: '离线' })}
             </Text>
           </View>
         )}
 
-        {/* 鈹€鈹€ Quick Menu 鈹€鈹€ */}
+        {/* ── Quick Menu ── */}
         <Text style={styles.sectionTitle}>
-          {t({ en: 'Management', zh: '绠＄悊' })}
+          {t({ en: 'Management', zh: '管理' })}
         </Text>
         {[
-          { icon: '馃', label: t({ en: 'Memory Hub', zh: '璁板繂涓績' }), screen: 'MemoryManagement' },
-          { icon: '鈿欙笍', label: t({ en: 'Workflows', zh: '宸ヤ綔娴? }), screen: 'WorkflowList' },
-          { icon: '馃洜锔?, label: t({ en: 'Skills', zh: '鎶€鑳界鐞? }), screen: 'SkillInstall', params: { skillId: '', skillName: '' } },
-          { icon: '馃搵', label: t({ en: 'Activity Logs', zh: '杩愯鏃ュ織' }), screen: 'AgentLogs' },
+          { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), screen: 'MemoryManagement' },
+          { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), screen: 'WorkflowList' },
+          { icon: '🛠️', label: t({ en: 'Skills', zh: '技能管理' }), screen: 'SkillInstall', params: { skillId: '', skillName: '' } },
+          { icon: '📋', label: t({ en: 'Activity Logs', zh: '运行日志' }), screen: 'AgentLogs' },
         ].map((item) => (
           <TouchableOpacity
             key={item.screen}
@@ -182,18 +182,18 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>
             <Text style={styles.menuLabel}>{item.label}</Text>
-            <Text style={styles.menuArrow}>鉂?/Text>
+            <Text style={styles.menuArrow}>❯</Text>
           </TouchableOpacity>
         ))}
 
-        {/* 鈹€鈹€ Devices 鈹€鈹€ */}
+        {/* ── Devices ── */}
         <Text style={styles.sectionTitle}>
-          {t({ en: 'Devices & Connections', zh: '璁惧涓庤繛鎺? })}
+          {t({ en: 'Devices & Connections', zh: '设备与连接' })}
         </Text>
         {[
-          { icon: '馃枼锔?, label: t({ en: 'Desktop Control', zh: '妗岄潰鎺у埗' }), screen: 'DesktopControl' },
-          { icon: '鈱?, label: t({ en: 'Wearables', zh: '鍙┛鎴磋澶? }), screen: 'WearableHub' },
-          { icon: '馃摲', label: t({ en: 'Scan & Connect', zh: '鎵爜杩炴帴' }), screen: 'Scan' },
+          { icon: '🖥️', label: t({ en: 'Desktop Control', zh: '桌面控制' }), screen: 'DesktopControl' },
+          { icon: '⌚', label: t({ en: 'Wearables', zh: '可穿戴设备' }), screen: 'WearableHub' },
+          { icon: '📷', label: t({ en: 'Scan & Connect', zh: '扫码连接' }), screen: 'Scan' },
         ].map((item) => (
           <TouchableOpacity
             key={item.screen}
@@ -203,18 +203,18 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>
             <Text style={styles.menuLabel}>{item.label}</Text>
-            <Text style={styles.menuArrow}>鉂?/Text>
+            <Text style={styles.menuArrow}>❯</Text>
           </TouchableOpacity>
         ))}
 
-        {/* 鈹€鈹€ Security 鈹€鈹€ */}
+        {/* ── Security ── */}
         <Text style={styles.sectionTitle}>
-          {t({ en: 'Security & Team', zh: '瀹夊叏涓庡洟闃? })}
+          {t({ en: 'Security & Team', zh: '安全与团队' })}
         </Text>
         {[
-          { icon: '馃攼', label: t({ en: 'Permissions', zh: '鏉冮檺绠＄悊' }), screen: 'AgentPermissions' },
-          { icon: '馃', label: t({ en: 'Agent Accounts', zh: 'Agent 璐﹀彿' }), screen: 'AgentAccount' },
-          { icon: '馃懃', label: t({ en: 'Team Space', zh: '鍥㈤槦绌洪棿' }), screen: 'TeamSpace' },
+          { icon: '🔐', label: t({ en: 'Permissions', zh: '权限管理' }), screen: 'AgentPermissions' },
+          { icon: '🤖', label: t({ en: 'Agent Accounts', zh: 'Agent 账号' }), screen: 'AgentAccount' },
+          { icon: '👥', label: t({ en: 'Team Space', zh: '团队空间' }), screen: 'TeamSpace' },
         ].map((item) => (
           <TouchableOpacity
             key={item.screen}
@@ -224,21 +224,21 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>
             <Text style={styles.menuLabel}>{item.label}</Text>
-            <Text style={styles.menuArrow}>鉂?/Text>
+            <Text style={styles.menuArrow}>❯</Text>
           </TouchableOpacity>
         ))}
 
-        {/* 鈹€鈹€ Full Console Link 鈹€鈹€ */}
+        {/* ── Full Console Link ── */}
         <TouchableOpacity
           style={[styles.menuItem, styles.consoleLink]}
           onPress={() => navigateAndClose('AgentConsole')}
           activeOpacity={0.7}
         >
-          <Text style={styles.menuIcon}>鈿欙笍</Text>
+          <Text style={styles.menuIcon}>⚙️</Text>
           <Text style={[styles.menuLabel, { color: colors.accent }]}>
-            {t({ en: 'Full Agent Console', zh: 'Agent 瀹屾暣鎺у埗鍙? })}
+            {t({ en: 'Full Agent Console', zh: 'Agent 完整控制台' })}
           </Text>
-          <Text style={styles.menuArrow}>鉂?/Text>
+          <Text style={styles.menuArrow}>❯</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
   },
-  // 鈹€鈹€ Instance Switcher 鈹€鈹€
+  // ── Instance Switcher ──
   instanceSwitcher: {
     backgroundColor: colors.bgCard,
     borderRadius: 14,
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  // 鈹€鈹€ Instance Dropdown 鈹€鈹€
+  // ── Instance Dropdown ──
   instanceDropdown: {
     backgroundColor: colors.bgCard,
     borderRadius: 12,
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.accent,
   },
-  // 鈹€鈹€ Status Card 鈹€鈹€
+  // ── Status Card ──
   statusCard: {
     backgroundColor: colors.bgCard,
     borderRadius: 12,
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
   },
-  // 鈹€鈹€ Menu 鈹€鈹€
+  // ── Menu ──
   sectionTitle: {
     fontSize: 12,
     fontWeight: '700',

@@ -1,9 +1,9 @@
 /**
- * BLE Relay Performance Benchmark 鈥?measures audio/image relay round-trip.
+ * BLE Relay Performance Benchmark — measures audio/image relay round-trip.
  *
  * Tests:
- *   1. Audio relay latency: phone mic 鈫?BLE 鈫?glass speaker (target < 100ms)
- *   2. Image relay throughput: glass camera 鈫?BLE 鈫?phone (target 720p @ 5fps)
+ *   1. Audio relay latency: phone mic → BLE → glass speaker (target < 100ms)
+ *   2. Image relay throughput: glass camera → BLE → phone (target 720p @ 5fps)
  *   3. BLE MTU negotiation success rate
  *   4. Reconnection time after signal loss
  *
@@ -15,7 +15,7 @@
 
 import type { BleManager, Device } from 'react-native-ble-plx';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export interface BenchmarkResult {
   testName: string;
@@ -40,14 +40,14 @@ export interface BenchmarkSummary {
   reconnectTimeMs: number;
 }
 
-// 鈹€鈹€ Service UUID Constants 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service UUID Constants ─────────────────────────────
 
 const AGENTRIX_SERVICE = '0000AGX0-0000-1000-8000-00805f9b34fb';
 const MIC_CHAR = '0000AGX1-0000-1000-8000-00805f9b34fb';
 const SPEAKER_CHAR = '0000AGX2-0000-1000-8000-00805f9b34fb';
 const CAMERA_CHAR = '0000AGX3-0000-1000-8000-00805f9b34fb';
 
-// 鈹€鈹€ Benchmark 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Benchmark ──────────────────────────────────────────
 
 export class BleRelayBenchmark {
   private bleManager: BleManager;
@@ -104,7 +104,7 @@ export class BleRelayBenchmark {
   }
 
   /**
-   * Test 1: MTU negotiation 鈥?checks if the device supports large MTU for efficient transfers.
+   * Test 1: MTU negotiation — checks if the device supports large MTU for efficient transfers.
    */
   private async testMtuNegotiation(): Promise<BenchmarkResult> {
     try {
@@ -126,8 +126,8 @@ export class BleRelayBenchmark {
   }
 
   /**
-   * Test 2: Audio relay latency 鈥?send test audio, measure round-trip.
-   * Measures BLE Write 鈫?Notify round-trip using echo characteristic.
+   * Test 2: Audio relay latency — send test audio, measure round-trip.
+   * Measures BLE Write → Notify round-trip using echo characteristic.
    */
   private async testAudioLatency(): Promise<BenchmarkResult> {
     const iterations = 10;
@@ -174,7 +174,7 @@ export class BleRelayBenchmark {
   }
 
   /**
-   * Test 3: Image relay throughput 鈥?subscribe to camera frames and measure FPS.
+   * Test 3: Image relay throughput — subscribe to camera frames and measure FPS.
    */
   private async testImageThroughput(): Promise<BenchmarkResult> {
     try {
@@ -216,7 +216,7 @@ export class BleRelayBenchmark {
   }
 
   /**
-   * Test 4: Write reliability 鈥?send N packets, count successes.
+   * Test 4: Write reliability — send N packets, count successes.
    */
   private async testWriteReliability(): Promise<BenchmarkResult> {
     const total = 50;
@@ -254,7 +254,7 @@ export class BleRelayBenchmark {
   }
 
   /**
-   * Test 5: Reconnection time 鈥?disconnect and reconnect, measure time.
+   * Test 5: Reconnection time — disconnect and reconnect, measure time.
    */
   private async testReconnectionTime(): Promise<BenchmarkResult> {
     try {
@@ -285,7 +285,7 @@ export class BleRelayBenchmark {
     }
   }
 
-  // 鈹€鈹€ Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Helpers ──────────────────────────────────────────
 
   private buildSummary(results: BenchmarkResult[]): BenchmarkSummary {
     const audioResult = results.find((r) => r.testName === 'Audio Relay Latency');

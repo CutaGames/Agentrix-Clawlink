@@ -1,4 +1,4 @@
-// API 鏈嶅姟灞?
+// API 服务层
 import { 
   AssetSummary, 
   Airdrop, 
@@ -65,8 +65,8 @@ export const setApiConfig = (next: ApiConfig) => {
 
 export const getApiConfig = () => config;
 
-// 浠?SecureStore 鑾峰彇 token
-// KEY: 'clawlink_token' 鈥?must match authStore.setAuth SecureStore key
+// 从 SecureStore 获取 token
+// KEY: 'clawlink_token' — must match authStore.setAuth SecureStore key
 export const loadTokenFromStorage = async () => {
   try {
     const token = await SecureStore.getItemAsync('clawlink_token');
@@ -80,7 +80,7 @@ export const loadTokenFromStorage = async () => {
   }
 };
 
-// 淇濆瓨 token 鍒?SecureStore
+// 保存 token 到 SecureStore
 export const saveTokenToStorage = async (token: string) => {
   try {
     await SecureStore.setItemAsync('clawlink_token', token);
@@ -90,7 +90,7 @@ export const saveTokenToStorage = async (token: string) => {
   }
 };
 
-// 娓呴櫎 token
+// 清除 token
 export const clearToken = async () => {
   try {
     await SecureStore.deleteItemAsync('clawlink_token');
@@ -216,7 +216,7 @@ export const memoryApi = {
 
 
 export const authApi = {
-  // 鐧诲綍 (閽卞寘绛惧悕)
+  // 登录 (钱包签名)
   async loginWithWallet(params: {
     address: string;
     signature: string;
@@ -231,32 +231,32 @@ export const authApi = {
     return result;
   },
 
-  // 鑾峰彇鐧诲綍 nonce
+  // 获取登录 nonce
   async getLoginNonce(address: string): Promise<{ nonce: string; message: string }> {
     return apiFetch(`/auth/wallet/nonce?address=${address}`);
   },
 
-  // 鐧诲嚭
+  // 登出
   async logout(): Promise<void> {
     await clearToken();
   },
 
-  // 鑾峰彇褰撳墠鐢ㄦ埛
+  // 获取当前用户
   async getCurrentUser(): Promise<any> {
     return apiFetch('/auth/me');
   },
 };
 
-// ========== 涓汉韬唤 API ==========
+// ========== 个人身份 API ==========
 
 export const personalApi = {
-  // 鑾峰彇璧勪骇鎽樿
+  // 获取资产摘要
   async getAssetSummary(): Promise<any> {
-    // 瀵规帴鍚庣 /user/assets/summary 鎴栬嚜瀹氫箟鑱氬悎
+    // 对接后端 /user/assets/summary 或自定义聚合
     try {
       return await apiFetch('/user/assets/summary');
     } catch (e) {
-      // 鍚庣鍙兘娌℃湁姝ょ鐐癸紝杩斿洖榛樿鍊?
+      // 后端可能没有此端点，返回默认值
       return {
         totalBalance: '0',
         change24h: '0%',
@@ -265,12 +265,12 @@ export const personalApi = {
     }
   },
 
-  // 鑾峰彇绌烘姇鍒楄〃 - 瀵规帴 /auto-earn/airdrops
+  // 获取空投列表 - 对接 /auto-earn/airdrops
   async getAirdrops(status?: string): Promise<Airdrop[]> {
     const query = status ? `?status=${status}` : '';
     try {
       const result = await apiFetch<any>(`/auto-earn/airdrops${query}`);
-      // 杞崲鍚庣鏍煎紡涓哄墠绔牸寮?
+      // 转换后端格式为前端格式
       return (result.airdrops || result || []).map((item: any) => ({
         id: item.id,
         projectName: item.projectName || item.name,
@@ -284,7 +284,7 @@ export const personalApi = {
     }
   },
 
-  // 鍙戠幇鏂扮┖鎶?- 瀵规帴 /auto-earn/airdrops/discover
+  // 发现新空投 - 对接 /auto-earn/airdrops/discover
   async discoverAirdrops(): Promise<Airdrop[]> {
     try {
       const result = await apiFetch<any>('/auto-earn/airdrops/discover', { method: 'POST' });
@@ -294,12 +294,12 @@ export const personalApi = {
     }
   },
 
-  // 棰嗗彇绌烘姇 - 瀵规帴 /auto-earn/airdrops/:id/claim
+  // 领取空投 - 对接 /auto-earn/airdrops/:id/claim
   async claimAirdrop(airdropId: string): Promise<{ success: boolean; txHash?: string }> {
     return apiFetch(`/auto-earn/airdrops/${airdropId}/claim`, { method: 'POST' });
   },
 
-  // 鑾峰彇 AutoEarn 缁熻 - 瀵规帴 /auto-earn/stats
+  // 获取 AutoEarn 统计 - 对接 /auto-earn/stats
   async getAutoEarnStats(): Promise<any> {
     try {
       const result = await apiFetch<any>('/auto-earn/stats');
@@ -313,7 +313,7 @@ export const personalApi = {
     }
   },
 
-  // 鑾峰彇 AutoEarn 浠诲姟鍒楄〃 - 瀵规帴 /auto-earn/tasks
+  // 获取 AutoEarn 任务列表 - 对接 /auto-earn/tasks
   async getAutoEarnTasks(): Promise<any[]> {
     try {
       return await apiFetch('/auto-earn/tasks');
@@ -322,7 +322,7 @@ export const personalApi = {
     }
   },
 
-  // 鍒囨崲绛栫暐寮€鍏?- 瀵规帴 /auto-earn/strategies/:id/toggle
+  // 切换策略开关 - 对接 /auto-earn/strategies/:id/toggle
   async toggleStrategy(strategyId: string, enabled: boolean): Promise<any> {
     return apiFetch(`/auto-earn/strategies/${strategyId}/toggle`, {
       method: 'POST',
@@ -331,10 +331,10 @@ export const personalApi = {
   },
 };
 
-// ========== 鍟嗘埛韬唤 API ==========
+// ========== 商户身份 API ==========
 
 export const merchantApi = {
-  // 鑾峰彇鍟嗘埛缁熻 - 瀵规帴 /merchant/stats
+  // 获取商户统计 - 对接 /merchant/stats
   async getStats(days: number = 7): Promise<any> {
     try {
       const result = await apiFetch<any>(`/merchant/stats?days=${days}`);
@@ -349,7 +349,7 @@ export const merchantApi = {
     }
   },
 
-  // 鑾峰彇鍒嗕剑璁″垝鍒楄〃 - 瀵规帴 /commerce/split-plans
+  // 获取分佣计划列表 - 对接 /commerce/split-plans
   async getSplitPlans(): Promise<SplitPlan[]> {
     try {
       const result = await apiFetch<any>('/commerce/split-plans');
@@ -365,7 +365,7 @@ export const merchantApi = {
     }
   },
 
-  // 鑾峰彇缁撶畻鍒楄〃 - 瀵规帴 /commerce/settlements 鎴?/merchant/settlements
+  // 获取结算列表 - 对接 /commerce/settlements 或 /merchant/settlements
   async getSettlements(status?: string): Promise<Settlement[]> {
     const query = status ? `?status=${status}` : '';
     try {
@@ -383,7 +383,7 @@ export const merchantApi = {
     }
   },
 
-  // 鍒涘缓鏀舵閾炬帴 - 瀵规帴 /pay-intents/create
+  // 创建收款链接 - 对接 /pay-intents/create
   async createPaymentLink(params: { 
     amount: number; 
     planId?: string; 
@@ -405,7 +405,7 @@ export const merchantApi = {
     };
   },
 
-  // 鍒嗕剑棰勮 - 瀵规帴 /commerce/split-plans/:id/preview
+  // 分佣预览 - 对接 /commerce/split-plans/:id/preview
   async previewCommission(params: { amount: number; planId: string }): Promise<any> {
     return apiFetch(`/commerce/split-plans/${params.planId}/preview`, {
       method: 'POST',
@@ -413,16 +413,16 @@ export const merchantApi = {
     });
   },
 
-  // 鑾峰彇鍟嗘埛 Profile - 瀵规帴 /merchant/profile
+  // 获取商户 Profile - 对接 /merchant/profile
   async getProfile(): Promise<any> {
     return apiFetch('/merchant/profile');
   },
 };
 
-// ========== 寮€鍙戣€呰韩浠?API ==========
+// ========== 开发者身份 API ==========
 
 export const developerApi = {
-  // 鑾峰彇寮€鍙戣€呰处鎴?- 瀵规帴 /developer-accounts/my
+  // 获取开发者账户 - 对接 /developer-accounts/my
   async getMyAccount(): Promise<any> {
     try {
       return await apiFetch('/developer-accounts/my');
@@ -431,7 +431,7 @@ export const developerApi = {
     }
   },
 
-  // 鑾峰彇寮€鍙戣€呬华琛ㄧ洏 - 瀵规帴 /developer-accounts/dashboard
+  // 获取开发者仪表盘 - 对接 /developer-accounts/dashboard
   async getDashboard(): Promise<any> {
     try {
       const result = await apiFetch<any>('/developer-accounts/dashboard');
@@ -446,7 +446,7 @@ export const developerApi = {
     }
   },
 
-  // 鍒涘缓寮€鍙戣€呰处鎴?- 瀵规帴 /developer-accounts
+  // 创建开发者账户 - 对接 /developer-accounts
   async createAccount(data: {
     name: string;
     description?: string;
@@ -459,7 +459,7 @@ export const developerApi = {
     });
   },
 
-  // 鑾峰彇棰勭畻姹犲垪琛?- 瀵规帴 /commerce/budget-pools
+  // 获取预算池列表 - 对接 /commerce/budget-pools
   async getBudgetPools(): Promise<BudgetPool[]> {
     try {
       const result = await apiFetch<any>('/commerce/budget-pools');
@@ -475,7 +475,7 @@ export const developerApi = {
     }
   },
 
-  // 鑾峰彇閲岀▼纰戝垪琛?- 瀵规帴 /commerce/milestones
+  // 获取里程碑列表 - 对接 /commerce/milestones
   async getMilestones(poolId?: string): Promise<Milestone[]> {
     const query = poolId ? `?poolId=${poolId}` : '';
     try {
@@ -492,7 +492,7 @@ export const developerApi = {
     }
   },
 
-  // 鑾峰彇鍙帴璁㈠崟 - 瀵规帴 /merchant-tasks 鎴栬嚜瀹氫箟
+  // 获取可接订单 - 对接 /merchant-tasks 或自定义
   async getAvailableOrders(): Promise<DeveloperOrder[]> {
     try {
       const result = await apiFetch<any>('/merchant-tasks?status=open');
@@ -509,16 +509,16 @@ export const developerApi = {
     }
   },
 
-  // 鎺ュ崟 - 瀵规帴 /merchant-tasks/:id/accept
+  // 接单 - 对接 /merchant-tasks/:id/accept
   async acceptOrder(orderId: string): Promise<{ success: boolean }> {
     return apiFetch(`/merchant-tasks/${orderId}/accept`, { method: 'POST' });
   },
 };
 
-// ========== 韬唤绠＄悊 API ==========
+// ========== 身份管理 API ==========
 
 export const identityApi = {
-  // 鐢宠婵€娲诲晢鎴疯韩浠?- 瀵规帴 /merchant/profile
+  // 申请激活商户身份 - 对接 /merchant/profile
   async applyForMerchant(application: {
     businessName: string;
     businessType: string;
@@ -531,7 +531,7 @@ export const identityApi = {
     return { success: true };
   },
 
-  // 鐢宠婵€娲诲紑鍙戣€呰韩浠?- 瀵规帴 /developer-accounts
+  // 申请激活开发者身份 - 对接 /developer-accounts
   async applyForDeveloper(application: {
     name: string;
     description?: string;
@@ -545,13 +545,13 @@ export const identityApi = {
     return { success: true };
   },
 
-  // 妫€鏌ヨ韩浠界姸鎬?
+  // 检查身份状态
   async checkIdentityStatus(): Promise<{
     personal: { activated: boolean };
     merchant: { activated: boolean; pending: boolean };
     developer: { activated: boolean; pending: boolean };
   }> {
-    // 鑱氬悎澶氫釜 API 鑾峰彇韬唤鐘舵€?
+    // 聚合多个 API 获取身份状态
     let merchantStatus = { activated: false, pending: false };
     let developerStatus = { activated: false, pending: false };
 
@@ -559,7 +559,7 @@ export const identityApi = {
       const merchantProfile = await apiFetch<any>('/merchant/profile');
       merchantStatus.activated = !!merchantProfile?.id;
     } catch (e) {
-      // 鏈縺娲?
+      // 未激活
     }
 
     try {
@@ -567,21 +567,21 @@ export const identityApi = {
       developerStatus.activated = !!devAccount?.id;
       developerStatus.pending = devAccount?.status === 'pending';
     } catch (e) {
-      // 鏈縺娲?
+      // 未激活
     }
 
     return {
-      personal: { activated: true }, // 涓汉韬唤榛樿婵€娲?
+      personal: { activated: true }, // 个人身份默认激活
       merchant: merchantStatus,
       developer: developerStatus,
     };
   },
 };
 
-// ========== 鐢ㄦ埛 Agent API ==========
+// ========== 用户 Agent API ==========
 
 export const agentApi = {
-  // 鑾峰彇鐢ㄦ埛鐨?Agent 鍒楄〃
+  // 获取用户的 Agent 列表
   async getMyAgents(): Promise<any[]> {
     try {
       return await apiFetch('/user-agents');
@@ -590,12 +590,12 @@ export const agentApi = {
     }
   },
 
-  // 鑾峰彇 Agent 璇︽儏
+  // 获取 Agent 详情
   async getAgent(agentId: string): Promise<any> {
     return apiFetch(`/user-agents/${agentId}`);
   },
 
-  // 涓?Agent 瀵硅瘽
+  // 与 Agent 对话
   async chat(agentId: string, message: string): Promise<{ reply: string }> {
     return apiFetch(`/user-agents/${agentId}/chat`, {
       method: 'POST',

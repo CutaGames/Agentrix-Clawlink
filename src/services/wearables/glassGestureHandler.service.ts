@@ -1,25 +1,25 @@
 /**
- * GlassGestureHandler 鈥?Map AI glass touch/IMU events to Agent commands.
+ * GlassGestureHandler — Map AI glass touch/IMU events to Agent commands.
  *
  * Handles:
  * - Touch bar gestures (tap, double-tap, swipe, long-press)
- * - IMU head gestures (nod, shake 鈥?optional per device)
- * - Maps gestures 鈫?Agent actions (interrupt, confirm, dismiss, scroll)
+ * - IMU head gestures (nod, shake — optional per device)
+ * - Maps gestures → Agent actions (interrupt, confirm, dismiss, scroll)
  *
- * BLE Notify flow:  Glass 鈫?GATT event characteristic (0xAGX5) 鈫?Phone 鈫?Action
+ * BLE Notify flow:  Glass → GATT event characteristic (0xAGX5) → Phone → Action
  */
 
 import { BleManager, type Subscription } from 'react-native-ble-plx';
 import type { Socket } from 'socket.io-client';
 import { Buffer } from 'buffer';
 
-// 鈹€鈹€ GATT UUIDs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── GATT UUIDs ─────────────────────────────────────────
 
 const GLASS_SERVICE_UUID = '0000AGX0-0000-1000-8000-00805F9B34FB';
-/** Touch/IMU event characteristic (Notify 鈥?glass 鈫?phone) */
+/** Touch/IMU event characteristic (Notify — glass → phone) */
 const GESTURE_EVENT_CHAR_UUID = '0000AGX5-0000-1000-8000-00805F9B34FB';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export type GestureType =
   | 'tap'
@@ -31,7 +31,7 @@ export type GestureType =
   | 'shake';
 
 export type GestureAction =
-  | 'voice_interrupt'   // barge-in 鈥?stop Agent speaking
+  | 'voice_interrupt'   // barge-in — stop Agent speaking
   | 'voice_activate'    // start listening
   | 'confirm'           // approve (payment, action)
   | 'dismiss'           // dismiss notification / cancel
@@ -61,7 +61,7 @@ export interface GestureHandlerCallbacks {
   onError?: (error: Error) => void;
 }
 
-// 鈹€鈹€ Default gesture-to-action mapping 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Default gesture-to-action mapping ──────────────────
 
 const DEFAULT_GESTURE_MAP: GestureMapping[] = [
   { gesture: 'tap',             action: 'voice_activate' },
@@ -73,7 +73,7 @@ const DEFAULT_GESTURE_MAP: GestureMapping[] = [
   { gesture: 'shake',           action: 'dismiss' },
 ];
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class GlassGestureHandler {
   private bleManager: BleManager;
@@ -179,7 +179,7 @@ export class GlassGestureHandler {
     return Array.from(this.gestureMap.entries()).map(([gesture, action]) => ({ gesture, action }));
   }
 
-  // 鈹€鈹€ Internal 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Internal ──────────────────────────────────────────
 
   /**
    * Parse a BLE characteristic value into a GestureEvent.
@@ -212,7 +212,7 @@ export class GlassGestureHandler {
   }
 
   /**
-   * Handle a parsed gesture event: debounce 鈫?map to action 鈫?execute.
+   * Handle a parsed gesture event: debounce → map to action → execute.
    */
   private handleGestureEvent(event: GestureEvent): void {
     // Debounce: skip if same gesture arrived within debounce window
@@ -235,7 +235,7 @@ export class GlassGestureHandler {
   }
 
   /**
-   * Execute the mapped action 鈥?sends commands to the voice socket
+   * Execute the mapped action — sends commands to the voice socket
    * or emits events for local handling.
    */
   private executeAction(action: GestureAction, event: GestureEvent): void {
@@ -275,7 +275,7 @@ export class GlassGestureHandler {
 
       case 'scroll_next':
       case 'scroll_prev':
-        // HUD pagination 鈥?handled locally, no cloud signal needed
+        // HUD pagination — handled locally, no cloud signal needed
         // The HUD controller listens for these
         break;
 

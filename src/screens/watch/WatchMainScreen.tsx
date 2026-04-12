@@ -1,5 +1,5 @@
 /**
- * WearOS Main Entry Screen 鈥?standalone watch experience.
+ * WearOS Main Entry Screen — standalone watch experience.
  *
  * Provides:
  *   - Quick voice activation (tap-to-talk)
@@ -25,7 +25,7 @@ import {
 } from 'react-native';
 import { WatchDataLayerService, type WatchMessage } from '../../services/wearables/watchDataLayerBridge.service';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 interface WatchState {
   connected: boolean;
@@ -37,13 +37,13 @@ interface WatchState {
   strategy: string | null;
 }
 
-// 鈹€鈹€ Constants 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Constants ──────────────────────────────────────────
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const IS_ROUND = SCREEN_W < 250; // heuristic
 const MIC_BUTTON_SIZE = Math.min(SCREEN_W * 0.35, 80);
 
-// 鈹€鈹€ Component 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Component ──────────────────────────────────────────
 
 export default function WatchMainScreen() {
   const [state, setState] = useState<WatchState>({
@@ -144,7 +144,7 @@ export default function WatchMainScreen() {
         onPress={handleMicPress}
         activeOpacity={0.7}
       >
-        <Text style={styles.micIcon}>{state.voiceActive ? '鈴? : '馃帳'}</Text>
+        <Text style={styles.micIcon}>{state.voiceActive ? '⏹' : '🎤'}</Text>
       </TouchableOpacity>
 
       {/* Last response */}
@@ -167,7 +167,7 @@ export default function WatchMainScreen() {
   );
 }
 
-// 鈹€鈹€ Styles 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Styles ─────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {

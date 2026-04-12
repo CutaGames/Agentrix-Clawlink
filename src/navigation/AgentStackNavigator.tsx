@@ -20,7 +20,7 @@ class ChatScreenErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <View style={ebStyles.container}>
-          <Text style={ebStyles.icon}>鈿狅笍</Text>
+          <Text style={ebStyles.icon}>⚠️</Text>
           <Text style={ebStyles.title}>Chat failed to load</Text>
           <Text style={ebStyles.msg}>{this.state.error?.message ?? 'Unknown error'}</Text>
           <TouchableOpacity style={ebStyles.btn} onPress={() => this.setState({ hasError: false, error: undefined })}>
@@ -71,7 +71,7 @@ import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
 import { WearableMonitorScreen } from '../screens/agent/WearableMonitorScreen';
 import { AgentSpaceScreen } from '../screens/agent/AgentSpaceScreen';
 import { ScanScreen } from '../screens/me/ScanScreen';
-// Deploy screens 鈥?reused from Onboarding in post-onboarding context
+// Deploy screens — reused from Onboarding in post-onboarding context
 import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
 import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
 import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScreen';
@@ -100,43 +100,43 @@ export function AgentStackNavigator() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="AgentChat" component={AgentChatScreenWithBoundary} options={{ title: t({ en: 'Chat', zh: '瀵硅瘽' }), headerShown: false }} />
-      <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'Agent Settings', zh: '鏅鸿兘浣撶鐞? }) }} />
-      <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '鍙┛鎴磋澶? }) }} />
-      <Stack.Screen name="WearableMonitor" component={WearableMonitorScreen} options={{ title: t({ en: 'Wearable Monitor', zh: '绌挎埓璁惧鐩戞帶' }) }} />
-      <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: t({ en: 'Connect OpenClaw', zh: '杩炴帴 OpenClaw' }) }} />
-      <Stack.Screen name="LocalConnect" component={LocalConnectScreen} options={{ title: t({ en: 'Link Local Agent', zh: '鍏宠仈鏈湴鏅鸿兘浣? }) }} />
-      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '鎵竴鎵? }) }} />
-      <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: t({ en: 'Install Skill', zh: '瀹夎鎶€鑳? }) }} />
-      <Stack.Screen name="SkillPack" component={SkillPackScreen} options={{ title: t({ en: 'Skill Pack', zh: '鎶€鑳藉揩鍏? }), headerShown: false }} />
-      <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: t({ en: 'Storage Plans', zh: '瀛樺偍鏂规' }) }} />
-      <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: t({ en: 'Activity Logs', zh: '娲诲姩鏃ュ織' }) }} />
-      <Stack.Screen name="DesktopControl" component={DesktopControlScreen} options={{ title: t({ en: 'Desktop Control', zh: '妗岄潰鎺у埗' }) }} />
-      <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: t({ en: 'Memory Hub', zh: '璁板繂涓績' }) }} />
-      <Stack.Screen name="AgentMemory" component={AgentMemoryScreen} options={{ title: t({ en: 'Memory Slots', zh: '璁板繂妲? }) }} />
-      <Stack.Screen name="AcpSessions" component={AcpSessionsScreen} options={{ title: t({ en: 'ACP Sessions', zh: 'ACP 浼氳瘽' }) }} />
-      <Stack.Screen name="WorkflowList" component={WorkflowListScreen} options={{ title: t({ en: 'Workflows', zh: '宸ヤ綔娴? }) }} />
-      <Stack.Screen name="WorkflowDetail" component={WorkflowDetailScreen} options={{ title: t({ en: 'Workflow', zh: '宸ヤ綔娴? }) }} />
-      {/* Deploy screens 鈥?accessible post-onboarding */}
-      <Stack.Screen name="DeploySelect" component={DeploySelectScreen} options={{ title: t({ en: 'Connect Agent', zh: '杩炴帴鏅鸿兘浣? }), headerShown: false }} />
-      <Stack.Screen name="CloudDeploy" component={CloudDeployScreen} options={{ title: t({ en: 'Cloud Deploy', zh: '浜戠閮ㄧ讲' }), headerShown: false }} />
-      <Stack.Screen name="ConnectExisting" component={ConnectExistingScreen} options={{ title: t({ en: 'Connect Existing', zh: '杩炴帴宸叉湁瀹炰緥' }), headerShown: false }} />
-      <Stack.Screen name="LocalDeploy" component={LocalDeployScreen} options={{ title: t({ en: 'Local Deploy', zh: '鏈湴閮ㄧ讲' }), headerShown: false }} />
-      <Stack.Screen name="SocialBind" component={SocialBindScreen} options={{ title: t({ en: 'Link Social', zh: '缁戝畾绀句氦骞冲彴' }), headerShown: false }} />
+      <Stack.Screen name="AgentChat" component={AgentChatScreenWithBoundary} options={{ title: t({ en: 'Chat', zh: '对话' }), headerShown: false }} />
+      <Stack.Screen name="AgentConsole" component={AgentConsoleScreen} options={{ title: t({ en: 'Agent Settings', zh: '智能体管理' }) }} />
+      <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
+      <Stack.Screen name="WearableMonitor" component={WearableMonitorScreen} options={{ title: t({ en: 'Wearable Monitor', zh: '穿戴设备监控' }) }} />
+      <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: t({ en: 'Connect OpenClaw', zh: '连接 OpenClaw' }) }} />
+      <Stack.Screen name="LocalConnect" component={LocalConnectScreen} options={{ title: t({ en: 'Link Local Agent', zh: '关联本地智能体' }) }} />
+      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
+      <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: t({ en: 'Install Skill', zh: '安装技能' }) }} />
+      <Stack.Screen name="SkillPack" component={SkillPackScreen} options={{ title: t({ en: 'Skill Pack', zh: '技能快充' }), headerShown: false }} />
+      <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: t({ en: 'Storage Plans', zh: '存储方案' }) }} />
+      <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: t({ en: 'Activity Logs', zh: '活动日志' }) }} />
+      <Stack.Screen name="DesktopControl" component={DesktopControlScreen} options={{ title: t({ en: 'Desktop Control', zh: '桌面控制' }) }} />
+      <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: t({ en: 'Memory Hub', zh: '记忆中心' }) }} />
+      <Stack.Screen name="AgentMemory" component={AgentMemoryScreen} options={{ title: t({ en: 'Memory Slots', zh: '记忆槽' }) }} />
+      <Stack.Screen name="AcpSessions" component={AcpSessionsScreen} options={{ title: t({ en: 'ACP Sessions', zh: 'ACP 会话' }) }} />
+      <Stack.Screen name="WorkflowList" component={WorkflowListScreen} options={{ title: t({ en: 'Workflows', zh: '工作流' }) }} />
+      <Stack.Screen name="WorkflowDetail" component={WorkflowDetailScreen} options={{ title: t({ en: 'Workflow', zh: '工作流' }) }} />
+      {/* Deploy screens — accessible post-onboarding */}
+      <Stack.Screen name="DeploySelect" component={DeploySelectScreen} options={{ title: t({ en: 'Connect Agent', zh: '连接智能体' }), headerShown: false }} />
+      <Stack.Screen name="CloudDeploy" component={CloudDeployScreen} options={{ title: t({ en: 'Cloud Deploy', zh: '云端部署' }), headerShown: false }} />
+      <Stack.Screen name="ConnectExisting" component={ConnectExistingScreen} options={{ title: t({ en: 'Connect Existing', zh: '连接已有实例' }), headerShown: false }} />
+      <Stack.Screen name="LocalDeploy" component={LocalDeployScreen} options={{ title: t({ en: 'Local Deploy', zh: '本地部署' }), headerShown: false }} />
+      <Stack.Screen name="SocialBind" component={SocialBindScreen} options={{ title: t({ en: 'Link Social', zh: '绑定社交平台' }), headerShown: false }} />
       {/* Layer 2 */}
-      <Stack.Screen name="VoiceChat" component={VoiceChatScreen} options={{ title: t({ en: 'Voice Chat', zh: '璇煶瀵硅瘽' }), headerShown: false }} />
-      <Stack.Screen name="TeamSpace" component={TeamSpaceScreen} options={{ title: t({ en: 'Team Spaces', zh: '鍥㈤槦绌洪棿' }), headerShown: false }} />
-      <Stack.Screen name="TeamInvite" component={TeamInviteScreen} options={{ title: t({ en: 'Invite Members', zh: '閭€璇锋垚鍛? }), headerShown: false }} />
-      <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: t({ en: 'Agent Accounts', zh: '鏅鸿兘浣撹处鎴? }) }} />
-      <Stack.Screen name="AgentBalance" component={AgentBalanceScreen} options={{ title: t({ en: 'Balance & Transactions', zh: '浣欓涓庝氦鏄? }) }} />
-      <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: t({ en: 'Permissions & Security', zh: '鏉冮檺涓庡畨鍏? }) }} />
-      <Stack.Screen name="AgentTools" component={AgentToolsScreen} options={{ title: t({ en: 'Agent Tools', zh: '绯荤粺宸ュ叿' }) }} />
-      <Stack.Screen name="AgentSpace" component={AgentSpaceScreen} options={{ title: t({ en: 'Agent Space', zh: 'Agent 鍗忎綔绌洪棿' }) }} />
+      <Stack.Screen name="VoiceChat" component={VoiceChatScreen} options={{ title: t({ en: 'Voice Chat', zh: '语音对话' }), headerShown: false }} />
+      <Stack.Screen name="TeamSpace" component={TeamSpaceScreen} options={{ title: t({ en: 'Team Spaces', zh: '团队空间' }), headerShown: false }} />
+      <Stack.Screen name="TeamInvite" component={TeamInviteScreen} options={{ title: t({ en: 'Invite Members', zh: '邀请成员' }), headerShown: false }} />
+      <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: t({ en: 'Agent Accounts', zh: '智能体账户' }) }} />
+      <Stack.Screen name="AgentBalance" component={AgentBalanceScreen} options={{ title: t({ en: 'Balance & Transactions', zh: '余额与交易' }) }} />
+      <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: t({ en: 'Permissions & Security', zh: '权限与安全' }) }} />
+      <Stack.Screen name="AgentTools" component={AgentToolsScreen} options={{ title: t({ en: 'Agent Tools', zh: '系统工具' }) }} />
+      <Stack.Screen name="AgentSpace" component={AgentSpaceScreen} options={{ title: t({ en: 'Agent Space', zh: 'Agent 协作空间' }) }} />
       {/* OpenClaw 4.5 features */}
-      <Stack.Screen name="DreamingDashboard" component={DreamingDashboardScreen} options={{ title: t({ en: 'Dreaming Engine', zh: '姊﹀寮曟搸' }) }} />
-      <Stack.Screen name="PluginHub" component={PluginHubScreen} options={{ title: t({ en: 'Plugin Hub', zh: '鎻掍欢涓績' }) }} />
-      <Stack.Screen name="MemoryWiki" component={MemoryWikiScreen} options={{ title: t({ en: 'Memory Wiki', zh: '璁板繂缁村熀' }) }} />
-      <Stack.Screen name="McpManager" component={McpManagerScreen} options={{ title: t({ en: 'MCP Manager', zh: 'MCP 绠＄悊' }) }} />
+      <Stack.Screen name="DreamingDashboard" component={DreamingDashboardScreen} options={{ title: t({ en: 'Dreaming Engine', zh: '梦境引擎' }) }} />
+      <Stack.Screen name="PluginHub" component={PluginHubScreen} options={{ title: t({ en: 'Plugin Hub', zh: '插件中心' }) }} />
+      <Stack.Screen name="MemoryWiki" component={MemoryWikiScreen} options={{ title: t({ en: 'Memory Wiki', zh: '记忆维基' }) }} />
+      <Stack.Screen name="McpManager" component={McpManagerScreen} options={{ title: t({ en: 'MCP Manager', zh: 'MCP 管理' }) }} />
     </Stack.Navigator>
   );
 }

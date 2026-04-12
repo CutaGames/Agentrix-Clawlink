@@ -41,13 +41,13 @@ const SPEECH_PRE_ROLL_FRAMES = 6;
 const SPEECH_POST_ROLL_FRAMES = 8;
 /**
  * Volume threshold for barge-in detection while mic is muted (agent speaking).
- * Lowered from 0.72 to 0.50 鈥?phone users speaking at normal distance easily hit 0.50+
+ * Lowered from 0.72 to 0.50 — phone users speaking at normal distance easily hit 0.50+
  * but typical phone speaker echo stays below 0.45 on most devices.
  */
 const BARGE_IN_THRESHOLD = 0.50;
 /**
  * Number of consecutive loud frames required to confirm barge-in.
- * Reduced from 20 to 10 frames (~320ms) 鈥?enough to confirm real speech,
+ * Reduced from 20 to 10 frames (~320ms) — enough to confirm real speech,
  * while single-frame echo spikes still won't trigger false barge-in.
  */
 const BARGE_IN_FRAME_COUNT = 10;
@@ -107,7 +107,7 @@ export class RealtimeMicrophoneService {
   private pausedUntil = 0;
   /** When true, frames are not sent but speech detection still runs for barge-in */
   private muted = false;
-  /** Consecutive loud frames while muted 鈥?need several to confirm barge-in (not echo) */
+  /** Consecutive loud frames while muted — need several to confirm barge-in (not echo) */
   private mutedLoudFrames = 0;
   /** Timestamp after which barge-in detection becomes active (cooldown after mute start) */
   private bargeInActiveAfter = 0;
@@ -226,7 +226,7 @@ export class RealtimeMicrophoneService {
         this.preRollBuffer = [];
         this.callbacks.onFrame(pcmChunk);
       } else {
-        // No speech 鈥?buffer for pre-roll only, don't send to server
+        // No speech — buffer for pre-roll only, don't send to server
         this.preRollBuffer.push(pcmChunk);
         if (this.preRollBuffer.length > SPEECH_PRE_ROLL_FRAMES) {
           this.preRollBuffer.shift();

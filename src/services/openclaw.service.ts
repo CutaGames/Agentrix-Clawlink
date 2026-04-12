@@ -163,7 +163,7 @@ export async function installSkillToInstance(instanceId: string, skillId: string
     await apiFetch(`/skills/${skillId}/install`, { method: 'POST' });
     dbRecorded = true;
   } catch (e: any) {
-    // Hub skills may not have marketplace entries 鈥?always try bridge endpoint as fallback
+    // Hub skills may not have marketplace entries — always try bridge endpoint as fallback
     // (Hub skills can have UUID IDs or various prefixes)
     try {
       await apiFetch(`/openclaw/bridge/${instanceId}/skill-hub-install`, {
@@ -221,7 +221,7 @@ export async function batchCleanupInstances(status: string = 'error'): Promise<{
   return apiFetch(`/openclaw/instances?status=${encodeURIComponent(status)}`, { method: 'DELETE' });
 }
 
-// 鈹€鈹€ Model Switching 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Model Switching ────────────────────────────────────────────────────────────
 
 export interface AvailableModel {
   id: string;
@@ -258,7 +258,7 @@ export async function switchInstanceModel(instanceId: string, modelId: string): 
   });
 }
 
-// 鈹€鈹€ Local Agent 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Local Agent ────────────────────────────────────────────────────────────────
 
 export interface ProvisionLocalResult {
   instanceId: string;
@@ -296,7 +296,7 @@ export async function getRelayStatus(instanceId: string): Promise<{ connected: b
   return apiFetch(`/openclaw/local/${instanceId}/relay-status`);
 }
 
-// 鈹€鈹€ Social Binding 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Social Binding ─────────────────────────────────────────────────────────────
 
 export interface TelegramQrResult {
   deepLink: string;
@@ -317,7 +317,7 @@ export async function unlinkTelegram(instanceId: string): Promise<void> {
   return apiFetch(`/openclaw/social/telegram/${instanceId}`, { method: 'DELETE' });
 }
 
-// Stream chat using WebSocket 鈥?returns cleanup function
+// Stream chat using WebSocket — returns cleanup function
 export function streamAgentChat(
   instanceId: string,
   message: string,
@@ -360,7 +360,7 @@ export function streamAgentChat(
   return () => ws.close();
 }
 
-// 鈹€鈹€ Storage / Plan 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Storage / Plan ─────────────────────────────────────────────────────────────
 
 export type StorageTier = 'free' | 'starter' | 'pro';
 
@@ -397,9 +397,9 @@ export async function upgradeStoragePlan(tier: StorageTier): Promise<{ checkoutU
   });
 }
 
-// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
-// Platform Tools 鈥?Agentrix platform capabilities for claws
-// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?
+// ═══════════════════════════════════════════════════════════
+// Platform Tools — Agentrix platform capabilities for claws
+// ═══════════════════════════════════════════════════════════
 
 export interface PlatformTool {
   name: string;

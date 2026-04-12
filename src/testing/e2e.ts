@@ -1,18 +1,31 @@
 import { Platform } from 'react-native';
 import { setApiConfig } from '../services/api';
-import { useAuthStore, type AuthUser, type OpenClawInstance } from '../stores/authStore';
-import { mmkv } from '../stores/mmkvStorage';
-import { useSettingsStore } from '../stores/settingsStore';
+import type { AuthUser, OpenClawInstance } from '../stores/authStore';
+
+// Stores are imported lazily inside applyVoiceUiE2EBootstrap() to avoid
+// circular dependency TDZ errors during module initialization.
+// (AgentChatScreen → useVoiceSession → liveSpeech/realtimeVoice → e2e.ts → stores → TDZ)
 
 const VOICE_UI_E2E_SCENARIO = 'voice-ui';
 const VOICE_ONBOARDING_KEYS = ['voice_onboarding_completed', 'voice_onboarding_completed_v2'];
 
 export type VoiceUiE2ELiveSpeechPermission = 'granted' | 'denied';
 
+export interface VoiceUiE2ERealtimeBridge {
+  onFinalTranscript: (text: string) => void;
+  onAssistantChunk: (chunk: string) => void;
+  onAssistantEnd: () => void;
+  onError: (message: string) => void;
+}
+
 export interface VoiceUiE2ERuntime {
   liveSpeechPermission: VoiceUiE2ELiveSpeechPermission;
   setLiveSpeechPermission: (state: VoiceUiE2ELiveSpeechPermission) => void;
   triggerWakeWord: () => void;
+  emitRealtimeFinalTranscript: (text: string) => void;
+  emitRealtimeAssistantChunk: (chunk: string) => void;
+  completeRealtimeAssistantResponse: () => void;
+  emitRealtimeError: (message: string) => void;
 }
 
 declare global {
@@ -21,6 +34,7 @@ declare global {
     __AGENTRIX_VOICE_UI_E2E_FETCH_MOCKED__?: boolean;
     __AGENTRIX_VOICE_UI_E2E_RUNTIME__?: VoiceUiE2ERuntime;
     __AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_PERMISSION__?: VoiceUiE2ELiveSpeechPermission;
+    __AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?: VoiceUiE2ERealtimeBridge | null;
   }
 }
 
@@ -37,9 +51,29 @@ function createVoiceUiE2ERuntime(): VoiceUiE2ERuntime {
     triggerWakeWord() {
       window.dispatchEvent(new CustomEvent('agentrix:e2e-wake-word'));
     },
+    emitRealtimeFinalTranscript(text) {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onFinalTranscript(text);
+    },
+    emitRealtimeAssistantChunk(chunk) {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onAssistantChunk(chunk);
+    },
+    completeRealtimeAssistantResponse() {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onAssistantEnd();
+    },
+    emitRealtimeError(message) {
+      window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onError(message);
+    },
   };
 
   return runtime;
+}
+
+export function setVoiceUiE2ERealtimeBridge(bridge: VoiceUiE2ERealtimeBridge | null): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__ = bridge;
 }
 
 function createJsonResponse(body: unknown, status = 200): Response {
@@ -235,8 +269,19 @@ function getWebSearchParam(name: string): string | null {
   }
 }
 
+// Cache the E2E enabled check at first evaluation time because
+// React Navigation's web linking rewrites the URL (stripping query params)
+// shortly after mount, making later window.location.search checks unreliable.
+let _cachedE2EEnabled: boolean | null = null;
+
 export function isVoiceUiE2EEnabled(): boolean {
-  return getWebSearchParam('e2e') === VOICE_UI_E2E_SCENARIO;
+  if (_cachedE2EEnabled !== null) return _cachedE2EEnabled;
+  _cachedE2EEnabled = getWebSearchParam('e2e') === VOICE_UI_E2E_SCENARIO;
+  // Also check the bootstrap flag as a fallback
+  if (!_cachedE2EEnabled && typeof window !== 'undefined' && (window as any).__AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__) {
+    _cachedE2EEnabled = true;
+  }
+  return _cachedE2EEnabled;
 }
 
 export function getVoiceUiE2ERuntime(): VoiceUiE2ERuntime | null {
@@ -281,8 +326,12 @@ export function applyVoiceUiE2EBootstrap(): boolean {
     openClawInstances: [instance],
   };
 
-  VOICE_ONBOARDING_KEYS.forEach((key) => mmkv.delete(key));
+  VOICE_ONBOARDING_KEYS.forEach((key) => {
+    const { mmkv } = require('../stores/mmkvStorage');
+    mmkv.delete(key);
+  });
 
+  const { useAuthStore } = require('../stores/authStore');
   useAuthStore.setState({
     user,
     token: 'e2e-token',
@@ -294,7 +343,8 @@ export function applyVoiceUiE2EBootstrap(): boolean {
     activeInstance: instance,
   });
 
-  useSettingsStore.setState((state) => ({
+  const { useSettingsStore } = require('../stores/settingsStore');
+  useSettingsStore.setState((state: any) => ({
     wakeWordConfig: {
       ...state.wakeWordConfig,
       enabled: false,

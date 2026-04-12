@@ -1,5 +1,5 @@
 /**
- * RealtimeVoiceService 鈥?Socket.IO-based duplex voice control channel.
+ * RealtimeVoiceService — Socket.IO-based duplex voice control channel.
  *
  * The mobile client keeps local STT for low-friction microphone capture,
  * then pushes final transcripts to the backend voice gateway for streaming

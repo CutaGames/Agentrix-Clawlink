@@ -27,13 +27,13 @@ import {
 type ScreenTab = 'live' | 'rules' | 'history';
 
 const CHANNEL_META: Record<TelemetryChannel, { label: string; icon: string; unit: string; color: string }> = {
-  heart_rate: { label: 'Heart Rate', icon: '鈾?, unit: 'bpm', color: '#EF4444' },
-  spo2: { label: 'SpO鈧?, icon: '鈼?, unit: '%', color: '#8B5CF6' },
-  temperature: { label: 'Temperature', icon: '馃尅', unit: '掳C', color: '#F59E0B' },
-  steps: { label: 'Steps', icon: '馃毝', unit: '', color: '#3B82F6' },
-  battery: { label: 'Battery', icon: '馃攱', unit: '%', color: '#10B981' },
-  accelerometer: { label: 'Accel', icon: '鉄?, unit: '', color: '#6366F1' },
-  custom: { label: 'Custom', icon: '鈼?, unit: '', color: '#6B7280' },
+  heart_rate: { label: 'Heart Rate', icon: '♥', unit: 'bpm', color: '#EF4444' },
+  spo2: { label: 'SpO₂', icon: '○', unit: '%', color: '#8B5CF6' },
+  temperature: { label: 'Temperature', icon: '🌡', unit: '°C', color: '#F59E0B' },
+  steps: { label: 'Steps', icon: '🚶', unit: '', color: '#3B82F6' },
+  battery: { label: 'Battery', icon: '🔋', unit: '%', color: '#10B981' },
+  accelerometer: { label: 'Accel', icon: '⟐', unit: '', color: '#6366F1' },
+  custom: { label: 'Custom', icon: '◆', unit: '', color: '#6B7280' },
 };
 
 const DEFAULT_MONITORED_CHANNELS: MonitoredChannel[] = [
@@ -156,12 +156,12 @@ export function WearableMonitorScreen({ navigation, route }: any) {
 
   const handleDeleteRule = async (ruleId: string) => {
     Alert.alert(
-      t({ en: 'Delete Rule', zh: '鍒犻櫎瑙勫垯' }),
-      t({ en: 'Are you sure?', zh: '纭畾鍒犻櫎锛? }),
+      t({ en: 'Delete Rule', zh: '删除规则' }),
+      t({ en: 'Are you sure?', zh: '确定删除？' }),
       [
-        { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Delete', zh: '鍒犻櫎' }), style: 'destructive',
+          text: t({ en: 'Delete', zh: '删除' }), style: 'destructive',
           onPress: async () => {
             await WearableAutomationEngineService.deleteRule(ruleId);
             setRules(WearableAutomationEngineService.getRules());
@@ -193,12 +193,12 @@ export function WearableMonitorScreen({ navigation, route }: any) {
 
   const statusLabel = useMemo(() => {
     switch (collectorState?.status) {
-      case 'collecting': return t({ en: 'Monitoring', zh: '鐩戞帶涓? });
-      case 'connecting': return t({ en: 'Connecting', zh: '杩炴帴涓? });
-      case 'reconnecting': return t({ en: 'Reconnecting', zh: '閲嶈繛涓? });
-      case 'error': return t({ en: 'Error', zh: '閿欒' });
-      case 'paused': return t({ en: 'Paused', zh: '宸叉殏鍋? });
-      default: return t({ en: 'Idle', zh: '绌洪棽' });
+      case 'collecting': return t({ en: 'Monitoring', zh: '监控中' });
+      case 'connecting': return t({ en: 'Connecting', zh: '连接中' });
+      case 'reconnecting': return t({ en: 'Reconnecting', zh: '重连中' });
+      case 'error': return t({ en: 'Error', zh: '错误' });
+      case 'paused': return t({ en: 'Paused', zh: '已暂停' });
+      default: return t({ en: 'Idle', zh: '空闲' });
     }
   }, [collectorState?.status, t]);
 
@@ -209,11 +209,11 @@ export function WearableMonitorScreen({ navigation, route }: any) {
       {/* Header */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => navigation?.goBack?.()} style={st.backBtn}>
-          <Text style={st.backIcon}>鈥?/Text>
+          <Text style={st.backIcon}>‹</Text>
         </TouchableOpacity>
         <View style={st.headerCenter}>
           <Text style={st.headerTitle}>
-            {selectedDevice?.name || t({ en: 'Wearable Monitor', zh: '绌挎埓鐩戞帶' })}
+            {selectedDevice?.name || t({ en: 'Wearable Monitor', zh: '穿戴监控' })}
           </Text>
           <View style={st.statusRow}>
             <View style={[st.statusDot, { backgroundColor: statusColor }]} />
@@ -244,42 +244,42 @@ export function WearableMonitorScreen({ navigation, route }: any) {
       <View style={st.controls}>
         {(!collectorState || collectorState.status === 'idle' || collectorState.status === 'error') && (
           <TouchableOpacity style={st.ctrlBtnStart} onPress={handleStartCollector}>
-            <Text style={st.ctrlBtnText}>鈻?{t({ en: 'Start', zh: '寮€濮? })}</Text>
+            <Text style={st.ctrlBtnText}>▶ {t({ en: 'Start', zh: '开始' })}</Text>
           </TouchableOpacity>
         )}
         {collectorState?.status === 'collecting' && (
           <>
             <TouchableOpacity style={st.ctrlBtnPause} onPress={handlePauseCollector}>
-              <Text style={st.ctrlBtnText}>鈴?{t({ en: 'Pause', zh: '鏆傚仠' })}</Text>
+              <Text style={st.ctrlBtnText}>⏸ {t({ en: 'Pause', zh: '暂停' })}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.ctrlBtnStop} onPress={handleStopCollector}>
-              <Text style={st.ctrlBtnText}>鈴?{t({ en: 'Stop', zh: '鍋滄' })}</Text>
+              <Text style={st.ctrlBtnText}>⏹ {t({ en: 'Stop', zh: '停止' })}</Text>
             </TouchableOpacity>
           </>
         )}
         {collectorState?.status === 'paused' && (
           <>
             <TouchableOpacity style={st.ctrlBtnStart} onPress={handleResumeCollector}>
-              <Text style={st.ctrlBtnText}>鈻?{t({ en: 'Resume', zh: '鎭㈠' })}</Text>
+              <Text style={st.ctrlBtnText}>▶ {t({ en: 'Resume', zh: '恢复' })}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.ctrlBtnStop} onPress={handleStopCollector}>
-              <Text style={st.ctrlBtnText}>鈴?{t({ en: 'Stop', zh: '鍋滄' })}</Text>
+              <Text style={st.ctrlBtnText}>⏹ {t({ en: 'Stop', zh: '停止' })}</Text>
             </TouchableOpacity>
           </>
         )}
         <View style={st.statsRow}>
-          <Text style={st.stat}>{t({ en: 'Collected', zh: '宸查噰闆? })}: {collectorState?.samplesCollected ?? 0}</Text>
-          <Text style={st.stat}>{t({ en: 'Uploaded', zh: '宸蹭笂浼? })}: {collectorState?.samplesUploaded ?? 0}</Text>
-          <Text style={st.stat}>{t({ en: 'Buffer', zh: '缂撳啿' })}: {WearableDataCollectorService.getBufferSize()}</Text>
+          <Text style={st.stat}>{t({ en: 'Collected', zh: '已采集' })}: {collectorState?.samplesCollected ?? 0}</Text>
+          <Text style={st.stat}>{t({ en: 'Uploaded', zh: '已上传' })}: {collectorState?.samplesUploaded ?? 0}</Text>
+          <Text style={st.stat}>{t({ en: 'Buffer', zh: '缓冲' })}: {WearableDataCollectorService.getBufferSize()}</Text>
         </View>
       </View>
 
       {/* Tabs */}
       <View style={st.tabBar}>
         {([
-          { key: 'live' as const, label: t({ en: 'Live Data', zh: '瀹炴椂鏁版嵁' }) },
-          { key: 'rules' as const, label: t({ en: 'Rules', zh: '瑙勫垯' }) },
-          { key: 'history' as const, label: `${t({ en: 'Alerts', zh: '鍛婅' })}${unacknowledgedCount > 0 ? ` (${unacknowledgedCount})` : ''}` },
+          { key: 'live' as const, label: t({ en: 'Live Data', zh: '实时数据' }) },
+          { key: 'rules' as const, label: t({ en: 'Rules', zh: '规则' }) },
+          { key: 'history' as const, label: `${t({ en: 'Alerts', zh: '告警' })}${unacknowledgedCount > 0 ? ` (${unacknowledgedCount})` : ''}` },
         ]).map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -299,7 +299,7 @@ export function WearableMonitorScreen({ navigation, route }: any) {
   );
 }
 
-// 鈹€鈹€ Live Data Tab 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Live Data Tab ────────────────────────────────────────────────────────────
 
 function LiveDataTab({
   collectorState, recentSamples, t,
@@ -335,15 +335,15 @@ function LiveDataTab({
         </View>
       ) : (
         <View style={st.emptyState}>
-          <Text style={st.emptyIcon}>馃摗</Text>
+          <Text style={st.emptyIcon}>📡</Text>
           <Text style={st.emptyText}>
-            {t({ en: 'No channels configured. Start the collector to begin monitoring.', zh: '鏆傛棤閰嶇疆閫氶亾銆傚惎鍔ㄩ噰闆嗗櫒寮€濮嬬洃鎺с€? })}
+            {t({ en: 'No channels configured. Start the collector to begin monitoring.', zh: '暂无配置通道。启动采集器开始监控。' })}
           </Text>
         </View>
       )}
 
       <Text style={st.sectionTitle}>
-        {t({ en: 'Recent Samples', zh: '鏈€杩戞暟鎹? })} ({recentSamples.length})
+        {t({ en: 'Recent Samples', zh: '最近数据' })} ({recentSamples.length})
       </Text>
       {recentSamples.slice(0, 20).map((sample) => {
         const meta = CHANNEL_META[sample.channel] || CHANNEL_META.custom;
@@ -360,7 +360,7 @@ function LiveDataTab({
   );
 }
 
-// 鈹€鈹€ Rules Tab 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Rules Tab ────────────────────────────────────────────────────────────────
 
 function RulesTab({
   rules, onToggle, onDelete, onAddTemplate, t,
@@ -376,14 +376,14 @@ function RulesTab({
   return (
     <ScrollView style={st.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
       <Text style={st.sectionTitle}>
-        {t({ en: 'Active Rules', zh: '宸叉湁瑙勫垯' })} ({rules.length})
+        {t({ en: 'Active Rules', zh: '已有规则' })} ({rules.length})
       </Text>
 
       {rules.length === 0 ? (
         <View style={st.emptyState}>
-          <Text style={st.emptyIcon}>鈿?/Text>
+          <Text style={st.emptyIcon}>⚡</Text>
           <Text style={st.emptyText}>
-            {t({ en: 'No automation rules yet. Add a template below.', zh: '鏆傛棤鑷姩鍖栬鍒欍€傝浠庝笅鏂规ā鏉挎坊鍔犮€? })}
+            {t({ en: 'No automation rules yet. Add a template below.', zh: '暂无自动化规则。请从下方模板添加。' })}
           </Text>
         </View>
       ) : (
@@ -398,7 +398,7 @@ function RulesTab({
                 <View style={st.ruleInfo}>
                   <Text style={st.ruleName}>{rule.name}</Text>
                   <Text style={st.ruleCondition}>
-                    {meta.label} {rule.condition} {rule.threshold}{rule.thresholdHigh != null ? `鈥?{rule.thresholdHigh}` : ''} {meta.unit}
+                    {meta.label} {rule.condition} {rule.threshold}{rule.thresholdHigh != null ? `–${rule.thresholdHigh}` : ''} {meta.unit}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => onToggle(rule.id)} style={st.ruleToggle}>
@@ -408,9 +408,9 @@ function RulesTab({
                 </TouchableOpacity>
               </View>
               <View style={st.ruleFooter}>
-                <Text style={st.ruleStats}>{t({ en: 'Fired', zh: '瑙﹀彂' })}: {rule.triggerCount}x</Text>
+                <Text style={st.ruleStats}>{t({ en: 'Fired', zh: '触发' })}: {rule.triggerCount}x</Text>
                 <TouchableOpacity onPress={() => onDelete(rule.id)}>
-                  <Text style={st.ruleDelete}>鉁?/Text>
+                  <Text style={st.ruleDelete}>✕</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -419,7 +419,7 @@ function RulesTab({
       )}
 
       <Text style={[st.sectionTitle, { marginTop: 24 }]}>
-        {t({ en: 'Rule Templates', zh: '瑙勫垯妯℃澘' })}
+        {t({ en: 'Rule Templates', zh: '规则模板' })}
       </Text>
       {templates.map((tmpl, idx) => (
         <TouchableOpacity key={idx} style={st.templateCard} onPress={() => onAddTemplate(idx)}>
@@ -427,14 +427,14 @@ function RulesTab({
             <Text style={st.templateName}>{tmpl.name}</Text>
             <Text style={st.templateDesc}>{tmpl.description}</Text>
           </View>
-          <Text style={st.templateAdd}>锛?/Text>
+          <Text style={st.templateAdd}>＋</Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
   );
 }
 
-// 鈹€鈹€ History Tab 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── History Tab ──────────────────────────────────────────────────────────────
 
 function HistoryTab({
   events, onAcknowledge, t,
@@ -446,13 +446,13 @@ function HistoryTab({
   return (
     <ScrollView style={st.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
       <Text style={st.sectionTitle}>
-        {t({ en: 'Trigger History', zh: '瑙﹀彂鍘嗗彶' })} ({events.length})
+        {t({ en: 'Trigger History', zh: '触发历史' })} ({events.length})
       </Text>
 
       {events.length === 0 ? (
         <View style={st.emptyState}>
-          <Text style={st.emptyIcon}>馃敂</Text>
-          <Text style={st.emptyText}>{t({ en: 'No trigger events yet.', zh: '鏆傛棤瑙﹀彂浜嬩欢銆? })}</Text>
+          <Text style={st.emptyIcon}>🔔</Text>
+          <Text style={st.emptyText}>{t({ en: 'No trigger events yet.', zh: '暂无触发事件。' })}</Text>
         </View>
       ) : (
         events.map((ev) => {
@@ -472,7 +472,7 @@ function HistoryTab({
                 </View>
                 {!ev.acknowledged && (
                   <TouchableOpacity style={st.ackBtn} onPress={() => onAcknowledge(ev.id)}>
-                    <Text style={st.ackBtnText}>鉁?/Text>
+                    <Text style={st.ackBtnText}>✓</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -484,7 +484,7 @@ function HistoryTab({
   );
 }
 
-// 鈹€鈹€ Styles 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },

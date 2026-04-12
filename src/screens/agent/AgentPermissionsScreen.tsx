@@ -1,4 +1,4 @@
-// 馃攼 Agent Permissions & Security Screen
+// 🔐 Agent Permissions & Security Screen
 // Shows and manages all permission boundaries for the active AgentAccount
 import React, { useEffect, useState, useCallback } from 'react';
 import {
@@ -24,7 +24,7 @@ type AgentAccount = UnifiedAgent;
 
 type Route = RouteProp<AgentStackParamList, 'AgentPermissions'>;
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────────────────
 
 interface CatalogModel {
   id: string;
@@ -113,7 +113,7 @@ const DEFAULT_PERMISSIONS: PermissionState = {
   twitterEnabled: true,
   telegramEnabled: true,
   mcpToolCount: 3,
-  // Skills 鈥?all enabled by default
+  // Skills — all enabled by default
   skillSearchEnabled: true,
   skillInstallEnabled: true,
   skillExecuteEnabled: true,
@@ -159,7 +159,7 @@ function normalizePermissions(value?: Partial<PermissionState> | null): Permissi
 
 const CURRENCY_OPTIONS = ['USDT', 'ETH', 'USD'];
 
-// 鈹€鈹€ Section header 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Section header ──────────────────────────────────────────────────
 
 function SectionHeader({ icon, title }: { icon: string; title: string }) {
   return (
@@ -170,7 +170,7 @@ function SectionHeader({ icon, title }: { icon: string; title: string }) {
   );
 }
 
-// 鈹€鈹€ Permission row with switch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Permission row with switch ──────────────────────────────────────
 
 function PermRow({
   label, sub, value, onChange, destructive,
@@ -194,7 +194,7 @@ function PermRow({
   );
 }
 
-// 鈹€鈹€ Main Screen 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Main Screen ─────────────────────────────────────────────────────
 
 export function AgentPermissionsScreen() {
   const route = useRoute<Route>();
@@ -273,8 +273,8 @@ export function AgentPermissionsScreen() {
   const modelDisplayLabel = selectedModelObj
     ? `${selectedProviderObj?.icon || ''} ${selectedModelObj.label}`
     : defaultUserConfig
-      ? t({ en: 'Use Default', zh: '浣跨敤榛樿' }) + ` (${catalog.find(p => p.id === defaultUserConfig.providerId)?.icon || ''} ${defaultUserConfig.selectedModel})`
-      : t({ en: 'Platform Default', zh: '骞冲彴榛樿' });
+      ? t({ en: 'Use Default', zh: '使用默认' }) + ` (${catalog.find(p => p.id === defaultUserConfig.providerId)?.icon || ''} ${defaultUserConfig.selectedModel})`
+      : t({ en: 'Platform Default', zh: '平台默认' });
 
   const expectedPermissionsJson = JSON.stringify(normalizePermissions(perms));
 
@@ -325,7 +325,7 @@ export function AgentPermissionsScreen() {
       const verified = await getUnifiedAgent(activeAgent.id);
       const verifiedPermissions = normalizePermissions(verified.spendingLimits ? { allowedToolNames: [] } : undefined);
       if (JSON.stringify(verifiedPermissions) !== expectedPermissionsJson) {
-        throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '鏈嶅姟鍣ㄥ洖璇荤粨鏋滀笌淇濆瓨鍐呭涓嶄竴鑷淬€? }));
+        throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
       }
 
       if (activeInstance?.id) {
@@ -341,13 +341,13 @@ export function AgentPermissionsScreen() {
       setThresholdInput(String(verifiedPermissions.confirmationThreshold));
       await queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
       Alert.alert(
-        t({ en: 'Saved 鉁?, zh: '宸蹭繚瀛?鉁? }),
+        t({ en: 'Saved ✅', zh: '已保存 ✅' }),
         activeInstance?.id
-          ? t({ en: 'Permissions were saved, verified from the server, and bound to the current instance.', zh: '鏉冮檺宸蹭繚瀛橈紝宸蹭粠鏈嶅姟鍣ㄥ洖璇绘牎楠岋紝骞跺凡缁戝畾鍒板綋鍓嶅疄渚嬨€? })
-          : t({ en: 'Permissions were saved and verified from the server.', zh: '鏉冮檺宸蹭繚瀛橈紝骞跺凡浠庢湇鍔″櫒鍥炶鏍￠獙銆? }),
+          ? t({ en: 'Permissions were saved, verified from the server, and bound to the current instance.', zh: '权限已保存，已从服务器回读校验，并已绑定到当前实例。' })
+          : t({ en: 'Permissions were saved and verified from the server.', zh: '权限已保存，并已从服务器回读校验。' }),
       );
     } catch (e: any) {
-      Alert.alert(t({ en: 'Save Failed', zh: '淇濆瓨澶辫触' }), e?.message || t({ en: 'Failed to update permissions.', zh: '鏇存柊鏉冮檺澶辫触銆? }));
+      Alert.alert(t({ en: 'Save Failed', zh: '保存失败' }), e?.message || t({ en: 'Failed to update permissions.', zh: '更新权限失败。' }));
     } finally {
       setIsSaving(false);
     }
@@ -356,17 +356,17 @@ export function AgentPermissionsScreen() {
   const handleSuspend = () => {
     if (!activeAgent) return;
     Alert.alert(
-      t({ en: 'Suspend Agent', zh: '鏆傚仠鏅鸿兘浣? }),
-      t({ en: `Suspend "${activeAgent.name}"? It will be unable to make payments or use tools.`, zh: `纭鏆傚仠鈥?{activeAgent.name}鈥濆悧锛熸殏鍋滃悗瀹冨皢鏃犳硶浠樻鎴栦娇鐢ㄥ伐鍏枫€俙 }),
+      t({ en: 'Suspend Agent', zh: '暂停智能体' }),
+      t({ en: `Suspend "${activeAgent.name}"? It will be unable to make payments or use tools.`, zh: `确认暂停“${activeAgent.name}”吗？暂停后它将无法付款或使用工具。` }),
       [
-        { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Suspend', zh: '鏆傚仠' }), style: 'destructive', onPress: async () => {
+          text: t({ en: 'Suspend', zh: '暂停' }), style: 'destructive', onPress: async () => {
             try {
               await apiFetch(`/openclaw-connection/instances/${activeAgent.id}/pause`, { method: 'POST' });
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-              Alert.alert(t({ en: 'Agent Suspended', zh: '鏅鸿兘浣撳凡鏆傚仠' }), t({ en: `${activeAgent.name} is now suspended.`, zh: `${activeAgent.name} 宸茶鏆傚仠銆俙 }));
-            } catch { Alert.alert(t({ en: 'Error', zh: '閿欒' }), t({ en: 'Failed to suspend agent.', zh: '鏆傚仠鏅鸿兘浣撳け璐ャ€? })); }
+              Alert.alert(t({ en: 'Agent Suspended', zh: '智能体已暂停' }), t({ en: `${activeAgent.name} is now suspended.`, zh: `${activeAgent.name} 已被暂停。` }));
+            } catch { Alert.alert(t({ en: 'Error', zh: '错误' }), t({ en: 'Failed to suspend agent.', zh: '暂停智能体失败。' })); }
           },
         },
       ],
@@ -378,7 +378,7 @@ export function AgentPermissionsScreen() {
       {/* Agent Selector */}
       {activeAgent ? (
         <View style={styles.agentBadge}>
-          <Text style={styles.agentBadgeIcon}>馃</Text>
+          <Text style={styles.agentBadgeIcon}>🤖</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.agentBadgeName}>{activeAgent.name}</Text>
             <Text style={styles.agentBadgeId}>{activeAgent.agentUniqueId}</Text>
@@ -389,21 +389,21 @@ export function AgentPermissionsScreen() {
         </View>
       ) : (
         <View style={styles.noAgentBox}>
-          <Text style={styles.noAgentText}>{t({ en: 'No agent selected. Go to Agent Accounts to set one up.', zh: '褰撳墠鏈€夋嫨鏅鸿兘浣撱€傝鍓嶅線鈥滄櫤鑳戒綋璐︽埛鈥濆厛鍒涘缓鎴栭€夋嫨涓€涓€? })}</Text>
+          <Text style={styles.noAgentText}>{t({ en: 'No agent selected. Go to Agent Accounts to set one up.', zh: '当前未选择智能体。请前往“智能体账户”先创建或选择一个。' })}</Text>
         </View>
       )}
 
       {activeInstance?.id ? (
         <View style={styles.instanceBindingCard}>
-          <Text style={styles.instanceBindingTitle}>{t({ en: 'Applies to current instance', zh: '搴旂敤鍒板綋鍓嶅疄渚? })}</Text>
+          <Text style={styles.instanceBindingTitle}>{t({ en: 'Applies to current instance', zh: '应用到当前实例' })}</Text>
           <Text style={styles.instanceBindingText}>
-            {t({ en: `${activeInstance.name} will use the selected Agent Account profile for tool and payment permissions.`, zh: `${activeInstance.name} 灏嗕娇鐢ㄥ綋鍓嶉€変腑鐨?Agent Account 浣滀负宸ュ叿涓庢敮浠樻潈闄愭。妗堛€俙 })}
+            {t({ en: `${activeInstance.name} will use the selected Agent Account profile for tool and payment permissions.`, zh: `${activeInstance.name} 将使用当前选中的 Agent Account 作为工具与支付权限档案。` })}
           </Text>
         </View>
       ) : null}
       {agents.length > 1 && (
         <View style={styles.accountPickerWrap}>
-          <Text style={styles.accountPickerTitle}>{t({ en: 'Choose the account to configure', zh: '閫夋嫨瑕侀厤缃殑璐︽埛' })}</Text>
+          <Text style={styles.accountPickerTitle}>{t({ en: 'Choose the account to configure', zh: '选择要配置的账户' })}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountPickerRow}>
             {agents.map((agent) => {
               const selected = agent.id === activeAgent?.id;
@@ -419,19 +419,19 @@ export function AgentPermissionsScreen() {
             })}
           </ScrollView>
           {!agentAccountId && (
-            <Text style={styles.accountPickerHint}>{t({ en: 'Permissions are saved to the selected Agent Account and verified after saving.', zh: '鏉冮檺浼氫繚瀛樺埌褰撳墠閫変腑鐨勬櫤鑳戒綋璐︽埛锛屽苟鍦ㄤ繚瀛樺悗鍥炶鏍￠獙銆? })}</Text>
+            <Text style={styles.accountPickerHint}>{t({ en: 'Permissions are saved to the selected Agent Account and verified after saving.', zh: '权限会保存到当前选中的智能体账户，并在保存后回读校验。' })}</Text>
           )}
         </View>
       )}
 
-      {/* 鈹€鈹€ AI Model Preference 鈹€鈹€ */}
-      <SectionHeader icon="馃" title={t({ en: 'AI Model Preference', zh: 'AI 妯″瀷鍋忓ソ' })} />
+      {/* ── AI Model Preference ── */}
+      <SectionHeader icon="🧠" title={t({ en: 'AI Model Preference', zh: 'AI 模型偏好' })} />
       <View style={styles.section}>
         <View style={styles.permRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.permLabel}>{t({ en: 'Preferred Model', zh: '棣栭€夋ā鍨? })}</Text>
+            <Text style={styles.permLabel}>{t({ en: 'Preferred Model', zh: '首选模型' })}</Text>
             <Text style={styles.permSub}>
-              {t({ en: 'Override the global model for this agent', zh: '涓烘鏅鸿兘浣撴寚瀹氫笓灞炴ā鍨嬶紙瑕嗙洊鍏ㄥ眬璁剧疆锛? })}
+              {t({ en: 'Override the global model for this agent', zh: '为此智能体指定专属模型（覆盖全局设置）' })}
             </Text>
           </View>
         </View>
@@ -441,7 +441,7 @@ export function AgentPermissionsScreen() {
           onPress={() => setShowModelPicker(true)}
         >
           <Text style={{ fontSize: 14, color: colors.textPrimary, flex: 1 }}>{modelDisplayLabel}</Text>
-          <Text style={{ fontSize: 12, color: colors.textMuted }}>鈻?/Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>▸</Text>
         </TouchableOpacity>
         {preferredModel && (
           <>
@@ -451,21 +451,21 @@ export function AgentPermissionsScreen() {
               onPress={() => { setPreferredProvider(undefined); setPreferredModel(undefined); }}
             >
               <Text style={{ fontSize: 13, color: colors.error }}>
-                {t({ en: '鉁?Reset to Platform Default', zh: '鉁?鎭㈠涓哄钩鍙伴粯璁? })}
+                {t({ en: '✕ Reset to Platform Default', zh: '✕ 恢复为平台默认' })}
               </Text>
             </TouchableOpacity>
           </>
         )}
       </View>
 
-      {/* 鈹€鈹€ Voice Preference 鈹€鈹€ */}
-      <SectionHeader icon="馃帣锔? title={t({ en: 'Agent Voice', zh: '鏅鸿兘浣撻煶鑹? })} />
+      {/* ── Voice Preference ── */}
+      <SectionHeader icon="🎙️" title={t({ en: 'Agent Voice', zh: '智能体音色' })} />
       <View style={styles.section}>
         <View style={styles.permRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.permLabel}>{t({ en: 'Selected Voice', zh: '宸查€夐煶鑹? })}</Text>
+            <Text style={styles.permLabel}>{t({ en: 'Selected Voice', zh: '已选音色' })}</Text>
             <Text style={styles.permSub}>
-              {t({ en: 'Configure TTS voice personality', zh: '閰嶇疆鏂囨湰杞闊崇殑涓€у彂闊? })}
+              {t({ en: 'Configure TTS voice personality', zh: '配置文本转语音的个性发音' })}
             </Text>
           </View>
         </View>
@@ -475,9 +475,9 @@ export function AgentPermissionsScreen() {
           onPress={() => setShowVoicePicker(true)}
         >
           <Text style={{ fontSize: 14, color: colors.textPrimary, flex: 1, textTransform: 'capitalize' }}>
-            {agentVoice || t({ en: 'Default Server Voice', zh: '榛樿鏈嶅姟鍣ㄩ煶鑹? })}
+            {agentVoice || t({ en: 'Default Server Voice', zh: '默认服务器音色' })}
           </Text>
-          <Text style={{ fontSize: 12, color: colors.textMuted }}>鈻?/Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>▸</Text>
         </TouchableOpacity>
         {agentVoice && (
           <>
@@ -487,7 +487,7 @@ export function AgentPermissionsScreen() {
               onPress={() => setAgentVoice(undefined)}
             >
               <Text style={{ fontSize: 13, color: colors.error }}>
-                {t({ en: '鉁?Reset to Default', zh: '鉁?鎭㈠榛樿' })}
+                {t({ en: '✕ Reset to Default', zh: '✕ 恢复默认' })}
               </Text>
             </TouchableOpacity>
           </>
@@ -499,9 +499,9 @@ export function AgentPermissionsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalTopRow}>
-              <Text style={styles.modalTopTitle}>{t({ en: 'Select Agent Voice', zh: '閫夋嫨璇煶闊宠壊' })}</Text>
+              <Text style={styles.modalTopTitle}>{t({ en: 'Select Agent Voice', zh: '选择语音音色' })}</Text>
               <TouchableOpacity onPress={() => setShowVoicePicker(false)}>
-                <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>鉁?/Text>
+                <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>✕</Text>
               </TouchableOpacity>
             </View>
             <FlatList
@@ -520,7 +520,7 @@ export function AgentPermissionsScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.modelPickLabel, isSelected && { color: colors.primary }, { textTransform: 'capitalize' }]}>{v}</Text>
                     </View>
-                    {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>鉁?/Text>}
+                    {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>✓</Text>}
                   </TouchableOpacity>
                 );
               }}
@@ -534,9 +534,9 @@ export function AgentPermissionsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalTopRow}>
-              <Text style={styles.modalTopTitle}>{t({ en: 'Select Model for Agent', zh: '涓?Agent 閫夋嫨妯″瀷' })}</Text>
+              <Text style={styles.modalTopTitle}>{t({ en: 'Select Model for Agent', zh: '为 Agent 选择模型' })}</Text>
               <TouchableOpacity onPress={() => setShowModelPicker(false)}>
-                <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>鉁?/Text>
+                <Text style={{ fontSize: 18, color: colors.textMuted, padding: 4 }}>✕</Text>
               </TouchableOpacity>
             </View>
             <FlatList
@@ -545,17 +545,17 @@ export function AgentPermissionsScreen() {
               ListHeaderComponent={
                 configuredProviders.length > 0 ? (
                   <Text style={{ fontSize: 11, color: colors.textMuted, paddingHorizontal: 16, paddingTop: 8 }}>
-                    {t({ en: 'Showing your configured providers. Configure more in AI Settings.', zh: '鏄剧ず宸查厤缃殑鍘傚晢銆傚彲鍦?AI 璁剧疆涓厤缃洿澶氥€? })}
+                    {t({ en: 'Showing your configured providers. Configure more in AI Settings.', zh: '显示已配置的厂商。可在 AI 设置中配置更多。' })}
                   </Text>
                 ) : (
                   <Text style={{ fontSize: 11, color: colors.textMuted, paddingHorizontal: 16, paddingTop: 8 }}>
-                    {t({ en: 'No providers configured yet. Configure API keys in Settings first.', zh: '灏氭湭閰嶇疆鍘傚晢銆傝鍏堝湪璁剧疆涓厤缃?API 瀵嗛挜銆? })}
+                    {t({ en: 'No providers configured yet. Configure API keys in Settings first.', zh: '尚未配置厂商。请先在设置中配置 API 密钥。' })}
                   </Text>
                 )
               }
               renderItem={({ item: prov }) => (
                 <View>
-                  <Text style={styles.modelGroupHeader}>{prov.icon} {prov.name}{userConfigs.find(c => c.providerId === prov.id)?.isDefault ? ' 猸? : ''}</Text>
+                  <Text style={styles.modelGroupHeader}>{prov.icon} {prov.name}{userConfigs.find(c => c.providerId === prov.id)?.isDefault ? ' ⭐' : ''}</Text>
                   {prov.models.map(m => {
                     const isSelected = preferredProvider === prov.id && preferredModel === m.id;
                     const fmtCtx = m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(m.contextWindow % 1000000 === 0 ? 0 : 1)}M` : `${(m.contextWindow / 1000).toFixed(0)}K`;
@@ -572,13 +572,13 @@ export function AgentPermissionsScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.modelPickLabel, isSelected && { color: colors.primary }]}>{m.label}</Text>
                           {(m.inputPrice || m.outputPrice) ? (
-                            <Text style={styles.modelPickCaps}>馃摜 {m.inputPrice}  馃摛 {m.outputPrice}  路  {fmtCtx} ctx{m.multimodal ? '  路  馃柤' : ''}</Text>
+                            <Text style={styles.modelPickCaps}>📥 {m.inputPrice}  📤 {m.outputPrice}  ·  {fmtCtx} ctx{m.multimodal ? '  ·  🖼' : ''}</Text>
                           ) : (
-                            <Text style={styles.modelPickCaps}>{fmtCtx} ctx{m.multimodal ? '  路  馃柤 澶氭ā鎬? : ''}{m.freeApi ? `  路  馃啌 ${m.freeNote || 'Free'}` : ''}</Text>
+                            <Text style={styles.modelPickCaps}>{fmtCtx} ctx{m.multimodal ? '  ·  🖼 多模态' : ''}{m.freeApi ? `  ·  🆓 ${m.freeNote || 'Free'}` : ''}</Text>
                           )}
                           {m.positioning && <Text style={styles.modelPickCaps}>{m.positioning}</Text>}
                         </View>
-                        {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>鉁?/Text>}
+                        {isSelected && <Text style={{ color: colors.primary, marginLeft: 8 }}>✓</Text>}
                       </TouchableOpacity>
                     );
                   })}
@@ -589,12 +589,12 @@ export function AgentPermissionsScreen() {
         </View>
       </Modal>
 
-      {/* 鈹€鈹€ Payment Permissions 鈹€鈹€ */}
-      <SectionHeader icon="馃挸" title={t({ en: 'Payment Permissions', zh: '鏀粯鏉冮檺' })} />
+      {/* ── Payment Permissions ── */}
+      <SectionHeader icon="💳" title={t({ en: 'Payment Permissions', zh: '支付权限' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: 'Allow Autonomous Payment', zh: '鍏佽鑷富鏀粯' })}
-          sub={t({ en: 'Agent can initiate transactions without asking you', zh: '鏅鸿兘浣撳彲鍦ㄦ棤闇€璇㈤棶浣犵殑鎯呭喌涓嬪彂璧蜂氦鏄? })}
+          label={t({ en: 'Allow Autonomous Payment', zh: '允许自主支付' })}
+          sub={t({ en: 'Agent can initiate transactions without asking you', zh: '智能体可在无需询问你的情况下发起交易' })}
           value={perms.autonomousPaymentEnabled}
           onChange={(v) => updatePerm('autonomousPaymentEnabled', v)}
         />
@@ -602,8 +602,8 @@ export function AgentPermissionsScreen() {
         {/* Confirmation threshold */}
         <View style={styles.permRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.permLabel}>{t({ en: 'Require Approval 鈮?, zh: '杈惧埌姝ら噾棰濋渶瀹℃壒 鈮? })}</Text>
-            <Text style={styles.permSub}>{t({ en: 'You\'ll be asked to confirm payments above this amount', zh: '瓒呰繃姝ら噾棰濈殑鏀粯灏嗚姹備綘纭' })}</Text>
+            <Text style={styles.permLabel}>{t({ en: 'Require Approval ≥', zh: '达到此金额需审批 ≥' })}</Text>
+            <Text style={styles.permSub}>{t({ en: 'You\'ll be asked to confirm payments above this amount', zh: '超过此金额的支付将要求你确认' })}</Text>
           </View>
           {editingThreshold ? (
             <View style={styles.thresholdEdit}>
@@ -623,14 +623,14 @@ export function AgentPermissionsScreen() {
           ) : (
             <TouchableOpacity onPress={() => setEditingThreshold(true)} style={styles.editableValue}>
               <Text style={styles.editableText}>${perms.confirmationThreshold}</Text>
-              <Text style={styles.editHint}>  {t({ en: 'Edit', zh: '缂栬緫' })}</Text>
+              <Text style={styles.editHint}>  {t({ en: 'Edit', zh: '编辑' })}</Text>
             </TouchableOpacity>
           )}
         </View>
         <View style={styles.divider} />
         {/* Currency */}
         <View style={styles.permRow}>
-          <Text style={styles.permLabel}>{t({ en: 'Allowed Currencies', zh: '鍏佽鐨勫竵绉? })}</Text>
+          <Text style={styles.permLabel}>{t({ en: 'Allowed Currencies', zh: '允许的币种' })}</Text>
           <View style={styles.currencyRow}>
             {CURRENCY_OPTIONS.map((c) => (
               <TouchableOpacity
@@ -650,235 +650,235 @@ export function AgentPermissionsScreen() {
         {activeAgent?.spendingLimits && (
           <>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>{t({ en: 'Single TX Limit', zh: '鍗曠瑪闄愰' })}</Text>
+              <Text style={styles.limitLabel}>{t({ en: 'Single TX Limit', zh: '单笔限额' })}</Text>
               <Text style={styles.limitValue}>${activeAgent.spendingLimits.singleTxLimit}</Text>
             </View>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>{t({ en: 'Daily Limit', zh: '鏃ラ檺棰? })}</Text>
+              <Text style={styles.limitLabel}>{t({ en: 'Daily Limit', zh: '日限额' })}</Text>
               <Text style={styles.limitValue}>${activeAgent.spendingLimits.dailyLimit}</Text>
             </View>
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>{t({ en: 'Monthly Limit', zh: '鏈堥檺棰? })}</Text>
+              <Text style={styles.limitLabel}>{t({ en: 'Monthly Limit', zh: '月限额' })}</Text>
               <Text style={styles.limitValue}>${activeAgent.spendingLimits.monthlyLimit}</Text>
             </View>
           </>
         )}
       </View>
 
-      {/* 鈹€鈹€ Device Control 鈹€鈹€ */}
-      <SectionHeader icon="馃捇" title={t({ en: 'Device Control Permissions', zh: '璁惧鎺у埗鏉冮檺' })} />
+      {/* ── Device Control ── */}
+      <SectionHeader icon="💻" title={t({ en: 'Device Control Permissions', zh: '设备控制权限' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃搧 File Read', zh: '馃搧 鏂囦欢璇诲彇' })}
+          label={t({ en: '📁 File Read', zh: '📁 文件读取' })}
           sub={perms.fileReadEnabled ? `Scope: ${perms.fileReadScope}` : undefined}
           value={perms.fileReadEnabled}
           onChange={(v) => updatePerm('fileReadEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃枼 Launch Programs', zh: '馃枼 鍚姩绋嬪簭' })}
+          label={t({ en: '🖥 Launch Programs', zh: '🖥 启动程序' })}
           value={perms.programLaunchEnabled}
           onChange={(v) => updatePerm('programLaunchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摳 Screenshot', zh: '馃摳 鎴浘' })}
+          label={t({ en: '📸 Screenshot', zh: '📸 截图' })}
           value={perms.screenshotEnabled}
           onChange={(v) => updatePerm('screenshotEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃搷 GPS Location', zh: '馃搷 GPS 瀹氫綅' })}
+          label={t({ en: '📍 GPS Location', zh: '📍 GPS 定位' })}
           sub={perms.gpsEnabled ? `Precision: ${perms.gpsAccuracy}` : undefined}
           value={perms.gpsEnabled}
           onChange={(v) => updatePerm('gpsEnabled', v)}
         />
       </View>
 
-      {/* 鈹€鈹€ Network & Tools 鈹€鈹€ */}
-      <SectionHeader icon="馃寪" title={t({ en: 'Network & Tool Permissions', zh: '缃戠粶涓庡伐鍏锋潈闄? })} />
+      {/* ── Network & Tools ── */}
+      <SectionHeader icon="🌐" title={t({ en: 'Network & Tool Permissions', zh: '网络与工具权限' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃攳 Web Search', zh: '馃攳 缃戠粶鎼滅储' })}
+          label={t({ en: '🔍 Web Search', zh: '🔍 网络搜索' })}
           value={perms.webSearchEnabled}
           onChange={(v) => updatePerm('webSearchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摟 Email Send', zh: '馃摟 閭欢鍙戦€? })}
-          sub={!perms.emailEnabled ? t({ en: 'Requires approval to enable', zh: '鍚敤鍓嶉渶瑕佸鎵? }) : undefined}
+          label={t({ en: '📧 Email Send', zh: '📧 邮件发送' })}
+          sub={!perms.emailEnabled ? t({ en: 'Requires approval to enable', zh: '启用前需要审批' }) : undefined}
           value={perms.emailEnabled}
           onChange={(v) => updatePerm('emailEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃惁 Twitter / X Post', zh: '馃惁 Twitter / X 鍙戝笘' })}
-          sub={perms.twitterEnabled ? t({ en: 'Auto mode', zh: '鑷姩妯″紡' }) : undefined}
+          label={t({ en: '🐦 Twitter / X Post', zh: '🐦 Twitter / X 发帖' })}
+          sub={perms.twitterEnabled ? t({ en: 'Auto mode', zh: '自动模式' }) : undefined}
           value={perms.twitterEnabled}
           onChange={(v) => updatePerm('twitterEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃挰 Telegram Reply', zh: '馃挰 Telegram 鍥炲' })}
-          sub={perms.telegramEnabled ? t({ en: 'Auto mode', zh: '鑷姩妯″紡' }) : undefined}
+          label={t({ en: '💬 Telegram Reply', zh: '💬 Telegram 回复' })}
+          sub={perms.telegramEnabled ? t({ en: 'Auto mode', zh: '自动模式' }) : undefined}
           value={perms.telegramEnabled}
           onChange={(v) => updatePerm('telegramEnabled', v)}
         />
         <View style={styles.divider} />
         <View style={styles.permRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.permLabel}>{t({ en: '馃敡 MCP Tools Authorized', zh: '馃敡 宸叉巿鏉?MCP 宸ュ叿' })}</Text>
-            <Text style={styles.permSub}>{t({ en: `${perms.mcpToolCount} tools allowed`, zh: `宸插厑璁?${perms.mcpToolCount} 涓伐鍏穈 })}</Text>
+            <Text style={styles.permLabel}>{t({ en: '🔧 MCP Tools Authorized', zh: '🔧 已授权 MCP 工具' })}</Text>
+            <Text style={styles.permSub}>{t({ en: `${perms.mcpToolCount} tools allowed`, zh: `已允许 ${perms.mcpToolCount} 个工具` })}</Text>
           </View>
           <TouchableOpacity style={styles.manageBtn}>
-            <Text style={styles.manageBtnText}>{t({ en: 'Manage 鈫?, zh: '绠＄悊 鈫? })}</Text>
+            <Text style={styles.manageBtnText}>{t({ en: 'Manage →', zh: '管理 →' })}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 鈹€鈹€ Skill Management 鈹€鈹€ */}
-      <SectionHeader icon="馃洜" title={t({ en: 'Skill Management', zh: '鎶€鑳界鐞? })} />
+      {/* ── Skill Management ── */}
+      <SectionHeader icon="🛠" title={t({ en: 'Skill Management', zh: '技能管理' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃攷 Search Skills', zh: '馃攷 鎼滅储鎶€鑳? })}
-          sub={t({ en: 'Agent can search for AI skills and plugins', zh: '鏅鸿兘浣撳彲鎼滅储 AI 鎶€鑳藉拰鎻掍欢' })}
+          label={t({ en: '🔎 Search Skills', zh: '🔎 搜索技能' })}
+          sub={t({ en: 'Agent can search for AI skills and plugins', zh: '智能体可搜索 AI 技能和插件' })}
           value={perms.skillSearchEnabled}
           onChange={(v) => updatePerm('skillSearchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摜 Install Skills', zh: '馃摜 瀹夎鎶€鑳? })}
-          sub={t({ en: 'Agent can install skills from marketplace', zh: '鏅鸿兘浣撳彲浠庡競鍦哄畨瑁呮妧鑳? })}
+          label={t({ en: '📥 Install Skills', zh: '📥 安装技能' })}
+          sub={t({ en: 'Agent can install skills from marketplace', zh: '智能体可从市场安装技能' })}
           value={perms.skillInstallEnabled}
           onChange={(v) => updatePerm('skillInstallEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '鈻讹笍 Execute Skills', zh: '鈻讹笍 鎵ц鎶€鑳? })}
-          sub={t({ en: 'Agent can run installed skills', zh: '鏅鸿兘浣撳彲杩愯宸插畨瑁呯殑鎶€鑳? })}
+          label={t({ en: '▶️ Execute Skills', zh: '▶️ 执行技能' })}
+          sub={t({ en: 'Agent can run installed skills', zh: '智能体可运行已安装的技能' })}
           value={perms.skillExecuteEnabled}
           onChange={(v) => updatePerm('skillExecuteEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摛 Publish Skills', zh: '馃摛 鍙戝竷鎶€鑳? })}
-          sub={t({ en: 'Agent can publish new skills to marketplace', zh: '鏅鸿兘浣撳彲鍚戝競鍦哄彂甯冩柊鎶€鑳? })}
+          label={t({ en: '📤 Publish Skills', zh: '📤 发布技能' })}
+          sub={t({ en: 'Agent can publish new skills to marketplace', zh: '智能体可向市场发布新技能' })}
           value={perms.skillPublishEnabled}
           onChange={(v) => updatePerm('skillPublishEnabled', v)}
         />
       </View>
 
-      {/* 鈹€鈹€ Commerce & Wallet 鈹€鈹€ */}
-      <SectionHeader icon="馃洅" title={t({ en: 'Commerce & Wallet', zh: '鍟嗗煄涓庨挶鍖? })} />
+      {/* ── Commerce & Wallet ── */}
+      <SectionHeader icon="🛒" title={t({ en: 'Commerce & Wallet', zh: '商城与钱包' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃彧 Browse Marketplace', zh: '馃彧 娴忚鍟嗗煄' })}
-          sub={t({ en: 'Agent can search products, resources, and services', zh: '鏅鸿兘浣撳彲鎼滅储鍟嗗搧銆佽祫婧愬拰鏈嶅姟' })}
+          label={t({ en: '🏪 Browse Marketplace', zh: '🏪 浏览商城' })}
+          sub={t({ en: 'Agent can search products, resources, and services', zh: '智能体可搜索商品、资源和服务' })}
           value={perms.commerceBrowseEnabled}
           onChange={(v) => updatePerm('commerceBrowseEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃泹 Purchase Items', zh: '馃泹 璐拱鍟嗗搧' })}
-          sub={t({ en: 'Agent can buy and checkout items', zh: '鏅鸿兘浣撳彲璐拱骞剁粨绠楀晢鍝? })}
+          label={t({ en: '🛍 Purchase Items', zh: '🛍 购买商品' })}
+          sub={t({ en: 'Agent can buy and checkout items', zh: '智能体可购买并结算商品' })}
           value={perms.commercePurchaseEnabled}
           onChange={(v) => updatePerm('commercePurchaseEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摝 Manage Orders', zh: '馃摝 绠＄悊璁㈠崟' })}
-          sub={t({ en: 'Agent can check order status and details', zh: '鏅鸿兘浣撳彲鏌ョ湅璁㈠崟鐘舵€佸拰璇︽儏' })}
+          label={t({ en: '📦 Manage Orders', zh: '📦 管理订单' })}
+          sub={t({ en: 'Agent can check order status and details', zh: '智能体可查看订单状态和详情' })}
           value={perms.orderManageEnabled}
           onChange={(v) => updatePerm('orderManageEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃挵 View Wallet Balance', zh: '馃挵 鏌ョ湅閽卞寘浣欓' })}
-          sub={t({ en: 'Agent can read wallet balance and asset overview', zh: '鏅鸿兘浣撳彲璇诲彇閽卞寘浣欓鍜岃祫浜ф瑙? })}
+          label={t({ en: '💰 View Wallet Balance', zh: '💰 查看钱包余额' })}
+          sub={t({ en: 'Agent can read wallet balance and asset overview', zh: '智能体可读取钱包余额和资产概览' })}
           value={perms.walletReadEnabled}
           onChange={(v) => updatePerm('walletReadEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '鈿?Quick Pay / Transfer', zh: '鈿?蹇€熸敮浠?杞处' })}
-          sub={t({ en: 'Agent can send payments and transfers', zh: '鏅鸿兘浣撳彲鍙戦€佷粯娆惧拰杞处' })}
+          label={t({ en: '⚡ Quick Pay / Transfer', zh: '⚡ 快速支付/转账' })}
+          sub={t({ en: 'Agent can send payments and transfers', zh: '智能体可发送付款和转账' })}
           value={perms.quickpayEnabled}
           onChange={(v) => updatePerm('quickpayEnabled', v)}
           destructive
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃攼 x402 Paywall Access', zh: '馃攼 x402 浠樿垂澧欒闂? })}
-          sub={t({ en: 'Agent can pay for paywalled content/APIs', zh: '鏅鸿兘浣撳彲鏀粯浠樿垂鍐呭/API 璁块棶' })}
+          label={t({ en: '🔐 x402 Paywall Access', zh: '🔐 x402 付费墙访问' })}
+          sub={t({ en: 'Agent can pay for paywalled content/APIs', zh: '智能体可支付付费内容/API 访问' })}
           value={perms.x402PayEnabled}
           onChange={(v) => updatePerm('x402PayEnabled', v)}
           destructive
         />
       </View>
 
-      {/* 鈹€鈹€ Agent-to-Agent (A2A) 鈹€鈹€ */}
-      <SectionHeader icon="馃" title={t({ en: 'Agent-to-Agent (A2A)', zh: '鏅鸿兘浣撳崗浣?(A2A)' })} />
+      {/* ── Agent-to-Agent (A2A) ── */}
+      <SectionHeader icon="🤖" title={t({ en: 'Agent-to-Agent (A2A)', zh: '智能体协作 (A2A)' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃攳 Discover Agents', zh: '馃攳 鍙戠幇鏅鸿兘浣? })}
-          sub={t({ en: 'Agent can find other agents on the network', zh: '鏅鸿兘浣撳彲鍦ㄧ綉缁滀笂鍙戠幇鍏朵粬鏅鸿兘浣? })}
+          label={t({ en: '🔍 Discover Agents', zh: '🔍 发现智能体' })}
+          sub={t({ en: 'Agent can find other agents on the network', zh: '智能体可在网络上发现其他智能体' })}
           value={perms.a2aDiscoverEnabled}
           onChange={(v) => updatePerm('a2aDiscoverEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃 Invoke Agents', zh: '馃 璋冪敤鏅鸿兘浣? })}
-          sub={t({ en: 'Agent can delegate tasks to other agents', zh: '鏅鸿兘浣撳彲灏嗕换鍔″鎵樼粰鍏朵粬鏅鸿兘浣? })}
+          label={t({ en: '🤝 Invoke Agents', zh: '🤝 调用智能体' })}
+          sub={t({ en: 'Agent can delegate tasks to other agents', zh: '智能体可将任务委托给其他智能体' })}
           value={perms.a2aInvokeEnabled}
           onChange={(v) => updatePerm('a2aInvokeEnabled', v)}
         />
       </View>
 
-      {/* 鈹€鈹€ Task Marketplace 鈹€鈹€ */}
-      <SectionHeader icon="馃搵" title={t({ en: 'Task Marketplace', zh: '浠诲姟甯傚満' })} />
+      {/* ── Task Marketplace ── */}
+      <SectionHeader icon="📋" title={t({ en: 'Task Marketplace', zh: '任务市场' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃攷 Search Tasks', zh: '馃攷 鎼滅储浠诲姟' })}
-          sub={t({ en: 'Agent can browse tasks and bounties', zh: '鏅鸿兘浣撳彲娴忚浠诲姟鍜屾偓璧? })}
+          label={t({ en: '🔎 Search Tasks', zh: '🔎 搜索任务' })}
+          sub={t({ en: 'Agent can browse tasks and bounties', zh: '智能体可浏览任务和悬赏' })}
           value={perms.taskSearchEnabled}
           onChange={(v) => updatePerm('taskSearchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摑 Post Tasks', zh: '馃摑 鍙戝竷浠诲姟' })}
-          sub={t({ en: 'Agent can create new tasks and bounties', zh: '鏅鸿兘浣撳彲鍒涘缓鏂颁换鍔″拰鎮祻' })}
+          label={t({ en: '📝 Post Tasks', zh: '📝 发布任务' })}
+          sub={t({ en: 'Agent can create new tasks and bounties', zh: '智能体可创建新任务和悬赏' })}
           value={perms.taskPostEnabled}
           onChange={(v) => updatePerm('taskPostEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '鉁?Accept Tasks', zh: '鉁?鎺ュ彈浠诲姟' })}
-          sub={t({ en: 'Agent can accept tasks from marketplace', zh: '鏅鸿兘浣撳彲浠庡競鍦烘帴鍙椾换鍔? })}
+          label={t({ en: '✅ Accept Tasks', zh: '✅ 接受任务' })}
+          sub={t({ en: 'Agent can accept tasks from marketplace', zh: '智能体可从市场接受任务' })}
           value={perms.taskAcceptEnabled}
           onChange={(v) => updatePerm('taskAcceptEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摛 Submit Deliverables', zh: '馃摛 鎻愪氦浜や粯鐗? })}
-          sub={t({ en: 'Agent can submit completed work', zh: '鏅鸿兘浣撳彲鎻愪氦瀹屾垚鐨勫伐浣? })}
+          label={t({ en: '📤 Submit Deliverables', zh: '📤 提交交付物' })}
+          sub={t({ en: 'Agent can submit completed work', zh: '智能体可提交完成的工作' })}
           value={perms.taskSubmitEnabled}
           onChange={(v) => updatePerm('taskSubmitEnabled', v)}
         />
       </View>
 
-      {/* 鈹€鈹€ Resources 鈹€鈹€ */}
-      <SectionHeader icon="馃摝" title={t({ en: 'Resources & Publishing', zh: '璧勬簮涓庡彂甯? })} />
+      {/* ── Resources ── */}
+      <SectionHeader icon="📦" title={t({ en: 'Resources & Publishing', zh: '资源与发布' })} />
       <View style={styles.section}>
         <PermRow
-          label={t({ en: '馃攷 Search Resources', zh: '馃攷 鎼滅储璧勬簮' })}
-          sub={t({ en: 'Agent can find APIs, datasets, models', zh: '鏅鸿兘浣撳彲鎼滅储 API銆佹暟鎹泦銆佹ā鍨? })}
+          label={t({ en: '🔎 Search Resources', zh: '🔎 搜索资源' })}
+          sub={t({ en: 'Agent can find APIs, datasets, models', zh: '智能体可搜索 API、数据集、模型' })}
           value={perms.resourceSearchEnabled}
           onChange={(v) => updatePerm('resourceSearchEnabled', v)}
         />
         <View style={styles.divider} />
         <PermRow
-          label={t({ en: '馃摛 Publish Resources', zh: '馃摛 鍙戝竷璧勬簮' })}
-          sub={t({ en: 'Agent can publish resources to marketplace', zh: '鏅鸿兘浣撳彲鍚戝競鍦哄彂甯冭祫婧? })}
+          label={t({ en: '📤 Publish Resources', zh: '📤 发布资源' })}
+          sub={t({ en: 'Agent can publish resources to marketplace', zh: '智能体可向市场发布资源' })}
           value={perms.resourcePublishEnabled}
           onChange={(v) => updatePerm('resourcePublishEnabled', v)}
         />
@@ -890,23 +890,23 @@ export function AgentPermissionsScreen() {
         onPress={handleSave}
         disabled={isSaving || !activeAgent}
       >
-        <Text style={styles.saveBtnText}>{isSaving ? '鈴?' : '馃捑 '}{t({ en: 'Save Permissions', zh: '淇濆瓨鏉冮檺璁剧疆' })}</Text>
+        <Text style={styles.saveBtnText}>{isSaving ? '⏳ ' : '💾 '}{t({ en: 'Save Permissions', zh: '保存权限设置' })}</Text>
       </TouchableOpacity>
 
-      {/* 鈹€鈹€ Danger Zone 鈹€鈹€ */}
-      <SectionHeader icon="鈿狅笍" title={t({ en: 'Danger Zone', zh: '鍗遍櫓鎿嶄綔' })} />
+      {/* ── Danger Zone ── */}
+      <SectionHeader icon="⚠️" title={t({ en: 'Danger Zone', zh: '危险操作' })} />
       <View style={styles.dangerRow}>
         <TouchableOpacity style={styles.dangerBtn} onPress={handleSuspend}>
-          <Text style={styles.dangerBtnText}>鈴?{t({ en: 'Suspend Agent', zh: '鏆傚仠鏅鸿兘浣? })}</Text>
+          <Text style={styles.dangerBtnText}>⏸ {t({ en: 'Suspend Agent', zh: '暂停智能体' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.dangerBtn, { borderColor: colors.error }]}
-          onPress={() => Alert.alert(t({ en: 'Terminate Agent', zh: '缁堟鏅鸿兘浣? }), t({ en: 'Permanently terminate this agent? This cannot be undone.', zh: '纭姘镐箙缁堟璇ユ櫤鑳戒綋鍚楋紵姝ゆ搷浣滀笉鍙挙閿€銆? }), [
-            { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
-            { text: t({ en: 'Terminate', zh: '缁堟' }), style: 'destructive', onPress: () => {} },
+          onPress={() => Alert.alert(t({ en: 'Terminate Agent', zh: '终止智能体' }), t({ en: 'Permanently terminate this agent? This cannot be undone.', zh: '确认永久终止该智能体吗？此操作不可撤销。' }), [
+            { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+            { text: t({ en: 'Terminate', zh: '终止' }), style: 'destructive', onPress: () => {} },
           ])}
         >
-          <Text style={[styles.dangerBtnText, { color: colors.error }]}>馃棏 {t({ en: 'Terminate Agent', zh: '缁堟鏅鸿兘浣? })}</Text>
+          <Text style={[styles.dangerBtnText, { color: colors.error }]}>🗑 {t({ en: 'Terminate Agent', zh: '终止智能体' })}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

@@ -1,11 +1,11 @@
 /**
- * WearableAudioRelay 鈥?BLE 鈫?WebSocket audio bridge for AI glasses.
+ * WearableAudioRelay — BLE ↔ WebSocket audio bridge for AI glasses.
  *
- * Upstream:  Glass mic (BLE Notify) 鈫?decode Opus 鈫?PCM 鈫?voice:audio:chunk
- * Downstream: voice:agent:audio 鈫?encode Opus 鈫?BLE Write 鈫?Glass speaker
+ * Upstream:  Glass mic (BLE Notify) → decode Opus → PCM → voice:audio:chunk
+ * Downstream: voice:agent:audio → encode Opus → BLE Write → Glass speaker
  *
  * Designed to work with the existing Voice Gateway v2 WebSocket protocol.
- * The relay is transparent 鈥?the cloud side sees standard voice:audio:chunk events
+ * The relay is transparent — the cloud side sees standard voice:audio:chunk events
  * indistinguishable from phone microphone input.
  */
 
@@ -13,16 +13,16 @@ import { BleManager, type Subscription } from 'react-native-ble-plx';
 import type { Socket } from 'socket.io-client';
 import { Buffer } from 'buffer';
 
-// 鈹€鈹€ GATT UUIDs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── GATT UUIDs ─────────────────────────────────────────
 
 /** Agentrix Glass Service UUID (custom) */
 const GLASS_SERVICE_UUID = '0000AGX0-0000-1000-8000-00805F9B34FB';
-/** Mic audio stream characteristic (Notify 鈥?glass 鈫?phone) */
+/** Mic audio stream characteristic (Notify — glass → phone) */
 const MIC_AUDIO_CHAR_UUID = '0000AGX1-0000-1000-8000-00805F9B34FB';
-/** Speaker audio stream characteristic (Write 鈥?phone 鈫?glass) */
+/** Speaker audio stream characteristic (Write — phone → glass) */
 const SPEAKER_AUDIO_CHAR_UUID = '0000AGX2-0000-1000-8000-00805F9B34FB';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export interface AudioRelayCallbacks {
   onUpstreamStart?: () => void;
@@ -44,7 +44,7 @@ export interface AudioRelayOptions {
   speakerCharUuid?: string;
 }
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class WearableAudioRelay {
   private bleManager: BleManager;
@@ -71,7 +71,7 @@ export class WearableAudioRelay {
     this.speakerCharUuid = options.speakerCharUuid || SPEAKER_AUDIO_CHAR_UUID;
   }
 
-  // 鈹€鈹€ Upstream: Glass Mic 鈫?Cloud 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Upstream: Glass Mic → Cloud ─────────────────────
 
   /**
    * Subscribe to the glass microphone BLE characteristic and forward
@@ -129,7 +129,7 @@ export class WearableAudioRelay {
     }
   }
 
-  // 鈹€鈹€ Downstream: Cloud 鈫?Glass Speaker 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Downstream: Cloud → Glass Speaker ───────────────
 
   /**
    * Listen for voice:agent:audio events from the Voice Gateway and write
@@ -158,7 +158,7 @@ export class WearableAudioRelay {
     this.agentAudioListener = () => voiceSocket.off('voice:agent:audio', handler);
   }
 
-  // 鈹€鈹€ Control 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Control ─────────────────────────────────────────
 
   /** Stop all relay activity */
   async stop(): Promise<void> {
@@ -183,7 +183,7 @@ export class WearableAudioRelay {
     return this.active;
   }
 
-  // 鈹€鈹€ Private 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Private ─────────────────────────────────────────
 
   /**
    * Write audio data to the glass speaker characteristic.
@@ -192,7 +192,7 @@ export class WearableAudioRelay {
   private async writeToSpeaker(audioBase64: string): Promise<void> {
     const device = await this.bleManager.connectToDevice(this.options.deviceId);
 
-    // BLE Write has MTU limit 鈥?chunk the audio
+    // BLE Write has MTU limit — chunk the audio
     const MTU_PAYLOAD = 200; // Conservative BLE MTU payload
     const audioBytes = Buffer.from(audioBase64, 'base64');
 

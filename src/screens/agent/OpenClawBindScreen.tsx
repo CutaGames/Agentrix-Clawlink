@@ -95,7 +95,7 @@ export function OpenClawBindScreen() {
             onPress={() => setMode(m)}
           >
             <Text style={[styles.tabText, mode === m && styles.tabTextActive]}>
-              {m === 'manual' ? '鈱笍 Manual' : '馃摫 QR Scan'}
+              {m === 'manual' ? '⌨️ Manual' : '📱 QR Scan'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -136,7 +136,7 @@ export function OpenClawBindScreen() {
             disabled={loading}
           >
             {loading ? <ActivityIndicator color="#fff" size="small" /> :
-              <Text style={styles.primaryBtnText}>馃敆 Bind Instance</Text>}
+              <Text style={styles.primaryBtnText}>🔗 Bind Instance</Text>}
           </TouchableOpacity>
         </View>
       )}
@@ -148,18 +148,18 @@ export function OpenClawBindScreen() {
           ) : qrCode ? (
             <>
               <Text style={styles.qrInstructions}>
-                Open your OpenClaw instance 鈫?Settings 鈫?Mobile Bind 鈫?Scan this code
+                Open your OpenClaw instance → Settings → Mobile Bind → Scan this code
               </Text>
               <View style={styles.qrBox}>
                 <QrCode value={qrCode} size={200} bgColor={colors.bgCard} fgColor={colors.textPrimary} />
               </View>
               <Text style={[styles.qrStatus, qrStatus === 'scanned' && { color: colors.success }]}>
-                {qrStatus === 'pending' ? '鈴?Waiting for scan...' :
-                 qrStatus === 'scanned' ? '鉁?Connected!' : '鉂?Session expired'}
+                {qrStatus === 'pending' ? '⏳ Waiting for scan...' :
+                 qrStatus === 'scanned' ? '✅ Connected!' : '❌ Session expired'}
               </Text>
               {qrStatus === 'error' && (
                 <TouchableOpacity style={styles.secondaryBtn} onPress={startQRSession}>
-                  <Text style={styles.secondaryBtnText}>馃攧 Refresh QR</Text>
+                  <Text style={styles.secondaryBtnText}>🔄 Refresh QR</Text>
                 </TouchableOpacity>
               )}
             </>

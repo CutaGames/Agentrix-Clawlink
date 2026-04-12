@@ -1,26 +1,26 @@
 /**
- * GlassHUDController 鈥?Manage text and notification display on AI glass HUD.
+ * GlassHUDController — Manage text and notification display on AI glass HUD.
  *
  * Handles:
- * - Agent response text 鈫?HUD display (monochrome / AR overlay)
+ * - Agent response text → HUD display (monochrome / AR overlay)
  * - Notification push (battery, status, alerts)
  * - Layout management (line wrapping, pagination for limited displays)
  * - Vendor-specific HUD capability adaptation
  *
- * BLE Write flow:  Phone 鈫?GATT HUD Characteristic (0xAGX4) 鈫?Glass HUD
+ * BLE Write flow:  Phone → GATT HUD Characteristic (0xAGX4) → Glass HUD
  */
 
 import { BleManager } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 
-// 鈹€鈹€ GATT UUIDs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── GATT UUIDs ─────────────────────────────────────────
 
 /** Agentrix Glass Service UUID */
 const GLASS_SERVICE_UUID = '0000AGX0-0000-1000-8000-00805F9B34FB';
-/** HUD text push characteristic (Write 鈥?phone 鈫?glass) */
+/** HUD text push characteristic (Write — phone → glass) */
 const HUD_TEXT_CHAR_UUID = '0000AGX4-0000-1000-8000-00805F9B34FB';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export type HudDisplayMode = 'monochrome' | 'ar_overlay' | 'text_only';
 
@@ -51,7 +51,7 @@ export interface HudControllerCallbacks {
   onQueueChange?: (queueLength: number) => void;
 }
 
-// 鈹€鈹€ Default capabilities per vendor 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Default capabilities per vendor ────────────────────
 
 const VENDOR_HUD_CAPS: Record<string, HudCapabilities> = {
   'even-g1': {
@@ -77,7 +77,7 @@ const VENDOR_HUD_CAPS: Record<string, HudCapabilities> = {
   },
 };
 
-// 鈹€鈹€ Service 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Service ────────────────────────────────────────────
 
 export class GlassHUDController {
   private bleManager: BleManager;
@@ -137,7 +137,7 @@ export class GlassHUDController {
     this.capabilities = { ...this.capabilities, ...caps };
   }
 
-  // 鈹€鈹€ Public API 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Public API ────────────────────────────────────────
 
   /**
    * Display an agent response on the HUD.
@@ -174,7 +174,7 @@ export class GlassHUDController {
       text,
       priority: 2,
       durationMs: Math.max(4000, text.length * 100),
-      icon: '馃寪',
+      icon: '🌐',
     });
   }
 
@@ -186,9 +186,9 @@ export class GlassHUDController {
     await this.enqueue({
       type: 'approval',
       text: displayText,
-      priority: 3, // highest 鈥?preempts everything
+      priority: 3, // highest — preempts everything
       durationMs: 15000,
-      icon: '馃挸',
+      icon: '💳',
     });
   }
 
@@ -201,7 +201,7 @@ export class GlassHUDController {
       text: instruction,
       priority: 2,
       durationMs: 5000,
-      icon: '馃Л',
+      icon: '🧭',
     });
   }
 
@@ -217,7 +217,7 @@ export class GlassHUDController {
     await this.writeClear();
   }
 
-  // 鈹€鈹€ Queue management 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Queue management ──────────────────────────────────
 
   private async enqueue(message: HudMessage): Promise<void> {
     if (!this.active) return;
@@ -284,7 +284,7 @@ export class GlassHUDController {
     }
   }
 
-  // 鈹€鈹€ Text layout / pagination 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Text layout / pagination ──────────────────────────
 
   private paginateText(text: string, icon?: string): string[] {
     const { maxCharsPerLine, maxLines, supportsEmoji } = this.capabilities;
@@ -346,11 +346,11 @@ export class GlassHUDController {
     return result;
   }
 
-  // 鈹€鈹€ BLE Write helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── BLE Write helpers ─────────────────────────────────
 
   private async writeText(text: string): Promise<void> {
     try {
-      // BLE GATT max payload 鈮?244 bytes. Truncate if needed.
+      // BLE GATT max payload ≈ 244 bytes. Truncate if needed.
       const truncated = text.slice(0, 200);
       const b64 = Buffer.from(truncated, 'utf-8').toString('base64');
 

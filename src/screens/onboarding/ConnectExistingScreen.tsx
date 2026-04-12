@@ -1,10 +1,10 @@
 /**
- * ConnectExistingScreen 鈥?4-step wizard for existing OpenClaw users
+ * ConnectExistingScreen — 4-step wizard for existing OpenClaw users
  *
- * Step 1  DISCOVER  鈥?LAN auto-scan / manual URL
- * Step 2  VERIFY    鈥?Ping instance, show metadata (skills, memory, version)
- * Step 3  MIGRATE   鈥?Pull skills, memory, config, chat sessions into Agentrix
- * Step 4  DONE      鈥?Summary card, navigate to SocialBind
+ * Step 1  DISCOVER  — LAN auto-scan / manual URL
+ * Step 2  VERIFY    — Ping instance, show metadata (skills, memory, version)
+ * Step 3  MIGRATE   — Pull skills, memory, config, chat sessions into Agentrix
+ * Step 4  DONE      — Summary card, navigate to SocialBind
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -37,7 +37,7 @@ import {
 type WizardStep = 'discover' | 'verify' | 'migrate' | 'done';
 type DiscoverTab = 'manual' | 'lan';
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function ConnectExistingScreen() {
   const navigation = useNavigation<any>();
@@ -65,12 +65,12 @@ export function ConnectExistingScreen() {
   // Migrate progress animation
   const migrateProgress = useRef(new Animated.Value(0)).current;
 
-  // 鈹€鈹€ Step 1a: Manual URL probe 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Step 1a: Manual URL probe ──────────────────────────────────────────────
 
   const handleProbeManual = useCallback(async () => {
     const url = instanceUrl.trim();
     if (!url) {
-      Alert.alert('闇€瑕佽緭鍏ュ湴鍧€', '璇疯緭鍏?OpenClaw 瀹炰緥鐨?URL\n渚嬪锛歨ttp://192.168.1.42:3001');
+      Alert.alert('需要输入地址', '请输入 OpenClaw 实例的 URL\n例如：http://192.168.1.42:3001');
       return;
     }
     setLoading(true);
@@ -101,18 +101,18 @@ export function ConnectExistingScreen() {
         setStep('verify');
       } else {
         Alert.alert(
-          '鏃犳硶杩炴帴',
-          result.error ?? '杩炴帴澶辫触銆傝纭 OpenClaw 姝ｅ湪杩愯锛屼笖鎵嬫満涓庡疄渚嬪湪鍚屼竴缃戠粶銆?,
+          '无法连接',
+          result.error ?? '连接失败。请确认 OpenClaw 正在运行，且手机与实例在同一网络。',
         );
       }
     } catch (err: any) {
-      Alert.alert('閿欒', err?.message ?? '妫€娴嬪け璐?);
+      Alert.alert('错误', err?.message ?? '检测失败');
     } finally {
       setLoading(false);
     }
   }, [instanceUrl, apiToken]);
 
-  // 鈹€鈹€ Step 1b: LAN auto-scan 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Step 1b: LAN auto-scan ─────────────────────────────────────────────────
 
   const startLanScan = useCallback(async () => {
     setLanScanning(true);
@@ -127,7 +127,7 @@ export function ConnectExistingScreen() {
       );
       setLanCandidates(found);
     } catch (err: any) {
-      Alert.alert('鎵弿澶辫触', err?.message ?? 'LAN 鎵弿閿欒');
+      Alert.alert('扫描失败', err?.message ?? 'LAN 扫描错误');
     } finally {
       setLanScanning(false);
       setLanProgress(100);
@@ -140,7 +140,7 @@ export function ConnectExistingScreen() {
     setStep('verify');
   }, []);
 
-  // 鈹€鈹€ Step 2 鈫?3: Bind then migrate 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Step 2 → 3: Bind then migrate ─────────────────────────────────────────
 
   const handleBindAndMigrate = useCallback(async () => {
     const url = instanceUrl.trim();
@@ -168,7 +168,7 @@ export function ConnectExistingScreen() {
       setStep('migrate');
       Animated.timing(migrateProgress, { toValue: 30, duration: 600, useNativeDriver: false }).start();
     } catch (err: any) {
-      Alert.alert('缁戝畾澶辫触', err?.message ?? '璇锋鏌ュ湴鍧€鍜?Token 鏄惁姝ｇ‘');
+      Alert.alert('绑定失败', err?.message ?? '请检查地址和 Token 是否正确');
     } finally {
       setLoading(false);
     }
@@ -206,18 +206,18 @@ export function ConnectExistingScreen() {
     }
   }, [navigation, setOnboardingComplete]);
 
-  // 鈹€鈹€ Render 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
       <StepDots current={step} />
 
-      {/* 鈺愨晲鈺?STEP 1: DISCOVER 鈺愨晲鈺?*/}
+      {/* ═══ STEP 1: DISCOVER ═══ */}
       {step === 'discover' && (
         <View>
-          <Text style={styles.title}>杩炴帴鐜版湁瀹炰緥</Text>
-          <Text style={styles.subtitle}>灏嗘偍鐜版湁鐨?OpenClaw 瀹炰緥鎺ュ叆 Agentrix锛屾暟鎹畬鏁翠繚鐣?/Text>
+          <Text style={styles.title}>连接现有实例</Text>
+          <Text style={styles.subtitle}>将您现有的 OpenClaw 实例接入 Agentrix，数据完整保留</Text>
 
           <View style={styles.tabBar}>
             {(['manual', 'lan'] as DiscoverTab[]).map((t) => (
@@ -227,7 +227,7 @@ export function ConnectExistingScreen() {
                 onPress={() => setDiscoverTab(t)}
               >
                 <Text style={[styles.tabText, discoverTab === t && styles.tabTextActive]}>
-                  {t === 'manual' ? '鈱笍 鎵嬪姩杈撳叆' : '馃摗 灞€鍩熺綉鎵弿'}
+                  {t === 'manual' ? '⌨️ 手动输入' : '📡 局域网扫描'}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -235,7 +235,7 @@ export function ConnectExistingScreen() {
 
           {discoverTab === 'manual' && (
             <View>
-              <Text style={styles.label}>瀹炰緥鍦板潃</Text>
+              <Text style={styles.label}>实例地址</Text>
               <TextInput
                 style={styles.input}
                 placeholder="http://192.168.1.42:3001"
@@ -246,10 +246,10 @@ export function ConnectExistingScreen() {
                 autoCorrect={false}
                 keyboardType="url"
               />
-              <Text style={styles.label}>API Token锛堝彲閫夛級</Text>
+              <Text style={styles.label}>API Token（可选）</Text>
               <TextInput
                 style={styles.input}
-                placeholder="鐣欑┖鑻ユ湭璁剧疆瀵嗙爜"
+                placeholder="留空若未设置密码"
                 placeholderTextColor={colors.textMuted}
                 value={apiToken}
                 onChangeText={setApiToken}
@@ -264,18 +264,18 @@ export function ConnectExistingScreen() {
               >
                 {loading
                   ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.primaryBtnText}>妫€娴嬭繛鎺?/Text>}
+                  : <Text style={styles.primaryBtnText}>检测连接</Text>}
               </TouchableOpacity>
             </View>
           )}
 
           {discoverTab === 'lan' && (
             <View>
-              <Text style={styles.sectionHint}>鑷姩鎵弿鏈湴缃戠粶锛屽彂鐜版鍦ㄨ繍琛岀殑 OpenClaw 瀹炰緥</Text>
+              <Text style={styles.sectionHint}>自动扫描本地网络，发现正在运行的 OpenClaw 实例</Text>
 
               {!lanScanning && lanProgress === 0 && (
                 <TouchableOpacity style={styles.primaryBtn} onPress={startLanScan}>
-                  <Text style={styles.primaryBtnText}>馃摗 寮€濮嬫壂鎻?/Text>
+                  <Text style={styles.primaryBtnText}>📡 开始扫描</Text>
                 </TouchableOpacity>
               )}
 
@@ -284,25 +284,25 @@ export function ConnectExistingScreen() {
                   <View style={styles.progressBarBg}>
                     <View style={[styles.progressBarFill, { width: `${lanProgress}%` }]} />
                   </View>
-                  <Text style={styles.progressLabel}>鎵弿涓€?{lanProgress}%</Text>
+                  <Text style={styles.progressLabel}>扫描中… {lanProgress}%</Text>
                   <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} />
                 </View>
               )}
 
               {!lanScanning && lanProgress === 100 && lanCandidates.length === 0 && (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateIcon}>馃攳</Text>
-                  <Text style={styles.emptyStateText}>鏈彂鐜板疄渚?/Text>
-                  <Text style={styles.emptyStateHint}>璇风‘璁?OpenClaw 宸插惎鍔紝鎴栧垏鎹㈠埌鎵嬪姩杈撳叆</Text>
+                  <Text style={styles.emptyStateIcon}>🔍</Text>
+                  <Text style={styles.emptyStateText}>未发现实例</Text>
+                  <Text style={styles.emptyStateHint}>请确认 OpenClaw 已启动，或切换到手动输入</Text>
                   <TouchableOpacity style={[styles.primaryBtn, { marginTop: 12 }]} onPress={startLanScan}>
-                    <Text style={styles.primaryBtnText}>閲嶆柊鎵弿</Text>
+                    <Text style={styles.primaryBtnText}>重新扫描</Text>
                   </TouchableOpacity>
                 </View>
               )}
 
               {!lanScanning && lanCandidates.length > 0 && (
                 <View>
-                  <Text style={styles.sectionHint}>鍙戠幇 {lanCandidates.length} 涓疄渚嬶細</Text>
+                  <Text style={styles.sectionHint}>发现 {lanCandidates.length} 个实例：</Text>
                   {lanCandidates.map((c) => (
                     <TouchableOpacity key={c.url} style={styles.candidateCard} onPress={() => selectLanCandidate(c)}>
                       <View style={{ flex: 1 }}>
@@ -310,7 +310,7 @@ export function ConnectExistingScreen() {
                         <Text style={styles.candidateUrl}>{c.url}</Text>
                         {c.probe.version && <Text style={styles.candidateMeta}>v{c.probe.version}</Text>}
                       </View>
-                      <Text style={styles.arrowIcon}>鈥?/Text>
+                      <Text style={styles.arrowIcon}>›</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -320,32 +320,32 @@ export function ConnectExistingScreen() {
         </View>
       )}
 
-      {/* 鈺愨晲鈺?STEP 2: VERIFY 鈺愨晲鈺?*/}
+      {/* ═══ STEP 2: VERIFY ═══ */}
       {step === 'verify' && probeResult && (
         <View>
-          <Text style={styles.title}>纭瀹炰緥淇℃伅</Text>
-          <Text style={styles.subtitle}>璇风‘璁や互涓嬩俊鎭棤璇悗锛岀户缁粦瀹氬苟杩佺Щ鏁版嵁</Text>
+          <Text style={styles.title}>确认实例信息</Text>
+          <Text style={styles.subtitle}>请确认以下信息无误后，继续绑定并迁移数据</Text>
 
           <View style={styles.infoCard}>
-            <InfoRow icon="馃" label="鍚嶇О" value={probeResult.instanceName ?? '鏈煡'} />
-            <InfoRow icon="馃敡" label="鐗堟湰" value={probeResult.version ?? '鏈煡'} />
-            <InfoRow icon="馃" label="妯″瀷" value={probeResult.model ?? '鏈煡'} />
+            <InfoRow icon="🤖" label="名称" value={probeResult.instanceName ?? '未知'} />
+            <InfoRow icon="🔧" label="版本" value={probeResult.version ?? '未知'} />
+            <InfoRow icon="🧠" label="模型" value={probeResult.model ?? '未知'} />
             {probeResult.skillCount !== undefined && (
-              <InfoRow icon="鈿? label="宸插畨瑁呮妧鑳? value={`${probeResult.skillCount} 涓猔} />
+              <InfoRow icon="⚡" label="已安装技能" value={`${probeResult.skillCount} 个`} />
             )}
             {probeResult.memoryEntries !== undefined && (
-              <InfoRow icon="馃捑" label="璁板繂鏉＄洰" value={`${probeResult.memoryEntries} 鏉} />
+              <InfoRow icon="💾" label="记忆条目" value={`${probeResult.memoryEntries} 条`} />
             )}
             {probeResult.latencyMs !== undefined && (
-              <InfoRow icon="鈴? label="寤惰繜" value={`${probeResult.latencyMs} ms`} />
+              <InfoRow icon="⏱" label="延迟" value={`${probeResult.latencyMs} ms`} />
             )}
-            <InfoRow icon="馃寪" label="鍦板潃" value={instanceUrl} small />
+            <InfoRow icon="🌐" label="地址" value={instanceUrl} small />
           </View>
 
           <View style={styles.migrationNotice}>
-            <Text style={styles.migrationNoticeTitle}>馃攧 鍗冲皢杩佺Щ鐨勬暟鎹?/Text>
+            <Text style={styles.migrationNoticeTitle}>🔄 即将迁移的数据</Text>
             <Text style={styles.migrationNoticeBody}>
-              {'鈥?宸插畨瑁呯殑鎶€鑳藉垪琛╘n鈥?AI 璁板繂鍜屼笂涓嬫枃\n鈥?浠ｇ悊閰嶇疆锛堝悕绉般€佷釜鎬с€佹彁绀鸿瘝锛塡n鈥?瀵硅瘽鍘嗗彶鎽樿'}
+              {'• 已安装的技能列表\n• AI 记忆和上下文\n• 代理配置（名称、个性、提示词）\n• 对话历史摘要'}
             </Text>
           </View>
 
@@ -356,20 +356,20 @@ export function ConnectExistingScreen() {
           >
             {loading
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.primaryBtnText}>缁戝畾骞惰縼绉绘暟鎹?鈫?/Text>}
+              : <Text style={styles.primaryBtnText}>绑定并迁移数据 →</Text>}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.secondaryBtn} onPress={() => setStep('discover')}>
-            <Text style={styles.secondaryBtnText}>鈫?杩斿洖淇敼</Text>
+            <Text style={styles.secondaryBtnText}>← 返回修改</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* 鈺愨晲鈺?STEP 3: MIGRATE 鈺愨晲鈺?*/}
+      {/* ═══ STEP 3: MIGRATE ═══ */}
       {step === 'migrate' && (
         <View>
-          <Text style={styles.title}>姝ｅ湪杩佺Щ鏁版嵁鈥?/Text>
-          <Text style={styles.subtitle}>Agentrix 姝ｅ湪璇诲彇骞跺悓姝ユ偍鐨?OpenClaw 鏁版嵁锛岃绋嶅€?/Text>
+          <Text style={styles.title}>正在迁移数据…</Text>
+          <Text style={styles.subtitle}>Agentrix 正在读取并同步您的 OpenClaw 数据，请稍候</Text>
 
           <View style={styles.progressBarBg}>
             <Animated.View
@@ -382,10 +382,10 @@ export function ConnectExistingScreen() {
 
           <View style={styles.migrationStepList}>
             {[
-              { icon: '馃敡', label: '浠ｇ悊閰嶇疆' },
-              { icon: '鈿?, label: '鎶€鑳藉垪琛? },
-              { icon: '馃捑', label: '璁板繂涓庝笂涓嬫枃' },
-              { icon: '馃挰', label: '瀵硅瘽鍘嗗彶' },
+              { icon: '🔧', label: '代理配置' },
+              { icon: '⚡', label: '技能列表' },
+              { icon: '💾', label: '记忆与上下文' },
+              { icon: '💬', label: '对话历史' },
             ].map((item) => (
               <View key={item.label} style={styles.migrationStepItem}>
                 <Text style={styles.migrationStepIcon}>{item.icon}</Text>
@@ -397,22 +397,22 @@ export function ConnectExistingScreen() {
         </View>
       )}
 
-      {/* 鈺愨晲鈺?STEP 4: DONE 鈺愨晲鈺?*/}
+      {/* ═══ STEP 4: DONE ═══ */}
       {step === 'done' && (
         <View>
           <View style={styles.successBadge}>
-            <Text style={styles.successIcon}>鉁?/Text>
+            <Text style={styles.successIcon}>✅</Text>
           </View>
-          <Text style={styles.title}>杩佺Щ瀹屾垚锛?/Text>
-          <Text style={styles.subtitle}>鎮ㄧ殑 OpenClaw 瀹炰緥宸叉垚鍔熸帴鍏?Agentrix锛屾暟鎹畬鏁翠繚鐣?/Text>
+          <Text style={styles.title}>迁移完成！</Text>
+          <Text style={styles.subtitle}>您的 OpenClaw 实例已成功接入 Agentrix，数据完整保留</Text>
 
           {migrationResult && (
             <View style={styles.summaryGrid}>
               {[
-                { icon: '鈿?, label: '宸插悓姝ユ妧鑳?, value: String(migrationResult.skills.length) },
-                { icon: '馃捑', label: '璁板繂鏉＄洰', value: String(migrationResult.memoryEntries.length) },
-                { icon: '馃挰', label: '瀵硅瘽鍘嗗彶', value: String(migrationResult.sessionSummaries.length) },
-                { icon: '馃敡', label: '閰嶇疆鍚屾', value: migrationResult.config ? '瀹屾垚' : '璺宠繃' },
+                { icon: '⚡', label: '已同步技能', value: String(migrationResult.skills.length) },
+                { icon: '💾', label: '记忆条目', value: String(migrationResult.memoryEntries.length) },
+                { icon: '💬', label: '对话历史', value: String(migrationResult.sessionSummaries.length) },
+                { icon: '🔧', label: '配置同步', value: migrationResult.config ? '完成' : '跳过' },
               ].map((t) => (
                 <View key={t.label} style={styles.summaryTile}>
                   <Text style={styles.summaryTileIcon}>{t.icon}</Text>
@@ -426,13 +426,13 @@ export function ConnectExistingScreen() {
           {!migrationResult && (
             <View style={styles.migrationNotice}>
               <Text style={styles.migrationNoticeBody}>
-                瀹炰緥宸茬粦瀹氭垚鍔熴€傛偍鍙湪璁剧疆涓墜鍔ㄨЕ鍙戞暟鎹縼绉汇€?
+                实例已绑定成功。您可在设置中手动触发数据迁移。
               </Text>
             </View>
           )}
 
           <TouchableOpacity style={styles.primaryBtn} onPress={handleFinish}>
-            <Text style={styles.primaryBtnText}>寮€濮嬩娇鐢?鈫?/Text>
+            <Text style={styles.primaryBtnText}>开始使用 →</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -440,12 +440,12 @@ export function ConnectExistingScreen() {
   );
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 
 const STEPS: WizardStep[] = ['discover', 'verify', 'migrate', 'done'];
-const STEP_LABELS: Record<WizardStep, string> = { discover: '鍙戠幇', verify: '楠岃瘉', migrate: '杩佺Щ', done: '瀹屾垚' };
+const STEP_LABELS: Record<WizardStep, string> = { discover: '发现', verify: '验证', migrate: '迁移', done: '完成' };
 
 function StepDots({ current }: { current: WizardStep }) {
   const idx = STEPS.indexOf(current);
@@ -475,9 +475,9 @@ function InfoRow({ icon, label, value, small }: { icon: string; label: string; v
   );
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 // Styles
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },

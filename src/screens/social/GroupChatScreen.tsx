@@ -1,4 +1,4 @@
-// 缇ょ粍鑱婂ぉ
+// 群组聊天
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
@@ -17,7 +17,7 @@ import type { SocialStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<SocialStackParamList, 'GroupChat'>;
 type Route = RouteProp<SocialStackParamList, 'GroupChat'>;
 
-// @Agent mention regex 鈥?matches @Agent, @MyAgent, @agent-name etc.
+// @Agent mention regex — matches @Agent, @MyAgent, @agent-name etc.
 const AGENT_MENTION_RE = /@([A-Za-z][A-Za-z0-9_-]*)/g;
 
 type GroupMessage = {
@@ -33,20 +33,20 @@ type GroupMessage = {
 type GroupMember = { id: string; name: string; avatar: string; role: 'admin' | 'member' };
 
 const PLACEHOLDER_MSGS: GroupMessage[] = [
-  { id: 'sys-1', senderId: 'system', senderName: 'System', content: '馃帀 Welcome to Agentrix Builders!', type: 'system', createdAt: new Date(Date.now() - 86400000).toISOString() },
-  { id: 'ann-1', senderId: 'system', senderName: 'System', content: '馃搶 Announcement: Join our weekly agent showcase every Friday 5pm UTC!', type: 'announcement', createdAt: new Date(Date.now() - 72000000).toISOString() },
-  { id: '1', senderId: 'u1', senderName: 'openclaw_fan', senderAvatar: '馃', content: 'Build 40 APK is out 鈥?Social tab is live 馃敟', type: 'text', createdAt: new Date(Date.now() - 3600000).toISOString() },
-  { id: '2', senderId: 'u2', senderName: 'ai_builder', senderAvatar: '馃', content: 'On it! The new community + chat tab split is 馃敟', type: 'text', createdAt: new Date(Date.now() - 3500000).toISOString() },
-  { id: '3', senderId: 'u3', senderName: 'claw_dev', senderAvatar: '馃捇', content: 'Post Detail screen with comments is finally in 馃檶', type: 'text', createdAt: new Date(Date.now() - 3400000).toISOString() },
-  { id: '4', senderId: 'u4', senderName: 'skill_wizard', senderAvatar: '鈿?, content: 'Just published my second MCP skill! Check it in the marketplace.', type: 'text', createdAt: new Date(Date.now() - 3200000).toISOString() },
+  { id: 'sys-1', senderId: 'system', senderName: 'System', content: '🎉 Welcome to Agentrix Builders!', type: 'system', createdAt: new Date(Date.now() - 86400000).toISOString() },
+  { id: 'ann-1', senderId: 'system', senderName: 'System', content: '📌 Announcement: Join our weekly agent showcase every Friday 5pm UTC!', type: 'announcement', createdAt: new Date(Date.now() - 72000000).toISOString() },
+  { id: '1', senderId: 'u1', senderName: 'openclaw_fan', senderAvatar: '🦀', content: 'Build 40 APK is out — Social tab is live 🔥', type: 'text', createdAt: new Date(Date.now() - 3600000).toISOString() },
+  { id: '2', senderId: 'u2', senderName: 'ai_builder', senderAvatar: '🤖', content: 'On it! The new community + chat tab split is 🔥', type: 'text', createdAt: new Date(Date.now() - 3500000).toISOString() },
+  { id: '3', senderId: 'u3', senderName: 'claw_dev', senderAvatar: '💻', content: 'Post Detail screen with comments is finally in 🙌', type: 'text', createdAt: new Date(Date.now() - 3400000).toISOString() },
+  { id: '4', senderId: 'u4', senderName: 'skill_wizard', senderAvatar: '⚡', content: 'Just published my second MCP skill! Check it in the marketplace.', type: 'text', createdAt: new Date(Date.now() - 3200000).toISOString() },
 ];
 
 const PLACEHOLDER_MEMBERS: GroupMember[] = [
-  { id: 'u0', name: 'You', avatar: '馃懁', role: 'admin' },
-  { id: 'u1', name: 'openclaw_fan', avatar: '馃', role: 'member' },
-  { id: 'u2', name: 'ai_builder', avatar: '馃', role: 'member' },
-  { id: 'u3', name: 'claw_dev', avatar: '馃捇', role: 'member' },
-  { id: 'u4', name: 'skill_wizard', avatar: '鈿?, role: 'member' },
+  { id: 'u0', name: 'You', avatar: '👤', role: 'admin' },
+  { id: 'u1', name: 'openclaw_fan', avatar: '🦀', role: 'member' },
+  { id: 'u2', name: 'ai_builder', avatar: '🤖', role: 'member' },
+  { id: 'u3', name: 'claw_dev', avatar: '💻', role: 'member' },
+  { id: 'u4', name: 'skill_wizard', avatar: '⚡', role: 'member' },
 ];
 
 async function fetchGroupMessages(groupId: string): Promise<GroupMessage[]> {
@@ -90,7 +90,7 @@ export function GroupChatScreen() {
           style={{ paddingHorizontal: 12 }}
           onPress={() => setShowSettings(true)}
         >
-          <Text style={{ fontSize: 20 }}>鈿欙笍</Text>
+          <Text style={{ fontSize: 20 }}>⚙️</Text>
         </TouchableOpacity>
       ),
     });
@@ -134,7 +134,7 @@ export function GroupChatScreen() {
     sendMut.mutate(text);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
 
-    // 鈹€鈹€ @Agent mention detection 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    // ── @Agent mention detection ──────────────────────────────────────────────
     // If the message contains @agent or @AgentName, invoke the agent and
     // inject its reply into the group chat as an "agent" system message.
     const agentMentions = [...text.matchAll(AGENT_MENTION_RE)].map((m) => m[1]);
@@ -146,8 +146,8 @@ export function GroupChatScreen() {
       const typingMsg: GroupMessage = {
         id: typingId,
         senderId: `agent_${agentName}`,
-        senderName: `馃 @${agentName}`,
-        content: '鈥?鈥?鈥?,
+        senderName: `🤖 @${agentName}`,
+        content: '• • •',
         type: 'text',
         createdAt: new Date().toISOString(),
       };
@@ -172,7 +172,7 @@ export function GroupChatScreen() {
         qc.setQueryData(['group-messages', groupId], (old: GroupMessage[] | undefined) =>
           (old ?? []).map((m) =>
             m.id === typingId
-              ? { ...m, id: `agent-${Date.now()}`, content: reply, senderName: `馃 @${agentName}` }
+              ? { ...m, id: `agent-${Date.now()}`, content: reply, senderName: `🤖 @${agentName}` }
               : m
           )
         );
@@ -181,7 +181,7 @@ export function GroupChatScreen() {
         qc.setQueryData(['group-messages', groupId], (old: GroupMessage[] | undefined) =>
           (old ?? []).map((m) =>
             m.id === typingId
-              ? { ...m, id: `agent-err-${Date.now()}`, content: `鈿狅笍 @${agentName} is unavailable right now.`, type: 'system' as any }
+              ? { ...m, id: `agent-err-${Date.now()}`, content: `⚠️ @${agentName} is unavailable right now.`, type: 'system' as any }
               : m
           )
         );
@@ -254,7 +254,7 @@ export function GroupChatScreen() {
               typingUsers.length > 0 ? (
                 <View style={styles.typingRow}>
                   <Text style={styles.typingText}>
-                    {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing 鈥?鈥?鈥?
+                    {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing • • •
                   </Text>
                 </View>
               ) : null
@@ -266,7 +266,7 @@ export function GroupChatScreen() {
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
-            placeholder={`Message ${groupName}鈥?(use @agent to invoke)`}
+            placeholder={`Message ${groupName}… (use @agent to invoke)`}
             placeholderTextColor={colors.textMuted}
             value={input}
             onChangeText={setInput}
@@ -281,7 +281,7 @@ export function GroupChatScreen() {
               onPress={handleSend}
               disabled={!input.trim()}
             >
-              <Text style={styles.sendBtnText}>鉃?/Text>
+              <Text style={styles.sendBtnText}>➤</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -306,7 +306,7 @@ export function GroupChatScreen() {
 
             {/* Announcement */}
             <View style={styles.settingsSection}>
-              <Text style={styles.settingsSectionTitle}>馃搶 Group Announcement</Text>
+              <Text style={styles.settingsSectionTitle}>📌 Group Announcement</Text>
               <Text style={styles.settingsAnnounce}>Join our weekly agent showcase every Friday 5pm UTC!</Text>
             </View>
 
@@ -329,7 +329,7 @@ export function GroupChatScreen() {
             {/* Invite + Leave */}
             <View style={styles.settingsActions}>
               <TouchableOpacity style={styles.inviteBtn} onPress={() => setShowSettings(false)}>
-                <Text style={styles.inviteBtnText}>鉁夛笍 Invite Members</Text>
+                <Text style={styles.inviteBtnText}>✉️ Invite Members</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.leaveBtn}

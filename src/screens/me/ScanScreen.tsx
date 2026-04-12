@@ -11,13 +11,13 @@ import { confirmDesktopPairWithApiBase, bindOpenClaw, mapRawInstance } from '../
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 /**
- * Universal QR Scanner 鈥?handles all Agentrix QR types:
- *   鈥?Desktop pair  (agentrix.top/pair?session=...&platform=desktop)
- *   鈥?Web pair      (agentrix.top/pair?session=...&platform=web)
- *   鈥?OpenClaw JSON ({"url":..., "token":...})
- *   鈥?Relay JSON    ({"relayToken":..., "wsRelayUrl":...})
- *   鈥?Deep links    (agentrix://connect?... or clawlink://connect?...)
- *   鈥?Plain URL     (http://ip:port)
+ * Universal QR Scanner — handles all Agentrix QR types:
+ *   • Desktop pair  (agentrix.top/pair?session=...&platform=desktop)
+ *   • Web pair      (agentrix.top/pair?session=...&platform=web)
+ *   • OpenClaw JSON ({"url":..., "token":...})
+ *   • Relay JSON    ({"relayToken":..., "wsRelayUrl":...})
+ *   • Deep links    (agentrix://connect?... or clawlink://connect?...)
+ *   • Plain URL     (http://ip:port)
  */
 export function ScanScreen() {
   const navigation = useNavigation<any>();
@@ -43,13 +43,13 @@ export function ScanScreen() {
     try {
       const scanText = data.trim();
 
-      // 鈹€鈹€ 1) Desktop / Web pair QR 鈹€鈹€
+      // ── 1) Desktop / Web pair QR ──
       if (scanText.includes('agentrix.top/pair') || scanText.includes('platform=desktop') || scanText.includes('platform=web')) {
         const pairUrl = new URL(scanText);
         const pairSession = pairUrl.searchParams.get('session');
         const platform = pairUrl.searchParams.get('platform') || 'desktop';
         const pairApiBase = pairUrl.searchParams.get('api') || undefined;
-        if (!pairSession) throw new Error(t({ en: 'QR code missing session info.', zh: '浜岀淮鐮佺己灏戜細璇濅俊鎭€? }));
+        if (!pairSession) throw new Error(t({ en: 'QR code missing session info.', zh: '二维码缺少会话信息。' }));
 
         // Retry confirm up to 2 times with delay (session may still be propagating)
         let lastErr: any;
@@ -67,29 +67,29 @@ export function ScanScreen() {
         }
         if (lastErr) {
           const platformLabel = platform === 'web'
-            ? t({ en: 'Web', zh: '缃戦〉绔? })
-            : t({ en: 'Desktop', zh: '妗岄潰绔? });
+            ? t({ en: 'Web', zh: '网页端' })
+            : t({ en: 'Desktop', zh: '桌面端' });
           throw new Error(
             t({
               en: `${platformLabel} session expired or not found. Please refresh the QR code on ${platformLabel} and try again.`,
-              zh: `${platformLabel}浼氳瘽宸茶繃鏈熸垨涓嶅瓨鍦紝璇峰湪${platformLabel}鍒锋柊浜岀淮鐮佸悗閲嶆柊鎵弿銆俙,
+              zh: `${platformLabel}会话已过期或不存在，请在${platformLabel}刷新二维码后重新扫描。`,
             }),
           );
         }
 
         const platformLabel = platform === 'web'
-          ? t({ en: 'Web', zh: '缃戦〉绔? })
-          : t({ en: 'Desktop', zh: '妗岄潰绔? });
+          ? t({ en: 'Web', zh: '网页端' })
+          : t({ en: 'Desktop', zh: '桌面端' });
         Alert.alert(
-          t({ en: 'Paired!', zh: '閰嶅鎴愬姛锛? }),
-          t({ en: `${platformLabel} is now logged in with your account.`, zh: `${platformLabel}宸蹭娇鐢ㄤ綘鐨勮处鍙风櫥褰曘€俙 }),
+          t({ en: 'Paired!', zh: '配对成功！' }),
+          t({ en: `${platformLabel} is now logged in with your account.`, zh: `${platformLabel}已使用你的账号登录。` }),
           [{ text: 'OK', onPress: () => navigation.goBack() }],
         );
         setProcessing(false);
         return;
       }
 
-      // 鈹€鈹€ 2) JSON payload (OpenClaw / Relay) 鈹€鈹€
+      // ── 2) JSON payload (OpenClaw / Relay) ──
       let parsedData: { url?: string; token?: string; relayToken?: string; wsRelayUrl?: string; mode?: string; name?: string } | null = null;
       try {
         const json = JSON.parse(scanText);
@@ -105,7 +105,7 @@ export function ScanScreen() {
         // not JSON, continue to other handlers
       }
 
-      // 鈹€鈹€ 3) Deep link (agentrix:// or clawlink://) 鈹€鈹€
+      // ── 3) Deep link (agentrix:// or clawlink://) ──
       if (!parsedData && (
         scanText.startsWith('agentrix://connect') ||
         scanText.startsWith('clawlink://connect') ||
@@ -122,12 +122,12 @@ export function ScanScreen() {
         }
       }
 
-      // 鈹€鈹€ 4) Plain URL 鈹€鈹€
+      // ── 4) Plain URL ──
       if (!parsedData && (scanText.startsWith('http') || scanText.startsWith('ws'))) {
         parsedData = { url: scanText };
       }
 
-      // 鈹€鈹€ 5) host:port pattern 鈹€鈹€
+      // ── 5) host:port pattern ──
       if (!parsedData) {
         const m = scanText.match(/^([a-zA-Z0-9.-]+|\d{1,3}(?:\.\d{1,3}){3})(?::(\d{2,5}))?(?:\?token=(.+))?$/);
         if (m) {
@@ -135,9 +135,9 @@ export function ScanScreen() {
         }
       }
 
-      if (!parsedData) throw new Error(t({ en: 'QR code format not recognized.', zh: '鏃犳硶璇嗗埆鐨勪簩缁寸爜鏍煎紡銆? }));
+      if (!parsedData) throw new Error(t({ en: 'QR code format not recognized.', zh: '无法识别的二维码格式。' }));
 
-      // 鈹€鈹€ Connect: Relay or Direct 鈹€鈹€
+      // ── Connect: Relay or Direct ──
       if (parsedData.mode === 'relay' || parsedData.relayToken) {
         if (!parsedData.relayToken) throw new Error('Relay QR missing relayToken.');
         const registered = await registerLocalRelayAgent({
@@ -154,10 +154,10 @@ export function ScanScreen() {
         });
         addInstance?.(instance);
         setActiveInstance?.(instance.id);
-        Alert.alert(t({ en: 'Connected!', zh: '杩炴帴鎴愬姛锛? }), t({ en: 'Agent connected via relay.', zh: '鏅鸿兘浣撳凡閫氳繃涓户杩炴帴銆? }),
+        Alert.alert(t({ en: 'Connected!', zh: '连接成功！' }), t({ en: 'Agent connected via relay.', zh: '智能体已通过中继连接。' }),
           [{ text: 'OK', onPress: () => navigation.goBack() }]);
       } else {
-        if (!parsedData.url) throw new Error(t({ en: 'QR code missing URL.', zh: '浜岀淮鐮佺己灏戝湴鍧€銆? }));
+        if (!parsedData.url) throw new Error(t({ en: 'QR code missing URL.', zh: '二维码缺少地址。' }));
         const result = await bindOpenClaw({
           instanceUrl: parsedData.url,
           apiToken: parsedData.token || '',
@@ -170,13 +170,13 @@ export function ScanScreen() {
         });
         addInstance?.(instance);
         setActiveInstance?.(instance.id);
-        Alert.alert(t({ en: 'Connected!', zh: '杩炴帴鎴愬姛锛? }), t({ en: 'Agent connected.', zh: '鏅鸿兘浣撳凡杩炴帴銆? }),
+        Alert.alert(t({ en: 'Connected!', zh: '连接成功！' }), t({ en: 'Agent connected.', zh: '智能体已连接。' }),
           [{ text: 'OK', onPress: () => navigation.goBack() }]);
       }
     } catch (error: any) {
       Alert.alert(
-        t({ en: 'Scan Error', zh: '鎵弿閿欒' }),
-        error.message || t({ en: 'Failed to process QR code.', zh: '浜岀淮鐮佸鐞嗗け璐ャ€? }),
+        t({ en: 'Scan Error', zh: '扫描错误' }),
+        error.message || t({ en: 'Failed to process QR code.', zh: '二维码处理失败。' }),
       );
       setScanned(false);
     } finally {
@@ -187,9 +187,9 @@ export function ScanScreen() {
   if (!permission?.granted) {
     return (
       <View style={styles.center}>
-        <Text style={styles.permText}>{t({ en: 'Camera permission required', zh: '闇€瑕佺浉鏈烘潈闄? })}</Text>
+        <Text style={styles.permText}>{t({ en: 'Camera permission required', zh: '需要相机权限' })}</Text>
         <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
-          <Text style={styles.permBtnText}>{t({ en: 'Grant Permission', zh: '鎺堜簣鏉冮檺' })}</Text>
+          <Text style={styles.permBtnText}>{t({ en: 'Grant Permission', zh: '授予权限' })}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -210,20 +210,20 @@ export function ScanScreen() {
           {processing && (
             <View style={styles.processingOverlay}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={styles.processingText}>{t({ en: 'Processing...', zh: '澶勭悊涓?..' })}</Text>
+              <Text style={styles.processingText}>{t({ en: 'Processing...', zh: '处理中...' })}</Text>
             </View>
           )}
         </View>
 
         {/* Hint */}
         <Text style={styles.hint}>
-          {t({ en: 'Scan desktop, web, or agent QR code', zh: '鎵弿妗岄潰绔€佺綉椤电鎴栨櫤鑳戒綋浜岀淮鐮? })}
+          {t({ en: 'Scan desktop, web, or agent QR code', zh: '扫描桌面端、网页端或智能体二维码' })}
         </Text>
 
         {/* Rescan button */}
         {scanned && !processing && (
           <TouchableOpacity style={styles.rescanBtn} onPress={() => setScanned(false)}>
-            <Text style={styles.rescanText}>{t({ en: 'Tap to Rescan', zh: '鐐瑰嚮閲嶆柊鎵弿' })}</Text>
+            <Text style={styles.rescanText}>{t({ en: 'Tap to Rescan', zh: '点击重新扫描' })}</Text>
           </TouchableOpacity>
         )}
       </View>

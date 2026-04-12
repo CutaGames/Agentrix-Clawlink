@@ -121,7 +121,7 @@ export interface LiveCharacteristicEvent {
   receivedAt: string;
 }
 
-// 鈹€鈹€ Phase 2: Continuous Data Collection 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Phase 2: Continuous Data Collection ─────────────────────────────────────
 
 export type TelemetryChannel = 'heart_rate' | 'spo2' | 'temperature' | 'steps' | 'battery' | 'accelerometer' | 'custom';
 
@@ -188,7 +188,7 @@ export interface TelemetryUploadPayload {
   uploadedAt: string;
 }
 
-// 鈹€鈹€ Phase 3: Automation Rules & Agent Triggers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Phase 3: Automation Rules & Agent Triggers ──────────────────────────────
 
 export type TriggerCondition = 'gt' | 'lt' | 'gte' | 'lte' | 'eq' | 'between' | 'change' | 'absent';
 

@@ -3,8 +3,8 @@
  * Chat streaming + notification polling for ClawLink.
  *
  * Two chat paths:
- *  1. streamProxyChatSSE  鈥?SSE via /openclaw/proxy/:id/stream (requires active OpenClaw instance)
- *  2. directClaudeChat    鈥?default /openclaw/proxy chat (server keeps /claude/chat as compat only)
+ *  1. streamProxyChatSSE  — SSE via /openclaw/proxy/:id/stream (requires active OpenClaw instance)
+ *  2. directClaudeChat    — default /openclaw/proxy chat (server keeps /claude/chat as compat only)
  */
 import { API_BASE } from '../config/env';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -320,7 +320,7 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
   return ac;
 }
 
-// 鈹€鈹€鈹€ Default OpenClaw proxy chat (default-instance route) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Default OpenClaw proxy chat (default-instance route) ────────
 
 export interface DirectChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -442,9 +442,9 @@ export function streamDirectClaude(
   return ac;
 }
 
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 // Notification polling (lightweight alternative to WebSocket for notifications)
-// 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─────────────────────────────────────────────────────────────────────────────
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null;
 let lastPollTime = 0;

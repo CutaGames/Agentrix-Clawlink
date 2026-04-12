@@ -31,10 +31,10 @@ interface RuntimeSnapshot {
 }
 
 const TAB_META: { key: CapType; emoji: string; label: { en: string; zh: string } }[] = [
-  { key: 'tool', emoji: '馃敡', label: { en: 'Tools', zh: '宸ュ叿' } },
-  { key: 'hook', emoji: '馃獫', label: { en: 'Hooks', zh: '閽╁瓙' } },
-  { key: 'channel', emoji: '馃摗', label: { en: 'Channels', zh: '閫氶亾' } },
-  { key: 'service', emoji: '鈿欙笍', label: { en: 'Services', zh: '鏈嶅姟' } },
+  { key: 'tool', emoji: '🔧', label: { en: 'Tools', zh: '工具' } },
+  { key: 'hook', emoji: '🪝', label: { en: 'Hooks', zh: '钩子' } },
+  { key: 'channel', emoji: '📡', label: { en: 'Channels', zh: '通道' } },
+  { key: 'service', emoji: '⚙️', label: { en: 'Services', zh: '服务' } },
 ];
 
 export function PluginHubScreen() {
@@ -94,7 +94,7 @@ export function PluginHubScreen() {
     <View style={styles.capCard}>
       <View style={styles.capHeader}>
         <Text style={styles.capName}>{item.name}</Text>
-        <Text style={styles.capPlugin}>馃摝 {item.pluginName}</Text>
+        <Text style={styles.capPlugin}>📦 {item.pluginName}</Text>
       </View>
       {item.config?.description && (
         <Text style={styles.capDesc}>{item.config.description}</Text>
@@ -111,13 +111,13 @@ export function PluginHubScreen() {
       {/* Stats banner */}
       <View style={styles.statsBanner}>
         <Text style={styles.statsText}>
-          {t({ en: 'Plugin Runtime', zh: '鎻掍欢杩愯鏃? })} 鈥?{total} {t({ en: 'capabilities', zh: '鑳藉姏' })}
+          {t({ en: 'Plugin Runtime', zh: '插件运行时' })} — {total} {t({ en: 'capabilities', zh: '能力' })}
         </Text>
         <TouchableOpacity style={styles.rebuildBtn} onPress={rebuild} disabled={rebuilding}>
           {rebuilding ? (
             <ActivityIndicator size="small" color={colors.accent} />
           ) : (
-            <Text style={styles.rebuildBtnText}>馃攧 {t({ en: 'Rebuild', zh: '閲嶅缓' })}</Text>
+            <Text style={styles.rebuildBtnText}>🔄 {t({ en: 'Rebuild', zh: '重建' })}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -147,7 +147,7 @@ export function PluginHubScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchSnapshot} />}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
-            {t({ en: 'No capabilities found. Install plugins to add tools.', zh: '鏆傛棤鑳藉姏銆傚畨瑁呮彃浠舵潵娣诲姞宸ュ叿銆? })}
+            {t({ en: 'No capabilities found. Install plugins to add tools.', zh: '暂无能力。安装插件来添加工具。' })}
           </Text>
         }
       />

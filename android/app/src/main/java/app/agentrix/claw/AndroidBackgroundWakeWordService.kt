@@ -303,19 +303,26 @@ class AndroidBackgroundWakeWordService : Service() {
     }
 
     val manager = getSystemService(WINDOW_SERVICE) as? WindowManager ?: return
+    val ballSize = (48 * resources.displayMetrics.density).toInt()
     val label = TextView(this).apply {
       text = "AX"
       textSize = 14f
       setTextColor(0xFFFFFFFF.toInt())
       gravity = Gravity.CENTER
-      setBackgroundColor(0xCC6C5CE7.toInt())
+      val bg = android.graphics.drawable.GradientDrawable(
+        android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+        intArrayOf(0xCC6C5CE7.toInt(), 0xCCa78bfa.toInt())
+      )
+      bg.cornerRadius = ballSize / 2f
+      background = bg
       elevation = 18f
-      setPadding(28, 28, 28, 28)
+      width = ballSize
+      height = ballSize
     }
 
     val params = WindowManager.LayoutParams(
-      WindowManager.LayoutParams.WRAP_CONTENT,
-      WindowManager.LayoutParams.WRAP_CONTENT,
+      ballSize,
+      ballSize,
       WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
       PixelFormat.TRANSLUCENT,
@@ -331,6 +338,9 @@ class AndroidBackgroundWakeWordService : Service() {
     var touchY = 0f
     var moved = false
 
+    var longPressHandler: android.os.Handler? = android.os.Handler(android.os.Looper.getMainLooper())
+    var longPressRunnable: Runnable? = null
+
     label.setOnTouchListener { _, event ->
       when (event.action) {
         MotionEvent.ACTION_DOWN -> {
@@ -339,6 +349,14 @@ class AndroidBackgroundWakeWordService : Service() {
           touchX = event.rawX
           touchY = event.rawY
           moved = false
+          // Start long-press timer (800ms to exit)
+          longPressRunnable = Runnable {
+            if (!moved) {
+              Log.i(TAG, "Long-press detected — stopping service and removing overlay")
+              stopSelf()
+            }
+          }
+          longPressHandler?.postDelayed(longPressRunnable!!, 800L)
           true
         }
         MotionEvent.ACTION_MOVE -> {
@@ -346,6 +364,7 @@ class AndroidBackgroundWakeWordService : Service() {
           val deltaY = (event.rawY - touchY).toInt()
           if (abs(deltaX) > 4 || abs(deltaY) > 4) {
             moved = true
+            longPressRunnable?.let { longPressHandler?.removeCallbacks(it) }
           }
           params.x = initialX + deltaX
           params.y = initialY + deltaY
@@ -353,6 +372,7 @@ class AndroidBackgroundWakeWordService : Service() {
           true
         }
         MotionEvent.ACTION_UP -> {
+          longPressRunnable?.let { longPressHandler?.removeCallbacks(it) }
           if (!moved) {
             launchVoiceChat("overlay_tap")
           }

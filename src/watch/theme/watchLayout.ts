@@ -2,7 +2,7 @@ import { Dimensions } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
-// Round watch: inscribed safe area = diameter * (1 - cos(45掳)) 鈮?0.29 * r padding
+// Round watch: inscribed safe area = diameter * (1 - cos(45°)) ≈ 0.29 * r padding
 const isRound = true; // Wear OS reports shape; default assume round
 const ROUND_INSET = Math.round(width * 0.146); // ~29% of radius
 

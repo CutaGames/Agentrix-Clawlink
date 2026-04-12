@@ -26,7 +26,7 @@ import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity }
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
-// 鈹€鈹€鈹€ Layout constants 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
 const CAPSULE_WIDTH = 220;
 const CAPSULE_HEIGHT = 52;
@@ -53,7 +53,7 @@ const STATE_BORDER_COLORS: Record<BallState, string> = {
   speaking: '#3b82f6',
 };
 
-// 鈹€鈹€鈹€ Orbiting Particles (Processing state) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Orbiting Particles (Processing state) ──────────────────────────────────
 function OrbitingParticles({ active }: { active: boolean }) {
   const rotation = useRef(new Animated.Value(0)).current;
 
@@ -131,7 +131,7 @@ export function GlobalFloatingBall({
   const shouldHide = hideOnScreens.includes(currentRouteName) || resolvedToShallow;
   const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
-  // 鈹€鈹€ Core state 鈹€鈹€
+  // ── Core state ──
   const [ballState, setBallState] = useState<BallState>('idle');
   const [isMinimized, setIsMinimized] = useState(true);
   const [isCapsule, setIsCapsule] = useState(false);
@@ -139,7 +139,7 @@ export function GlobalFloatingBall({
   const [quickInput, setQuickInput] = useState('');
   const [showResultCard, setShowResultCard] = useState(false);
 
-  // 鈹€鈹€ Animation values 鈹€鈹€
+  // ── Animation values ──
   const pan = useRef(new Animated.ValueXY({ x: screenW - MINIMIZED_REVEAL, y: screenH - 200 })).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const coreBreathAnim = useRef(new Animated.Value(0.6)).current;
@@ -160,7 +160,7 @@ export function GlobalFloatingBall({
   const activateVoiceExperienceRef = useRef<() => void>(() => {});
   const lastWakeWordAlertRef = useRef<{ message: string; shownAt: number }>({ message: '', shownAt: 0 });
 
-  // 鈹€鈹€ Core breathing animation (always runs) 鈹€鈹€
+  // ── Core breathing animation (always runs) ──
   useEffect(() => {
     const breath = Animated.loop(
       Animated.sequence([
@@ -172,7 +172,7 @@ export function GlobalFloatingBall({
     return () => breath.stop();
   }, [coreBreathAnim]);
 
-  // 鈹€鈹€ Pulse for non-idle states 鈹€鈹€
+  // ── Pulse for non-idle states ──
   useEffect(() => {
     if (ballState !== 'idle') {
       const pulse = Animated.loop(
@@ -197,7 +197,7 @@ export function GlobalFloatingBall({
     }
   }, [shouldHide]);
 
-  // 鈹€鈹€ Capsule morph animation 鈹€鈹€
+  // ── Capsule morph animation ──
   useEffect(() => {
     Animated.parallel([
       Animated.spring(morphWidth, { toValue: isCapsule ? CAPSULE_WIDTH : BALL_SIZE, useNativeDriver: false, friction: 8, tension: 80 }),
@@ -245,7 +245,7 @@ export function GlobalFloatingBall({
     Animated.spring(resultCardAnim, { toValue: show ? 1 : 0, useNativeDriver: false, friction: 8 }).start();
   }, [resultText, resultCardAnim]);
 
-  // 鈹€鈹€ Edge snapping 鈹€鈹€
+  // ── Edge snapping ──
   const snapToEdge = useCallback((x: number, y: number) => {
     const onLeft = x < screenW / 2;
     const snapX = isMinimized
@@ -282,9 +282,9 @@ export function GlobalFloatingBall({
     lastWakeWordAlertRef.current = { message, shownAt: now };
     addVoiceDiagnostic('floating-ball', 'wake-word-guidance-shown', { message });
 
-    const title = language === 'zh' ? '璇煶鍞ら啋闇€瑕佽缃? : 'Wake word needs setup';
-    const openSettingsLabel = language === 'zh' ? '鎵撳紑绯荤粺璁剧疆' : 'Open Settings';
-    const laterLabel = language === 'zh' ? '绋嶅悗' : 'Later';
+    const title = language === 'zh' ? '语音唤醒需要设置' : 'Wake word needs setup';
+    const openSettingsLabel = language === 'zh' ? '打开系统设置' : 'Open Settings';
+    const laterLabel = language === 'zh' ? '稍后' : 'Later';
 
     Alert.alert(title, message, [
       {
@@ -397,7 +397,7 @@ export function GlobalFloatingBall({
       }
     }
 
-    // Navigate to Agent tab 鈫?AgentChat, preserving navigation stacks.
+    // Navigate to Agent tab → AgentChat, preserving navigation stacks.
     const chatParams = {
       instanceId: targetInstance?.id,
       instanceName: targetInstance?.name || 'Agent',
@@ -409,7 +409,7 @@ export function GlobalFloatingBall({
       if (isVoiceUiE2EEnabled()) {
         navigation.navigate('AgentChat', chatParams);
       } else if (!targetInstance?.id) {
-        // No instance available 鈥?navigate to Agent tab only (shows welcome/provision screen).
+        // No instance available — navigate to Agent tab only (shows welcome/provision screen).
         // Do NOT navigate to AgentChat with empty instanceId to avoid white screen.
         addVoiceDiagnostic('floating-ball', 'no-instance-fallback');
         (navigation as any).navigate('MainTabs', { screen: 'Agent' });
@@ -572,7 +572,7 @@ export function GlobalFloatingBall({
             const rawMessage = err?.message || '';
             if (/permission denied|permission/i.test(rawMessage)) {
               showWakeWordGuidance(language === 'zh'
-                ? '鏈湴鍞ら啋璇嶉渶瑕侀害鍏嬮鏉冮檺銆傝鍏堝埌绯荤粺璁剧疆閲屾巿鏉冦€?
+                ? '本地唤醒词需要麦克风权限。请先到系统设置里授权。'
                 : 'Local wake word needs microphone permission. Enable it in system settings first.');
             }
           },
@@ -592,13 +592,13 @@ export function GlobalFloatingBall({
             const rawMessage = err?.message || '';
             if (/permission denied|permission/i.test(rawMessage)) {
               showWakeWordGuidance(language === 'zh'
-                ? '鍞ら啋璇嶉渶瑕侀害鍏嬮鍜岃闊宠瘑鍒潈闄愩€傝鍒扮郴缁熻缃噷寮€鍚潈闄愶紝鐒跺悗鍐嶈瘯涓€娆°€?
+                ? '唤醒词需要麦克风和语音识别权限。请到系统设置里开启权限，然后再试一次。'
                 : 'Wake word needs microphone and speech permissions. Enable them in system settings, then try again.');
               return;
             }
             if (/unavailable/i.test(rawMessage)) {
               showWakeWordGuidance(language === 'zh'
-                ? '褰撳墠璁惧娌℃湁鍙敤鐨勭郴缁熻闊冲敜閱掕兘鍔涖€備綘浠嶇劧鍙互鐩存帴鐐规偓娴悆杩涘叆瀹炴椂璇煶銆?
+                ? '当前设备没有可用的系统语音唤醒能力。你仍然可以直接点悬浮球进入实时语音。'
                 : 'This device does not expose wake-word speech recognition. You can still tap the floating ball to jump straight into live voice.');
             }
           },
@@ -655,7 +655,7 @@ export function GlobalFloatingBall({
       ]}
       {...(useDirectPressHandlers ? {} : panResponder.panHandlers)}
     >
-      {/* Result Card (Phase 2) 鈥?below the ball */}
+      {/* Result Card (Phase 2) — below the ball */}
       {showResultCard && (
         <Animated.View
           style={[
@@ -671,10 +671,10 @@ export function GlobalFloatingBall({
             {onResultAction && (
               <View style={styles.resultCardActions}>
                 <TouchableOpacity style={styles.resultActionBtn} onPress={() => onResultAction('open')}>
-                  <Text style={styles.resultActionText}>{language === 'zh' ? '鏌ョ湅璇︽儏' : 'View'}</Text>
+                  <Text style={styles.resultActionText}>{language === 'zh' ? '查看详情' : 'View'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.resultActionBtn, styles.resultActionBtnPrimary]} onPress={() => onResultAction('dismiss')}>
-                  <Text style={[styles.resultActionText, styles.resultActionTextPrimary]}>{language === 'zh' ? '濂界殑' : 'OK'}</Text>
+                  <Text style={[styles.resultActionText, styles.resultActionTextPrimary]}>{language === 'zh' ? '好的' : 'OK'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -682,7 +682,7 @@ export function GlobalFloatingBall({
         </Animated.View>
       )}
 
-      {/* Voice Pill / Quick Input panel 鈥?above the ball */}
+      {/* Voice Pill / Quick Input panel — above the ball */}
       {pillExpanded && (
         <Animated.View
           style={[
@@ -697,13 +697,13 @@ export function GlobalFloatingBall({
             <View style={styles.pillHeader}>
               <Text style={styles.pillTitle}>
                 {ballState === 'listening'
-                  ? (language === 'zh' ? '馃帣 鑱嗗惉涓€? : '馃帣 Listening鈥?)
+                  ? (language === 'zh' ? '🎙 聆听中…' : '🎙 Listening…')
                   : ballState === 'thinking'
-                  ? (language === 'zh' ? '馃挱 鎬濊€冧腑鈥? : '馃挱 Thinking鈥?)
-                  : (language === 'zh' ? '馃攰 鍥炲涓? : '馃攰 Speaking')}
+                  ? (language === 'zh' ? '💭 思考中…' : '💭 Thinking…')
+                  : (language === 'zh' ? '🔊 回复中' : '🔊 Speaking')}
               </Text>
               <TouchableOpacity onPress={handlePillClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={styles.pillCloseBtn}>鉁?/Text>
+                <Text style={styles.pillCloseBtn}>✕</Text>
               </TouchableOpacity>
             </View>
 
@@ -729,7 +729,7 @@ export function GlobalFloatingBall({
             <View style={styles.quickInputRow}>
               <TextInput
                 style={styles.quickInput}
-                placeholder={language === 'zh' ? '蹇嵎鎸囦护鈥? : 'Quick command鈥?}
+                placeholder={language === 'zh' ? '快捷指令…' : 'Quick command…'}
                 placeholderTextColor="rgba(255,255,255,0.35)"
                 value={quickInput}
                 onChangeText={setQuickInput}
@@ -742,7 +742,7 @@ export function GlobalFloatingBall({
                   style={styles.pillSendBtn}
                   onPress={quickInput.trim() ? handleQuickSend : handlePillSend}
                 >
-                  <Text style={styles.pillSendText}>猬?/Text>
+                  <Text style={styles.pillSendText}>⬆</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -796,7 +796,7 @@ export function GlobalFloatingBall({
             <LinearGradient colors={gradientColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.innerCoreGradient} />
           </Animated.View>
 
-          {/* Label 鈥?morph between "AX" and capsule content */}
+          {/* Label — morph between "AX" and capsule content */}
           {isCapsule ? (
             <View style={styles.capsuleContent}>
               <Text style={styles.capsuleBrand}>AX</Text>
@@ -813,10 +813,10 @@ export function GlobalFloatingBall({
               </View>
               <Text style={styles.capsuleStatusText}>
                 {ballState === 'listening'
-                  ? (language === 'zh' ? '鑱嗗惉涓? : 'Listening')
+                  ? (language === 'zh' ? '聆听中' : 'Listening')
                   : ballState === 'speaking'
-                  ? (language === 'zh' ? '鍥炲涓? : 'Speaking')
-                  : (language === 'zh' ? '鎬濊€冧腑' : 'Thinking')}
+                  ? (language === 'zh' ? '回复中' : 'Speaking')
+                  : (language === 'zh' ? '思考中' : 'Thinking')}
               </Text>
             </View>
           ) : (

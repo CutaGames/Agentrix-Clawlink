@@ -9,7 +9,7 @@ interface SyncState {
 }
 
 /**
- * Background sync hook 鈥?periodically uploads buffered sensor data to backend.
+ * Background sync hook — periodically uploads buffered sensor data to backend.
  */
 export function useWatchSync(
   flushBuffer: () => TelemetrySample[],

@@ -19,9 +19,9 @@ export function WatchSettingsScreen() {
   const [isLoggedIn] = useState(false); // MVP: placeholder
 
   const intervalOptions: { value: SyncInterval; label: string }[] = [
-    { value: 30, label: '30绉? },
-    { value: 60, label: '1鍒嗛挓' },
-    { value: 300, label: '5鍒嗛挓' },
+    { value: 30, label: '30秒' },
+    { value: 60, label: '1分钟' },
+    { value: 300, label: '5分钟' },
   ];
 
   return (
@@ -30,27 +30,27 @@ export function WatchSettingsScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.title}>璁剧疆</Text>
+      <Text style={styles.title}>设置</Text>
 
       {/* Login Status */}
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>璐︽埛</Text>
+        <Text style={styles.sectionLabel}>账户</Text>
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>鐘舵€?/Text>
+          <Text style={styles.rowLabel}>状态</Text>
           <Text style={[styles.rowValue, { color: isLoggedIn ? watchColors.success : watchColors.warning }]}>
-            {isLoggedIn ? '宸茬櫥褰? : '鏈櫥褰?}
+            {isLoggedIn ? '已登录' : '未登录'}
           </Text>
         </View>
         {!isLoggedIn && (
           <TouchableOpacity style={styles.loginBtn}>
-            <Text style={styles.loginBtnText}>鎵爜鐧诲綍</Text>
+            <Text style={styles.loginBtnText}>扫码登录</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Sync Interval */}
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>鍚屾闂撮殧</Text>
+        <Text style={styles.sectionLabel}>同步间隔</Text>
         <View style={styles.chips}>
           {intervalOptions.map((opt) => (
             <TouchableOpacity
@@ -76,9 +76,9 @@ export function WatchSettingsScreen() {
 
       {/* Notifications */}
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>閫氱煡</Text>
+        <Text style={styles.sectionLabel}>通知</Text>
         <View style={styles.toggleRow}>
-          <Text style={styles.rowLabel}>鍛婅閫氱煡</Text>
+          <Text style={styles.rowLabel}>告警通知</Text>
           <Switch
             value={notificationsEnabled}
             onValueChange={setNotificationsEnabled}
@@ -87,7 +87,7 @@ export function WatchSettingsScreen() {
           />
         </View>
         <View style={styles.toggleRow}>
-          <Text style={styles.rowLabel}>闇囧姩鍙嶉</Text>
+          <Text style={styles.rowLabel}>震动反馈</Text>
           <Switch
             value={hapticEnabled}
             onValueChange={setHapticEnabled}
@@ -99,13 +99,13 @@ export function WatchSettingsScreen() {
 
       {/* About */}
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>鍏充簬</Text>
+        <Text style={styles.sectionLabel}>关于</Text>
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>鐗堟湰</Text>
+          <Text style={styles.rowLabel}>版本</Text>
           <Text style={styles.rowValue}>v0.1.0-watch</Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>骞冲彴</Text>
+          <Text style={styles.rowLabel}>平台</Text>
           <Text style={styles.rowValue}>Wear OS</Text>
         </View>
       </View>

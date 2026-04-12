@@ -34,16 +34,16 @@ interface DreamSession {
 }
 
 const PHASES: { key: DreamPhase; emoji: string; label: { en: string; zh: string } }[] = [
-  { key: 'light', emoji: '馃寵', label: { en: 'Light', zh: '娴呯湢' } },
-  { key: 'deep', emoji: '馃寠', label: { en: 'Deep', zh: '娣辩湢' } },
-  { key: 'rem', emoji: '鈿?, label: { en: 'REM', zh: 'REM' } },
+  { key: 'light', emoji: '🌙', label: { en: 'Light', zh: '浅眠' } },
+  { key: 'deep', emoji: '🌊', label: { en: 'Deep', zh: '深眠' } },
+  { key: 'rem', emoji: '⚡', label: { en: 'REM', zh: 'REM' } },
 ];
 
 const STATUS_EMOJI: Record<DreamStatus, string> = {
-  pending: '鈴?,
-  running: '馃挙',
-  completed: '鉁?,
-  failed: '鉂?,
+  pending: '⏳',
+  running: '💤',
+  completed: '✅',
+  failed: '❌',
 };
 
 export function DreamingDashboardScreen() {
@@ -101,12 +101,12 @@ export function DreamingDashboardScreen() {
   const renderInsight = (insight: DreamSession['insights'][0], idx: number) => (
     <View key={idx} style={styles.insightCard}>
       <Text style={styles.insightType}>
-        {insight.type === 'pattern' ? '馃攳' : insight.type === 'consolidation' ? '馃摝' : insight.type === 'creative' ? '馃帹' : '馃敆'}{' '}
+        {insight.type === 'pattern' ? '🔍' : insight.type === 'consolidation' ? '📦' : insight.type === 'creative' ? '🎨' : '🔗'}{' '}
         {insight.type}
       </Text>
       <Text style={styles.insightContent}>{insight.content}</Text>
       <Text style={styles.insightConfidence}>
-        {t({ en: 'Confidence', zh: '缃俊搴? })}: {Math.round(insight.confidence * 100)}%
+        {t({ en: 'Confidence', zh: '置信度' })}: {Math.round(insight.confidence * 100)}%
       </Text>
     </View>
   );
@@ -123,10 +123,10 @@ export function DreamingDashboardScreen() {
       </View>
       <View style={styles.sessionStats}>
         <Text style={styles.statText}>
-          馃 {item.memoriesProcessed} {t({ en: 'memories', zh: '璁板繂' })}
+          🧠 {item.memoriesProcessed} {t({ en: 'memories', zh: '记忆' })}
         </Text>
         <Text style={styles.statText}>
-          馃挕 {item.insightsGenerated} {t({ en: 'insights', zh: '娲炲療' })}
+          💡 {item.insightsGenerated} {t({ en: 'insights', zh: '洞察' })}
         </Text>
       </View>
       {item.insights?.length > 0 && (
@@ -165,8 +165,8 @@ export function DreamingDashboardScreen() {
         ) : (
           <Text style={styles.startBtnText}>
             {activePhase
-              ? t({ en: `Start ${activePhase} dream`, zh: `寮€濮?{PHASES.find(p => p.key === activePhase)?.label.zh}` })
-              : t({ en: 'Select a phase', zh: '閫夋嫨闃舵' })}
+              ? t({ en: `Start ${activePhase} dream`, zh: `开始${PHASES.find(p => p.key === activePhase)?.label.zh}` })
+              : t({ en: 'Select a phase', zh: '选择阶段' })}
           </Text>
         )}
       </TouchableOpacity>
@@ -180,7 +180,7 @@ export function DreamingDashboardScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchSessions} />}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
-            {t({ en: 'No dream sessions yet. Start your first dream!', zh: '鏆傛棤姊﹀璁板綍锛屽紑濮嬩綘鐨勭涓€娆℃ⅵ澧冨惂锛? })}
+            {t({ en: 'No dream sessions yet. Start your first dream!', zh: '暂无梦境记录，开始你的第一次梦境吧！' })}
           </Text>
         }
       />

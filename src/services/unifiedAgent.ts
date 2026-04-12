@@ -1,7 +1,9 @@
 /**
- * Unified Agent Service 鈥?缁熶竴 Agent API
+ * Unified Agent Service — 统一 Agent API
  *
- * 鏇夸唬 agentPresenceAccount.ts锛屼娇鐢?/agents/unified 绔偣銆? * 姣忎釜 Agent = OpenClawInstance + AgentAccount锛?:1 缁戝畾锛夈€? */
+ * 替代 agentPresenceAccount.ts，使用 /agents/unified 端点。
+ * 每个 Agent = OpenClawInstance + AgentAccount（1:1 绑定）。
+ */
 import { apiFetch } from './api';
 
 export interface UnifiedAgent {
@@ -12,7 +14,8 @@ export interface UnifiedAgent {
   status: string;
   instanceType: string;
 
-  // 杩愯鏃?  instanceUrl?: string;
+  // 运行时
+  instanceUrl?: string;
   isPrimary: boolean;
   defaultModel?: string;
   capabilities?: Record<string, any>;
@@ -20,7 +23,7 @@ export interface UnifiedAgent {
   channelBindings?: any[];
   systemPrompt?: string;
 
-  // 缁忔祹韬唤
+  // 经济身份
   agentAccountId?: string;
   agentUniqueId?: string;
   creditScore?: number;
@@ -32,7 +35,7 @@ export interface UnifiedAgent {
   };
   agentType?: string;
 
-  // 鍥㈤槦
+  // 团队
   teamTemplateSlug?: string;
   codename?: string;
   modelTier?: string;
@@ -78,7 +81,8 @@ export async function createUnifiedAgent(dto: CreateUnifiedAgentDto): Promise<Un
 }
 
 /**
- * 缁戝畾宸叉湁 OpenClaw 瀹炰緥鍒板洟闃熻鑹? */
+ * 绑定已有 OpenClaw 实例到团队角色
+ */
 export async function bindInstanceToTeamRole(
   teamSlug: string,
   codename: string,

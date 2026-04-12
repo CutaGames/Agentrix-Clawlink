@@ -1,6 +1,6 @@
 /**
- * Agent Memory Browser Screen 鈥?绉诲姩绔蹇嗘祻瑙堝櫒
- * 鎸?scope/type 娴忚銆佹悳绱€佺紪杈戙€佸垹闄?Agent 璁板繂
+ * Agent Memory Browser Screen — 移动端记忆浏览器
+ * 按 scope/type 浏览、搜索、编辑、删除 Agent 记忆
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
@@ -25,10 +25,10 @@ import {
 import { useI18n } from '../../stores/i18nStore';
 
 const SCOPES: { key: MemoryScope; label: string; emoji: string }[] = [
-  { key: 'user', label: 'User', emoji: '馃懁' },
-  { key: 'agent', label: 'Agent', emoji: '馃' },
-  { key: 'session', label: 'Session', emoji: '馃挰' },
-  { key: 'shared', label: 'Shared', emoji: '馃寪' },
+  { key: 'user', label: 'User', emoji: '👤' },
+  { key: 'agent', label: 'Agent', emoji: '🤖' },
+  { key: 'session', label: 'Session', emoji: '💬' },
+  { key: 'shared', label: 'Shared', emoji: '🌐' },
 ];
 
 export default function AgentMemoryScreen() {
@@ -59,19 +59,19 @@ export default function AgentMemoryScreen() {
 
   const handleDelete = useCallback((entry: MemoryEntry) => {
     Alert.alert(
-      '鍒犻櫎璁板繂',
-      `纭鍒犻櫎 "${entry.key}" ?`,
+      '删除记忆',
+      `确认删除 "${entry.key}" ?`,
       [
-        { text: '鍙栨秷', style: 'cancel' },
+        { text: '取消', style: 'cancel' },
         {
-          text: '鍒犻櫎',
+          text: '删除',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteMemorySlot(entry.key, entry.scope);
               setEntries(prev => prev.filter(e => e.id !== entry.id));
             } catch (err: any) {
-              Alert.alert('鍒犻櫎澶辫触', err.message);
+              Alert.alert('删除失败', err.message);
             }
           },
         },
@@ -141,12 +141,12 @@ export default function AgentMemoryScreen() {
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
-          placeholder="鎼滅储璁板繂..."
+          placeholder="搜索记忆..."
           placeholderTextColor="#888"
           value={searchText}
           onChangeText={setSearchText}
         />
-        <Text style={styles.count}>{filtered.length} 鏉?/Text>
+        <Text style={styles.count}>{filtered.length} 条</Text>
       </View>
 
       {/* List */}
@@ -161,7 +161,7 @@ export default function AgentMemoryScreen() {
         ListEmptyComponent={
           !loading ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>鏆傛棤 {activeScope} 璁板繂</Text>
+              <Text style={styles.emptyText}>暂无 {activeScope} 记忆</Text>
             </View>
           ) : null
         }

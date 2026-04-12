@@ -1,5 +1,5 @@
 /**
- * Notification store 鈥?tracks unread count, notification list, and push token.
+ * Notification store — tracks unread count, notification list, and push token.
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';

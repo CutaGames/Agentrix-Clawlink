@@ -35,7 +35,8 @@ import { MobileLocalInferenceService } from '../../services/mobileLocalInference
 import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
 import {
   buildLocalUserContent,
-  shouldEscalateLocalTurnToCloud as shouldEscalateLocalMultimodalTurnToCloud,
+  resolveLocalTurnExecution,
+  type LocalTurnExecutionDecision,
 } from '../../services/mobileLocalMultimodalRouting.service';
 import type { StreamEvent } from '../../../shared/stream-parser';
 
@@ -63,6 +64,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen2.5-omni-3b',
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
@@ -75,6 +77,8 @@ function isLocalOnlyModelId(modelId?: string | null) {
 
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
+    case 'qwen2.5-omni-3b':
+      return 'Qwen 2.5 Omni 3B (Local)';
     case 'gemma-4-4b':
       return 'Gemma 4 E4B (Local)';
     case 'gemma-nano-2b-local':
@@ -84,6 +88,60 @@ function getLocalModelLabel(modelId: string) {
     case 'gemma-4-2b':
     default:
       return 'Gemma 4 E2B (Local)';
+  }
+}
+
+type TranslateFn = ReturnType<typeof useI18n>['t'];
+
+function formatLocalTurnBlockedMessage({
+  t,
+  modelLabel,
+  decision,
+}: {
+  t: TranslateFn;
+  modelLabel: string;
+  decision: Extract<LocalTurnExecutionDecision, { mode: 'blocked' }>;
+}) {
+  const attachmentName = decision.attachment?.originalName || t({ en: 'This attachment', zh: '这个附件' });
+
+  switch (decision.reason) {
+    case 'runtime-unavailable':
+    case 'text-generation-unavailable':
+      return t({
+        en: `${modelLabel} is selected, but on-device inference is not ready on this device. Agentrix will not silently fall back to the cloud. Finish the local runtime/package setup or switch to a cloud model manually.`,
+        zh: `当前已选 ${modelLabel}，但这台设备上的端侧推理还没有就绪。Agentrix 不会再偷偷回退到云端。请先确认本地运行时和模型包已准备好，或手动切换到云端模型。`,
+      });
+    case 'projector-required':
+      return t({
+        en: `${modelLabel} is still text-only on this device. Image turns need the multimodal projector add-on, and Agentrix will block them instead of auto-switching to the cloud. Open Local AI Models and finish the full package download first.`,
+        zh: `当前设备上的 ${modelLabel} 仍是纯文本模式。图片轮次需要先补齐多模态投影器，Agentrix 现在会直接拦截，而不是自动切到云端。请先到“本地 AI 模型”页补齐完整包。`,
+      });
+    case 'audio-input-unavailable':
+      return t({
+        en: `${modelLabel} does not expose on-device audio file input yet. This turn was blocked instead of falling back to the cloud. Use text input for the local model, or switch models manually.`,
+        zh: `当前 ${modelLabel} 还没有暴露端侧音频文件输入能力。本轮已被拦截，不会再自动回退到云端。请改用文本输入，或手动切换模型。`,
+      });
+    case 'audio-format-unsupported':
+      return t({
+        en: `${modelLabel} currently accepts local wav/mp3 audio files only. ${attachmentName} will not auto-fallback to the cloud. Re-upload it as wav/mp3, or switch models manually.`,
+        zh: `当前 ${modelLabel} 仅接受本地 wav/mp3 音频文件。${attachmentName} 不会自动回退到云端。请改传 wav/mp3，或手动切换模型。`,
+      });
+    case 'attachment-not-local':
+      return t({
+        en: `${attachmentName} is missing a device-local file path, so ${modelLabel} cannot read it. Agentrix will not silently send it to the cloud. Re-attach the original local file, or switch models manually.`,
+        zh: `${attachmentName} 缺少设备本地文件路径，${modelLabel} 无法读取，Agentrix 也不会再偷偷发到云端。请重新选择原始本地文件，或手动切换模型。`,
+      });
+    case 'attachment-unsupported':
+      return t({
+        en: `${modelLabel} currently supports short text plus supported local image/audio inputs. ${attachmentName} cannot run on-device and will not auto-fallback to the cloud. Switch to a cloud model for this turn.`,
+        zh: `${modelLabel} 当前只支持简短文本，以及受支持的本地图片和音频输入。${attachmentName} 这类内容暂不支持端侧处理，也不会自动回退到云端。请切到云端模型后再发送。`,
+      });
+    case 'complex-turn':
+    default:
+      return t({
+        en: `${modelLabel} is limited to short on-device turns. Long prompts, code/tool orchestration, and complex tasks are blocked instead of auto-falling back to the cloud. Switch to a cloud model to continue this request.`,
+        zh: `${modelLabel} 目前只处理简短端侧轮次。长文本、代码或工具编排、复杂任务都会被直接拦截，不再自动回退到云端。请切换到云端模型后再继续这次请求。`,
+      });
   }
 }
 
@@ -115,25 +173,27 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
   }
 
   attachments.forEach((attachment, index) => {
+    const attachmentUrl = attachment.publicUrl || attachment.localUri || '';
+
     if (attachment.kind === 'image') {
       multimodalContent.push({
         type: 'image',
-        source: { type: 'url', url: attachment.publicUrl },
+        source: { type: 'url', url: attachmentUrl },
       });
     } else if (attachment.kind === 'video' || attachment.isVideo || attachment.mimetype?.startsWith('video/')) {
       multimodalContent.push({
         type: 'text',
-        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`,
+        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
       multimodalContent.push({
         type: 'input_audio',
-        input_audio: { url: attachment.publicUrl }
+        input_audio: { url: attachmentUrl }
       });
     } else {
       multimodalContent.push({
         type: 'text',
-        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`
+        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`
       });
     }
   });
@@ -167,7 +227,7 @@ function extractUrlsFromMessage(content: string) {
 }
 
 function getCopyableMessageText(message: Message) {
-  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl}`);
+  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl || attachment.localUri || ''}`);
   return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
 }
 
@@ -206,7 +266,7 @@ const InlineAudioPlayer = ({ uri }: { uri: string }) => {
 
   const togglePlay = useCallback(async () => {
     if (!Audio) {
-      Alert.alert(t({ en: 'Audio Unavailable', zh: '闊抽涓嶅彲鐢? }));
+      Alert.alert(t({ en: 'Audio Unavailable', zh: '音频不可用' }));
       return;
     }
     try {
@@ -229,7 +289,7 @@ const InlineAudioPlayer = ({ uri }: { uri: string }) => {
       });
     } catch (e: any) {
       setPlaying(false);
-      Alert.alert(t({ en: 'Playback Error', zh: '鎾斁閿欒' }), e?.message || '');
+      Alert.alert(t({ en: 'Playback Error', zh: '播放错误' }), e?.message || '');
     }
   }, [playing, uri, t]);
 
@@ -241,16 +301,16 @@ const InlineAudioPlayer = ({ uri }: { uri: string }) => {
 
   return (
     <TouchableOpacity style={styles.audioPlayerCard} onPress={togglePlay} activeOpacity={0.7}>
-      <Text style={styles.audioPlayerIcon}>{playing ? '鈴癸笍' : '鈻讹笍'}</Text>
+      <Text style={styles.audioPlayerIcon}>{playing ? '⏹️' : '▶️'}</Text>
       <View style={styles.audioPlayerMeta}>
-        <Text style={styles.audioPlayerLabel}>{playing ? t({ en: 'Playing...', zh: '鎾斁涓€? }) : t({ en: 'Audio message', zh: '闊抽娑堟伅' })}</Text>
+        <Text style={styles.audioPlayerLabel}>{playing ? t({ en: 'Playing...', zh: '播放中…' }) : t({ en: 'Audio message', zh: '音频消息' })}</Text>
         <Text style={styles.audioPlayerUrl} numberOfLines={1}>{uri}</Text>
       </View>
     </TouchableOpacity>
   );
 };
 
-// 鈹€鈹€鈹€ Long-press context menu for messages 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Long-press context menu for messages ──────────────────────────────────
 const MessageContextMenu = ({
   visible, onClose, message, onQuote, onExportNote, onDeepSearch, onCrossDevice, onCopy,
 }: {
@@ -261,11 +321,11 @@ const MessageContextMenu = ({
   const { t } = useI18n();
   if (!visible || !message) return null;
   const actions = [
-    { icon: '馃搵', label: t({ en: 'Copy', zh: '澶嶅埗' }), onPress: onCopy },
-    { icon: '馃挰', label: t({ en: 'Quote & Ask', zh: '寮曠敤杩介棶' }), onPress: onQuote },
-    { icon: '馃摑', label: t({ en: 'Save as Note', zh: '瀵煎嚭绗旇' }), onPress: onExportNote },
-    { icon: '馃攳', label: t({ en: 'Deep Search', zh: '娣卞害鎼滅储' }), onPress: onDeepSearch },
-    { icon: '馃捇', label: t({ en: 'Send to Desktop', zh: '鍙戝埌鐢佃剳' }), onPress: onCrossDevice },
+    { icon: '📋', label: t({ en: 'Copy', zh: '复制' }), onPress: onCopy },
+    { icon: '💬', label: t({ en: 'Quote & Ask', zh: '引用追问' }), onPress: onQuote },
+    { icon: '📝', label: t({ en: 'Save as Note', zh: '导出笔记' }), onPress: onExportNote },
+    { icon: '🔍', label: t({ en: 'Deep Search', zh: '深度搜索' }), onPress: onDeepSearch },
+    { icon: '💻', label: t({ en: 'Send to Desktop', zh: '发到电脑' }), onPress: onCrossDevice },
   ];
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -287,7 +347,7 @@ const MessageContextMenu = ({
   );
 };
 
-// 鈹€鈹€鈹€ Thought Ribbon (animated light strip for thinking chain) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Thought Ribbon (animated light strip for thinking chain) ───────────────
 const ThoughtRibbon = ({ thoughts, streaming }: { thoughts: string[]; streaming?: boolean }) => {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -322,15 +382,15 @@ const ThoughtRibbon = ({ thoughts, streaming }: { thoughts: string[]; streaming?
               <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.55 }] }} />
             </View>
           ) : (
-            <Text style={sf.ribbonDoneIcon}>鈿?/Text>
+            <Text style={sf.ribbonDoneIcon}>⚡</Text>
           )}
           <Text style={sf.ribbonTitle} numberOfLines={1}>
             {streaming
-              ? (thoughts[thoughts.length - 1]?.replace('[Tool Call]', '').trim().slice(0, 40) || t({ en: 'Processing鈥?, zh: '澶勭悊涓€? }))
-              : t({ en: `${thoughts.length} steps`, zh: `${thoughts.length} 姝 })}
+              ? (thoughts[thoughts.length - 1]?.replace('[Tool Call]', '').trim().slice(0, 40) || t({ en: 'Processing…', zh: '处理中…' }))
+              : t({ en: `${thoughts.length} steps`, zh: `${thoughts.length} 步` })}
           </Text>
         </View>
-        <Text style={sf.ribbonChevron}>{expanded ? '鈻? : '鈥?}</Text>
+        <Text style={sf.ribbonChevron}>{expanded ? '▾' : '›'}</Text>
       </TouchableOpacity>
 
       {expanded && (
@@ -353,7 +413,7 @@ const ThoughtRibbon = ({ thoughts, streaming }: { thoughts: string[]; streaming?
   );
 };
 
-// 鈹€鈹€鈹€ MessageBubble 鈥?Spatial Flow borderless design with swipe actions 鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── MessageBubble — Spatial Flow borderless design with swipe actions ──────
 const MessageBubble = ({
   item,
   onSpeak,
@@ -386,11 +446,11 @@ const MessageBubble = ({
     if (!text) return;
     await DeviceBridgingService.writeClipboard(text);
     void runSelectionHaptic();
-    Alert.alert(t({ en: 'Copied', zh: '宸插鍒? }), t({ en: 'Message copied to clipboard.', zh: '娑堟伅宸插鍒跺埌鍓创鏉裤€? }));
+    Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Message copied to clipboard.', zh: '消息已复制到剪贴板。' }));
   }, [item, t]);
 
   const openExternalUrl = useCallback(async (url: string) => {
-    try { await Linking.openURL(url); } catch { Alert.alert(t({ en: 'Open Failed', zh: '鎵撳紑澶辫触' }), url); }
+    try { await Linking.openURL(url); } catch { Alert.alert(t({ en: 'Open Failed', zh: '打开失败' }), url); }
   }, [t]);
 
   const handleLongPress = useCallback(() => {
@@ -398,19 +458,19 @@ const MessageBubble = ({
     setCtxVisible(true);
   }, []);
 
-  // Swipe left 鈫?Quote & Ask
+  // Swipe left → Quote & Ask
   const renderLeftActions = useCallback(() => (
     <View style={sf.swipeAction}>
-      <Text style={sf.swipeActionIcon}>馃挰</Text>
-      <Text style={sf.swipeActionLabel}>{t({ en: 'Quote', zh: '寮曠敤' })}</Text>
+      <Text style={sf.swipeActionIcon}>💬</Text>
+      <Text style={sf.swipeActionLabel}>{t({ en: 'Quote', zh: '引用' })}</Text>
     </View>
   ), [t]);
 
-  // Swipe right 鈫?Export as note
+  // Swipe right → Export as note
   const renderRightActions = useCallback(() => (
     <View style={[sf.swipeAction, sf.swipeActionRight]}>
-      <Text style={sf.swipeActionIcon}>馃摑</Text>
-      <Text style={sf.swipeActionLabel}>{t({ en: 'Note', zh: '绗旇' })}</Text>
+      <Text style={sf.swipeActionIcon}>📝</Text>
+      <Text style={sf.swipeActionLabel}>{t({ en: 'Note', zh: '笔记' })}</Text>
     </View>
   ), [t]);
 
@@ -446,12 +506,12 @@ const MessageBubble = ({
       )}
 
       <View style={{ flex: 1, maxWidth: '100%' }}>
-        {/* Thought Ribbon 鈥?replaces static thought chain */}
+        {/* Thought Ribbon — replaces static thought chain */}
         {!isUser && hasThoughts && (
           <ThoughtRibbon thoughts={item.thoughts!} streaming={item.streaming} />
         )}
 
-        {/* Main message body 鈥?borderless */}
+        {/* Main message body — borderless */}
         {(bubbleText || item.streaming) && (
           <View
             testID={`chat-message-${item.role}`}
@@ -494,13 +554,13 @@ const MessageBubble = ({
                 {canSpeak && (
                   <TouchableOpacity style={sf.actionChip} onPress={() => (isThisMessageSpeaking ? onStopSpeaking() : onSpeak(item))}>
                     <Text style={sf.actionChipText}>
-                      {isThisMessageSpeaking ? t({ en: '鈴?Stop', zh: '鈴?鍋滄' }) : t({ en: '鈻?Play', zh: '鈻?鎾斁' })}
+                      {isThisMessageSpeaking ? t({ en: '⏹ Stop', zh: '⏹ 停止' }) : t({ en: '▶ Play', zh: '▶ 播放' })}
                     </Text>
                   </TouchableOpacity>
                 )}
                 {!!getCopyableMessageText(item) && (
                   <TouchableOpacity style={sf.actionChip} onPress={handleCopy}>
-                    <Text style={sf.actionChipText}>{t({ en: 'Copy', zh: '澶嶅埗' })}</Text>
+                    <Text style={sf.actionChipText}>{t({ en: 'Copy', zh: '复制' })}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -508,7 +568,7 @@ const MessageBubble = ({
           </View>
         )}
 
-        {/* Attachments, images, audio, files 鈥?same structure, updated styles */}
+        {/* Attachments, images, audio, files — same structure, updated styles */}
         {!!item.attachments?.length && (
           <View style={sf.mediaList}>
             {item.attachments.map((attachment) => (
@@ -516,20 +576,28 @@ const MessageBubble = ({
                 key={`${item.id}-${attachment.fileName}`}
                 style={sf.mediaCard}
                 activeOpacity={0.8}
-                onPress={() => attachment.isImage ? onPreviewImage(attachment.publicUrl) : openExternalUrl(attachment.publicUrl)}
+                onPress={() => {
+                  const attachmentUri = attachment.localUri || attachment.publicUrl;
+                  if (!attachmentUri) return;
+                  if (attachment.isImage) {
+                    onPreviewImage(attachmentUri);
+                    return;
+                  }
+                  openExternalUrl(attachmentUri);
+                }}
               >
                 {attachment.isImage ? (
-                  <Image source={{ uri: attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
+                  <Image source={{ uri: attachment.localUri || attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
                 ) : attachment.isVideo ? (
-                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>馃幀</Text></View>
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
                 ) : attachment.isAudio ? (
-                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>馃幍</Text></View>
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎵</Text></View>
                 ) : (
-                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>馃搸</Text></View>
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>📎</Text></View>
                 )}
                 <View style={sf.mediaMeta}>
                   <Text style={sf.mediaName} numberOfLines={1}>{attachment.originalName}</Text>
-                  <Text style={sf.mediaSub} numberOfLines={1}>{attachment.mimetype} 路 {formatAttachmentSize(attachment.size)}</Text>
+                  <Text style={sf.mediaSub} numberOfLines={1}>{attachment.mimetype} · {formatAttachmentSize(attachment.size)}</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -541,7 +609,7 @@ const MessageBubble = ({
               <TouchableOpacity key={`${item.id}-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => onPreviewImage(url)}>
                 <Image source={{ uri: url }} style={sf.mediaThumb} resizeMode="cover" />
                 <View style={sf.mediaMeta}>
-                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated image', zh: '鐢熸垚鍥剧墖' })}</Text>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated image', zh: '生成图片' })}</Text>
                   <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
                 </View>
               </TouchableOpacity>
@@ -559,9 +627,9 @@ const MessageBubble = ({
           <View style={sf.mediaList}>
             {videoUrls.map((url) => (
               <TouchableOpacity key={`${item.id}-video-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
-                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>馃幀</Text></View>
+                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
                 <View style={sf.mediaMeta}>
-                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated video', zh: '鐢熸垚瑙嗛' })}</Text>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated video', zh: '生成视频' })}</Text>
                   <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
                 </View>
               </TouchableOpacity>
@@ -572,9 +640,9 @@ const MessageBubble = ({
           <View style={sf.mediaList}>
             {fileUrls.map((url) => (
               <TouchableOpacity key={`${item.id}-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
-                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>馃搸</Text></View>
+                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>📎</Text></View>
                 <View style={sf.mediaMeta}>
-                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated file', zh: '鐢熸垚鏂囦欢' })}</Text>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated file', zh: '生成文件' })}</Text>
                   <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
                 </View>
               </TouchableOpacity>
@@ -600,7 +668,7 @@ const MessageBubble = ({
           if (text) {
             try {
               await DeviceBridgingService.writeClipboard(text);
-              Alert.alert(t({ en: 'Sent', zh: '宸插彂閫? }), t({ en: 'Copied to shared clipboard for desktop pickup.', zh: '宸插鍒跺埌鍏变韩鍓创鏉匡紝鐢佃剳绔彲鎺ユ敹銆? }));
+              Alert.alert(t({ en: 'Sent', zh: '已发送' }), t({ en: 'Copied to shared clipboard for desktop pickup.', zh: '已复制到共享剪贴板，电脑端可接收。' }));
             } catch {}
           }
         }}
@@ -658,11 +726,13 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
+  const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
+  const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
   const localVoicePlan = planLocalVoiceCapabilitySplit({
     localModelSelected: isLocalModelSelected,
     preferOnDeviceVoice,
     selectedVoiceId: agentVoiceId,
-    runtimeCapabilities: MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }),
+    runtimeCapabilities: localVoiceRuntimeCapabilities,
   });
   const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
@@ -691,7 +761,7 @@ export function AgentChatScreen() {
       sessionIdRef.current = saved[0].id;
       return saved;
     }
-    const initial: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '鏂板璇? }), createdAt: Date.now() };
+    const initial: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
     return [initial];
   });
   const [activeSessionId, setActiveSessionId] = useState(sessionIdRef.current);
@@ -700,7 +770,7 @@ export function AgentChatScreen() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `浣犲ソ锛佹垜鏄?**${instanceName}**锛屼綘鐨勪釜浜烘櫤鑳戒綋銆傛帴涓嬫潵鎯宠鎴戝府浣犲仛浠€涔堬紵` }),
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
       createdAt: Date.now(),
     },
   ]);
@@ -876,7 +946,7 @@ export function AgentChatScreen() {
             id: m.id,
             label: m.label,
             provider: m.provider,
-            icon: m.isDefault ? '馃' : '馃拵',
+            icon: m.isDefault ? '🤖' : '💎',
             availability: 'available' as const,
             costTier: m.costTier,
           }));
@@ -884,9 +954,9 @@ export function AgentChatScreen() {
           if (localAiStatus === 'ready') {
             const localEntry: ModelOption = {
               id: localAiModelId,
-              label: `${getLocalModelLabel(localAiModelId)} (绔晶)`,
+              label: `${getLocalModelLabel(localAiModelId)} (端侧)`,
               provider: 'On-device',
-              icon: '馃摫',
+              icon: '📱',
               badge: 'Local',
               availability: 'available',
               costTier: 'free',
@@ -938,7 +1008,7 @@ export function AgentChatScreen() {
     setLoadingOlder(false);
   }, [messages.length, loadingOlder]);
 
-  // Load chat history on mount 鈥?MMKV is synchronous, then try API
+  // Load chat history on mount — MMKV is synchronous, then try API
   useEffect(() => {
     if (!instanceId) return;
     const raw = mmkv.getString(storageKey);
@@ -1022,7 +1092,7 @@ export function AgentChatScreen() {
         setMessages(historyMessages.slice(-PAGE_SIZE));
       }
     } catch {
-      // Silently ignore 鈥?instance may not support history endpoint
+      // Silently ignore — instance may not support history endpoint
     } finally {
       setLoadingHistory(false);
     }
@@ -1044,8 +1114,8 @@ export function AgentChatScreen() {
     await DeviceBridgingService.writeClipboard(remoteClipboard.text);
     void runSelectionHaptic();
     Alert.alert(
-      t({ en: 'Desktop Clipboard Copied', zh: '妗岄潰鍓创鏉垮凡澶嶅埗' }),
-      t({ en: 'The latest desktop clipboard text is now on your phone.', zh: '鏈€鏂版闈㈠壀璐存澘鍐呭宸插鍒跺埌鎵嬫満鍓创鏉裤€? }),
+      t({ en: 'Desktop Clipboard Copied', zh: '桌面剪贴板已复制' }),
+      t({ en: 'The latest desktop clipboard text is now on your phone.', zh: '最新桌面剪贴板内容已复制到手机剪贴板。' }),
     );
   }, [remoteClipboard, t]);
 
@@ -1083,7 +1153,7 @@ export function AgentChatScreen() {
       return {
         ...m,
         content: showInterruptedHint
-          ? t({ en: 'Reply stopped. You can continue speaking.', zh: '褰撳墠鍥炲宸插仠姝紝浣犲彲浠ョ户缁璇濄€? })
+          ? t({ en: 'Reply stopped. You can continue speaking.', zh: '当前回复已停止，你可以继续说话。' })
           : m.content,
         streaming: false,
       };
@@ -1194,11 +1264,11 @@ export function AgentChatScreen() {
 
     setChatSessions((prev) => {
       const idx = prev.findIndex((session) => session.id === activeSessionId);
-      if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '鏂板璇? }) || prev[idx].label === 'New Chat' || prev[idx].label === '鏂板璇?)) {
+      if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
         const updated = [...prev];
         updated[idx] = {
           ...updated[idx],
-          label: normalized.slice(0, 24) + (normalized.length > 24 ? '鈥? : ''),
+          label: normalized.slice(0, 24) + (normalized.length > 24 ? '…' : ''),
         };
         saveSessions(instanceId, updated);
         return updated;
@@ -1252,6 +1322,9 @@ export function AgentChatScreen() {
     realtimeModelId: remoteResolvedModelId,
     preferLocalSpeechRecognition: localVoicePlan.preferLocalSpeechRecognition,
     preferLocalTextToSpeech: localVoicePlan.preferLocalTextToSpeech,
+    localModelSelected: isLocalModelSelected,
+    localModelId: isLocalModelSelected ? localCapabilityModelId : undefined,
+    localAudioInputAvailable: isLocalModelSelected && localVoiceRuntimeCapabilities.supportsAudioInput,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
@@ -1268,7 +1341,7 @@ export function AgentChatScreen() {
       completeStreamingAssistantMessage();
     },
     onRealtimeError: (message) => {
-      completeStreamingAssistantMessage(message || t({ en: 'Realtime voice reply failed.', zh: '瀹炴椂璇煶鍥炲澶辫触銆? }));
+      completeStreamingAssistantMessage(message || t({ en: 'Realtime voice reply failed.', zh: '实时语音回复失败。' }));
     },
     onStopCurrentResponse: stopCurrentResponse,
     t,
@@ -1361,7 +1434,7 @@ export function AgentChatScreen() {
       setPendingAttachments((prev) => [...prev, uploaded]);
       await runSelectionHaptic();
     } catch (error: any) {
-      Alert.alert(t({ en: 'Attachment Error', zh: '闄勪欢閿欒' }), error?.message || t({ en: 'Failed to upload attachment.', zh: '涓婁紶闄勪欢澶辫触銆? }));
+      Alert.alert(t({ en: 'Attachment Error', zh: '附件错误' }), error?.message || t({ en: 'Failed to upload attachment.', zh: '上传附件失败。' }));
     } finally {
       setUploadingAttachment(false);
     }
@@ -1436,9 +1509,9 @@ export function AgentChatScreen() {
     if (text && shouldDisplayUserTurn) {
       setChatSessions((prev) => {
         const idx = prev.findIndex(s => s.id === activeSessionId);
-        if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '鏂板璇? }) || prev[idx].label === 'New Chat' || prev[idx].label === '鏂板璇?)) {
+        if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], label: text.slice(0, 24) + (text.length > 24 ? '鈥? : '') };
+          updated[idx] = { ...updated[idx], label: text.slice(0, 24) + (text.length > 24 ? '…' : '') };
           saveSessions(instanceId, updated);
           return updated;
         }
@@ -1451,46 +1524,56 @@ export function AgentChatScreen() {
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
+      const finishAssistantWithError = (message: string) => {
+        resetVoicePhaseAfterResponse();
+        enqueueStreamedSpeech('', true);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: `⚠️ ${message}`, streaming: false, error: true }
+              : m
+          )
+        );
+      };
+      const localModelLabel = isLocalOnlyModelId(effectiveModelId)
+        ? (effectiveModelId === MobileLocalInferenceService.modelId
+          ? MobileLocalInferenceService.modelLabel
+          : getLocalModelLabel(effectiveModelId))
+        : null;
       const localRuntimeCapabilities = isLocalOnlyModelId(effectiveModelId)
         ? await MobileLocalInferenceService.getCapabilities({ model: effectiveModelId }).catch(() => (
           MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId })
         ))
         : null;
-      const shouldEscalateToCloud = isLocalOnlyModelId(effectiveModelId)
-        && shouldEscalateLocalMultimodalTurnToCloud(
-          text,
-          attachments,
-          localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }),
-        );
+      const localRuntimeSnapshot = isLocalOnlyModelId(effectiveModelId)
+        ? (localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }))
+        : null;
+      const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeSnapshot
+        ? resolveLocalTurnExecution(text, attachments, localRuntimeSnapshot)
+        : null;
+      const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
 
-      const shouldTryLocalNano = (
-        isLocalOnlyModelId(effectiveModelId)
-        && !!localRuntimeCapabilities?.available
-        && !shouldEscalateToCloud
-      );
-
-      if (shouldEscalateToCloud) {
-        setResolvedModelLabel(
-          t({ en: 'Hybrid cloud orchestration', zh: '娣峰悎浜戠缂栨帓' })
-          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
-        );
-      }
-
-      // When local model selected but bridge unavailable, notify user and fall through to cloud
-      if (isLocalOnlyModelId(effectiveModelId) && !shouldEscalateToCloud && !localRuntimeCapabilities?.available) {
-        setResolvedModelLabel(
-          t({ en: 'Cloud fallback', zh: '浜戠鍥為€€' })
-          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
-        );
+      if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
+        setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
+        addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
+          model: effectiveModelId,
+          reason: localTurnDecision.reason,
+          attachment: localTurnDecision.attachment?.originalName || null,
+        });
+        finishAssistantWithError(formatLocalTurnBlockedMessage({
+          t,
+          modelLabel: localModelLabel,
+          decision: localTurnDecision,
+        }));
+        return;
       }
 
       if (shouldTryLocalNano) {
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
-        const localModelLabel = effectiveModelId === MobileLocalInferenceService.modelId
-          ? MobileLocalInferenceService.modelLabel
-          : getLocalModelLabel(effectiveModelId);
-        setResolvedModelLabel(localModelLabel);
+        if (localModelLabel) {
+          setResolvedModelLabel(localModelLabel);
+        }
         let localAssistantText = '';
         const localUserContent = buildLocalUserContent(text, attachments);
 
@@ -1529,10 +1612,20 @@ export function AgentChatScreen() {
           }
           enqueueStreamedSpeech('', true);
 
+          if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            return;
+          }
+
           const finalAssistant = localAssistantText.trim();
           if (!localProducedOutput || !finalAssistant) {
-            streamSucceeded = false;
-            proxyFailureMessage = t({ en: 'Local model returned an empty response.', zh: '鏈湴妯″瀷杩斿洖浜嗙┖鍝嶅簲銆? });
+            addVoiceDiagnostic('agent-chat', 'local-empty-response', {
+              model: effectiveModelId,
+            });
+            finishAssistantWithError(t({
+              en: 'The selected local model returned no text. Agentrix did not fall back to the cloud. Retry the local model, or switch models manually.',
+              zh: '当前选中的本地模型没有返回文本。Agentrix 没有回退到云端。请重试本地模型，或手动切换模型。',
+            }));
+            return;
           }
 
           if (token && finalAssistant) {
@@ -1547,13 +1640,24 @@ export function AgentChatScreen() {
             });
           }
         } catch (error: any) {
-          streamSucceeded = false;
-          proxyFailureMessage = error?.message || t({ en: 'Local model inference failed.', zh: '鏈湴妯″瀷鎺ㄧ悊澶辫触銆? });
+          if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            return;
+          }
+
+          const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
+            model: effectiveModelId,
+            message: localErrorMessage,
+          });
+          finishAssistantWithError(t({
+            en: `On-device inference failed: ${localErrorMessage}. Agentrix did not fall back to the cloud. Check the local package/runtime and retry, or switch models manually.`,
+            zh: `端侧推理失败：${localErrorMessage}。Agentrix 没有回退到云端。请检查本地模型包和运行时后重试，或手动切换模型。`,
+          }));
+          return;
         }
       }
 
       // Try OpenClaw proxy first (requires active instance)
-      // If local model was selected but bridge unavailable, fall back to default cloud model
       const proxyModelId = isLocalOnlyModelId(effectiveModelId)
         ? remoteResolvedModelId
         : effectiveModelId;
@@ -1578,7 +1682,7 @@ export function AgentChatScreen() {
             },
             onDone: () => resolve(),
             onError: (err) => {
-              proxyFailureMessage = err || t({ en: 'OpenClaw agent connection failed.', zh: 'OpenClaw 鏅鸿兘浣撹繛鎺ュけ璐ャ€? });
+              proxyFailureMessage = err || t({ en: 'OpenClaw agent connection failed.', zh: 'OpenClaw 智能体连接失败。' });
               resolve();
             },
           });
@@ -1606,20 +1710,20 @@ export function AgentChatScreen() {
               }
             }
           } catch (error: any) {
-            proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 鏅鸿兘浣撳綋鍓嶄笉鍙敤銆? });
+            proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
           }
         }
       }
 
       if (!streamSucceeded) {
         if (instanceId) {
-          const message = proxyFailureMessage || t({ en: 'OpenClaw agent is offline. Reconnect the agent or try again shortly.', zh: 'OpenClaw 鏅鸿兘浣撳綋鍓嶇绾匡紝璇烽噸鏂拌繛鎺ュ悗鍐嶈瘯銆? });
+          const message = proxyFailureMessage || t({ en: 'OpenClaw agent is offline. Reconnect the agent or try again shortly.', zh: 'OpenClaw 智能体当前离线，请重新连接后再试。' });
           addVoiceDiagnostic('agent-chat', 'proxy-send-failed', {
             instanceId,
             message,
           });
           resetVoicePhaseAfterResponse();
-          appendToStreamingMessage(assistantMsgId, `鈿狅笍 ${message}`);
+          appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
         } else {
           const history = buildHistory(
             currentMsgs,
@@ -1641,7 +1745,7 @@ export function AgentChatScreen() {
               onDone: () => resolve(),
               onError: (err) => {
                 resetVoicePhaseAfterResponse();
-                appendToStreamingMessage(assistantMsgId, `鈿狅笍 ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '鏃犳硶杩炴帴 AI 鏈嶅姟锛岃妫€鏌ョ綉缁滃悗閲嶈瘯銆? })}`);
+                appendToStreamingMessage(assistantMsgId, `⚠️ ${err || t({ en: 'Could not reach AI service. Check your connection.', zh: '无法连接 AI 服务，请检查网络后重试。' })}`);
                 resolve();
               },
             });
@@ -1662,12 +1766,12 @@ export function AgentChatScreen() {
             return m;
           }
           if (!m.content && !m.thoughts?.length) {
-            return { ...m, content: t({ en: '鈿狅笍 No response received. Please check your connection or try again.', zh: '鈿狅笍 鏆傛湭鏀跺埌鍥炲锛岃妫€鏌ョ綉缁滄垨绋嶅悗閲嶈瘯銆? }), streaming: false, error: true };
+            return { ...m, content: t({ en: '⚠️ No response received. Please check your connection or try again.', zh: '⚠️ 暂未收到回复，请检查网络或稍后重试。' }), streaming: false, error: true };
           }
           finalContent = m.content;
           return { ...m, streaming: false };
         });
-        if (finalContent && !finalContent.startsWith('鈿狅笍')) {
+        if (finalContent && !finalContent.startsWith('⚠️')) {
           enqueueStreamedSpeech('', true);
         }
         return updated;
@@ -1679,12 +1783,12 @@ export function AgentChatScreen() {
       }
       const rawMsg = err?.message || '';
       const friendlyMsg = rawMsg.includes('UnknownError') || rawMsg.includes('AI service error')
-        ? t({ en: 'AI service temporarily unavailable. Please try again or switch to another model.', zh: 'AI 鏈嶅姟鏆傛椂涓嶅彲鐢紝璇烽噸璇曟垨鍒囨崲鍏朵粬妯″瀷銆? })
-        : rawMsg || t({ en: 'Something went wrong', zh: '鍙戠敓浜嗕竴浜涢棶棰? });
+        ? t({ en: 'AI service temporarily unavailable. Please try again or switch to another model.', zh: 'AI 服务暂时不可用，请重试或切换其他模型。' })
+        : rawMsg || t({ en: 'Something went wrong', zh: '发生了一些问题' });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
-            ? { ...m, content: `鈿狅笍 ${friendlyMsg}`, streaming: false, error: true }
+            ? { ...m, content: `⚠️ ${friendlyMsg}`, streaming: false, error: true }
             : m
         )
       );
@@ -1729,8 +1833,8 @@ export function AgentChatScreen() {
             id: `assistant-${Date.now()}-continue-hint`,
             role: 'assistant',
             content: autoContinueReason === 'tool_use'
-              ? t({ en: '鈿狅笍 The task paused before finishing. Send "Continue" to resume the remaining steps.', zh: '鈿狅笍 浠诲姟鍦ㄥ畬鎴愬墠鏆傚仠浜嗭紝鍙戦€佲€滅户缁€濆嵆鍙帴鐫€鎵ц鍓╀綑姝ラ銆? })
-              : t({ en: '鈿狅笍 The reply is still incomplete. Send "Continue" to keep generating.', zh: '鈿狅笍 鍥炲浠嶆湭瀹屾垚锛屽彂閫佲€滅户缁€濆嵆鍙户缁敓鎴愩€? }),
+              ? t({ en: '⚠️ The task paused before finishing. Send "Continue" to resume the remaining steps.', zh: '⚠️ 任务在完成前暂停了，发送“继续”即可接着执行剩余步骤。' })
+              : t({ en: '⚠️ The reply is still incomplete. Send "Continue" to keep generating.', zh: '⚠️ 回复仍未完成，发送“继续”即可继续生成。' }),
             createdAt: Date.now(),
           },
         ]);
@@ -1750,7 +1854,7 @@ export function AgentChatScreen() {
       const loc = await DeviceBridgingService.getCurrentLocation();
       handleSend(`[System] Current GPS Location:\nLatitude: ${loc.latitude}\nLongitude: ${loc.longitude}\nAccuracy: ${loc.accuracy}m`);
     } catch (e: any) {
-      Alert.alert(t({ en: 'Location Error', zh: '瀹氫綅閿欒' }), e.message);
+      Alert.alert(t({ en: 'Location Error', zh: '定位错误' }), e.message);
     }
   };
 
@@ -1767,15 +1871,15 @@ export function AgentChatScreen() {
 
       if (!permission?.granted) {
         Alert.alert(
-          t({ en: 'Camera Permission Required', zh: '闇€瑕佺浉鏈烘潈闄? }),
-          t({ en: 'Allow camera access to take a photo.', zh: '璇峰厛鎺堜簣鐩告満鏉冮檺鍚庡啀鎷嶇収銆? }),
+          t({ en: 'Camera Permission Required', zh: '需要相机权限' }),
+          t({ en: 'Allow camera access to take a photo.', zh: '请先授予相机权限后再拍照。' }),
         );
         return;
       }
 
       setShowCameraModal(true);
     } catch (error: any) {
-      Alert.alert(t({ en: 'Camera Error', zh: '鎷嶇収閿欒' }), error?.message || t({ en: 'Failed to open camera.', zh: '鎵撳紑鐩告満澶辫触銆? }));
+      Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), error?.message || t({ en: 'Failed to open camera.', zh: '打开相机失败。' }));
     }
   }, [cameraPermission, requestCameraPermission, t]);
 
@@ -1807,7 +1911,7 @@ export function AgentChatScreen() {
       void runSelectionHaptic();
       setShowCameraModal(false);
     } catch (error: any) {
-      Alert.alert(t({ en: 'Camera Error', zh: '鎷嶇収閿欒' }), error?.message || t({ en: 'Failed to capture photo.', zh: '鎷嶇収澶辫触銆? }));
+      Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), error?.message || t({ en: 'Failed to capture photo.', zh: '拍照失败。' }));
     } finally {
       setCapturingPhoto(false);
     }
@@ -1837,7 +1941,7 @@ export function AgentChatScreen() {
         });
       }
     } catch (e: any) {
-      Alert.alert(t({ en: 'Photo Error', zh: '鍥剧墖閿欒' }), e.message);
+      Alert.alert(t({ en: 'Photo Error', zh: '图片错误' }), e.message);
     }
   };
 
@@ -1853,7 +1957,7 @@ export function AgentChatScreen() {
         });
       }
     } catch (e: any) {
-      Alert.alert(t({ en: 'File Error', zh: '鏂囦欢閿欒' }), e.message);
+      Alert.alert(t({ en: 'File Error', zh: '文件错误' }), e.message);
     }
   };
 
@@ -1862,17 +1966,17 @@ export function AgentChatScreen() {
     try {
       await DeviceBridgingService.writeClipboard(input);
       void runSelectionHaptic();
-      Alert.alert(t({ en: 'Copied', zh: '宸插鍒? }), t({ en: 'Draft copied to clipboard.', zh: '鏈彂閫佸唴瀹瑰凡澶嶅埗鍒板壀璐存澘銆? }));
+      Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Draft copied to clipboard.', zh: '未发送内容已复制到剪贴板。' }));
     } catch (error: any) {
-      Alert.alert(t({ en: 'Copy Failed', zh: '澶嶅埗澶辫触' }), error?.message || t({ en: 'Failed to copy draft.', zh: '澶嶅埗鑽夌澶辫触銆? }));
+      Alert.alert(t({ en: 'Copy Failed', zh: '复制失败' }), error?.message || t({ en: 'Failed to copy draft.', zh: '复制草稿失败。' }));
     }
   }, [input, t]);
 
   const handleClearChat = () => {
-    Alert.alert(t({ en: 'Start new session?', zh: '寮€濮嬫柊浼氳瘽锛? }), t({ en: 'Chat history will be cleared.', zh: '褰撳墠鑱婂ぉ璁板綍灏嗚娓呯┖銆? }), [
-      { text: t({ en: 'Cancel', zh: '鍙栨秷' }), style: 'cancel' },
+    Alert.alert(t({ en: 'Start new session?', zh: '开始新会话？' }), t({ en: 'Chat history will be cleared.', zh: '当前聊天记录将被清空。' }), [
+      { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
       {
-        text: t({ en: 'New Session', zh: '鏂颁細璇? }),
+        text: t({ en: 'New Session', zh: '新会话' }),
         style: 'destructive',
         onPress: () => {
           streamAbortRef.current?.abort();
@@ -1883,11 +1987,11 @@ export function AgentChatScreen() {
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `浣犲ソ锛佹垜鏄?**${instanceName}**锛屼綘鐨勪釜浜烘櫤鑳戒綋銆傛帴涓嬫潵鎯宠鎴戝府浣犲仛浠€涔堬紵` }),
+            content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
           // Update multi-session tracking
-          const newSession: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '鏂板璇? }), createdAt: Date.now() };
+          const newSession: ChatSession = { id: sessionIdRef.current, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
           setChatSessions((prev) => {
             const updated = [newSession, ...prev].slice(0, MAX_SESSIONS);
             saveSessions(instanceId, updated);
@@ -1921,7 +2025,7 @@ export function AgentChatScreen() {
         setMessages([{
           id: 'welcome',
           role: 'assistant',
-          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `浣犲ソ锛佹垜鏄?**${instanceName}**锛屼綘鐨勪釜浜烘櫤鑳戒綋銆傛帴涓嬫潵鎯宠鎴戝府浣犲仛浠€涔堬紵` }),
+          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
           createdAt: Date.now(),
         }]);
       }
@@ -1940,7 +2044,7 @@ export function AgentChatScreen() {
       mmkv.set(currentKey, JSON.stringify(messages.filter(m => !m.streaming)));
     } catch {}
     const newId = `session-${Date.now()}`;
-    const newSession: ChatSession = { id: newId, label: t({ en: 'New Chat', zh: '鏂板璇? }), createdAt: Date.now() };
+    const newSession: ChatSession = { id: newId, label: t({ en: 'New Chat', zh: '新对话' }), createdAt: Date.now() };
     streamAbortRef.current?.abort();
     sessionIdRef.current = newId;
     setActiveSessionId(newId);
@@ -1952,7 +2056,7 @@ export function AgentChatScreen() {
     setMessages([{
       id: 'welcome',
       role: 'assistant',
-      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `浣犲ソ锛佹垜鏄?**${instanceName}**锛屼綘鐨勪釜浜烘櫤鑳戒綋銆傛帴涓嬫潵鎯宠鎴戝府浣犲仛浠€涔堬紵` }),
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
       createdAt: Date.now(),
     }]);
     setInput('');
@@ -1984,7 +2088,7 @@ export function AgentChatScreen() {
   const handleQuoteMessage = useCallback((msg: Message) => {
     setQuotedMessage(msg);
     const snippet = msg.content?.slice(0, 60)?.replace(/\n/g, ' ') || '';
-    setInput((prev) => prev ? prev : `> ${snippet}鈥n`);
+    setInput((prev) => prev ? prev : `> ${snippet}…\n`);
     void runSelectionHaptic();
   }, []);
 
@@ -1992,7 +2096,7 @@ export function AgentChatScreen() {
     const text = getCopyableMessageText(msg);
     if (text) {
       DeviceBridgingService.writeClipboard(text);
-      Alert.alert(t({ en: 'Saved', zh: '宸蹭繚瀛? }), t({ en: 'Message copied 鈥?paste into Notes.', zh: '娑堟伅宸插鍒讹紝鍙矘璐村埌绗旇銆? }));
+      Alert.alert(t({ en: 'Saved', zh: '已保存' }), t({ en: 'Message copied — paste into Notes.', zh: '消息已复制，可粘贴到笔记。' }));
     }
   }, [t]);
 
@@ -2010,7 +2114,7 @@ export function AgentChatScreen() {
     );
   };
 
-  // Sprint 2: Auto-provision 鈥?when no agent instance exists, show friendly welcome
+  // Sprint 2: Auto-provision — when no agent instance exists, show friendly welcome
   const handleAutoProvision = useCallback(async () => {
     if (provisioning) return;
     setProvisioning(true);
@@ -2058,10 +2162,10 @@ export function AgentChatScreen() {
     return (
       <SafeAreaView style={styles.welcomeContainer}>
         <View style={styles.welcomeContent}>
-          <Text style={styles.welcomeEmoji}>{'馃'}</Text>
-          <Text style={styles.welcomeTitle}>{t({ en: 'Hi, I\'m your AI Agent!', zh: '浣犲ソ锛屾垜鏄綘鐨?AI 鏅鸿兘浣擄紒' })}</Text>
+          <Text style={styles.welcomeEmoji}>{'🤖'}</Text>
+          <Text style={styles.welcomeTitle}>{t({ en: 'Hi, I\'m your AI Agent!', zh: '你好，我是你的 AI 智能体！' })}</Text>
           <Text style={styles.welcomeSubtitle}>
-            {t({ en: 'Let me set up everything for you. One tap and we can start chatting.', zh: '璁╂垜甯綘鍑嗗濂戒竴鍒囷紝涓€閿嵆鍙紑濮嬪璇濄€? })}
+            {t({ en: 'Let me set up everything for you. One tap and we can start chatting.', zh: '让我帮你准备好一切，一键即可开始对话。' })}
           </Text>
           <TouchableOpacity
             style={styles.welcomeBtn}
@@ -2071,14 +2175,14 @@ export function AgentChatScreen() {
             {provisioning ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.welcomeBtnText}>{t({ en: 'Get Started', zh: '绔嬪嵆寮€濮? })}</Text>
+              <Text style={styles.welcomeBtnText}>{t({ en: 'Get Started', zh: '立即开始' })}</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.welcomeSecondaryBtn}
             onPress={() => navigation.navigate('DeploySelect')}
           >
-            <Text style={styles.welcomeSecondaryText}>{t({ en: 'Advanced Setup', zh: '楂樼骇閰嶇疆' })}</Text>
+            <Text style={styles.welcomeSecondaryText}>{t({ en: 'Advanced Setup', zh: '高级配置' })}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -2102,16 +2206,16 @@ export function AgentChatScreen() {
             onPress={() => { try { (navigation as any).openDrawer(); } catch {} }}
             style={styles.chatBarBackBtn}
           >
-            <Text style={styles.chatBarBackIcon}>{'鈽?}</Text>
+            <Text style={styles.chatBarBackIcon}>{'☰'}</Text>
           </TouchableOpacity>
-          <Text style={styles.chatBarTitle} numberOfLines={1}>馃 {instanceName}</Text>
+          <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
           <TouchableOpacity
             testID="agent-chat-settings-button"
             accessibilityLabel="agent-chat-settings-button"
             onPress={() => setShowSettingsSheet(true)}
             style={styles.chatBarGearBtn}
           >
-            <Text style={styles.chatBarGearIcon}>鈿欙笍</Text>
+            <Text style={styles.chatBarGearIcon}>⚙️</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -2130,7 +2234,7 @@ export function AgentChatScreen() {
       {loadingHistory && (
         <View style={styles.historyLoader}>
           <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={styles.historyLoaderText}>{t({ en: 'Loading history鈥?, zh: '姝ｅ湪鍔犺浇鍘嗗彶璁板綍鈥? })}</Text>
+          <Text style={styles.historyLoaderText}>{t({ en: 'Loading history…', zh: '正在加载历史记录…' })}</Text>
         </View>
       )}
 
@@ -2144,7 +2248,7 @@ export function AgentChatScreen() {
       {isOffline && (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f59e0b', paddingVertical: 6 }}>
           <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
-            {t({ en: 'Offline 鈥?messages will be sent when reconnected', zh: '绂荤嚎妯″紡 鈥?鎭㈠杩炴帴鍚庤嚜鍔ㄥ彂閫? })}
+            {t({ en: 'Offline — messages will be sent when reconnected', zh: '离线模式 — 恢复连接后自动发送' })}
           </Text>
         </View>
       )}
@@ -2153,7 +2257,7 @@ export function AgentChatScreen() {
         <View style={styles.remoteClipboardBanner}>
           <View style={styles.remoteClipboardTextWrap}>
             <Text style={styles.remoteClipboardTitle}>
-              {t({ en: 'Desktop clipboard available', zh: '妫€娴嬪埌妗岄潰鍓创鏉? })}
+              {t({ en: 'Desktop clipboard available', zh: '检测到桌面剪贴板' })}
             </Text>
             <Text style={styles.remoteClipboardSubtitle} numberOfLines={2}>
               {remoteClipboard.text}
@@ -2161,10 +2265,10 @@ export function AgentChatScreen() {
           </View>
           <View style={styles.remoteClipboardActions}>
             <TouchableOpacity style={styles.remoteClipboardActionBtn} onPress={handleInsertDesktopClipboard}>
-              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Insert', zh: '鎻掑叆' })}</Text>
+              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Insert', zh: '插入' })}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.remoteClipboardActionBtn} onPress={handleCopyDesktopClipboard}>
-              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Copy', zh: '澶嶅埗' })}</Text>
+              <Text style={styles.remoteClipboardActionText}>{t({ en: 'Copy', zh: '复制' })}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2193,7 +2297,7 @@ export function AgentChatScreen() {
           allMessagesRef.current.length > messages.length ? (
             <TouchableOpacity onPress={loadOlderMessages} style={{ alignItems: 'center', paddingVertical: 8 }}>
               <Text style={{ color: colors.accent, fontSize: 13 }}>
-                {t({ en: 'Load older messages', zh: '鍔犺浇鏇存棭娑堟伅' })}
+                {t({ en: 'Load older messages', zh: '加载更早消息' })}
               </Text>
             </TouchableOpacity>
           ) : null
@@ -2224,22 +2328,24 @@ export function AgentChatScreen() {
                   {voicePhase === 'idle' && (duplexMode
                     ? (duplexUsesRealtimeChannel
                       ? (realtimeConnected
-                        ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '瀹炴椂鍙屽伐宸插氨缁紝鐩存帴璇磋瘽鍗冲彲锛屾棤闇€鍐嶆寜浣忔寜閽€? })
-                        : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '璇煶浼氳瘽宸插氨缁紝姝ｅ湪杩炴帴瀹炴椂閫氶亾骞惰嚜鍔ㄥ紑濮嬭亞鍚€? }))
-                      : t({ en: 'Live voice is ready. Speak naturally to chat with the local model.', zh: '杩炵画璇煶宸插氨缁紝鐩存帴璇磋瘽鍗冲彲涓庢湰鍦版ā鍨嬪璇濄€? }))
-                    : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '璇煶闈㈡澘宸叉墦寮€銆傛寜浣忚璇濓紝鎴栧垏鍒板疄鏃舵ā寮忓紑濮嬪璇濄€? }))}
+                        ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
+                        : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
+                      : (localVoicePlan.localAudioInputReady
+                        ? t({ en: 'Live local voice is ready. Supported short turns can stay on-device; unsupported turns are blocked instead of silently switching to the cloud.', zh: '连续本地语音已就绪。受支持的简短轮次会留在端侧；不支持的轮次会被直接拦截，不会再偷偷切到云端。' })
+                        : t({ en: 'Live voice is ready for the local text path. Unsupported multimodal turns will be blocked instead of silently switching to the cloud.', zh: '连续语音已就绪，可用于本地文本链路。不支持的多模态轮次会被直接拦截，不会再偷偷切到云端。' })))
+                    : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                   {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                     ? duplexMode
                       ? (duplexUsesRealtimeChannel
-                        ? t({ en: 'Realtime listening鈥?pause briefly to send', zh: '瀹炴椂鑱嗗惉涓€?绋嶅仠鍗冲彂閫? })
-                        : t({ en: 'Live listening鈥?pause briefly to send', zh: '杩炵画鑱嗗惉涓€?绋嶅仠鍗冲彂閫? }))
-                      : t({ en: 'Listening鈥?tap again to send', zh: '姝ｅ湪鑱嗗惉鈥?鍐嶇偣涓€娆″彂閫? })
-                    : t({ en: 'Listening鈥?release to send', zh: '姝ｅ湪鑱嗗惉鈥?鏉惧紑鍙戦€? }))}
-                {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice鈥?, zh: '姝ｅ湪杞啓浣犵殑璇煶鈥? })}
-                {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply鈥?, zh: '鏅鸿兘浣撴鍦ㄥ噯澶囧洖澶嶁€? })}
+                        ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                        : t({ en: 'Live listening… pause briefly to send', zh: '连续聆听中… 稍停即发送' }))
+                      : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
+                    : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
+                {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
+                {voicePhase === 'thinking' && t({ en: 'Agent is preparing a reply…', zh: '智能体正在准备回复…' })}
                   {voicePhase === 'speaking' && (voiceInteractionMode === 'tap'
-                    ? t({ en: 'Agent is speaking鈥?just speak to interrupt immediately', zh: '鏅鸿兘浣撴鍦ㄨ璇濃€?浣犵洿鎺ュ紑鍙ｅ嵆鍙珛鍒绘墦鏂? })
-                    : t({ en: 'Agent is speaking鈥?press and hold to interrupt', zh: '鏅鸿兘浣撴鍦ㄦ挱鎶モ€?鎸変綇鍗冲彲鎵撴柇' }))}
+                    ? t({ en: 'Agent is speaking… just speak to interrupt immediately', zh: '智能体正在说话… 你直接开口即可立刻打断' })
+                    : t({ en: 'Agent is speaking… press and hold to interrupt', zh: '智能体正在播报… 按住即可打断' }))}
               </Text>
               {!!transcriptPreview && (voicePhase === 'transcribing' || voicePhase === 'thinking') && (
                 <Text style={styles.voiceTranscriptPreview} numberOfLines={2}>
@@ -2248,12 +2354,12 @@ export function AgentChatScreen() {
               )}
               {liveSpeechPermissionState === 'denied' && (
                 <Text style={styles.voiceTranscriptPreview}>
-                  {t({ en: 'Microphone permission is blocked. Re-enable it to resume live voice.', zh: '楹﹀厠椋庢潈闄愯鎷掔粷锛屾仮澶嶆潈闄愬悗鎵嶈兘缁х画瀹炴椂璇煶銆? })}
+                  {t({ en: 'Microphone permission is blocked. Re-enable it to resume live voice.', zh: '麦克风权限被拒绝，恢复权限后才能继续实时语音。' })}
                 </Text>
               )}
               {duplexMode && liveListening && (
                 <Text style={styles.voiceTranscriptPreview} numberOfLines={1}>
-                  {t({ en: `Input level ${Math.max(0, liveVoiceVolume).toFixed(1)}`, zh: `杈撳叆闊抽噺 ${Math.max(0, liveVoiceVolume).toFixed(1)}` })}
+                  {t({ en: `Input level ${Math.max(0, liveVoiceVolume).toFixed(1)}`, zh: `输入音量 ${Math.max(0, liveVoiceVolume).toFixed(1)}` })}
                 </Text>
               )}
             </View>
@@ -2262,25 +2368,25 @@ export function AgentChatScreen() {
           {shouldShowVoiceQuickGuide && (
             <View style={styles.voiceQuickGuideCard}>
               <Text style={styles.voiceQuickGuideTitle}>
-                {t({ en: 'Voice Quick Start', zh: '璇煶蹇€熷紑濮? })}
+                {t({ en: 'Voice Quick Start', zh: '语音快速开始' })}
               </Text>
               <Text style={styles.voiceQuickGuideText}>
-                {t({ en: '1. From the home screen, say your wake phrase or tap the floating ball once.', zh: '1. 鍦ㄩ椤电洿鎺ヨ鍞ら啋璇嶏紝鎴栫偣涓€娆℃偓娴悆杩涘叆璇煶銆? })}
+                {t({ en: '1. From the home screen, say your wake phrase or tap the floating ball once.', zh: '1. 在首页直接说唤醒词，或点一次悬浮球进入语音。' })}
               </Text>
               <Text style={styles.voiceQuickGuideText}>
-                {t({ en: '2. In live mode, speak naturally. If the mic is blocked, re-enable microphone and speech permissions.', zh: '2. 杩涘叆瀹炴椂妯″紡鍚庣洿鎺ヨ嚜鐒惰璇濄€傚鏋滈害鍏嬮琚嫤鎴紝璇锋仮澶嶉害鍏嬮鍜岃闊宠瘑鍒潈闄愩€? })}
+                {t({ en: '2. In live mode, speak naturally. If the mic is blocked, re-enable microphone and speech permissions.', zh: '2. 进入实时模式后直接自然说话。如果麦克风被拦截，请恢复麦克风和语音识别权限。' })}
               </Text>
               <Text style={styles.voiceQuickGuideText}>
-                {t({ en: '3. Use the gear in the top-right corner to change wake phrase, voice persona, and playback behavior.', zh: '3. 鍙充笂瑙掗娇杞彲浠ヤ慨鏀瑰敜閱掕瘝銆佹櫤鑳戒綋闊宠壊鍜屾挱鎶ヨ涓恒€? })}
+                {t({ en: '3. Use the gear in the top-right corner to change wake phrase, voice persona, and playback behavior.', zh: '3. 右上角齿轮可以修改唤醒词、智能体音色和播报行为。' })}
               </Text>
               <View style={styles.voiceQuickGuideActions}>
                 {liveSpeechPermissionState === 'denied' && (
                   <TouchableOpacity style={styles.voiceQuickGuideActionBtn} onPress={() => Linking.openSettings().catch(() => {})}>
-                    <Text style={styles.voiceQuickGuideActionText}>{t({ en: 'Open System Settings', zh: '鎵撳紑绯荤粺璁剧疆' })}</Text>
+                    <Text style={styles.voiceQuickGuideActionText}>{t({ en: 'Open System Settings', zh: '打开系统设置' })}</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity style={styles.voiceQuickGuideActionBtn} onPress={() => setShowSettingsSheet(true)}>
-                  <Text style={styles.voiceQuickGuideActionText}>{t({ en: 'Open Voice Settings', zh: '鎵撳紑璇煶璁剧疆' })}</Text>
+                  <Text style={styles.voiceQuickGuideActionText}>{t({ en: 'Open Voice Settings', zh: '打开语音设置' })}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2294,10 +2400,10 @@ export function AgentChatScreen() {
         {quotedMessage && (
           <View style={sf.quoteChip}>
             <Text style={sf.quoteChipText} numberOfLines={1}>
-              馃挰 {quotedMessage.content?.slice(0, 50)?.replace(/\n/g, ' ')}鈥?
+              💬 {quotedMessage.content?.slice(0, 50)?.replace(/\n/g, ' ')}…
             </Text>
             <TouchableOpacity onPress={() => { setQuotedMessage(null); setInput(''); }}>
-              <Text style={sf.quoteChipClose}>鉁?/Text>
+              <Text style={sf.quoteChipClose}>✕</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -2308,37 +2414,37 @@ export function AgentChatScreen() {
                 {attachment.isImage ? (
                   <Image source={{ uri: attachment.publicUrl }} style={styles.pendingAttachmentThumb} resizeMode="cover" />
                 ) : (
-                  <Text style={styles.pendingAttachmentIcon}>馃搸</Text>
+                  <Text style={styles.pendingAttachmentIcon}>📎</Text>
                 )}
                 <View style={styles.pendingAttachmentMeta}>
                   <Text style={styles.pendingAttachmentName} numberOfLines={1}>{attachment.originalName}</Text>
                   <Text style={styles.pendingAttachmentSub}>{formatAttachmentSize(attachment.size)}</Text>
                 </View>
                 <TouchableOpacity onPress={() => removePendingAttachment(attachment.fileName)}>
-                  <Text style={styles.pendingAttachmentRemove}>鉁?/Text>
+                  <Text style={styles.pendingAttachmentRemove}>✕</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
         )}
-      {/* Attachment toolbar 鈥?slides above input */}
+      {/* Attachment toolbar — slides above input */}
       {showAttachToolbar && (
         <View style={styles.attachToolbar}>
           <TouchableOpacity style={styles.attachToolbarItem} onPress={handleAttachCamera}>
-            <Text style={styles.attachToolbarIcon}>馃摲</Text>
-            <Text style={styles.attachToolbarLabel}>{t({ en: 'Camera', zh: '鎷嶇収' })}</Text>
+            <Text style={styles.attachToolbarIcon}>📷</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'Camera', zh: '拍照' })}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.attachToolbarItem} onPress={handleAttachAlbum}>
-            <Text style={styles.attachToolbarIcon}>馃柤锔?/Text>
-            <Text style={styles.attachToolbarLabel}>{t({ en: 'Album', zh: '鐩稿唽' })}</Text>
+            <Text style={styles.attachToolbarIcon}>🖼️</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'Album', zh: '相册' })}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.attachToolbarItem} onPress={handleAttachFile}>
-            <Text style={styles.attachToolbarIcon}>馃搸</Text>
-            <Text style={styles.attachToolbarLabel}>{t({ en: 'File', zh: '鏂囦欢' })}</Text>
+            <Text style={styles.attachToolbarIcon}>📎</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'File', zh: '文件' })}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.attachToolbarItem} onPress={handleDeviceGPS}>
-            <Text style={styles.attachToolbarIcon}>馃搷</Text>
-            <Text style={styles.attachToolbarLabel}>{t({ en: 'GPS', zh: '浣嶇疆' })}</Text>
+            <Text style={styles.attachToolbarIcon}>📍</Text>
+            <Text style={styles.attachToolbarLabel}>{t({ en: 'GPS', zh: '位置' })}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2346,7 +2452,7 @@ export function AgentChatScreen() {
       <View style={styles.inputRow}>
         {voiceMode ? (
           duplexMode && duplexSessionConnected ? (
-            /* Active duplex voice session 鈥?status display */
+            /* Active duplex voice session — status display */
             <TouchableOpacity
               testID="chat-voice-action-button"
               accessibilityLabel={`chat-voice-action-button:call:${voicePhase}:${liveListening ? 'live' : 'idle'}`}
@@ -2359,23 +2465,23 @@ export function AgentChatScreen() {
             >
               <Text style={styles.holdTalkText}>
                 {liveListening
-                  ? t({ en: '馃帣  Listening鈥?, zh: '馃帣  鑱嗗惉涓€? })
+                  ? t({ en: '🎙  Listening…', zh: '🎙  聆听中…' })
                   : voicePhase === 'thinking'
-                  ? t({ en: '馃挱  Thinking鈥?, zh: '馃挱  鎬濊€冧腑鈥? })
+                  ? t({ en: '💭  Thinking…', zh: '💭  思考中…' })
                   : voicePhase === 'speaking'
-                  ? t({ en: '馃攰  Speaking鈥?, zh: '馃攰  鍥炲涓€? })
+                  ? t({ en: '🔊  Speaking…', zh: '🔊  回复中…' })
                   : (duplexUsesRealtimeChannel
-                    ? t({ en: '馃摓  In Call 鈥?Tap to End', zh: '馃摓  閫氳瘽涓?鈥?鐐瑰嚮鎸傛柇' })
-                    : t({ en: '馃帣  Live Voice 鈥?Tap to End', zh: '馃帣  杩炵画璇煶涓?鈥?鐐瑰嚮缁撴潫' }))}
+                    ? t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })
+                    : t({ en: '🎙  Live Voice — Tap to End', zh: '🎙  连续语音中 — 点击结束' }))}
               </Text>
             </TouchableOpacity>
           ) : duplexMode && duplexUsesRealtimeChannel && !realtimeConnected ? (
-            /* Connecting to realtime voice 鈥?show connecting state */
+            /* Connecting to realtime voice — show connecting state */
             <View
               style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
             >
               <Text style={styles.holdTalkText}>
-                {t({ en: '馃摓  Connecting鈥?, zh: '馃摓  姝ｅ湪杩炴帴鈥? })}
+                {t({ en: '📞  Connecting…', zh: '📞  正在连接…' })}
               </Text>
             </View>
           ) : (
@@ -2389,7 +2495,7 @@ export function AgentChatScreen() {
               activeOpacity={0.85}
             >
               <Text style={styles.holdTalkText}>
-                {isRecording ? t({ en: '馃敶  Release to Send', zh: '馃敶  鏉惧紑鍙戦€? }) : t({ en: '馃帣  Hold to Talk', zh: '馃帣  鎸変綇璇磋瘽' })}
+                {isRecording ? t({ en: '🔴  Release to Send', zh: '🔴  松开发送' }) : t({ en: '🎙  Hold to Talk', zh: '🎙  按住说话' })}
               </Text>
             </TouchableOpacity>
           )
@@ -2399,7 +2505,7 @@ export function AgentChatScreen() {
             testID="chat-text-input"
             accessibilityLabel="chat-text-input"
             style={styles.input}
-            placeholder={t({ en: `Message ${instanceName}...`, zh: `缁?${instanceName} 鍙戞秷鎭€ })}
+            placeholder={t({ en: `Message ${instanceName}...`, zh: `给 ${instanceName} 发消息…` })}
             placeholderTextColor={colors.textMuted}
             value={input}
             onChangeText={setInput}
@@ -2411,7 +2517,7 @@ export function AgentChatScreen() {
           />
         )}
 
-        {/* Attach button 鈥?always visible (both voice & text mode) */}
+        {/* Attach button — always visible (both voice & text mode) */}
         <TouchableOpacity
           style={[styles.attachBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
           onPress={handleAttachmentAction}
@@ -2420,7 +2526,7 @@ export function AgentChatScreen() {
           {uploadingAttachment ? (
             <ActivityIndicator size="small" color={colors.textPrimary} />
           ) : (
-            <Text style={styles.attachBtnIcon}>{showAttachToolbar ? '鉁? : '+'}</Text>
+            <Text style={styles.attachBtnIcon}>{showAttachToolbar ? '✕' : '+'}</Text>
           )}
         </TouchableOpacity>
 
@@ -2434,7 +2540,7 @@ export function AgentChatScreen() {
             {sending || uploadingAttachment ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={styles.sendIcon}>猬?/Text>
+              <Text style={styles.sendIcon}>⬆</Text>
             )}
           </TouchableOpacity>
         ) : !voiceMode ? (
@@ -2446,8 +2552,8 @@ export function AgentChatScreen() {
               onPress={() => {
                 if (!liveVoiceAvailable) {
                   Alert.alert(
-                    t({ en: 'Live Voice Unavailable', zh: '杩炵画璇煶涓嶅彲鐢? }),
-                    t({ en: 'This build does not have native live speech recognition available yet.', zh: '褰撳墠鏋勫缓鏆傛湭鎻愪緵鍘熺敓瀹炴椂璇煶璇嗗埆鑳藉姏銆? }),
+                    t({ en: 'Live Voice Unavailable', zh: '连续语音不可用' }),
+                    t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
                   );
                   return;
                 }
@@ -2456,7 +2562,7 @@ export function AgentChatScreen() {
                 setShowAttachToolbar(false);
               }}
             >
-              <Text style={styles.modeToggleIcon}>馃摓</Text>
+              <Text style={styles.modeToggleIcon}>📞</Text>
             </TouchableOpacity>
             <TouchableOpacity
               testID="chat-voice-mode-toggle"
@@ -2464,7 +2570,7 @@ export function AgentChatScreen() {
               style={styles.modeToggleBtn}
               onPress={() => { setVoiceMode(true); setShowAttachToolbar(false); }}
             >
-              <Text style={styles.modeToggleIcon}>馃帳</Text>
+              <Text style={styles.modeToggleIcon}>🎤</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -2474,7 +2580,7 @@ export function AgentChatScreen() {
             style={styles.modeToggleBtn}
             onPress={() => { setVoiceMode(false); setShowAttachToolbar(false); }}
           >
-            <Text style={styles.modeToggleIcon}>鈱笍</Text>
+            <Text style={styles.modeToggleIcon}>⌨️</Text>
           </TouchableOpacity>
         )}
 
@@ -2500,8 +2606,8 @@ export function AgentChatScreen() {
             />
           ) : (
             <View style={styles.cameraPermissionState}>
-              <Text style={styles.cameraPermissionTitle}>{t({ en: 'Camera Permission Required', zh: '闇€瑕佺浉鏈烘潈闄? })}</Text>
-              <Text style={styles.cameraPermissionText}>{t({ en: 'Enable camera access, then try again.', zh: '寮€鍚浉鏈烘潈闄愬悗鍐嶉噸璇曘€? })}</Text>
+              <Text style={styles.cameraPermissionTitle}>{t({ en: 'Camera Permission Required', zh: '需要相机权限' })}</Text>
+              <Text style={styles.cameraPermissionText}>{t({ en: 'Enable camera access, then try again.', zh: '开启相机权限后再重试。' })}</Text>
             </View>
           )}
 
@@ -2511,13 +2617,13 @@ export function AgentChatScreen() {
               onPress={() => !capturingPhoto && setShowCameraModal(false)}
               disabled={capturingPhoto}
             >
-              <Text style={styles.cameraCloseBtnText}>鉁?/Text>
+              <Text style={styles.cameraCloseBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.cameraBottomBar}>
             <TouchableOpacity style={styles.cameraAuxBtn} onPress={handleAttachAlbum} disabled={capturingPhoto}>
-              <Text style={styles.cameraAuxBtnText}>{t({ en: 'Album', zh: '鐩稿唽' })}</Text>
+              <Text style={styles.cameraAuxBtnText}>{t({ en: 'Album', zh: '相册' })}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.cameraCaptureBtn, capturingPhoto && styles.cameraCaptureBtnDisabled]}
@@ -2540,27 +2646,27 @@ export function AgentChatScreen() {
             )}
           </View>
           <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setPreviewImageUri(null)}>
-            <Text style={styles.imagePreviewCloseText}>鉁?/Text>
+            <Text style={styles.imagePreviewCloseText}>✕</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
-      {/* Settings Bottom Sheet 鈥?replaces cluttered chatBar controls */}
+      {/* Settings Bottom Sheet — replaces cluttered chatBar controls */}
       <Modal visible={showSettingsSheet} transparent animationType="slide" onRequestClose={() => setShowSettingsSheet(false)}>
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowSettingsSheet(false)} activeOpacity={1}>
           <View testID="chat-settings-sheet" accessibilityLabel="chat-settings-sheet" style={styles.settingsSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>{t({ en: 'Chat Settings', zh: '瀵硅瘽璁剧疆' })}</Text>
+            <Text style={styles.sheetTitle}>{t({ en: 'Chat Settings', zh: '对话设置' })}</Text>
 
             {/* Voice mode toggle */}
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice Mode', zh: '璇煶妯″紡' })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice Mode', zh: '语音模式' })}</Text>
               <TouchableOpacity
                 onPress={() => {
                   if (!liveVoiceAvailable && !duplexMode) {
                     Alert.alert(
-                      t({ en: 'Live Voice Unavailable', zh: '杩炵画璇煶涓嶅彲鐢? }),
-                      t({ en: 'This build does not have native live speech recognition available yet.', zh: '褰撳墠鏋勫缓鏆傛湭鎻愪緵鍘熺敓瀹炴椂璇煶璇嗗埆鑳藉姏銆? }),
+                      t({ en: 'Live Voice Unavailable', zh: '连续语音不可用' }),
+                      t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
                     );
                     return;
                   }
@@ -2570,39 +2676,39 @@ export function AgentChatScreen() {
                 testID="chat-duplex-toggle"
               >
                 <Text style={[styles.sheetToggleText, duplexMode && { color: colors.accent }]}>
-                  {duplexMode ? t({ en: 'Live', zh: '瀹炴椂' }) : t({ en: 'Basic', zh: '鍩虹' })}
+                  {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'On-device Voice First', zh: '绔晶璇煶浼樺厛' })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'On-device Voice First', zh: '端侧语音优先' })}</Text>
               <TouchableOpacity
                 onPress={() => setPreferOnDeviceVoice(!preferOnDeviceVoice)}
                 style={[styles.sheetToggle, preferOnDeviceVoice && styles.sheetToggleActive]}
               >
                 <Text style={[styles.sheetToggleText, preferOnDeviceVoice && { color: colors.accent }]}>
-                  {preferOnDeviceVoice ? t({ en: 'On', zh: '寮€' }) : t({ en: 'Off', zh: '鍏? })}
+                  {preferOnDeviceVoice ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* Auto-speak toggle */}
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'Auto Read Aloud', zh: '鑷姩鏈楄' })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Auto Read Aloud', zh: '自动朗读' })}</Text>
               <TouchableOpacity
                 onPress={() => { setAutoSpeak(!autoSpeak); if (isSpeaking) stopSpeaking(); }}
                 style={[styles.sheetToggle, autoSpeak && styles.sheetToggleActive]}
               >
                 <Text style={[styles.sheetToggleText, autoSpeak && { color: colors.accent }]}>
-                  {autoSpeak ? t({ en: 'On', zh: '寮€' }) : t({ en: 'Off', zh: '鍏? })}
+                  {autoSpeak ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* Speech rate selector */}
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'Speech Speed', zh: '璇€? })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Speech Speed', zh: '语速' })}</Text>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 {[0.8, 1.0, 1.2, 1.5].map((rate) => (
                   <TouchableOpacity
@@ -2615,7 +2721,7 @@ export function AgentChatScreen() {
                     ]}
                   >
                     <Text style={[styles.sheetToggleText, speechRate === rate && { color: colors.accent }]}>
-                      {rate === 1.0 ? '1脳' : `${rate}脳`}
+                      {rate === 1.0 ? '1×' : `${rate}×`}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -2624,15 +2730,15 @@ export function AgentChatScreen() {
 
             {/* Voice persona selector */}
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice', zh: '澹伴煶' })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Voice', zh: '声音' })}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
                 {[
-                  { id: 'alloy', label: 'Alloy', emoji: '馃棧锔? },
-                  { id: 'echo', label: 'Echo', emoji: '馃帣锔? },
-                  { id: 'fable', label: 'Fable', emoji: '馃摉' },
-                  { id: 'onyx', label: 'Onyx', emoji: '馃' },
-                  { id: 'nova', label: 'Nova', emoji: '鉁? },
-                  { id: 'shimmer', label: 'Shimmer', emoji: '馃挮' },
+                  { id: 'alloy', label: 'Alloy', emoji: '🗣️' },
+                  { id: 'echo', label: 'Echo', emoji: '🎙️' },
+                  { id: 'fable', label: 'Fable', emoji: '📖' },
+                  { id: 'onyx', label: 'Onyx', emoji: '🪨' },
+                  { id: 'nova', label: 'Nova', emoji: '✨' },
+                  { id: 'shimmer', label: 'Shimmer', emoji: '💫' },
                 ].map((v) => {
                   const isActive = (agentVoiceId || 'alloy') === v.id;
                   return (
@@ -2658,7 +2764,7 @@ export function AgentChatScreen() {
 
             {/* Model selector */}
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'Model', zh: '妯″瀷' })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Model', zh: '模型' })}</Text>
               <TouchableOpacity
                 onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowModelPicker(true), 300); }}
                 style={styles.sheetModelBtn}
@@ -2666,19 +2772,19 @@ export function AgentChatScreen() {
                 <Text style={styles.sheetModelText} numberOfLines={1}>
                   {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>鈥?/Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>›</Text>
               </TouchableOpacity>
             </View>
 
             {/* Token usage */}
             <View style={styles.sheetRow}>
-              <Text style={styles.sheetRowLabel}>{t({ en: 'Tokens Used', zh: '宸茬敤棰濆害' })}</Text>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'Tokens Used', zh: '已用额度' })}</Text>
               <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{used.toLocaleString()} / {total.toLocaleString()}</Text>
             </View>
 
             {/* New chat */}
             <TouchableOpacity style={styles.sheetActionBtn} onPress={() => { setShowSettingsSheet(false); handleClearChat(); }}>
-              <Text style={styles.sheetActionText}>{'鉁?'}{t({ en: 'New Conversation', zh: '鏂板缓瀵硅瘽' })}</Text>
+              <Text style={styles.sheetActionText}>{'✨ '}{t({ en: 'New Conversation', zh: '新建对话' })}</Text>
             </TouchableOpacity>
 
             {/* Agent management */}
@@ -2686,7 +2792,7 @@ export function AgentChatScreen() {
               style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
               onPress={() => { setShowSettingsSheet(false); navigation.navigate('AgentConsole'); }}
             >
-              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'鈿欙笍 '}{t({ en: 'Agent Management', zh: '鏅鸿兘浣撶鐞? })}</Text>
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'⚙️ '}{t({ en: 'Agent Management', zh: '智能体管理' })}</Text>
             </TouchableOpacity>
 
             {/* Voice diagnostics */}
@@ -2694,18 +2800,18 @@ export function AgentChatScreen() {
               style={[styles.sheetActionBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
               onPress={() => { setShowSettingsSheet(false); setTimeout(() => setShowDiagnostics(true), 300); }}
             >
-              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'馃攳 '}{t({ en: 'Voice Diagnostics', zh: '璇煶璇婃柇' })}</Text>
+              <Text style={[styles.sheetActionText, { color: colors.textSecondary }]}>{'🔍 '}{t({ en: 'Voice Diagnostics', zh: '语音诊断' })}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* Model picker modal 鈥?dynamic models from user's configured providers */}
+      {/* Model picker modal — dynamic models from user's configured providers */}
       <Modal visible={showModelPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
           <View style={styles.modelSheet}>
-            <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '鍒囨崲妯″瀷' })}</Text>
-            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '浼氬悓姝ュ綋鍓嶆櫤鑳戒綋寮曟搸锛涜嫢鏉冮檺閲岃缃簡涓撳睘妯″瀷锛屽垯涓撳睘妯″瀷浼樺厛銆? })}</Text>
+            <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
+            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}</Text>
             <ScrollView>
               {availableModels.map((m) => {
                 const isActive = m.id === effectiveModelId;
@@ -2748,14 +2854,14 @@ export function AgentChatScreen() {
                         </View>
                         <Text style={styles.modelOptionProvider}>{m.provider}</Text>
                       </View>
-                      {isActive && <Text style={styles.modelOptionCheck}>鉁?/Text>}
+                      {isActive && <Text style={styles.modelOptionCheck}>✓</Text>}
                     </View>
                   </TouchableOpacity>
                 );
               })}
               {availableModels.length <= 1 && (
                 <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 16, fontSize: 13 }}>
-                  {t({ en: 'Configure API keys in Settings 鈫?API Keys to unlock more models', zh: '鍓嶅線 璁剧疆 鈫?API瀵嗛挜 閰嶇疆鍘傚晢瀵嗛挜浠ヨВ閿佹洿澶氭ā鍨? })}
+                  {t({ en: 'Configure API keys in Settings → API Keys to unlock more models', zh: '前往 设置 → API密钥 配置厂商密钥以解锁更多模型' })}
                 </Text>
               )}
             </ScrollView>
@@ -2768,14 +2874,14 @@ export function AgentChatScreen() {
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDiagnostics(false)} activeOpacity={1}>
           <View style={[styles.modelSheet, { maxHeight: '70%' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={styles.modelSheetTitle}>{t({ en: 'Voice Diagnostics', zh: '璇煶璇婃柇鏃ュ織' })}</Text>
+              <Text style={styles.modelSheetTitle}>{t({ en: 'Voice Diagnostics', zh: '语音诊断日志' })}</Text>
               <TouchableOpacity onPress={() => { clearVoiceDiagnostics(); setShowDiagnostics(false); }}>
-                <Text style={{ color: '#f44', fontSize: 13 }}>{t({ en: 'Clear', zh: '娓呴櫎' })}</Text>
+                <Text style={{ color: '#f44', fontSize: 13 }}>{t({ en: 'Clear', zh: '清除' })}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={{ flex: 1 }}>
               <Text selectable style={{ color: colors.textSecondary, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
-                {getVoiceDiagnosticsText() || t({ en: 'No voice events recorded yet.', zh: '鏆傛棤璇煶浜嬩欢璁板綍銆? })}
+                {getVoiceDiagnosticsText() || t({ en: 'No voice events recorded yet.', zh: '暂无语音事件记录。' })}
               </Text>
             </ScrollView>
           </View>
@@ -2785,9 +2891,9 @@ export function AgentChatScreen() {
   );
 }
 
-// 鈹€鈹€鈹€ Spatial Flow Styles 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ─── Spatial Flow Styles ────────────────────────────────────────────────────
 const sf = StyleSheet.create({
-  // 鈹€鈹€ Message layout (borderless) 鈹€鈹€
+  // ── Message layout (borderless) ──
   msgContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2818,7 +2924,7 @@ const sf = StyleSheet.create({
     color: '#fff',
   },
 
-  // 鈹€鈹€ Message body (borderless, subtle bg) 鈹€鈹€
+  // ── Message body (borderless, subtle bg) ──
   msgBody: {
     borderRadius: 16,
     paddingHorizontal: 14,
@@ -2862,7 +2968,7 @@ const sf = StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  // 鈹€鈹€ Thought Ribbon 鈹€鈹€
+  // ── Thought Ribbon ──
   ribbonWrap: {
     marginBottom: 6,
     borderRadius: 12,
@@ -2937,7 +3043,7 @@ const sf = StyleSheet.create({
     flex: 1,
   },
 
-  // 鈹€鈹€ Swipe actions 鈹€鈹€
+  // ── Swipe actions ──
   swipeAction: {
     width: 72,
     justifyContent: 'center',
@@ -2959,7 +3065,7 @@ const sf = StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  // 鈹€鈹€ Context menu 鈹€鈹€
+  // ── Context menu ──
   ctxOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -2999,7 +3105,7 @@ const sf = StyleSheet.create({
     color: colors.textPrimary,
   },
 
-  // 鈹€鈹€ Media attachments (updated) 鈹€鈹€
+  // ── Media attachments (updated) ──
   mediaList: {
     gap: 8,
     marginTop: 8,
@@ -3039,7 +3145,7 @@ const sf = StyleSheet.create({
     marginTop: 2,
   },
 
-  // 鈹€鈹€ Floating input 鈹€鈹€
+  // ── Floating input ──
   floatingInputWrap: {
     borderTopWidth: 0,
     borderTopLeftRadius: 20,
@@ -3230,7 +3336,7 @@ const styles = StyleSheet.create({
   voiceStatusText: { color: colors.textMuted, fontSize: 13, flex: 1 },
   voiceTranscriptPreview: { color: colors.textPrimary, fontSize: 12, marginTop: 4, lineHeight: 18 },
   inputArea: {
-    // Legacy 鈥?now uses sf.floatingInputWrap via BlurView
+    // Legacy — now uses sf.floatingInputWrap via BlurView
     backgroundColor: 'transparent',
   },
   inputRow: {

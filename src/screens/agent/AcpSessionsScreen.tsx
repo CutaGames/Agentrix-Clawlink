@@ -1,6 +1,6 @@
 /**
- * ACP Sessions Screen 鈥?绉诲姩绔?ACP 浼氳瘽绠＄悊
- * 鍒楀嚭娲昏穬鐨?ACP Sessions锛屾敮鎸?pause/resume/kill 鎿嶄綔
+ * ACP Sessions Screen — 移动端 ACP 会话管理
+ * 列出活跃的 ACP Sessions，支持 pause/resume/kill 操作
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
@@ -23,11 +23,11 @@ import {
 } from '../../services/acpBridge.api';
 
 const STATUS_META: Record<AcpSessionStatus, { color: string; label: string }> = {
-  active: { color: '#22c55e', label: '杩愯涓? },
-  paused: { color: '#f59e0b', label: '宸叉殏鍋? },
-  completed: { color: '#6b7280', label: '宸插畬鎴? },
-  error: { color: '#ef4444', label: '閿欒' },
-  killed: { color: '#dc2626', label: '宸茬粓姝? },
+  active: { color: '#22c55e', label: '运行中' },
+  paused: { color: '#f59e0b', label: '已暂停' },
+  completed: { color: '#6b7280', label: '已完成' },
+  error: { color: '#ef4444', label: '错误' },
+  killed: { color: '#dc2626', label: '已终止' },
 };
 
 export default function AcpSessionsScreen() {
@@ -52,7 +52,7 @@ export default function AcpSessionsScreen() {
       await steerAcpSession(sessionId, { type: 'pause' });
       fetchSessions();
     } catch (err: any) {
-      Alert.alert('鏆傚仠澶辫触', err.message);
+      Alert.alert('暂停失败', err.message);
     }
   }, [fetchSessions]);
 
@@ -61,22 +61,22 @@ export default function AcpSessionsScreen() {
       await steerAcpSession(sessionId, { type: 'resume' });
       fetchSessions();
     } catch (err: any) {
-      Alert.alert('鎭㈠澶辫触', err.message);
+      Alert.alert('恢复失败', err.message);
     }
   }, [fetchSessions]);
 
   const handleKill = useCallback((sessionId: string) => {
-    Alert.alert('缁堟浼氳瘽', '纭缁堟姝?ACP 浼氳瘽锛?, [
-      { text: '鍙栨秷', style: 'cancel' },
+    Alert.alert('终止会话', '确认终止此 ACP 会话？', [
+      { text: '取消', style: 'cancel' },
       {
-        text: '缁堟',
+        text: '终止',
         style: 'destructive',
         onPress: async () => {
           try {
-            await killAcpSession(sessionId, '鐢ㄦ埛鎵嬪姩缁堟');
+            await killAcpSession(sessionId, '用户手动终止');
             fetchSessions();
           } catch (err: any) {
-            Alert.alert('缁堟澶辫触', err.message);
+            Alert.alert('终止失败', err.message);
           }
         },
       },
@@ -101,23 +101,23 @@ export default function AcpSessionsScreen() {
         )}
 
         <Text style={styles.time}>
-          鏈€鍚庢椿璺? {new Date(item.lastActivityAt).toLocaleString()}
+          最后活跃: {new Date(item.lastActivityAt).toLocaleString()}
         </Text>
 
         <View style={styles.actions}>
           {isActive && (
             <TouchableOpacity style={styles.btnPause} onPress={() => handlePause(item.sessionId)}>
-              <Text style={styles.btnText}>鈴?鏆傚仠</Text>
+              <Text style={styles.btnText}>⏸ 暂停</Text>
             </TouchableOpacity>
           )}
           {isPaused && (
             <TouchableOpacity style={styles.btnResume} onPress={() => handleResume(item.sessionId)}>
-              <Text style={styles.btnText}>鈻?鎭㈠</Text>
+              <Text style={styles.btnText}>▶ 恢复</Text>
             </TouchableOpacity>
           )}
           {(isActive || isPaused) && (
             <TouchableOpacity style={styles.btnKill} onPress={() => handleKill(item.sessionId)}>
-              <Text style={styles.btnText}>鉁?缁堟</Text>
+              <Text style={styles.btnText}>✕ 终止</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -129,7 +129,7 @@ export default function AcpSessionsScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.header}>
         <Text style={styles.title}>ACP Sessions</Text>
-        <Text style={styles.subtitle}>{sessions.length} 涓細璇?/Text>
+        <Text style={styles.subtitle}>{sessions.length} 个会话</Text>
       </View>
 
       <FlatList
@@ -143,7 +143,7 @@ export default function AcpSessionsScreen() {
         ListEmptyComponent={
           !loading ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>鏆傛棤 ACP 浼氳瘽</Text>
+              <Text style={styles.emptyText}>暂无 ACP 会话</Text>
             </View>
           ) : null
         }

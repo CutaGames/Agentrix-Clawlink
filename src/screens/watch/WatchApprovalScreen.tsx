@@ -1,5 +1,5 @@
 /**
- * Watch Quick Approval Screen 鈥?WearOS-optimized approval UI.
+ * Watch Quick Approval Screen — WearOS-optimized approval UI.
  *
  * Features:
  *   - Large touch targets for small round/square watch displays
@@ -22,7 +22,7 @@ import {
   Dimensions,
 } from 'react-native';
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ──────────────────────────────────────────────
 
 export interface WatchApprovalRequest {
   id: string;
@@ -40,7 +40,7 @@ interface Props {
   onTimeout?: (requestId: string) => void;
 }
 
-// 鈹€鈹€ Constants 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Constants ──────────────────────────────────────────
 
 const SCREEN = Dimensions.get('window');
 const IS_ROUND = SCREEN.width === SCREEN.height; // heuristic for round watches
@@ -58,16 +58,16 @@ const RISK_COLORS = {
 };
 
 const TOOL_ICONS: Record<string, string> = {
-  code_execute: '鈿?,
-  file_write: '馃摑',
-  git_push: '馃殌',
-  browser_navigate: '馃寪',
-  terminal_command: '馃捇',
-  payment: '馃挸',
-  default: '馃敡',
+  code_execute: '⚡',
+  file_write: '📝',
+  git_push: '🚀',
+  browser_navigate: '🌐',
+  terminal_command: '💻',
+  payment: '💳',
+  default: '🔧',
 };
 
-// 鈹€鈹€ Component 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Component ──────────────────────────────────────────
 
 export default function WatchApprovalScreen({ request, onApprove, onReject, onTimeout }: Props) {
   const [decided, setDecided] = useState(false);
@@ -174,7 +174,7 @@ export default function WatchApprovalScreen({ request, onApprove, onReject, onTi
             onPress={handleReject}
             activeOpacity={0.7}
           >
-            <Text style={styles.btnText}>鉁?/Text>
+            <Text style={styles.btnText}>✗</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -182,18 +182,18 @@ export default function WatchApprovalScreen({ request, onApprove, onReject, onTi
             onPress={handleApprove}
             activeOpacity={0.7}
           >
-            <Text style={styles.btnText}>鉁?/Text>
+            <Text style={styles.btnText}>✓</Text>
           </TouchableOpacity>
         </View>
 
         {/* Swipe hint */}
-        <Text style={styles.swipeHint}>鈫?reject  路  approve 鈫?/Text>
+        <Text style={styles.swipeHint}>← reject  ·  approve →</Text>
       </Animated.View>
     </Animated.View>
   );
 }
 
-// 鈹€鈹€ Styles 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Styles ─────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {

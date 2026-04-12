@@ -69,11 +69,11 @@ export function WatchAlertsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>
-        鍛婅 {unread.length > 0 ? `(${unread.length})` : ''}
+        告警 {unread.length > 0 ? `(${unread.length})` : ''}
       </Text>
 
       {alerts.length === 0 && (
-        <Text style={styles.emptyText}>鏆傛棤鍛婅 鉁?/Text>
+        <Text style={styles.emptyText}>暂无告警 ✓</Text>
       )}
 
       {/* Unacknowledged alerts first */}
@@ -101,11 +101,11 @@ function AlertCard({
   onAcknowledge?: () => void;
 }) {
   const channelIcon: Record<string, string> = {
-    heart_rate: '鉂?,
-    spo2: '鈼?,
-    temperature: '馃尅',
-    steps: '馃毝',
-    battery: '馃攱',
+    heart_rate: '❤',
+    spo2: '○',
+    temperature: '🌡',
+    steps: '🚶',
+    battery: '🔋',
   };
 
   const timeStr = new Date(alert.triggeredAt).toLocaleTimeString([], {
@@ -122,7 +122,7 @@ function AlertCard({
     >
       <View style={alertStyles.header}>
         <Text style={alertStyles.icon}>
-          {channelIcon[alert.channel] ?? '鈿?}
+          {channelIcon[alert.channel] ?? '⚡'}
         </Text>
         <Text
           style={[alertStyles.name, alert.acknowledged && alertStyles.nameAcked]}
@@ -134,13 +134,13 @@ function AlertCard({
       </View>
 
       <Text style={alertStyles.detail}>
-        {alert.channel} {alert.condition} {alert.threshold} 鈫?瀹為檯鍊?{alert.value}
+        {alert.channel} {alert.condition} {alert.threshold} → 实际值 {alert.value}
       </Text>
 
       {!alert.acknowledged && onAcknowledge && (
         <View style={alertStyles.actions}>
           <TouchableOpacity style={alertStyles.ackBtn} onPress={onAcknowledge}>
-            <Text style={alertStyles.ackBtnText}>鉁?纭</Text>
+            <Text style={alertStyles.ackBtnText}>✓ 确认</Text>
           </TouchableOpacity>
         </View>
       )}
