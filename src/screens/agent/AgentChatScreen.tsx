@@ -11,7 +11,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
+import { useSettingsStore, SUPPORTED_MODELS, type ModelOption, type LocalAiStatus } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { getInstanceStatus, sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
@@ -25,27 +25,124 @@ import { useI18n } from '../../stores/i18nStore';
 import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
 import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
-import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
+import { uploadChatAttachment, apiFetch, syncLocalConversation, type UploadedChatAttachment } from '../../services/api';
+import { mapRawInstance } from '../../services/auth';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
+import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
+import {
+  buildLocalUserContent,
+  resolveLocalTurnExecution,
+  type LocalTurnExecutionDecision,
+} from '../../services/mobileLocalMultimodalRouting.service';
+import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
 try { Audio = require('expo-av').Audio; } catch (_) {}
 
+async function runSelectionHaptic() {
+  if (typeof Haptics.selectionAsync !== 'function') return;
+  try {
+    await Haptics.selectionAsync();
+  } catch {}
+}
+
+async function runImpactHaptic(style: Haptics.ImpactFeedbackStyle) {
+  if (typeof Haptics.impactAsync !== 'function') return;
+  try {
+    await Haptics.impactAsync(style);
+  } catch {}
+}
+
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
 const LOCAL_ONLY_MODEL_IDS = new Set([
-  'gemma-nano-2b',
+  MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen2.5-omni-3b',
+  'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
+const MOBILE_AUTO_CONTINUE_LIMIT = 3;
+const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
+}
+
+function getLocalModelLabel(modelId: string) {
+  switch (modelId) {
+    case 'qwen2.5-omni-3b':
+      return 'Qwen 2.5 Omni 3B (Local)';
+    case 'gemma-4-4b':
+      return 'Gemma 4 E4B (Local)';
+    case 'gemma-nano-2b-local':
+      return 'Gemma Nano 2B (Local)';
+    case 'gemma-nano-2b':
+      return 'Gemma Nano 2B (Local)';
+    case 'gemma-4-2b':
+    default:
+      return 'Gemma 4 E2B (Local)';
+  }
+}
+
+type TranslateFn = ReturnType<typeof useI18n>['t'];
+
+function formatLocalTurnBlockedMessage({
+  t,
+  modelLabel,
+  decision,
+}: {
+  t: TranslateFn;
+  modelLabel: string;
+  decision: Extract<LocalTurnExecutionDecision, { mode: 'blocked' }>;
+}) {
+  const attachmentName = decision.attachment?.originalName || t({ en: 'This attachment', zh: '这个附件' });
+
+  switch (decision.reason) {
+    case 'runtime-unavailable':
+    case 'text-generation-unavailable':
+      return t({
+        en: `${modelLabel} is selected, but on-device inference is not ready on this device. Agentrix will not silently fall back to the cloud. Finish the local runtime/package setup or switch to a cloud model manually.`,
+        zh: `当前已选 ${modelLabel}，但这台设备上的端侧推理还没有就绪。Agentrix 不会再偷偷回退到云端。请先确认本地运行时和模型包已准备好，或手动切换到云端模型。`,
+      });
+    case 'projector-required':
+      return t({
+        en: `${modelLabel} is still text-only on this device. Image turns need the multimodal projector add-on, and Agentrix will block them instead of auto-switching to the cloud. Open Local AI Models and finish the full package download first.`,
+        zh: `当前设备上的 ${modelLabel} 仍是纯文本模式。图片轮次需要先补齐多模态投影器，Agentrix 现在会直接拦截，而不是自动切到云端。请先到“本地 AI 模型”页补齐完整包。`,
+      });
+    case 'audio-input-unavailable':
+      return t({
+        en: `${modelLabel} does not expose on-device audio file input yet. This turn was blocked instead of falling back to the cloud. Use text input for the local model, or switch models manually.`,
+        zh: `当前 ${modelLabel} 还没有暴露端侧音频文件输入能力。本轮已被拦截，不会再自动回退到云端。请改用文本输入，或手动切换模型。`,
+      });
+    case 'audio-format-unsupported':
+      return t({
+        en: `${modelLabel} currently accepts local wav/mp3 audio files only. ${attachmentName} will not auto-fallback to the cloud. Re-upload it as wav/mp3, or switch models manually.`,
+        zh: `当前 ${modelLabel} 仅接受本地 wav/mp3 音频文件。${attachmentName} 不会自动回退到云端。请改传 wav/mp3，或手动切换模型。`,
+      });
+    case 'attachment-not-local':
+      return t({
+        en: `${attachmentName} is missing a device-local file path, so ${modelLabel} cannot read it. Agentrix will not silently send it to the cloud. Re-attach the original local file, or switch models manually.`,
+        zh: `${attachmentName} 缺少设备本地文件路径，${modelLabel} 无法读取，Agentrix 也不会再偷偷发到云端。请重新选择原始本地文件，或手动切换模型。`,
+      });
+    case 'attachment-unsupported':
+      return t({
+        en: `${modelLabel} currently supports short text plus supported local image/audio inputs. ${attachmentName} cannot run on-device and will not auto-fallback to the cloud. Switch to a cloud model for this turn.`,
+        zh: `${modelLabel} 当前只支持简短文本，以及受支持的本地图片和音频输入。${attachmentName} 这类内容暂不支持端侧处理，也不会自动回退到云端。请切到云端模型后再发送。`,
+      });
+    case 'complex-turn':
+    default:
+      return t({
+        en: `${modelLabel} is limited to short on-device turns. Long prompts, code/tool orchestration, and complex tasks are blocked instead of auto-falling back to the cloud. Switch to a cloud model to continue this request.`,
+        zh: `${modelLabel} 目前只处理简短端侧轮次。长文本、代码或工具编排、复杂任务都会被直接拦截，不再自动回退到云端。请切换到云端模型后再继续这次请求。`,
+      });
+  }
 }
 
 interface Message {
@@ -76,20 +173,27 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
   }
 
   attachments.forEach((attachment, index) => {
+    const attachmentUrl = attachment.publicUrl || attachment.localUri || '';
+
     if (attachment.kind === 'image') {
       multimodalContent.push({
         type: 'image',
-        source: { type: 'url', url: attachment.publicUrl },
+        source: { type: 'url', url: attachmentUrl },
+      });
+    } else if (attachment.kind === 'video' || attachment.isVideo || attachment.mimetype?.startsWith('video/')) {
+      multimodalContent.push({
+        type: 'text',
+        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
       multimodalContent.push({
         type: 'input_audio',
-        input_audio: { url: attachment.publicUrl }
+        input_audio: { url: attachmentUrl }
       });
     } else {
       multimodalContent.push({
         type: 'text',
-        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`
+        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`
       });
     }
   });
@@ -117,25 +221,26 @@ function extractUrlsFromMessage(content: string) {
   const allUrls = dedupeUrls([...markdownImageUrls, ...plainUrls]);
   const imageUrls = allUrls.filter((url) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
   const audioUrls = allUrls.filter((url) => /\.(mp3|wav|m4a|ogg|aac|flac|opus|wma)(\?.*)?$/i.test(url));
-  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
-  return { imageUrls, audioUrls, fileUrls };
+  const videoUrls = allUrls.filter((url) => /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url));
+  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && !videoUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
+  return { imageUrls, audioUrls, videoUrls, fileUrls };
 }
 
 function getCopyableMessageText(message: Message) {
-  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl}`);
+  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl || attachment.localUri || ''}`);
   return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
 }
 
 function buildDisplayMessageText(content: string) {
   if (!content) return '';
 
-  const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(content);
+  const { imageUrls, audioUrls, videoUrls, fileUrls } = extractUrlsFromMessage(content);
   let display = content
     .replace(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '')
     .replace(/\[User Attachments\][\s\S]*$/g, '')
     .trim();
 
-  for (const url of [...imageUrls, ...audioUrls, ...fileUrls]) {
+  for (const url of [...imageUrls, ...audioUrls, ...videoUrls, ...fileUrls]) {
     display = display.replace(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
   }
 
@@ -330,7 +435,7 @@ const MessageBubble = ({
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
-  const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
+  const { imageUrls, audioUrls, videoUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
   const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
   const isThisMessageSpeaking = speakingMessageId === item.id;
   const [ctxVisible, setCtxVisible] = useState(false);
@@ -340,7 +445,7 @@ const MessageBubble = ({
     const text = getCopyableMessageText(item);
     if (!text) return;
     await DeviceBridgingService.writeClipboard(text);
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
     Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Message copied to clipboard.', zh: '消息已复制到剪贴板。' }));
   }, [item, t]);
 
@@ -349,7 +454,7 @@ const MessageBubble = ({
   }, [t]);
 
   const handleLongPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    void runImpactHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setCtxVisible(true);
   }, []);
 
@@ -471,10 +576,22 @@ const MessageBubble = ({
                 key={`${item.id}-${attachment.fileName}`}
                 style={sf.mediaCard}
                 activeOpacity={0.8}
-                onPress={() => attachment.isImage ? onPreviewImage(attachment.publicUrl) : openExternalUrl(attachment.publicUrl)}
+                onPress={() => {
+                  const attachmentUri = attachment.localUri || attachment.publicUrl;
+                  if (!attachmentUri) return;
+                  if (attachment.isImage) {
+                    onPreviewImage(attachmentUri);
+                    return;
+                  }
+                  openExternalUrl(attachmentUri);
+                }}
               >
                 {attachment.isImage ? (
-                  <Image source={{ uri: attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
+                  <Image source={{ uri: attachment.localUri || attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
+                ) : attachment.isVideo ? (
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
+                ) : attachment.isAudio ? (
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎵</Text></View>
                 ) : (
                   <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>📎</Text></View>
                 )}
@@ -503,6 +620,19 @@ const MessageBubble = ({
           <View style={sf.mediaList}>
             {audioUrls.map((url) => (
               <InlineAudioPlayer key={`${item.id}-audio-${url}`} uri={url} />
+            ))}
+          </View>
+        )}
+        {!!videoUrls.length && (
+          <View style={sf.mediaList}>
+            {videoUrls.map((url) => (
+              <TouchableOpacity key={`${item.id}-video-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
+                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
+                <View style={sf.mediaMeta}>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated video', zh: '生成视频' })}</Text>
+                  <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -569,6 +699,7 @@ export function AgentChatScreen() {
   const navigation = useNavigation<any>();
   const { t, language } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
+  const updateInstance = useAuthStore((s) => s.updateInstance);
   const token = useAuthStore((s) => s.token) || '';
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
@@ -576,6 +707,12 @@ export function AgentChatScreen() {
   const duplexModeRequested = !!route.params?.duplexMode;
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const localAiStatus = useSettingsStore((s) => s.localAiStatus);
+  const localAiModelId = useSettingsStore((s) => s.localAiModelId);
+  const setLocalAiStatus = useSettingsStore((s) => s.setLocalAiStatus);
+  const setLocalAiEnabled = useSettingsStore((s) => s.setLocalAiEnabled);
+  const preferOnDeviceVoice = useSettingsStore((s) => s.preferOnDeviceVoice);
+  const setPreferOnDeviceVoice = useSettingsStore((s) => s.setPreferOnDeviceVoice);
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -586,24 +723,38 @@ export function AgentChatScreen() {
   // Dynamic model list from backend (platform default + user's configured providers)
   const [availableModels, setAvailableModels] = useState<ModelOption[]>(SUPPORTED_MODELS);
   // The ACTUAL model this agent is running on (resolved by backend)
-  const [resolvedModelLabel, setResolvedModelLabel] = useState<string | null>(activeInstance?.resolvedModelLabel || null);
-  const [resolvedModelId, setResolvedModelId] = useState<string | null>(activeInstance?.resolvedModel || null);
+  const [resolvedModelLabel, setResolvedModelLabel] = useState<string | null>(null);
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
+  const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
+  const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
+  const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
+  const localVoicePlan = planLocalVoiceCapabilitySplit({
+    localModelSelected: isLocalModelSelected,
+    preferOnDeviceVoice,
+    selectedVoiceId: agentVoiceId,
+    runtimeCapabilities: localVoiceRuntimeCapabilities,
+  });
+  const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
-    || (!isLocalOnlyModelId(resolvedModelId) ? resolvedModelId : null)
     || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
     || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
     || 'claude-haiku-4-5';
-  // The effective model ID to display in the picker and chat header
-  const effectiveModelId = agentPreferredModel || selectedModelId;
-  const proxyModelId = isLocalOnlyModelId(effectiveModelId) ? remoteResolvedModelId : effectiveModelId;
+  // The effective model ID to display and send
+  const effectiveModelId = isLocalModelSelected
+    ? selectedModelId
+    : agentPreferredModel || activeInstance?.resolvedModel || selectedModelId;
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
+  const autoContinueCountRef = useRef(0);
+  const pendingAutoContinuePromptRef = useRef<string | null>(null);
+  const pendingAutoContinueReasonRef = useRef<'max_tokens' | 'tool_use' | null>(null);
+  const pendingAutoContinueSessionIdRef = useRef<string | null>(null);
+  const autoContinueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Multi-session state
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
@@ -782,30 +933,50 @@ export function AgentChatScreen() {
 
   // Fetch dynamic model list from backend and per-agent model
   useEffect(() => {
+    setAgentPreferredModel(null);
+    setAgentVoiceId(null);
+    setResolvedModelLabel(
+      isLocalModelSelected
+        ? getLocalModelLabel(selectedModelId)
+        : activeInstance?.resolvedModelLabel || null,
+    );
     (async () => {
-      setResolvedModelId(activeInstance?.resolvedModel || null);
-      setResolvedModelLabel(activeInstance?.resolvedModelLabel || null);
       try {
         const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
         if (Array.isArray(models) && models.length > 0) {
-          setAvailableModels(models.map((m) => ({
+          const cloudModels: ModelOption[] = models.map((m) => ({
             id: m.id,
             label: m.label,
             provider: m.provider,
             icon: m.isDefault ? '🤖' : '💎',
             availability: 'available' as const,
             costTier: m.costTier,
-          })));
+          }));
+          // Always prepend local model if downloaded and ready
+          if (localAiStatus === 'ready') {
+            const localEntry: ModelOption = {
+              id: localAiModelId,
+              label: `${getLocalModelLabel(localAiModelId)} (端侧)`,
+              provider: 'On-device',
+              icon: '📱',
+              badge: 'Local',
+              availability: 'available',
+              costTier: 'free',
+            };
+            setAvailableModels([localEntry, ...cloudModels.filter(m => m.id !== localAiModelId)]);
+          } else {
+            setAvailableModels(cloudModels);
+          }
         }
       } catch {}
       // Load per-agent preferred model from the bound agent account
       try {
-        const agentAccountId = activeInstance?.metadata?.agentAccountId;
+        const agentAccountId = activeInstance?.metadata?.agentAccountId || activeInstance?.agentAccountId;
         if (agentAccountId) {
-          const { getAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
-          const agent = await getAgentPresenceAccount(agentAccountId);
-          if (agent.preferredModel) {
-            setAgentPreferredModel(agent.preferredModel);
+          const { getUnifiedAgent } = await import('../../services/unifiedAgent');
+          const agent = await getUnifiedAgent(activeInstance!.id);
+          if (agent.defaultModel) {
+            setAgentPreferredModel(agent.defaultModel);
           }
           if (agent.metadata?.voice_id) {
             setAgentVoiceId(agent.metadata.voice_id);
@@ -813,7 +984,16 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModel, activeInstance?.resolvedModelLabel]);
+  }, [
+    instanceId,
+    activeInstance?.id,
+    activeInstance?.metadata?.agentAccountId,
+    activeInstance?.resolvedModelLabel,
+    isLocalModelSelected,
+    localAiModelId,
+    localAiStatus,
+    selectedModelId,
+  ]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -928,13 +1108,13 @@ export function AgentChatScreen() {
         : remoteClipboard.text;
       return next.slice(0, 2000);
     });
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
   }, [remoteClipboard]);
 
   const handleCopyDesktopClipboard = useCallback(async () => {
     if (!remoteClipboard?.text) return;
     await DeviceBridgingService.writeClipboard(remoteClipboard.text);
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
     Alert.alert(
       t({ en: 'Desktop Clipboard Copied', zh: '桌面剪贴板已复制' }),
       t({ en: 'The latest desktop clipboard text is now on your phone.', zh: '最新桌面剪贴板内容已复制到手机剪贴板。' }),
@@ -954,6 +1134,13 @@ export function AgentChatScreen() {
 
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
+    if (autoContinueTimerRef.current) {
+      clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
     setSending(false);
@@ -976,6 +1163,40 @@ export function AgentChatScreen() {
 
     activeAssistantMessageIdRef.current = null;
   }, [t]);
+
+  const clearAutoContinueTimer = useCallback(() => {
+    if (autoContinueTimerRef.current) {
+      clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingAutoContinue = useCallback(() => {
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
+  }, []);
+
+  const markAutoContinueNeeded = useCallback((reason: 'max_tokens' | 'tool_use') => {
+    pendingAutoContinuePromptRef.current = MOBILE_CONTINUE_PROMPT;
+    pendingAutoContinueReasonRef.current = reason;
+    pendingAutoContinueSessionIdRef.current = sessionIdRef.current;
+  }, []);
+
+  const handleStructuredStreamEvent = useCallback((event: StreamEvent) => {
+    if (event.type !== 'done') {
+      return;
+    }
+
+    if (event.reason === 'max_tokens' || event.reason === 'tool_use') {
+      markAutoContinueNeeded(event.reason);
+      return;
+    }
+
+    clearPendingAutoContinue();
+  }, [clearPendingAutoContinue, markAutoContinueNeeded]);
+
+  useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -1089,6 +1310,7 @@ export function AgentChatScreen() {
     enqueueStreamedSpeech,
     resetVoicePhaseAfterResponse,
     resumeLiveSpeech,
+    sendRealtimeImageFrame,
   } = useVoiceSession({
     token,
     language,
@@ -1098,8 +1320,13 @@ export function AgentChatScreen() {
     instanceName,
     instanceId,
     isSending: sending,
-    useRealtimeChannel: true,
-    realtimeModelId: effectiveModelId,
+    useRealtimeChannel: duplexUsesRealtimeChannel,
+    realtimeModelId: remoteResolvedModelId,
+    preferLocalSpeechRecognition: localVoicePlan.preferLocalSpeechRecognition,
+    preferLocalTextToSpeech: localVoicePlan.preferLocalTextToSpeech,
+    localModelSelected: isLocalModelSelected,
+    localModelId: isLocalModelSelected ? localCapabilityModelId : undefined,
+    localAudioInputAvailable: isLocalModelSelected && localVoiceRuntimeCapabilities.supportsAudioInput,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
@@ -1121,6 +1348,7 @@ export function AgentChatScreen() {
     onStopCurrentResponse: stopCurrentResponse,
     t,
   });
+  const duplexSessionConnected = !duplexUsesRealtimeChannel || realtimeConnected;
   const shouldShowVoiceQuickGuide = voiceMode && (voiceModeRequested || duplexModeRequested || liveSpeechPermissionState === 'denied' || messages.length <= 1);
 
   // Sync voiceMode/duplexMode when route params change on an already-mounted screen
@@ -1206,7 +1434,7 @@ export function AgentChatScreen() {
         type: localAttachment.mimeType,
       });
       setPendingAttachments((prev) => [...prev, uploaded]);
-      await Haptics.selectionAsync();
+      await runSelectionHaptic();
     } catch (error: any) {
       Alert.alert(t({ en: 'Attachment Error', zh: '附件错误' }), error?.message || t({ en: 'Failed to upload attachment.', zh: '上传附件失败。' }));
     } finally {
@@ -1222,13 +1450,23 @@ export function AgentChatScreen() {
     const rawText = typeof overrideText === 'string' ? overrideText : input;
     const text = rawText.trim();
     const attachments = overrideAttachments ?? pendingAttachments;
+    const isSyntheticContinueTurn = text === MOBILE_CONTINUE_PROMPT;
+    const shouldDisplayUserTurn = !isSyntheticContinueTurn;
     if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
+
+    clearAutoContinueTimer();
+    clearPendingAutoContinue();
+    if (!isSyntheticContinueTurn) {
+      autoContinueCountRef.current = 0;
+    }
 
     // Offline: queue the message instead of streaming
     if (isOffline) {
       offlineQueueRef.current.push({ text, attachments });
       const queueMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, attachments, createdAt: Date.now() };
-      setMessages((prev) => [...prev, queueMsg]);
+      if (shouldDisplayUserTurn) {
+        setMessages((prev) => [...prev, queueMsg]);
+      }
       setInput('');
       setPendingAttachments([]);
       return;
@@ -1261,7 +1499,7 @@ export function AgentChatScreen() {
     const currentMsgs = messages;
     responseInterruptedRef.current = false;
     activeAssistantMessageIdRef.current = assistantMsgId;
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [...prev, ...(shouldDisplayUserTurn ? [userMsg] : []), assistantMsg]);
     setInput('');
     setPendingAttachments([]);
     try { mmkv.delete(draftStorageKey); } catch {}
@@ -1270,7 +1508,7 @@ export function AgentChatScreen() {
     streamAbortRef.current?.abort();
 
     // Auto-label session from first user message
-    if (text) {
+    if (text && shouldDisplayUserTurn) {
       setChatSessions((prev) => {
         const idx = prev.findIndex(s => s.id === activeSessionId);
         if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
@@ -1284,13 +1522,156 @@ export function AgentChatScreen() {
     }
 
     try {
-      await Haptics.selectionAsync();
+      await runSelectionHaptic();
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
+      const finishAssistantWithError = (message: string) => {
+        resetVoicePhaseAfterResponse();
+        enqueueStreamedSpeech('', true);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: `⚠️ ${message}`, streaming: false, error: true }
+              : m
+          )
+        );
+      };
+      const localModelLabel = isLocalOnlyModelId(effectiveModelId)
+        ? (effectiveModelId === MobileLocalInferenceService.modelId
+          ? MobileLocalInferenceService.modelLabel
+          : getLocalModelLabel(effectiveModelId))
+        : null;
+      const localRuntimeCapabilities = isLocalOnlyModelId(effectiveModelId)
+        ? await MobileLocalInferenceService.getCapabilities({ model: effectiveModelId }).catch(() => (
+          MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId })
+        ))
+        : null;
+      const localRuntimeSnapshot = isLocalOnlyModelId(effectiveModelId)
+        ? (localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }))
+        : null;
+      const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeSnapshot
+        ? resolveLocalTurnExecution(text, attachments, localRuntimeSnapshot)
+        : null;
+      const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
+
+      if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
+        if (
+          isLocalOnlyModelId(effectiveModelId)
+          && (localTurnDecision.reason === 'runtime-unavailable'
+            || localTurnDecision.reason === 'text-generation-unavailable')
+        ) {
+          setLocalAiStatus('error');
+          setLocalAiEnabled(false);
+        }
+        setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
+        addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
+          model: effectiveModelId,
+          reason: localTurnDecision.reason,
+          attachment: localTurnDecision.attachment?.originalName || null,
+        });
+        finishAssistantWithError(formatLocalTurnBlockedMessage({
+          t,
+          modelLabel: localModelLabel,
+          decision: localTurnDecision,
+        }));
+        return;
+      }
+
+      if (shouldTryLocalNano) {
+        const localAbort = new AbortController();
+        streamAbortRef.current = localAbort;
+        if (localModelLabel) {
+          setResolvedModelLabel(localModelLabel);
+        }
+        let localAssistantText = '';
+        const localUserContent = buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
+
+        const localHistory = currentMsgs
+          .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
+          .slice(-6)
+          .map((message) => ({
+            role: message.role as 'user' | 'assistant',
+            content: message.role === 'user'
+              ? buildLocalUserContent(message.content, message.attachments || [], localRuntimeSnapshot || undefined)
+              : message.content,
+          }));
+
+        resetVoicePhaseAfterResponse();
+
+        try {
+          let localProducedOutput = false;
+          for await (const chunk of MobileLocalInferenceService.generateTextStream([
+            { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational. Never reveal chain-of-thought or thinking traces. Reply with the final answer directly.` },
+            ...localHistory,
+            { role: 'user', content: localUserContent },
+          ], { model: effectiveModelId })) {
+            if (localAbort.signal.aborted || responseInterruptedRef.current) {
+              break;
+            }
+
+            if (!chunk) {
+              continue;
+            }
+
+            localProducedOutput = true;
+            streamSucceeded = true;
+            localAssistantText += chunk;
+            appendToStreamingMessage(assistantMsgId, chunk);
+            enqueueStreamedSpeech(chunk);
+          }
+          enqueueStreamedSpeech('', true);
+
+          if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            return;
+          }
+
+          const finalAssistant = localAssistantText.trim();
+          if (!localProducedOutput || !finalAssistant) {
+            addVoiceDiagnostic('agent-chat', 'local-empty-response', {
+              model: effectiveModelId,
+            });
+            finishAssistantWithError(t({
+              en: 'The selected local model returned no text. Agentrix did not fall back to the cloud. Retry the local model, or switch models manually.',
+              zh: '当前选中的本地模型没有返回文本。Agentrix 没有回退到云端。请重试本地模型，或手动切换模型。',
+            }));
+            return;
+          }
+
+          if (token && finalAssistant) {
+            void syncLocalConversation({
+              sessionId: sessionIdRef.current,
+              messages: [
+                { role: 'user', content: text },
+                { role: 'assistant', content: finalAssistant },
+              ],
+              model: effectiveModelId,
+              platform: 'mobile',
+            });
+          }
+        } catch (error: any) {
+          if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            return;
+          }
+
+          const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
+            model: effectiveModelId,
+            message: localErrorMessage,
+          });
+          finishAssistantWithError(t({
+            en: `On-device inference failed: ${localErrorMessage}. Agentrix did not fall back to the cloud. Check the local package/runtime and retry, or switch models manually.`,
+            zh: `端侧推理失败：${localErrorMessage}。Agentrix 没有回退到云端。请检查本地模型包和运行时后重试，或手动切换模型。`,
+          }));
+          return;
+        }
+      }
 
       // Try OpenClaw proxy first (requires active instance)
-      if (instanceId) {
+      const proxyModelId = isLocalOnlyModelId(effectiveModelId)
+        ? remoteResolvedModelId
+        : effectiveModelId;
+      if (!streamSucceeded && instanceId) {
         await new Promise<void>((resolve) => {
           const ac = streamProxyChatSSE({
             instanceId,
@@ -1299,8 +1680,8 @@ export function AgentChatScreen() {
             token,
             model: proxyModelId,
             voiceId: agentVoiceId || undefined,
+            onEvent: handleStructuredStreamEvent,
             onMeta: (meta) => {
-              if (meta.resolvedModel) setResolvedModelId(meta.resolvedModel);
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
             },
             onChunk: (chunk) => {
@@ -1334,6 +1715,9 @@ export function AgentChatScreen() {
               resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, proxyReply);
               enqueueStreamedSpeech(proxyReply, true);
+              if (proxyResult?.stopReason === 'max_tokens' || proxyResult?.stopReason === 'tool_use') {
+                markAutoContinueNeeded(proxyResult.stopReason);
+              }
             }
           } catch (error: any) {
             proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
@@ -1351,13 +1735,17 @@ export function AgentChatScreen() {
           resetVoicePhaseAfterResponse();
           appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
         } else {
-          const history = buildHistory(currentMsgs, outgoingText);
+          const history = buildHistory(
+            currentMsgs,
+            typeof outgoingText === 'string' ? outgoingText : serializeMessageForModel(userMsg),
+          );
           await new Promise<void>((resolve) => {
             const ac = streamDirectClaude({
               messages: history,
               token,
               model: proxyModelId,
               sessionId: sessionIdRef.current,
+              onEvent: handleStructuredStreamEvent,
               onChunk: (chunk) => {
                 streamSucceeded = true;
                 resetVoicePhaseAfterResponse();
@@ -1403,10 +1791,14 @@ export function AgentChatScreen() {
       if (responseInterruptedRef.current) {
         return;
       }
+      const rawMsg = err?.message || '';
+      const friendlyMsg = rawMsg.includes('UnknownError') || rawMsg.includes('AI service error')
+        ? t({ en: 'AI service temporarily unavailable. Please try again or switch to another model.', zh: 'AI 服务暂时不可用，请重试或切换其他模型。' })
+        : rawMsg || t({ en: 'Something went wrong', zh: '发生了一些问题' });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
-            ? { ...m, content: `${t({ en: 'Error', zh: '错误' })}: ${err?.message || t({ en: 'Something went wrong', zh: '发生了一些问题' })}`, streaming: false, error: true }
+            ? { ...m, content: `⚠️ ${friendlyMsg}`, streaming: false, error: true }
             : m
         )
       );
@@ -1417,6 +1809,47 @@ export function AgentChatScreen() {
       resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
+
+      const autoContinuePrompt = pendingAutoContinuePromptRef.current;
+      const autoContinueReason = pendingAutoContinueReasonRef.current;
+      const autoContinueSessionId = pendingAutoContinueSessionIdRef.current;
+      if (
+        !responseInterruptedRef.current
+        && autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === sessionIdRef.current
+        && autoContinueCountRef.current < MOBILE_AUTO_CONTINUE_LIMIT
+      ) {
+        const scheduledSessionId = autoContinueSessionId;
+        autoContinueCountRef.current += 1;
+        clearPendingAutoContinue();
+        autoContinueTimerRef.current = setTimeout(() => {
+          autoContinueTimerRef.current = null;
+          if (responseInterruptedRef.current || sessionIdRef.current !== scheduledSessionId) {
+            return;
+          }
+          void handleSendRef.current(autoContinuePrompt, []);
+        }, 180);
+      } else if (
+        autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === sessionIdRef.current
+        && autoContinueCountRef.current >= MOBILE_AUTO_CONTINUE_LIMIT
+      ) {
+        clearPendingAutoContinue();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}-continue-hint`,
+            role: 'assistant',
+            content: autoContinueReason === 'tool_use'
+              ? t({ en: '⚠️ The task paused before finishing. Send "Continue" to resume the remaining steps.', zh: '⚠️ 任务在完成前暂停了，发送“继续”即可接着执行剩余步骤。' })
+              : t({ en: '⚠️ The reply is still incomplete. Send "Continue" to keep generating.', zh: '⚠️ 回复仍未完成，发送“继续”即可继续生成。' }),
+            createdAt: Date.now(),
+          },
+        ]);
+      }
+
       resumeLiveSpeech();
     }
   };
@@ -1467,6 +1900,7 @@ export function AgentChatScreen() {
       setCapturingPhoto(true);
       const captured = await cameraRef.current.takePictureAsync({
         quality: 0.8,
+        base64: localVoicePlan.relayCameraFramesToRealtime && duplexSessionConnected,
         exif: false,
         skipProcessing: false,
       });
@@ -1475,19 +1909,30 @@ export function AgentChatScreen() {
         return;
       }
 
+      if (captured.base64 && localVoicePlan.relayCameraFramesToRealtime) {
+        sendRealtimeImageFrame(captured.base64, 'image/jpeg');
+      }
+
       await enqueueAttachment({
         uri: captured.uri,
         fileName: `photo-${Date.now()}.jpg`,
         mimeType: 'image/jpeg',
       });
-      Haptics.selectionAsync().catch(() => {});
+      void runSelectionHaptic();
       setShowCameraModal(false);
     } catch (error: any) {
       Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), error?.message || t({ en: 'Failed to capture photo.', zh: '拍照失败。' }));
     } finally {
       setCapturingPhoto(false);
     }
-  }, [capturingPhoto, enqueueAttachment, t]);
+  }, [
+    capturingPhoto,
+    duplexSessionConnected,
+    enqueueAttachment,
+    localVoicePlan.relayCameraFramesToRealtime,
+    sendRealtimeImageFrame,
+    t,
+  ]);
 
   const handleAttachCamera = async () => {
     await openInAppCamera();
@@ -1530,7 +1975,7 @@ export function AgentChatScreen() {
     if (!input) return;
     try {
       await DeviceBridgingService.writeClipboard(input);
-      Haptics.selectionAsync().catch(() => {});
+      void runSelectionHaptic();
       Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Draft copied to clipboard.', zh: '未发送内容已复制到剪贴板。' }));
     } catch (error: any) {
       Alert.alert(t({ en: 'Copy Failed', zh: '复制失败' }), error?.message || t({ en: 'Failed to copy draft.', zh: '复制草稿失败。' }));
@@ -1654,7 +2099,7 @@ export function AgentChatScreen() {
     setQuotedMessage(msg);
     const snippet = msg.content?.slice(0, 60)?.replace(/\n/g, ' ') || '';
     setInput((prev) => prev ? prev : `> ${snippet}…\n`);
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
   }, []);
 
   const handleExportNote = useCallback((msg: Message) => {
@@ -1686,13 +2131,11 @@ export function AgentChatScreen() {
     try {
       const result = await apiFetch<{ instance: any }>('/openclaw/auto-provision', { method: 'POST' });
       if (result?.instance) {
-        const newInstance = {
-          id: result.instance.id,
+        const newInstance = mapRawInstance(result.instance, {
           name: result.instance.name || 'My Agent',
           instanceUrl: result.instance.instanceUrl || '',
-          status: 'active' as const,
           deployType: (result.instance.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
-        };
+        });
         useAuthStore.getState().addInstance(newInstance);
         useAuthStore.getState().setActiveInstance(newInstance.id);
         useAuthStore.getState().setOnboardingComplete();
@@ -1876,7 +2319,7 @@ export function AgentChatScreen() {
           <View testID="voice-status-bar" accessibilityLabel="voice-status-bar" style={styles.voiceStatusBar}>
             <View
               testID="voice-session-state"
-              accessibilityLabel={`voice-session-state:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}:${voicePhase}:${realtimeConnected ? 'connected' : 'disconnected'}`}
+              accessibilityLabel={`voice-session-state:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}:${voicePhase}:${duplexSessionConnected ? 'connected' : 'disconnected'}`}
               style={styles.e2eHiddenMarker}
             />
             <View
@@ -1893,13 +2336,19 @@ export function AgentChatScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.voiceStatusText}>
                   {voicePhase === 'idle' && (duplexMode
-                    ? (realtimeConnected
-                      ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
-                      : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
+                    ? (duplexUsesRealtimeChannel
+                      ? (realtimeConnected
+                        ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
+                        : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
+                      : (localVoicePlan.localAudioInputReady
+                        ? t({ en: 'Live local voice is ready. Supported short turns can stay on-device; unsupported turns are blocked instead of silently switching to the cloud.', zh: '连续本地语音已就绪。受支持的简短轮次会留在端侧；不支持的轮次会被直接拦截，不会再偷偷切到云端。' })
+                        : t({ en: 'Live voice is ready for the local text path. Unsupported multimodal turns will be blocked instead of silently switching to the cloud.', zh: '连续语音已就绪，可用于本地文本链路。不支持的多模态轮次会被直接拦截，不会再偷偷切到云端。' })))
                     : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                   {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                     ? duplexMode
-                      ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                      ? (duplexUsesRealtimeChannel
+                        ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                        : t({ en: 'Live listening… pause briefly to send', zh: '连续聆听中… 稍停即发送' }))
                       : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
                     : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
                 {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
@@ -2012,14 +2461,14 @@ export function AgentChatScreen() {
 
       <View style={styles.inputRow}>
         {voiceMode ? (
-          duplexMode && realtimeConnected ? (
-            /* Active realtime voice call — status display */
+          duplexMode && duplexSessionConnected ? (
+            /* Active duplex voice session — status display */
             <TouchableOpacity
               testID="chat-voice-action-button"
               accessibilityLabel={`chat-voice-action-button:call:${voicePhase}:${liveListening ? 'live' : 'idle'}`}
               style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
               onPress={() => {
-                if (liveListening) sendRealtimeInterrupt();
+                if (duplexUsesRealtimeChannel && liveListening) sendRealtimeInterrupt();
                 setDuplexMode(false);
               }}
               activeOpacity={0.85}
@@ -2031,10 +2480,12 @@ export function AgentChatScreen() {
                   ? t({ en: '💭  Thinking…', zh: '💭  思考中…' })
                   : voicePhase === 'speaking'
                   ? t({ en: '🔊  Speaking…', zh: '🔊  回复中…' })
-                  : t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })}
+                  : (duplexUsesRealtimeChannel
+                    ? t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })
+                    : t({ en: '🎙  Live Voice — Tap to End', zh: '🎙  连续语音中 — 点击结束' }))}
               </Text>
             </TouchableOpacity>
-          ) : duplexMode && !realtimeConnected ? (
+          ) : duplexMode && duplexUsesRealtimeChannel && !realtimeConnected ? (
             /* Connecting to realtime voice — show connecting state */
             <View
               style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
@@ -2092,6 +2543,8 @@ export function AgentChatScreen() {
         {/* Right: Send (when has text) or Mic toggle (when empty) */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
+            testID="chat-send-button"
+            accessibilityLabel="chat-send-button"
             style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
             onPress={() => handleSend()}
             disabled={sending || uploadingAttachment}
@@ -2111,7 +2564,7 @@ export function AgentChatScreen() {
               onPress={() => {
                 if (!liveVoiceAvailable) {
                   Alert.alert(
-                    t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                    t({ en: 'Live Voice Unavailable', zh: '连续语音不可用' }),
                     t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
                   );
                   return;
@@ -2224,7 +2677,7 @@ export function AgentChatScreen() {
                 onPress={() => {
                   if (!liveVoiceAvailable && !duplexMode) {
                     Alert.alert(
-                      t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                      t({ en: 'Live Voice Unavailable', zh: '连续语音不可用' }),
                       t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
                     );
                     return;
@@ -2236,6 +2689,18 @@ export function AgentChatScreen() {
               >
                 <Text style={[styles.sheetToggleText, duplexMode && { color: colors.accent }]}>
                   {duplexMode ? t({ en: 'Live', zh: '实时' }) : t({ en: 'Basic', zh: '基础' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'On-device Voice First', zh: '端侧语音优先' })}</Text>
+              <TouchableOpacity
+                onPress={() => setPreferOnDeviceVoice(!preferOnDeviceVoice)}
+                style={[styles.sheetToggle, preferOnDeviceVoice && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, preferOnDeviceVoice && { color: colors.accent }]}>
+                  {preferOnDeviceVoice ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2358,7 +2823,7 @@ export function AgentChatScreen() {
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
           <View style={styles.modelSheet}>
             <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
-            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Applies to this agent only', zh: '仅应用到当前智能体' })}</Text>
+            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}</Text>
             <ScrollView>
               {availableModels.map((m) => {
                 const isActive = m.id === effectiveModelId;
@@ -2370,17 +2835,20 @@ export function AgentChatScreen() {
                       isActive && styles.modelOptionActive,
                     ]}
                     onPress={async () => {
-                      setAgentPreferredModel(m.id);
-                      setResolvedModelLabel(m.label);
+                      const isLocalTargetModel = isLocalOnlyModelId(m.id);
+                      setSelectedModel(m.id);
+                      setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
                       setShowModelPicker(false);
-                      const agentAccountId = activeInstance?.metadata?.agentAccountId;
-                      if (agentAccountId) {
-                        try {
-                          const { updateAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
-                          await updateAgentPresenceAccount(agentAccountId, { preferredModel: m.id });
-                        } catch {}
-                      }
-                      if (instanceId) {
+                      if (instanceId && !isLocalTargetModel) {
+                        updateInstance(instanceId, {
+                          capabilities: {
+                            ...(activeInstance?.capabilities || {}),
+                            activeModel: m.id,
+                            modelPinned: true,
+                          },
+                          resolvedModel: m.id,
+                          resolvedModelLabel: m.label,
+                        });
                         try { await switchInstanceModel(instanceId, m.id); } catch {}
                       }
                     }}
