@@ -1,10 +1,98 @@
 import { create } from "zustand";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { getDesktopDeviceId } from "./desktop";
+import { AgentrixStreamParser, type StreamEvent } from "../../../shared/stream-parser.ts";
 
-export const API_BASE = "https://api.agentrix.top/api";
+export const DEFAULT_API_BASE = "https://api.agentrix.top/api";
+export const API_BASE_STORAGE_KEY = "agentrix_api_base";
+const AGENTRIX_HOST_SUFFIX = ".agentrix.top";
+
+function normalizeApiBase(base: string) {
+  const trimmed = base.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return DEFAULT_API_BASE;
+  }
+  return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+}
+
+function parseApiBase(base: string): URL | null {
+  try {
+    const parsed = new URL(normalizeApiBase(base));
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function getTrustedEnvApiBase(base: string): string {
+  const normalized = normalizeApiBase(base || DEFAULT_API_BASE);
+  return parseApiBase(normalized) ? normalized : DEFAULT_API_BASE;
+}
+
+function isAgentrixHostedApiBase(base: string): boolean {
+  const parsed = parseApiBase(base);
+  if (!parsed) {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  return hostname === "agentrix.top" || hostname.endsWith(AGENTRIX_HOST_SUFFIX);
+}
+
+export function sanitizePersistedApiBase(base: string, trustedBase: string = DEFAULT_API_BASE): string | null {
+  const trimmed = base.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = parseApiBase(trimmed);
+  if (!candidate) {
+    return null;
+  }
+
+  const trusted = parseApiBase(trustedBase);
+  if (trusted && candidate.origin.toLowerCase() === trusted.origin.toLowerCase()) {
+    return normalizeApiBase(trimmed);
+  }
+
+  if (isAgentrixHostedApiBase(trimmed)) {
+    return normalizeApiBase(trimmed);
+  }
+
+  return null;
+}
+
+function resolveApiBase() {
+  const envBase = typeof import.meta !== "undefined" ? String(import.meta.env.VITE_API_BASE || "").trim() : "";
+  const trustedEnvBase = getTrustedEnvApiBase(envBase);
+  let localOverride = "";
+  try {
+    localOverride = String(localStorage.getItem(API_BASE_STORAGE_KEY) || "").trim();
+  } catch {
+    localOverride = "";
+  }
+
+  const safeOverride = sanitizePersistedApiBase(localOverride, trustedEnvBase);
+  if (!safeOverride && localOverride) {
+    try {
+      localStorage.removeItem(API_BASE_STORAGE_KEY);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+  }
+
+  return safeOverride || trustedEnvBase;
+}
+
+export const API_BASE = resolveApiBase();
 
 // ─── Secure Token Storage ──────────────────────────────
 // Use Tauri Store plugin (encrypted on-disk) when available, else localStorage fallback
+const TOKEN_STORAGE_KEY = "agentrix_token";
+
 let _tauriStore: any = null;
 async function getTauriStore() {
   if (_tauriStore) return _tauriStore;
@@ -17,30 +105,74 @@ async function getTauriStore() {
   }
 }
 
+function readLocalToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
+function clearLocalToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
 async function secureGetToken(): Promise<string | null> {
+  const localToken = readLocalToken();
   const store = await getTauriStore();
+  let storeToken: string | null = null;
   if (store) {
     const val = await store.get("agentrix_token");
-    if (val) return val as string;
+    if (val) {
+      storeToken = String(val);
+    }
   }
-  // Fallback: localStorage (for dev / browser)
-  return localStorage.getItem("agentrix_token");
+
+  // Prefer the immediately-updated local token so QR/OAuth login can survive reloads
+  // even if the async Tauri store write hasn't completed yet.
+  if (localToken) {
+    if (store && localToken !== storeToken) {
+      void store.set(TOKEN_STORAGE_KEY, localToken).catch(() => {
+        // Best-effort sync only.
+      });
+    }
+    return localToken;
+  }
+
+  if (storeToken) {
+    writeLocalToken(storeToken);
+    return storeToken;
+  }
+
+  return null;
 }
 
 async function secureSetToken(token: string): Promise<void> {
+  writeLocalToken(token);
   const store = await getTauriStore();
   if (store) {
-    await store.set("agentrix_token", token);
+    await store.set(TOKEN_STORAGE_KEY, token);
   }
-  localStorage.setItem("agentrix_token", token);
 }
 
 async function secureClearToken(): Promise<void> {
+  clearLocalToken();
   const store = await getTauriStore();
   if (store) {
-    await store.delete("agentrix_token");
+    await store.delete(TOKEN_STORAGE_KEY);
   }
-  localStorage.removeItem("agentrix_token");
 }
 
 // Use Tauri HTTP plugin (bypasses CORS) when available, else standard fetch
@@ -59,8 +191,10 @@ export interface ChatAttachment {
   originalName: string;
   mimetype: string;
   size: number;
-  kind: 'image' | 'file';
+  kind: 'image' | 'audio' | 'video' | 'file';
   isImage: boolean;
+  isAudio: boolean;
+  isVideo: boolean;
 }
 
 export async function uploadChatAttachment(file: File, token: string): Promise<ChatAttachment> {
@@ -68,6 +202,8 @@ export async function uploadChatAttachment(file: File, token: string): Promise<C
   const mimeFromExt: Record<string, string> = {
     png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
     webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+    mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', aac: 'audio/aac',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/x-m4v',
     pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown',
     csv: 'text/csv', json: 'application/json',
     doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -155,6 +291,7 @@ interface AuthState {
   activeAgentId: string | null;
   instances: OpenClawInstance[];
   activeInstanceId: string | null;
+  acceptToken: (token: string) => Promise<void>;
   loadToken: () => Promise<void>;
   login: (email: string, code: string) => Promise<boolean>;
   sendCode: (email: string) => Promise<boolean>;
@@ -172,6 +309,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   activeAgentId: null,
   instances: [],
   activeInstanceId: null,
+
+  acceptToken: async (token: string) => {
+    set({ token, isGuest: false });
+    void secureSetToken(token).catch((error) => {
+      console.warn("[acceptToken] failed to persist token:", error);
+    });
+  },
 
   loadToken: async () => {
     try {
@@ -256,9 +400,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const data = JSON.parse(text);
     const token = data.token || data.access_token;
     if (!token) return false;
-    await secureSetToken(token);
-    set({ token });
-    // Fetch full user + agents
+    await get().acceptToken(token);
     await get().loadToken();
     return true;
   },
@@ -286,6 +428,75 @@ export interface ChatMessage {
   meta?: { resolvedModel?: string; resolvedModelLabel?: string };
 }
 
+async function consumeAgentrixSse(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  callbacks: {
+    onChunk: (chunk: string) => void;
+    onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
+    onDone: () => void;
+    onError: (err: string) => void;
+    onEvent?: (event: StreamEvent) => void;
+  },
+) {
+  const decoder = new TextDecoder();
+  let settled = false;
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    callbacks.onDone();
+  };
+
+  const fail = (message: string) => {
+    if (settled) return;
+    settled = true;
+    callbacks.onError(message);
+  };
+
+  const emit = (event: StreamEvent) => {
+    callbacks.onEvent?.(event);
+  };
+
+  const parser = new AgentrixStreamParser({
+    onTextDelta: (event) => {
+      emit(event);
+      callbacks.onChunk(event.text);
+    },
+    onThinking: emit,
+    onToolStart: emit,
+    onToolProgress: emit,
+    onToolResult: emit,
+    onToolError: (event) => {
+      emit(event);
+    },
+    onApprovalRequired: emit,
+    onUsage: emit,
+    onTurnInfo: emit,
+    onDone: (event) => {
+      emit(event);
+      finish();
+    },
+    onError: (event) => {
+      emit(event);
+      fail(event.error || '未知错误');
+    },
+    onMeta: (meta) => callbacks.onMeta?.(meta as { resolvedModel?: string; resolvedModelLabel?: string }),
+  });
+
+  while (!settled) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parser.feed(decoder.decode(value, { stream: true }));
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    parser.feed(tail);
+  }
+  parser.end();
+  finish();
+}
+
 /** SSE streaming chat via OpenClaw proxy */
 export function streamChat(opts: {
   instanceId: string;
@@ -293,8 +504,10 @@ export function streamChat(opts: {
   sessionId: string;
   token: string;
   model?: string;
+  mode?: "ask" | "agent" | "plan";
   onChunk: (chunk: string) => void;
   onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
+  onEvent?: (event: StreamEvent) => void;
   onDone: () => void;
   onError: (err: string) => void;
 }): AbortController {
@@ -312,6 +525,9 @@ export function streamChat(opts: {
       message: opts.message,
       sessionId: opts.sessionId,
       model: opts.model,
+      mode: opts.mode || "agent",
+      platform: "desktop",
+      deviceId: getDesktopDeviceId(),
     }),
     signal: ac.signal,
   };
@@ -328,75 +544,47 @@ export function streamChat(opts: {
   doFetch()
     .then(async (res) => {
       if (!res.ok || !res.body) {
-        opts.onError(`HTTP ${res.status}`);
+        let detail = `HTTP ${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) {
+            const json = JSON.parse(text);
+            detail = json.message || json.error || detail;
+          }
+        } catch { /* ignore */ }
+        opts.onError(detail);
         return;
       }
       const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              opts.onDone();
-              return;
-            }
-            // Parse JSON SSE chunks: {"chunk":"text"} or {"error":"msg"}
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed && typeof parsed === "object") {
-                if (parsed.error) {
-                  opts.onError(parsed.error);
-                  return;
-                }
-                // Handle meta events (model info)
-                if (parsed.meta && opts.onMeta) {
-                  opts.onMeta(parsed.meta);
-                  continue;
-                }
-                // Extract text from known fields
-                const text = parsed.chunk ?? parsed.text ?? parsed.content;
-                if (text !== undefined) {
-                  opts.onChunk(String(text));
-                  continue;
-                }
-              }
-            } catch {
-              // Not JSON — pass through as-is
-            }
-            opts.onChunk(data);
-          }
-        }
-      }
-      opts.onDone();
+      await consumeAgentrixSse(reader, {
+        onChunk: opts.onChunk,
+        onMeta: opts.onMeta,
+        onEvent: opts.onEvent,
+        onDone: opts.onDone,
+        onError: opts.onError,
+      });
     })
     .catch((err) => {
       if (err.name !== "AbortError") {
-        opts.onError(err.message);
+        opts.onError(err?.message || String(err));
       }
     });
 
   return ac;
 }
 
-/** Direct Claude/Bedrock fallback */
+/** Default OpenClaw proxy chat via the user's primary instance */
 export function streamDirectChat(opts: {
   messages: Array<{ role: string; content: string }>;
   sessionId: string;
   agentId?: string | null;
   token: string;
+  model?: string;
+  mode?: "ask" | "agent" | "plan";
   onChunk: (chunk: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
+  onEvent?: (event: StreamEvent) => void;
 }): AbortController {
   const ac = new AbortController();
 
@@ -405,10 +593,18 @@ export function streamDirectChat(opts: {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${opts.token}`,
+      Accept: "text/event-stream",
     },
     body: JSON.stringify({
       messages: opts.messages,
       sessionId: opts.sessionId,
+      context: {
+        sessionId: opts.sessionId,
+      },
+      mode: opts.mode || "agent",
+      platform: "desktop",
+      deviceId: getDesktopDeviceId(),
+      options: opts.model ? { model: opts.model } : undefined,
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
     }),
     signal: ac.signal,
@@ -417,42 +613,71 @@ export function streamDirectChat(opts: {
   // Use tauriFetch (bypasses CORS) with fallback to window.fetch
   const doFetch = async () => {
     try {
-      return await tauriFetch(`${API_BASE}/claude/chat`, fetchInit as any);
+      return await tauriFetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit as any);
     } catch {
-      return await fetch(`${API_BASE}/claude/chat`, fetchInit);
+      return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
     }
   };
 
   doFetch()
     .then(async (res) => {
-      if (!res.ok) {
-        opts.onError(`HTTP ${res.status}`);
+      if (!res.ok || !res.body) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) {
+            const json = JSON.parse(text);
+            detail = json.message || json.error || detail;
+          }
+        } catch { /* ignore */ }
+        opts.onError(detail);
         return;
       }
-      const data = await res.json();
-      if (data.error) {
-        opts.onError(data.error);
-        return;
-      }
-      const reply = data.reply || data.content || data.message || "";
-      // Simulate streaming for consistency
-      const words = reply.split(" ");
-      for (let i = 0; i < words.length; i++) {
-        opts.onChunk(words[i] + (i < words.length - 1 ? " " : ""));
-        await new Promise((r) => setTimeout(r, 30));
-      }
-      opts.onDone();
+      const reader = res.body.getReader();
+      await consumeAgentrixSse(reader, {
+        onChunk: opts.onChunk,
+        onEvent: opts.onEvent,
+        onDone: opts.onDone,
+        onError: opts.onError,
+      });
     })
     .catch((err) => {
-      if (err.name !== "AbortError") opts.onError(err.message);
+      if (err.name !== "AbortError") opts.onError(err?.message || String(err));
     });
 
   return ac;
 }
 
+/** Sync local model conversation to backend for memory persistence */
+export async function syncLocalConversation(
+  token: string,
+  sessionId: string,
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  model?: string,
+): Promise<void> {
+  try {
+    await apiFetch(`${API_BASE}/openclaw/proxy/sync-local-messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        sessionId,
+        messages,
+        model: model || 'gemma-4-e2b',
+        platform: 'desktop',
+        deviceId: getDesktopDeviceId(),
+      }),
+    });
+  } catch {
+    // Non-critical — local chat still works even if sync fails
+  }
+}
+
 /** Fetch available AI models */
 export async function fetchModels(token: string) {
-  const res = await apiFetch(`${API_BASE}/openclaw/models`, {
+  const res = await apiFetch(`${API_BASE}/ai-providers/available-models`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];

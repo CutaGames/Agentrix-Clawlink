@@ -31,6 +31,39 @@ function getWindowView(): string {
 export default function App() {
   const windowLabel = getWindowView();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<"compact" | "pro">("compact");
+
+  const openCompactPanel = useCallback(() => {
+    setPanelMode("compact");
+    setPanelOpen(true);
+  }, []);
+
+  const openProPanel = useCallback(() => {
+    setPanelMode("pro");
+    setPanelOpen(true);
+  }, []);
+
+  // ── Window resize helper for single-window mode ──
+  const resizeMainWindow = useCallback(async (width: number, height: number) => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("desktop_bridge_resize_ball_window", { width, height });
+    } catch {}
+  }, []);
+
+  // When panelOpen changes, resize the main window accordingly
+  useEffect(() => {
+    if (windowLabel !== "main" && windowLabel !== "dev") return;
+    if (panelOpen) {
+      if (panelMode === "pro") {
+        resizeMainWindow(1100, 820);
+      } else {
+        resizeMainWindow(480, 640);
+      }
+    } else {
+      resizeMainWindow(80, 80);
+    }
+  }, [panelMode, panelOpen, windowLabel, resizeMainWindow]);
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
@@ -39,11 +72,14 @@ export default function App() {
 
   useEffect(() => {
     loadToken();
+    // Periodically refresh instances to pick up model/config changes from mobile
+    const refreshInterval = setInterval(() => loadToken(), 30_000);
     // Restore saved theme
     const saved = localStorage.getItem("agentrix_theme");
     if (saved === "light" || saved === "dark") {
       document.documentElement.setAttribute("data-theme", saved);
     }
+    return () => clearInterval(refreshInterval);
   }, [loadToken]);
 
   useEffect(() => {
@@ -127,7 +163,11 @@ export default function App() {
       // Ctrl+Shift+S → toggle panel
       if (e.ctrlKey && e.shiftKey && e.key === "S") {
         e.preventDefault();
-        setPanelOpen((prev) => !prev);
+        if (panelOpen && panelMode === "pro") {
+          setPanelOpen(false);
+        } else {
+          openProPanel();
+        }
       }
       // Escape → close panel
       if (e.key === "Escape" && panelOpen) {
@@ -142,7 +182,13 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [panelOpen]);
+  }, [openProPanel, panelMode, panelOpen]);
+
+  useEffect(() => {
+    const handler = () => setPanelOpen(true);
+    window.addEventListener("agentrix:approval-new", handler);
+    return () => window.removeEventListener("agentrix:approval-new", handler);
+  }, []);
 
   // Register Tauri global shortcuts (runs once, chat/default only)
   useEffect(() => {
@@ -154,7 +200,7 @@ export default function App() {
         // Register Ctrl+Shift+A for voice
         await register("CmdOrCtrl+Shift+A", (event) => {
           if (event.state === "Pressed") {
-            setPanelOpen(true);
+            openCompactPanel();
             window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
           } else if (event.state === "Released") {
             window.dispatchEvent(new CustomEvent("agentrix:voice-stop"));
@@ -163,7 +209,11 @@ export default function App() {
         // Register Ctrl+Shift+S for panel toggle
         await register("CmdOrCtrl+Shift+S", (event) => {
           if (event.state === "Pressed") {
-            setPanelOpen((prev) => !prev);
+            if (panelOpen && panelMode === "pro") {
+              setPanelOpen(false);
+            } else {
+              openProPanel();
+            }
           }
         });
         // Register Ctrl/Cmd+K for Spotlight mode
@@ -187,21 +237,20 @@ export default function App() {
       }
     })();
     return () => cleanup?.();
-  }, []);
+  }, [openCompactPanel, openProPanel, panelMode, panelOpen]);
 
   useEffect(() => {
     if (
       windowLabel === "floating-ball" ||
       !loggedIn ||
       !desktopWakeWordConfig.enabled ||
-      !desktopWakeWordConfig.accessKey ||
-      !DesktopWakeWordService.isAvailable()
+      !desktopWakeWordConfig.accessKey
     ) {
       return;
     }
 
-    const wakeWord = new DesktopWakeWordService();
     let disposed = false;
+    let wakeWord: DesktopWakeWordService | null = null;
 
     const triggerVoiceFlow = async () => {
       if (disposed) return;
@@ -211,7 +260,7 @@ export default function App() {
         return;
       }
 
-      setPanelOpen(true);
+      openCompactPanel();
       setTimeout(() => {
         if (!disposed) {
           window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
@@ -219,19 +268,34 @@ export default function App() {
       }, 250);
     };
 
-    void wakeWord.init({
-      accessKey: desktopWakeWordConfig.accessKey,
-      builtInKeyword: desktopWakeWordConfig.customKeywordPath ? undefined : desktopWakeWordConfig.builtInKeyword,
-      customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
-      sensitivity: desktopWakeWordConfig.sensitivity,
-      onWakeWord: () => {
-        void triggerVoiceFlow();
-      },
-    }).then(() => wakeWord.start());
+    const startWakeWord = async () => {
+      if (!(await DesktopWakeWordService.isAvailable()) || disposed) {
+        return;
+      }
+
+      const service = new DesktopWakeWordService();
+      wakeWord = service;
+
+      await service.init({
+        accessKey: desktopWakeWordConfig.accessKey,
+        builtInKeyword: desktopWakeWordConfig.customKeywordPath ? undefined : desktopWakeWordConfig.builtInKeyword,
+        customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
+        sensitivity: desktopWakeWordConfig.sensitivity,
+        onWakeWord: () => {
+          void triggerVoiceFlow();
+        },
+      });
+
+      if (!disposed) {
+        await service.start();
+      }
+    };
+
+    void startWakeWord();
 
     return () => {
       disposed = true;
-      void wakeWord.release();
+      void wakeWord?.release();
     };
   }, [
     desktopWakeWordConfig.accessKey,
@@ -240,6 +304,7 @@ export default function App() {
     desktopWakeWordConfig.enabled,
     desktopWakeWordConfig.sensitivity,
     loggedIn,
+    openCompactPanel,
     wakeWordRevision,
     windowLabel,
   ]);
@@ -257,6 +322,15 @@ export default function App() {
         await invoke("desktop_bridge_set_panel_position_near_ball");
       } catch (err) {
         console.error("open_chat_panel failed:", err);
+      }
+    };
+
+    const handleOpenPro = async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("desktop_bridge_open_chat_panel", { proMode: true });
+      } catch (err) {
+        console.error("open_chat_panel(pro) failed:", err);
       }
     };
 
@@ -312,7 +386,10 @@ export default function App() {
           background: "#FF0000",
         }}
       >
-        <FloatingBall onTap={handleBallClick} />
+        <FloatingBall
+          onTap={handleBallClick}
+          onOpenPro={handleOpenPro}
+        />
       </div>
     );
   }
@@ -371,10 +448,15 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div
-        style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}
+        style={{ width: "100%", height: "100%", background: panelOpen ? "var(--bg-dark)" : "transparent" }}
       >
         {panelOpen ? (
-          <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
+          <ChatPanel
+            onClose={() => setPanelOpen(false)}
+            networkStatus={networkStatus}
+            proMode={panelMode === "pro"}
+            onEnterProMode={openProPanel}
+          />
         ) : (
           <div
             style={{
@@ -383,9 +465,10 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              background: "transparent",
             }}
           >
-            <FloatingBall onTap={() => setPanelOpen(true)} />
+            <FloatingBall onTap={openCompactPanel} onOpenPro={openProPanel} />
           </div>
         )}
       </div>

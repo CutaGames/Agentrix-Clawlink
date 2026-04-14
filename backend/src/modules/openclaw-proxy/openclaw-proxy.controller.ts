@@ -19,7 +19,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { OpenClawProxyService, ChatMessageDto } from './openclaw-proxy.service';
+import { OpenClawProxyService, ChatMessageDto, UnifiedChatRequestDto } from './openclaw-proxy.service';
 
 @ApiTags('openclaw/proxy')
 @Controller('openclaw/proxy')
@@ -37,6 +37,25 @@ export class OpenClawProxyController {
   }
 
   // ===== Chat =====
+
+  @Post('chat')
+  @ApiOperation({ summary: 'Send a chat message using the user default OpenClaw instance' })
+  async sendDefaultChat(
+    @Request() req: any,
+    @Body() body: UnifiedChatRequestDto,
+  ) {
+    return this.proxyService.sendDefaultChat(req.user.id, body);
+  }
+
+  @Post('stream')
+  @ApiOperation({ summary: 'Stream a chat response using the user default OpenClaw instance' })
+  async streamDefaultChat(
+    @Request() req: any,
+    @Body() body: UnifiedChatRequestDto,
+    @Res() res: Response,
+  ) {
+    await this.proxyService.streamDefaultChat(req.user.id, body, res);
+  }
 
   @Post(':instanceId/chat')
   @ApiOperation({ summary: 'Send a chat message (non-streaming)' })
@@ -135,5 +154,23 @@ export class OpenClawProxyController {
     @Body() body: { calls: Array<{ tool: string; params: Record<string, any> }> },
   ) {
     return this.proxyService.executePlatformToolBatch(req.user.id, instanceId, body.calls);
+  }
+
+  // ===== Local Model Conversation Sync =====
+
+  @Post('sync-local-messages')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sync local model conversation messages to backend for memory persistence' })
+  async syncLocalMessages(
+    @Request() req: any,
+    @Body() body: {
+      sessionId: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      model?: string;
+      platform?: string;
+      deviceId?: string;
+    },
+  ) {
+    return this.proxyService.syncLocalConversation(req.user.id, body);
   }
 }

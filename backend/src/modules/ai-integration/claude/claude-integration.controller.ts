@@ -1,9 +1,14 @@
-import { Controller, Get, Post, Body, Query, Req, Logger } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Get, Post, Body, Query, Req, Res, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeIntegrationService } from './claude-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
+import { OpenClawProxyService, UnifiedChatRequestDto } from '../../openclaw-proxy/openclaw-proxy.service';
+import { AgentContextService } from '../../agent-context/agent-context.service';
+import { AgentIntelligenceService } from '../../agent-intelligence/agent-intelligence.service';
+import { RuntimeSeamService } from '../../query-engine/runtime-seam.service';
+import { formatSSE, formatSSEDone, type StreamEvent } from '../../query-engine/interfaces/stream-event.interface';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
@@ -14,6 +19,12 @@ export class ClaudeIntegrationController {
     private jwtService: JwtService,
     private configService: ConfigService,
     private aiProviderService: AiProviderService,
+    @Inject(forwardRef(() => OpenClawProxyService))
+    private openClawProxyService: OpenClawProxyService,
+    private agentContextService: AgentContextService,
+    private agentIntelligenceService: AgentIntelligenceService,
+    @Inject(forwardRef(() => RuntimeSeamService))
+    private runtimeSeamService: RuntimeSeamService,
   ) {}
 
   /** Best-effort userId extraction from Bearer token (no guard — stays public). */
@@ -26,6 +37,23 @@ export class ClaudeIntegrationController {
       return payload?.sub as string | undefined;
     } catch {
       return undefined;
+    }
+  }
+
+  private initSse(res: Response): void {
+    if (res.headersSent) return;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+  }
+
+  private writeSse(res: Response, payload: string): void {
+    if (res.writableEnded) return;
+    res.write(payload);
+    if ((res as any).flush) {
+      (res as any).flush();
     }
   }
 
@@ -120,14 +148,21 @@ export class ClaudeIntegrationController {
   @Post('chat')
   async chat(
     @Req() req: Request,
+    @Res() res: Response,
     @Body()
     body: {
-      messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
       anthropicApiKey?: string; // 用户提供的 API Key（可选）
+      sessionId?: string;
+      agentId?: string;
+      mode?: 'ask' | 'agent' | 'plan';
+      platform?: 'desktop' | 'mobile' | 'web';
+      deviceId?: string;
       context?: {
         userId?: string;
         sessionId?: string;
       };
+      stream?: boolean;
       options?: {
         model?: string;
         temperature?: number;
@@ -136,71 +171,125 @@ export class ClaudeIntegrationController {
       };
     },
   ) {
-    const { messages, anthropicApiKey, context = {}, options } = body;
+    const { messages, anthropicApiKey, context = {}, options, sessionId, agentId, mode, platform, deviceId } = body;
+    const wantsStream = body.stream === true || String(req.headers?.accept || '').includes('text/event-stream');
+    const startMs = Date.now();
+
+    const emitStructured = (event: StreamEvent) => {
+      this.writeSse(res, formatSSE(event));
+    };
+
+    const emitMeta = (meta: Record<string, any>) => {
+      this.writeSse(res, `data: ${JSON.stringify({ meta })}\n\n`);
+    };
+
+    if (!context.sessionId && sessionId) {
+      context.sessionId = sessionId;
+    }
 
     // Extract userId from JWT if not already in context
     if (!context.userId) {
       context.userId = this.extractUserIdFromToken(req);
     }
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return { error: 'messages array is required and must not be empty' };
+    if (context.userId) {
+      const compatibilityPayload: UnifiedChatRequestDto = {
+        ...body,
+        sessionId: context.sessionId || sessionId,
+        agentId,
+        mode,
+        platform,
+        deviceId,
+        context,
+      };
+
+      if (wantsStream) {
+        await this.openClawProxyService.streamDefaultChat(context.userId, compatibilityPayload, res);
+        return;
+      }
+
+      const proxied = await this.openClawProxyService.sendDefaultChat(context.userId, compatibilityPayload);
+      const text = proxied?.reply?.content || proxied?.text || proxied?.content || proxied?.message || '';
+
+      return res.json({
+        ...proxied,
+        text,
+        content: text,
+        message: text,
+        reply: proxied?.reply || {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: text,
+          createdAt: new Date().toISOString(),
+        },
+        via: 'openclaw-proxy',
+      });
     }
 
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array is required and must not be empty' });
+    }
+
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    const lastUserText = typeof lastUserMessage?.content === 'string'
+      ? lastUserMessage.content
+      : Array.isArray(lastUserMessage?.content)
+        ? lastUserMessage.content
+          .map((block: any) => typeof block === 'string' ? block : block?.text || '')
+          .join(' ')
+        : '';
+
     // If the client already provides a system message, use it as-is.
-    // Otherwise inject the default personal agent system prompt.
+    // Otherwise inject the layered context via RuntimeSeamService (P0 unified contract).
     const hasClientSystemMessage = messages.some(m => m.role === 'system');
 
-    const defaultSystemPrompt = `You are the user's own personal AI agent on Agentrix platform. You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
+    let baseMessages: typeof messages;
+    if (hasClientSystemMessage) {
+      baseMessages = messages;
+    } else {
+      // P0: Use RuntimeSeamService for consistent context across both chat paths
+      const seamContext = await this.runtimeSeamService.buildRuntimeContext({
+        userId: context.userId || '',
+        sessionId: context.sessionId || `claude-${Date.now()}`,
+        agentId,
+        message: lastUserText,
+        needsTools: mode !== 'ask',
+        model: options?.model,
+        modelLabel: options?.model || 'AI',
+        mode,
+        platform,
+      });
 
-The chat client is a rich mobile app with full media support:
-- Images: Include image URLs (or markdown ![alt](url)) in your reply and they will render as inline image cards.
-- Audio: Every message has a "Play Audio" button for TTS playback. Voice is fully supported.
-- Files: File URLs render as downloadable cards.
-NEVER say the chat is "text-only" or that it cannot display images, play audio, or handle media.
+      if (seamContext.hookBlocked) {
+        const blockedResult = {
+          text: seamContext.hookBlockMessage || 'Message blocked by pre-message hook.',
+          toolCalls: null,
+          stopReason: 'hook_blocked',
+        };
 
-Reliability rules:
-- Never invent desktop sync state, local file access, wallet balances, marketplace totals, installed skills, or task counts.
-- Only state wallet balances, asset status, marketplace counts, and similar facts after a successful tool call or explicit data in the conversation.
-- If the required tool or live instance is unavailable, say that directly instead of guessing.
+        if (wantsStream) {
+          this.initSse(res);
+          emitStructured({ type: 'text_delta', text: blockedResult.text });
+          emitStructured({
+            type: 'done',
+            reason: 'end_turn',
+            totalDurationMs: Date.now() - startMs,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+          });
+          this.writeSse(res, formatSSEDone());
+          res.end();
+          return;
+        }
 
-## Tool Capabilities — USE THEM when relevant:
-### Marketplace & Skills
-- **Web search** (search_web): search for up-to-date information
-- **Marketplace products** (search_agentrix_products): search goods, services, APIs, resources
-- **AI Skills** (skill_search, skill_install, skill_execute): search, install, and run AI skills from OpenClaw Hub
-- **Publish** (skill_publish, resource_publish): publish new skills or resources to the marketplace
+        return res.json(blockedResult);
+      }
 
-### Commerce & Payment
-- **Shopping** (add_to_agentrix_cart, view_agentrix_cart, checkout_agentrix_cart, buy_agentrix_product): full e-commerce flow
-- **Orders & Payment** (get_agentrix_order, pay_agentrix_order): order tracking and payment
-- **Marketplace purchase** (marketplace_purchase): purchase skills/resources with wallet balance
-
-### Wallet & Finance
-- **Wallet Balance** (get_balance): check the agent's wallet balance and available funds — ALWAYS call this when user asks about their balance
-- **Asset Overview** (asset_overview): comprehensive view of wallet assets, chains, and protocol status
-
-### Task Marketplace
-- **Tasks** (task_search, task_post, task_accept, task_submit): search, post, accept, and complete tasks/bounties
-
-### Share & Social
-- **Share** (share_content): generate share links and posters for any marketplace item
-
-## Image Generation
-You CAN generate images by searching for image generation skills (call skill_search for "image generation", "DALL-E", etc.), installing them, and executing them. NEVER say "I cannot generate images".
-
-## Screenshot & Browser
-You CAN take screenshots via installable skills. Call skill_search for "screenshot" or "browser automation".
-
-${context.userId ? `Authenticated User ID: ${context.userId}` : 'User is not authenticated — some features may be limited.'}
-${context.sessionId ? `Session: ${context.sessionId}` : ''}
-
-Always reply in the same language the user uses. When the user asks to do something, call the appropriate tool — never say you cannot do it if a tool exists for it.`;
-
-    const baseMessages = hasClientSystemMessage ? messages : [
-      { role: 'system' as const, content: defaultSystemPrompt },
-      ...messages,
-    ];
+      baseMessages = [
+        { role: 'system' as const, content: seamContext.systemPrompt },
+        ...messages,
+      ];
+    }
 
     // Convert image attachment URLs in user messages to Claude multimodal content blocks
     const allMessages = baseMessages.map(m => {
@@ -236,14 +325,190 @@ Always reply in the same language the user uses. When the user asks to do someth
       }
     }
 
-    const result = await this.claudeService.chatWithFunctions(allMessages, {
+    const chatOptions: {
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      enableModelRouting?: boolean;
+      context: { userId?: string; sessionId?: string };
+      userApiKey?: string;
+      userCredentials?: { apiKey: string; secretKey?: string; region?: string; baseUrl?: string; providerId: string; model?: string };
+      additionalTools?: any[];
+      onToolCall?: (name: string, args: any) => Promise<any>;
+      onChunk?: (text: string) => void;
+    } = {
       ...options,
       context,
       userApiKey: anthropicApiKey,
       userCredentials: userCreds,
-    });
+    };
 
-    return result;
+    let streamedTextBytes = 0;
+    const toolCallIds = new Map<string, string>();
+
+    const emitClaudeChunk = (chunk: string) => {
+      if (!chunk) return;
+
+      const trimmed = chunk.trim();
+      if (!trimmed) return;
+
+      if (trimmed === '[Thinking]' || trimmed === '[/Thinking]') {
+        return;
+      }
+
+      const thinkingMatch = trimmed.match(/^\[Think\]\s*(.*)$/s);
+      if (thinkingMatch) {
+        emitStructured({ type: 'thinking', text: thinkingMatch[1] || '' });
+        return;
+      }
+
+      const toolStartMatch = trimmed.match(/^\[Tool Start\]\s*(.+)$/s);
+      if (toolStartMatch) {
+        const toolName = toolStartMatch[1].trim() || 'tool';
+        const toolCallId = `claude-tool-${Date.now()}-${toolCallIds.size + 1}`;
+        toolCallIds.set(toolName, toolCallId);
+        emitStructured({ type: 'tool_start', toolCallId, toolName, input: {} });
+        return;
+      }
+
+      const toolDoneMatch = trimmed.match(/^\[Tool Done\]\s*(.+)$/s);
+      if (toolDoneMatch) {
+        const toolName = toolDoneMatch[1].trim() || 'tool';
+        const toolCallId = toolCallIds.get(toolName) || `claude-tool-${Date.now()}-${toolCallIds.size + 1}`;
+        emitStructured({ type: 'tool_result', toolCallId, toolName, success: true, result: null, durationMs: 0 });
+        return;
+      }
+
+      const toolErrorMatch = trimmed.match(/^\[Tool Error\]\s*([^:]+):\s*(.+)$/s);
+      if (toolErrorMatch) {
+        const toolName = toolErrorMatch[1].trim() || 'tool';
+        const toolCallId = toolCallIds.get(toolName) || `claude-tool-${Date.now()}-${toolCallIds.size + 1}`;
+        emitStructured({
+          type: 'tool_error',
+          toolCallId,
+          toolName,
+          error: toolErrorMatch[2].trim(),
+          retriable: false,
+        });
+        return;
+      }
+
+      if (trimmed.startsWith('[Tool Call]')) {
+        return;
+      }
+
+      streamedTextBytes += chunk.length;
+      emitStructured({ type: 'text_delta', text: chunk });
+    };
+
+    if (wantsStream) {
+      this.initSse(res);
+      chatOptions.onChunk = emitClaudeChunk;
+    }
+
+    if (mode === 'ask') {
+      chatOptions.additionalTools = [];
+    } else if (platform === 'desktop' && context.userId) {
+      const shouldUseTools = this.openClawProxyService.shouldUseTools(mode, lastUserText);
+      if (shouldUseTools) {
+        const desktopBridge = this.openClawProxyService.buildDesktopToolBridge(
+          context.userId,
+          deviceId,
+          context.sessionId,
+        );
+        const baseTools = await this.claudeService.getFunctionSchemas();
+        chatOptions.additionalTools = [...baseTools, ...desktopBridge.additionalTools];
+        chatOptions.onToolCall = desktopBridge.onToolCall;
+        this.logger.log(`🖥️ Desktop Claude chat detected — injected ${desktopBridge.additionalTools.length} desktop tools`);
+      } else {
+        chatOptions.additionalTools = [];
+      }
+    }
+
+    let result: any;
+    try {
+      result = await this.claudeService.chatWithFunctions(allMessages, chatOptions);
+    } catch (error: any) {
+      this.logger.error(`Claude chat failed: ${error.message}`, error.stack);
+
+      if (wantsStream) {
+        if (!res.headersSent) {
+          this.initSse(res);
+        }
+        emitStructured({ type: 'error', error: error.message || 'Claude chat failed', retriable: false });
+        this.writeSse(res, formatSSEDone());
+        res.end();
+        return;
+      }
+
+      return res.status(500).json({ error: error.message || 'Claude chat failed' });
+    }
+
+    // P0: Post-process via RuntimeSeamService (hooks + memory flush)
+    if (context.userId && context.sessionId && typeof result?.text === 'string') {
+      this.runtimeSeamService.postProcess(
+        {
+          userId: context.userId,
+          sessionId: context.sessionId,
+          agentId,
+          message: lastUserText,
+          model: options?.model,
+        },
+        result.text,
+        result?.toolCalls,
+      ).catch((err: Error) => {
+        this.logger.warn(`RuntimeSeam postProcess failed: ${err.message}`);
+      });
+    }
+
+    if (context.sessionId && context.userId && lastUserText && typeof result?.text === 'string' && result.text.trim()) {
+      this.agentIntelligenceService.extractAndSaveMemories(
+        context.sessionId,
+        context.userId,
+        agentId,
+        lastUserText,
+        result.text,
+      ).catch((err: Error) => {
+        this.logger.warn(`Claude chat memory extraction failed: ${err.message}`);
+      });
+    }
+
+    if (wantsStream) {
+      const fullText = typeof result?.text === 'string' ? result.text : '';
+      if (fullText && streamedTextBytes < fullText.length * 0.5) {
+        const fallbackChunks = fullText.match(/.{1,80}/gs) || [fullText];
+        for (const chunk of fallbackChunks) {
+          emitStructured({ type: 'text_delta', text: chunk });
+        }
+      }
+
+      if (options?.model) {
+        emitMeta({ resolvedModel: options.model, resolvedModelLabel: options.model });
+      }
+
+      const doneReason =
+        result?.stopReason === 'max_tokens'
+        || result?.stopReason === 'stop_sequence'
+        || result?.stopReason === 'abort'
+        || result?.stopReason === 'error'
+        || result?.stopReason === 'tool_use'
+        || result?.stopReason === 'end_turn'
+          ? result.stopReason
+          : 'end_turn';
+
+      emitStructured({
+        type: 'done',
+        reason: doneReason,
+        totalDurationMs: Date.now() - startMs,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+      });
+      this.writeSse(res, formatSSEDone());
+      res.end();
+      return;
+    }
+
+    return res.json(result);
   }
 }
 

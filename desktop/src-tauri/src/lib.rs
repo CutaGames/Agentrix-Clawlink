@@ -1,5 +1,5 @@
 ﻿use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Emitter};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 
@@ -15,8 +15,8 @@ pub struct BallPosition {
 // ── Chat Panel ────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn desktop_bridge_open_chat_panel(app: AppHandle) -> Result<(), String> {
-    commands::open_chat_panel(app)
+async fn desktop_bridge_open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), String> {
+    commands::open_chat_panel(app, pro_mode)
 }
 
 #[tauri::command]
@@ -44,6 +44,21 @@ async fn desktop_bridge_set_panel_position_near_ball(app: AppHandle) -> Result<(
 #[tauri::command]
 async fn desktop_bridge_snap_ball_to_edge(app: AppHandle) -> Result<(), String> {
     commands::snap_ball_to_edge(app)
+}
+
+#[tauri::command]
+async fn desktop_bridge_resize_ball_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+        // PRO mode (large window): make resizable and non-always-on-top
+        // Compact/ball mode (small window): keep pinned and non-resizable
+        let is_pro = width > 500.0 || height > 700.0;
+        let _ = win.set_resizable(is_pro);
+        let _ = win.set_always_on_top(!is_pro);
+        Ok(())
+    } else {
+        Err("main window not found".into())
+    }
 }
 
 #[tauri::command]
@@ -96,8 +111,13 @@ fn desktop_bridge_run_command(command: String, working_directory: Option<String>
 }
 
 #[tauri::command]
-fn desktop_bridge_read_file(path: String) -> Result<commands::DesktopReadFileResult, String> {
-    commands::read_file(path)
+fn desktop_bridge_list_directory(path: String) -> Result<commands::DesktopListDirectoryResult, String> {
+    commands::list_directory(path)
+}
+
+#[tauri::command]
+fn desktop_bridge_read_file(path: String, start_line: Option<usize>, end_line: Option<usize>) -> Result<commands::DesktopReadFileResult, String> {
+    commands::read_file(path, start_line, end_line)
 }
 
 #[tauri::command]
@@ -197,10 +217,196 @@ fn desktop_bridge_delete_auth_token() -> Result<(), String> {
     Ok(())
 }
 
+// ── Local OAuth Callback Server (loopback auth for desktop) ────────────────────
+// Starts a one-shot HTTP server on a random localhost port.
+// The OAuth callback redirects to http://127.0.0.1:{port}/auth-callback?token=xxx
+// This bypasses any proxy/CORS issues between Tauri WebView and the API server.
+
+#[tauri::command]
+fn desktop_bridge_start_auth_callback_server(app: AppHandle) -> Result<u16, String> {
+    use std::net::TcpListener;
+    use std::io::{Read, Write};
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to bind local auth server: {}", e))?;
+    let port = listener.local_addr()
+        .map_err(|e| format!("Failed to get local port: {}", e))?.port();
+
+    // Set a 10-minute timeout on the listener so it doesn't hang forever
+    listener.set_nonblocking(false).ok();
+    let timeout = std::time::Duration::from_secs(600);
+    let _ = listener.set_ttl(128); // just keepalive hint
+
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        // Use a simple TCP accept with timeout via SO_RCVTIMEO
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::io::AsRawSocket;
+            let sock = listener.as_raw_socket();
+            let tv = timeout.as_millis() as u32;
+            unsafe {
+                libc_like_setsockopt_win(sock, tv);
+            }
+        }
+
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut buf = vec![0u8; 8192];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+
+            // Parse first line: GET /auth-callback?token=xxx&provider=Google HTTP/1.1
+            let query_string = request.lines().next().unwrap_or("")
+                .split('?').nth(1).unwrap_or("")
+                .split(' ').next().unwrap_or("");
+
+            let mut token: Option<String> = None;
+            let mut error: Option<String> = None;
+            let mut provider = String::from("OAuth");
+
+            for param in query_string.split('&') {
+                if let Some(val) = param.strip_prefix("token=") {
+                    token = Some(simple_percent_decode(val));
+                } else if let Some(val) = param.strip_prefix("error=") {
+                    error = Some(simple_percent_decode(val));
+                } else if let Some(val) = param.strip_prefix("provider=") {
+                    provider = simple_percent_decode(val);
+                }
+            }
+
+            if let Some(ref t) = token {
+                // Store token and emit to frontend
+                if let Ok(mut tok) = AUTH_TOKEN.lock() {
+                    *tok = Some(t.clone());
+                }
+                if let Some(f) = auth_token_file() {
+                    if let Some(parent) = f.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = std::fs::write(&f, t);
+                }
+                let _ = app_clone.emit("auth-token-received", t.as_str());
+            }
+
+            // Build response HTML
+            let (title, message, success) = if let Some(t) = &token {
+                let _ = t; // used above
+                (format!("{} 登录成功", provider), "已完成登录，请返回 Agentrix Desktop。".to_string(), true)
+            } else if let Some(e) = &error {
+                (format!("{} 登录失败", provider), e.clone(), false)
+            } else {
+                ("回调错误".to_string(), "未收到 token 参数".to_string(), false)
+            };
+
+            let icon = if success { "✓" } else { "!" };
+            let auto_close = if success { "<script>setTimeout(function(){window.close();},1500);</script>" } else { "" };
+            let html = format!(
+                r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title></head>
+<body style="margin:0;font-family:Segoe UI,Arial,sans-serif;background:#0b1220;color:#e5e7eb;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+<div style="max-width:420px;padding:28px 24px;border-radius:18px;background:#111827;border:1px solid rgba(255,255,255,0.08);box-shadow:0 18px 48px rgba(0,0,0,0.35);text-align:center;">
+<div style="font-size:34px;margin-bottom:12px;">{icon}</div>
+<h1 style="margin:0 0 10px;font-size:22px;">{title}</h1>
+<p style="margin:0 0 16px;color:#9ca3af;line-height:1.6;">{message}</p>
+<p style="margin:0;font-size:12px;color:#6b7280;">可以关闭此页面。</p>
+</div>{auto_close}</body></html>"#
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                html.len(), html
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        }
+    });
+
+    Ok(port)
+}
+
+/// Simple percent-decode for URL query values (handles %XX sequences)
+fn simple_percent_decode(input: &str) -> String {
+    let mut result = Vec::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(
+                &String::from_utf8_lossy(&bytes[i+1..i+3]), 16
+            ) {
+                result.push(byte);
+                i += 3;
+                continue;
+            }
+        } else if bytes[i] == b'+' {
+            result.push(b' ');
+            i += 1;
+            continue;
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&result).to_string()
+}
+
+/// Windows socket timeout helper for the auth callback server
+#[cfg(target_os = "windows")]
+unsafe fn libc_like_setsockopt_win(sock: std::os::windows::io::RawSocket, timeout_ms: u32) {
+    use std::os::windows::io::RawSocket;
+    // SO_RCVTIMEO = 0x1006, SOL_SOCKET = 0xFFFF
+    extern "system" {
+        fn setsockopt(s: RawSocket, level: i32, optname: i32, optval: *const u8, optlen: i32) -> i32;
+    }
+    let val = timeout_ms.to_le_bytes();
+    setsockopt(sock, 0xFFFF_u32 as i32, 0x1006, val.as_ptr(), 4);
+}
+
+// ── Local LLM Sidecar ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn desktop_bridge_start_llm_sidecar(
+    model_path: String,
+    port: u16,
+    n_gpu_layers: u32,
+    context_size: u32,
+    threads: Option<u32>,
+) -> Result<(), String> {
+    commands::start_llm_sidecar(model_path, port, n_gpu_layers, context_size, threads)
+}
+
+#[tauri::command]
+fn desktop_bridge_stop_llm_sidecar() -> Result<(), String> {
+    commands::stop_llm_sidecar()
+}
+
+#[tauri::command]
+fn desktop_bridge_list_local_models(models_dir: String) -> Result<Vec<commands::LocalModelInfo>, String> {
+    commands::list_local_models(models_dir)
+}
+
+#[tauri::command]
+async fn desktop_bridge_download_model(
+    app: AppHandle,
+    model_id: String,
+    url: String,
+    models_dir: String,
+    file_name: String,
+) -> Result<commands::LocalModelInfo, String> {
+    commands::download_model(app, model_id, url, models_dir, file_name).await
+}
+
 #[tauri::command]
 fn desktop_bridge_log_debug_event(message: String) -> Result<(), String> {
     eprintln!("[agentrix-debug] {}", message);
     Ok(())
+}
+
+#[tauri::command]
+fn desktop_bridge_check_llama_server() -> Result<commands::LlamaServerStatus, String> {
+    commands::check_llama_server_available()
+}
+
+#[tauri::command]
+async fn desktop_bridge_download_llama_server(app: AppHandle) -> Result<commands::LlamaServerStatus, String> {
+    commands::download_llama_server(app).await
 }
 
 // ── Screen Capture (P3.2) ──────────────────────────────────────────
@@ -418,6 +624,7 @@ pub fn run() {
             desktop_bridge_get_ball_position,
             desktop_bridge_set_panel_position_near_ball,
             desktop_bridge_snap_ball_to_edge,
+            desktop_bridge_resize_ball_window,
             desktop_bridge_get_monitors,
             desktop_bridge_move_ball_to_monitor,
             // Workspace (coding agent)
@@ -429,6 +636,7 @@ pub fn run() {
             desktop_bridge_write_workspace_file,
             // Desktop bridge: commands / files / context
             desktop_bridge_run_command,
+            desktop_bridge_list_directory,
             desktop_bridge_read_file,
             desktop_bridge_write_file,
             desktop_bridge_open_browser,
@@ -441,6 +649,8 @@ pub fn run() {
             desktop_bridge_set_auth_token,
             desktop_bridge_delete_auth_token,
             desktop_bridge_log_debug_event,
+            // OAuth local callback server
+            desktop_bridge_start_auth_callback_server,
             // Screen capture (P3.2)
             desktop_bridge_capture_screen,
             // Git integration (P3.3)
@@ -453,6 +663,13 @@ pub fn run() {
             desktop_bridge_keychain_set,
             desktop_bridge_keychain_get,
             desktop_bridge_keychain_delete,
+            // Local LLM sidecar (llama.cpp)
+            desktop_bridge_start_llm_sidecar,
+            desktop_bridge_stop_llm_sidecar,
+            desktop_bridge_list_local_models,
+            desktop_bridge_download_model,
+            desktop_bridge_check_llama_server,
+            desktop_bridge_download_llama_server,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window
@@ -502,7 +719,7 @@ pub fn run() {
                                 }
                             }
                             // Also toggle chat-panel
-                            let _ = commands::open_chat_panel(app_handle.clone());
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
                         }
                         "new_chat" => {
                             if let Some(win) = app_handle.get_webview_window("chat-panel") {
@@ -510,12 +727,12 @@ pub fn run() {
                                 let _ = win.set_focus();
                                 let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:new-chat'))");
                             } else {
-                                let _ = commands::open_chat_panel(app_handle.clone());
+                                let _ = commands::open_chat_panel(app_handle.clone(), None);
                             }
                         }
                         "voice_chat" => {
                             // Open chat panel and trigger voice mode
-                            let _ = commands::open_chat_panel(app_handle.clone());
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
                             if let Some(win) = app_handle.get_webview_window("chat-panel") {
                                 let _ = win.show();
                                 let _ = win.set_focus();
@@ -543,7 +760,7 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 let _ = app.global_shortcut().on_shortcut("ctrl+shift+v", move |_app, _shortcut, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        let _ = commands::open_chat_panel(app_handle.clone());
+                        let _ = commands::open_chat_panel(app_handle.clone(), None);
                         if let Some(win) = app_handle.get_webview_window("chat-panel") {
                             let _ = win.show();
                             let _ = win.set_focus();

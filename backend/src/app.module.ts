@@ -66,6 +66,8 @@ import { X402DiscoveryModule } from './modules/x402/x402-discovery.module';
 import { UnifiedMarketplaceModule } from './modules/unified-marketplace/unified-marketplace.module';
 // 账户体系优化模块
 import { AgentAccountModule } from './modules/agent-account/agent-account.module';
+import { AgentTeamModule } from './modules/agent-team/agent-team.module';
+import { UnifiedAgentModule } from './modules/unified-agent/unified-agent.module';
 import { AccountModule } from './modules/account/account.module';
 import { KYCModule } from './modules/kyc/kyc.module';
 import { DeveloperAccountModule } from './modules/developer-account/developer-account.module';
@@ -113,6 +115,15 @@ import { AgentIntelligenceModule } from './modules/agent-intelligence/agent-inte
 import { HookModule } from './modules/hooks/hook.module';
 import { SlashCommandModule } from './modules/slash-commands/slash-command.module';
 import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
+// Phase 1-2: Tool Registry, Query Engine, Cost Tracker (Claude Code architecture reference)
+import { ToolRegistryModule } from './modules/tool-registry/tool-registry.module';
+import { QueryEngineModule } from './modules/query-engine/query-engine.module';
+import { CostTrackerModule } from './modules/cost-tracker/cost-tracker.module';
+// LLM Router: tri-tier model routing
+import { LlmRouterModule } from './modules/llm-router/llm-router.module';
+// OpenClaw 4.5: Dreaming Engine, Memory-Wiki
+import { DreamingModule } from './modules/dreaming/dreaming.module';
+import { MemoryWikiModule } from './modules/memory-wiki/memory-wiki.module';
 
 @Module({
   imports: [
@@ -177,6 +188,7 @@ import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
     VoiceModule,
     CartModule,
     SkillModule,
+    ProtocolModule,
     McpModule,
     UCPModule,
     X402DiscoveryModule,
@@ -184,6 +196,8 @@ import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
     UnifiedMarketplaceModule,
     // 账户体系优化
     AgentAccountModule,
+    AgentTeamModule,
+    UnifiedAgentModule,
     AccountModule,
     KYCModule,
     DeveloperAccountModule,
@@ -232,6 +246,15 @@ import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
     HookModule,
     SlashCommandModule,
     McpRegistryModule,
+    // Phase 1-2: Claude Code reference architecture
+    ToolRegistryModule,
+    QueryEngineModule,
+    CostTrackerModule,
+    // LLM Router: tri-tier model routing
+    LlmRouterModule,
+    // OpenClaw 4.5: Dreaming Engine, Memory-Wiki
+    DreamingModule,
+    MemoryWikiModule,
   ],
   controllers: [AppController],
   providers: [

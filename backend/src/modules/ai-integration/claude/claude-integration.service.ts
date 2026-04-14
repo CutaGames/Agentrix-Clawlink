@@ -176,6 +176,30 @@ export class ClaudeIntegrationService {
         },
       },
       {
+        name: 'video_generate',
+        description: 'Generate a video asynchronously from text, an image reference, or a reference video. Returns quickly with a taskId, and can be called again later with that taskId to fetch status or the final video URL.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            mode: { type: 'string', enum: ['text_to_video', 'image_to_video', 'video_to_video'], description: 'Generation mode. Use image_to_video for animating a still image, or video_to_video for reference-driven motion transfer.' },
+            prompt: { type: 'string', description: 'Prompt or edit instruction for the generated video. Optional for reference-driven modes when the reference media already implies the motion/style goal.' },
+            taskId: { type: 'string', description: 'Existing async task id to query instead of creating a new task' },
+            provider: { type: 'string', description: 'Provider id, currently fal' },
+            model: { type: 'string', description: 'Provider model path override' },
+            duration: { type: 'string', enum: ['5', '10'], description: 'Approximate output duration in seconds' },
+            aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Aspect ratio for text-to-video and provider-supported image-to-video models' },
+            negativePrompt: { type: 'string', description: 'Things the model should avoid generating' },
+            cfgScale: { type: 'number', description: 'Guidance scale override' },
+            generateAudio: { type: 'boolean', description: 'Whether the provider should try to generate audio as well' },
+            referenceImageUrl: { type: 'string', description: 'Reference image URL. Required for image_to_video and video_to_video.' },
+            endImageUrl: { type: 'string', description: 'Optional ending-frame image URL for image_to_video.' },
+            referenceVideoUrl: { type: 'string', description: 'Reference video URL. Required for video_to_video.' },
+            keepOriginalSound: { type: 'boolean', description: 'When using video_to_video, keep the original sound from the reference video if the provider supports it.' },
+            characterOrientation: { type: 'string', enum: ['image', 'video'], description: 'For video_to_video, choose whether subject orientation should follow the reference image or the reference video.' },
+          },
+        },
+      },
+      {
         name: 'add_to_agentrix_cart',
         description: '将商品加入购物车',
         input_schema: {
@@ -847,7 +871,8 @@ export class ClaudeIntegrationService {
         case 'task_submit':
         case 'skill_publish':
         case 'resource_publish':
-        case 'marketplace_purchase': {
+        case 'marketplace_purchase':
+        case 'video_generate': {
           const executor = this.getSkillExecutor();
           if (!executor) {
             return { success: false, error: 'Skill service unavailable' };
@@ -855,7 +880,10 @@ export class ClaudeIntegrationService {
           try {
             const result = await executor.executeInternal(functionName, parameters, {
               userId: context.userId,
-              metadata: {},
+              sessionId: (context as any).sessionId,
+              metadata: {
+                deviceId: (context as any).deviceId,
+              },
             });
             return { success: true, data: result };
           } catch (skillErr: any) {
@@ -908,7 +936,9 @@ export class ClaudeIntegrationService {
     const _t0 = Date.now();
     const _lap = (label: string) => this.logger.log(`⏱ BR ${label}: ${Date.now() - _t0}ms`);
     const modelId = options.model || 'claude-haiku-4-5';
-    const maxToolRounds = options.maxToolRounds ?? 5;
+    const maxToolRounds = options.maxToolRounds ?? 8;
+    const initialMaxTokens = options.maxTokens || 3072;
+    const continuationMaxTokens = Math.max(initialMaxTokens, 6144);
     this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}, maxToolRounds=${maxToolRounds}`);
 
     const bedrockTools = mergedTools.map(t => ({
@@ -920,6 +950,7 @@ export class ClaudeIntegrationService {
     let currentMessages = [...messages];
     let allToolCalls: any[] = [];
     let lastText = '';
+    let lastStopReason = 'end_turn';
 
     for (let round = 0; round <= maxToolRounds; round++) {
       const llmResult = await this.bedrockService.chatWithFunctions(currentMessages, {
@@ -927,21 +958,30 @@ export class ClaudeIntegrationService {
         tools: bedrockTools,
         userCredentials,
         onChunk: options?.onChunk,
-        ...(round > 0 ? { maxTokens: 4096 } : {}),
+        maxTokens: round > 0 ? continuationMaxTokens : initialMaxTokens,
       });
       _lap(`LLM call #${round + 1} (toolCalls=${llmResult.functionCalls?.length || 0})`);
 
       lastText = llmResult.text || '';
+      lastStopReason = llmResult.stopReason || (llmResult.functionCalls?.length > 0 ? 'tool_use' : 'end_turn');
 
       // No tool calls → done
       if (!llmResult.functionCalls || llmResult.functionCalls.length === 0) {
-        return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+        return {
+          text: this.stripToolUseXml(lastText),
+          toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
+          stopReason: lastStopReason,
+        };
       }
 
       // Max rounds reached → return what we have
       if (round === maxToolRounds) {
         this.logger.warn(`Bedrock agent loop: max ${maxToolRounds} tool rounds reached, returning partial result`);
-        return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls };
+        return {
+          text: this.stripToolUseXml(lastText),
+          toolCalls: allToolCalls,
+          stopReason: lastStopReason,
+        };
       }
 
       // Execute tool calls
@@ -959,6 +999,7 @@ export class ClaudeIntegrationService {
         const fnArgs = tc.function?.arguments
           ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
           : tc.input || {};
+        if (options?.onChunk) options.onChunk(`\n[Tool Start] ${fnName}`);
         try {
           let result: any;
           if (options?.onToolCall) {
@@ -972,12 +1013,14 @@ export class ClaudeIntegrationService {
             tool_use_id: tc.id || `tool-${Date.now()}`,
             content: JSON.stringify(result),
           });
+          if (options?.onChunk) options.onChunk(`\n[Tool Done] ${fnName}`);
         } catch (err: any) {
           toolResults.push({
             type: 'tool_result',
             tool_use_id: tc.id || `tool-${Date.now()}`,
             content: JSON.stringify({ success: false, error: err.message }),
           });
+          if (options?.onChunk) options.onChunk(`\n[Tool Error] ${fnName}: ${err.message}`);
         }
       }
       _lap(`round ${round + 1} tool execution done`);
@@ -1011,7 +1054,11 @@ export class ClaudeIntegrationService {
     }
 
     // Shouldn't reach here, but safety return
-    return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+    return {
+      text: this.stripToolUseXml(lastText),
+      toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
+      stopReason: lastStopReason,
+    };
   }
 
   /**
@@ -1162,6 +1209,7 @@ export class ClaudeIntegrationService {
       model?: string;
       temperature?: number;
       maxTokens?: number;
+      maxToolRounds?: number;
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）— backward compat
       userCredentials?: UserProviderCredentials; // Full provider credentials (preferred)
@@ -1294,7 +1342,7 @@ export class ClaudeIntegrationService {
       // 调用 Claude API — streaming mode when onChunk provided
       const apiParams: Record<string, any> = {
         model: selectedModel,
-        max_tokens: options?.maxTokens || 2048,
+        max_tokens: options?.maxTokens || 3072,
         temperature: options?.temperature || 0.7,
         system: systemPrompt || undefined,
         messages: conversationMessages,
@@ -1337,25 +1385,28 @@ export class ClaudeIntegrationService {
       }
 
       // Multi-turn agent loop for Anthropic direct API
-      const maxToolRounds = 5;
+      const maxToolRounds = options?.maxToolRounds ?? 8;
+      const continuationMaxTokens = Math.max(options?.maxTokens || 3072, 6144);
       let allToolCalls: any[] = [];
       let currentConversationMessages = [...conversationMessages];
+      let lastStopReason = response?.stop_reason || 'end_turn';
 
       for (let round = 0; round <= maxToolRounds; round++) {
         const textContent = response.content.find((item: any) => item.type === 'text');
         const text = textContent?.text || '';
 
         const toolUses = response.content.filter((item: any) => item.type === 'tool_use');
+        lastStopReason = response?.stop_reason || (toolUses.length > 0 ? 'tool_use' : 'end_turn');
 
         // No tool calls → done
         if (!toolUses || toolUses.length === 0) {
-          return { text, toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+          return { text, toolCalls: allToolCalls.length > 0 ? allToolCalls : null, stopReason: lastStopReason };
         }
 
         // Max rounds reached
         if (round === maxToolRounds) {
           this.logger.warn(`Anthropic agent loop: max ${maxToolRounds} tool rounds reached`);
-          return { text, toolCalls: allToolCalls };
+          return { text, toolCalls: allToolCalls, stopReason: lastStopReason };
         }
 
         this.logger.log(`Anthropic round ${round + 1}: ${toolUses.length} tool call(s): ${toolUses.map((t: any) => t.name).join(', ')}`);
@@ -1404,7 +1455,7 @@ export class ClaudeIntegrationService {
 
         const nextParams = {
           model: selectedModel,
-          max_tokens: options?.maxTokens || 4096,
+          max_tokens: continuationMaxTokens,
           temperature: options?.temperature || 0.7,
           system: systemPrompt || undefined,
           tools: hasFunctionCalling ? apiParams.tools : undefined,
@@ -1422,7 +1473,7 @@ export class ClaudeIntegrationService {
 
       // Safety fallback
       const finalText = response.content?.find((item: any) => item.type === 'text')?.text || '';
-      return { text: finalText, toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+      return { text: finalText, toolCalls: allToolCalls.length > 0 ? allToolCalls : null, stopReason: lastStopReason };
     } catch (error: any) {
       this.logger.error(`Claude API调用失败: ${error.message}`, error.stack);
       if (canUsePlatformFallback && !userDirectKey) {

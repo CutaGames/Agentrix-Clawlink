@@ -1,5 +1,6 @@
-﻿use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+﻿use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use crate::BallPosition;
+use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -9,6 +10,7 @@ use std::os::windows::process::CommandExt;
 use std::time::{Duration, Instant};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileEntry {
@@ -35,6 +37,16 @@ pub struct DesktopReadFileResult {
     pub path: String,
     pub content: String,
     pub size: u64,
+    pub total_lines: usize,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopListDirectoryResult {
+    pub path: String,
+    pub entries: Vec<FileEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -135,6 +147,26 @@ fn require_workspace_dir() -> Result<PathBuf, String> {
     load_workspace_dir()?.ok_or("No workspace directory set".into())
 }
 
+fn resolve_user_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is required".into());
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+
+    if let Some(workspace) = load_workspace_dir()? {
+        return validate_path(&workspace, trimmed);
+    }
+
+    std::env::current_dir()
+        .map(|cwd| cwd.join(trimmed))
+        .map_err(|e| e.to_string())
+}
+
 fn store_workspace_dir(path: PathBuf) -> Result<String, String> {
     if !path.is_dir() {
         return Err(format!("Not a directory: {}", path.display()));
@@ -149,7 +181,30 @@ fn store_workspace_dir(path: PathBuf) -> Result<String, String> {
     Ok(display)
 }
 
-pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
+fn apply_chat_panel_mode(win: &tauri::WebviewWindow, pro_mode: bool) -> Result<(), String> {
+    let (width, height, min_width, min_height) = if pro_mode {
+        (1100.0, 820.0, 720.0, 560.0)
+    } else {
+        (480.0, 640.0, 360.0, 480.0)
+    };
+
+    win
+        .set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+        .map_err(|e| e.to_string())?;
+    win
+        .set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
+            width: min_width,
+            height: min_height,
+        })))
+        .map_err(|e| e.to_string())?;
+    let _ = win.set_always_on_top(!pro_mode);
+
+    Ok(())
+}
+
+pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), String> {
+    let pro_mode = pro_mode.unwrap_or(false);
+
     // Cancel any pending suspend timer
     if let Ok(mut guard) = SUSPEND_CANCEL.lock() {
         if let Some(flag) = guard.take() {
@@ -159,6 +214,7 @@ pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
 
     if let Some(win) = app.get_webview_window("chat-panel") {
         win.show().map_err(|e| e.to_string())?;
+        apply_chat_panel_mode(&win, pro_mode)?;
         win.set_focus().map_err(|e| e.to_string())?;
         // Resume frontend state if it was suspended
         let _ = win.eval("window.__agentrix_resume?.()");
@@ -170,16 +226,25 @@ pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
     // event loop, which may be blocked by the IPC call).
     let app_clone = app.clone();
     std::thread::spawn(move || {
+        let (width, height, min_width, min_height) = if pro_mode {
+            (1100.0, 820.0, 720.0, 560.0)
+        } else {
+            (480.0, 640.0, 360.0, 480.0)
+        };
+
         if let Ok(win) = WebviewWindowBuilder::new(&app_clone, "chat-panel", WebviewUrl::App("index.html".into()))
             .title("Agentrix")
-            .inner_size(480.0, 640.0)
-            .min_inner_size(360.0, 480.0)
+            .inner_size(width, height)
+            .min_inner_size(min_width, min_height)
             .decorations(false)
-            .always_on_top(true)
+            .always_on_top(!pro_mode)
+            .resizable(true)
             .visible(true)
             .drag_and_drop(false)
             .build()
         {
+            let _ = apply_chat_panel_mode(&win, pro_mode);
+            let _ = win.set_focus();
             // Grant WebView2 permissions (microphone, etc.) to the new chat-panel
             #[cfg(target_os = "windows")]
             crate::grant_webview2_permissions(&win);
@@ -455,6 +520,40 @@ pub fn write_workspace_file(relative_path: String, content: String) -> Result<()
     std::fs::write(&target, &content).map_err(|e| e.to_string())
 }
 
+pub fn list_directory(path: String) -> Result<DesktopListDirectoryResult, String> {
+    let target = if path.trim().is_empty() {
+        load_workspace_dir()?
+            .or_else(|| std::env::current_dir().ok())
+            .ok_or("Unable to resolve directory".to_string())?
+    } else {
+        resolve_user_path(&path)?
+    };
+
+    if !target.is_dir() {
+        return Err(format!("Not a directory: {}", target.display()));
+    }
+
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&target).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        entries.push(FileEntry {
+            name,
+            is_dir: ft.is_dir(),
+            size,
+        });
+    }
+
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+
+    Ok(DesktopListDirectoryResult {
+        path: target.display().to_string(),
+        entries,
+    })
+}
+
 fn build_shell_command(command: &str) -> Command {
     #[cfg(target_os = "windows")]
     {
@@ -482,10 +581,14 @@ fn read_pipe(mut pipe: Option<impl Read>) -> String {
 pub fn run_command(command: String, working_directory: Option<String>, timeout_ms: u64) -> Result<DesktopCommandResult, String> {
     let started = Instant::now();
     let mut shell = build_shell_command(&command);
-    if let Some(dir) = working_directory.as_ref() {
-        if !dir.trim().is_empty() {
-            shell.current_dir(dir);
-        }
+    let resolved_working_directory = if let Some(dir) = working_directory.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        Some(dir.to_string())
+    } else {
+        load_workspace_dir()?.map(|workspace| workspace.display().to_string())
+    };
+
+    if let Some(dir) = resolved_working_directory.as_ref() {
+        shell.current_dir(dir);
     }
     shell.stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -498,7 +601,7 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
             let stderr = read_pipe(child.stderr.take());
             return Ok(DesktopCommandResult {
                 command,
-                working_directory,
+                working_directory: resolved_working_directory.clone(),
                 stdout,
                 stderr,
                 exit_code: status.code(),
@@ -514,7 +617,7 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
             let stderr = read_pipe(child.stderr.take());
             return Ok(DesktopCommandResult {
                 command,
-                working_directory,
+                working_directory: resolved_working_directory.clone(),
                 stdout,
                 stderr,
                 exit_code: None,
@@ -527,31 +630,50 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
     }
 }
 
-pub fn read_file(path: String) -> Result<DesktopReadFileResult, String> {
-    let target = PathBuf::from(&path);
+pub fn read_file(path: String, start_line: Option<usize>, end_line: Option<usize>) -> Result<DesktopReadFileResult, String> {
+    let target = resolve_user_path(&path)?;
     if !target.is_file() {
-        return Err(format!("Not a file: {}", path));
+        return Err(format!("Not a file: {}", target.display()));
     }
     let metadata = std::fs::metadata(&target).map_err(|e| e.to_string())?;
     if metadata.len() > 2 * 1024 * 1024 {
         return Err("File too large (>2MB).".into());
     }
-    let content = std::fs::read_to_string(&target).map_err(|e| e.to_string())?;
+    let full_content = std::fs::read_to_string(&target).map_err(|e| e.to_string())?;
+    let all_lines: Vec<&str> = full_content.lines().collect();
+    let total_lines = all_lines.len();
+    let (resolved_start_line, resolved_end_line, content) = if total_lines == 0 {
+        (0usize, 0usize, String::new())
+    } else {
+        let requested_start = start_line.unwrap_or(1).max(1);
+        let requested_end = end_line.unwrap_or(total_lines).max(requested_start);
+        let clamped_start = requested_start.min(total_lines);
+        let clamped_end = requested_end.min(total_lines);
+        (
+            clamped_start,
+            clamped_end,
+            all_lines[(clamped_start - 1)..clamped_end].join("\n"),
+        )
+    };
+
     Ok(DesktopReadFileResult {
-        path,
+        path: target.display().to_string(),
         content,
         size: metadata.len(),
+        total_lines,
+        start_line: resolved_start_line,
+        end_line: resolved_end_line,
     })
 }
 
 pub fn write_file(path: String, content: String) -> Result<DesktopWriteFileResult, String> {
-    let target = PathBuf::from(&path);
+    let target = resolve_user_path(&path)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::write(&target, content.as_bytes()).map_err(|e| e.to_string())?;
     Ok(DesktopWriteFileResult {
-        path,
+        path: target.display().to_string(),
         bytes_written: content.as_bytes().len(),
     })
 }
@@ -1307,4 +1429,588 @@ pub fn close_spotlight(app: AppHandle) -> Result<(), String> {
         win.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+// ─── Local LLM Sidecar (llama.cpp) ───────────────────────
+
+static LLM_SIDECAR_PID: Mutex<Option<u32>> = Mutex::new(None);
+
+/// Start a llama.cpp server as a sidecar process.
+/// The binary must exist at the given path or be resolvable via PATH.
+pub fn start_llm_sidecar(
+    model_path: String,
+    port: u16,
+    n_gpu_layers: u32,
+    context_size: u32,
+    threads: Option<u32>,
+) -> Result<(), String> {
+    // Kill existing sidecar if running
+    stop_llm_sidecar().ok();
+
+    // Validate model file exists
+    if !Path::new(&model_path).is_file() {
+        return Err(format!("Model file not found: {}", model_path));
+    }
+
+    // Look for llama-server binary
+    let binary = find_llama_server_binary()
+        .ok_or_else(|| "llama-server binary not found. Please install llama.cpp or place llama-server in app directory.".to_string())?;
+
+    let mut cmd = Command::new(&binary);
+    cmd.arg("--model").arg(&model_path)
+       .arg("--port").arg(port.to_string())
+       .arg("--ctx-size").arg(context_size.to_string())
+         .arg("--n-gpu-layers").arg(n_gpu_layers.to_string())
+         .arg("--reasoning").arg("off")
+         .arg("--reasoning-format").arg("none");
+
+    if let Some(t) = threads {
+        cmd.arg("--threads").arg(t.to_string());
+    }
+
+    cmd.stdout(Stdio::null())
+       .stderr(Stdio::null());
+
+    // Detach process on Windows so it doesn't block
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let child = cmd.spawn().map_err(|e| format!("Failed to start llama-server: {}", e))?;
+    let pid = child.id();
+
+    let mut guard = LLM_SIDECAR_PID.lock().map_err(|e| e.to_string())?;
+    *guard = Some(pid);
+
+    Ok(())
+}
+
+/// Stop the llama.cpp sidecar process.
+pub fn stop_llm_sidecar() -> Result<(), String> {
+    let mut guard = LLM_SIDECAR_PID.lock().map_err(|e| e.to_string())?;
+    if let Some(pid) = guard.take() {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/F"])
+                .creation_flags(0x08000000)
+                .output();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output();
+        }
+    }
+    Ok(())
+}
+
+/// List GGUF model files in a directory.
+pub fn list_local_models(models_dir: String) -> Result<Vec<LocalModelInfo>, String> {
+    let resolved_dir = resolve_models_dir(&models_dir)?;
+    let dir = resolved_dir.as_path();
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut models = Vec::new();
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().map_or(false, |ext| ext == "gguf") {
+            let meta = entry.metadata().map_err(|e| e.to_string())?;
+            models.push(LocalModelInfo {
+                name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                path: path.to_string_lossy().to_string(),
+                size_bytes: meta.len(),
+            });
+        }
+    }
+    models.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(models)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LocalModelInfo {
+    pub name: String,
+    pub path: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalModelDownloadEvent {
+    pub model_id: String,
+    pub file_name: String,
+    pub status: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub progress: f64,
+    pub path: Option<String>,
+    pub message: Option<String>,
+}
+
+fn desktop_app_data_dir() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|base| base.join("Agentrix Desktop"))
+            .ok_or_else(|| "APPDATA is not available".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
+            return Ok(PathBuf::from(config_home).join("agentrix-desktop"));
+        }
+
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(".config").join("agentrix-desktop"))
+            .ok_or_else(|| "HOME is not available".to_string())
+    }
+}
+
+fn resolve_models_dir(models_dir: &str) -> Result<PathBuf, String> {
+    let trimmed = models_dir.trim();
+    if trimmed.is_empty() {
+        return Ok(desktop_app_data_dir()?.join("models"));
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+
+    Ok(desktop_app_data_dir()?.join(candidate))
+}
+
+fn emit_local_model_download(app: &AppHandle, payload: LocalModelDownloadEvent) {
+    let _ = app.emit("local-model-download", payload);
+}
+
+pub async fn download_model(
+    app: AppHandle,
+    model_id: String,
+    url: String,
+    models_dir: String,
+    file_name: String,
+) -> Result<LocalModelInfo, String> {
+    let sanitized_name = Path::new(&file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Invalid model file name".to_string())?
+        .to_string();
+
+    if sanitized_name != file_name {
+        return Err("Invalid model file name".to_string());
+    }
+
+    let dir = resolve_models_dir(&models_dir)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let final_path = dir.join(&sanitized_name);
+    if final_path.is_file() {
+        let meta = std::fs::metadata(&final_path).map_err(|e| e.to_string())?;
+        let info = LocalModelInfo {
+            name: sanitized_name.clone(),
+            path: final_path.to_string_lossy().to_string(),
+            size_bytes: meta.len(),
+        };
+        emit_local_model_download(
+            &app,
+            LocalModelDownloadEvent {
+                model_id,
+                file_name: sanitized_name,
+                status: "completed".to_string(),
+                downloaded_bytes: info.size_bytes,
+                total_bytes: Some(info.size_bytes),
+                progress: 100.0,
+                path: Some(info.path.clone()),
+                message: Some("Model already exists locally".to_string()),
+            },
+        );
+        return Ok(info);
+    }
+
+    let partial_path = dir.join(format!("{}.partial", sanitized_name));
+    if partial_path.exists() {
+        let _ = std::fs::remove_file(&partial_path);
+    }
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let mut response = client
+        .get(&url)
+        .header(USER_AGENT, "Agentrix Desktop/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("Download request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status {}", response.status()));
+    }
+
+    let total_bytes = response.content_length();
+    emit_local_model_download(
+        &app,
+        LocalModelDownloadEvent {
+            model_id: model_id.clone(),
+            file_name: sanitized_name.clone(),
+            status: "started".to_string(),
+            downloaded_bytes: 0,
+            total_bytes,
+            progress: 0.0,
+            path: Some(final_path.to_string_lossy().to_string()),
+            message: None,
+        },
+    );
+
+    let mut file = tokio::fs::File::create(&partial_path)
+        .await
+        .map_err(|e| format!("Failed to create model file: {}", e))?;
+    let mut downloaded_bytes = 0_u64;
+
+    loop {
+        let chunk = match response.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(err) => {
+                let message = format!("Download stream failed: {}", err);
+                let _ = tokio::fs::remove_file(&partial_path).await;
+                emit_local_model_download(
+                    &app,
+                    LocalModelDownloadEvent {
+                        model_id: model_id.clone(),
+                        file_name: sanitized_name.clone(),
+                        status: "error".to_string(),
+                        downloaded_bytes,
+                        total_bytes,
+                        progress: 0.0,
+                        path: None,
+                        message: Some(message.clone()),
+                    },
+                );
+                return Err(message);
+            }
+        };
+
+        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+            .await
+            .map_err(|e| format!("Failed to write model chunk: {}", e))?;
+
+        downloaded_bytes += chunk.len() as u64;
+        let progress = if let Some(total) = total_bytes {
+            if total == 0 {
+                0.0
+            } else {
+                downloaded_bytes as f64 * 100.0 / total as f64
+            }
+        } else {
+            0.0
+        };
+
+        emit_local_model_download(
+            &app,
+            LocalModelDownloadEvent {
+                model_id: model_id.clone(),
+                file_name: sanitized_name.clone(),
+                status: "progress".to_string(),
+                downloaded_bytes,
+                total_bytes,
+                progress,
+                path: None,
+                message: None,
+            },
+        );
+    }
+
+    tokio::io::AsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(|e| format!("Failed to flush model file: {}", e))?;
+    drop(file);
+
+    tokio::fs::rename(&partial_path, &final_path)
+        .await
+        .map_err(|e| format!("Failed to finalize model file: {}", e))?;
+
+    let meta = std::fs::metadata(&final_path).map_err(|e| e.to_string())?;
+    let info = LocalModelInfo {
+        name: sanitized_name.clone(),
+        path: final_path.to_string_lossy().to_string(),
+        size_bytes: meta.len(),
+    };
+
+    emit_local_model_download(
+        &app,
+        LocalModelDownloadEvent {
+            model_id,
+            file_name: sanitized_name,
+            status: "completed".to_string(),
+            downloaded_bytes: info.size_bytes,
+            total_bytes: Some(info.size_bytes),
+            progress: 100.0,
+            path: Some(info.path.clone()),
+            message: None,
+        },
+    );
+
+    Ok(info)
+}
+
+fn find_llama_server_binary() -> Option<PathBuf> {
+    // Check common locations
+    let candidates = [
+        // Same directory as the app
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("llama-server"))),
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("llama-server.exe"))),
+        // App data directory
+        #[cfg(target_os = "windows")]
+        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Agentrix Desktop").join("bin").join("llama-server.exe")),
+        #[cfg(not(target_os = "windows"))]
+        std::env::var_os("HOME").map(|d| PathBuf::from(d).join(".local").join("bin").join("llama-server")),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    // Try PATH
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = Command::new("where").arg("llama-server").creation_flags(0x08000000).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path.lines().next().unwrap_or(&path)));
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(output) = Command::new("which").arg("llama-server").output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Check if llama-server binary is available on this system.
+pub fn check_llama_server_available() -> Result<LlamaServerStatus, String> {
+    match find_llama_server_binary() {
+        Some(path) => Ok(LlamaServerStatus {
+            available: true,
+            path: Some(path.to_string_lossy().to_string()),
+            message: None,
+        }),
+        None => Ok(LlamaServerStatus {
+            available: false,
+            path: None,
+            message: Some("llama-server binary not found".to_string()),
+        }),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LlamaServerStatus {
+    pub available: bool,
+    pub path: Option<String>,
+    pub message: Option<String>,
+}
+
+/// Download llama-server binary from llama.cpp GitHub releases.
+pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, String> {
+    let bin_dir = desktop_app_data_dir()?.join("bin");
+    std::fs::create_dir_all(&bin_dir).map_err(|e| format!("Failed to create bin dir: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let target_binary = bin_dir.join("llama-server.exe");
+    #[cfg(target_os = "macos")]
+    let target_binary = bin_dir.join("llama-server");
+    #[cfg(target_os = "linux")]
+    let target_binary = bin_dir.join("llama-server");
+
+    // If already present, skip download
+    if target_binary.is_file() {
+        return Ok(LlamaServerStatus {
+            available: true,
+            path: Some(target_binary.to_string_lossy().to_string()),
+            message: Some("llama-server already installed".to_string()),
+        });
+    }
+
+    // Download URL for latest stable llama.cpp release
+    // Try ghfast.top mirror first (GFW-friendly), fall back to GitHub directly
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let asset_candidates = ["bin-win-cpu-x64.zip", "win-cpu-x64.zip"];
+    #[cfg(target_os = "macos")]
+    let asset_candidates = ["bin-macos-arm64.tar.gz", "macos-arm64.tar.gz"];
+    #[cfg(target_os = "linux")]
+    let asset_candidates = ["bin-ubuntu-x64.tar.gz", "ubuntu-x64.tar.gz"];
+
+    // Try mirror first, then direct GitHub
+    let api_urls = [
+        "https://ghfast.top/https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
+        "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
+        "https://ghfast.top/https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+        "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+    ];
+
+    let mut release: Option<serde_json::Value> = None;
+    let mut last_err = String::new();
+    for api_url in &api_urls {
+        match client
+            .get(*api_url)
+            .header(USER_AGENT, "Agentrix Desktop/0.1")
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if json.get("assets").is_some() {
+                        release = Some(json);
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                last_err = format!("{}", e);
+            }
+        }
+    }
+
+    let release = release.ok_or_else(|| format!("Failed to fetch release info (all mirrors failed): {}", last_err))?;
+
+    let assets = release["assets"].as_array()
+        .ok_or_else(|| "No assets in release".to_string())?;
+
+    // Find the right binary asset (prefer non-cuda, non-vulkan for broadest compatibility)
+    let matched_asset = assets.iter()
+        .filter_map(|a| {
+            let name = a["name"].as_str()?;
+            let url = a["browser_download_url"].as_str()?;
+            if asset_candidates.iter().any(|candidate| name.contains(candidate)) && !name.contains("cuda") && !name.contains("vulkan") && !name.contains("sycl") && !name.contains("hip") {
+                Some((name.to_string(), url.to_string()))
+            } else {
+                None
+            }
+        })
+        .next()
+        .ok_or_else(|| format!("No matching llama.cpp asset found. Candidates: {}", asset_candidates.join(", ")))?;
+
+    let (asset_name, download_url) = matched_asset;
+
+    let tag = release["tag_name"].as_str().unwrap_or("unknown");
+
+    let _ = app.emit("llama-server-download", serde_json::json!({
+        "status": "downloading",
+        "message": format!("Downloading llama-server {} ({}) ...", tag, asset_name),
+    }));
+
+    // Try downloading via mirror first, then direct
+    let download_urls = vec![
+        format!("https://ghfast.top/{}", download_url),
+        download_url.clone(),
+    ];
+
+    let mut zip_bytes: Option<Vec<u8>> = None;
+    for url in &download_urls {
+        match client
+            .get(url)
+            .header(USER_AGENT, "Agentrix Desktop/0.1")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(data) = resp.bytes().await {
+                    zip_bytes = Some(data.to_vec());
+                    break;
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    let zip_bytes = zip_bytes.ok_or_else(|| "Download failed: all mirrors exhausted".to_string())?;
+
+    let _ = app.emit("llama-server-download", serde_json::json!({
+        "status": "extracting",
+        "message": "Extracting llama-server...",
+    }));
+
+    // Extract the Windows runtime bundle so llama-server has all required DLLs.
+    // New llama.cpp releases ship multiple ggml/llama runtime DLLs alongside the EXE.
+    let cursor = std::io::Cursor::new(&zip_bytes);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| format!("Failed to open zip: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let server_name = "llama-server.exe";
+    #[cfg(not(target_os = "windows"))]
+    let server_name = "llama-server";
+
+    let mut extracted = false;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| format!("Zip entry error: {}", e))?;
+        let name = file.name().to_string();
+        if file.is_dir() {
+            continue;
+        }
+
+        let Some(file_name) = std::path::Path::new(&name).file_name() else {
+            continue;
+        };
+
+        let out_path = bin_dir.join(file_name);
+        let mut out = std::fs::File::create(&out_path)
+            .map_err(|e| format!("Failed to create extracted file {}: {}", out_path.to_string_lossy(), e))?;
+        std::io::copy(&mut file, &mut out)
+            .map_err(|e| format!("Failed to extract {}: {}", name, e))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("Failed to set permissions: {}", e))?;
+        }
+
+        if name.ends_with(server_name) {
+            extracted = true;
+        }
+    }
+
+    if !extracted {
+        return Err(format!("Could not find {} in downloaded archive", server_name));
+    }
+
+    let _ = app.emit("llama-server-download", serde_json::json!({
+        "status": "completed",
+        "message": format!("llama-server {} installed", tag),
+        "path": target_binary.to_string_lossy().to_string(),
+    }));
+
+    Ok(LlamaServerStatus {
+        available: true,
+        path: Some(target_binary.to_string_lossy().to_string()),
+        message: Some(format!("Installed llama-server {}", tag)),
+    })
 }

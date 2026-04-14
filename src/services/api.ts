@@ -24,12 +24,15 @@ export interface ApiConfig {
 export interface UploadedChatAttachment {
   url: string;
   publicUrl: string;
+  localUri?: string;
   fileName: string;
   originalName: string;
   mimetype: string;
   size: number;
-  kind: 'image' | 'file';
+  kind: 'image' | 'audio' | 'video' | 'file';
   isImage: boolean;
+  isAudio: boolean;
+  isVideo: boolean;
 }
 
 let config: ApiConfig = {
@@ -151,7 +154,7 @@ export async function uploadChatAttachment(file: {
   const formData = new FormData();
   formData.append('file', file as any);
 
-  const uploaded = await apiFetch<Omit<UploadedChatAttachment, 'publicUrl'>>('/upload/chat-attachment', {
+  const uploaded = await apiFetch<Omit<UploadedChatAttachment, 'publicUrl' | 'localUri'>>('/upload/chat-attachment', {
     method: 'POST',
     body: formData,
   });
@@ -160,7 +163,31 @@ export async function uploadChatAttachment(file: {
   return {
     ...uploaded,
     publicUrl: uploaded.url.startsWith('http') ? uploaded.url : `${publicBase}${uploaded.url}`,
+    localUri: file.uri,
   };
+}
+
+export async function syncLocalConversation(options: {
+  sessionId: string;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  model?: string;
+  platform?: 'mobile' | 'desktop';
+  deviceId?: string;
+}): Promise<void> {
+  try {
+    await apiFetch('/openclaw/proxy/sync-local-messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId: options.sessionId,
+        messages: options.messages,
+        model: options.model,
+        platform: options.platform || 'mobile',
+        deviceId: options.deviceId,
+      }),
+    });
+  } catch {
+    // Non-blocking: local conversation should still complete even if sync fails.
+  }
 }
 
 // ========== Memory API ==========

@@ -1,13 +1,21 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import agentrixLogo from "../assets/agentrix-logo.png";
-import { useAuthStore } from "../services/store";
+import { API_BASE, useAuthStore } from "../services/store";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-
-const API_BASE = "https://api.agentrix.top/api";
 const PAIR_POLL_INTERVAL = 2000;
-const PAIR_TTL = 300_000; // 5 min
+const PAIR_TTL = 300_000; // Fallback until backend returns expiresAt
+const DEFAULT_PAIR_API_BASE = "https://api.agentrix.top/api";
+const LOOPBACK_API_BASE_RE = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/api)?$/i;
+
+function resolvePairApiBase(base: string): string {
+  return LOOPBACK_API_BASE_RE.test(base) ? DEFAULT_PAIR_API_BASE : base;
+}
+
+const PAIR_API_BASE = resolvePairApiBase(API_BASE);
 
 // Use Tauri HTTP plugin to bypass CORS in WebView2
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -15,6 +23,58 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
     return await tauriFetch(url, init as any);
   } catch {
     return await fetch(url, init);
+  }
+}
+
+async function readPairPollResponse(response: Response): Promise<any | null> {
+  const headerToken = response.headers.get("X-Agentrix-Pair-Token")
+    || response.headers.get("x-agentrix-pair-token");
+  const text = await response.text().catch(() => "");
+  let payload: any = {};
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = {};
+    }
+  }
+
+  if (headerToken && !payload?.token) {
+    payload = {
+      ...payload,
+      resolved: payload?.resolved ?? true,
+      token: headerToken,
+    };
+  }
+
+  return payload;
+}
+
+async function pollPairSession(sessionId: string): Promise<any | null> {
+  const url = `${PAIR_API_BASE}/auth/desktop-pair/poll?session=${encodeURIComponent(sessionId)}`;
+
+  const attempt = async (runner: () => Promise<Response>) => {
+    const response = await runner();
+    if (response.status < 200 || response.status >= 300) {
+      return null;
+    }
+    return readPairPollResponse(response);
+  };
+
+  try {
+    return await attempt(() => fetch(url, { cache: "no-store" }));
+  } catch {
+    // Fall through to Tauri HTTP plugin.
+  }
+
+  try {
+    return await attempt(() => tauriFetch(url, {
+      method: "GET",
+      headers: { "Cache-Control": "no-store" },
+    } as any));
+  } catch {
+    return null;
   }
 }
 
@@ -26,6 +86,7 @@ interface Props {
 }
 
 export default function LoginPanel({ onSuccess, onGuest }: Props) {
+  const acceptToken = useAuthStore((state) => state.acceptToken);
   const [tab, setTab] = useState<LoginTab>("qr");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
@@ -40,12 +101,44 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
 
+  const completeTokenLogin = useCallback(async (token: string) => {
+    const nextToken = token.trim();
+    if (!nextToken) return;
+
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    await acceptToken(nextToken);
+    onSuccess();
+  }, [acceptToken, onSuccess]);
+
   // Countdown timer for resend
   useEffect(() => {
     if (countdown <= 0) return;
     const t = setTimeout(() => setCountdown(countdown - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
+
+  // Listen for auth token from local OAuth callback server (loopback auth)
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<string>("auth-token-received", (event) => {
+      const token = event.payload;
+      if (token) {
+        console.log("[LoginPanel] Received token via local auth callback");
+        void completeTokenLogin(token);
+      }
+    }).then(fn => { unlisten = fn; });
+    return () => { if (unlisten) unlisten(); };
+  }, [completeTokenLogin]);
+
+  // Manual token paste state
+  const [manualToken, setManualToken] = useState("");
+  const handleManualToken = useCallback(() => {
+    const t = manualToken.trim();
+    if (!t) return;
+    void completeTokenLogin(t);
+  }, [completeTokenLogin, manualToken]);
 
   const handleSendCode = useCallback(async () => {
     const trimmed = email.trim();
@@ -87,9 +180,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
       if (res.status >= 200 && res.status < 300) {
         const data = await res.json().catch(() => null);
         if (data?.token) {
-          localStorage.setItem("agentrix_token", data.token);
-          useAuthStore.setState({ token: data.token });
-          useAuthStore.getState().loadToken();
+          await completeTokenLogin(data.token);
         }
       } else {
         const text = await res.text().catch(() => "");
@@ -102,21 +193,35 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     }
   }, [email, code]);
 
-  // OAuth: open system browser to provider, reuse pairing session
+  // OAuth: open system browser to provider, use local loopback callback server
   const handleOAuth = useCallback(async (provider: "google" | "discord") => {
-    // Ensure we have a pairing session for the callback
-    const sid = sessionId || `desktop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (!sessionId) {
-      setSessionId(sid);
+    let sid = sessionId;
+    if (!sid || expired) {
       try {
-        await apiFetch(`${API_BASE}/auth/desktop-pair/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: sid }),
-        });
-      } catch {}
+        const created = await startPairSession();
+        sid = created.sessionId;
+      } catch (error) {
+        // Session creation failed (likely proxy/network issue) — use a local-only ID
+        sid = `desktop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        console.warn('[LoginPanel] Session create failed, using local ID for OAuth:', sid);
+      }
     }
-    const url = `${API_BASE}/auth/${provider}?desktop_session=${encodeURIComponent(sid)}`;
+    if (!sid) return;
+
+    // Start local auth callback server (loopback redirect, bypasses proxy)
+    let callbackPort: number | null = null;
+    try {
+      callbackPort = await invoke<number>("desktop_bridge_start_auth_callback_server");
+      console.log('[LoginPanel] Local auth callback server on port', callbackPort);
+    } catch (e) {
+      console.warn('[LoginPanel] Could not start local auth server:', e);
+    }
+
+    let url = `${PAIR_API_BASE}/auth/${provider}?desktop_session=${encodeURIComponent(sid)}`;
+    if (callbackPort) {
+      url += `&callback_port=${callbackPort}`;
+    }
+
     try {
       await shellOpen(url);
     } catch {
@@ -124,7 +229,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     }
     // Switch to QR tab so user can see the polling is active
     setTab("qr");
-  }, [sessionId]);
+  }, [sessionId, expired]);
 
   // Generate a pairing session ID, register with backend, and start polling
   const startPairSession = async () => {
@@ -137,40 +242,42 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     if (timerRef.current) clearTimeout(timerRef.current);
 
     // Register session with backend (must use apiFetch for CORS bypass in Tauri)
+    let expiresAt = Date.now() + PAIR_TTL;
     try {
-      const createRes = await apiFetch(`${API_BASE}/auth/desktop-pair/create`, {
+      const createRes = await apiFetch(`${PAIR_API_BASE}/auth/desktop-pair/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: id }),
       });
       const createStatus = createRes.status;
       if (createStatus < 200 || createStatus >= 300) {
-        console.warn('Desktop pair create failed:', createStatus);
-      } else {
-        console.log('[LoginPanel] Session created:', id);
+        throw new Error(`Desktop pair create failed: ${createStatus}`);
       }
+      const raw = await createRes.text().catch(() => "");
+      if (raw) {
+        try {
+          const payload = JSON.parse(raw);
+          if (typeof payload?.expiresAt === "number") {
+            expiresAt = payload.expiresAt;
+          }
+        } catch {}
+      }
+      console.log('[LoginPanel] Session created:', id);
     } catch (e) {
       console.warn('Desktop pair create error:', e);
+      setExpired(true);
+      throw e;
     }
 
     // Poll for token (note: tauriFetch .ok may not work, use .status)
     pollRef.current = setInterval(async () => {
       try {
-        const res = await apiFetch(`${API_BASE}/auth/desktop-pair/poll?session=${encodeURIComponent(id)}`);
-        const status = res.status;
-        if (status < 200 || status >= 300) return;
-        const text = await res.text();
-        if (!text) return;
-        let data: any;
-        try { data = JSON.parse(text); } catch { return; }
+        const data = await pollPairSession(id);
+        if (!data) return;
         console.log('[LoginPanel] Poll response:', JSON.stringify(data));
         if (data.token) {
           console.log("[LoginPanel] Poll got token, transitioning...");
-          localStorage.setItem("agentrix_token", data.token);
-          if (pollRef.current) clearInterval(pollRef.current);
-          if (timerRef.current) clearTimeout(timerRef.current);
-          useAuthStore.setState({ token: data.token });
-          useAuthStore.getState().loadToken();
+          await completeTokenLogin(data.token);
         }
       } catch {
         // API not ready yet — silently continue polling
@@ -181,7 +288,9 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     timerRef.current = setTimeout(() => {
       if (pollRef.current) clearInterval(pollRef.current);
       setExpired(true);
-    }, PAIR_TTL);
+    }, Math.max(1000, expiresAt - Date.now()));
+
+    return { sessionId: id, expiresAt };
   };
 
   useEffect(() => {
@@ -190,11 +299,11 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
       if (pollRef.current) clearInterval(pollRef.current);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [completeTokenLogin]);
 
   // QR code value: deep link for mobile app to scan
   const qrValue = sessionId
-    ? `https://agentrix.top/pair?session=${sessionId}&platform=desktop`
+    ? `https://agentrix.top/pair?session=${sessionId}&platform=desktop&api=${encodeURIComponent(PAIR_API_BASE)}`
     : "";
 
   return (
@@ -216,7 +325,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
         {/* Tab switcher */}
         <div style={tabBar}>
           <button
-            onClick={() => setTab("qr")}
+            onClick={() => { setTab("qr"); if (expired) startPairSession(); }}
             style={{ ...tabBtn, ...(tab === "qr" ? tabBtnActive : {}) }}
           >
             📱 扫码
@@ -361,6 +470,29 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
 
         {/* Download prompt */}
         <div style={{ textAlign: "center", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+          {/* Manual token paste (fallback for network issues) */}
+          <details style={{ marginBottom: 10, textAlign: "left" }}>
+            <summary style={{ fontSize: 11, color: "var(--text-dim)", cursor: "pointer", userSelect: "none" }}>
+              🔑 手动粘贴 Token
+            </summary>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <input
+                type="text"
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+                placeholder="Paste token here"
+                style={{ ...inputStyle, flex: 1, fontSize: 11, padding: "6px 8px" }}
+              />
+              <button
+                onClick={handleManualToken}
+                disabled={!manualToken.trim()}
+                style={{ ...refreshBtn, fontSize: 11, padding: "6px 10px", opacity: manualToken.trim() ? 1 : 0.5 }}
+              >
+                登录
+              </button>
+            </div>
+          </details>
+
           <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "0 0 8px", lineHeight: 1.6 }}>
             还没有 App？
           </p>

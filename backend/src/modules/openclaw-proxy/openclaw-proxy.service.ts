@@ -9,7 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AgentAccount, AgentAccountStatus } from '../../entities/agent-account.entity';
 import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-message.entity';
 import { AgentSession, SessionStatus } from '../../entities/agent-session.entity';
@@ -30,19 +30,53 @@ import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
 import { HookService } from '../hooks/hook.service';
 import { HookEventType } from '../../entities/hook-config.entity';
 import { McpServerRegistryService } from '../mcp-registry/mcp-server-registry.service';
+import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
+import { DesktopCommandStatus, DesktopCommandKind } from '../desktop-sync/dto/desktop-sync.dto';
+import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestration.service';
+import { LlmRouterService } from '../llm-router/llm-router.service';
+import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
+import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 
 export interface ChatMessageDto {
   message: string | any[];
+  history?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
   sessionId?: string;
   context?: Record<string, any>;
   model?: string;
   voiceId?: string;
+  mode?: 'ask' | 'agent' | 'plan';
+  platform?: 'desktop' | 'mobile' | 'web';
+  deviceId?: string;
+  agentId?: string;
+}
+
+export interface UnifiedChatRequestDto {
+  message?: string | any[];
+  messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
+  sessionId?: string;
+  agentId?: string;
+  mode?: 'ask' | 'agent' | 'plan';
+  platform?: 'desktop' | 'mobile' | 'web';
+  deviceId?: string;
+  voiceId?: string;
+  context?: Record<string, any>;
+  stream?: boolean;
+  anthropicApiKey?: string;
+  model?: string;
+  options?: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    enableModelRouting?: boolean;
+  };
 }
 
 export interface ChatStreamCallbacks {
   signal?: AbortSignal;
   onMeta?: (meta: Record<string, any>) => Promise<void> | void;
   onChunk: (chunk: string) => Promise<void> | void;
+  /** Typed stream events (tool_start, approval_required, etc.) — Phase 6 unified protocol */
+  onEvent?: (event: import('../query-engine/interfaces/stream-event.interface').StreamEvent) => Promise<void> | void;
   onDone?: () => Promise<void> | void;
 }
 
@@ -86,10 +120,145 @@ export class OpenClawProxyService {
     private readonly hookService: HookService,
     @Inject(forwardRef(() => McpServerRegistryService))
     private readonly mcpRegistryService: McpServerRegistryService,
+    private readonly desktopSyncService: DesktopSyncService,
+    private readonly agentOrchestrationService: AgentOrchestrationService,
+    private readonly llmRouterService: LlmRouterService,
+    private readonly costTrackerService: CostTrackerService,
+    @Inject(forwardRef(() => RuntimeSeamService))
+    private readonly runtimeSeamService: RuntimeSeamService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
     return this.connectionService.getInstanceById(userId, instanceId);
+  }
+
+  private extractTextContent(content: string | any[] | undefined): string {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (!Array.isArray(content)) {
+      return '';
+    }
+
+    return content
+      .map((block: any) => {
+        if (typeof block === 'string') {
+          return block;
+        }
+        if (typeof block?.text === 'string') {
+          return block.text;
+        }
+        return '';
+      })
+      .join('\n')
+      .trim();
+  }
+
+  private buildExplicitHistoryMessages(history?: ChatMessageDto['history']) {
+    return (history || [])
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .filter((message) => {
+        if (typeof message.content === 'string') {
+          return message.content.trim().length > 0;
+        }
+        return Array.isArray(message.content) && message.content.length > 0;
+      })
+      .map((message) => ({
+        role: message.role,
+        content: this.extractTextContent(message.content),
+      }));
+  }
+
+  private normalizeChatRequest(body: UnifiedChatRequestDto): ChatMessageDto {
+    const providedMessages = Array.isArray(body.messages) ? body.messages : [];
+    const explicitMessageProvided = body.message !== undefined && body.message !== null;
+    let normalizedMessage = body.message;
+    let normalizedHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
+
+    if (providedMessages.length > 0) {
+      let lastUserIndex = -1;
+      for (let index = providedMessages.length - 1; index >= 0; index -= 1) {
+        if (providedMessages[index]?.role === 'user') {
+          lastUserIndex = index;
+          break;
+        }
+      }
+
+      if (explicitMessageProvided) {
+        normalizedHistory = providedMessages
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .map((message) => ({ role: message.role as 'user' | 'assistant', content: message.content }));
+
+        const lastHistoryMessage = normalizedHistory[normalizedHistory.length - 1];
+        if (
+          lastHistoryMessage?.role === 'user'
+          && this.extractTextContent(lastHistoryMessage.content) === this.extractTextContent(normalizedMessage)
+        ) {
+          normalizedHistory = normalizedHistory.slice(0, -1);
+        }
+      } else if (lastUserIndex >= 0) {
+        normalizedMessage = providedMessages[lastUserIndex].content;
+        normalizedHistory = providedMessages
+          .slice(0, lastUserIndex)
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .map((message) => ({ role: message.role as 'user' | 'assistant', content: message.content }));
+      }
+    }
+
+    const hasMessage = normalizedMessage !== undefined && normalizedMessage !== null && (
+      (typeof normalizedMessage === 'string' && normalizedMessage.trim().length > 0)
+      || (Array.isArray(normalizedMessage) && normalizedMessage.length > 0)
+    );
+
+    if (!hasMessage) {
+      throw new BadRequestException('message or messages[last user] is required');
+    }
+
+    return {
+      message: normalizedMessage as string | any[],
+      history: normalizedHistory.length > 0 ? normalizedHistory : undefined,
+      sessionId: typeof body.context?.sessionId === 'string' ? body.context.sessionId : body.sessionId,
+      context: body.context,
+      model: body.options?.model || body.model,
+      voiceId: body.voiceId,
+      mode: body.mode,
+      platform: body.platform,
+      deviceId: body.deviceId,
+      agentId: body.agentId,
+    };
+  }
+
+  private async resolveDefaultInstanceForUser(userId: string, agentId?: string): Promise<OpenClawInstance> {
+    const candidates = await this.instanceRepo.find({
+      where: {
+        userId,
+        status: In([OpenClawInstanceStatus.ACTIVE, OpenClawInstanceStatus.PROVISIONING]),
+      },
+      order: {
+        isPrimary: 'DESC',
+        updatedAt: 'DESC',
+      },
+      take: 20,
+    });
+
+    if (candidates.length === 0) {
+      throw new NotFoundException('No active OpenClaw instance is available for this user');
+    }
+
+    if (agentId) {
+      const matched = candidates.find((instance) => {
+        const metadataAgentId = typeof instance.metadata?.agentAccountId === 'string'
+          ? instance.metadata.agentAccountId
+          : undefined;
+        return instance.agentAccountId === agentId || metadataAgentId === agentId;
+      });
+      if (matched) {
+        return matched;
+      }
+    }
+
+    return candidates.find((instance) => instance.isPrimary) || candidates[0];
   }
 
   private async resolveInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -113,12 +282,19 @@ export class OpenClawProxyService {
    */
   private messageNeedsTools(text: string): boolean {
     const lower = text.toLowerCase().trim();
-    // Very short messages (<15 chars) without action keywords are conversational
-    if (lower.length < 15) {
-      const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|agent|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务/;
-      if (!actionWords.test(lower)) return false;
+    const pathLikePattern = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/)/i;
+    const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|read|write|edit|modify|change|fix|analy[sz]e|inspect|debug|list|open|grep|workspace|file|folder|directory|project|repo|code|patch|continue|resume|benchmark|profile|trace|deploy|build|test|browser|terminal|git|ssh|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务|继续|接着|下一步|修复|修改|查看|检查|分析|目录|文件夹|文件|代码|工作区|项目|仓库|编辑|列出|运行|命令|部署|构建|测试|浏览器/;
+    const structuredTaskPattern = /```|\n\s*[-*\d]+\.|\b(step|steps|todo|plan|investigate|diagnose|implement|refactor|migrate|compare)\b|步骤|方案|计划|排查|定位|实现|重构|迁移|对比/i;
+    if (pathLikePattern.test(text)) {
+      return true;
     }
-    return true;
+    if (actionWords.test(lower) || structuredTaskPattern.test(text)) {
+      return true;
+    }
+    if (lower.length <= 120) {
+      return false;
+    }
+    return /workspace|repository|codebase|instance|provider|deployment|session|memory|approval|desktop tool/i.test(lower);
   }
 
   private async getOrCreatePlatformHostedSession(
@@ -144,7 +320,7 @@ export class OpenClawProxyService {
     const session = this.sessionRepo.create({
       userId,
       sessionId: resolvedClientSessionId,
-      agentId: typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined,
+      agentId: instance.agentAccountId || (typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined),
       title: instance.name || 'OpenClaw Agent',
       status: SessionStatus.ACTIVE,
       metadata: {
@@ -199,10 +375,11 @@ export class OpenClawProxyService {
       .createQueryBuilder('message')
       .innerJoinAndSelect('message.session', 'session')
       .where('session.userId = :userId', { userId })
-      .andWhere('session.status = :status', { status: SessionStatus.ACTIVE })
+      // Include both ACTIVE sessions and any non-ACTIVE sessions that have recent messages
       .andWhere(`session.metadata ->> 'instanceId' = :instanceId`, { instanceId })
-      .orderBy('message.sequenceNumber', 'DESC')
-      .addOrderBy('message.createdAt', 'DESC')
+      // Order purely by creation time so newest messages are always found,
+      // regardless of per-session sequenceNumber (which resets for each new session)
+      .orderBy('message.createdAt', 'DESC')
       .take(limit)
       .getMany();
 
@@ -217,6 +394,86 @@ export class OpenClawProxyService {
         role: message.role as 'user' | 'assistant',
         content: message.content,
       }));
+  }
+
+  private estimateConversationInputTokens(
+    historyMessages: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
+    currentMessageText: string,
+  ): number {
+    const historyText = historyMessages
+      .map((message) => this.extractTextContent(message.content))
+      .filter((text) => text.length > 0)
+      .join('\n');
+    const promptText = historyText ? `${historyText}\n${currentMessageText}` : currentMessageText;
+    return estimateTokens(promptText);
+  }
+
+  private resolveToolRoundBudget(
+    dto: ChatMessageDto,
+    messageText: string,
+    needsTools: boolean,
+  ): { maxToolRounds: number; maxTokens: number; taskTier?: string; routingReason?: string } {
+    if (!needsTools) {
+      return {
+        maxToolRounds: dto.platform === 'desktop' ? 6 : 5,
+        maxTokens: dto.platform === 'desktop' ? 4096 : 3072,
+      };
+    }
+
+    let maxToolRounds = dto.mode === 'plan'
+      ? 14
+      : dto.mode === 'agent'
+        ? 12
+        : 8;
+    let maxTokens = dto.mode === 'plan'
+      ? 6144
+      : dto.mode === 'agent'
+        ? 5120
+        : 4096;
+
+    if (dto.platform === 'desktop') {
+      maxToolRounds += 4;
+      maxTokens = Math.max(maxTokens, 6144);
+    }
+
+    try {
+      const routing = this.llmRouterService.route(messageText, {
+        hasImageFrame: Array.isArray(dto.message) && dto.message.some((block: any) => (
+          block?.type === 'image' || block?.type === 'image_url'
+        )),
+        requiresCodeGen:
+          dto.platform === 'desktop'
+          || /(code|file|workspace|repo|directory|debug|fix|implement|refactor|patch|terminal|command)/i.test(messageText),
+        isA2AOrchestration: /(multi[- ]?agent|sub-?agent|orchestrat|coordinate|delegate)/i.test(messageText),
+      });
+
+      switch (routing.tier) {
+        case 'ultra':
+          maxToolRounds = Math.max(maxToolRounds, 22);
+          maxTokens = Math.max(maxTokens, 8192);
+          break;
+        case 'heavy':
+          maxToolRounds = Math.max(maxToolRounds, 18);
+          maxTokens = Math.max(maxTokens, 7168);
+          break;
+        case 'medium':
+          maxToolRounds = Math.max(maxToolRounds, 12);
+          maxTokens = Math.max(maxTokens, 5120);
+          break;
+        default:
+          break;
+      }
+
+      return {
+        maxToolRounds,
+        maxTokens,
+        taskTier: routing.tier,
+        routingReason: routing.reason,
+      };
+    } catch (error: any) {
+      this.logger.warn(`Tool round budget routing failed: ${error.message}`);
+      return { maxToolRounds, maxTokens };
+    }
   }
 
   private async getPlatformHostedHistoryPayload(
@@ -426,6 +683,25 @@ export class OpenClawProxyService {
           title: { type: 'string', description: 'Optional display title for the link' },
         },
         required: ['url'],
+      },
+      video_generate: {
+        properties: {
+          mode: { type: 'string', enum: ['text_to_video', 'image_to_video', 'video_to_video'], description: 'Generation mode. Use image_to_video for animating a still image, or video_to_video for reference-driven motion transfer.' },
+          prompt: { type: 'string', description: 'Prompt or edit instruction for the generated video. Optional for reference-driven modes when the reference media already implies the motion/style goal.' },
+          taskId: { type: 'string', description: 'Existing async task id to query' },
+          provider: { type: 'string', description: 'Provider id, currently fal' },
+          model: { type: 'string', description: 'Provider model path override' },
+          duration: { type: 'string', enum: ['5', '10'], description: 'Approximate duration in seconds' },
+          aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Output aspect ratio for text-to-video and provider-supported image-to-video models' },
+          negativePrompt: { type: 'string', description: 'Things the model should avoid' },
+          cfgScale: { type: 'number', description: 'Guidance scale override' },
+          generateAudio: { type: 'boolean', description: 'Whether audio generation should be attempted' },
+          referenceImageUrl: { type: 'string', description: 'Reference image URL. Required for image_to_video and video_to_video.' },
+          endImageUrl: { type: 'string', description: 'Optional ending-frame image URL for image_to_video.' },
+          referenceVideoUrl: { type: 'string', description: 'Reference video URL. Required for video_to_video.' },
+          keepOriginalSound: { type: 'boolean', description: 'When using video_to_video, keep the original sound from the reference video if the provider supports it.' },
+          characterOrientation: { type: 'string', enum: ['image', 'video'], description: 'For video_to_video, choose whether subject orientation should follow the reference image or the reference video.' },
+        },
       },
       code_eval: {
         properties: {
@@ -652,9 +928,8 @@ export class OpenClawProxyService {
   }
 
   private async resolveRuntimePermissionProfile(userId: string, instance: OpenClawInstance): Promise<RuntimePermissionProfile | null> {
-    const agentAccountId = typeof instance.metadata?.agentAccountId === 'string'
-      ? instance.metadata.agentAccountId
-      : undefined;
+    const agentAccountId = instance.agentAccountId
+      || (typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined);
 
     if (!agentAccountId) return null;
 
@@ -747,7 +1022,206 @@ export class OpenClawProxyService {
     };
   }
 
-  private async buildPlatformHostedTools(userId: string, instance: OpenClawInstance): Promise<{
+  // ── Desktop Tool Schemas & Execution ───────────────────────────
+
+  public buildDesktopToolBridge(
+    userId: string,
+    deviceId?: string,
+    sessionId?: string,
+  ): {
+    additionalTools: any[];
+    onToolCall: (name: string, args: any) => Promise<any>;
+  } {
+    const additionalTools = this.getDesktopToolSchemas();
+    return {
+      additionalTools,
+      onToolCall: async (name: string, args: any) => {
+        if (!name.startsWith('desktop_')) {
+          return undefined;
+        }
+        return this.executeDesktopTool(userId, name, args, deviceId, sessionId);
+      },
+    };
+  }
+
+  public shouldUseTools(mode: 'ask' | 'agent' | 'plan' | undefined, messageText: string): boolean {
+    if (mode === 'ask') {
+      return false;
+    }
+    if (mode === 'plan') {
+      return true;
+    }
+    return this.messageNeedsTools(messageText);
+  }
+
+  private getDesktopToolSchemas(): any[] {
+    return [
+      {
+        name: 'desktop_read_file',
+        description: 'Read a file from the user\'s desktop/local filesystem. Relative paths are resolved from the selected workspace when available. Prefer targeted reads with startLine/endLine for large source files.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Absolute or relative file path to read' },
+            startLine: { type: 'number', description: '1-based start line for a partial read (optional)' },
+            endLine: { type: 'number', description: '1-based inclusive end line for a partial read (optional)' },
+          },
+          required: ['path'],
+        },
+      },
+      {
+        name: 'desktop_list_directory',
+        description: 'List files and directories in a local folder. Relative paths are resolved from the selected workspace when available. Returns structured entries instead of raw shell output.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Directory path to list' },
+          },
+          required: ['path'],
+        },
+      },
+      {
+        name: 'desktop_write_file',
+        description: 'Write content to a file on the user\'s desktop. Creates the file if it doesn\'t exist. REQUIRES USER APPROVAL.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'File path to write to' },
+            content: { type: 'string', description: 'Content to write' },
+          },
+          required: ['path', 'content'],
+        },
+      },
+      {
+        name: 'desktop_run_command',
+        description: 'Execute a shell command on the user\'s desktop (PowerShell on Windows, bash on Linux/Mac). REQUIRES USER APPROVAL.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            command: { type: 'string', description: 'Shell command to execute' },
+            workingDirectory: { type: 'string', description: 'Working directory (optional)' },
+            timeoutMs: { type: 'number', description: 'Maximum runtime in milliseconds (optional, defaults to 10 minutes)' },
+          },
+          required: ['command'],
+        },
+      },
+    ];
+  }
+
+  /**
+   * Execute a desktop tool by creating a sync command and polling for result.
+   * Desktop client picks up the command via polling and submits the result.
+   */
+  private async executeDesktopTool(
+    userId: string,
+    toolName: string,
+    args: any,
+    deviceId?: string,
+    sessionId?: string,
+  ): Promise<any> {
+    const kindMap: Record<string, string> = {
+      desktop_read_file: 'read-file',
+      desktop_list_directory: 'list-directory',
+      desktop_write_file: 'write-file',
+      desktop_run_command: 'run-command',
+    };
+    const kind = kindMap[toolName] || 'run-command';
+
+    let payload: Record<string, unknown>;
+    let title: string;
+    if (toolName === 'desktop_read_file') {
+      payload = {
+        path: args.path,
+        ...(typeof args.startLine === 'number' ? { startLine: Math.max(1, Math.floor(args.startLine)) } : {}),
+        ...(typeof args.endLine === 'number' ? { endLine: Math.max(1, Math.floor(args.endLine)) } : {}),
+      };
+      title = `Read file: ${args.path}`;
+    } else if (toolName === 'desktop_list_directory') {
+      payload = { path: args.path };
+      title = `List directory: ${args.path}`;
+    } else if (toolName === 'desktop_write_file') {
+      payload = { path: args.path, content: args.content };
+      title = `Write file: ${args.path}`;
+    } else if (toolName === 'desktop_run_command') {
+      const requestedTimeoutMs = typeof args.timeoutMs === 'number'
+        ? Math.max(5_000, Math.min(args.timeoutMs, 30 * 60_000))
+        : 10 * 60_000;
+      payload = {
+        command: args.command,
+        workingDirectory: args.workingDirectory,
+        timeoutMs: requestedTimeoutMs,
+      };
+      title = `Run: ${args.command?.slice(0, 80)}`;
+    } else {
+      return { error: `Unknown desktop tool: ${toolName}` };
+    }
+
+    // Create command for desktop client to pick up
+    const result = await this.desktopSyncService.createCommand(userId, {
+      title,
+      kind: kind as any,
+      payload,
+      targetDeviceId: deviceId || undefined,
+      sessionId,
+    });
+
+    if (!result?.command?.commandId) {
+      return { error: 'Failed to create desktop command' };
+    }
+
+    // Poll for completion (desktop client processes via 3s polling + socket acceleration)
+    const commandId = result.command.commandId;
+    const timeout = kind === 'run-command'
+      ? Math.max(Number(payload.timeoutMs || 10 * 60_000) + 15_000, 120_000)
+      : 120_000;
+    const pollInterval = 500;
+    const startTime = Date.now();
+    let latestCommand: any;
+
+    while (Date.now() - startTime < timeout) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      try {
+        const commands = await this.desktopSyncService.listCommands(userId, deviceId);
+        const cmd = commands.find((c: any) => c.commandId === commandId);
+        if (!cmd) continue;
+        latestCommand = cmd;
+
+        if (cmd.status === DesktopCommandStatus.COMPLETED) {
+          return cmd.result || { success: true };
+        }
+        if (cmd.status === DesktopCommandStatus.FAILED) {
+          return { error: cmd.error || 'Desktop command failed' };
+        }
+        if (cmd.status === DesktopCommandStatus.REJECTED) {
+          return { error: 'Command was rejected by the user' };
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }
+
+    if (kind === 'run-command' && latestCommand?.status === DesktopCommandStatus.CLAIMED) {
+      return {
+        pending: true,
+        commandId,
+        status: latestCommand.status,
+        message: '桌面命令仍在后台运行。请查看桌面任务时间线了解进度。',
+      };
+    }
+
+    return {
+      error: kind === 'run-command'
+        ? '桌面命令长时间未完成。若桌面客户端已开始执行，可在桌面任务时间线继续查看进度。'
+        : '桌面端未响应（超时2分钟）。请确认桌面客户端已打开并登录。',
+    };
+  }
+
+  private async buildPlatformHostedTools(
+    userId: string,
+    instance: OpenClawInstance,
+    sessionId?: string,
+    deviceId?: string,
+  ): Promise<{
     additionalTools: any[];
     onToolCall: (name: string, args: any) => Promise<any>;
   }> {
@@ -808,6 +1282,59 @@ export class OpenClawProxyService {
           required: ['title', 'description'],
         },
       },
+      // Phase 4: Agent orchestration tools
+      {
+        name: 'agent_spawn',
+        description: 'Spawn a sub-agent from the user\'s agent team to handle a specific task. The sub-agent has its own independent context, model, and budget. Use for parallel decomposition of complex tasks.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            task: { type: 'string', description: 'Detailed task description for the sub-agent' },
+            role: { type: 'string', description: 'Team role to delegate to (e.g. "dev", "qa-ops", "growth", "media")' },
+            agentAccountId: { type: 'string', description: 'Specific agent account ID (optional — prefer role-based lookup)' },
+            model: { type: 'string', description: 'Model override (optional — uses agent\'s preferred model by default)' },
+            maxTurns: { type: 'number', description: 'Max LLM rounds (default 10)' },
+            budgetUsd: { type: 'number', description: 'Budget cap in USD (default 0.50)' },
+          },
+          required: ['task'],
+        },
+      },
+      {
+        name: 'agent_coordinate',
+        description: 'Coordinate multiple agent team members to work on a complex task in parallel. Each worker gets a specific sub-task assigned to an appropriate team role.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            task: { type: 'string', description: 'Overall task description' },
+            workers: {
+              type: 'array',
+              description: 'Array of worker configurations',
+              items: {
+                type: 'object',
+                properties: {
+                  role: { type: 'string', description: 'Team role (e.g. "dev", "qa-ops")' },
+                  task: { type: 'string', description: 'Specific sub-task for this worker' },
+                  model: { type: 'string', description: 'Model override (optional)' },
+                },
+                required: ['role', 'task'],
+              },
+            },
+          },
+          required: ['task', 'workers'],
+        },
+      },
+      {
+        name: 'agent_send_message',
+        description: 'Send a message to another agent team member (point-to-point or broadcast). Use for inter-agent coordination.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            to: { type: 'string', description: 'Agent name or "*" for broadcast' },
+            message: { type: 'string', description: 'Message content' },
+          },
+          required: ['to', 'message'],
+        },
+      },
     ];
 
     return {
@@ -820,12 +1347,13 @@ export class OpenClawProxyService {
         const preset = AGENT_PRESET_SKILLS.find((skill) => skill.handlerName === name);
         const ctx: ExecutionContext = {
           userId,
-          sessionId: undefined,
+          sessionId: args?.sessionId || sessionId,
           metadata: {
             instanceId: instance.id,
             source: 'platform-hosted-chat',
             agentAccountId: permissionProfile?.agentAccountId,
             permissionProfile,
+            deviceId: args?.deviceId || deviceId,
           },
         };
 
@@ -854,9 +1382,13 @@ export class OpenClawProxyService {
         // P4/P5 Intelligence tool handlers
         if (name === 'save_memory') {
           const { MemoryType, MemoryScope } = await import('../../entities/agent-memory.entity');
-          const scope = args.scope === 'user' ? MemoryScope.USER : MemoryScope.SESSION;
+          const scope = args.scope === 'user' ? MemoryScope.USER
+            : args.scope === 'agent' ? MemoryScope.AGENT
+            : MemoryScope.SESSION;
           const mem = this.intelligenceService['memoryRepo'].create({
-            sessionId: args.sessionId || undefined,
+            sessionId: args.sessionId || ctx.sessionId || undefined,
+            userId,
+            agentId: permissionProfile?.agentAccountId || undefined,
             key: args.key,
             value: { content: args.value },
             type: MemoryType.ENTITY,
@@ -878,6 +1410,86 @@ export class OpenClawProxyService {
           );
           emitAgentSyncEvent(userId, 'agent:subtask_update', '', { action: 'created', subtask });
           return { created: true, subtaskId: subtask.id, title: subtask.title };
+        }
+
+        // Phase 4: Agent orchestration tool handlers
+        if (name === 'agent_spawn') {
+          const handle = await this.agentOrchestrationService.spawn(userId, {
+            agentAccountId: args.agentAccountId,
+            task: args.task,
+            model: args.model,
+            maxTurns: args.maxTurns,
+            budgetUsd: args.budgetUsd,
+          });
+          // If role specified but no agentAccountId, try role-based resolution
+          if (!args.agentAccountId && args.role) {
+            const roleHandle = await this.agentOrchestrationService.spawn(userId, {
+              task: args.task,
+              model: args.model,
+              maxTurns: args.maxTurns,
+              budgetUsd: args.budgetUsd,
+            });
+            emitAgentSyncEvent(userId, 'agent:team_update', '', {
+              action: 'agent_spawned',
+              handleId: roleHandle.id,
+              agentName: roleHandle.agentName,
+              task: args.task,
+            });
+            return {
+              spawned: true,
+              handleId: roleHandle.id,
+              agentName: roleHandle.agentName,
+              status: roleHandle.status,
+            };
+          }
+          emitAgentSyncEvent(userId, 'agent:team_update', '', {
+            action: 'agent_spawned',
+            handleId: handle.id,
+            agentName: handle.agentName,
+            task: args.task,
+          });
+          return {
+            spawned: true,
+            handleId: handle.id,
+            agentName: handle.agentName,
+            status: handle.status,
+          };
+        }
+
+        if (name === 'agent_coordinate') {
+          const result = await this.agentOrchestrationService.coordinate(userId, {
+            task: args.task,
+            workers: (args.workers || []).map((w: any) => ({
+              role: w.role,
+              task: w.task,
+              model: w.model,
+            })),
+          });
+          emitAgentSyncEvent(userId, 'agent:team_update', '', {
+            action: 'coordination_started',
+            task: args.task,
+            workerCount: result.workers.length,
+          });
+          return {
+            coordinated: true,
+            summary: result.coordinatorSummary,
+            workers: result.workers.map(w => ({
+              id: w.id,
+              agentName: w.agentName,
+              task: w.task,
+              status: w.status,
+            })),
+            totalCostUsd: result.totalCostUsd,
+          };
+        }
+
+        if (name === 'agent_send_message') {
+          await this.agentOrchestrationService.sendMessage(
+            permissionProfile?.agentAccountName || 'user',
+            args.to,
+            args.message,
+          );
+          return { sent: true, to: args.to };
         }
 
         if (preset) {
@@ -1096,14 +1708,15 @@ export class OpenClawProxyService {
     userId: string,
     instance: OpenClawInstance,
     dto: ChatMessageDto,
-    streamingCallbacks?: { onChunk: (text: string) => void },
+    streamingCallbacks?: {
+      onChunk: (text: string) => void;
+      onEvent?: (event: import('../query-engine/interfaces/stream-event.interface').StreamEvent) => void;
+    },
   ) {
     const _t0 = Date.now();
     const _lap = (label: string) => this.logger.log(`⏱ ${label}: ${Date.now() - _t0}ms`);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
-    const messageText = Array.isArray(dto.message)
-      ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
-      : dto.message;
+    const messageText = this.extractTextContent(dto.message);
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
     _lap('getOrCreateSession');
     const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
@@ -1128,29 +1741,68 @@ export class OpenClawProxyService {
       defaultConfig,
       persistedHistory,
     ] = await Promise.all([
-      this.buildPlatformHostedTools(userId, instance),
+      this.buildPlatformHostedTools(userId, instance, sessionId, dto.deviceId),
       this.resolveRuntimePermissionProfile(userId, instance),
       this.aiProviderService.getDefaultConfig(userId),
-      this.getPlatformConversationHistory(userId, instance.id),
+      dto.history?.length
+        ? Promise.resolve([])
+        : this.getPlatformConversationHistory(userId, instance.id),
     ]);
     _lap(`parallelQueries (tools=${additionalTools.length}, history=${persistedHistory.length})`);
 
+    // Inject desktop-native tools when request comes from the desktop client
+    const isDesktop = dto.platform === 'desktop';
+    let effectiveOnToolCallFn = onToolCall;
+    if (isDesktop) {
+      const desktopBridge = this.buildDesktopToolBridge(userId, dto.deviceId, sessionId);
+      additionalTools.push(...desktopBridge.additionalTools);
+      effectiveOnToolCallFn = async (name: string, args: any) => {
+        const desktopResult = await desktopBridge.onToolCall(name, args);
+        if (desktopResult !== undefined) {
+          return desktopResult;
+        }
+        return onToolCall(name, args);
+      };
+      this.logger.log(`🖥️ Desktop platform detected — injected ${desktopBridge.additionalTools.length} desktop tools`);
+    }
+
     // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
     // Tools will still be available for messages that likely need them.
-    const needsTools = this.messageNeedsTools(messageText);
+    // 'ask' mode always skips tools; 'agent'/'plan' respect the heuristic.
+    const needsTools = this.shouldUseTools(dto.mode, messageText);
     const effectiveTools = needsTools ? additionalTools : [];
-    const effectiveOnToolCall = needsTools ? onToolCall : undefined;
+    const effectiveOnToolCall = needsTools ? effectiveOnToolCallFn : undefined;
     if (!needsTools) {
-      this.logger.log(`⚡ Simple message detected, skipping ${additionalTools.length} tools for faster response`);
+      const reason = dto.mode === 'ask' ? 'ask mode' : 'simple message detected';
+      this.logger.log(`⚡ Skipping ${additionalTools.length} tools: ${reason}`);
     }
 
     // Resolve model & provider FIRST so we can inject identity into system prompt
     const agentAccount = permissionProfile?.agentAccountId
       ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
       : null;
-    let resolvedModel = agentAccount?.preferredModel || dto.model || defaultConfig?.selectedModel || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    const instanceActiveModel = (instance.capabilities as any)?.activeModel;
+    const instanceModelPinned = (instance.capabilities as any)?.modelPinned === true;
+    // Local-only model IDs that cannot be routed to any cloud provider
+    const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local'];
+    const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
+      ? instanceActiveModel
+      : undefined;
+    const rawPreferredModel = agentAccount?.preferredModel;
+    const sanitizedPreferred = rawPreferredModel && !LOCAL_ONLY_MODELS.includes(rawPreferredModel)
+      ? rawPreferredModel : undefined;
+    const rawDtoModel = dto.model;
+    const sanitizedDtoModel = rawDtoModel && !LOCAL_ONLY_MODELS.includes(rawDtoModel)
+      ? rawDtoModel : undefined;
+    let resolvedModel = sanitizedDtoModel
+      || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
+      || sanitizedPreferred
+      || defaultConfig?.selectedModel
+      || sanitizedInstanceActiveModel
+      || process.env.DEFAULT_MODEL
+      || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
-    const requestedProvider = this.inferProviderFromModelId(dto.model);
+    const requestedProvider = this.inferProviderFromModelId(sanitizedDtoModel);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
 
     // Explicit chat model selection must win over any stored default provider.
@@ -1158,7 +1810,7 @@ export class OpenClawProxyService {
       resolvedProvider = requestedProvider === 'platform' ? undefined : requestedProvider;
     } else if (modelBoundProvider) {
       resolvedProvider = modelBoundProvider === 'platform' ? undefined : modelBoundProvider;
-    } else if (!resolvedProvider && defaultConfig) {
+    } else if (!resolvedProvider && defaultConfig && !instanceModelPinned) {
       resolvedProvider = defaultConfig.providerId;
       if (!agentAccount?.preferredModel && !dto.model) {
         resolvedModel = defaultConfig.selectedModel;
@@ -1174,7 +1826,24 @@ export class OpenClawProxyService {
     if (resolvedProvider) {
       const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
       if (providerConfig) {
-        userCredentials = { ...providerConfig, providerId: resolvedProvider };
+        // Fill in catalog baseUrl when user didn't configure one (e.g. copilot-subscription, chatgpt-subscription)
+        let effectiveBaseUrl = providerConfig.baseUrl;
+        if (!effectiveBaseUrl) {
+          const catalogEntry = this.aiProviderService.getCatalog().find((p: any) => p.id === resolvedProvider);
+          if (typeof catalogEntry?.baseUrl === 'string' && catalogEntry.baseUrl) {
+            effectiveBaseUrl = catalogEntry.baseUrl;
+            this.logger.debug(`Using catalog baseUrl for ${resolvedProvider}: ${effectiveBaseUrl}`);
+          } else if (typeof catalogEntry?.placeholder?.baseUrl === 'string' && catalogEntry.placeholder.baseUrl) {
+            effectiveBaseUrl = catalogEntry.placeholder.baseUrl;
+            this.logger.debug(`Using catalog placeholder baseUrl for ${resolvedProvider}: ${effectiveBaseUrl}`);
+          }
+        }
+        // For copilot-subscription: exchange ghu_* token for short-lived Copilot session token
+        let effectiveApiKey = providerConfig.apiKey;
+        if (resolvedProvider === 'copilot-subscription') {
+          effectiveApiKey = await this.aiProviderService.exchangeCopilotToken(providerConfig.apiKey);
+        }
+        userCredentials = { ...providerConfig, apiKey: effectiveApiKey, baseUrl: effectiveBaseUrl, providerId: resolvedProvider };
       } else {
         const platformCredentials = this.getPlatformOpenAICompatibleCredentials(resolvedProvider);
         if (platformCredentials) {
@@ -1191,7 +1860,8 @@ export class OpenClawProxyService {
 
     // For simple messages without tools, use minimal history to reduce input tokens
     // (12 history msgs with tool results can add 5000+ tokens → 4s extra latency)
-    const effectiveHistory = needsTools
+    const explicitHistory = this.buildExplicitHistoryMessages(dto.history);
+    const effectivePersistedHistory = needsTools
       ? persistedHistory
       : persistedHistory.slice(-4);
 
@@ -1221,19 +1891,11 @@ export class OpenClawProxyService {
       }
     }
 
-    // P4.2 Auto-Memory: load relevant memories into context
-    let memoryContext = '';
-    try {
-      const memories = await this.intelligenceService.getRelevantMemories(
-        session.id, userId, agentAccount?.id,
-      );
-      memoryContext = this.intelligenceService.buildMemoryContext(memories);
-    } catch (err: any) {
-      this.logger.warn(`Memory load failed: ${err.message}`);
-    }
-
     // P4.3 Compaction: check if history needs compaction
-    const historyMessages = this.buildPlatformHistoryMessages(effectiveHistory);
+    const historyMessages = explicitHistory.length > 0
+      ? [...explicitHistory]
+      : this.buildPlatformHistoryMessages(effectivePersistedHistory);
+    const hadConversationHistory = historyMessages.length > 0;
     if (this.intelligenceService.needsCompaction([...historyMessages, { role: 'user', content: messageText }])) {
       this.logger.log(`💾 Conversation needs compaction (session=${sessionId})`);
       const { compacted, result: compactionResult } = await this.intelligenceService.compactHistory(historyMessages);
@@ -1248,107 +1910,87 @@ export class OpenClawProxyService {
       });
     }
 
+    const executionModel = this.resolveExecutionModelId(resolvedModel);
+    const seamContext = await this.runtimeSeamService.buildRuntimeContext({
+      userId,
+      agentId: agentAccount?.id,
+      sessionId: session.id,
+      instanceName: instance.name || 'Agent',
+      message: Array.isArray(dto.message) ? dto.message : messageText,
+      baseTools: effectiveTools,
+      onToolCall: effectiveOnToolCall,
+      needsTools,
+      model: executionModel,
+      modelLabel: resolvedModelLabel,
+      provider: resolvedProvider,
+      userCredentials,
+      permissionProfile: permissionProfile || undefined,
+      planModeAddition: planModeSystemAddition || undefined,
+      mode: dto.mode,
+      platform: dto.platform,
+    });
+
+    if (seamContext.hookBlocked) {
+      return {
+        sessionId,
+        reply: {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: seamContext.hookBlockMessage || 'Message blocked by pre-message hook.',
+          createdAt: new Date().toISOString(),
+        },
+        toolCalls: null,
+        platformHosted: true,
+      };
+    }
+
+    const systemContent = seamContext.systemBlocks.length > 1
+      ? seamContext.systemBlocks
+      : seamContext.systemPrompt;
+
     const messages = [
       {
         role: 'system' as const,
-        content: (needsTools
-          ? (`You are "${instance.name || 'Agent'}", the user's personal AI agent with marketplace abilities.\n\n` +
-          `## Available Tools\n` +
-          `- skill_search/skill_install/skill_execute/skill_recommend/skill_publish: Marketplace skill lifecycle\n` +
-          `- resource_publish: Publish APIs/datasets/workflows\n` +
-          `- search_products/resource_search/create_order: Commerce\n` +
-          `- get_balance/asset_overview/x402_pay/quickpay_execute: Payments\n` +
-          `- task_search/task_post/task_accept/task_submit: Task marketplace\n` +
-          `- agent_discover/agent_invoke: Agent-to-Agent delegation\n\n` +
-          `## Rules\n` +
-          `1. ALWAYS use tools when asked to search/install/execute/buy/publish skills. Never claim lack of marketplace access.\n` +
-          `2. The client renders images (![alt](url)), audio (TTS button), files, and attachments. Never say "text-only" or "unsupported".\n` +
-          `3. For image generation: skill_search → skill_install → skill_execute → include URL in reply.\n` +
-          `4. Include media URLs in replies for rich rendering. Summarize tool results clearly.\n` +
-          `5. Reply in the user's language, stay concise.\n` +
-          `6. For balance/funds queries: call get_balance or asset_overview. Never guess.\n` +
-          `${permissionProfile
-            ? `7. Bound to Agent Account "${permissionProfile.agentAccountName}" (${permissionProfile.agentAccountStatus}). Disabled: ${permissionProfile.deniedToolNames.length > 0 ? permissionProfile.deniedToolNames.join(', ') : 'none'}.`
-            : '7. No Agent Account bound.'}\n` +
-          `8. Model: ${resolvedModelLabel}. Identify truthfully when asked.\n` +
-          `9. Use prior conversation context when relevant.`)
-          : (`You are "${instance.name || 'Agent'}", the user's personal AI agent. Reply concisely in the user's language. Model: ${resolvedModelLabel}.`))
-          + memoryContext + planModeSystemAddition,
+        content: systemContent,
       },
       ...historyMessages,
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
-    const executionModel = this.resolveExecutionModelId(resolvedModel);
     _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
 
-    // ── P6.1 Pre-message hooks ──────────────────────────────────────
-    try {
-      const preHookResults = await this.hookService.executeHooks({
-        userId,
-        sessionId,
-        eventType: HookEventType.MESSAGE_PRE,
-        message: messageText,
-        model: executionModel,
-      });
-      if (this.hookService.hasBlockingResult(preHookResults)) {
-        return {
-          sessionId,
-          reply: {
-            id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            content: 'Message blocked by pre-message hook.',
-            createdAt: new Date().toISOString(),
-          },
-          toolCalls: null,
-          platformHosted: true,
-        };
-      }
-    } catch (err: any) {
-      this.logger.warn(`Pre-message hook error: ${err.message}`);
-    }
-
-    // ── P6.3 MCP Server tools injection ─────────────────────────────
-    try {
-      const mcpTools = await this.mcpRegistryService.getUserMcpTools(userId);
-      if (mcpTools.length > 0 && needsTools) {
-        for (const mcpTool of mcpTools) {
-          effectiveTools.push({
-            name: mcpTool.name,
-            description: mcpTool.description,
-            input_schema: mcpTool.input_schema,
-          });
-        }
-        this.logger.log(`Injected ${mcpTools.length} MCP server tools`);
-      }
-    } catch (err: any) {
-      this.logger.warn(`MCP tools injection failed: ${err.message}`);
-    }
+    const executionBudget = this.resolveToolRoundBudget(dto, messageText, needsTools);
 
     let result: any;
     if (resolvedProvider === 'gemini') {
       result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: effectiveTools,
-        onToolCall: effectiveOnToolCall,
+        maxTokens: executionBudget.maxTokens,
+        additionalTools: seamContext.effectiveTools,
+        onToolCall: seamContext.effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
       });
     } else if (this.isOpenAICompatibleProvider(resolvedProvider)) {
       result = await this.openAIIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: this.toOpenAITools(effectiveTools),
-        onToolCall: effectiveOnToolCall,
+        maxTokens: executionBudget.maxTokens,
+        maxToolRounds: executionBudget.maxToolRounds,
+        additionalTools: this.toOpenAITools(seamContext.effectiveTools),
+        onToolCall: seamContext.effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
         userBaseURL: userCredentials?.baseUrl,
+        onChunk: streamingCallbacks?.onChunk,
       });
     } else {
       result = await this.claudeIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: effectiveTools,
-        onToolCall: effectiveOnToolCall,
+        maxTokens: executionBudget.maxTokens,
+        maxToolRounds: executionBudget.maxToolRounds,
+        additionalTools: seamContext.effectiveTools,
+        onToolCall: seamContext.effectiveOnToolCall,
         userCredentials: userCredentials
           ? { ...userCredentials, model: executionModel }
           : undefined,
@@ -1358,8 +2000,25 @@ export class OpenClawProxyService {
 
     _lap(`LLM done (toolCalls=${result?.toolCalls?.length || 0})`);
     const text = result?.text || '';
-    const inputTokens = estimateTokens(messageText);
+    const inputTokens = this.estimateConversationInputTokens(historyMessages, messageText);
     const outputTokens = estimateTokens(text);
+    const usageRecord = this.costTrackerService.recordCost(
+      sessionId,
+      executionModel,
+      inputTokens,
+      outputTokens,
+    );
+    try {
+      streamingCallbacks?.onEvent?.({
+        type: 'usage',
+        inputTokens,
+        outputTokens,
+        totalCostUsd: usageRecord.costUsd,
+        model: executionModel,
+      });
+    } catch (error: any) {
+      this.logger.warn(`Usage event emit failed: ${error.message}`);
+    }
     this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
       (err) => this.logger.warn(`Token deduct failed: ${err.message}`),
     );
@@ -1385,7 +2044,7 @@ export class OpenClawProxyService {
     ).catch((err) => this.logger.warn(`Memory extraction failed: ${err.message}`));
 
     // P4.4 Auto-title session on first message
-    if (persistedHistory.length === 0) {
+    if (!hadConversationHistory) {
       this.intelligenceService.autoTitleSession(session.id, messageText).catch(
         (err) => this.logger.warn(`Auto-title failed: ${err.message}`),
       );
@@ -1398,15 +2057,12 @@ export class OpenClawProxyService {
       hasToolCalls: (result?.toolCalls?.length || 0) > 0,
     });
 
-    // ── P6.1 Post-message hooks ─────────────────────────────────────
-    this.hookService.executeHooks({
-      userId,
-      sessionId,
-      eventType: HookEventType.MESSAGE_POST,
-      message: text,
-      model: executionModel,
-      metadata: { toolCalls: result?.toolCalls },
-    }).catch((err: any) => this.logger.warn(`Post-message hook error: ${err.message}`));
+    // P0: RuntimeSeam post-process — flush pending memory writes
+    this.runtimeSeamService.postProcess(
+      { userId, sessionId: session.id, agentId: agentAccount?.id, message: messageText, model: executionModel },
+      text,
+      result?.toolCalls,
+    ).catch((err: any) => this.logger.warn(`RuntimeSeam postProcess error: ${err.message}`));
 
     await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
       source: 'platform-hosted-chat',
@@ -1425,6 +2081,15 @@ export class OpenClawProxyService {
       sessionId,
       resolvedModel: executionModel,
       resolvedModelLabel,
+      taskTier: executionBudget.taskTier,
+      routingReason: executionBudget.routingReason,
+      toolBudget: executionBudget.maxToolRounds,
+      tokenBudget: executionBudget.maxTokens,
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalCostUsd: usageRecord.costUsd,
+      },
       reply: {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -1432,6 +2097,7 @@ export class OpenClawProxyService {
         createdAt: new Date().toISOString(),
       },
       toolCalls: result?.toolCalls || null,
+      stopReason: result?.stopReason || 'end_turn',
       plan: parsedPlan || this.intelligenceService.getActivePlan(sessionId) || null,
       platformHosted: true,
     };
@@ -1451,15 +2117,55 @@ export class OpenClawProxyService {
       res.flushHeaders();
     }
 
+    const startMs = Date.now();
+    // Helper to emit both legacy chunk format AND structured event
+    const emitStructured = (event: import('../query-engine/interfaces/stream-event.interface').StreamEvent) => {
+      if (res.writableEnded) return;
+      // Structured event protocol — clients that support it can parse .type
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if ((res as any).flush) (res as any).flush();
+    };
+
     try {
       let textBytesStreamed = 0;
       const result = await this.runPlatformHostedChat(userId, instance, dto, {
         onChunk: (chunk) => {
           if (res.writableEnded) return;
-          // Track how much actual text (not markers) was streamed
-          if (!chunk.startsWith('[Tool Call]') && !chunk.startsWith('[Tool Done]')) {
-            textBytesStreamed += chunk.length;
+
+          // Intercept tool markers and emit structured events
+          if (chunk.startsWith('[Tool Call]')) {
+            const toolMatch = chunk.match(/\[Tool Call\]\s*(\w+)/);
+            emitStructured({
+              type: 'tool_start',
+              toolCallId: `tc-${Date.now()}`,
+              toolName: toolMatch?.[1] || 'unknown',
+              input: {},
+            });
+            // Still send legacy chunk for backward compat
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+            if ((res as any).flush) (res as any).flush();
+            return;
           }
+
+          if (chunk.startsWith('[Tool Done]')) {
+            const toolMatch = chunk.match(/\[Tool Done\]\s*(\w+)/);
+            emitStructured({
+              type: 'tool_result',
+              toolCallId: `tc-${Date.now()}`,
+              toolName: toolMatch?.[1] || 'unknown',
+              success: true,
+              result: null,
+              durationMs: 0,
+            });
+            // Still send legacy chunk
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+            if ((res as any).flush) (res as any).flush();
+            return;
+          }
+
+          // Regular text: emit text_delta + legacy chunk
+          textBytesStreamed += chunk.length;
+          emitStructured({ type: 'text_delta', text: chunk });
           res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
           if ((res as any).flush) (res as any).flush();
         },
@@ -1468,22 +2174,50 @@ export class OpenClawProxyService {
       // Send model meta after call completes
       const resultAny = result as any;
       if (resultAny?.resolvedModel && !res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ meta: { resolvedModel: resultAny.resolvedModel, resolvedModelLabel: resultAny.resolvedModelLabel } })}\n\n`);
+        res.write(`data: ${JSON.stringify({ meta: {
+          resolvedModel: resultAny.resolvedModel,
+          resolvedModelLabel: resultAny.resolvedModelLabel,
+          plan: resultAny.plan,
+          taskTier: resultAny.taskTier,
+          routingReason: resultAny.routingReason,
+          toolBudget: resultAny.toolBudget,
+          tokenBudget: resultAny.tokenBudget,
+        } })}\n\n`);
         if ((res as any).flush) (res as any).flush();
       }
 
       // If LLM text wasn't fully streamed (streaming failed or non-streaming provider),
-      // emit the full text now. This covers: Gemini, OpenAI, Bedrock streaming fallback,
-      // and tool-call paths where [Tool Call] markers were sent but the 2nd LLM response wasn't.
+      // emit the full text now
       const fullText = result.reply?.content || '';
       if (fullText && textBytesStreamed < fullText.length * 0.5 && !res.writableEnded) {
         const fallbackChunks = fullText.match(/.{1,80}/gs) || [fullText];
         for (const c of fallbackChunks) {
           if (res.writableEnded) break;
+          emitStructured({ type: 'text_delta', text: c });
           res.write(`data: ${JSON.stringify({ chunk: c })}\n\n`);
           if ((res as any).flush) (res as any).flush();
         }
       }
+
+      // Emit structured done event
+      const doneReason =
+        resultAny?.stopReason === 'max_tokens'
+        || resultAny?.stopReason === 'stop_sequence'
+        || resultAny?.stopReason === 'abort'
+        || resultAny?.stopReason === 'error'
+        || resultAny?.stopReason === 'tool_use'
+        || resultAny?.stopReason === 'end_turn'
+          ? resultAny.stopReason
+          : 'end_turn';
+
+      emitStructured({
+        type: 'done',
+        reason: doneReason,
+        totalDurationMs: Date.now() - startMs,
+        totalInputTokens: resultAny?.usage?.inputTokens || 0,
+        totalOutputTokens: resultAny?.usage?.outputTokens || 0,
+        totalCostUsd: resultAny?.usage?.totalCostUsd,
+      });
 
       if (!res.writableEnded) {
         res.write('data: [DONE]\n\n');
@@ -1491,6 +2225,7 @@ export class OpenClawProxyService {
     } catch (err: any) {
       this.logger.error(`Platform-hosted stream error: ${err.message}`);
       if (!res.writableEnded) {
+        emitStructured({ type: 'error', error: err.message, retriable: false });
         res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
       }
     } finally {
@@ -1511,6 +2246,10 @@ export class OpenClawProxyService {
         this.logger.debug(`streamPlatformHostedChatToCallbacks chunk: instance=${instance.id} chunk=${chunk.slice(0, 80)}`);
         callbacks.onChunk(chunk);
       },
+      onEvent: (event) => {
+        if (callbacks.signal?.aborted) return;
+        callbacks.onEvent?.(event);
+      },
     });
     const resultAny = result as any;
 
@@ -1518,6 +2257,10 @@ export class OpenClawProxyService {
       await callbacks.onMeta({
         resolvedModel: resultAny.resolvedModel,
         resolvedModelLabel: resultAny.resolvedModelLabel,
+        plan: resultAny.plan,
+        taskTier: resultAny.taskTier,
+        routingReason: resultAny.routingReason,
+        toolBudget: resultAny.toolBudget,
       });
     }
 
@@ -1543,6 +2286,19 @@ export class OpenClawProxyService {
 
     try {
       const parsed = JSON.parse(trimmed);
+      if (parsed?.type && callbacks.onEvent) {
+        await callbacks.onEvent(parsed as import('../query-engine/interfaces/stream-event.interface').StreamEvent);
+      }
+      if (parsed?.type === 'text_delta' && typeof parsed.text === 'string' && parsed.text.length > 0) {
+        await callbacks.onChunk(parsed.text);
+      }
+      if (parsed?.type === 'done') {
+        await callbacks.onDone?.();
+        return true;
+      }
+      if (parsed?.type === 'error') {
+        throw new BadGatewayException(parsed.error || 'Upstream stream error');
+      }
       if (parsed?.meta && callbacks.onMeta) {
         await callbacks.onMeta(parsed.meta);
       }
@@ -1980,6 +2736,18 @@ export class OpenClawProxyService {
     }
   }
 
+  async sendDefaultChat(userId: string, body: UnifiedChatRequestDto) {
+    const dto = this.normalizeChatRequest(body);
+    const instance = await this.resolveDefaultInstanceForUser(userId, dto.agentId);
+    return this.sendChat(userId, instance.id, dto);
+  }
+
+  async streamDefaultChat(userId: string, body: UnifiedChatRequestDto, res: Response) {
+    const dto = this.normalizeChatRequest(body);
+    const instance = await this.resolveDefaultInstanceForUser(userId, dto.agentId);
+    await this.streamChat(userId, instance.id, dto, res);
+  }
+
   // ═══════════════════════════════════════════════════════════
   // Platform Tools — Execute Agentrix platform skills through the claw proxy
   // ═══════════════════════════════════════════════════════════
@@ -2049,7 +2817,11 @@ export class OpenClawProxyService {
     const context: ExecutionContext = {
       userId,
       sessionId: params._sessionId,
-      metadata: { instanceId, source: 'openclaw-proxy' },
+      metadata: {
+        instanceId,
+        source: 'openclaw-proxy',
+        deviceId: params.deviceId,
+      },
     };
 
     const startTime = Date.now();
@@ -2099,5 +2871,62 @@ export class OpenClawProxyService {
       succeeded: results.filter((r) => r.success).length,
       failed: results.filter((r) => !r.success).length,
     };
+  }
+
+  /**
+   * Sync local model conversation messages to backend for memory persistence.
+   * Called by desktop/mobile after a local LLM (Gemma) conversation completes.
+   */
+  async syncLocalConversation(
+    userId: string,
+    body: {
+      sessionId: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      model?: string;
+      platform?: string;
+      deviceId?: string;
+    },
+  ) {
+    if (!body.messages?.length) {
+      return { saved: 0 };
+    }
+
+    // Find or create a session for local conversations
+    const clientSessionId = body.sessionId || `local-${Date.now()}`;
+    let session = await this.sessionRepo.findOne({
+      where: { userId, sessionId: clientSessionId },
+    });
+
+    if (!session) {
+      session = this.sessionRepo.create({
+        userId,
+        sessionId: clientSessionId,
+        title: 'Local Model Chat',
+        status: SessionStatus.ACTIVE,
+        metadata: {
+          source: 'local-model',
+          model: body.model || 'gemma-4-e2b',
+          platform: body.platform || 'desktop',
+          deviceId: body.deviceId,
+        },
+        context: { intent: null, entities: {}, userProfile: {} },
+        lastMessageAt: new Date(),
+      });
+      session = await this.sessionRepo.save(session);
+    }
+
+    // Save each message
+    let saved = 0;
+    for (const msg of body.messages) {
+      if (!msg.content?.trim()) continue;
+      const role = msg.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT;
+      await this.savePlatformHostedMessage(session, userId, role, msg.content, {
+        source: 'local-model',
+        model: body.model || 'gemma-4-e2b',
+      });
+      saved++;
+    }
+
+    return { saved, sessionId: clientSessionId };
   }
 }

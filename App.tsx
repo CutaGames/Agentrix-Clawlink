@@ -6,7 +6,7 @@ import { View, ActivityIndicator, Text, AppState, AppStateStatus, Platform } fro
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
-import { setApiConfig, loadTokenFromStorage } from './src/services/api';
+import { setApiConfig, loadTokenFromStorage, apiFetch } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
 import { colors } from './src/theme/colors';
@@ -25,6 +25,11 @@ import {
   stopAndroidBackgroundWakeWordService,
   syncAndroidBackgroundWakeWordConfig,
 } from './src/services/androidBackgroundWakeWord.service';
+import { initLlamaBridge } from './src/services/llamaRnBridge';
+import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
+
+// Register llama.rn bridge for on-device LLM inference
+initLlamaBridge();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -87,6 +92,44 @@ function AppNavigator() {
     activeInstanceName: null as string | null,
     model: null as typeof wakeWordConfig.localModel,
   });
+
+  const reconcileStartupLocalPackages = () => {
+    const migrationResult = OtaModelDownloadService.runStartupPackageMigration();
+    if (
+      migrationResult.invalidatedModelIds.length === 0
+      && migrationResult.removedArtifacts.length === 0
+    ) {
+      return;
+    }
+
+    const settingsState = useSettingsStore.getState();
+    const activeLocalModelWasInvalidated = migrationResult.invalidatedModelIds.includes(settingsState.localAiModelId)
+      || migrationResult.invalidatedModelIds.includes(settingsState.selectedModelId);
+
+    if (activeLocalModelWasInvalidated) {
+      useSettingsStore.setState({
+        localAiEnabled: false,
+        localAiStatus: 'not_downloaded',
+        localAiProgress: 0,
+      });
+    } else {
+      const currentLocalModelDownloaded = OtaModelDownloadService.isModelDownloaded(settingsState.localAiModelId);
+      const artifactStatuses = OtaModelDownloadService.getArtifactStatuses(settingsState.localAiModelId);
+      const downloadedBytes = artifactStatuses.reduce((sum, item) => sum + (item.downloaded ? item.sizeBytes : 0), 0);
+      const totalBytes = artifactStatuses.reduce((sum, item) => sum + item.sizeBytes, 0);
+      const packagePercent = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+
+      useSettingsStore.setState({
+        localAiEnabled: currentLocalModelDownloaded,
+        localAiProgress: currentLocalModelDownloaded ? packagePercent : 0,
+      });
+    }
+
+    console.warn(
+      'Invalidated stale on-device model artifacts during startup migration:',
+      JSON.stringify(migrationResult),
+    );
+  };
 
   useEffect(() => {
     backgroundWakeWordConfigRef.current = {
@@ -156,6 +199,7 @@ function AppNavigator() {
       try {
         // Migrate AsyncStorage data to MMKV (one-time, on first launch after update)
         await migrateFromAsyncStorage();
+        reconcileStartupLocalPackages();
 
         // Load token from SecureStore (key: 'clawlink_token')
         const token = await loadTokenFromStorage();
@@ -303,9 +347,23 @@ function AppNavigator() {
     startNotificationPolling(token, 30_000, { immediate: false });
 
     let cancelled = false;
-    void registerForPushNotifications().then((pushToken) => {
+    void registerForPushNotifications().then(async (pushToken) => {
       if (!cancelled) {
         useNotificationStore.getState().setPushToken(pushToken);
+        // Register push token with backend so server can send push notifications
+        if (pushToken) {
+          try {
+            await apiFetch('/notifications/register', {
+              method: 'POST',
+              body: JSON.stringify({
+                token: pushToken,
+                platform: Platform.OS,
+              }),
+            });
+          } catch (e) {
+            console.warn('Failed to register push token with backend:', e);
+          }
+        }
       }
     });
 

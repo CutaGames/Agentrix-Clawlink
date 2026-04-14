@@ -19,7 +19,8 @@ import {
   OpenClawInstanceStatus,
   OpenClawInstanceType,
 } from '../../entities/openclaw-instance.entity';
-import { AgentAccount } from '../../entities/agent-account.entity';
+import { AgentAccount, AgentAccountStatus, AgentType } from '../../entities/agent-account.entity';
+import { UserAgent } from '../../entities/user-agent.entity';
 import { getDefaultSkillHandlerNames } from '../skill/agent-preset-skills.config';
 
 export interface BindOpenClawDto {
@@ -169,6 +170,8 @@ export class OpenClawConnectionService implements OnModuleInit {
     private instanceRepo: Repository<OpenClawInstance>,
     @InjectRepository(AgentAccount)
     private agentAccountRepo: Repository<AgentAccount>,
+    @InjectRepository(UserAgent)
+    private userAgentRepo: Repository<UserAgent>,
   ) {}
 
   /** On startup: auto-fix any ERROR cloud instances left from failed Docker provisioning. */
@@ -193,6 +196,7 @@ export class OpenClawConnectionService implements OnModuleInit {
             llmProvider: restoredProvider,
             platformHosted: true,
             activeModel: this.resolvePlatformHostedDefaultModel(restoredProvider),
+            modelPinned: false,
           } as any,
         });
       }
@@ -322,6 +326,7 @@ export class OpenClawConnectionService implements OnModuleInit {
           llmProvider: resolvedProvider,
           platformHosted: true,
           activeModel: this.resolvePlatformHostedDefaultModel(resolvedProvider),
+          modelPinned: false,
         } as any,
       });
 
@@ -351,22 +356,77 @@ export class OpenClawConnectionService implements OnModuleInit {
   async bindAgentAccount(userId: string, instanceId: string, agentAccountId: string | null): Promise<OpenClawInstance> {
     const instance = await this.getInstanceById(userId, instanceId);
 
+    let resolvedAccountId = agentAccountId;
     if (agentAccountId) {
-      const agentAccount = await this.agentAccountRepo.findOne({ where: { id: agentAccountId, ownerId: userId } });
+      let agentAccount = await this.agentAccountRepo.findOne({ where: { id: agentAccountId, ownerId: userId } });
       if (!agentAccount) {
-        throw new NotFoundException('Agent account not found for this user');
+        // Fallback: caller may have passed a UserAgent (agent-presence) ID.
+        // Auto-provision an AgentAccount so the model preference propagates to chat.
+        const userAgent = await this.userAgentRepo.findOne({ where: { id: agentAccountId, userId } });
+        if (!userAgent) {
+          throw new NotFoundException('Agent account not found for this user');
+        }
+        agentAccount = await this.autoProvisionAgentAccount(userId, userAgent);
+        resolvedAccountId = agentAccount.id;
+        this.logger.log(`Auto-provisioned AgentAccount ${agentAccount.id} from UserAgent ${userAgent.id} (model=${userAgent.defaultModel})`);
+      } else {
+        // Sync latest model/provider from the paired UserAgent if one exists
+        const userAgent = await this.userAgentRepo.findOne({ where: { userId, name: agentAccount.name } });
+        if (userAgent?.defaultModel && userAgent.defaultModel !== agentAccount.preferredModel) {
+          agentAccount.preferredModel = userAgent.defaultModel;
+          agentAccount.preferredProvider = userAgent.settings?.preferredProvider || agentAccount.preferredProvider;
+          agentAccount.permissions = userAgent.metadata?.permissions || agentAccount.permissions;
+          await this.agentAccountRepo.save(agentAccount);
+        }
       }
     }
 
+    // 使用正式 FK 列（同时保持 metadata 向后兼容）
+    instance.agentAccountId = resolvedAccountId || null;
     const nextMetadata = { ...(instance.metadata || {}) };
-    if (agentAccountId) {
-      nextMetadata.agentAccountId = agentAccountId;
+    if (resolvedAccountId) {
+      nextMetadata.agentAccountId = resolvedAccountId;
     } else {
       delete nextMetadata.agentAccountId;
     }
-
     instance.metadata = Object.keys(nextMetadata).length > 0 ? nextMetadata : null as any;
     return this.instanceRepo.save(instance);
+  }
+
+  /** Create an AgentAccount from a UserAgent so model/permission prefs propagate to the chat flow. */
+  private async autoProvisionAgentAccount(userId: string, userAgent: UserAgent): Promise<AgentAccount> {
+    // Check if an AgentAccount already exists for this user with same name
+    const existing = await this.agentAccountRepo.findOne({ where: { ownerId: userId, name: userAgent.name } });
+    if (existing) {
+      // Update preferences from UserAgent
+      existing.preferredModel = userAgent.defaultModel || existing.preferredModel;
+      existing.preferredProvider = userAgent.settings?.preferredProvider || existing.preferredProvider;
+      existing.permissions = userAgent.metadata?.permissions || existing.permissions;
+      existing.status = AgentAccountStatus.ACTIVE;
+      return this.agentAccountRepo.save(existing);
+    }
+
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 8);
+    const account = this.agentAccountRepo.create({
+      agentUniqueId: `AGT-${timestamp}-${random}`,
+      name: userAgent.name,
+      description: userAgent.description,
+      ownerId: userId,
+      agentType: AgentType.PERSONAL,
+      status: AgentAccountStatus.ACTIVE,
+      preferredModel: userAgent.defaultModel || undefined,
+      preferredProvider: userAgent.settings?.preferredProvider || undefined,
+      permissions: userAgent.metadata?.permissions || {},
+      spendingLimits: userAgent.metadata?.accountCompatibility?.spendingLimits || {
+        singleTxLimit: 100,
+        dailyLimit: 500,
+        monthlyLimit: 2000,
+        currency: 'USD',
+      },
+      metadata: { sourceUserAgentId: userAgent.id },
+    });
+    return this.agentAccountRepo.save(account);
   }
 
   async setPrimaryInstance(userId: string, instanceId: string): Promise<void> {
@@ -611,7 +671,7 @@ export class OpenClawConnectionService implements OnModuleInit {
     const instance = await this.getInstanceById(userId, instanceId);
 
     // Update capabilities with the active model
-    const caps = { ...(instance.capabilities || {}), activeModel: modelId };
+    const caps = { ...(instance.capabilities || {}), activeModel: modelId, modelPinned: true };
     await this.instanceRepo.update(instance.id, { capabilities: caps as any });
 
     // Try pushing the model change to the running OpenClaw instance

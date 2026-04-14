@@ -54,17 +54,175 @@ export class AuthController {
   }
 
   @Get('google')
-  @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth 登录' })
-  async googleAuth() {
-    // Guard 会自动重定向到 Google
+  async googleAuth(@Request() req, @Res() res: Response) {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    if (!clientId || clientId === 'placeholder-client-id') {
+      return this.redirectWebAuthError(res, 'Google OAuth not configured');
+    }
+
+    const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
+    const callbackUrl = this.configService.get<string>('GOOGLE_CALLBACK_URL') || `${apiBase}/auth/google/callback`;
+    const desktopSession = this.firstQueryValue(req.query?.desktop_session);
+    const callbackPort = desktopSession ? this.firstQueryValue(req.query?.callback_port) : undefined;
+    const stateKey = this.encodeOAuthState({ ds: desktopSession, cp: callbackPort ? parseInt(callbackPort, 10) : undefined });
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: callbackUrl,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state: stateKey,
+      access_type: 'offline',
+      prompt: 'select_account',
+    });
+
+    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   }
 
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth 回调' })
   async googleAuthCallback(@Request() req, @Res() res: Response) {
-    return this.handleSocialAuthCallback(req, res, SocialAccountType.GOOGLE);
+    const code = this.firstQueryValue(req.query?.code);
+    const oauthError = this.firstQueryValue(req.query?.error);
+    const state = this.firstQueryValue(req.query?.state);
+    const stateData = this.decodeOAuthState(state);
+    const desktopSession = typeof stateData?.ds === 'string' ? stateData.ds : undefined;
+    const callbackPort = typeof stateData?.cp === 'number' ? stateData.cp : undefined;
+
+    if (oauthError || !code) {
+      return this.finalizeBrowserOAuthError(res, 'Google', oauthError || 'Google login failed', desktopSession, callbackPort);
+    }
+
+    try {
+      const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+      const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
+      const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
+      const callbackUrl = this.configService.get<string>('GOOGLE_CALLBACK_URL') || `${apiBase}/auth/google/callback`;
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: callbackUrl,
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        this.logger.error(`Google token exchange failed: ${errText}`);
+        throw new Error('Google token exchange failed');
+      }
+
+      const tokenData = await tokenRes.json() as any;
+      const loginResult = await this.authService.socialTokenLogin({
+        provider: 'google',
+        accessToken: tokenData.id_token || tokenData.access_token,
+      });
+
+      return await this.finalizeBrowserOAuthSuccess(
+        res,
+        'Google',
+        SocialAccountType.GOOGLE,
+        loginResult,
+        desktopSession,
+        callbackPort,
+      );
+    } catch (error) {
+      this.logger.error(`Google OAuth callback failed: ${error.message}`);
+      return this.finalizeBrowserOAuthError(res, 'Google', error.message || 'Google login failed', desktopSession, callbackPort);
+    }
+  }
+
+  @Get('discord')
+  @ApiOperation({ summary: 'Discord OAuth 登录' })
+  async discordAuth(@Request() req, @Res() res: Response) {
+    const clientId = this.configService.get<string>('DISCORD_CLIENT_ID')?.trim();
+    if (!clientId) {
+      return this.redirectWebAuthError(res, 'Discord OAuth not configured');
+    }
+
+    const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
+    const callbackUrl = this.configService.get<string>('DISCORD_CALLBACK_URL') || `${apiBase}/auth/discord/callback`;
+    const desktopSession = this.firstQueryValue(req.query?.desktop_session);
+    const callbackPort = desktopSession ? this.firstQueryValue(req.query?.callback_port) : undefined;
+    const stateKey = this.encodeOAuthState({ ds: desktopSession, cp: callbackPort ? parseInt(callbackPort, 10) : undefined });
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: callbackUrl,
+      response_type: 'code',
+      scope: 'identify email',
+      state: stateKey,
+    });
+
+    return res.redirect(`https://discord.com/api/oauth2/authorize?${params.toString()}`);
+  }
+
+  @Get('discord/callback')
+  @ApiOperation({ summary: 'Discord OAuth 回调' })
+  async discordAuthCallback(@Request() req, @Res() res: Response) {
+    const code = this.firstQueryValue(req.query?.code);
+    const oauthError = this.firstQueryValue(req.query?.error);
+    const state = this.firstQueryValue(req.query?.state);
+    const stateData = this.decodeOAuthState(state);
+    const desktopSession = typeof stateData?.ds === 'string' ? stateData.ds : undefined;
+    const callbackPort = typeof stateData?.cp === 'number' ? stateData.cp : undefined;
+
+    if (oauthError || !code) {
+      return this.finalizeBrowserOAuthError(res, 'Discord', oauthError || 'Discord login failed', desktopSession, callbackPort);
+    }
+
+    try {
+      const clientId = this.configService.get<string>('DISCORD_CLIENT_ID')?.trim();
+      const clientSecret = this.configService.get<string>('DISCORD_CLIENT_SECRET')?.trim();
+      const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
+      const callbackUrl = this.configService.get<string>('DISCORD_CALLBACK_URL') || `${apiBase}/auth/discord/callback`;
+
+      if (!clientId || !clientSecret) {
+        throw new Error('Discord OAuth not configured');
+      }
+
+      const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: callbackUrl,
+        }).toString(),
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        this.logger.error(`Discord token exchange failed: ${errText}`);
+        throw new Error('Discord token exchange failed');
+      }
+
+      const tokenData = await tokenRes.json() as any;
+      const loginResult = await this.authService.socialTokenLogin({
+        provider: 'discord',
+        accessToken: tokenData.access_token,
+      });
+
+      return await this.finalizeBrowserOAuthSuccess(
+        res,
+        'Discord',
+        SocialAccountType.DISCORD,
+        loginResult,
+        desktopSession,
+        callbackPort,
+      );
+    } catch (error) {
+      this.logger.error(`Discord OAuth callback failed: ${error.message}`);
+      return this.finalizeBrowserOAuthError(res, 'Discord', error.message || 'Discord login failed', desktopSession, callbackPort);
+    }
   }
 
   @Get('apple')
@@ -349,25 +507,131 @@ export class AuthController {
     return 'agentrix://auth/callback';
   }
 
+  private firstQueryValue(value: unknown): string | undefined {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      const first = value[0];
+      return typeof first === 'string' ? first : undefined;
+    }
+    return undefined;
+  }
+
+  private getFrontendAuthCallbackUrl(): string {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    return `${frontendUrl}/auth/callback`;
+  }
+
+  private redirectWebAuthError(res: Response, error: string) {
+    const errorUrl = new URL(this.getFrontendAuthCallbackUrl());
+    errorUrl.searchParams.set('error', error);
+    return res.redirect(errorUrl.toString());
+  }
+
+  private redirectWebAuthSuccess(
+    res: Response,
+    loginResult: any,
+    socialType?: string,
+    socialId?: string,
+  ) {
+    const redirectUrl = new URL(this.getFrontendAuthCallbackUrl());
+    redirectUrl.searchParams.set('token', loginResult.access_token);
+    redirectUrl.searchParams.set('userId', loginResult.user.id);
+    redirectUrl.searchParams.set('email', loginResult.user.email || '');
+    redirectUrl.searchParams.set('agentrixId', loginResult.user.agentrixId);
+
+    const hasWallet = (loginResult.user as any).walletAddress;
+    if (!hasWallet && socialType && socialId) {
+      redirectUrl.searchParams.set('needMPCWallet', 'true');
+      redirectUrl.searchParams.set('socialType', socialType);
+      redirectUrl.searchParams.set('socialId', socialId);
+    }
+
+    return res.redirect(redirectUrl.toString());
+  }
+
+  private sendDesktopPairResult(res: Response, title: string, message: string, success = true): void {
+    const safeTitle = title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeMessage = message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body style="margin:0;font-family:Segoe UI,Arial,sans-serif;background:#0b1220;color:#e5e7eb;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="max-width:420px;padding:28px 24px;border-radius:18px;background:#111827;border:1px solid rgba(255,255,255,0.08);box-shadow:0 18px 48px rgba(0,0,0,0.35);text-align:center;"><div style="font-size:34px;margin-bottom:12px;">${success ? '✓' : '!'}</div><h1 style="margin:0 0 10px;font-size:22px;">${safeTitle}</h1><p style="margin:0 0 16px;color:#9ca3af;line-height:1.6;">${safeMessage}</p><p style="margin:0;font-size:12px;color:#6b7280;">可以返回 Agentrix Desktop，当前浏览器页可直接关闭。</p></div>${success ? '<script>setTimeout(function(){window.close();},1200);</script>' : ''}</body></html>`);
+  }
+
+  private async finalizeBrowserOAuthSuccess(
+    res: Response,
+    providerLabel: string,
+    socialType: SocialAccountType,
+    loginResult: any,
+    desktopSession?: string,
+    callbackPort?: number,
+  ) {
+    if (desktopSession) {
+      await this.authService.resolveDesktopPairSession(desktopSession, loginResult.access_token);
+
+      // If desktop provided a local callback port, redirect token there (loopback auth)
+      if (callbackPort && callbackPort > 0 && callbackPort < 65536) {
+        const localUrl = `http://127.0.0.1:${callbackPort}/auth-callback?token=${encodeURIComponent(loginResult.access_token)}&provider=${providerLabel}`;
+        return res.redirect(localUrl);
+      }
+
+      this.sendDesktopPairResult(res, `${providerLabel} 登录成功`, `桌面端已完成 ${providerLabel} 登录。`);
+      return;
+    }
+
+    return this.redirectWebAuthSuccess(
+      res,
+      loginResult,
+      socialType,
+      loginResult?.social?.socialId,
+    );
+  }
+
+  private finalizeBrowserOAuthError(
+    res: Response,
+    providerLabel: string,
+    error: string,
+    desktopSession?: string,
+    callbackPort?: number,
+  ) {
+    if (desktopSession) {
+      // If desktop provided a local callback port, redirect error there
+      if (callbackPort && callbackPort > 0 && callbackPort < 65536) {
+        const localUrl = `http://127.0.0.1:${callbackPort}/auth-callback?error=${encodeURIComponent(error)}&provider=${providerLabel}`;
+        return res.redirect(localUrl);
+      }
+      this.sendDesktopPairResult(res, `${providerLabel} 登录失败`, error, false);
+      return;
+    }
+    return this.redirectWebAuthError(res, error);
+  }
+
   // ========== State-encoded redirect_uri (survives server restarts / multi-instance) ==========
   // Instead of relying on in-memory Map, encode the redirect_uri in the OAuth state parameter.
   // OAuth providers return state unchanged in the callback, so we can always recover it.
 
+  private encodeOAuthState(payload: Record<string, any>): string {
+    const normalized = Object.fromEntries(
+      Object.entries({ ...payload, t: Date.now() }).filter(([, value]) => value !== undefined && value !== null),
+    );
+    return Buffer.from(JSON.stringify(normalized)).toString('base64url');
+  }
+
+  private decodeOAuthState(state: string): Record<string, any> | null {
+    if (!state) return null;
+    try {
+      return JSON.parse(Buffer.from(state, 'base64url').toString());
+    } catch {
+      return null;
+    }
+  }
+
   private encodeMobileState(redirectUri: string, extra?: Record<string, string>): string {
-    const data: any = { r: redirectUri, t: Date.now() };
-    if (extra) Object.assign(data, extra);
-    return Buffer.from(JSON.stringify(data)).toString('base64url');
+    return this.encodeOAuthState({ r: redirectUri, ...(extra || {}) });
   }
 
   private decodeMobileState(state: string): { redirectUri: string; codeVerifier?: string; [key: string]: any } | null {
-    if (!state) return null;
-    try {
-      const data = JSON.parse(Buffer.from(state, 'base64url').toString());
-      if (data && data.r) {
-        return { redirectUri: data.r, codeVerifier: data.cv, ...data };
-      }
-    } catch {
-      // Not a state-encoded value — might be a plain random hex from old code or web flow
+    const data = this.decodeOAuthState(state);
+    if (data && data.r) {
+      return { redirectUri: data.r, codeVerifier: data.cv, ...data };
     }
     return null;
   }
@@ -1004,9 +1268,11 @@ export class AuthController {
     });
 
     // Batch-fetch agentAccounts for all instances that have one bound
-    const accountIds = instances
-      .map(i => (i.metadata as any)?.agentAccountId)
-      .filter(Boolean) as string[];
+    const accountIds = Array.from(new Set(
+      instances
+        .map(i => i.agentAccountId || (i.metadata as any)?.agentAccountId)
+        .filter(Boolean) as string[],
+    ));
     const accountMap = new Map<string, AgentAccount>();
     if (accountIds.length) {
       const accounts = await this.agentAccountRepo.findByIds(accountIds);
@@ -1023,8 +1289,17 @@ export class AuthController {
       return configs.find(c => c.metadata?.isDefault === true) || configs[0] || null;
     });
 
-    // Build model label lookup from AI provider catalog
-    const allCatalogModels = this.aiProviderService.getCatalog().flatMap((p: any) => p.models || []);
+    // Build model label/provider lookup from AI provider catalog
+    const providerCatalog = this.aiProviderService.getCatalog();
+    const allCatalogModels = providerCatalog.flatMap((p: any) => p.models || []);
+    const modelProviderMap = new Map<string, string>();
+    for (const provider of providerCatalog) {
+      for (const model of provider.models || []) {
+        if (model?.id) {
+          modelProviderMap.set(model.id, provider.id);
+        }
+      }
+    }
 
     return {
       id: user.id,
@@ -1035,15 +1310,27 @@ export class AuthController {
       roles: user.roles,
       walletAddress: (user as any).walletAddress || null,
       openClawInstances: instances.map(i => {
-        const acctId = (i.metadata as any)?.agentAccountId;
+        const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
-        // Priority: agentAccount.preferredModel → user's defaultProviderConfig → instance capabilities
-        const resolvedModel = acct?.preferredModel
+        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local'];
+        const instanceActiveModel = (i.capabilities as any)?.activeModel;
+        const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
+          ? instanceActiveModel
+          : undefined;
+        const instanceModelPinned = (i.capabilities as any)?.modelPinned === true;
+        const sanitizedPreferredModel = acct?.preferredModel && !LOCAL_ONLY_MODELS.includes(acct.preferredModel)
+          ? acct.preferredModel
+          : undefined;
+        // Priority: explicitly pinned instance model → agentAccount.preferredModel → user's defaultProviderConfig → instance baseline
+        const resolvedModel = (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
+          || sanitizedPreferredModel
           || defaultProviderConfig?.selectedModel
-          || (i.capabilities as any)?.activeModel
+          || sanitizedInstanceActiveModel
           || undefined;
         const resolvedProvider = acct?.preferredProvider
+          || (instanceModelPinned ? modelProviderMap.get(sanitizedInstanceActiveModel) : undefined)
           || defaultProviderConfig?.providerId
+          || modelProviderMap.get(sanitizedInstanceActiveModel)
           || undefined;
         const resolvedModelLabel = allCatalogModels.find((m: any) => m.id === resolvedModel)?.label
           || resolvedModel;
@@ -1057,6 +1344,8 @@ export class AuthController {
           relayToken: i.relayToken || undefined,
           relayConnected: i.relayConnected || false,
           capabilities: i.capabilities || undefined,
+          metadata: i.metadata || undefined,
+          agentAccountId: acctId || undefined,
           resolvedModel,
           resolvedModelLabel,
           resolvedProvider,
@@ -1118,7 +1407,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '会话已创建' })
   async createDesktopPair(@Body() body: { sessionId: string }) {
     if (!body.sessionId) throw new BadRequestException('sessionId is required');
-    return this.authService.createDesktopPairSession(body.sessionId);
+    return await this.authService.createDesktopPairSession(body.sessionId);
   }
 
   @Get('desktop-pair/poll')
@@ -1127,7 +1416,7 @@ export class AuthController {
   async pollDesktopPair(@Request() req) {
     const sessionId = req.query?.session;
     if (!sessionId) throw new BadRequestException('session query param is required');
-    return this.authService.pollDesktopPairSession(sessionId);
+    return await this.authService.pollDesktopPairSession(sessionId);
   }
 
   @Post('desktop-pair/confirm')

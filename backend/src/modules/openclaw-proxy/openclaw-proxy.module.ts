@@ -16,8 +16,14 @@ import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integra
 import { OpenAIIntegrationModule } from '../ai-integration/openai/openai-integration.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { AgentIntelligenceModule } from '../agent-intelligence/agent-intelligence.module';
+import { AgentContextModule } from '../agent-context/agent-context.module';
+import { AgentOrchestrationModule } from '../agent-orchestration/agent-orchestration.module';
 import { HookModule } from '../hooks/hook.module';
 import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
+import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
+import { LlmRouterModule } from '../llm-router/llm-router.module';
+import { CostTrackerModule } from '../cost-tracker/cost-tracker.module';
+import { QueryEngineModule } from '../query-engine/query-engine.module';
 
 @Module({
   imports: [
@@ -30,8 +36,14 @@ import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
     forwardRef(() => OpenAIIntegrationModule),
     AiProviderModule,
     AgentIntelligenceModule,
+    AgentContextModule,
+    AgentOrchestrationModule,
     HookModule,
     McpRegistryModule,
+    DesktopSyncModule,
+    LlmRouterModule,
+    CostTrackerModule,
+    forwardRef(() => QueryEngineModule),
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],

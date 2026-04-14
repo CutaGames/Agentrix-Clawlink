@@ -29,9 +29,12 @@ export type AgentStackParamList = {
   AgentLogs: undefined;
   DesktopControl: undefined;
   MemoryManagement: undefined;
+  AgentMemory: undefined;
+  AcpSessions: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
   AgentAccount: undefined;
+  AgentBalance: { agentAccountId: string; agentName: string };
   AgentPermissions: { agentAccountId?: string } | undefined;
   AgentTools: { instanceId?: string };
   // Agent Space (collaboration rooms)
@@ -46,6 +49,11 @@ export type AgentStackParamList = {
   ConnectExisting: undefined;
   LocalDeploy: { directScan?: boolean } | undefined;
   SocialBind: { instanceId: string; platform?: 'telegram' };
+  // OpenClaw 4.5 features
+  DreamingDashboard: undefined;
+  PluginHub: undefined;
+  MemoryWiki: undefined;
+  McpManager: undefined;
 };
 
 export type ShareCardRouteParams = {
@@ -108,6 +116,8 @@ export type MeStackParamList = {
   NotificationCenter: undefined;
   ShareCard: ShareCardRouteParams;
   SocialListener: undefined;
+  LocalAiModel: undefined;
+  WearableHub: undefined;
 };
 
 export type DiscoverStackParamList = {
@@ -131,9 +141,27 @@ export type DiscoverStackParamList = {
   SocialListener: undefined;
 };
 
+export type TeamStackParamList = {
+  TeamDashboard: undefined;
+  TeamApprovalDetail: { notificationId: string; title: string };
+  TeamSpace: undefined;
+  TeamInvite: { workspaceId: string; workspaceName: string };
+  TeamAgentAccounts: undefined;
+  TaskBoard: undefined;
+  TaskDetail: { taskId: string };
+  AgentProfile: {
+    agentId: string;
+    codename: string;
+    name: string;
+    status: string;
+    modelTier: string;
+  };
+};
+
 export type MainTabParamList = {
   Agent: undefined;
   Discover: undefined;
+  Team: undefined;
   Me: undefined;
 };
 

@@ -206,7 +206,7 @@ export class BedrockIntegrationService {
     system?: string,
     tools?: any[],
     credentials?: BedrockUserCredentials,
-  ): Promise<{ text: string; toolCalls: any[] }> {
+  ): Promise<{ text: string; toolCalls: any[]; stopReason?: string }> {
     const region = this.normalizeRegion(credentials?.region || this.configService.get<string>('AWS_REGION'));
     const client = new BedrockRuntimeClient({
       region,
@@ -261,7 +261,8 @@ export class BedrockIntegrationService {
         });
       }
     }
-    return { text, toolCalls };
+    const stopReason = (response as any).stopReason || (toolCalls.length > 0 ? 'tool_use' : 'end_turn');
+    return { text, toolCalls, stopReason };
   }
 
   /**
@@ -512,6 +513,7 @@ export class BedrockIntegrationService {
           text: converseResult.text,
           functionCalls: converseResult.toolCalls.length > 0 ? converseResult.toolCalls : null,
           model: modelId,
+          stopReason: converseResult.stopReason || (converseResult.toolCalls.length > 0 ? 'tool_use' : 'end_turn'),
         };
       }
 
@@ -539,7 +541,12 @@ export class BedrockIntegrationService {
       };
 
       if (systemMessage) {
-        body.system = systemMessage.content;
+        // Support prompt caching: if system content is an array of blocks with cache_control, pass as-is
+        if (Array.isArray(systemMessage.content) && systemMessage.content.some((b: any) => b.cache_control)) {
+          body.system = systemMessage.content;
+        } else {
+          body.system = systemMessage.content;
+        }
       }
 
       // 如果有工具定义，添加工具 (Bedrock Anthropic Tool Use 格式)
@@ -592,10 +599,13 @@ export class BedrockIntegrationService {
         }
       }
 
+      const stopReason = data.stop_reason || (toolCalls.length > 0 ? 'tool_use' : 'end_turn');
+
       return {
         text,
         functionCalls: toolCalls.length > 0 ? toolCalls : null,
-        model: modelId
+        model: modelId,
+        stopReason,
       };
     } catch (e: any) {
       this.logger.error(`Bedrock chatWithFunctions failed: ${e.message}`);
