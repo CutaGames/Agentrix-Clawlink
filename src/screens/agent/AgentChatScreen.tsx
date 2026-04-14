@@ -31,7 +31,7 @@ import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
-import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { MobileLocalInferenceService, StreamThinkingFilter } from '../../services/mobileLocalInference.service';
 import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
 import {
   buildLocalUserContent,
@@ -68,6 +68,39 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
+
+// ── Token budget estimation for local context management ──
+const LOCAL_CONTEXT_WINDOW = 4096;
+const LOCAL_RESPONSE_RESERVE = 512; // n_predict default
+const LOCAL_SYSTEM_PROMPT_ESTIMATE = 60; // tokens for system prompt
+
+/** Rough token estimate: ~2 chars/token for mixed CJK/Latin text */
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 2);
+}
+
+/** Trim history to fit within token budget, keeping most recent messages */
+function trimHistoryToTokenBudget(
+  history: Array<{ role: string; content: string }>,
+  userMessageTokens: number,
+): Array<{ role: string; content: string }> {
+  const budget = LOCAL_CONTEXT_WINDOW - LOCAL_RESPONSE_RESERVE - LOCAL_SYSTEM_PROMPT_ESTIMATE - userMessageTokens;
+  if (budget <= 0) return [];
+
+  const result: Array<{ role: string; content: string }> = [];
+  let used = 0;
+
+  // Walk from newest to oldest, accumulate until budget exceeded
+  for (let i = history.length - 1; i >= 0; i--) {
+    const tokens = estimateTokens(history[i].content);
+    if (used + tokens > budget) break;
+    result.unshift(history[i]);
+    used += tokens;
+  }
+
+  return result;
+}
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
@@ -727,6 +760,8 @@ export function AgentChatScreen() {
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
+  // Cached agent context for local model system prompt enrichment
+  const localAgentContextRef = useRef<string>('');
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
   const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
   const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
@@ -981,6 +1016,36 @@ export function AgentChatScreen() {
           if (agent.metadata?.voice_id) {
             setAgentVoiceId(agent.metadata.voice_id);
           }
+          // Build enriched context for local model system prompt
+          const contextParts: string[] = [];
+          if (agent.personality) {
+            contextParts.push(`Personality: ${agent.personality}`);
+          }
+          if (agent.description) {
+            contextParts.push(`Description: ${agent.description}`);
+          }
+          if (agent.systemPrompt) {
+            contextParts.push(`Instructions: ${agent.systemPrompt}`);
+          }
+          // Fetch installed skills
+          try {
+            const { getInstanceSkills } = await import('../../services/openclaw.service');
+            const skills = await getInstanceSkills(activeInstance!.id);
+            const enabledSkills = (skills || []).filter((s) => s.enabled);
+            if (enabledSkills.length > 0) {
+              contextParts.push(`Installed skills: ${enabledSkills.map((s) => s.name).join(', ')}`);
+            }
+          } catch {}
+          // Fetch recent agent memories
+          try {
+            const { recallMemories } = await import('../../services/memorySlot.api');
+            const memories = await recallMemories({ agentId: activeInstance!.id, limit: 5, scopes: ['agent', 'user'] });
+            if (memories?.length > 0) {
+              const memSummary = memories.map((m) => `[${m.key}]: ${typeof m.value === 'string' ? m.value.slice(0, 200) : JSON.stringify(m.value).slice(0, 200)}`).join('\n');
+              contextParts.push(`Memories:\n${memSummary}`);
+            }
+          } catch {}
+          localAgentContextRef.current = contextParts.join('\n');
         }
       } catch {}
     })();
@@ -994,6 +1059,15 @@ export function AgentChatScreen() {
     localAiStatus,
     selectedModelId,
   ]);
+
+  // Eagerly preload local model context when a local model is selected.
+  // Model loading on Android (CPU-only, 3.1GB) takes ~20-30s. By starting
+  // the load as soon as the chat screen mounts, the model is warm by the
+  // time the user types their first message.
+  useEffect(() => {
+    if (!isLocalModelSelected) return;
+    void MobileLocalInferenceService.isAvailable(effectiveModelId).catch(() => {});
+  }, [isLocalModelSelected, effectiveModelId]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1556,26 +1630,18 @@ export function AgentChatScreen() {
       const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
 
       if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
-        if (
-          isLocalOnlyModelId(effectiveModelId)
-          && (localTurnDecision.reason === 'runtime-unavailable'
-            || localTurnDecision.reason === 'text-generation-unavailable')
-        ) {
-          setLocalAiStatus('error');
-          setLocalAiEnabled(false);
-        }
-        setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
-        addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
+        // All blocked reasons are recoverable — fall through to cloud
+        addVoiceDiagnostic('agent-chat', 'local-turn-blocked-fallback-cloud', {
           model: effectiveModelId,
           reason: localTurnDecision.reason,
-          attachment: localTurnDecision.attachment?.originalName || null,
         });
-        finishAssistantWithError(formatLocalTurnBlockedMessage({
-          t,
-          modelLabel: localModelLabel,
-          decision: localTurnDecision,
-        }));
-        return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: `⏳ ${t({ en: 'Local model unavailable for this turn, switching to cloud...', zh: '本地模型无法处理此轮，正在切换到云端…' })}\n`, streaming: true }
+              : m
+          )
+        );
       }
 
       if (shouldTryLocalNano) {
@@ -1585,24 +1651,35 @@ export function AgentChatScreen() {
           setResolvedModelLabel(localModelLabel);
         }
         let localAssistantText = '';
-        const localUserContent = buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
+        const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
 
-        const localHistory = currentMsgs
+        const rawLocalHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
-          .slice(-12)
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
-            content: message.role === 'user'
-              ? buildLocalUserContent(message.content, message.attachments || [], localRuntimeSnapshot || undefined)
-              : message.content,
+            content: message.content,
           }));
+
+        const userTokens = estimateTokens(typeof localUserContent === 'string' ? localUserContent : text);
+        const trimmedHistory = trimHistoryToTokenBudget(rawLocalHistory, userTokens);
+        const localHistory = await Promise.all(trimmedHistory.map(async (message) => ({
+          role: message.role as 'user' | 'assistant',
+          content: message.role === 'user'
+            ? await buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined)
+            : message.content,
+        })));
 
         resetVoicePhaseAfterResponse();
 
         try {
           let localProducedOutput = false;
+          const thinkFilter = new StreamThinkingFilter();
+          const agentContext = localAgentContextRef.current;
+          const systemPrompt = agentContext
+            ? `You are ${instanceName}, a local on-device AI assistant running on the user's phone.\n${agentContext}\nKeep responses concise and practical. Reply in the user's language.`
+            : `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise and practical. Reply in the user's language.`;
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
-            { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational. Never reveal chain-of-thought or thinking traces. Reply with the final answer directly.` },
+            { role: 'system', content: systemPrompt },
             ...localHistory,
             { role: 'user', content: localUserContent },
           ], { model: effectiveModelId })) {
@@ -1614,11 +1691,23 @@ export function AgentChatScreen() {
               continue;
             }
 
+            const visible = thinkFilter.push(chunk);
+            if (!visible) {
+              continue;
+            }
+
             localProducedOutput = true;
             streamSucceeded = true;
-            localAssistantText += chunk;
-            appendToStreamingMessage(assistantMsgId, chunk);
-            enqueueStreamedSpeech(chunk);
+            localAssistantText += visible;
+            appendToStreamingMessage(assistantMsgId, visible);
+            enqueueStreamedSpeech(visible);
+          }
+          // Flush any remaining buffered content
+          const flushed = thinkFilter.flush();
+          if (flushed) {
+            localAssistantText += flushed;
+            appendToStreamingMessage(assistantMsgId, flushed);
+            enqueueStreamedSpeech(flushed);
           }
           enqueueStreamedSpeech('', true);
 
@@ -1631,11 +1720,14 @@ export function AgentChatScreen() {
             addVoiceDiagnostic('agent-chat', 'local-empty-response', {
               model: effectiveModelId,
             });
-            finishAssistantWithError(t({
-              en: 'The selected local model returned no text. Agentrix did not fall back to the cloud. Retry the local model, or switch models manually.',
-              zh: '当前选中的本地模型没有返回文本。Agentrix 没有回退到云端。请重试本地模型，或手动切换模型。',
-            }));
-            return;
+            // Clear partial local output and fall through to cloud
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? { ...m, content: `⏳ ${t({ en: 'Local model returned empty, switching to cloud...', zh: '本地模型返回为空，正在切换到云端…' })}\n`, streaming: true }
+                  : m
+              )
+            );
           }
 
           if (token && finalAssistant) {
@@ -1655,19 +1747,18 @@ export function AgentChatScreen() {
           }
 
           const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
-          if (isLocalOnlyModelId(effectiveModelId)) {
-            setLocalAiStatus('error');
-            setLocalAiEnabled(false);
-          }
           addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
             model: effectiveModelId,
             message: localErrorMessage,
           });
-          finishAssistantWithError(t({
-            en: `On-device inference failed: ${localErrorMessage}. Agentrix did not fall back to the cloud. Check the local package/runtime and retry, or switch models manually.`,
-            zh: `端侧推理失败：${localErrorMessage}。Agentrix 没有回退到云端。请检查本地模型包和运行时后重试，或手动切换模型。`,
-          }));
-          return;
+          // Clear partial local output and fall through to cloud
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: `⏳ ${t({ en: `Local failed (${localErrorMessage}), switching to cloud...`, zh: `端侧失败（${localErrorMessage}），正在切换到云端…` })}\n`, streaming: true }
+                : m
+            )
+          );
         }
       }
 
@@ -1675,7 +1766,17 @@ export function AgentChatScreen() {
       const proxyModelId = isLocalOnlyModelId(effectiveModelId)
         ? remoteResolvedModelId
         : effectiveModelId;
+      const localFellBack = isLocalOnlyModelId(effectiveModelId) && !streamSucceeded;
       if (!streamSucceeded && instanceId) {
+        // If falling back from local, clear the transitional status and reset content
+        if (localFellBack) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, content: '', streaming: true } : m
+            )
+          );
+          setResolvedModelLabel(null); // let cloud resolve its own label
+        }
         await new Promise<void>((resolve) => {
           const ac = streamProxyChatSSE({
             instanceId,
@@ -2244,6 +2345,19 @@ export function AgentChatScreen() {
         onClose={handleSessionClose}
         t={t}
       />
+
+      {/* Quick model switch bar */}
+      <TouchableOpacity
+        accessibilityLabel="quick-model-switch"
+        onPress={() => setShowModelPicker(true)}
+        style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 5, backgroundColor: colors.bgCard, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+      >
+        <Text style={{ color: isLocalModelSelected ? '#f59e0b' : colors.accent, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+          {isLocalModelSelected ? '📱 ' : '☁️ '}
+          {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 11, marginLeft: 4 }}>{'▾'}</Text>
+      </TouchableOpacity>
 
       {loadingHistory && (
         <View style={styles.historyLoader}>
