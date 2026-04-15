@@ -31,7 +31,7 @@ import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
-import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { MobileLocalInferenceService, StreamThinkingFilter } from '../../services/mobileLocalInference.service';
 import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
 import {
   buildLocalUserContent,
@@ -71,8 +71,8 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
 
 // ── Token budget estimation for local context management ──
 const LOCAL_CONTEXT_WINDOW = 4096;
-const LOCAL_RESPONSE_RESERVE = 512; // n_predict default
-const LOCAL_SYSTEM_PROMPT_ESTIMATE = 60; // tokens for system prompt
+const LOCAL_RESPONSE_RESERVE = 2048; // n_predict default
+const LOCAL_SYSTEM_PROMPT_ESTIMATE = 200; // tokens for enriched system prompt
 
 /** Rough token estimate: ~2 chars/token for mixed CJK/Latin text */
 function estimateTokens(text: string): number {
@@ -219,10 +219,20 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
         text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
-      multimodalContent.push({
-        type: 'input_audio',
-        input_audio: { url: attachmentUrl }
-      });
+      // Cloud models don't support input_audio — send as text reference
+      // Voice audio is transcribed before reaching here in the normal flow;
+      // this fallback handles edge cases where raw audio attachments slip through.
+      if (attachmentUrl.startsWith('http')) {
+        multimodalContent.push({
+          type: 'text',
+          text: `[Voice Message: ${attachment.originalName}] ${attachmentUrl}`,
+        });
+      } else {
+        multimodalContent.push({
+          type: 'text',
+          text: `[Voice Message from user]`,
+        });
+      }
     } else {
       multimodalContent.push({
         type: 'text',
@@ -760,6 +770,8 @@ export function AgentChatScreen() {
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
+  // Cached agent context for local model system prompt enrichment
+  const localAgentContextRef = useRef<string>('');
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
   const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
   const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
@@ -1014,6 +1026,36 @@ export function AgentChatScreen() {
           if (agent.metadata?.voice_id) {
             setAgentVoiceId(agent.metadata.voice_id);
           }
+          // Build enriched context for local model system prompt
+          const contextParts: string[] = [];
+          if (agent.personality) {
+            contextParts.push(`Personality: ${agent.personality}`);
+          }
+          if (agent.description) {
+            contextParts.push(`Description: ${agent.description}`);
+          }
+          if (agent.systemPrompt) {
+            contextParts.push(`Instructions: ${agent.systemPrompt}`);
+          }
+          // Fetch installed skills
+          try {
+            const { getInstanceSkills } = await import('../../services/openclaw.service');
+            const skills = await getInstanceSkills(activeInstance!.id);
+            const enabledSkills = (skills || []).filter((s) => s.enabled);
+            if (enabledSkills.length > 0) {
+              contextParts.push(`Installed skills: ${enabledSkills.map((s) => s.name).join(', ')}`);
+            }
+          } catch {}
+          // Fetch recent agent memories
+          try {
+            const { recallMemories } = await import('../../services/memorySlot.api');
+            const memories = await recallMemories({ agentId: activeInstance!.id, limit: 5, scopes: ['agent', 'user'] });
+            if (memories?.length > 0) {
+              const memSummary = memories.map((m) => `[${m.key}]: ${typeof m.value === 'string' ? m.value.slice(0, 200) : JSON.stringify(m.value).slice(0, 200)}`).join('\n');
+              contextParts.push(`Memories:\n${memSummary}`);
+            }
+          } catch {}
+          localAgentContextRef.current = contextParts.join('\n');
         }
       } catch {}
     })();
@@ -1641,24 +1683,91 @@ export function AgentChatScreen() {
 
         try {
           let localProducedOutput = false;
-          for await (const chunk of MobileLocalInferenceService.generateTextStream([
-            { role: 'system', content: `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise and practical. Reply in the user's language.` },
+          const thinkFilter = new StreamThinkingFilter();
+          const agentContext = localAgentContextRef.current;
+          const identityBlock = `You are ${instanceName}. You are NOT Gemini, NOT GPT, NOT Claude — you are ${instanceName}, an Agentrix AI agent running locally on the user’s device. Never claim to be any other model or assistant.`;
+          const systemPrompt = agentContext
+            ? `${identityBlock}\n${agentContext}\nYou have tools available — use them when needed to help the user. You run locally for privacy and speed. Give complete, thorough answers. Reply in the user's language.`
+            : `${identityBlock}\nYou run locally on the user's phone for privacy and speed — no cloud needed. Give complete, thorough answers. Reply in the user's language.`;
+
+          const localMessages: Parameters<typeof MobileLocalInferenceService.generateTextStream>[0] = [
+            { role: 'system', content: systemPrompt },
             ...localHistory,
             { role: 'user', content: localUserContent },
-          ], { model: effectiveModelId })) {
-            if (localAbort.signal.aborted || responseInterruptedRef.current) {
-              break;
-            }
+          ];
 
-            if (!chunk) {
-              continue;
+          // Try tool-calling path first (Gemma 3n supports tool calling via llama.rn)
+          let toolCallingHandled = false;
+          try {
+            const { runLocalToolCallingLoop } = await import('../../services/localToolCalling.service');
+            const localBridge = (globalThis as { __AGENTRIX_LOCAL_LLM__?: { generateWithTools?: unknown } }).__AGENTRIX_LOCAL_LLM__;
+            if (localBridge?.generateWithTools) {
+              const toolResult = await runLocalToolCallingLoop(localMessages as any, {
+                model: effectiveModelId,
+                instanceId: activeInstance?.id,
+                agentId: activeInstance?.metadata?.agentAccountId || activeInstance?.id,
+                temperature: 0.7,
+                maxTokens: 2048,
+                onToolCall: (name: string) => {
+                  appendToStreamingMessage(assistantMsgId, `\n🔧 ${name}…\n`);
+                },
+                onToolResult: (name: string) => {
+                  addVoiceDiagnostic('agent-chat', 'local-tool-result', { tool: name });
+                },
+                onStreamToken: (chunk: string) => {
+                  const visible = thinkFilter.push(chunk);
+                  if (visible) {
+                    localProducedOutput = true;
+                    streamSucceeded = true;
+                    localAssistantText += visible;
+                    appendToStreamingMessage(assistantMsgId, visible);
+                    enqueueStreamedSpeech(visible);
+                  }
+                },
+                abortSignal: localAbort.signal,
+              });
+              toolCallingHandled = true;
+              // Handle non-streamed response (direct reply or post-tool result)
+              if (toolResult.text && !localProducedOutput) {
+                const visible = thinkFilter.push(toolResult.text);
+                const flushed2 = thinkFilter.flush();
+                const finalText = (visible || '') + (flushed2 || '');
+                if (finalText) {
+                  localProducedOutput = true;
+                  streamSucceeded = true;
+                  localAssistantText = finalText;
+                  appendToStreamingMessage(assistantMsgId, finalText);
+                  enqueueStreamedSpeech(finalText);
+                }
+              }
             }
+          } catch (toolError: any) {
+            addVoiceDiagnostic('agent-chat', 'tool-calling-fallback', {
+              model: effectiveModelId,
+              error: toolError?.message || String(toolError),
+            });
+          }
 
-            localProducedOutput = true;
-            streamSucceeded = true;
-            localAssistantText += chunk;
-            appendToStreamingMessage(assistantMsgId, chunk);
-            enqueueStreamedSpeech(chunk);
+          // Fallback: plain streaming without tools
+          if (!toolCallingHandled) {
+            for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, { model: effectiveModelId })) {
+              if (localAbort.signal.aborted || responseInterruptedRef.current) break;
+              if (!chunk) continue;
+              const visible = thinkFilter.push(chunk);
+              if (!visible) continue;
+              localProducedOutput = true;
+              streamSucceeded = true;
+              localAssistantText += visible;
+              appendToStreamingMessage(assistantMsgId, visible);
+              enqueueStreamedSpeech(visible);
+            }
+          }
+          // Flush any remaining buffered content
+          const flushed = thinkFilter.flush();
+          if (flushed) {
+            localAssistantText += flushed;
+            appendToStreamingMessage(assistantMsgId, flushed);
+            enqueueStreamedSpeech(flushed);
           }
           enqueueStreamedSpeech('', true);
 

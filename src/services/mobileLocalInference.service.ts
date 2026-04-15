@@ -1,7 +1,7 @@
 import { NativeModules } from 'react-native';
 import { OtaModelDownloadService } from './otaModelDownload.service';
 
-export type MobileLocalChatRole = 'system' | 'user' | 'assistant';
+export type MobileLocalChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export type MobileLocalChatContentPart =
   | {
@@ -228,8 +228,114 @@ function chunkText(text: string): string[] {
   return trimmed.match(/.{1,48}(?:\s+|$)/g)?.map((item) => item.trim()).filter(Boolean) || [trimmed];
 }
 
+/**
+ * Strip known thinking trace markers from final model output.
+ * Gemma 4: <|channel>thought\n...content...<channel|>
+ * DeepSeek / generic: <think>...</think>
+ */
 function normalizeLocalOutput(text: string): string {
-  return text.trim();
+  let result = text;
+  // Gemma 4 thinking channel
+  result = result.replace(/<\|channel>thought[\s\S]*?<channel\|>/g, '');
+  // Gemma chat template thinking turn
+  result = result.replace(/<start_of_turn>thought[\s\S]*?<end_of_turn>/g, '');
+  // Generic <think> blocks
+  result = result.replace(/<think>[\s\S]*?<\/think>/g, '');
+  return result.trim();
+}
+
+/**
+ * Streaming thinking filter: buffers tokens that might be part of a thinking
+ * block and only emits tokens that are confirmed user-visible content.
+ */
+export class StreamThinkingFilter {
+  private buffer = '';
+  private insideThinking = false;
+  // Gemma 4 open tag chars
+  private static readonly GEMMA_OPEN = '<|channel>thought';
+  private static readonly GEMMA_CLOSE = '<channel|>';
+  // Gemma chat template thinking turn
+  private static readonly GEMMA_TURN_OPEN = '<start_of_turn>thought';
+  private static readonly GEMMA_TURN_CLOSE = '<end_of_turn>';
+  private static readonly THINK_OPEN = '<think>';
+  private static readonly THINK_CLOSE = '</think>';
+
+  /** Feed a token, returns the text that should be shown to the user (may be empty). */
+  push(token: string): string {
+    this.buffer += token;
+
+    if (this.insideThinking) {
+      // Look for close tag
+      const gemmaClose = this.buffer.indexOf(StreamThinkingFilter.GEMMA_CLOSE);
+      const gemmaTurnClose = this.buffer.indexOf(StreamThinkingFilter.GEMMA_TURN_CLOSE);
+      const thinkClose = this.buffer.indexOf(StreamThinkingFilter.THINK_CLOSE);
+      const candidates = [
+        { idx: gemmaClose, tag: StreamThinkingFilter.GEMMA_CLOSE },
+        { idx: gemmaTurnClose, tag: StreamThinkingFilter.GEMMA_TURN_CLOSE },
+        { idx: thinkClose, tag: StreamThinkingFilter.THINK_CLOSE },
+      ].filter(c => c.idx >= 0).sort((a, b) => a.idx - b.idx);
+      const closeIdx = candidates[0]?.idx ?? -1;
+      const closeTag = candidates[0]?.tag ?? StreamThinkingFilter.GEMMA_CLOSE;
+      if (closeIdx >= 0) {
+        this.insideThinking = false;
+        this.buffer = this.buffer.slice(closeIdx + closeTag.length);
+        // Recurse in case there's visible text after the close tag
+        if (this.buffer) {
+          const remaining = this.buffer;
+          this.buffer = '';
+          return this.push(remaining);
+        }
+        return '';
+      }
+      // Keep buffering, nothing to emit
+      // Prevent unbounded buffer growth — keep only last 64 chars for tag matching
+      if (this.buffer.length > 256) {
+        this.buffer = this.buffer.slice(-64);
+      }
+      return '';
+    }
+
+    // Not inside thinking — check for open tag
+    const openCandidates = [
+      { idx: this.buffer.indexOf(StreamThinkingFilter.GEMMA_OPEN), tag: StreamThinkingFilter.GEMMA_OPEN },
+      { idx: this.buffer.indexOf(StreamThinkingFilter.GEMMA_TURN_OPEN), tag: StreamThinkingFilter.GEMMA_TURN_OPEN },
+      { idx: this.buffer.indexOf(StreamThinkingFilter.THINK_OPEN), tag: StreamThinkingFilter.THINK_OPEN },
+    ].filter(c => c.idx >= 0).sort((a, b) => a.idx - b.idx);
+    const openIdx = openCandidates[0]?.idx ?? -1;
+    const openTag = openCandidates[0]?.tag ?? '';
+
+    if (openIdx >= 0) {
+      const visible = this.buffer.slice(0, openIdx);
+      this.insideThinking = true;
+      this.buffer = this.buffer.slice(openIdx + openTag.length);
+      return visible;
+    }
+
+    // Check if buffer ends with a partial match of any open tag
+    const partialTags = [StreamThinkingFilter.GEMMA_OPEN, StreamThinkingFilter.GEMMA_TURN_OPEN, StreamThinkingFilter.THINK_OPEN];
+    for (const tag of partialTags) {
+      for (let len = 1; len < tag.length && len <= this.buffer.length; len++) {
+        if (this.buffer.endsWith(tag.slice(0, len))) {
+          const safe = this.buffer.slice(0, this.buffer.length - len);
+          this.buffer = this.buffer.slice(this.buffer.length - len);
+          return safe;
+        }
+      }
+    }
+
+    // No partial match — emit everything
+    const out = this.buffer;
+    this.buffer = '';
+    return out;
+  }
+
+  /** Flush any remaining buffered content (call at end of stream). */
+  flush(): string {
+    const out = this.insideThinking ? '' : this.buffer;
+    this.buffer = '';
+    this.insideThinking = false;
+    return out;
+  }
 }
 
 export class MobileLocalInferenceService {
