@@ -196,6 +196,66 @@ function formatAttachmentSize(size?: number | null) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Transcribe audio attachments server-side before sending to the model.
+ * Returns a new attachments array where audio files have been replaced with
+ * text-only pseudo-attachments containing the transcript.
+ */
+async function transcribeAudioAttachments(
+  attachments: UploadedChatAttachment[],
+  token: string,
+): Promise<{ attachments: UploadedChatAttachment[]; transcribedTexts: string[] }> {
+  const transcribedTexts: string[] = [];
+  const result = await Promise.all(
+    attachments.map(async (att) => {
+      const isAudio = att.mimetype?.startsWith('audio/')
+        || att.originalName.match(/\.(mp3|wav|m4a|ogg|aac|flac|opus)$/i);
+      if (!isAudio) return att;
+
+      const audioUri = att.publicUrl || att.localUri;
+      if (!audioUri) return att;
+
+      try {
+        const formData = new FormData();
+        if (audioUri.startsWith('http')) {
+          const audioResp = await fetch(audioUri);
+          const blob = await audioResp.blob();
+          formData.append('audio', blob, att.originalName || 'voice.m4a');
+        } else {
+          formData.append('audio', { uri: audioUri, name: att.originalName || 'voice.m4a', type: att.mimetype || 'audio/m4a' } as any);
+        }
+        const ac = new AbortController();
+        const timeout = setTimeout(() => ac.abort(), 30_000);
+        const resp = await fetch(`${API_BASE}/voice/transcribe`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+          signal: ac.signal,
+        });
+        clearTimeout(timeout);
+        if (resp.ok) {
+          const data = await resp.json();
+          const transcript = data?.text || data?.transcript || '';
+          if (transcript) {
+            transcribedTexts.push(transcript);
+            return {
+              ...att,
+              kind: 'text' as any,
+              mimetype: 'text/plain',
+              originalName: `${att.originalName} (transcribed)`,
+              _transcriptText: transcript,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[transcribeAudioAttachments] failed:', err);
+      }
+      return att;
+    }),
+  );
+  return { attachments: result, transcribedTexts };
+}
+
 function buildOutgoingMessageContent(text: string, attachments: UploadedChatAttachment[]) {
   const trimmed = text.trim();
   if (attachments.length === 0) return trimmed;
@@ -219,10 +279,13 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
         text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
-      // Cloud models don't support input_audio — send as text reference
-      // Voice audio is transcribed before reaching here in the normal flow;
-      // this fallback handles edge cases where raw audio attachments slip through.
-      if (attachmentUrl.startsWith('http')) {
+      // If already transcribed by transcribeAudioAttachments(), use the transcript text
+      if ((attachment as any)._transcriptText) {
+        multimodalContent.push({
+          type: 'text',
+          text: `[Voice Message Transcript]: ${(attachment as any)._transcriptText}`,
+        });
+      } else if (attachmentUrl.startsWith('http')) {
         multimodalContent.push({
           type: 'text',
           text: `[Voice Message: ${attachment.originalName}] ${attachmentUrl}`,
@@ -1556,7 +1619,26 @@ export function AgentChatScreen() {
       return;
     }
 
-    const outgoingText = buildOutgoingMessageContent(text, attachments);
+    // Transcribe audio attachments server-side before sending to model
+    let resolvedAttachments = attachments;
+    let audioTranscriptText = '';
+    const hasAudioAttachment = attachments.some(
+      (a) => a.mimetype?.startsWith('audio/') || a.originalName.match(/\.(mp3|wav|m4a|ogg|aac|flac|opus)$/i),
+    );
+    if (hasAudioAttachment && token) {
+      try {
+        const transcribeResult = await transcribeAudioAttachments(attachments, token);
+        resolvedAttachments = transcribeResult.attachments;
+        if (transcribeResult.transcribedTexts.length > 0 && !text) {
+          audioTranscriptText = transcribeResult.transcribedTexts.join('\n');
+        }
+      } catch (err) {
+        console.warn('[handleSend] audio transcription failed, sending as-is:', err);
+      }
+    }
+
+    const effectiveText = audioTranscriptText || text;
+    const outgoingText = buildOutgoingMessageContent(effectiveText, resolvedAttachments);
 
     if (voiceMode || voicePhase !== 'idle') {
       setVoicePhase('thinking');
@@ -1687,7 +1769,7 @@ export function AgentChatScreen() {
           const agentContext = localAgentContextRef.current;
           const identityBlock = `You are ${instanceName}. You are NOT Gemini, NOT GPT, NOT Claude — you are ${instanceName}, an Agentrix AI agent running locally on the user’s device. Never claim to be any other model or assistant.`;
           const systemPrompt = agentContext
-            ? `${identityBlock}\n${agentContext}\nYou have tools available — use them when needed to help the user. You run locally for privacy and speed. Give complete, thorough answers. Reply in the user's language.`
+            ? `${identityBlock}\n${agentContext}\nYou run locally for privacy and speed. Give complete, thorough answers. Reply in the user's language.`
             : `${identityBlock}\nYou run locally on the user's phone for privacy and speed — no cloud needed. Give complete, thorough answers. Reply in the user's language.`;
 
           const localMessages: Parameters<typeof MobileLocalInferenceService.generateTextStream>[0] = [
@@ -1696,71 +1778,20 @@ export function AgentChatScreen() {
             { role: 'user', content: localUserContent },
           ];
 
-          // Try tool-calling path first (Gemma 3n supports tool calling via llama.rn)
-          let toolCallingHandled = false;
-          try {
-            const { runLocalToolCallingLoop } = await import('../../services/localToolCalling.service');
-            const localBridge = (globalThis as { __AGENTRIX_LOCAL_LLM__?: { generateWithTools?: unknown } }).__AGENTRIX_LOCAL_LLM__;
-            if (localBridge?.generateWithTools) {
-              const toolResult = await runLocalToolCallingLoop(localMessages as any, {
-                model: effectiveModelId,
-                instanceId: activeInstance?.id,
-                agentId: activeInstance?.metadata?.agentAccountId || activeInstance?.id,
-                temperature: 0.7,
-                maxTokens: 2048,
-                onToolCall: (name: string) => {
-                  appendToStreamingMessage(assistantMsgId, `\n🔧 ${name}…\n`);
-                },
-                onToolResult: (name: string) => {
-                  addVoiceDiagnostic('agent-chat', 'local-tool-result', { tool: name });
-                },
-                onStreamToken: (chunk: string) => {
-                  const visible = thinkFilter.push(chunk);
-                  if (visible) {
-                    localProducedOutput = true;
-                    streamSucceeded = true;
-                    localAssistantText += visible;
-                    appendToStreamingMessage(assistantMsgId, visible);
-                    enqueueStreamedSpeech(visible);
-                  }
-                },
-                abortSignal: localAbort.signal,
-              });
-              toolCallingHandled = true;
-              // Handle non-streamed response (direct reply or post-tool result)
-              if (toolResult.text && !localProducedOutput) {
-                const visible = thinkFilter.push(toolResult.text);
-                const flushed2 = thinkFilter.flush();
-                const finalText = (visible || '') + (flushed2 || '');
-                if (finalText) {
-                  localProducedOutput = true;
-                  streamSucceeded = true;
-                  localAssistantText = finalText;
-                  appendToStreamingMessage(assistantMsgId, finalText);
-                  enqueueStreamedSpeech(finalText);
-                }
-              }
-            }
-          } catch (toolError: any) {
-            addVoiceDiagnostic('agent-chat', 'tool-calling-fallback', {
-              model: effectiveModelId,
-              error: toolError?.message || String(toolError),
-            });
-          }
-
-          // Fallback: plain streaming without tools
-          if (!toolCallingHandled) {
-            for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, { model: effectiveModelId })) {
-              if (localAbort.signal.aborted || responseInterruptedRef.current) break;
-              if (!chunk) continue;
-              const visible = thinkFilter.push(chunk);
-              if (!visible) continue;
-              localProducedOutput = true;
-              streamSucceeded = true;
-              localAssistantText += visible;
-              appendToStreamingMessage(assistantMsgId, visible);
-              enqueueStreamedSpeech(visible);
-            }
+          // Direct streaming — the primary local inference path.
+          // Tool calling is disabled for now: Gemma 4's Generic format handler
+          // in llama.cpp is unreliable (often returns empty text), and basic chat
+          // doesn't need tools. Re-enable when model support stabilises.
+          for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, { model: effectiveModelId })) {
+            if (localAbort.signal.aborted || responseInterruptedRef.current) break;
+            if (!chunk) continue;
+            const visible = thinkFilter.push(chunk);
+            if (!visible) continue;
+            localProducedOutput = true;
+            streamSucceeded = true;
+            localAssistantText += visible;
+            appendToStreamingMessage(assistantMsgId, visible);
+            enqueueStreamedSpeech(visible);
           }
           // Flush any remaining buffered content
           const flushed = thinkFilter.flush();
