@@ -25,6 +25,7 @@ import { useI18n } from '../../stores/i18nStore';
 import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
 import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
+import { ModelCatalogSheet, type ModelCatalogEntry } from '../../components/common/ModelCatalogSheet';
 import { uploadChatAttachment, apiFetch, syncLocalConversation, type UploadedChatAttachment } from '../../services/api';
 import { mapRawInstance } from '../../services/auth';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
@@ -38,6 +39,13 @@ import {
   resolveLocalTurnExecution,
   type LocalTurnExecutionDecision,
 } from '../../services/mobileLocalMultimodalRouting.service';
+import {
+  resolveExecutionTier,
+  classifyTurnForAuto,
+  parseExplicitTierHint,
+} from '../../utils/turnRouter';
+import { buildSystemPrompt, sanitizeAgentContext } from '../../utils/agentPersona';
+import { trackLocalInferenceOutcome } from '../../services/localInferenceTelemetry';
 import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
@@ -821,6 +829,8 @@ export function AgentChatScreen() {
   const setPreferOnDeviceVoice = useSettingsStore((s) => s.setPreferOnDeviceVoice);
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
+  const executionMode = useSettingsStore((s) => s.executionMode);
+  const setExecutionMode = useSettingsStore((s) => s.setExecutionMode);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
@@ -1719,7 +1729,28 @@ export function AgentChatScreen() {
       const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeSnapshot
         ? resolveLocalTurnExecution(text, attachments, localRuntimeSnapshot)
         : null;
-      const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
+
+      // Tri-tier router: user preference (local-only / auto / cloud-only) gates everything below.
+      const tierDecision = resolveExecutionTier({
+        selectedModelId: effectiveModelId,
+        executionMode,
+        agentPreferredModel: null,
+        instanceResolvedModel: remoteResolvedModelId || null,
+        finalFallbackModel: 'claude-haiku-4-5',
+        isLocalModelId: isLocalOnlyModelId,
+        localRuntimeReady: !!localRuntimeSnapshot,
+        autoClassification: classifyTurnForAuto({
+          text,
+          attachmentCount: attachments.length,
+          hasNonImageAttachment: attachments.some((a) => !a.isImage),
+          approxContextTokens: estimateTokens(currentMsgs.map((m) => m.content || '').join('\n')),
+          explicitTierHint: parseExplicitTierHint(text),
+        }),
+      });
+      const shouldTryLocalNano =
+        tierDecision.tier === 'local' &&
+        isLocalOnlyModelId(effectiveModelId) &&
+        localTurnDecision?.mode === 'local';
 
       if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
         // All blocked reasons are recoverable — fall through to cloud
@@ -1762,15 +1793,18 @@ export function AgentChatScreen() {
         })));
 
         resetVoicePhaseAfterResponse();
+        const localStartedAt = Date.now();
 
         try {
           let localProducedOutput = false;
           const thinkFilter = new StreamThinkingFilter();
           const agentContext = localAgentContextRef.current;
-          const identityBlock = `You are ${instanceName}. You are NOT Gemini, NOT GPT, NOT Claude — you are ${instanceName}, an Agentrix AI agent running locally on the user’s device. Never claim to be any other model or assistant.`;
-          const systemPrompt = agentContext
-            ? `${identityBlock}\n${agentContext}\nYou have tools available — use them when needed to help the user. You run locally for privacy and speed. Give complete, thorough answers. Reply in the user's language.`
-            : `${identityBlock}\nYou run locally on the user's phone for privacy and speed — no cloud needed. Give complete, thorough answers. Reply in the user's language.`;
+          const systemPrompt = buildSystemPrompt({
+            agentName: instanceName,
+            agentContext: sanitizeAgentContext(agentContext),
+            tier: 'local',
+            locale: language === 'zh' ? 'zh' : 'en',
+          });
 
           const localMessages: Parameters<typeof MobileLocalInferenceService.generateTextStream>[0] = [
             { role: 'system', content: systemPrompt },
@@ -1778,86 +1812,25 @@ export function AgentChatScreen() {
             { role: 'user', content: localUserContent },
           ];
 
-          // Try tool-calling path first (Gemma 3n supports tool calling via llama.rn)
-          // Timeout: abort tool calling after 45s to avoid blocking cloud fallback
-          let toolCallingHandled = false;
-          try {
-            const { runLocalToolCallingLoop } = await import('../../services/localToolCalling.service');
-            const localBridge = (globalThis as { __AGENTRIX_LOCAL_LLM__?: { generateWithTools?: unknown } }).__AGENTRIX_LOCAL_LLM__;
-            if (localBridge?.generateWithTools) {
-              const toolAbort = new AbortController();
-              const toolTimeout = setTimeout(() => {
-                addVoiceDiagnostic('agent-chat', 'local-tool-calling-timeout', { model: effectiveModelId });
-                toolAbort.abort();
-              }, 45_000);
-              // Also abort tool calling if user cancels
-              const onUserAbort = () => toolAbort.abort();
-              localAbort.signal.addEventListener('abort', onUserAbort);
-              try {
-                const toolResult = await runLocalToolCallingLoop(localMessages as any, {
-                  model: effectiveModelId,
-                  instanceId: activeInstance?.id,
-                  agentId: activeInstance?.metadata?.agentAccountId || activeInstance?.id,
-                  temperature: 0.7,
-                  maxTokens: 2048,
-                  onToolCall: (name: string) => {
-                    appendToStreamingMessage(assistantMsgId, `\n🔧 ${name}…\n`);
-                  },
-                  onToolResult: (name: string) => {
-                    addVoiceDiagnostic('agent-chat', 'local-tool-result', { tool: name });
-                  },
-                  onStreamToken: (chunk: string) => {
-                    const visible = thinkFilter.push(chunk);
-                    if (visible) {
-                      localProducedOutput = true;
-                      streamSucceeded = true;
-                      localAssistantText += visible;
-                      appendToStreamingMessage(assistantMsgId, visible);
-                      enqueueStreamedSpeech(visible);
-                    }
-                  },
-                  abortSignal: toolAbort.signal,
-                });
-                // Handle non-streamed response (direct reply or post-tool result)
-                if (toolResult.text && !localProducedOutput) {
-                  const visible = thinkFilter.push(toolResult.text);
-                  const flushed2 = thinkFilter.flush();
-                  const finalText = (visible || '') + (flushed2 || '');
-                  if (finalText) {
-                    localProducedOutput = true;
-                    streamSucceeded = true;
-                    localAssistantText = finalText;
-                    appendToStreamingMessage(assistantMsgId, finalText);
-                    enqueueStreamedSpeech(finalText);
-                  }
-                }
-                // Only mark handled if we actually got output — otherwise fall through to plain streaming
-                toolCallingHandled = localProducedOutput;
-              } finally {
-                clearTimeout(toolTimeout);
-                localAbort.signal.removeEventListener('abort', onUserAbort);
-              }
-            }
-          } catch (toolError: any) {
-            addVoiceDiagnostic('agent-chat', 'tool-calling-fallback', {
-              model: effectiveModelId,
-              error: toolError?.message || String(toolError),
-            });
-          }
-
-          // Fallback: plain streaming without tools
-          if (!toolCallingHandled) {
-            for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, { model: effectiveModelId })) {
-              if (localAbort.signal.aborted || responseInterruptedRef.current) break;
-              if (!chunk) continue;
-              const visible = thinkFilter.push(chunk);
-              if (!visible) continue;
-              localProducedOutput = true;
-              streamSucceeded = true;
-              localAssistantText += visible;
-              appendToStreamingMessage(assistantMsgId, visible);
-              enqueueStreamedSpeech(visible);
-            }
+          // Direct streaming — the primary local inference path.
+          // Tool calling is disabled for now: Gemma 4's Generic format handler
+          // in llama.cpp is unreliable (often returns empty text), and basic chat
+          // doesn't need tools. Re-enable when model support stabilises.
+          for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
+            model: effectiveModelId,
+            timeoutMs: 30_000,
+            stallTimeoutMs: 15_000,
+            signal: localAbort.signal,
+          })) {
+            if (localAbort.signal.aborted || responseInterruptedRef.current) break;
+            if (!chunk) continue;
+            const visible = thinkFilter.push(chunk);
+            if (!visible) continue;
+            localProducedOutput = true;
+            streamSucceeded = true;
+            localAssistantText += visible;
+            appendToStreamingMessage(assistantMsgId, visible);
+            enqueueStreamedSpeech(visible);
           }
           // Flush any remaining buffered content
           const flushed = thinkFilter.flush();
@@ -1898,12 +1871,39 @@ export function AgentChatScreen() {
               platform: 'mobile',
             });
           }
+
+          trackLocalInferenceOutcome({
+            platform: 'mobile',
+            tier: 'local',
+            outcome: finalAssistant ? 'success' : 'fallback-to-cloud',
+            modelId: effectiveModelId,
+            durationMs: Date.now() - localStartedAt,
+            tokensOut: finalAssistant ? estimateTokens(finalAssistant) : 0,
+            reason: finalAssistant ? 'ok' : 'empty-output',
+          });
         } catch (error: any) {
           if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            trackLocalInferenceOutcome({
+              platform: 'mobile',
+              tier: 'local',
+              outcome: 'aborted',
+              modelId: effectiveModelId,
+              durationMs: Date.now() - localStartedAt,
+            });
             return;
           }
 
           const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          const timedOut = /timeout/i.test(localErrorMessage);
+          const stalled = /stall/i.test(localErrorMessage);
+          trackLocalInferenceOutcome({
+            platform: 'mobile',
+            tier: 'local',
+            outcome: timedOut ? 'timeout' : stalled ? 'stall' : 'error',
+            modelId: effectiveModelId,
+            durationMs: Date.now() - localStartedAt,
+            reason: localErrorMessage.slice(0, 160),
+          });
           addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
             model: effectiveModelId,
             message: localErrorMessage,
@@ -1919,11 +1919,18 @@ export function AgentChatScreen() {
         }
       }
 
-      // Try OpenClaw proxy first (requires active instance)
-      const proxyModelId = isLocalOnlyModelId(effectiveModelId)
-        ? remoteResolvedModelId
-        : effectiveModelId;
+      // Router decides whether to try cloud next. In local-only mode we surface the error instead.
+      const proxyModelId = tierDecision.activeModelId;
       const localFellBack = isLocalOnlyModelId(effectiveModelId) && !streamSucceeded;
+      if (!streamSucceeded && localFellBack && !tierDecision.allowCloudFallback) {
+        finishAssistantWithError(
+          t({
+            en: 'Local model is unavailable or timed out. Switch to Smart/Cloud mode or try again.',
+            zh: '端侧模型不可用或超时。请切换到「智能 / 云端」模式或稍后重试。',
+          })
+        );
+        return;
+      }
       if (!streamSucceeded && instanceId) {
         // If falling back from local, clear the transitional status and reset content
         if (localFellBack) {
@@ -2734,6 +2741,32 @@ export function AgentChatScreen() {
         </View>
       )}
 
+      {/* Execution mode selector — tri-tier router (local / auto / cloud). */}
+      <View style={executionModeStyles.row}>
+        <Text style={executionModeStyles.label}>{t({ en: 'Tier', zh: '执行' })}</Text>
+        {(['local-only', 'auto', 'cloud-only'] as const).map((mode) => {
+          const active = executionMode === mode;
+          const label =
+            mode === 'local-only'
+              ? t({ en: '🔒 Local', zh: '🔒 端侧' })
+              : mode === 'cloud-only'
+              ? t({ en: '☁️ Cloud', zh: '☁️ 云端' })
+              : t({ en: '🤖 Smart', zh: '🤖 智能' });
+          return (
+            <TouchableOpacity
+              key={mode}
+              onPress={() => setExecutionMode(mode)}
+              style={[executionModeStyles.chip, active && executionModeStyles.chipActive]}
+              accessibilityLabel={`execution-mode-${mode}`}
+            >
+              <Text style={[executionModeStyles.chipText, active && executionModeStyles.chipTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <View style={styles.inputRow}>
         {voiceMode ? (
           duplexMode && duplexSessionConnected ? (
@@ -2775,7 +2808,11 @@ export function AgentChatScreen() {
               testID="chat-voice-action-button"
               accessibilityLabel={`chat-voice-action-button:ptt:${voicePhase}:${isRecording ? 'recording' : 'idle'}`}
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-              onPressIn={handleVoicePressIn}
+              onPressIn={() => {
+                // Barge-in confirmation: fire Heavy haptic immediately so user knows the interrupt registered.
+                void runImpactHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+                handleVoicePressIn();
+              }}
               onPressOut={handleVoicePressOut}
               activeOpacity={0.85}
             >
@@ -3093,68 +3130,41 @@ export function AgentChatScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Model picker modal — dynamic models from user's configured providers */}
-      <Modal visible={showModelPicker} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
-          <View style={styles.modelSheet}>
-            <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
-            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}</Text>
-            <ScrollView>
-              {availableModels.map((m) => {
-                const isActive = m.id === effectiveModelId;
-                return (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={[
-                      styles.modelOption,
-                      isActive && styles.modelOptionActive,
-                    ]}
-                    onPress={async () => {
-                      const isLocalTargetModel = isLocalOnlyModelId(m.id);
-                      setSelectedModel(m.id);
-                      setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
-                      setShowModelPicker(false);
-                      if (instanceId && !isLocalTargetModel) {
-                        updateInstance(instanceId, {
-                          capabilities: {
-                            ...(activeInstance?.capabilities || {}),
-                            activeModel: m.id,
-                            modelPinned: true,
-                          },
-                          resolvedModel: m.id,
-                          resolvedModelLabel: m.label,
-                        });
-                        try { await switchInstanceModel(instanceId, m.id); } catch {}
-                      }
-                    }}
-                  >
-                    <View style={styles.modelOptionRow}>
-                      <Text style={styles.modelOptionIcon}>{m.icon}</Text>
-                      <View style={styles.modelOptionInfo}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={styles.modelOptionLabel}>{m.label}</Text>
-                          {m.badge && (
-                            <View style={styles.modelBadge}>
-                              <Text style={styles.modelBadgeText}>{m.badge}</Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={styles.modelOptionProvider}>{m.provider}</Text>
-                      </View>
-                      {isActive && <Text style={styles.modelOptionCheck}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-              {availableModels.length <= 1 && (
-                <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 16, fontSize: 13 }}>
-                  {t({ en: 'Configure API keys in Settings → API Keys to unlock more models', zh: '前往 设置 → API密钥 配置厂商密钥以解锁更多模型' })}
-                </Text>
-              )}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* Model picker — unified catalog sheet with search + provider-tier grouping. */}
+      <ModelCatalogSheet
+        visible={showModelPicker}
+        onClose={() => setShowModelPicker(false)}
+        activeModelId={effectiveModelId}
+        subtitle={t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}
+        models={availableModels.map<ModelCatalogEntry>((m) => ({
+          id: m.id,
+          label: m.label,
+          provider: m.provider,
+          icon: m.icon,
+          badge: m.badge,
+          tier: m.costTier === 'free' || m.costTier === 'free_trial'
+            ? (isLocalOnlyModelId(m.id) ? 'local' : 'free')
+            : (m.costTier === 'enterprise' ? 'enterprise' : 'pro'),
+        }))}
+        onSelect={async (m) => {
+          const isLocalTargetModel = isLocalOnlyModelId(m.id);
+          setSelectedModel(m.id);
+          setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
+          setShowModelPicker(false);
+          if (instanceId && !isLocalTargetModel) {
+            updateInstance(instanceId, {
+              capabilities: {
+                ...(activeInstance?.capabilities || {}),
+                activeModel: m.id,
+                modelPinned: true,
+              },
+              resolvedModel: m.id,
+              resolvedModelLabel: m.label,
+            });
+            try { await switchInstanceModel(instanceId, m.id); } catch {}
+          }
+        }}
+      />
 
       {/* Voice diagnostics modal */}
       <Modal visible={showDiagnostics} transparent animationType="slide">
@@ -3461,6 +3471,32 @@ const sf = StyleSheet.create({
     color: colors.textMuted,
     paddingLeft: 4,
   },
+});
+
+const executionModeStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 2,
+    gap: 6,
+  },
+  label: { color: colors.textMuted, fontSize: 11, marginRight: 2 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  chipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  chipText: { color: colors.textMuted, fontSize: 11 },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
 });
 
 const styles = StyleSheet.create({
