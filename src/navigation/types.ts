@@ -93,6 +93,11 @@ export type SocialStackParamList = {
   UserProfile: { userId: string };
   // Agent Social Bridge
   SocialListener: undefined;
+  ChatList: undefined;
+  DMList: undefined;
+  DirectMessage: { userId: string; userName: string; userAvatar?: string };
+  DMChat: { userId: string; userName: string; userAvatar?: string };
+  GroupChat: { groupId: string; groupName: string };
 };
 
 export type ChatStackParamList = {
@@ -122,6 +127,7 @@ export type MeStackParamList = {
 
 export type DiscoverStackParamList = {
   DiscoverHome: undefined;
+  Predict: undefined;
   // Market screens
   Marketplace: undefined;
   SkillDetail: { skillId: string; skillName: string };
