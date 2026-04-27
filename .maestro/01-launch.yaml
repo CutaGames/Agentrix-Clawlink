@@ -1,0 +1,16 @@
+appId: app.agentrix.claw
+---
+# Test 01: App launches without crash and shows the current auth shell.
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 15000
+
+- assertVisible: "Agentrix Claw"
+
+- assertVisible:
+    textRegex: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
+
+- takeScreenshot: "01-app-launch-success"

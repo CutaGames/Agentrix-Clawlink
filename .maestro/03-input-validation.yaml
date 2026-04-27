@@ -1,0 +1,39 @@
+appId: app.agentrix.claw
+---
+# Test 03: Input validation — empty OpenClaw URL shows an alert.
+
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 12000
+
+- scrollUntilVisible:
+    element:
+      textRegex: "OpenClaw Instance|连接私有.*实例"
+    direction: DOWN
+    timeout: 10000
+
+- tapOn:
+    textRegex: "OpenClaw Instance|连接私有.*实例"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- assertVisible:
+    textRegex: "Connect OpenClaw Instance|连接 OpenClaw 实例"
+
+- tapOn:
+    textRegex: "Connect & Sign In|连接并登录"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- assertVisible:
+    textRegex: "OpenClaw URL required|请输入 OpenClaw URL|Enter your OpenClaw|请输入你的 OpenClaw"
+
+- takeScreenshot: "03-validation-alert"
+
+- tapOn:
+    textRegex: "OK|确定|Dismiss|Cancel|取消|close"
